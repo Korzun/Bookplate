@@ -242,6 +242,10 @@ export class BookStore {
             })),
           });
         }
+
+        // Record lineage and flatten any prior chains pointing to old id
+        await tx.$executeRaw`INSERT OR REPLACE INTO book_id_history (old_id, current_id) VALUES (${id}, ${newId})`;
+        await tx.$executeRaw`UPDATE book_id_history SET current_id = ${newId} WHERE current_id = ${id}`;
       } else {
         await tx.book.update({
           where: { id },

@@ -1397,3 +1397,46 @@ describe('book_id_history table', () => {
     expect(await bookStore.resolveBookId('old-id')).toBe('new-id');
   });
 });
+
+describe('resolveBookId — lineage via reimportBook', () => {
+  function makeImporterWithId(newId: string): ScanImporter {
+    return {
+      parseEpub: (_filePath: string): EpubMeta => ({
+        ...FAKE_META,
+        title: 'Lineage Book',
+      }),
+      partialMD5: (_filePath: string): string => newId,
+    };
+  }
+
+  it('single hop: resolveBookId(old) returns new after reimport changes ID', async () => {
+    const stagedPath = stage('lineage-a');
+    await bookStore.addBook('id-a', stagedPath, FAKE_META);
+    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+    expect(await bookStore.resolveBookId('id-a')).toBe('id-b');
+  });
+
+  it('multi-hop: resolveBookId(original) returns latest after two reimports', async () => {
+    const stagedPath = stage('lineage-multi');
+    await bookStore.addBook('id-a', stagedPath, FAKE_META);
+    // First hop: id-a → id-b
+    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+    // Write a file at id-b so reimportBook can stat it
+    fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'epub-content');
+    // Second hop: id-b → id-c (also flattens id-a → id-c)
+    await bookStore.reimportBook('id-b', makeImporterWithId('id-c'));
+    expect(await bookStore.resolveBookId('id-a')).toBe('id-c');
+    expect(await bookStore.resolveBookId('id-b')).toBe('id-c');
+  });
+
+  it('no history entry when ID does not change on reimport', async () => {
+    const stagedPath = stage('lineage-noop');
+    await bookStore.addBook('id-a', stagedPath, FAKE_META);
+    await bookStore.reimportBook('id-a', makeImporterWithId('id-a'));
+    expect(await bookStore.resolveBookId('id-a')).toBe('id-a');
+    const rows = await prisma.$queryRaw<Array<unknown>>`
+      SELECT * FROM book_id_history WHERE old_id = 'id-a'
+    `;
+    expect(rows).toHaveLength(0);
+  });
+});
