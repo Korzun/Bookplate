@@ -1385,4 +1385,15 @@ describe('book_id_history table', () => {
     expect(names).toContain('old_id');
     expect(names).toContain('current_id');
   });
+
+  it('resolveBookId returns the input unchanged when no history exists', async () => {
+    expect(await bookStore.resolveBookId('unknown-id')).toBe('unknown-id');
+  });
+
+  it('resolveBookId returns current_id when a mapping exists', async () => {
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-id', 'new-id')
+    `;
+    expect(await bookStore.resolveBookId('old-id')).toBe('new-id');
+  });
 });
