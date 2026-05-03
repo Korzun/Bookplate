@@ -123,6 +123,13 @@ export class BookStore {
     });
   }
 
+  async resolveBookId(id: string): Promise<string> {
+    const rows = await this.prisma.$queryRaw<Array<{ current_id: string }>>`
+      SELECT current_id FROM book_id_history WHERE old_id = ${id}
+    `;
+    return rows.length > 0 ? rows[0].current_id : id;
+  }
+
   async deleteBook(id: string): Promise<Book | null> {
     const book = await this.getBookById(id);
     if (!book) return null;
