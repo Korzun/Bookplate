@@ -7,27 +7,32 @@ import { runMigrations } from '../db/migrate';
 import request from 'supertest';
 import express from 'express';
 import { UserStore } from '../services/user-store';
+import { BookStore } from '../services/book-store';
 import { createKosyncRouter } from './kosync';
 
 jest.mock('../logger');
 
 let prisma: PrismaClient;
 let userStore: UserStore;
+let bookStore: BookStore;
 let app: express.Express;
 let dbPath: string;
+let booksDir: string;
 
 beforeEach(async () => {
+  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-test-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
   );
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
-  await runMigrations(prisma, os.tmpdir());
+  await runMigrations(prisma, booksDir);
   userStore = new UserStore(prisma);
+  bookStore = new BookStore(booksDir, prisma);
   app = express();
   app.use(express.json());
-  app.use('/kosync', createKosyncRouter(userStore));
+  app.use('/kosync', createKosyncRouter(userStore, bookStore));
 });
 
 afterEach(async () => {
@@ -37,6 +42,7 @@ afterEach(async () => {
   } catch {
     /* best-effort cleanup */
   }
+  fs.rmSync(booksDir, { recursive: true, force: true });
 });
 
 function authHeaders(username: string, password: string) {
@@ -155,5 +161,77 @@ describe('GET /kosync/syncs/progress/:document', () => {
       .get('/kosync/syncs/progress/unknown')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(404);
+  });
+});
+
+describe('KOSync lineage resolution', () => {
+  beforeEach(async () => {
+    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
+    // Seed a history entry: 'old-doc-id' → 'current-doc-id'
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-doc-id', 'current-doc-id')
+    `;
+  });
+
+  it('PUT with old ID stores progress under current ID', async () => {
+    await request(app).put('/kosync/syncs/progress').set(authHeaders('alice', 'secret')).send({
+      document: 'old-doc-id',
+      progress: '/body/DocFragment[3]',
+      percentage: 0.3,
+      device: 'Kobo',
+      device_id: 'dev-1',
+    });
+
+    // Fetch with the *current* ID — should find the saved progress
+    const res = await request(app)
+      .get('/kosync/syncs/progress/current-doc-id')
+      .set(authHeaders('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.body.percentage).toBeCloseTo(0.3);
+  });
+
+  it('PUT with old ID returns original document in response', async () => {
+    const res = await request(app)
+      .put('/kosync/syncs/progress')
+      .set(authHeaders('alice', 'secret'))
+      .send({
+        document: 'old-doc-id',
+        progress: '/body/DocFragment[3]',
+        percentage: 0.3,
+        device: 'Kobo',
+        device_id: 'dev-1',
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.document).toBe('old-doc-id');
+  });
+
+  it('GET with old ID returns progress stored under current ID', async () => {
+    // Save progress under the current ID directly via Prisma
+    await prisma.$executeRaw`
+      INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp)
+      VALUES ('alice', 'current-doc-id', '/body/DocFragment[7]', 0.7, 'Kobo', 'dev-1', 1700000000)
+    `;
+
+    const res = await request(app)
+      .get('/kosync/syncs/progress/old-doc-id')
+      .set(authHeaders('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.body.percentage).toBeCloseTo(0.7);
+  });
+
+  it('PUT and GET with current ID are unaffected', async () => {
+    await request(app).put('/kosync/syncs/progress').set(authHeaders('alice', 'secret')).send({
+      document: 'current-doc-id',
+      progress: '/body/DocFragment[5]',
+      percentage: 0.5,
+      device: 'Kobo',
+      device_id: 'dev-1',
+    });
+
+    const res = await request(app)
+      .get('/kosync/syncs/progress/current-doc-id')
+      .set(authHeaders('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.body.percentage).toBeCloseTo(0.5);
   });
 });

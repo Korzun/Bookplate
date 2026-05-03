@@ -29,7 +29,7 @@ export function createServer(
   );
 
   server.use('/opds', createOpdsRouter(bookStore, userStore, config.thumbnailWidths));
-  server.use('/kosync', createKosyncRouter(userStore));
+  server.use('/kosync', createKosyncRouter(userStore, bookStore));
   server.use('/api/users', createUsersRouter(userStore, config.username));
   server.use('/', createUiRouter(bookStore, userStore, config, thumbnailQueue));
 

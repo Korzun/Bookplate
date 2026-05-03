@@ -1,12 +1,13 @@
-// app/routes/kosync.ts
+// app/server/routes/kosync.ts
 import { Router, Request, Response } from 'express';
 import { UserStore } from '../services/user-store';
+import { BookStore } from '../services/book-store';
 import { kosyncAuth } from '../middleware/auth';
 import { logger } from '../logger';
 
 const log = logger('KOSync');
 
-export function createKosyncRouter(userStore: UserStore): Router {
+export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): Router {
   const router = Router();
 
   // Registration: POST /kosync/users/create  body: { username, password }
@@ -45,8 +46,9 @@ export function createKosyncRouter(userStore: UserStore): Router {
       res.status(400).json({ message: 'Missing required fields' });
       return;
     }
+    const currentId = await bookStore.resolveBookId(document);
     const saved = await userStore.saveProgress(req.kosyncUser!, {
-      document,
+      document: currentId,
       progress,
       percentage,
       device,
@@ -55,7 +57,8 @@ export function createKosyncRouter(userStore: UserStore): Router {
     log.info(
       `Progress saved for "${req.kosyncUser}" — "${document}" at ${(percentage * 100).toFixed(1)}%`
     );
-    res.status(200).json({ document: saved.document, timestamp: saved.timestamp });
+    // Return ORIGINAL document (KOSync spec compliance)
+    res.status(200).json({ document, timestamp: saved.timestamp });
   });
 
   // Get progress: GET /kosync/syncs/progress/:document
@@ -63,7 +66,8 @@ export function createKosyncRouter(userStore: UserStore): Router {
     '/syncs/progress/:document',
     kosyncAuth(userStore),
     async (req: Request, res: Response) => {
-      const p = await userStore.getProgress(req.kosyncUser!, req.params.document);
+      const currentId = await bookStore.resolveBookId(req.params.document);
+      const p = await userStore.getProgress(req.kosyncUser!, currentId);
       if (!p) {
         log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
         res.status(404).json({ message: 'Not found' });
