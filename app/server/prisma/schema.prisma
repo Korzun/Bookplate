@@ -52,6 +52,13 @@ model User {
   @@map("users")
 }
 
+model BookIdHistory {
+  oldId     String @id @map("old_id")
+  currentId String @map("current_id")
+
+  @@map("book_id_history")
+}
+
 model Progress {
   username   String
   document   String
