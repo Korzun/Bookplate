@@ -301,6 +301,18 @@ describe('deleteBook', () => {
   it('returns null for unknown id', async () => {
     expect(await bookStore.deleteBook('nope')).toBeNull();
   });
+
+  it('removes book_id_history entries for the deleted book', async () => {
+    await bookStore.addBook('del2', stage('del2'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-del2', 'del2')
+    `;
+    await bookStore.deleteBook('del2');
+    const rows = await prisma.$queryRaw<Array<unknown>>`
+      SELECT * FROM book_id_history WHERE old_id = 'old-del2' OR current_id = 'del2'
+    `;
+    expect(rows).toHaveLength(0);
+  });
 });
 
 describe('getCover', () => {

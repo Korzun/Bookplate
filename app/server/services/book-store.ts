@@ -143,6 +143,8 @@ export class BookStore {
     } catch (err) {
       if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) throw err;
     }
+    await this.prisma
+      .$executeRaw`DELETE FROM book_id_history WHERE old_id = ${id} OR current_id = ${id}`;
     return book;
   }
 
