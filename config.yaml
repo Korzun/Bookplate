@@ -19,6 +19,8 @@ map:
 options:
   username: admin
   password: changeme
+  max_concurrent_uploads: 3
 schema:
   username: str
   password: str
+  max_concurrent_uploads: int

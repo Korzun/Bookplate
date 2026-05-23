@@ -1,0 +1,35 @@
+name: hass-odps-dev
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./app:/app/app
+      - ${BOOKS:-./dev-books}:/media/books
+      - ./dev-data:/data
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-changeme}
+      BOOKS_DIR: /media/books
+    ports:
+      - "3000:3000"
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./client/src:/app/src
+      - ./client/index.html:/app/index.html
+      - ./client/vite.config.ts:/app/vite.config.ts
+      - ./client/tsconfig.json:/app/tsconfig.json
+    environment:
+      API_URL: http://api:3000
+      DOCKER: "true"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+

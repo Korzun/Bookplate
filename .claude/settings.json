@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git:*)",
+      "Bash(npm install *)",
+      "Bash(npm show:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run *)",
+      "Bash(npm uninstall *)",
+      "Bash(npm rebuild *)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest *)",
+      "Bash(npx jest *)",
+      "Bash(npx eslint *)",
+      "Bash(actionlint:*)",
+      "Bash(gh api:*)",
+      "Bash(curl:*)",
+      "Bash(xargs ls *)",
+      "Bash(echo \"Exit code: $?\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  }
+}
