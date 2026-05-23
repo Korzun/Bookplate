@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { loadConfig } from './config';
 import { UserStore } from './services/user-store';
 import { BookStore } from './services/book-store';
+import { ThumbnailQueue } from './services/thumbnail-queue';
 import { createApp } from './app';
 import { logger } from './logger';
 import packageJson from '../package.json';
@@ -19,8 +20,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 const db = new Database(path.join(config.dataDir, 'db.sqlite'));
 const userStore = new UserStore(db);
 const bookStore = new BookStore(config.booksDir, db);
+const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
 
-const app = createApp(config, userStore, bookStore);
+const app = createApp(config, userStore, bookStore, thumbnailQueue);
 
 // Startup scan: import untracked EPUBs, clean up stale DB entries
 try {
@@ -32,8 +34,11 @@ try {
   log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
 }
 
+thumbnailQueue.start();
+
 const shutdown = (): void => {
   log.info('Server shutting down');
+  thumbnailQueue.stop();
   db.close();
   process.exit(0);
 };
