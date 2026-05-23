@@ -28,6 +28,181 @@ export function partialMD5(filePath: string): string {
   return crypto.createHash('md5').update(Buffer.concat(chunks)).digest('hex');
 }
 
+function flattenNavOl(ol: unknown): { href: string; title: string }[] {
+  if (!ol || typeof ol !== 'object') return [];
+  const items = (ol as Record<string, unknown>).li;
+  if (!items) return [];
+  const result: { href: string; title: string }[] = [];
+  for (const item of (Array.isArray(items) ? items : [items]) as Array<Record<string, unknown>>) {
+    const aNode = item.a;
+    if (aNode && typeof aNode === 'object') {
+      const href = (aNode as Record<string, string>)['@_href'];
+      const title = ((aNode as Record<string, string>)['#text'] ?? '').trim();
+      if (href) result.push({ href, title });
+    }
+    if (item.ol) result.push(...flattenNavOl(item.ol));
+  }
+  return result;
+}
+
+function flattenNcxNavPoints(navPoints: unknown[]): { href: string; title: string }[] {
+  const result: { href: string; title: string }[] = [];
+  for (const np of navPoints as Array<Record<string, unknown>>) {
+    const src = (np.content as Record<string, string> | undefined)?.['@_src'];
+    const navLabel = np.navLabel as Record<string, unknown> | undefined;
+    const title = ((navLabel?.text as string | undefined) ?? '').trim();
+    if (src) result.push({ href: src, title });
+    if (np.navPoint) {
+      const nested = Array.isArray(np.navPoint) ? np.navPoint : [np.navPoint];
+      result.push(...flattenNcxNavPoints(nested as unknown[]));
+    }
+  }
+  return result;
+}
+
+const EXCLUDED_EPUB_TYPES = new Set([
+  'cover',
+  'frontmatter',
+  'dedication',
+  'halftitle',
+  'titlepage',
+  'backmatter',
+  'acknowledgments',
+  'copyright-page',
+  'afterword',
+  'appendix',
+  'index',
+  'colophon',
+]);
+
+function getDocumentEpubTypes(zip: AdmZip, absHref: string): string[] {
+  const entry = zip.getEntry(absHref);
+  if (!entry) return [];
+  const text = entry.getData().toString('utf8');
+  const match =
+    /<body(?:\s[^>]*)?\bepub:type="([^"]+)"/.exec(text) ??
+    /<section(?:\s[^>]*)?\bepub:type="([^"]+)"/.exec(text);
+  return match ? match[1].split(/\s+/) : [];
+}
+
+function hrefsToSpineMap(
+  entries: { href: string; title: string }[],
+  fileDir: string,
+  spineHrefToIndex: Map<string, number>
+): { spineMap: number[]; names: string[] } {
+  const seen = new Set<number>();
+  const spineMap: number[] = [];
+  const names: string[] = [];
+  for (const { href, title } of entries) {
+    const rootRel = path.posix.join(fileDir, href.split('#')[0]);
+    const idx = spineHrefToIndex.get(rootRel);
+    if (idx !== undefined && !seen.has(idx)) {
+      seen.add(idx);
+      spineMap.push(idx);
+      names.push(title);
+    }
+  }
+  return { spineMap, names };
+}
+
+function parseNavChapters(
+  zip: AdmZip,
+  opfDir: string,
+  manifest: Array<{
+    '@_id': string;
+    '@_href': string;
+    '@_media-type': string;
+    '@_properties'?: string;
+  }>,
+  spineHrefToIndex: Map<string, number>
+): { chapterCount: number; chapterSpineMap: number[]; chapterNames: string[] } {
+  const navParser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    parseTagValue: false,
+    isArray: (name) => ['li', 'nav', 'navPoint'].includes(name),
+  });
+
+  const spineIndexToAbsHref = new Map<number, string>();
+  for (const [href, idx] of spineHrefToIndex) {
+    spineIndexToAbsHref.set(idx, href);
+  }
+
+  const filterByEpubType = (
+    spineMap: number[],
+    names: string[]
+  ): { spineMap: number[]; names: string[] } => {
+    const filteredSpineMap: number[] = [];
+    const filteredNames: string[] = [];
+    for (let i = 0; i < spineMap.length; i++) {
+      const href = spineIndexToAbsHref.get(spineMap[i]);
+      if (href) {
+        const types = getDocumentEpubTypes(zip, href);
+        if (types.some((t) => EXCLUDED_EPUB_TYPES.has(t))) continue;
+      }
+      filteredSpineMap.push(spineMap[i]);
+      filteredNames.push(names[i]);
+    }
+    return { spineMap: filteredSpineMap, names: filteredNames };
+  };
+
+  // Try EPUB 3 nav document
+  const navItem = manifest.find((i) => i['@_properties']?.split(' ').includes('nav'));
+  if (navItem) {
+    const navAbsHref = opfDir === '.' ? navItem['@_href'] : `${opfDir}/${navItem['@_href']}`;
+    const navEntry = zip.getEntry(navAbsHref) ?? zip.getEntry(navItem['@_href']);
+    if (navEntry) {
+      const navDir = navAbsHref.includes('/')
+        ? navAbsHref.substring(0, navAbsHref.lastIndexOf('/'))
+        : '.';
+      const doc = navParser.parse(navEntry.getData().toString('utf8')) as Record<string, unknown>;
+      const navList = (doc?.html as Record<string, unknown>)?.body as { nav?: unknown } | undefined;
+      const navArr = navList?.nav ? (Array.isArray(navList.nav) ? navList.nav : [navList.nav]) : [];
+      const tocNav = (navArr as Array<Record<string, unknown>>).find((n) =>
+        ((n['@_epub:type'] as string | undefined) ?? '').split(' ').includes('toc')
+      );
+      if (tocNav) {
+        const entries = flattenNavOl(tocNav.ol);
+        const { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        const filtered = filterByEpubType(spineMap, names);
+        if (filtered.spineMap.length > 0)
+          return {
+            chapterCount: filtered.spineMap.length,
+            chapterSpineMap: filtered.spineMap,
+            chapterNames: filtered.names,
+          };
+      }
+    }
+  }
+
+  // Fall back to EPUB 2 NCX
+  const ncxItem = manifest.find((i) => i['@_media-type'] === 'application/x-dtbncx+xml');
+  if (ncxItem) {
+    const ncxAbsHref = opfDir === '.' ? ncxItem['@_href'] : `${opfDir}/${ncxItem['@_href']}`;
+    const ncxEntry = zip.getEntry(ncxAbsHref) ?? zip.getEntry(ncxItem['@_href']);
+    if (ncxEntry) {
+      const ncxDir = ncxAbsHref.includes('/')
+        ? ncxAbsHref.substring(0, ncxAbsHref.lastIndexOf('/'))
+        : '.';
+      const doc = navParser.parse(ncxEntry.getData().toString('utf8')) as Record<string, unknown>;
+      const navPoints: unknown[] =
+        (((doc?.ncx as Record<string, unknown>)?.navMap as Record<string, unknown>)
+          ?.navPoint as unknown[]) ?? [];
+      const entries = flattenNcxNavPoints(navPoints);
+      const { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      const filtered = filterByEpubType(spineMap, names);
+      if (filtered.spineMap.length > 0)
+        return {
+          chapterCount: filtered.spineMap.length,
+          chapterSpineMap: filtered.spineMap,
+          chapterNames: filtered.names,
+        };
+    }
+  }
+
+  return { chapterCount: 0, chapterSpineMap: [], chapterNames: [] };
+}
+
 type MetaLike = string | { [key: string]: string | undefined };
 
 interface LocalizedValue {
@@ -106,6 +281,46 @@ export function parseEpub(filePath: string): EpubMeta {
     '@_media-type': string;
     '@_properties'?: string;
   }> = pkg?.manifest?.item ?? [];
+  const opfDir = path.dirname(opfRelPath);
+
+  // Build spine href → 0-based spine index map (used for chapter detection)
+  const rawSpineRefs = pkg?.spine?.itemref ?? [];
+  const spineItemRefs: Array<{ '@_idref': string }> = Array.isArray(rawSpineRefs)
+    ? (rawSpineRefs as Array<{ '@_idref': string }>)
+    : [rawSpineRefs as { '@_idref': string }];
+  const hrefByManifestId = new Map<string, string>();
+  for (const item of manifest) {
+    hrefByManifestId.set(item['@_id'], item['@_href']);
+  }
+  const spineHrefToIndex = new Map<string, number>();
+  for (let i = 0; i < spineItemRefs.length; i++) {
+    const href = hrefByManifestId.get(spineItemRefs[i]['@_idref']);
+    if (href) {
+      spineHrefToIndex.set(opfDir === '.' ? href : `${opfDir}/${href}`, i);
+    }
+  }
+  // Compute Adobe standard page count: 1 page = 1,024 characters (including spaces)
+  let totalChars = 0;
+  for (const itemRef of spineItemRefs) {
+    const href = hrefByManifestId.get(itemRef['@_idref']);
+    if (!href) continue;
+    const absHref = opfDir === '.' ? href : `${opfDir}/${href}`;
+    const entry = zip.getEntry(absHref) ?? zip.getEntry(href);
+    if (!entry) continue;
+    const text = entry
+      .getData()
+      .toString('utf8')
+      .replace(/<[^>]*>/g, '');
+    totalChars += text.length;
+  }
+  const pageCount = Math.ceil(totalChars / 1024);
+
+  const { chapterCount, chapterSpineMap, chapterNames } = parseNavChapters(
+    zip,
+    opfDir,
+    manifest,
+    spineHrefToIndex
+  );
 
   // Step 3: extract metadata
   const titleCandidate = pickLocalized(metadata['dc:title'] ?? []);
@@ -209,7 +424,6 @@ export function parseEpub(filePath: string): EpubMeta {
 
   if (coverHref) {
     // resolve relative to OPF directory
-    const opfDir = path.dirname(opfRelPath);
     const coverPath = opfDir === '.' ? coverHref : `${opfDir}/${coverHref}`;
     const coverEntry = zip.getEntry(coverPath) ?? zip.getEntry(coverHref);
     if (coverEntry) {
@@ -230,5 +444,9 @@ export function parseEpub(filePath: string): EpubMeta {
     seriesIndex,
     coverData,
     coverMime,
+    chapterCount,
+    chapterSpineMap,
+    chapterNames,
+    pageCount,
   };
 }
