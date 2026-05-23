@@ -36,6 +36,8 @@ function makeBook(id: string, seriesIndex: number) {
     hasCover: false,
     size: 0,
     addedAt: '2024-01-01',
+    chapterCount: 0,
+    pageCount: 0,
   };
 }
 

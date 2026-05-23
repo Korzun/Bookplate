@@ -21,6 +21,8 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
     hasCover: false,
     size: 0,
     addedAt: '2024-01-01',
+    chapterCount: 0,
+    pageCount: 0,
     ...overrides,
   };
 }

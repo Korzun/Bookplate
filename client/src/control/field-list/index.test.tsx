@@ -35,7 +35,7 @@ it('calls onAdd when the add button is clicked', async () => {
     />
   );
   await user.click(screen.getByRole('button', { name: 'Add subject' }));
-  expect(onAdd).toHaveBeenCalledOnce();
+  expect(onAdd).toHaveBeenCalledTimes(1);
 });
 
 it('renders an input for each row', () => {
