@@ -1,6 +1,12 @@
 export interface Book {
   id: string; // 32-char partial MD5 (KoReader binary algorithm) — matches KOSync progress.document
+  /**
+   * User-facing download name derived from metadata
+   * ([author]-[series]-[index]-[title].epub). NOT the on-disk filename — every
+   * book is stored as `<id>.epub`.
+   */
   filename: string;
+  /** Absolute on-disk path: `<booksDir>/<id>.epub`. */
   path: string;
   title: string;
   fileAs: string;
@@ -15,6 +21,10 @@ export interface Book {
   size: number;
   mtime: Date;
   addedAt: Date;
+  chapterCount: number;
+  chapterSpineMap: number[];
+  chapterNames: string[];
+  pageCount: number;
 }
 
 export interface EpubMeta {
@@ -29,6 +39,10 @@ export interface EpubMeta {
   subjects: string[];
   coverData: Buffer | null;
   coverMime: string | null;
+  chapterCount: number;
+  chapterSpineMap: number[];
+  chapterNames: string[];
+  pageCount: number;
 }
 
 export interface Progress {
@@ -46,4 +60,6 @@ export interface AppConfig {
   booksDir: string;
   dataDir: string;
   port: number;
+  maxConcurrentUploads: number;
+  thumbnailWidths: number[];
 }

@@ -8,13 +8,20 @@ const log = logger('Config');
 interface Options {
   username: string;
   password: string;
+  max_concurrent_uploads: number;
+  thumbnail_widths: number[];
 }
 
 export function loadConfig(): AppConfig {
   const dataDir = process.env.DATA_DIR ?? '/data';
   const optionsPath = path.join(dataDir, 'options.json');
 
-  let options: Options = { username: 'admin', password: 'changeme' };
+  let options: Options = {
+    username: 'admin',
+    password: 'changeme',
+    max_concurrent_uploads: 3,
+    thumbnail_widths: [60, 170],
+  };
 
   if (fs.existsSync(optionsPath)) {
     try {
@@ -22,6 +29,10 @@ export function loadConfig(): AppConfig {
       options = {
         username: parsed.username ?? options.username,
         password: parsed.password ?? options.password,
+        max_concurrent_uploads: parsed.max_concurrent_uploads ?? options.max_concurrent_uploads,
+        thumbnail_widths: Array.isArray(parsed.thumbnail_widths)
+          ? parsed.thumbnail_widths
+          : options.thumbnail_widths,
       };
     } catch {
       log.warn(`Could not parse ${optionsPath}, using defaults`);
@@ -34,5 +45,7 @@ export function loadConfig(): AppConfig {
     booksDir: process.env.BOOKS_DIR ?? '/media/books',
     dataDir,
     port: parseInt(process.env.PORT ?? '3000', 10),
+    maxConcurrentUploads: options.max_concurrent_uploads,
+    thumbnailWidths: options.thumbnail_widths,
   };
 }
