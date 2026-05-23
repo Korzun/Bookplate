@@ -1,0 +1,45 @@
+import { createUseStyles, type Theme } from '~/provider/theme';
+
+export const useStyle = createUseStyles((theme: Theme) => ({
+  root: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.space.md,
+    cursor: 'pointer',
+    userSelect: 'none',
+    '-webkit-user-select': 'none',
+  },
+  track: {
+    position: 'relative',
+    width: '28px',
+    height: '16px',
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.border.default,
+    ...theme.recipe.focusRing,
+    transitionProperty: 'background-color, outline-color',
+    transitionDuration: '0.1s',
+    transitionTimingFunction: 'ease-in',
+    '$root:hover &': { outlineColor: theme.color.brand.outline },
+    '$root:focus &': { outlineColor: theme.color.brand.outline },
+    '&$checked': { backgroundColor: theme.color.brand.default },
+    '&$disabled': { opacity: 0.4, cursor: 'not-allowed' },
+  },
+  thumb: {
+    position: 'absolute',
+    top: '2px',
+    left: '2px',
+    width: '12px',
+    height: '12px',
+    borderRadius: theme.radius.circle,
+    backgroundColor: theme.color.bg.input,
+    transitionProperty: 'left',
+    transitionDuration: '0.1s',
+    transitionTimingFunction: 'ease-in',
+    '$checked &': { left: '14px' },
+  },
+  label: {
+    ...theme.recipe.label,
+  },
+  checked: {},
+  disabled: {},
+}));
