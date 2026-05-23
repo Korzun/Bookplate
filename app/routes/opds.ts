@@ -40,13 +40,18 @@ function rootFeed(baseUrl: string): string {
 </feed>`;
 }
 
-function booksFeed(books: Book[], baseUrl: string): string {
+function booksFeed(books: Book[], baseUrl: string, thumbnailWidths: number[]): string {
   const now = new Date().toISOString();
+  const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
   const entries = books
     .map((b) => {
       const coverLink = b.hasCover
         ? `    <link rel="http://opds-spec.org/image"\n          href="${baseUrl}/opds/books/${b.id}/cover"\n          type="image/jpeg"/>`
         : '';
+      const thumbnailLink =
+        b.hasCover && smallestWidth !== null
+          ? `    <link rel="http://opds-spec.org/image/thumbnail"\n          href="${baseUrl}/opds/books/${b.id}/cover?width=${smallestWidth}"\n          type="image/jpeg"/>`
+          : '';
       return `  <entry>
     <title>${escapeXml(b.title)}</title>
     <id>urn:hass-odps:book:${b.id}</id>
@@ -58,6 +63,7 @@ function booksFeed(books: Book[], baseUrl: string): string {
           type="application/epub+zip"
           title="${escapeXml(b.filename)}"/>
 ${coverLink}
+${thumbnailLink}
   </entry>`;
     })
     .join('\n');
@@ -73,7 +79,11 @@ ${entries}
 </feed>`;
 }
 
-export function createOpdsRouter(bookStore: BookStore, userStore: UserStore): Router {
+export function createOpdsRouter(
+  bookStore: BookStore,
+  userStore: UserStore,
+  thumbnailWidths: number[]
+): Router {
   const router = Router();
   const auth = opdsAuth(userStore);
 
@@ -89,7 +99,7 @@ export function createOpdsRouter(bookStore: BookStore, userStore: UserStore): Ro
     log.debug(`Books feed served (${books.length} books)`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-    res.send(booksFeed(books, baseUrl));
+    res.send(booksFeed(books, baseUrl, thumbnailWidths));
   });
 
   router.get('/books/:id/download', auth, (req: Request, res: Response) => {
@@ -110,6 +120,21 @@ export function createOpdsRouter(bookStore: BookStore, userStore: UserStore): Ro
   });
 
   router.get('/books/:id/cover', auth, (req: Request, res: Response) => {
+    const { width } = req.query;
+    const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
+
+    if (!isNaN(parsedWidth) && parsedWidth > 0) {
+      const thumbnail = bookStore.getThumbnail(req.params.id, parsedWidth);
+      if (thumbnail) {
+        res.set('Content-Type', thumbnail.mime);
+        res.send(thumbnail.data);
+        return;
+      }
+      log.warn(
+        `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
+      );
+    }
+
     const cover = bookStore.getCover(req.params.id);
     if (!cover) {
       res.status(404).send('Not found');
