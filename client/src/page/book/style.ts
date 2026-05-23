@@ -75,10 +75,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.md,
     marginBottom: theme.space.sm,
     color: theme.color.text.secondary,
-    // position: 'absolute',
-    // top: '8px',
-    // right: 0,
-    // cursor: 'pointer',
   },
   description: {
     color: '#585863', // book-description-specific shade
