@@ -1,0 +1,114 @@
+import {
+  areObjectArraysIdentical,
+  areStringArraysIdentical,
+  formatSize,
+  relativeTime,
+} from './utils';
+
+describe('formatSize', () => {
+  it('formats bytes', () => expect(formatSize(500)).toBe('500 B'));
+  it('formats kilobytes', () => expect(formatSize(1536)).toBe('1.5 KB'));
+  it('formats megabytes', () => expect(formatSize(1_048_576)).toBe('1.0 MB'));
+});
+
+describe('areObjectArraysIdentical', () => {
+  type Id = { scheme: string; value: string };
+
+  it('returns true for the same reference', () => {
+    const arr: Id[] = [{ scheme: 'isbn', value: '123' }];
+    expect(areObjectArraysIdentical(arr, arr)).toBe(true);
+  });
+  it('returns true for two empty arrays', () => {
+    expect(areObjectArraysIdentical([], [])).toBe(true);
+  });
+  it('returns true for equal arrays in the same order', () => {
+    const a: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'uuid', value: '2' },
+    ];
+    const b: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'uuid', value: '2' },
+    ];
+    expect(areObjectArraysIdentical(a, b)).toBe(true);
+  });
+  it('returns true for equal arrays in different order', () => {
+    const a: Id[] = [
+      { scheme: 'uuid', value: '2' },
+      { scheme: 'isbn', value: '1' },
+    ];
+    const b: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'uuid', value: '2' },
+    ];
+    expect(areObjectArraysIdentical(a, b)).toBe(true);
+  });
+  it('returns false when a field value differs', () => {
+    const a: Id[] = [{ scheme: 'isbn', value: '1' }];
+    const b: Id[] = [{ scheme: 'isbn', value: '2' }];
+    expect(areObjectArraysIdentical(a, b)).toBe(false);
+  });
+  it('returns false for arrays with different lengths', () => {
+    const a: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'uuid', value: '2' },
+    ];
+    const b: Id[] = [{ scheme: 'isbn', value: '1' }];
+    expect(areObjectArraysIdentical(a, b)).toBe(false);
+  });
+  it('is not fooled by duplicate objects covering for a missing one', () => {
+    const a: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'isbn', value: '1' },
+    ];
+    const b: Id[] = [
+      { scheme: 'isbn', value: '1' },
+      { scheme: 'uuid', value: '2' },
+    ];
+    expect(areObjectArraysIdentical(a, b)).toBe(false);
+  });
+});
+
+describe('areStringArraysIdentical', () => {
+  it('returns true for the same reference', () => {
+    const arr = ['a', 'b'];
+    expect(areStringArraysIdentical(arr, arr)).toBe(true);
+  });
+  it('returns true for two empty arrays', () => {
+    expect(areStringArraysIdentical([], [])).toBe(true);
+  });
+  it('returns true for equal arrays in the same order', () => {
+    expect(areStringArraysIdentical(['a', 'b', 'c'], ['a', 'b', 'c'])).toBe(true);
+  });
+  it('returns true for equal arrays in different order', () => {
+    expect(areStringArraysIdentical(['c', 'a', 'b'], ['a', 'b', 'c'])).toBe(true);
+  });
+  it('returns false for arrays with different elements', () => {
+    expect(areStringArraysIdentical(['a', 'b'], ['a', 'x'])).toBe(false);
+  });
+  it('returns false for arrays with different lengths', () => {
+    expect(areStringArraysIdentical(['a', 'b'], ['a'])).toBe(false);
+  });
+  it('returns false when one array has a superset of the other', () => {
+    expect(areStringArraysIdentical(['a', 'b', 'c'], ['a', 'b', 'b'])).toBe(false);
+  });
+});
+
+describe('relativeTime', () => {
+  it('returns "just now" for less than 60 seconds', () => {
+    const ts = Math.floor(Date.now() / 1000) - 30;
+    expect(relativeTime(ts)).toBe('just now');
+  });
+  it('returns minutes ago', () => {
+    const ts = Math.floor(Date.now() / 1000) - 120;
+    expect(relativeTime(ts)).toBe('2m ago');
+  });
+  it('returns hours ago', () => {
+    const ts = Math.floor(Date.now() / 1000) - 7200;
+    expect(relativeTime(ts)).toBe('2h ago');
+  });
+  it('returns days ago', () => {
+    const ts = Math.floor(Date.now() / 1000) - 172_800;
+    expect(relativeTime(ts)).toBe('2d ago');
+  });
+});

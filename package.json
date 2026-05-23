@@ -3,12 +3,15 @@
   "version": "1.0.25",
   "private": true,
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('fs');if(fs.existsSync('app/public'))fs.cpSync('app/public','dist/public',{recursive:true})\"",
+    "build": "npm run build:client && tsc",
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint . && tsc --noEmit",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "dev": "nodemon --watch app --ext ts,json --exec 'ts-node --project tsconfig.json' app/index.ts",
+    "dev:client": "npm run --prefix client dev",
+    "build:client": "npm run --prefix client build"
   },
   "dependencies": {
     "adm-zip": "^0.5.17",
@@ -17,9 +20,11 @@
     "express-session": "^1.17.3",
     "fast-xml-parser": "^5.7.1",
     "mime-types": "^2.1.35",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.8",
     "@types/express": "^4.17.21",
@@ -31,11 +36,16 @@
     "@types/supertest": "^6.0.2",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import-x": "^4.16.2",
     "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jest": "^29.7.0",
+    "nodemon": "^3.1.14",
     "prettier": "^3.8.3",
     "supertest": "^6.3.4",
     "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.58.2"
   }

@@ -1,5 +1,7 @@
 .worktrees/
+.claude/settings.local.json
 node_modules/
-dist/
+/dist/
 .superpowers/
 *.sqlite
+dev-books/
