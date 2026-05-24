@@ -182,14 +182,6 @@ export function createUiRouter(
   // ── Static assets (no auth required) ──────────────────
   router.use('/assets', express.static(path.join(__dirname, '../../client/dist/assets')));
 
-  // ── Protected SPA ──────────────────────────────────────
-
-  router.get('/', sessionAuth, serveSpa);
-  router.get('/books/:id', sessionAuth, serveSpa);
-  router.get('/books/:id/edit', sessionAuth, serveSpa);
-  router.get('/series/:name', sessionAuth, serveSpa);
-  router.get('/upload', sessionAuth, serveSpa);
-
   router.get('/api/books', sessionAuth, (_req: Request, res: Response) => {
     res.json(
       bookStore.listBooks().map((b) => {
@@ -431,6 +423,9 @@ export function createUiRouter(
       res.json(rest);
     }
   );
+
+  // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
+  router.get('*', sessionAuth, serveSpa);
 
   return router;
 }
