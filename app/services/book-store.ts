@@ -286,6 +286,35 @@ export class BookStore {
       }
       this.db.exec('PRAGMA user_version = 8');
     }
+
+    if (user_version < 9) {
+      const toBackfill = this.db
+        .prepare('SELECT id FROM books WHERE chapter_count = 0')
+        .all() as Array<{ id: string }>;
+      const updateChapterData = this.db.prepare(
+        'UPDATE books SET chapter_count = ?, chapter_spine_map = ?, chapter_names = ? WHERE id = ?'
+      );
+      let backfilled = 0;
+      for (const { id } of toBackfill) {
+        const filePath = path.join(this.booksDir, id + '.epub');
+        try {
+          const meta = parseEpub(filePath);
+          if (meta.chapterCount > 0) {
+            updateChapterData.run(
+              meta.chapterCount,
+              JSON.stringify(meta.chapterSpineMap),
+              JSON.stringify(meta.chapterNames),
+              id
+            );
+            backfilled++;
+          }
+        } catch {
+          log.warn(`Migration v9: failed to compute chapter data for book ${id}; leaving at 0`);
+        }
+      }
+      this.db.exec('PRAGMA user_version = 9');
+      if (backfilled > 0) log.info(`Migration v9: backfilled chapter data for ${backfilled} book(s)`);
+    }
   }
 
   addBook(id: string, srcPath: string, meta: EpubMeta): void {
