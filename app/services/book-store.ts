@@ -313,7 +313,8 @@ export class BookStore {
         }
       }
       this.db.exec('PRAGMA user_version = 9');
-      if (backfilled > 0) log.info(`Migration v9: backfilled chapter data for ${backfilled} book(s)`);
+      if (backfilled > 0)
+        log.info(`Migration v9: backfilled chapter data for ${backfilled} book(s)`);
     }
   }
 
