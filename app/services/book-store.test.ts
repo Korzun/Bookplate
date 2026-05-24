@@ -644,7 +644,7 @@ describe('migrations', () => {
 
     const row = preDb.prepare('SELECT id FROM books').get() as { id: string };
     expect(row.id).toBe(correctId);
-    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 8 });
+    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 9 });
 
     preDb.close();
   });
@@ -746,7 +746,7 @@ describe('migrations', () => {
     const names = cols.map((c) => c.name);
     expect(names).toContain('chapter_count');
     expect(names).toContain('chapter_spine_map');
-    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 8 });
+    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 9 });
 
     preDb.close();
   });
@@ -778,7 +778,7 @@ describe('migrations', () => {
 
     const cols = preDb.prepare('PRAGMA table_info(books)').all() as Array<{ name: string }>;
     expect(cols.map((c) => c.name)).toContain('page_count');
-    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 8 });
+    expect(preDb.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 9 });
 
     preDb.close();
   });
