@@ -2,8 +2,32 @@ import {
   areObjectArraysIdentical,
   areStringArraysIdentical,
   formatSize,
+  generateUUID,
   relativeTime,
 } from './utils';
+
+describe('generateUUID', () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('returns a valid v4 UUID', () => {
+    expect(generateUUID()).toMatch(UUID_RE);
+  });
+
+  it('returns a unique value each call', () => {
+    expect(generateUUID()).not.toBe(generateUUID());
+  });
+
+  it('falls back when crypto.randomUUID is unavailable', () => {
+    const original = crypto.randomUUID;
+    // @ts-expect-error simulating non-secure context
+    crypto.randomUUID = undefined;
+    try {
+      expect(generateUUID()).toMatch(UUID_RE);
+    } finally {
+      crypto.randomUUID = original;
+    }
+  });
+});
 
 describe('formatSize', () => {
   it('formats bytes', () => expect(formatSize(500)).toBe('500 B'));
