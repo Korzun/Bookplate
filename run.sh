@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 set -e
-exec node /app/server/dist/index.js
+exec node /hass-odps/app/server/dist/index.js

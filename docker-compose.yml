@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
-      - ./server:/app/server
+      - ./app/server:/hass-odps/app/server
       - ${BOOKS:-./dev-books}:/media/books
       - ./dev-data:/data
     environment:
@@ -18,13 +18,13 @@ services:
 
   web:
     build:
-      context: ./client
+      context: ./app/client
       dockerfile: Dockerfile.dev
     volumes:
-      - ./client/src:/app/src
-      - ./client/index.html:/app/index.html
-      - ./client/vite.config.ts:/app/vite.config.ts
-      - ./client/tsconfig.json:/app/tsconfig.json
+      - ./app/client/src:/app/src
+      - ./app/client/index.html:/app/index.html
+      - ./app/client/vite.config.ts:/app/vite.config.ts
+      - ./app/client/tsconfig.json:/app/tsconfig.json
     environment:
       API_URL: http://api:3000
       DOCKER: "true"
