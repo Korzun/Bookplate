@@ -5,7 +5,7 @@ import { loadConfig } from './config';
 import { UserStore } from './services/user-store';
 import { BookStore } from './services/book-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
-import { createApp } from './app';
+import { createServer } from './server';
 import { logger } from './logger';
 import packageJson from '../package.json';
 
@@ -22,7 +22,7 @@ const userStore = new UserStore(db);
 const bookStore = new BookStore(config.booksDir, db);
 const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
 
-const app = createApp(config, userStore, bookStore, thumbnailQueue);
+const server = createServer(config, userStore, bookStore, thumbnailQueue);
 
 // Startup scan: import untracked EPUBs, clean up stale DB entries
 try {
@@ -45,7 +45,7 @@ const shutdown = (): void => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-app.listen(config.port, () => {
+server.listen(config.port, () => {
   log.info(
     `HASS-ODPS v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
   );

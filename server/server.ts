@@ -9,17 +9,17 @@ import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
 import { createUiRouter } from './routes/ui';
 
-export function createApp(
+export function createServer(
   config: AppConfig,
   userStore: UserStore,
   bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue
 ): express.Express {
-  const app = express();
+  const server = express();
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
-  app.use(
+  server.use(express.json());
+  server.use(express.urlencoded({ extended: false }));
+  server.use(
     session({
       secret: config.password,
       resave: false,
@@ -28,10 +28,10 @@ export function createApp(
     })
   );
 
-  app.use('/opds', createOpdsRouter(bookStore, userStore, config.thumbnailWidths));
-  app.use('/kosync', createKosyncRouter(userStore));
-  app.use('/api/users', createUsersRouter(userStore, config.username));
-  app.use('/', createUiRouter(bookStore, userStore, config, thumbnailQueue));
+  server.use('/opds', createOpdsRouter(bookStore, userStore, config.thumbnailWidths));
+  server.use('/kosync', createKosyncRouter(userStore));
+  server.use('/api/users', createUsersRouter(userStore, config.username));
+  server.use('/', createUiRouter(bookStore, userStore, config, thumbnailQueue));
 
-  return app;
+  return server;
 }
