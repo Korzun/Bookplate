@@ -1,34 +1,34 @@
 # Build stage
 FROM node:24-alpine AS builder
-WORKDIR /app
+WORKDIR /hass-odps
 
 # Install all workspace deps
 COPY package*.json ./
-COPY server/package*.json ./server/
-COPY client/package*.json ./client/
+COPY app/server/package*.json ./app/server/
+COPY app/client/package*.json ./app/client/
 RUN npm ci
 
 # Backend source
-COPY server/ ./server/
+COPY app/server/ ./app/server/
 
 # Client source
-COPY client/index.html client/vite.config.ts client/tsconfig.json ./client/
-COPY client/src/ ./client/src/
+COPY app/client/index.html app/client/vite.config.ts app/client/tsconfig.json ./app/client/
+COPY app/client/src/ ./app/client/src/
 
 # Build everything
 RUN npm run build
 
 # Production stage
 FROM node:24-alpine
-WORKDIR /app
+WORKDIR /hass-odps
 
 COPY package*.json ./
-COPY server/package*.json ./server/
-COPY client/package*.json ./client/
+COPY app/server/package*.json ./app/server/
+COPY app/client/package*.json ./app/client/
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=builder /app/server/dist ./server/dist
-COPY --from=builder /app/client/dist ./client/dist
+COPY --from=builder /hass-odps/app/server/dist ./app/server/dist
+COPY --from=builder /hass-odps/app/client/dist ./app/client/dist
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
