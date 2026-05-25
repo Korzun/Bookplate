@@ -1,8 +1,11 @@
 {
   "name": "hass-odps",
-  "version": "1.1.2",
+  "version": "1.1.4",
   "private": true,
-  "workspaces": ["app/server", "app/client"],
+  "workspaces": [
+    "app/server",
+    "app/client"
+  ],
   "scripts": {
     "build": "npm run build -w app/server && npm run build -w app/client",
     "start": "node app/server/dist/index.js",
