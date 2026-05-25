@@ -7,13 +7,13 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./app",
+    "rootDir": "./server",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["app/**/*"],
-  "exclude": ["node_modules", "dist", "app/**/*.test.ts"]
+  "include": ["server/**/*"],
+  "exclude": ["node_modules", "dist", "server/**/*.test.ts"]
 }

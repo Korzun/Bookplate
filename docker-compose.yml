@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
-      - ./app:/app/app
+      - ./server:/app/server
       - ${BOOKS:-./dev-books}:/media/books
       - ./dev-data:/data
     environment:

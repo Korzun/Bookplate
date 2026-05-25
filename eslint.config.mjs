@@ -15,9 +15,9 @@ export default tseslint.config(
     ],
   },
 
-  // Server (app/)
+  // Server (server/)
   {
-    files: ["app/**/*.ts"],
+    files: ["server/**/*.ts"],
     extends: [tseslint.configs.recommended],
     plugins: {
       prettier: eslintPluginPrettier,
