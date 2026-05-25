@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { useUsername } from '../../../provider/auth';
+import { generateUUID } from '../../../utils';
 import { Context } from '../context';
 import type { Progress } from '../type';
 
@@ -9,7 +10,7 @@ const DEVICE_ID_KEY = 'hass-odps-device-id';
 function getOrCreateDeviceId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
-    id = crypto.randomUUID();
+    id = generateUUID();
     localStorage.setItem(DEVICE_ID_KEY, id);
   }
   return id;

@@ -7,7 +7,7 @@ import type { FieldRow } from '~/control';
 import type { Book } from '~/provider/book';
 import { usePatchBookMetadata } from '~/provider/book';
 import { path } from '~/router';
-import { areObjectArraysIdentical, areStringArraysIdentical } from '~/utils';
+import { areObjectArraysIdentical, areStringArraysIdentical, generateUUID } from '~/utils';
 
 import { useStyle } from './style';
 
@@ -73,14 +73,14 @@ export const BookEditForm = ({ original, id }: Props) => {
   }, []);
 
   const [subjects, setSubjects] = useState<SubjectRow[]>(() =>
-    original.subjects.map((subject) => ({ value: subject, _key: crypto.randomUUID() }))
+    original.subjects.map((subject) => ({ value: subject, _key: generateUUID() }))
   );
 
   const [identifiers, setIdentifiers] = useState<IdentifierRow[]>(() =>
     original.identifiers.map((identifier) => ({
       scheme: identifier.scheme,
       value: identifier.value,
-      _key: crypto.randomUUID(),
+      _key: generateUUID(),
     }))
   );
 
@@ -172,7 +172,7 @@ export const BookEditForm = ({ original, id }: Props) => {
           addLabel="Add subject"
           columns={[{ type: 'text', key: 'value', placeholder: 'Subject' }]}
           rows={subjects as FieldRow[]}
-          onAdd={() => setSubjects((prev) => [...prev, { _key: crypto.randomUUID(), value: '' }])}
+          onAdd={() => setSubjects((prev) => [...prev, { _key: generateUUID(), value: '' }])}
           onRemove={(key) => setSubjects((prev) => prev.filter((r) => r._key !== key))}
           onChange={(key, field, val) =>
             setSubjects((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: val } : r)))
@@ -189,10 +189,7 @@ export const BookEditForm = ({ original, id }: Props) => {
           ]}
           rows={identifiers as FieldRow[]}
           onAdd={() =>
-            setIdentifiers((prev) => [
-              ...prev,
-              { _key: crypto.randomUUID(), scheme: '', value: '' },
-            ])
+            setIdentifiers((prev) => [...prev, { _key: generateUUID(), scheme: '', value: '' }])
           }
           onRemove={(key) => setIdentifiers((prev) => prev.filter((r) => r._key !== key))}
           onChange={(key, field, val) =>
