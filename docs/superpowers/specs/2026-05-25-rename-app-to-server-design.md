@@ -1,45 +1,154 @@
-# Rename `/app` to `/server`
+# Rename `app/` to `server/` and Restructure as npm Workspaces
 
 **Date:** 2026-05-25
 
 ## Summary
 
-Rename the backend source directory from `app/` to `server/` to better reflect its role (Express server, not a generic "app"), and update all references across config files.
+Rename the backend source directory from `app/` to `server/`, restructure the project as an npm workspaces monorepo with `server/` and `client/` as the two workspaces, and dissolve the root-level config files (`tsconfig.json`, `jest.config.js`, `eslint.config.mjs`) into workspace-specific equivalents.
 
 ## Scope
 
 ### In scope
-- Rename `app/` directory to `server/` via `git mv`
-- Update all 6 config files that reference the directory by name
+- Rename `app/` → `server/` via `git mv`
+- Convert root `package.json` to a workspace root (orchestration only, no deps)
+- Create `server/package.json` with all current root dependencies and server scripts
+- Move `tsconfig.json` → `server/tsconfig.json`
+- Move `jest.config.js` → `server/jest.config.js`
+- Split root `eslint.config.mjs` into `server/eslint.config.mjs` and `client/eslint.config.mjs`
+- Update `client/package.json` to add eslint/prettier and `eslint-plugin-react-hooks`
+- Delete `client/package-lock.json` (replaced by single root lockfile)
+- Update `Dockerfile`, `docker-compose.yml`, and `run.sh` for new paths
 
 ### Out of scope
-- Historical spec/plan docs under `docs/superpowers/` — kept as-is as frozen artifacts
-- CI workflow files — no references to the directory
-
-## Changes
-
-### Step 1 — Directory rename
-```
-git mv app server
-```
-
-### Step 2 — Config file updates
-
-| File | Change |
-|---|---|
-| `package.json` | `--watch app` → `--watch server`; `app/index.ts` → `server/index.ts` |
-| `tsconfig.json` | `rootDir`, `include`, and `exclude`: `app` → `server` |
-| `jest.config.js` | `roots: ['<rootDir>/app']` → `roots: ['<rootDir>/server']` |
-| `Dockerfile` | `COPY app/ ./app/` → `COPY server/ ./server/` |
-| `docker-compose.yml` | `./app:/app/app` → `./server:/app/server` |
-| `eslint.config.mjs` | `app/**/*.ts` → `server/**/*.ts` (and the comment above it) |
-
-## What does NOT change
-
-- `WORKDIR /app` in Dockerfiles — this is the container's working directory, unrelated to the source folder name
-- TypeScript imports inside the directory — all relative paths, unaffected by directory rename
+- Historical spec/plan docs under `docs/superpowers/` — kept as frozen artifacts
 - CI workflow files — no references to the source directory
+- TypeScript imports inside `server/` — all relative, unaffected by rename
+
+---
+
+## Directory Layout After
+
+```
+/
+├── package.json          ← workspace root (orchestration scripts, no deps)
+├── package-lock.json     ← single lockfile for all workspaces
+├── eslint.config.mjs     ← DELETED
+├── tsconfig.json         ← DELETED
+├── jest.config.js        ← DELETED
+├── server/               ← renamed from app/
+│   ├── package.json      ← NEW
+│   ├── tsconfig.json     ← moved from root
+│   ├── jest.config.js    ← moved from root
+│   ├── eslint.config.mjs ← NEW (server rules from root)
+│   └── ... (all existing .ts source files)
+└── client/
+    ├── package.json      ← gains eslint, prettier, eslint-plugin-react-hooks
+    ├── package-lock.json ← DELETED (merged into root lockfile)
+    ├── eslint.config.mjs ← NEW (client rules from root)
+    └── ... (unchanged)
+```
+
+---
+
+## File-by-File Changes
+
+### Root `package.json`
+Becomes a workspace root. No `dependencies` or `devDependencies`. Declares workspaces and orchestration scripts only:
+
+```json
+{
+  "name": "hass-odps",
+  "version": "1.1.1",
+  "private": true,
+  "workspaces": ["server", "client"],
+  "scripts": {
+    "build": "npm run build -w server && npm run build -w client",
+    "start": "node server/dist/index.js",
+    "dev": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "test": "npm test -w server",
+    "test:watch": "npm run test:watch -w server",
+    "lint": "npm run lint -w server && npm run lint -w client",
+    "lint:fix": "npm run lint:fix -w server && npm run lint:fix -w client"
+  }
+}
+```
+
+### `server/package.json` (new)
+All current root `dependencies` (express, better-sqlite3, sharp, etc.) and all current root `devDependencies` except `eslint-plugin-react-hooks` (which moves to client). Scripts:
+- `build`: `tsc`
+- `dev`: `nodemon --watch . --ext ts,json --exec 'ts-node --project tsconfig.json' index.ts`
+- `test`: `jest`
+- `test:watch`: `jest --watch`
+- `lint`: `eslint .`
+- `lint:fix`: `eslint . --fix`
+
+### `server/tsconfig.json` (moved from root)
+Two path changes from the root version:
+- `"rootDir": "."` (was `"./app"`)
+- `"outDir": "./dist"` (resolves to `server/dist/`)
+- `"include": ["./**/*"]` (was `"app/**/*"`)
+- `"exclude"`: remove `app/**/*.test.ts` prefix → `"**/*.test.ts"`
+
+`import packageJson from '../package.json'` in `server/index.ts` continues to resolve to the root `package.json` — no change needed.
+
+### `server/jest.config.js` (moved from root)
+One change:
+- `roots: ['<rootDir>']` (was `['<rootDir>/app']`)
+
+### `server/eslint.config.mjs` (new)
+Contains the server TypeScript section from the current root `eslint.config.mjs`: `@typescript-eslint`, `import-x`, `prettier` rules targeting `**/*.ts`. Ignores `dist/`.
+
+### `client/eslint.config.mjs` (new)
+Contains the client React section from the current root `eslint.config.mjs`: `react-hooks`, `prettier` rules. Replaces any existing eslint config in `client/` if present.
+
+### `client/package.json` (updated)
+Adds to `devDependencies`: `eslint`, `eslint-config-prettier`, `eslint-plugin-prettier`, `eslint-plugin-react-hooks`, `prettier`. Adds `lint` and `lint:fix` scripts targeting `eslint .`.
+
+### `client/package-lock.json`
+Deleted. npm workspaces produces a single root `package-lock.json` covering all workspaces.
+
+### `Dockerfile`
+Install stage — copy all three `package*.json` sets before `npm ci`:
+```dockerfile
+COPY package*.json ./
+COPY server/package*.json ./server/
+COPY client/package*.json ./client/
+RUN npm ci
+```
+Build stage — `COPY server/ ./server/` (was `app/`).
+
+Production stage — copy all `package*.json` sets, `npm ci --omit=dev`, then:
+```dockerfile
+COPY --from=builder /app/server/dist ./server/dist
+COPY --from=builder /app/client/dist ./client/dist
+```
+
+`WORKDIR /app` is unchanged — it is the container's working directory, not a reference to the source folder.
+
+### `docker-compose.yml`
+Volume mount: `./server:/app/server` (was `./app:/app/app`).
+
+### `run.sh`
+Entry point: `node server/dist/index.js` (was `node dist/index.js`).
+
+---
+
+## What Does NOT Change
+
+- `WORKDIR /app` in Dockerfiles — container working directory, unrelated to source folder name
+- All TypeScript imports inside `server/` — all relative paths
+- CI workflow files — no references to the source directory
+- `Dockerfile.dev` — references `WORKDIR /app` only (no source path references)
+- `Makefile` — no references to the source directory
+
+---
 
 ## Verification
 
-After the rename, run `npm run lint` and `npm test` to confirm all paths resolve correctly.
+After all changes, regenerate the root lockfile (`npm install`) and run:
+```
+npm run lint
+npm test
+npm run build
+```
