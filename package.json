@@ -2,15 +2,15 @@
   "name": "hass-odps",
   "version": "1.1.2",
   "private": true,
-  "workspaces": ["server", "client"],
+  "workspaces": ["app/server", "app/client"],
   "scripts": {
-    "build": "npm run build -w server && npm run build -w client",
-    "start": "node server/dist/index.js",
-    "dev": "npm run dev -w server",
-    "dev:client": "npm run dev -w client",
-    "test": "npm test -w server",
-    "test:watch": "npm run test:watch -w server",
-    "lint": "npm run lint -w server && npm run lint -w client",
-    "lint:fix": "npm run lint:fix -w server && npm run lint:fix -w client"
+    "build": "npm run build -w app/server && npm run build -w app/client",
+    "start": "node app/server/dist/index.js",
+    "dev": "npm run dev -w app/server",
+    "dev:client": "npm run dev -w app/client",
+    "test": "npm test -w app/server",
+    "test:watch": "npm run test:watch -w app/server",
+    "lint": "npm run lint -w app/server && npm run lint -w app/client",
+    "lint:fix": "npm run lint:fix -w app/server && npm run lint:fix -w app/client"
   }
 }

@@ -7,7 +7,7 @@ import { BookStore } from './services/book-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { createServer } from './server';
 import { logger } from './logger';
-import packageJson from '../package.json';
+import packageJson from '../../package.json';
 
 const version: string = packageJson.version;
 
