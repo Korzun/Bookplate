@@ -1,9 +1,9 @@
 FROM node:24-alpine
-WORKDIR /app
+WORKDIR /hass-odps
 
 COPY package*.json ./
-COPY server/package*.json ./server/
-COPY client/package*.json ./client/
+COPY app/server/package*.json ./app/server/
+COPY app/client/package*.json ./app/client/
 RUN npm ci
 
 EXPOSE 3000
