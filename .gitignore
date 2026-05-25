@@ -1,9 +1,8 @@
 .worktrees/
 .claude/settings.local.json
 node_modules/
-/dist/
 .superpowers/
 *.sqlite
 dev-books/
-/server/dist/
-/client/dist/
+/app/server/dist/
+/app/client/dist/
