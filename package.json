@@ -9,7 +9,7 @@
     "test:watch": "jest --watch",
     "lint": "eslint . && tsc --noEmit",
     "lint:fix": "eslint . --fix",
-    "dev": "nodemon --watch app --ext ts,json --exec 'ts-node --project tsconfig.json' app/index.ts",
+    "dev": "nodemon --watch server --ext ts,json --exec 'ts-node --project tsconfig.json' server/index.ts",
     "dev:client": "npm run --prefix client dev",
     "build:client": "npm run --prefix client build"
   },

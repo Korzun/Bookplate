@@ -11,7 +11,7 @@ COPY client/package*.json ./client/
 RUN npm ci --prefix client
 
 # Backend source
-COPY app/ ./app/
+COPY server/ ./server/
 
 # Client source
 COPY client/index.html client/vite.config.ts client/tsconfig.json ./client/
