@@ -1,7 +1,7 @@
 name: hass-odps-dev
 
 services:
-  api:
+  server:
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -16,7 +16,7 @@ services:
     ports:
       - "3000:3000"
 
-  web:
+  client:
     build:
       context: ./app/client
       dockerfile: Dockerfile.dev
@@ -26,10 +26,10 @@ services:
       - ./app/client/vite.config.ts:/app/vite.config.ts
       - ./app/client/tsconfig.json:/app/tsconfig.json
     environment:
-      API_URL: http://api:3000
+      API_URL: http://server:3000
       DOCKER: "true"
     ports:
       - "5173:5173"
     depends_on:
-      - api
+      - server
 
