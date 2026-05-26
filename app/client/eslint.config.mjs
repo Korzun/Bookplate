@@ -12,6 +12,11 @@ export default tseslint.config(
   {
     files: ["src/**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: {
       import: importX,
       prettier: eslintPluginPrettier,
