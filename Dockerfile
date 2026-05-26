@@ -6,7 +6,7 @@ WORKDIR /hass-odps
 COPY package*.json ./
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
-RUN npm install
+RUN rm package-lock.json && npm install
 
 # Backend source
 COPY app/server/ ./app/server/
