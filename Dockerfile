@@ -23,6 +23,7 @@ FROM node:24-alpine
 WORKDIR /hass-odps
 
 COPY package*.json ./
+COPY package.json ./app/package.json
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
 RUN npm ci --omit=dev && npm cache clean --force
