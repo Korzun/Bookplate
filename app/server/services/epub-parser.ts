@@ -28,33 +28,42 @@ export function partialMD5(filePath: string): string {
   return crypto.createHash('md5').update(Buffer.concat(chunks)).digest('hex');
 }
 
-function flattenNavOl(ol: unknown): { href: string; title: string }[] {
+function flattenNavOl(ol: unknown, leafOnly = true): { href: string; title: string }[] {
   if (!ol || typeof ol !== 'object') return [];
   const items = (ol as Record<string, unknown>).li;
   if (!items) return [];
   const result: { href: string; title: string }[] = [];
   for (const item of (Array.isArray(items) ? items : [items]) as Array<Record<string, unknown>>) {
     const aNode = item.a;
-    if (aNode && typeof aNode === 'object') {
-      const href = (aNode as Record<string, string>)['@_href'];
-      const title = ((aNode as Record<string, string>)['#text'] ?? '').trim();
-      if (href) result.push({ href, title });
+    const hasChildren = !!item.ol;
+    if (!leafOnly || !hasChildren) {
+      if (aNode && typeof aNode === 'object') {
+        const href = (aNode as Record<string, string>)['@_href'];
+        const title = ((aNode as Record<string, string>)['#text'] ?? '').trim();
+        if (href) result.push({ href, title });
+      }
     }
-    if (item.ol) result.push(...flattenNavOl(item.ol));
+    if (item.ol) result.push(...flattenNavOl(item.ol, leafOnly));
   }
   return result;
 }
 
-function flattenNcxNavPoints(navPoints: unknown[]): { href: string; title: string }[] {
+function flattenNcxNavPoints(
+  navPoints: unknown[],
+  leafOnly = true
+): { href: string; title: string }[] {
   const result: { href: string; title: string }[] = [];
   for (const np of navPoints as Array<Record<string, unknown>>) {
     const src = (np.content as Record<string, string> | undefined)?.['@_src'];
     const navLabel = np.navLabel as Record<string, unknown> | undefined;
     const title = ((navLabel?.text as string | undefined) ?? '').trim();
-    if (src) result.push({ href: src, title });
+    const hasChildren = !!np.navPoint;
+    if (!leafOnly || !hasChildren) {
+      if (src) result.push({ href: src, title });
+    }
     if (np.navPoint) {
       const nested = Array.isArray(np.navPoint) ? np.navPoint : [np.navPoint];
-      result.push(...flattenNcxNavPoints(nested as unknown[]));
+      result.push(...flattenNcxNavPoints(nested as unknown[], leafOnly));
     }
   }
   return result;
@@ -162,8 +171,12 @@ function parseNavChapters(
         ((n['@_epub:type'] as string | undefined) ?? '').split(' ').includes('toc')
       );
       if (tocNav) {
-        const entries = flattenNavOl(tocNav.ol);
-        const { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        let entries = flattenNavOl(tocNav.ol);
+        let { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        if (spineMap.length === 0 && entries.length > 0) {
+          entries = flattenNavOl(tocNav.ol, false);
+          ({ spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex));
+        }
         const filtered = filterByEpubType(spineMap, names);
         if (filtered.spineMap.length > 0)
           return {
@@ -188,8 +201,12 @@ function parseNavChapters(
       const navPoints: unknown[] =
         (((doc?.ncx as Record<string, unknown>)?.navMap as Record<string, unknown>)
           ?.navPoint as unknown[]) ?? [];
-      const entries = flattenNcxNavPoints(navPoints);
-      const { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      let entries = flattenNcxNavPoints(navPoints);
+      let { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      if (spineMap.length === 0 && entries.length > 0) {
+        entries = flattenNcxNavPoints(navPoints, false);
+        ({ spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex));
+      }
       const filtered = filterByEpubType(spineMap, names);
       if (filtered.spineMap.length > 0)
         return {
