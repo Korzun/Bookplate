@@ -16,7 +16,7 @@ import { ThumbnailQueue } from '../services/thumbnail-queue';
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a
 // minimal placeholder before the suite runs so the file exists in CI.
-const SPA_HTML_DIR = path.join(__dirname, '..', '..', 'client', 'dist');
+const SPA_HTML_DIR = path.join(__dirname, '..', '..', '..', 'client', 'dist');
 const SPA_HTML_PATH = path.join(SPA_HTML_DIR, 'index.html');
 
 beforeAll(() => {

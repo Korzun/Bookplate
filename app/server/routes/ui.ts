@@ -60,7 +60,7 @@ export function createUiRouter(
   // ── Auth ──────────────────────────────────────────────
 
   const serveSpa = (_req: Request, res: Response): void => {
-    res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
+    res.sendFile(path.join(__dirname, '../../../client/dist/index.html'));
   };
 
   router.get('/login', serveSpa);
@@ -180,7 +180,7 @@ export function createUiRouter(
   });
 
   // ── Static assets (no auth required) ──────────────────
-  router.use('/assets', express.static(path.join(__dirname, '../../client/dist/assets')));
+  router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
 
   router.get('/api/books', sessionAuth, (_req: Request, res: Response) => {
     res.json(
