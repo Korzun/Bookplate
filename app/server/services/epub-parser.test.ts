@@ -1163,6 +1163,261 @@ describe('parseEpub', () => {
       expect(meta.chapterCount).toBe(1);
       expect(meta.chapterNames).toEqual(['Chapter 1']);
     });
+
+    it('filters out exact-match front matter titles from nav', () => {
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>
+    <item id="copyright" href="copyright.xhtml" media-type="application/xhtml+xml"/>
+    <item id="dedication" href="dedication.xhtml" media-type="application/xhtml+xml"/>
+    <item id="map" href="map.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="cover"/>
+    <itemref idref="titlepage"/>
+    <itemref idref="copyright"/>
+    <itemref idref="dedication"/>
+    <itemref idref="map"/>
+    <itemref idref="ch1"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="cover.xhtml">Cover</a></li>
+        <li><a href="titlepage.xhtml">Title Page</a></li>
+        <li><a href="copyright.xhtml">Copyright</a></li>
+        <li><a href="dedication.xhtml">Dedication</a></li>
+        <li><a href="map.xhtml">Map</a></li>
+        <li><a href="ch1.xhtml">Chapter 1</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      [
+        'cover.xhtml',
+        'titlepage.xhtml',
+        'copyright.xhtml',
+        'dedication.xhtml',
+        'map.xhtml',
+        'ch1.xhtml',
+      ].forEach((f) => zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>')));
+      const filePath = path.join(tmpDir, 'deny-exact.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      expect(meta.chapterCount).toBe(1);
+      expect(meta.chapterNames).toEqual(['Chapter 1']);
+    });
+
+    it('filters out prefix-match front matter titles from nav', () => {
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="about" href="about.xhtml" media-type="application/xhtml+xml"/>
+    <item id="bythesame" href="bythesame.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="about"/>
+    <itemref idref="bythesame"/>
+    <itemref idref="ch1"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="about.xhtml">About the Author</a></li>
+        <li><a href="bythesame.xhtml">By the Same Author</a></li>
+        <li><a href="ch1.xhtml">Chapter 1</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      ['about.xhtml', 'bythesame.xhtml', 'ch1.xhtml'].forEach((f) =>
+        zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>'))
+      );
+      const filePath = path.join(tmpDir, 'deny-prefix.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      expect(meta.chapterCount).toBe(1);
+      expect(meta.chapterNames).toEqual(['Chapter 1']);
+    });
+
+    it('deny list matching is case-insensitive', () => {
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="tp" href="tp.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cr" href="cr.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="cover"/>
+    <itemref idref="tp"/>
+    <itemref idref="cr"/>
+    <itemref idref="ch1"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="cover.xhtml">COVER</a></li>
+        <li><a href="tp.xhtml">Title Page</a></li>
+        <li><a href="cr.xhtml">COPYRIGHT</a></li>
+        <li><a href="ch1.xhtml">Chapter 1</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      ['cover.xhtml', 'tp.xhtml', 'cr.xhtml', 'ch1.xhtml'].forEach((f) =>
+        zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>'))
+      );
+      const filePath = path.join(tmpDir, 'deny-case.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      expect(meta.chapterCount).toBe(1);
+      expect(meta.chapterNames).toEqual(['Chapter 1']);
+    });
+
+    it('deny list does not filter prologue, epilogue, or numbered chapters', () => {
+      const filePath = path.join(tmpDir, 'deny-safe.epub');
+      fs.writeFileSync(
+        filePath,
+        makeEpubWithNav([
+          { title: 'Prologue', href: 'ch1.xhtml' },
+          { title: 'Epilogue', href: 'ch2.xhtml' },
+          { title: 'Chapter 1', href: 'ch3.xhtml' },
+        ])
+      );
+      const meta = parseEpub(filePath);
+      expect(meta.chapterCount).toBe(3);
+      expect(meta.chapterNames).toEqual(['Prologue', 'Epilogue', 'Chapter 1']);
+    });
+
+    it('keeps flat chapter entries alongside filtered hierarchical entries', () => {
+      // "Title Page" is a flat leaf that is denied; "Introduction" is a flat leaf that is kept;
+      // "Part I" is a parent (leaf-only excluded); its children ch1/ch2 are kept
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="tp" href="tp.xhtml" media-type="application/xhtml+xml"/>
+    <item id="intro" href="intro.xhtml" media-type="application/xhtml+xml"/>
+    <item id="part1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="tp"/>
+    <itemref idref="intro"/>
+    <itemref idref="part1"/>
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="tp.xhtml">Title Page</a></li>
+        <li><a href="intro.xhtml">Introduction</a></li>
+        <li>
+          <a href="part1.xhtml">Part I</a>
+          <ol>
+            <li><a href="ch1.xhtml">Chapter 1</a></li>
+            <li><a href="ch2.xhtml">Chapter 2</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      ['tp.xhtml', 'intro.xhtml', 'part1.xhtml', 'ch1.xhtml', 'ch2.xhtml'].forEach((f) =>
+        zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>'))
+      );
+      const filePath = path.join(tmpDir, 'mixed-flat-hier.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      // tp (spine 0) denied, intro (spine 1) kept, part1 (spine 2) leaf-only excluded,
+      // ch1 (spine 3) and ch2 (spine 4) kept
+      expect(meta.chapterCount).toBe(3);
+      expect(meta.chapterSpineMap).toEqual([1, 3, 4]);
+      expect(meta.chapterNames).toEqual(['Introduction', 'Chapter 1', 'Chapter 2']);
+    });
   });
 });
 
