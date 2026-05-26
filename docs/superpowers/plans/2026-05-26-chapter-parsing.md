@@ -290,16 +290,37 @@ function flattenNcxNavPoints(navPoints: unknown[], leafOnly = true): { href: str
 
 - [ ] **Step 3: Update the EPUB 3 nav call site in `parseNavChapters` to use leaf-only with fallback**
 
-In `parseNavChapters`, replace the two lines (around line 165–166):
+In `parseNavChapters`, replace the block starting with `if (tocNav) {` (around lines 164–174). The current body is:
 ```typescript
+      if (tocNav) {
         const entries = flattenNavOl(tocNav.ol);
         const { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        const filtered = filterByEpubType(spineMap, names);
+        if (filtered.spineMap.length > 0)
+          return {
+            chapterCount: filtered.spineMap.length,
+            chapterSpineMap: filtered.spineMap,
+            chapterNames: filtered.names,
+          };
+      }
 ```
-with:
+Replace with:
 ```typescript
+      if (tocNav) {
         let entries = flattenNavOl(tocNav.ol);
-        if (entries.length === 0) entries = flattenNavOl(tocNav.ol, false);
-        const { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        let { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        if (spineMap.length === 0 && entries.length > 0) {
+          entries = flattenNavOl(tocNav.ol, false);
+          ({ spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex));
+        }
+        const filtered = filterByEpubType(spineMap, names);
+        if (filtered.spineMap.length > 0)
+          return {
+            chapterCount: filtered.spineMap.length,
+            chapterSpineMap: filtered.spineMap,
+            chapterNames: filtered.names,
+          };
+      }
 ```
 
 - [ ] **Step 4: Update the NCX call site in `parseNavChapters` to use leaf-only with fallback**
@@ -312,8 +333,11 @@ In `parseNavChapters`, replace the two lines (around line 191–192):
 with:
 ```typescript
       let entries = flattenNcxNavPoints(navPoints);
-      if (entries.length === 0) entries = flattenNcxNavPoints(navPoints, false);
-      const { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      let { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      if (spineMap.length === 0 && entries.length > 0) {
+        entries = flattenNcxNavPoints(navPoints, false);
+        ({ spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex));
+      }
 ```
 
 - [ ] **Step 5: Run tests to confirm GREEN**
@@ -645,36 +669,46 @@ function isTitleDenied(title: string): boolean {
 
 - [ ] **Step 2: Apply deny list at the EPUB 3 nav call site**
 
-In `parseNavChapters`, the two lines currently read (after Task 2's changes):
+In `parseNavChapters`, find the `if (tocNav) {` block (updated in Task 2). Replace the entire body with:
 ```typescript
+      if (tocNav) {
         let entries = flattenNavOl(tocNav.ol);
-        if (entries.length === 0) entries = flattenNavOl(tocNav.ol, false);
-        const { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
-```
-
-Replace them with:
-```typescript
-        let entries = flattenNavOl(tocNav.ol);
-        if (entries.length === 0) entries = flattenNavOl(tocNav.ol, false);
         const titleFiltered = entries.filter((e) => !isTitleDenied(e.title));
-        const { spineMap, names } = hrefsToSpineMap(titleFiltered, navDir, spineHrefToIndex);
+        let { spineMap, names } = hrefsToSpineMap(titleFiltered, navDir, spineHrefToIndex);
+        if (spineMap.length === 0 && entries.length > 0) {
+          const fbFiltered = flattenNavOl(tocNav.ol, false).filter((e) => !isTitleDenied(e.title));
+          ({ spineMap, names } = hrefsToSpineMap(fbFiltered, navDir, spineHrefToIndex));
+        }
+        const filtered = filterByEpubType(spineMap, names);
+        if (filtered.spineMap.length > 0)
+          return {
+            chapterCount: filtered.spineMap.length,
+            chapterSpineMap: filtered.spineMap,
+            chapterNames: filtered.names,
+          };
+      }
 ```
 
 - [ ] **Step 3: Apply deny list at the NCX call site**
 
-The lines currently read:
+Find the block that currently reads (updated in Task 2):
 ```typescript
       let entries = flattenNcxNavPoints(navPoints);
-      if (entries.length === 0) entries = flattenNcxNavPoints(navPoints, false);
-      const { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      let { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      if (spineMap.length === 0 && entries.length > 0) {
+        entries = flattenNcxNavPoints(navPoints, false);
+        ({ spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex));
+      }
 ```
-
-Replace them with:
+Replace with:
 ```typescript
       let entries = flattenNcxNavPoints(navPoints);
-      if (entries.length === 0) entries = flattenNcxNavPoints(navPoints, false);
       const titleFiltered = entries.filter((e) => !isTitleDenied(e.title));
-      const { spineMap, names } = hrefsToSpineMap(titleFiltered, ncxDir, spineHrefToIndex);
+      let { spineMap, names } = hrefsToSpineMap(titleFiltered, ncxDir, spineHrefToIndex);
+      if (spineMap.length === 0 && entries.length > 0) {
+        const fbFiltered = flattenNcxNavPoints(navPoints, false).filter((e) => !isTitleDenied(e.title));
+        ({ spineMap, names } = hrefsToSpineMap(fbFiltered, ncxDir, spineHrefToIndex));
+      }
 ```
 
 - [ ] **Step 4: Run tests to confirm GREEN**
