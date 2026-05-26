@@ -809,7 +809,7 @@ describe('parseEpub', () => {
       expect(meta.chapterSpineMap).toEqual([1, 2]);
     });
 
-    it('flattens nested nav entries', () => {
+    it('returns only leaf nav entries in nested nav structure (leaf-only)', () => {
       const zip = new AdmZip();
       zip.addFile(
         'META-INF/container.xml',
@@ -868,8 +868,177 @@ describe('parseEpub', () => {
       fs.writeFileSync(filePath, zip.toBuffer());
       const meta = parseEpub(filePath);
       // spine: cover(0) ch1(1) ch2(2) sec2a(3) ch3(4)
-      expect(meta.chapterCount).toBe(4);
-      expect(meta.chapterSpineMap).toEqual([1, 2, 3, 4]);
+      // leaf-only: ch2 skipped (has child), so ch1(1) sec2a(3) ch3(4) returned
+      expect(meta.chapterCount).toBe(3);
+      expect(meta.chapterSpineMap).toEqual([1, 3, 4]);
+    });
+
+    it('excludes parent nav entries that have children (leaf-only)', () => {
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="part1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="part1"/>
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li>
+          <a href="part1.xhtml">Part I</a>
+          <ol>
+            <li><a href="ch1.xhtml">Chapter 1</a></li>
+            <li><a href="ch2.xhtml">Chapter 2</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      ['part1.xhtml', 'ch1.xhtml', 'ch2.xhtml'].forEach((f) =>
+        zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>'))
+      );
+      const filePath = path.join(tmpDir, 'leaf-only-nav.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      // part1 (spine 0) excluded; ch1 (1) and ch2 (2) returned
+      expect(meta.chapterCount).toBe(2);
+      expect(meta.chapterSpineMap).toEqual([1, 2]);
+      expect(meta.chapterNames).toEqual(['Chapter 1', 'Chapter 2']);
+    });
+
+    it('excludes parent navPoints that have children in NCX (leaf-only)', () => {
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="part1" href="part1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="part1"/>
+    <itemref idref="ch1"/>
+    <itemref idref="ch2"/>
+  </spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/toc.ncx',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="part1">
+      <navLabel><text>Part I</text></navLabel>
+      <content src="part1.xhtml"/>
+      <navPoint id="ch1">
+        <navLabel><text>Chapter 1</text></navLabel>
+        <content src="ch1.xhtml"/>
+      </navPoint>
+      <navPoint id="ch2">
+        <navLabel><text>Chapter 2</text></navLabel>
+        <content src="ch2.xhtml"/>
+      </navPoint>
+    </navPoint>
+  </navMap>
+</ncx>`)
+      );
+      ['part1.xhtml', 'ch1.xhtml', 'ch2.xhtml'].forEach((f) =>
+        zip.addFile(`OEBPS/${f}`, Buffer.from('<html/>'))
+      );
+      const filePath = path.join(tmpDir, 'leaf-only-ncx.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      expect(meta.chapterCount).toBe(2);
+      expect(meta.chapterSpineMap).toEqual([1, 2]);
+      expect(meta.chapterNames).toEqual(['Chapter 1', 'Chapter 2']);
+    });
+
+    it('falls back to full flatten when leaf-only nav produces no spine matches', () => {
+      // Every top-level entry has children but those children reference unknown files.
+      // leaf-only finds leaves that don't resolve to spine items → 0 after hrefsToSpineMap.
+      // full-flatten finds the parent entry which DOES resolve → fallback produces a result.
+      const zip = new AdmZip();
+      zip.addFile(
+        'META-INF/container.xml',
+        Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+      );
+      zip.addFile(
+        'OEBPS/content.opf',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="ch1"/></spine>
+</package>`)
+      );
+      zip.addFile(
+        'OEBPS/nav.xhtml',
+        Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li>
+          <a href="ch1.xhtml">Chapter 1</a>
+          <ol>
+            <li><a href="missing.xhtml">Section</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+  </body>
+</html>`)
+      );
+      zip.addFile('OEBPS/ch1.xhtml', Buffer.from('<html/>'));
+      const filePath = path.join(tmpDir, 'fallback-nav.epub');
+      fs.writeFileSync(filePath, zip.toBuffer());
+      const meta = parseEpub(filePath);
+      // leaf 'missing.xhtml' not in spine → 0 from leaf-only → fallback includes ch1
+      expect(meta.chapterCount).toBe(1);
+      expect(meta.chapterSpineMap).toEqual([0]);
+      expect(meta.chapterNames).toEqual(['Chapter 1']);
     });
 
     it('deduplicates nav entries that reference the same spine item', () => {
