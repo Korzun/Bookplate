@@ -47,3 +47,23 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: false
+
+  docker-smoke-test:
+    name: Docker smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Build image
+        run: docker build -t hass-odps:smoke .
+      - name: Run and verify startup
+        run: |
+          docker run -d --name smoke-test hass-odps:smoke
+          sleep 3
+          if ! docker inspect smoke-test --format='{{.State.Running}}' | grep -q 'true'; then
+            echo "Container crashed on startup. Logs:"
+            docker logs smoke-test
+            docker rm smoke-test
+            exit 1
+          fi
+          docker stop smoke-test
+          docker rm smoke-test
