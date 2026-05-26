@@ -44,7 +44,11 @@ export function SeriesRow({ seriesName }: SeriesRowProps) {
   }
   meta.push(`${bookList.length} book${bookList.length !== 1 ? 's' : ''}`);
   if (seriesProgressPercent !== undefined) {
-    meta.push(`${(seriesProgressPercent * 100).toFixed(0)}%`);
+    if (seriesProgressPercent < 1) {
+      meta.push(`${(seriesProgressPercent * 100).toFixed(0)}%`);
+    } else {
+      meta.push(`Completed`);
+    }
   }
 
   return (
