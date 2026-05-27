@@ -67,6 +67,7 @@ export const LoginPage = () => {
             <TextInput
               placeholder="Username"
               name="username"
+              autoCapitalize="none"
               onChange={handleUsernameChange}
               value={username}
             />

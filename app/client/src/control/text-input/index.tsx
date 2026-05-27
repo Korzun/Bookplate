@@ -13,6 +13,7 @@ type Action = {
 };
 export type TextInputProps = {
   action?: Action;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoComplete?: React.HTMLInputAutoCompleteAttribute | undefined;
   label?: string;
   layout?: 'horizontal' | 'vertical' | 'inline';
@@ -27,6 +28,7 @@ export type TextInputProps = {
 };
 
 export const TextInput = ({
+  autoCapitalize,
   autoComplete,
   action,
   label,
@@ -76,6 +78,7 @@ export const TextInput = ({
       {label && <label className={cx(style.label, { [style.danger]: !isValid })}>{label}</label>}
       <div className={style.inputContainer}>
         <input
+          autoCapitalize={autoCapitalize}
           autoComplete={autoComplete}
           className={cx(style.input, { [style.isAction]: action !== undefined })}
           name={name}
