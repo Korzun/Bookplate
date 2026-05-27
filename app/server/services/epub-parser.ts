@@ -69,6 +69,39 @@ function flattenNcxNavPoints(
   return result;
 }
 
+const TITLE_DENY_EXACT = new Set([
+  'cover',
+  'title page',
+  'titlepage',
+  'copyright',
+  'copyright page',
+  'dedication',
+  'contents',
+  'table of contents',
+  'toc',
+  'acknowledgements',
+  'acknowledgments',
+  'epigraph',
+  'map',
+  'maps',
+  'halftitle',
+  'half title',
+  'also by',
+  'colophon',
+  'dramatis personae',
+  'cast of characters',
+  'list of characters',
+  'what has gone before',
+]);
+
+const TITLE_DENY_PREFIXES = ['about the', 'by the same', 'books by'];
+
+function isTitleDenied(title: string): boolean {
+  const lower = title.toLowerCase().trim();
+  if (TITLE_DENY_EXACT.has(lower)) return true;
+  return TITLE_DENY_PREFIXES.some((p) => lower.startsWith(p));
+}
+
 const EXCLUDED_EPUB_TYPES = new Set([
   'cover',
   'frontmatter',
@@ -171,11 +204,12 @@ function parseNavChapters(
         ((n['@_epub:type'] as string | undefined) ?? '').split(' ').includes('toc')
       );
       if (tocNav) {
-        let entries = flattenNavOl(tocNav.ol);
-        let { spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex);
+        const entries = flattenNavOl(tocNav.ol);
+        const titleFiltered = entries.filter((e) => !isTitleDenied(e.title));
+        let { spineMap, names } = hrefsToSpineMap(titleFiltered, navDir, spineHrefToIndex);
         if (spineMap.length === 0 && entries.length > 0) {
-          entries = flattenNavOl(tocNav.ol, false);
-          ({ spineMap, names } = hrefsToSpineMap(entries, navDir, spineHrefToIndex));
+          const fbFiltered = flattenNavOl(tocNav.ol, false).filter((e) => !isTitleDenied(e.title));
+          ({ spineMap, names } = hrefsToSpineMap(fbFiltered, navDir, spineHrefToIndex));
         }
         const filtered = filterByEpubType(spineMap, names);
         if (filtered.spineMap.length > 0)
@@ -201,11 +235,14 @@ function parseNavChapters(
       const navPoints: unknown[] =
         (((doc?.ncx as Record<string, unknown>)?.navMap as Record<string, unknown>)
           ?.navPoint as unknown[]) ?? [];
-      let entries = flattenNcxNavPoints(navPoints);
-      let { spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex);
+      const entries = flattenNcxNavPoints(navPoints);
+      const titleFiltered = entries.filter((e) => !isTitleDenied(e.title));
+      let { spineMap, names } = hrefsToSpineMap(titleFiltered, ncxDir, spineHrefToIndex);
       if (spineMap.length === 0 && entries.length > 0) {
-        entries = flattenNcxNavPoints(navPoints, false);
-        ({ spineMap, names } = hrefsToSpineMap(entries, ncxDir, spineHrefToIndex));
+        const fbFiltered = flattenNcxNavPoints(navPoints, false).filter(
+          (e) => !isTitleDenied(e.title)
+        );
+        ({ spineMap, names } = hrefsToSpineMap(fbFiltered, ncxDir, spineHrefToIndex));
       }
       const filtered = filterByEpubType(spineMap, names);
       if (filtered.spineMap.length > 0)
