@@ -76,6 +76,8 @@ export function SetProgressModal({
     wasBusyRef.current = false;
     if (selectedChapter === 0) {
       deleteMyProgress(bookId);
+    } else if (selectedChapter > chapterCount) {
+      setMyProgress({ currentChapter: chapterCount, percentage: 1.0 });
     } else {
       setMyProgress({
         currentChapter: selectedChapter,
@@ -101,8 +103,11 @@ export function SetProgressModal({
   const hasExistingProgress = initialChapter > 0;
   const isClearing = selectedChapter === 0 && hasExistingProgress;
   const isNoop = selectedChapter === 0 && !hasExistingProgress;
+  const isCompleted = selectedChapter > chapterCount;
   const activeName =
-    !isSliderDragging && selectedChapter > 0 ? (chapterNames[selectedChapter - 1] ?? '') : '';
+    !isSliderDragging && selectedChapter > 0 && !isCompleted
+      ? (chapterNames[selectedChapter - 1] ?? '')
+      : '';
 
   return (
     <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
@@ -110,7 +115,7 @@ export function SetProgressModal({
         <div className={styles.header}>Set Progress</div>
         <div className={styles.chapterDisplay}>
           <div className={isClearing ? styles.chapterNumberMuted : styles.chapterNumber}>
-            {isClearing ? 'Not started' : `Chapter ${selectedChapter}`}
+            {isClearing ? 'Not started' : isCompleted ? 'Completed' : `Chapter ${selectedChapter}`}
           </div>
           <div className={styles.chapterName}>{activeName}</div>
           <div className={styles.chapterSubtitle}>of {chapterCount} chapters</div>
@@ -141,7 +146,7 @@ export function SetProgressModal({
             disabled={isBusy || isNoop}
             onClick={handleConfirm}
           >
-            {isClearing ? 'Clear Progress' : 'Save Progress'}
+            {isClearing ? 'Clear Progress' : isCompleted ? 'Mark Complete' : 'Save Progress'}
           </Button>
         </div>
       </div>

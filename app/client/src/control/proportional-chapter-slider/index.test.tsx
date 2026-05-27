@@ -53,7 +53,7 @@ function renderSlider(props: {
 }
 
 describe('ProportionalChapterSlider', () => {
-  it('renders "Not started" and "Finished" labels', () => {
+  it('renders "Not started" and "Completed" labels', () => {
     const { container } = renderWithProviders(
       <ProportionalChapterSlider
         value={0}
@@ -63,11 +63,11 @@ describe('ProportionalChapterSlider', () => {
       />
     );
     expect(container.textContent).toContain('Not started');
-    expect(container.textContent).toContain('Finished');
+    expect(container.textContent).toContain('Completed');
   });
 
-  it('renders tick marks for chapters 1 to (chapterCount-1)', () => {
-    // 3 chapters → 2 ticks (chapters 1 and 2)
+  it('renders tick marks for chapters 1 to chapterCount', () => {
+    // 3 chapters → 3 ticks (chapters 1, 2, and 3); Completed is now the right endpoint
     const { container } = renderWithProviders(
       <ProportionalChapterSlider
         value={0}
@@ -82,14 +82,14 @@ describe('ProportionalChapterSlider', () => {
       const h = el as HTMLElement;
       return h.style.left && !h.style.width && !h.className.toLowerCase().includes('thumb');
     });
-    expect(ticksWithLeft).toHaveLength(2);
+    expect(ticksWithLeft).toHaveLength(3);
   });
 
   it('calls onChange with the nearest chapter on pointer-up', () => {
     const onChange = vi.fn();
     const { sliderRoot } = renderSlider({ value: 0, chapterCount: 3, onChange });
-    // 3 chapters, no spine map: ch1=33.3%, ch2=66.7%, ch3=100%
-    // clientX=60 → pct=60 → nearest to 60 is ch2 (66.7% is closer than 33.3%)
+    // 3 chapters, no spine map: ch1=25%, ch2=50%, ch3=75%, Completed=100% (scale=3/4)
+    // clientX=60 → pct=60 → nearest to 60 is ch2 (dist=10) vs ch3 (dist=15)
     fireEvent.pointerDown(sliderRoot, { clientX: 60, pointerId: 1 });
     fireEvent.pointerUp(sliderRoot, { clientX: 60, pointerId: 1 });
     expect(onChange).toHaveBeenCalledWith(2);

@@ -14,11 +14,14 @@ type ProportionalChapterSliderProps = {
 function chapterPct(i: number, spineMap: number[], count: number): number {
   if (i === 0) return 0;
   if (count <= 0) return 0;
+  if (i > count) return 100; // Completed detent
+  // Scale chapter positions to [0, count/(count+1)*100] to leave room for Completed at 100%
+  const scale = count / (count + 1);
   const max = spineMap.length > 0 ? spineMap[spineMap.length - 1] : 0;
-  if (!max) return (i / count) * 100;
+  if (!max) return (i / count) * 100 * scale;
   const pos = spineMap[i - 1];
-  if (pos === undefined) return (i / count) * 100;
-  return (pos / max) * 100;
+  if (pos === undefined) return (i / count) * 100 * scale;
+  return (pos / max) * 100 * scale;
 }
 
 function nearestChapter(pct: number, spineMap: number[], count: number): number {
@@ -31,6 +34,8 @@ function nearestChapter(pct: number, spineMap: number[], count: number): number 
       best = i;
     }
   }
+  const dCompleted = Math.abs(pct - 100);
+  if (dCompleted < bestDist) best = count + 1;
   return best;
 }
 
@@ -101,7 +106,7 @@ export function ProportionalChapterSlider({
   const displayPct = isDragging ? dragPct : chapterPct(value, chapterSpineMap, chapterCount);
   const displayValue = isDragging ? nearestChapter(dragPct, chapterSpineMap, chapterCount) : value;
 
-  const ticks = Array.from({ length: Math.max(0, chapterCount - 1) }, (_, i) => {
+  const ticks = Array.from({ length: Math.max(0, chapterCount) }, (_, i) => {
     const ch = i + 1;
     return {
       ch,
@@ -141,7 +146,7 @@ export function ProportionalChapterSlider({
       </div>
       <div className={styles.labels}>
         <span>Not started</span>
-        <span>Finished</span>
+        <span>Completed</span>
       </div>
     </div>
   );
