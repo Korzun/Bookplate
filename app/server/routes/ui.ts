@@ -123,8 +123,7 @@ export function createUiRouter(
             ? book.chapterNames[currentChapter - 1] || undefined
             : undefined;
         return {
-          document: p.document,
-          percentage: p.percentage,
+          ...p,
           ...(currentChapter !== undefined ? { currentChapter } : {}),
           ...(currentChapterName !== undefined ? { currentChapterName } : {}),
         };

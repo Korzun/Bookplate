@@ -696,7 +696,7 @@ describe('GET /api/my/progress', () => {
     expect(res.body[0].percentage).toBeCloseTo(0.72);
   });
 
-  it('does not expose device or progress fields', async () => {
+  it('exposes device, device_id, timestamp, and progress CFI', async () => {
     await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
@@ -708,8 +708,10 @@ describe('GET /api/my/progress', () => {
     const res = await agent.get('/api/my/progress');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0].device).toBeUndefined();
-    expect(res.body[0].progress).toBeUndefined();
+    expect(res.body[0].device).toBe('Kobo');
+    expect(res.body[0].device_id).toBe('d1');
+    expect(typeof res.body[0].timestamp).toBe('number');
+    expect(res.body[0].progress).toBe('/p[1]');
   });
 
   it("does not return another user's progress", async () => {
