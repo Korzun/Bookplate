@@ -4,6 +4,7 @@ export { useDeleteBook } from './use-delete-book';
 export { useFetchBook } from './use-fetch-book';
 export { useFetchBookList } from './use-fetch-book-list';
 export { usePatchBookMetadata } from './use-patch-book-metadata';
+export { useRegenChapters } from './use-regen-chapters';
 export { useScanLibrary } from './use-scan-library';
 export { useSeriesBookList } from './use-series-book-list';
 export { useSeriesList } from './use-series-list';

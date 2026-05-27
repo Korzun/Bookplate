@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { Card, Page, ProgressIndicator, Tag, MetadataList, type Metadata } from '~/component';
-import { Button, DeleteBookButton, SetProgressModal } from '~/control';
+import { Button, DeleteBookButton, RegenChaptersButton, SetProgressModal } from '~/control';
 import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
 import { useMyProgress } from '~/provider/progress';
@@ -138,6 +138,7 @@ export const BookPage = () => {
       {isAdmin && (
         <div className={styles.buttonContainer}>
           <div className={styles.spacer} />
+          <RegenChaptersButton bookId={book.id} />
           <Button onClick={handleEditMetadata}>Edit metadata</Button>
           <DeleteBookButton bookId={book.id} />
         </div>

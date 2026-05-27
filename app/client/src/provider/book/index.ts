@@ -5,6 +5,7 @@ export {
   useFetchBook,
   useFetchBookList,
   usePatchBookMetadata,
+  useRegenChapters,
   useScanLibrary,
   useSeriesList,
   useSeriesBookList,

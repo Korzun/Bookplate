@@ -425,6 +425,38 @@ export function createUiRouter(
     }
   );
 
+  router.post(
+    '/api/books/:id/regen-chapters',
+    sessionAuth,
+    adminAuth,
+    async (req: Request, res: Response) => {
+      const book = bookStore.getBookById(req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+
+      let updated: Awaited<ReturnType<typeof bookStore.reimportBook>>;
+      try {
+        updated = await bookStore.reimportBook(req.params.id);
+      } catch (err) {
+        if (err instanceof BookHashCollisionError) {
+          res.status(409).json({ error: 'Book fingerprint collision during re-import' });
+          return;
+        }
+        throw err;
+      }
+      if (!updated) {
+        res.status(500).json({ error: 'Failed to re-import book' });
+        return;
+      }
+
+      log.info(`Book chapters regenerated: "${updated.filename}"`);
+      const { path: _path, ...rest } = updated;
+      res.json(rest);
+    }
+  );
+
   // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
   router.get('*', sessionAuth, serveSpa);
 
