@@ -61,8 +61,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minWidth: 0,
     height: '100%',
   },
-  title: {
+  titleContainer: {
     margin: `0 0 ${theme.space.xs}`,
+  },
+  title: {
+    display: 'inline-block',
+    marginRight: '0.5rem',
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.bold,
     color: theme.color.text.primary,
@@ -72,9 +76,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginBottom: theme.space.sm,
   },
   series: {
+    display: 'inline-block',
     fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
     marginBottom: theme.space.sm,
     color: theme.color.text.secondary,
+    cursor: 'pointer',
+    breakBefore: 'always',
+    breakAfter: 'always',
+    breakInside: 'avoid',
   },
   description: {
     color: '#585863', // book-description-specific shade

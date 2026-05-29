@@ -106,13 +106,15 @@ export const BookPage = () => {
               <div className={styles.coverPlaceholder} />
             )}
             <div className={styles.info}>
-              <h1 className={styles.title}>{book.title}</h1>
-              {book.series.length > 0 && (
-                <div className={styles.series} onClick={handleSeriesNavigate}>
-                  {book.series}
-                  {book.seriesIndex > 0 ? ` #${book.seriesIndex}` : ''}
-                </div>
-              )}
+              <div className={styles.titleContainer}>
+                <h1 className={styles.title}>{book.title}</h1>
+                {book.series.length > 0 && (
+                  <span className={styles.series} onClick={handleSeriesNavigate}>
+                    ({book.series}
+                    {book.seriesIndex > 0 ? ` #${book.seriesIndex}` : ''})
+                  </span>
+                )}
+              </div>
               {book.author.length > 0 && <div className={styles.author}>{book.author}</div>}
             </div>
           </div>
