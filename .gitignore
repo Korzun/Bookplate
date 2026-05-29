@@ -6,3 +6,5 @@ node_modules/
 dev-books/
 /app/server/dist/
 /app/client/dist/
+/example-books/
+**/.DS_Store
