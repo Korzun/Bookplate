@@ -1,0 +1,68 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// mtime and addedAt store milliseconds since epoch; Float avoids Int's 32-bit validation limit
+// while still round-tripping correctly through SQLite's INTEGER affinity.
+model Book {
+  id              String          @id
+  title           String
+  fileAs          String          @default("") @map("file_as")
+  author          String          @default("")
+  description     String          @default("")
+  publisher       String          @default("")
+  series          String          @default("")
+  seriesIndex     Float           @default(0) @map("series_index")
+  identifiers     String          @default("[]")
+  subjects        String          @default("[]")
+  coverData       Bytes?          @map("cover_data")
+  coverMime       String?         @map("cover_mime")
+  size            Int
+  mtime           Float
+  addedAt         Float           @map("added_at")
+  chapterCount    Int             @default(0) @map("chapter_count")
+  chapterSpineMap String          @default("[]") @map("chapter_spine_map")
+  chapterNames    String?         @map("chapter_names")
+  pageCount       Int             @default(0) @map("page_count")
+  thumbnails      BookThumbnail[]
+
+  @@map("books")
+}
+
+model BookThumbnail {
+  bookId String @map("book_id")
+  width  Int
+  data   Bytes
+  mime   String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([bookId, width])
+  @@map("book_thumbnails")
+}
+
+model User {
+  username   String     @id
+  key        String
+  progresses Progress[]
+
+  @@map("users")
+}
+
+model Progress {
+  username   String
+  document   String
+  progress   String
+  percentage Float
+  device     String
+  deviceId   String  @map("device_id")
+  timestamp  Int
+  user       User    @relation(fields: [username], references: [username], onDelete: Cascade)
+
+  @@id([username, document])
+  @@map("progress")
+}

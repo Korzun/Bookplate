@@ -10,14 +10,14 @@ export function createKosyncRouter(userStore: UserStore): Router {
   const router = Router();
 
   // Registration: POST /kosync/users/create  body: { username, password }
-  router.post('/users/create', (req: Request, res: Response) => {
+  router.post('/users/create', async (req: Request, res: Response) => {
     const { username, password } = req.body as { username?: string; password?: string };
     if (!username || !password) {
       log.warn('Registration rejected — missing username or password');
       res.status(400).json({ username: null });
       return;
     }
-    const created = userStore.createUser(username, password);
+    const created = await userStore.createUser(username, password);
     if (created) {
       log.info(`User "${username}" registered`);
       res.status(201).json({ username });
@@ -33,7 +33,7 @@ export function createKosyncRouter(userStore: UserStore): Router {
   });
 
   // Save progress: PUT /kosync/syncs/progress
-  router.put('/syncs/progress', kosyncAuth(userStore), (req: Request, res: Response) => {
+  router.put('/syncs/progress', kosyncAuth(userStore), async (req: Request, res: Response) => {
     const { document, progress, percentage, device, device_id } = req.body as {
       document?: string;
       progress?: string;
@@ -45,7 +45,7 @@ export function createKosyncRouter(userStore: UserStore): Router {
       res.status(400).json({ message: 'Missing required fields' });
       return;
     }
-    const saved = userStore.saveProgress(req.kosyncUser!, {
+    const saved = await userStore.saveProgress(req.kosyncUser!, {
       document,
       progress,
       percentage,
@@ -59,16 +59,20 @@ export function createKosyncRouter(userStore: UserStore): Router {
   });
 
   // Get progress: GET /kosync/syncs/progress/:document
-  router.get('/syncs/progress/:document', kosyncAuth(userStore), (req: Request, res: Response) => {
-    const p = userStore.getProgress(req.kosyncUser!, req.params.document);
-    if (!p) {
-      log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
-      res.status(404).json({ message: 'Not found' });
-      return;
+  router.get(
+    '/syncs/progress/:document',
+    kosyncAuth(userStore),
+    async (req: Request, res: Response) => {
+      const p = await userStore.getProgress(req.kosyncUser!, req.params.document);
+      if (!p) {
+        log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
+        res.status(404).json({ message: 'Not found' });
+        return;
+      }
+      log.debug(`Progress retrieved for "${req.kosyncUser}" — "${req.params.document}"`);
+      res.status(200).json(p);
     }
-    log.debug(`Progress retrieved for "${req.kosyncUser}" — "${req.params.document}"`);
-    res.status(200).json(p);
-  });
+  );
 
   return router;
 }

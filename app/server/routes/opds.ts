@@ -94,16 +94,16 @@ export function createOpdsRouter(
     res.send(rootFeed(baseUrl));
   });
 
-  router.get('/books', auth, (req: Request, res: Response) => {
-    const books = bookStore.listBooks();
+  router.get('/books', auth, async (req: Request, res: Response) => {
+    const books = await bookStore.listBooks();
     log.debug(`Books feed served (${books.length} books)`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.set('Content-Type', 'application/atom+xml;charset=utf-8');
     res.send(booksFeed(books, baseUrl, thumbnailWidths));
   });
 
-  router.get('/books/:id/download', auth, (req: Request, res: Response) => {
-    const book = bookStore.getBookById(req.params.id);
+  router.get('/books/:id/download', auth, async (req: Request, res: Response) => {
+    const book = await bookStore.getBookById(req.params.id);
     if (!book) {
       log.warn(`Download requested for unknown book ID: ${req.params.id}`);
       res.status(404).send('Not found');
@@ -119,12 +119,12 @@ export function createOpdsRouter(
     res.sendFile(book.path);
   });
 
-  router.get('/books/:id/cover', auth, (req: Request, res: Response) => {
+  router.get('/books/:id/cover', auth, async (req: Request, res: Response) => {
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
     if (!isNaN(parsedWidth) && parsedWidth > 0) {
-      const thumbnail = bookStore.getThumbnail(req.params.id, parsedWidth);
+      const thumbnail = await bookStore.getThumbnail(req.params.id, parsedWidth);
       if (thumbnail) {
         res.set('Content-Type', thumbnail.mime);
         res.send(thumbnail.data);
@@ -135,7 +135,7 @@ export function createOpdsRouter(
       );
     }
 
-    const cover = bookStore.getCover(req.params.id);
+    const cover = await bookStore.getCover(req.params.id);
     if (!cover) {
       res.status(404).send('Not found');
       return;

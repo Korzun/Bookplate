@@ -1,133 +1,149 @@
-import { Database as DB } from 'better-sqlite3';
+import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Progress } from '../types';
 
 export class UserStore {
-  private db: DB;
-
-  constructor(db: DB) {
-    this.db = db;
-    this.migrate();
-  }
-
-  private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY,
-        key TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS progress (
-        username  TEXT    NOT NULL,
-        document  TEXT    NOT NULL,
-        progress  TEXT    NOT NULL,
-        percentage REAL   NOT NULL,
-        device    TEXT    NOT NULL,
-        device_id TEXT    NOT NULL,
-        timestamp INTEGER NOT NULL,
-        PRIMARY KEY (username, document)
-      );
-    `);
-  }
+  constructor(private readonly prisma: PrismaClient) {}
 
   static hashPassword(password: string): string {
     return crypto.createHash('md5').update(password).digest('hex');
   }
 
-  createUser(username: string, key: string): boolean {
+  async createUser(username: string, key: string): Promise<boolean> {
     try {
-      this.db.prepare('INSERT INTO users (username, key) VALUES (?, ?)').run(username, key);
+      await this.prisma.user.create({ data: { username, key } });
       return true;
-    } catch {
-      return false; // UNIQUE constraint — duplicate username
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        return false; // unique constraint — duplicate username
+      }
+      throw e;
     }
   }
 
-  authenticate(username: string, key: string): boolean {
-    const row = this.db.prepare('SELECT key FROM users WHERE username = ?').get(username) as
-      | { key: string }
-      | undefined;
+  async authenticate(username: string, key: string): Promise<boolean> {
+    const row = await this.prisma.user.findUnique({
+      where: { username },
+      select: { key: true },
+    });
     return row?.key === key;
   }
 
-  validateUser(username: string, password: string): boolean {
+  async validateUser(username: string, password: string): Promise<boolean> {
     return this.authenticate(username, UserStore.hashPassword(password));
   }
 
-  getProgress(username: string, document: string): Progress | null {
-    const row = this.db
-      .prepare(
-        'SELECT document, progress, percentage, device, device_id, timestamp FROM progress WHERE username = ? AND document = ?'
-      )
-      .get(username, document) as Progress | undefined;
-    return row ?? null;
+  async getProgress(username: string, document: string): Promise<Progress | null> {
+    const row = await this.prisma.progress.findUnique({
+      where: { username_document: { username, document } },
+    });
+    if (!row) return null;
+    return {
+      document: row.document,
+      progress: row.progress,
+      percentage: row.percentage,
+      device: row.device,
+      device_id: row.deviceId,
+      timestamp: row.timestamp,
+    };
   }
 
-  saveProgress(
+  async saveProgress(
     username: string,
     p: Omit<Progress, 'timestamp'> & { timestamp?: number }
-  ): Progress {
+  ): Promise<Progress> {
     const timestamp = p.timestamp ?? Math.floor(Date.now() / 1000);
-    this.db
-      .prepare(
-        `
-        INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (username, document) DO UPDATE SET
-          progress   = excluded.progress,
-          percentage = excluded.percentage,
-          device     = excluded.device,
-          device_id  = excluded.device_id,
-          timestamp  = excluded.timestamp
-      `
-      )
-      .run(username, p.document, p.progress, p.percentage, p.device, p.device_id, timestamp);
+    await this.prisma.progress.upsert({
+      where: { username_document: { username, document: p.document } },
+      create: {
+        username,
+        document: p.document,
+        progress: p.progress,
+        percentage: p.percentage,
+        device: p.device,
+        deviceId: p.device_id,
+        timestamp,
+      },
+      update: {
+        progress: p.progress,
+        percentage: p.percentage,
+        device: p.device,
+        deviceId: p.device_id,
+        timestamp,
+      },
+    });
     return { ...p, timestamp };
   }
 
-  userExists(username: string): boolean {
-    const row = this.db.prepare('SELECT 1 FROM users WHERE username = ?').get(username);
-    return row !== undefined;
+  async userExists(username: string): Promise<boolean> {
+    const row = await this.prisma.user.findUnique({
+      where: { username },
+      select: { username: true },
+    });
+    return row !== null;
   }
 
-  listUsers(): { username: string; progressCount: number }[] {
-    return this.db
-      .prepare(
-        `
-      SELECT u.username, COUNT(p.document) AS progressCount
-      FROM users u
-      LEFT JOIN progress p ON p.username = u.username
-      GROUP BY u.username
-      ORDER BY u.username ASC
-    `
-      )
-      .all() as { username: string; progressCount: number }[];
+  async listUsers(): Promise<{ username: string; progressCount: number }[]> {
+    const rows = await this.prisma.$queryRaw<
+      { username: string; progressCount: bigint | number }[]
+    >(
+      Prisma.sql`
+        SELECT u.username, COUNT(p.document) AS progressCount
+        FROM users u
+        LEFT JOIN progress p ON p.username = u.username
+        GROUP BY u.username
+        ORDER BY u.username ASC
+      `
+    );
+    return rows.map((row) => ({
+      username: row.username,
+      progressCount: Number(row.progressCount),
+    }));
   }
 
-  getUserProgress(username: string): Progress[] {
-    return this.db
-      .prepare(
-        `
-      SELECT document, progress, percentage, device, device_id, timestamp
-      FROM progress
-      WHERE username = ?
-      ORDER BY timestamp DESC
-    `
-      )
-      .all(username) as Progress[];
+  async getUserProgress(username: string): Promise<Progress[]> {
+    const rows = await this.prisma.progress.findMany({
+      where: { username },
+      orderBy: { timestamp: 'desc' },
+    });
+    return rows.map((row) => ({
+      document: row.document,
+      progress: row.progress,
+      percentage: row.percentage,
+      device: row.device,
+      device_id: row.deviceId,
+      timestamp: row.timestamp,
+    }));
   }
 
-  clearProgress(username: string, document: string): boolean {
-    const result = this.db
-      .prepare('DELETE FROM progress WHERE username = ? AND document = ?')
-      .run(username, document);
-    return result.changes > 0;
+  async clearProgress(username: string, document: string): Promise<boolean> {
+    try {
+      await this.prisma.progress.delete({
+        where: { username_document: { username, document } },
+      });
+      return true;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        return false; // record not found
+      }
+      throw e;
+    }
   }
 
-  deleteUser(username: string): boolean {
-    const result = this.db.transaction(() => {
-      this.db.prepare('DELETE FROM progress WHERE username = ?').run(username);
-      return this.db.prepare('DELETE FROM users WHERE username = ?').run(username);
-    })();
-    return result.changes > 0;
+  async deleteUser(username: string): Promise<boolean> {
+    try {
+      // Explicitly delete progress first — the progress table has no FK constraint
+      // to users, so we cannot rely on database-level cascading.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.progress.deleteMany({ where: { username } });
+        await tx.user.delete({ where: { username } });
+      });
+      return true;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        return false; // user not found
+      }
+      throw e;
+    }
   }
 }

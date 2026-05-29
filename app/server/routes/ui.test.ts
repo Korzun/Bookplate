@@ -4,7 +4,9 @@ import * as fs from 'fs';
 import request from 'supertest';
 import express from 'express';
 import session from 'express-session';
-import Database from 'better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { runMigrations } from '../db/migrate';
 import AdmZip from 'adm-zip';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
@@ -29,10 +31,11 @@ afterAll(() => {
 });
 
 let booksDir: string;
-let db: InstanceType<typeof Database>;
+let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
 let app: express.Express;
+let dbPath: string;
 
 const config: AppConfig = {
   username: 'admin',
@@ -146,12 +149,18 @@ async function userAgent() {
   return agent;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hass-odps-ui-'));
-  db = new Database(':memory:');
-  bookStore = new BookStore(booksDir, db);
-  userStore = new UserStore(db);
-  userStore.createUser('alice', UserStore.hashPassword('alicepass'));
+  dbPath = path.join(
+    os.tmpdir(),
+    `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+  );
+  const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
+  prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+  await runMigrations(prisma, booksDir);
+  bookStore = new BookStore(booksDir, prisma);
+  userStore = new UserStore(prisma);
+  await userStore.createUser('alice', UserStore.hashPassword('alicepass'));
 
   app = express();
   app.use(express.json());
@@ -162,8 +171,13 @@ beforeEach(() => {
   (mockThumbnailQueue.reconcile as jest.Mock).mockClear();
 });
 
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await prisma.$disconnect();
+  try {
+    fs.unlinkSync(dbPath);
+  } catch {
+    /* best-effort cleanup */
+  }
   fs.rmSync(booksDir, { recursive: true });
 });
 
@@ -243,7 +257,7 @@ describe('GET /api/books', () => {
   });
 
   it('returns JSON array of books', async () => {
-    bookStore.addBook('book1', stage('book1'), {
+    await bookStore.addBook('book1', stage('book1'), {
       ...FAKE_META,
       title: 'book',
     });
@@ -264,7 +278,7 @@ describe('GET /api/books', () => {
       coverData: null,
       coverMime: null,
     };
-    bookStore.addBook('enriched1', stage('enriched1'), meta);
+    await bookStore.addBook('enriched1', stage('enriched1'), meta);
     const agent = await adminAgent();
     const res = await agent.get('/api/books');
     expect(res.status).toBe(200);
@@ -285,7 +299,7 @@ describe('GET /api/books', () => {
       author: 'Isaac Asimov',
     };
 
-    bookStore.addBook('foundation1', stage('foundation1'), meta);
+    await bookStore.addBook('foundation1', stage('foundation1'), meta);
 
     const agent = await adminAgent();
     const res = await agent.get('/api/books');
@@ -300,7 +314,7 @@ describe('GET /api/books', () => {
   });
 
   it('includes chapterCount in the book list response', async () => {
-    bookStore.addBook('id-ch', stage('id-ch'), {
+    await bookStore.addBook('id-ch', stage('id-ch'), {
       ...FAKE_META,
       chapterCount: 7,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7],
@@ -362,7 +376,7 @@ describe('POST /api/books/upload', () => {
     expect(res.body.uploaded).toContain('parsed.epub');
 
     // Verify metadata was stored and file is on disk at canonical path
-    const books = bookStore.listBooks();
+    const books = await bookStore.listBooks();
     expect(fs.existsSync(books[0].path)).toBe(true);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('Parsed Title');
@@ -383,7 +397,7 @@ describe('POST /api/books/upload', () => {
     const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'cover.epub');
     expect(res.status).toBe(200);
 
-    const books = bookStore.listBooks();
+    const books = await bookStore.listBooks();
     expect(books[0].hasCover).toBe(true);
   });
 
@@ -399,7 +413,7 @@ describe('POST /api/books/upload', () => {
     const epubBuf = makeEpub({ title: 'Stored Book', author: 'A' });
     const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'human-name.epub');
     expect(res.status).toBe(200);
-    const books = bookStore.listBooks();
+    const books = await bookStore.listBooks();
     expect(books).toHaveLength(1);
     const onDisk = fs
       .readdirSync(booksDir)
@@ -420,7 +434,7 @@ describe('POST /api/books/upload', () => {
     const agent = await adminAgent();
     const epubBuf = makeEpub({ author: 'A' }); // no title
     await agent.post('/api/books/upload').attach('files', epubBuf, 'my-book.epub');
-    const books = bookStore.listBooks();
+    const books = await bookStore.listBooks();
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('my-book');
   });
@@ -446,7 +460,7 @@ describe('GET /api/books/:id', () => {
       identifiers: [{ scheme: 'ISBN', value: '978-1234567890' }],
       subjects: ['Fiction', 'Mystery'],
     };
-    bookStore.addBook('detailid1', stage('detailid1'), meta);
+    await bookStore.addBook('detailid1', stage('detailid1'), meta);
 
     const res = await agent.get('/api/books/detailid1');
     expect(res.status).toBe(200);
@@ -472,7 +486,7 @@ describe('GET /api/books/:id', () => {
   });
 
   it('includes chapterCount, chapterSpineMap, and chapterNames', async () => {
-    bookStore.addBook('bk1', stage('bk1'), {
+    await bookStore.addBook('bk1', stage('bk1'), {
       ...FAKE_META,
       chapterCount: 5,
       chapterSpineMap: [1, 2, 3, 4, 5],
@@ -497,7 +511,7 @@ describe('GET /api/books/:id/cover', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     };
-    bookStore.addBook('coverId1', stage('coverId1'), meta);
+    await bookStore.addBook('coverId1', stage('coverId1'), meta);
 
     const agent = await adminAgent();
     const res = await agent.get('/api/books/coverId1/cover');
@@ -507,7 +521,7 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('returns 404 for a book without cover', async () => {
-    bookStore.addBook('noCoverId', stage('noCoverId'), FAKE_META);
+    await bookStore.addBook('noCoverId', stage('noCoverId'), FAKE_META);
 
     const agent = await adminAgent();
     const res = await agent.get('/api/books/noCoverId/cover');
@@ -523,12 +537,12 @@ describe('GET /api/books/:id/cover', () => {
   it('returns thumbnail when ?width= matches a stored thumbnail', async () => {
     const coverBuf = Buffer.from('original-cover');
     const thumbBuf = Buffer.from('thumbnail-data');
-    bookStore.addBook('thumbBook', stage('thumbBook'), {
+    await bookStore.addBook('thumbBook', stage('thumbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
-    bookStore.saveThumbnail('thumbBook', 150, thumbBuf, 'image/jpeg');
+    await bookStore.saveThumbnail('thumbBook', 150, thumbBuf, 'image/jpeg');
 
     const agent = await adminAgent();
     const res = await agent.get('/api/books/thumbBook/cover?width=150');
@@ -538,7 +552,7 @@ describe('GET /api/books/:id/cover', () => {
 
   it('falls back to full-size when ?width= has no matching thumbnail', async () => {
     const coverBuf = Buffer.from('full-size-cover');
-    bookStore.addBook('fbBook', stage('fbBook'), {
+    await bookStore.addBook('fbBook', stage('fbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -553,8 +567,8 @@ describe('GET /api/books/:id/cover', () => {
 
 describe('DELETE /api/books/:id', () => {
   it('deletes a book and returns 204', async () => {
-    bookStore.addBook('book1', stage('book1'), FAKE_META);
-    const [book] = bookStore.listBooks();
+    await bookStore.addBook('book1', stage('book1'), FAKE_META);
+    const [book] = await bookStore.listBooks();
 
     const agent = await adminAgent();
     const res = await agent.delete(`/api/books/${book.id}`);
@@ -601,7 +615,7 @@ describe('POST /api/books/scan', () => {
 
   it('reports removed for a DB entry whose file is gone', async () => {
     // Add a book to the DB then remove the file so the scan reports it removed
-    bookStore.addBook('stale001', stage('stale001'), {
+    await bookStore.addBook('stale001', stage('stale001'), {
       ...FAKE_META,
       title: 'Stale Book',
     });
@@ -622,8 +636,8 @@ describe('POST /api/books/scan', () => {
 });
 
 describe('DELETE /api/books/:id (admin-only)', () => {
-  beforeEach(() => {
-    bookStore.addBook('b1', stage('b1'), FAKE_META);
+  beforeEach(async () => {
+    await bookStore.addBook('b1', stage('b1'), FAKE_META);
   });
 
   it('returns 204 for admin', async () => {
@@ -667,7 +681,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('returns own progress records for regular user', async () => {
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.72,
@@ -683,7 +697,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('does not expose device or progress fields', async () => {
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -699,8 +713,8 @@ describe('GET /api/my/progress', () => {
   });
 
   it("does not return another user's progress", async () => {
-    userStore.createUser('bob', UserStore.hashPassword('bobpass'));
-    userStore.saveProgress('bob', {
+    await userStore.createUser('bob', UserStore.hashPassword('bobpass'));
+    await userStore.saveProgress('bob', {
       document: 'doc2',
       progress: '/p[1]',
       percentage: 0.9,
@@ -715,13 +729,13 @@ describe('GET /api/my/progress', () => {
 
   it('includes currentChapter when a matching book has chapter data and CFI is valid', async () => {
     // spine: cover(0) ch1(1) ch2(2) ch3(3); nav: ch1→1, ch2→2, ch3→3
-    bookStore.addBook('doc-with-chapters', stage('doc-with-chapters'), {
+    await bookStore.addBook('doc-with-chapters', stage('doc-with-chapters'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
     // EPUB_CFI(/6/6...) → N=6 → spineIndex=(6-2)/2=2 → chapter 2 (ch2 is at spineIndex 2)
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc-with-chapters',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -735,14 +749,14 @@ describe('GET /api/my/progress', () => {
   });
 
   it('includes currentChapterName when the book has chapterNames and CFI resolves to a chapter', async () => {
-    bookStore.addBook('doc-with-names', stage('doc-with-names'), {
+    await bookStore.addBook('doc-with-names', stage('doc-with-names'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
       chapterNames: ['Chapter 1', 'Chapter 2', 'Chapter 3'],
     });
     // EPUB_CFI(/6/6...) → spineIndex=2 → chapter 2 → chapterNames[1] = 'Chapter 2'
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc-with-names',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -756,14 +770,14 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapterName when the book has no chapterNames', async () => {
-    bookStore.addBook('doc-no-names', stage('doc-no-names'), {
+    await bookStore.addBook('doc-no-names', stage('doc-no-names'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
       chapterNames: [],
     });
     // Same CFI as above — resolves to chapter 2, but chapterNames is empty
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc-no-names',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -777,7 +791,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapter when the book is not in the DB', async () => {
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'unknown-book-id',
       progress: 'EPUB_CFI(/6/4!/4/1:0)',
       percentage: 0.3,
@@ -791,12 +805,12 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapter when the CFI is not in KoReader EPUB_CFI format', async () => {
-    bookStore.addBook('doc-bad-cfi', stage('doc-bad-cfi'), {
+    await bookStore.addBook('doc-bad-cfi', stage('doc-bad-cfi'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc-bad-cfi',
       progress: '/p[1]',
       percentage: 0.1,
@@ -810,12 +824,12 @@ describe('GET /api/my/progress', () => {
   });
 
   it('does not expose chapterSpineMap on progress records', async () => {
-    bookStore.addBook('doc-no-expose', stage('doc-no-expose'), {
+    await bookStore.addBook('doc-no-expose', stage('doc-no-expose'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc-no-expose',
       progress: 'EPUB_CFI(/6/4!/4/1:0)',
       percentage: 0.3,
@@ -829,8 +843,8 @@ describe('GET /api/my/progress', () => {
 });
 
 describe('DELETE /api/my/progress/:document', () => {
-  beforeEach(() => {
-    userStore.saveProgress('alice', {
+  beforeEach(async () => {
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -855,7 +869,7 @@ describe('DELETE /api/my/progress/:document', () => {
     const agent = await userAgent();
     const res = await agent.delete('/api/my/progress/doc1');
     expect(res.status).toBe(204);
-    expect(userStore.getProgress('alice', 'doc1')).toBeNull();
+    expect(await userStore.getProgress('alice', 'doc1')).toBeNull();
   });
 
   it('returns 404 when no record exists', async () => {
@@ -928,13 +942,13 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25 });
     expect(res.status).toBe(200);
-    const saved = userStore.getProgress('alice', 'doc1');
+    const saved = await userStore.getProgress('alice', 'doc1');
     expect(saved).not.toBeNull();
     expect(saved!.percentage).toBe(0.25);
   });
 
   it('overwrites an existing progress record', async () => {
-    userStore.saveProgress('alice', {
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -946,7 +960,7 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 10, percentage: 0.75 });
     expect(res.status).toBe(200);
-    expect(userStore.getProgress('alice', 'doc1')!.percentage).toBe(0.75);
+    expect((await userStore.getProgress('alice', 'doc1'))!.percentage).toBe(0.75);
   });
 
   it('saves device and device_id when provided', async () => {
@@ -955,7 +969,7 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25, device: 'Web', device_id: 'test-uuid' });
     expect(res.status).toBe(200);
-    const saved = userStore.getProgress('alice', 'doc1');
+    const saved = await userStore.getProgress('alice', 'doc1');
     expect(saved!.device).toBe('Web');
     expect(saved!.device_id).toBe('test-uuid');
   });
@@ -963,11 +977,11 @@ describe('PUT /api/my/progress/:document', () => {
   it('defaults device to "Web" when not provided', async () => {
     const agent = await userAgent();
     await agent.put('/api/my/progress/doc1').send({ currentChapter: 5, percentage: 0.25 });
-    expect(userStore.getProgress('alice', 'doc1')!.device).toBe('Web');
+    expect((await userStore.getProgress('alice', 'doc1'))!.device).toBe('Web');
   });
 
   it('synthesises an EPUB CFI when the book has a chapterSpineMap', async () => {
-    bookStore.addBook('cfidoc', stage('cfidoc'), {
+    await bookStore.addBook('cfidoc', stage('cfidoc'), {
       ...FAKE_META,
       chapterCount: 10,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -978,14 +992,16 @@ describe('PUT /api/my/progress/:document', () => {
       .send({ currentChapter: 3, percentage: 0.3 });
     expect(res.status).toBe(200);
     // chapterSpineMap[2] = 3, so spineIndex = 3, CFI n = 3*2+2 = 8
-    expect(userStore.getProgress('alice', 'cfidoc')!.progress).toBe('EPUB_CFI(/6/8!/4/2:0)');
+    expect((await userStore.getProgress('alice', 'cfidoc'))!.progress).toBe(
+      'EPUB_CFI(/6/8!/4/2:0)'
+    );
   });
 });
 
 describe('PATCH /api/books/:id/metadata', () => {
   let bookId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Write a real EPUB to booksDir so writeMetadata can read it
     const zip = new AdmZip();
     zip.addFile(
@@ -1006,8 +1022,8 @@ describe('PATCH /api/books/:id/metadata', () => {
     );
     const epubPath = path.join(booksDir, 'edit-test.epub');
     fs.writeFileSync(epubPath, zip.toBuffer());
-    bookStore.scan(); // import the file into the DB
-    bookId = bookStore.listBooks()[0].id;
+    await bookStore.scan(); // import the file into the DB
+    bookId = (await bookStore.listBooks())[0].id;
   });
 
   it('returns 403 for regular user', async () => {
@@ -1036,8 +1052,8 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(res.body.chapterSpineMap).toBeUndefined();
     // Verify the returned book ID is now in the DB (ID may have shifted)
     const newId: string = res.body.id;
-    expect(bookStore.getBookById(newId)).not.toBeNull();
-    expect(bookStore.getBookById(newId)!.title).toBe('Updated Title');
+    expect(await bookStore.getBookById(newId)).not.toBeNull();
+    expect((await bookStore.getBookById(newId))!.title).toBe('Updated Title');
   });
 
   it('updates cover when image file is attached', async () => {
@@ -1050,9 +1066,9 @@ describe('PATCH /api/books/:id/metadata', () => {
     const newId: string = res.body.id;
     expect(res.body.hasCover).toBe(true);
     // Verify cover is stored in DB
-    const cover = bookStore.getCover(newId);
+    const cover = await bookStore.getCover(newId);
     expect(cover).not.toBeNull();
-    expect(cover!.data).toEqual(coverBytes);
+    expect(Buffer.from(cover!.data)).toEqual(coverBytes);
   });
 
   it('enqueues thumbnails after metadata update', async () => {

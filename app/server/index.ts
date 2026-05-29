@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import Database from 'better-sqlite3';
 import { loadConfig } from './config';
 import { UserStore } from './services/user-store';
 import { BookStore } from './services/book-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { createServer } from './server';
 import { logger } from './logger';
+import { runMigrations } from './db/migrate';
+import { createPrismaClient } from './db/client';
 import packageJson from '../../package.json';
 
 const version: string = packageJson.version;
@@ -17,39 +18,47 @@ const config = loadConfig();
 fs.mkdirSync(config.booksDir, { recursive: true });
 fs.mkdirSync(config.dataDir, { recursive: true });
 
-const db = new Database(path.join(config.dataDir, 'db.sqlite'));
-const userStore = new UserStore(db);
-const bookStore = new BookStore(config.booksDir, db);
-const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
+(async () => {
+  const dbPath = path.join(config.dataDir, 'db.sqlite');
+  const prisma = createPrismaClient(`file:${dbPath}`);
+  await runMigrations(prisma, config.booksDir);
 
-const server = createServer(config, userStore, bookStore, thumbnailQueue);
+  const userStore = new UserStore(prisma);
+  const bookStore = new BookStore(config.booksDir, prisma);
+  const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
 
-// Startup scan: import untracked EPUBs, clean up stale DB entries
-try {
-  const scanResult = bookStore.scan();
-  log.info(
-    `Startup scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed`
-  );
-} catch (err: unknown) {
-  log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
-}
+  const server = createServer(config, userStore, bookStore, thumbnailQueue);
 
-thumbnailQueue.start();
+  // Startup scan: import untracked EPUBs, clean up stale DB entries
+  try {
+    const scanResult = await bookStore.scan();
+    log.info(
+      `Startup scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed`
+    );
+  } catch (err: unknown) {
+    log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
-const shutdown = (): void => {
-  log.info('Server shutting down');
-  thumbnailQueue.stop();
-  db.close();
-  process.exit(0);
-};
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+  await thumbnailQueue.start();
 
-server.listen(config.port, () => {
-  log.info(
-    `HASS-ODPS v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
-  );
-  log.info(`Web UI:  http://localhost:${config.port}/`);
-  log.info(`OPDS:    http://localhost:${config.port}/opds/`);
-  log.info(`KOSync:  http://localhost:${config.port}/kosync/`);
+  const shutdown = async (): Promise<void> => {
+    log.info('Server shutting down');
+    thumbnailQueue.stop();
+    await prisma.$disconnect();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown());
+  process.on('SIGINT', () => void shutdown());
+
+  server.listen(config.port, () => {
+    log.info(
+      `HASS-ODPS v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
+    );
+    log.info(`Web UI:  http://localhost:${config.port}/`);
+    log.info(`OPDS:    http://localhost:${config.port}/opds/`);
+    log.info(`KOSync:  http://localhost:${config.port}/kosync/`);
+  });
+})().catch((err) => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
 });

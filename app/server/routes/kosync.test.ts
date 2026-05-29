@@ -1,4 +1,9 @@
-import Database from 'better-sqlite3';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { runMigrations } from '../db/migrate';
 import request from 'supertest';
 import express from 'express';
 import { UserStore } from '../services/user-store';
@@ -6,20 +11,32 @@ import { createKosyncRouter } from './kosync';
 
 jest.mock('../logger');
 
-let db: InstanceType<typeof Database>;
+let prisma: PrismaClient;
 let userStore: UserStore;
 let app: express.Express;
+let dbPath: string;
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  userStore = new UserStore(db);
+beforeEach(async () => {
+  dbPath = path.join(
+    os.tmpdir(),
+    `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+  );
+  const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
+  prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+  await runMigrations(prisma, os.tmpdir());
+  userStore = new UserStore(prisma);
   app = express();
   app.use(express.json());
   app.use('/kosync', createKosyncRouter(userStore));
 });
 
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await prisma.$disconnect();
+  try {
+    fs.unlinkSync(dbPath);
+  } catch {
+    /* best-effort cleanup */
+  }
 });
 
 function authHeaders(username: string, password: string) {

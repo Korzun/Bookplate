@@ -65,7 +65,7 @@ export function createUiRouter(
 
   router.get('/login', serveSpa);
 
-  router.post('/api/login', (req: Request, res: Response) => {
+  router.post('/api/login', async (req: Request, res: Response) => {
     const { username, password } = req.body as { username?: string; password?: string };
     if (typeof username !== 'string' || typeof password !== 'string') {
       res.sendStatus(401);
@@ -79,7 +79,7 @@ export function createUiRouter(
       res.sendStatus(200);
       return;
     }
-    if (userStore.validateUser(username, password)) {
+    if (await userStore.validateUser(username, password)) {
       req.session.authenticated = true;
       req.session.isAdmin = false;
       req.session.username = username;
@@ -104,16 +104,16 @@ export function createUiRouter(
     res.json({ maxConcurrentUploads: config.maxConcurrentUploads });
   });
 
-  router.get('/api/my/progress', sessionAuth, (req: Request, res: Response) => {
+  router.get('/api/my/progress', sessionAuth, async (req: Request, res: Response) => {
     if (req.session.isAdmin) {
       res.json([]);
       return;
     }
-    const progressList = userStore.getUserProgress(req.session.username!);
-    res.json(
-      progressList.map((p) => {
+    const progressList = await userStore.getUserProgress(req.session.username!);
+    const items = await Promise.all(
+      progressList.map(async (p) => {
         const spineIndex = parseCfiSpineIndex(p.progress);
-        const book = bookStore.getBookById(p.document);
+        const book = await bookStore.getBookById(p.document);
         const currentChapter =
           spineIndex !== null && book && book.chapterSpineMap.length > 0
             ? (spineIndexToChapter(spineIndex, book.chapterSpineMap) ?? undefined)
@@ -130,14 +130,15 @@ export function createUiRouter(
         };
       })
     );
+    res.json(items);
   });
 
-  router.delete('/api/my/progress/:document', sessionAuth, (req: Request, res: Response) => {
+  router.delete('/api/my/progress/:document', sessionAuth, async (req: Request, res: Response) => {
     if (req.session.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
-    const cleared = userStore.clearProgress(req.session.username!, req.params.document);
+    const cleared = await userStore.clearProgress(req.session.username!, req.params.document);
     if (!cleared) {
       res.status(404).json({ error: 'Progress record not found' });
       return;
@@ -145,7 +146,7 @@ export function createUiRouter(
     res.status(204).send();
   });
 
-  router.put('/api/my/progress/:document', sessionAuth, (req: Request, res: Response) => {
+  router.put('/api/my/progress/:document', sessionAuth, async (req: Request, res: Response) => {
     if (req.session.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
@@ -163,13 +164,13 @@ export function createUiRouter(
       return;
     }
     // Synthesise a minimal EPUB CFI so currentChapter persists through GET /api/my/progress
-    const book = bookStore.getBookById(req.params.document);
+    const book = await bookStore.getBookById(req.params.document);
     let progress = '';
     if (book && book.chapterSpineMap.length > 0 && currentChapter <= book.chapterSpineMap.length) {
       const spineIndex = book.chapterSpineMap[currentChapter - 1];
       progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
     }
-    userStore.saveProgress(req.session.username!, {
+    await userStore.saveProgress(req.session.username!, {
       document: req.params.document,
       progress,
       percentage,
@@ -182,9 +183,9 @@ export function createUiRouter(
   // ── Static assets (no auth required) ──────────────────
   router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
 
-  router.get('/api/books', sessionAuth, (_req: Request, res: Response) => {
+  router.get('/api/books', sessionAuth, async (_req: Request, res: Response) => {
     res.json(
-      bookStore.listBooks().map((b) => {
+      (await bookStore.listBooks()).map((b) => {
         const {
           path: _path,
           description: _description,
@@ -238,7 +239,7 @@ export function createUiRouter(
         const titleFallback =
           realTitle || path.basename(file.originalname, path.extname(file.originalname));
         try {
-          bookStore.addBook(id, savedPath, { ...meta, title: titleFallback });
+          await bookStore.addBook(id, savedPath, { ...meta, title: titleFallback });
         } catch (err: unknown) {
           try {
             fs.unlinkSync(savedPath);
@@ -261,8 +262,8 @@ export function createUiRouter(
     }
   );
 
-  router.get('/api/books/:id', sessionAuth, (req: Request, res: Response) => {
-    const book = bookStore.getBookById(req.params.id);
+  router.get('/api/books/:id', sessionAuth, async (req: Request, res: Response) => {
+    const book = await bookStore.getBookById(req.params.id);
     if (!book) {
       res.status(404).json({ error: 'Book not found' });
       return;
@@ -271,7 +272,7 @@ export function createUiRouter(
     res.json(rest);
   });
 
-  router.get('/api/books/:id/cover', sessionAuth, (req: Request, res: Response) => {
+  router.get('/api/books/:id/cover', sessionAuth, async (req: Request, res: Response) => {
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
@@ -279,7 +280,7 @@ export function createUiRouter(
     let mime: string;
 
     if (!isNaN(parsedWidth) && parsedWidth > 0) {
-      const thumbnail = bookStore.getThumbnail(req.params.id, parsedWidth);
+      const thumbnail = await bookStore.getThumbnail(req.params.id, parsedWidth);
       if (thumbnail) {
         data = thumbnail.data;
         mime = thumbnail.mime;
@@ -287,7 +288,7 @@ export function createUiRouter(
         log.warn(
           `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
         );
-        const cover = bookStore.getCover(req.params.id);
+        const cover = await bookStore.getCover(req.params.id);
         if (!cover) {
           res.status(404).send('Not found');
           return;
@@ -296,7 +297,7 @@ export function createUiRouter(
         mime = cover.mime;
       }
     } else {
-      const cover = bookStore.getCover(req.params.id);
+      const cover = await bookStore.getCover(req.params.id);
       if (!cover) {
         res.status(404).send('Not found');
         return;
@@ -317,8 +318,8 @@ export function createUiRouter(
     res.send(data);
   });
 
-  router.delete('/api/books/:id', sessionAuth, adminAuth, (req: Request, res: Response) => {
-    const deleted = bookStore.deleteBook(req.params.id);
+  router.delete('/api/books/:id', sessionAuth, adminAuth, async (req: Request, res: Response) => {
+    const deleted = await bookStore.deleteBook(req.params.id);
     if (!deleted) {
       log.warn(`Delete attempted for unknown book ID: ${req.params.id}`);
       res.status(404).json({ error: 'Book not found' });
@@ -328,9 +329,9 @@ export function createUiRouter(
     res.status(204).send();
   });
 
-  router.post('/api/books/scan', sessionAuth, adminAuth, (_req: Request, res: Response) => {
-    const result = bookStore.scan();
-    thumbnailQueue.reconcile();
+  router.post('/api/books/scan', sessionAuth, adminAuth, async (_req: Request, res: Response) => {
+    const result = await bookStore.scan();
+    await thumbnailQueue.reconcile();
     log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
     res.json(result);
   });
@@ -341,7 +342,7 @@ export function createUiRouter(
     adminAuth,
     coverUpload.single('cover'),
     async (req: Request, res: Response) => {
-      const book = bookStore.getBookById(req.params.id);
+      const book = await bookStore.getBookById(req.params.id);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
@@ -393,9 +394,9 @@ export function createUiRouter(
         return;
       }
 
-      let updated: ReturnType<typeof bookStore.reimportBook>;
+      let updated;
       try {
-        updated = bookStore.reimportBook(req.params.id);
+        updated = await bookStore.reimportBook(req.params.id);
       } catch (err) {
         if (err instanceof BookHashCollisionError) {
           res.status(409).json({

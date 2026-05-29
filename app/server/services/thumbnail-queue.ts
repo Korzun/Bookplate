@@ -18,6 +18,8 @@ interface Job {
 export class ThumbnailQueue {
   private readonly queue: Job[] = [];
   private running = false;
+  /** Resolves when the currently-running processJob (if any) finishes. */
+  private currentJobPromise: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly bookStore: BookStore,
@@ -25,10 +27,10 @@ export class ThumbnailQueue {
     private readonly resize: ResizeFn = defaultResize
   ) {}
 
-  start(): void {
+  async start(): Promise<void> {
     if (this.running) return;
-    this.bookStore.pruneThumbnails(this.widths);
-    this.reconcile();
+    await this.bookStore.pruneThumbnails(this.widths);
+    await this.reconcile();
     this.running = true;
     void this.processLoop();
   }
@@ -43,8 +45,8 @@ export class ThumbnailQueue {
     }
   }
 
-  reconcile(): void {
-    const missing = this.bookStore.getMissingThumbnailPairs(this.widths);
+  async reconcile(): Promise<void> {
+    const missing = await this.bookStore.getMissingThumbnailPairs(this.widths);
     for (const pair of missing) {
       this.queue.push(pair);
     }
@@ -54,6 +56,10 @@ export class ThumbnailQueue {
   }
 
   async drainForTest(): Promise<void> {
+    // First wait for any job the background processLoop is currently running, then
+    // drain whatever remains in the queue (processLoop won't take more since stop()
+    // must have been called before drainForTest()).
+    await this.currentJobPromise;
     let job: Job | undefined;
     while ((job = this.queue.shift()) !== undefined) {
       await this.processJob(job);
@@ -67,7 +73,8 @@ export class ThumbnailQueue {
         await delay(INTER_JOB_DELAY_MS);
         continue;
       }
-      await this.processJob(job);
+      this.currentJobPromise = this.processJob(job);
+      await this.currentJobPromise;
       if (this.queue.length > 0) {
         await delay(INTER_JOB_DELAY_MS);
       }
@@ -75,11 +82,19 @@ export class ThumbnailQueue {
   }
 
   private async processJob(job: Job): Promise<void> {
-    const cover = this.bookStore.getCover(job.bookId);
+    let cover;
+    try {
+      cover = await this.bookStore.getCover(job.bookId);
+    } catch (err: unknown) {
+      log.warn(
+        `Failed to get cover for book ${job.bookId}: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return;
+    }
     if (!cover) return;
     try {
       const resized = await this.resize(cover.data, job.width);
-      this.bookStore.saveThumbnail(job.bookId, job.width, resized, 'image/jpeg');
+      await this.bookStore.saveThumbnail(job.bookId, job.width, resized, 'image/jpeg');
     } catch (err: unknown) {
       log.warn(
         `Failed to generate ${job.width}px thumbnail for book ${job.bookId}: ${

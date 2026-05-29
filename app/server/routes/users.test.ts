@@ -1,19 +1,31 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import request from 'supertest';
 import express from 'express';
 import session from 'express-session';
-import Database from 'better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { runMigrations } from '../db/migrate';
 import { UserStore } from '../services/user-store';
 import { createUsersRouter } from './users';
 
 jest.mock('../logger');
 
-let db: InstanceType<typeof Database>;
+let prisma: PrismaClient;
 let userStore: UserStore;
 let app: express.Express;
+let dbPath: string;
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  userStore = new UserStore(db);
+beforeEach(async () => {
+  dbPath = path.join(
+    os.tmpdir(),
+    `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+  );
+  const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
+  prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+  await runMigrations(prisma, os.tmpdir());
+  userStore = new UserStore(prisma);
 
   app = express();
   app.use(express.json());
@@ -33,8 +45,13 @@ beforeEach(() => {
   app.use('/api/users', createUsersRouter(userStore, 'admin'));
 });
 
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await prisma.$disconnect();
+  try {
+    fs.unlinkSync(dbPath);
+  } catch {
+    /* best-effort cleanup */
+  }
 });
 
 async function adminAgent() {
@@ -63,8 +80,8 @@ describe('GET /api/users', () => {
   });
 
   it('returns users with progress counts', async () => {
-    userStore.createUser('alice', 'pass');
-    userStore.saveProgress('alice', {
+    await userStore.createUser('alice', 'pass');
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -93,7 +110,7 @@ describe('GET /api/users/:username/progress', () => {
   });
 
   it('returns empty array for user with no progress', async () => {
-    userStore.createUser('alice', 'pass');
+    await userStore.createUser('alice', 'pass');
     const agent = await adminAgent();
     const res = await agent.get('/api/users/alice/progress');
     expect(res.status).toBe(200);
@@ -101,8 +118,8 @@ describe('GET /api/users/:username/progress', () => {
   });
 
   it('returns progress records for a user', async () => {
-    userStore.createUser('alice', 'pass');
-    userStore.saveProgress('alice', {
+    await userStore.createUser('alice', 'pass');
+    await userStore.saveProgress('alice', {
       document: 'dune.epub',
       progress: '/p[5]',
       percentage: 0.42,
@@ -131,16 +148,16 @@ describe('DELETE /api/users/:username', () => {
   });
 
   it('deletes the user and returns 204', async () => {
-    userStore.createUser('alice', 'pass');
+    await userStore.createUser('alice', 'pass');
     const agent = await adminAgent();
     const res = await agent.delete('/api/users/alice');
     expect(res.status).toBe(204);
-    expect(userStore.userExists('alice')).toBe(false);
+    expect(await userStore.userExists('alice')).toBe(false);
   });
 
   it('cascades to delete progress records', async () => {
-    userStore.createUser('alice', 'pass');
-    userStore.saveProgress('alice', {
+    await userStore.createUser('alice', 'pass');
+    await userStore.saveProgress('alice', {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -149,7 +166,7 @@ describe('DELETE /api/users/:username', () => {
     });
     const agent = await adminAgent();
     await agent.delete('/api/users/alice');
-    expect(userStore.getUserProgress('alice')).toEqual([]);
+    expect(await userStore.getUserProgress('alice')).toEqual([]);
   });
 });
 
@@ -164,12 +181,12 @@ describe('POST /api/users', () => {
     const res = await agent.post('/api/users').send({ username: 'bob', password: 'secret' });
     expect(res.status).toBe(201);
     expect(res.body.username).toBe('bob');
-    expect(userStore.userExists('bob')).toBe(true);
-    expect(userStore.authenticate('bob', UserStore.hashPassword('secret'))).toBe(true);
+    expect(await userStore.userExists('bob')).toBe(true);
+    expect(await userStore.authenticate('bob', UserStore.hashPassword('secret'))).toBe(true);
   });
 
   it('returns 409 for duplicate username', async () => {
-    userStore.createUser('bob', UserStore.hashPassword('pass'));
+    await userStore.createUser('bob', UserStore.hashPassword('pass'));
     const agent = await adminAgent();
     const res = await agent.post('/api/users').send({ username: 'bob', password: 'other' });
     expect(res.status).toBe(409);
@@ -225,7 +242,7 @@ describe('DELETE /api/users/:username/progress/:document', () => {
   });
 
   it('returns 404 when user exists but has no progress for that document', async () => {
-    userStore.createUser('alice', 'pass');
+    await userStore.createUser('alice', 'pass');
     const agent = await adminAgent();
     const res = await agent.delete('/api/users/alice/progress/nonexistent');
     expect(res.status).toBe(404);
@@ -233,8 +250,8 @@ describe('DELETE /api/users/:username/progress/:document', () => {
   });
 
   it('clears the progress record and returns 204', async () => {
-    userStore.createUser('alice', 'pass');
-    userStore.saveProgress('alice', {
+    await userStore.createUser('alice', 'pass');
+    await userStore.saveProgress('alice', {
       document: 'dune.epub',
       progress: '/p[5]',
       percentage: 0.42,
@@ -244,7 +261,7 @@ describe('DELETE /api/users/:username/progress/:document', () => {
     const agent = await adminAgent();
     const res = await agent.delete('/api/users/alice/progress/dune.epub');
     expect(res.status).toBe(204);
-    expect(userStore.getProgress('alice', 'dune.epub')).toBeNull();
+    expect(await userStore.getProgress('alice', 'dune.epub')).toBeNull();
   });
 });
 
@@ -262,21 +279,21 @@ describe('RBAC — regular user is forbidden from all /api/users routes', () => 
   });
 
   it('DELETE /api/users/:username returns 403 for regular user', async () => {
-    userStore.createUser('victim', 'pass');
+    await userStore.createUser('victim', 'pass');
     const agent = await userAgent();
     const res = await agent.delete('/api/users/victim');
     expect(res.status).toBe(403);
   });
 
   it('GET /api/users/:username/progress returns 403 for regular user', async () => {
-    userStore.createUser('alice', 'pass');
+    await userStore.createUser('alice', 'pass');
     const agent = await userAgent();
     const res = await agent.get('/api/users/alice/progress');
     expect(res.status).toBe(403);
   });
 
   it('DELETE /api/users/:username/progress/:document returns 403 for regular user', async () => {
-    userStore.createUser('alice', 'pass');
+    await userStore.createUser('alice', 'pass');
     const agent = await userAgent();
     const res = await agent.delete('/api/users/alice/progress/doc1');
     expect(res.status).toBe(403);

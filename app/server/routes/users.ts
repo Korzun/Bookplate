@@ -11,32 +11,32 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
   router.use(sessionAuth);
   router.use(adminAuth);
 
-  router.get('/', (_req: Request, res: Response) => {
-    const users = userStore.listUsers();
+  router.get('/', async (_req: Request, res: Response) => {
+    const users = await userStore.listUsers();
     log.debug(`Users list fetched (${users.length} users)`);
     res.json(users);
   });
 
-  router.get('/:username/progress', (req: Request, res: Response) => {
+  router.get('/:username/progress', async (req: Request, res: Response) => {
     const { username } = req.params;
-    if (!userStore.userExists(username)) {
+    if (!(await userStore.userExists(username))) {
       log.warn(`Progress fetch for unknown user "${username}"`);
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    const progress = userStore.getUserProgress(username);
+    const progress = await userStore.getUserProgress(username);
     log.debug(`Progress fetched for "${username}" (${progress.length} records)`);
     res.json(progress);
   });
 
-  router.delete('/:username/progress/:document', (req: Request, res: Response) => {
+  router.delete('/:username/progress/:document', async (req: Request, res: Response) => {
     const { username, document } = req.params;
-    if (!userStore.userExists(username)) {
+    if (!(await userStore.userExists(username))) {
       log.warn(`Progress clear attempted for unknown user "${username}"`);
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    const cleared = userStore.clearProgress(username, document);
+    const cleared = await userStore.clearProgress(username, document);
     if (!cleared) {
       log.warn(`Progress clear: no record for "${username}" document "${document}"`);
       res.status(404).json({ error: 'Progress record not found' });
@@ -46,9 +46,9 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
     res.status(204).send();
   });
 
-  router.delete('/:username', (req: Request, res: Response) => {
+  router.delete('/:username', async (req: Request, res: Response) => {
     const { username } = req.params;
-    const deleted = userStore.deleteUser(username);
+    const deleted = await userStore.deleteUser(username);
     if (!deleted) {
       log.warn(`Delete attempted for unknown user "${username}"`);
       res.status(404).json({ error: 'User not found' });
@@ -58,7 +58,7 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
     res.status(204).send();
   });
 
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const { username, password } = req.body as { username?: string; password?: string };
     if (
       typeof username !== 'string' ||
@@ -76,7 +76,7 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
       return;
     }
     const key = UserStore.hashPassword(password);
-    const created = userStore.createUser(trimmedUsername, key);
+    const created = await userStore.createUser(trimmedUsername, key);
     if (!created) {
       log.warn(`Registration failed — duplicate username "${trimmedUsername}"`);
       res.status(409).json({ error: 'Username already exists' });
