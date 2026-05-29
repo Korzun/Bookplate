@@ -29,6 +29,8 @@ COPY app/client/package*.json ./app/client/
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /hass-odps/app/server/dist ./app/server/dist
+COPY --from=builder /hass-odps/app/server/prisma ./app/server/prisma
+COPY --from=builder /hass-odps/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /hass-odps/app/client/dist ./app/client/dist
 
 COPY run.sh /run.sh

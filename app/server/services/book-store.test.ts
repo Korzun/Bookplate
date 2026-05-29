@@ -1027,6 +1027,7 @@ describe('reimportBook', () => {
     const epubPath = path.join(booksDir, oldId + '.epub');
 
     // Insert a progress record for the old ID using the shared prisma client
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${oldId}, '/p[1]', 0.5, 'Kobo', 'd1', 1000)`;
 
     // Overwrite the file to force a different partial MD5
@@ -1074,6 +1075,7 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // Orphaned progress under newId (no book owns newId)
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${newId}, '/p[2]', 0.8, 'Kobo', 'd1', 2000)`;
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
@@ -1116,6 +1118,8 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('bob', 'k')`;
     await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${oldId}, '/p[5]', 0.9, 'Kobo', 'd1', 3000)`;
     await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${newId}, '/p[2]', 0.4, 'Kobo', 'd1', 1000)`;
     // bob: orphaned progress is newer (ts=5000) than current (ts=2000) → orphaned wins
