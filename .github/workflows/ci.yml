@@ -75,5 +75,19 @@ jobs:
             fi
             sleep 1
           done
+          # DB check: a login attempt with a non-admin username falls through to a
+          # DB query (userStore.validateUser). A healthy DB returns 401 (user not
+          # found); a broken DB would return 500 or cause the server to crash.
+          LOGIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+            -X POST http://localhost:3000/api/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"smoke-check","password":"x"}')
+          if [ "$LOGIN_STATUS" != "401" ]; then
+            echo "DB check failed: expected HTTP 401 from /api/login, got ${LOGIN_STATUS}. Logs:"
+            docker logs smoke-test
+            docker rm -f smoke-test
+            exit 1
+          fi
+          echo "DB check passed (got 401 as expected)"
           docker stop smoke-test
           docker rm smoke-test
