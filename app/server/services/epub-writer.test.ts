@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import AdmZip from 'adm-zip';
 import { writeMetadata } from './epub-writer';
 import { parseEpub } from './epub-parser';
@@ -74,6 +75,108 @@ function makeEpub(
   if (opts.coverData) zip.addFile('OEBPS/cover.jpg', opts.coverData);
   return zip.toBuffer();
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for building ZIPs with data descriptor entries (bit 3)
+// ---------------------------------------------------------------------------
+
+/** CRC-32 as specified by the ZIP format (polynomial 0xEDB88320, reflected). */
+const CRC32_TABLE = (() => {
+  const t: number[] = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c;
+  }
+  return t;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC32_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * Build a ZIP buffer where every entry uses a data descriptor (general-purpose
+ * bit 3 set). The local file header stores 0 for CRC/sizes; the real values
+ * live in a trailing data descriptor record. This is what many commercial EPUB
+ * authoring tools produce.
+ */
+function zipWithDataDescriptors(entries: { name: string; data: Buffer }[]): Buffer {
+  const parts: Buffer[] = [];
+  const cdParts: Buffer[] = [];
+  let bodyOffset = 0;
+
+  for (const { name, data } of entries) {
+    const nameBytes = Buffer.from(name, 'utf8');
+    const compressed = zlib.deflateRawSync(data);
+    const checksum = crc32(data);
+
+    // Local file header — CRC and sizes are 0 (placeholders); the data
+    // descriptor written after the compressed data holds the real values.
+    const lh = Buffer.alloc(30 + nameBytes.length);
+    lh.writeUInt32LE(0x04034b50, 0); // PK\x03\x04
+    lh.writeUInt16LE(20, 4); // version needed
+    lh.writeUInt16LE(0x0008, 6); // flags: bit 3 = data descriptor
+    lh.writeUInt16LE(8, 8); // compression: deflate
+    lh.writeUInt16LE(0, 10); // mod time
+    lh.writeUInt16LE(0, 12); // mod date
+    lh.writeUInt32LE(0, 14); // CRC-32 placeholder
+    lh.writeUInt32LE(0, 18); // compressed size placeholder
+    lh.writeUInt32LE(0, 22); // uncompressed size placeholder
+    lh.writeUInt16LE(nameBytes.length, 26);
+    lh.writeUInt16LE(0, 28); // no extra field
+    nameBytes.copy(lh, 30);
+
+    // Data descriptor (PK\x07\x08 signature followed by real CRC/sizes).
+    const dd = Buffer.alloc(16);
+    dd.writeUInt32LE(0x08074b50, 0);
+    dd.writeUInt32LE(checksum, 4);
+    dd.writeUInt32LE(compressed.length, 8);
+    dd.writeUInt32LE(data.length, 12);
+
+    // Central directory entry — always carries the authoritative CRC/sizes.
+    const cd = Buffer.alloc(46 + nameBytes.length);
+    cd.writeUInt32LE(0x02014b50, 0); // PK\x01\x02
+    cd.writeUInt16LE(20, 4); // version made by
+    cd.writeUInt16LE(20, 6); // version needed
+    cd.writeUInt16LE(0x0008, 8); // flags: bit 3
+    cd.writeUInt16LE(8, 10); // compression: deflate
+    cd.writeUInt16LE(0, 12); // mod time
+    cd.writeUInt16LE(0, 14); // mod date
+    cd.writeUInt32LE(checksum, 16); // real CRC-32
+    cd.writeUInt32LE(compressed.length, 20);
+    cd.writeUInt32LE(data.length, 24);
+    cd.writeUInt16LE(nameBytes.length, 28);
+    cd.writeUInt16LE(0, 30); // extra length
+    cd.writeUInt16LE(0, 32); // comment length
+    cd.writeUInt16LE(0, 34); // disk start
+    cd.writeUInt16LE(0, 36); // internal attrs
+    cd.writeUInt32LE(0, 38); // external attrs
+    cd.writeUInt32LE(bodyOffset, 42); // offset of local header
+    nameBytes.copy(cd, 46);
+
+    parts.push(lh, compressed, dd);
+    bodyOffset += lh.length + compressed.length + dd.length;
+    cdParts.push(cd);
+  }
+
+  const cdBuf = Buffer.concat(cdParts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); // PK\x05\x06
+  eocd.writeUInt16LE(0, 4); // disk number
+  eocd.writeUInt16LE(0, 6); // disk with CD
+  eocd.writeUInt16LE(entries.length, 8); // entries on disk
+  eocd.writeUInt16LE(entries.length, 10); // total entries
+  eocd.writeUInt32LE(cdBuf.length, 12); // CD size
+  eocd.writeUInt32LE(bodyOffset, 16); // CD offset
+  eocd.writeUInt16LE(0, 20); // comment length
+
+  return Buffer.concat([...parts, cdBuf, eocd]);
+}
+
+// ---------------------------------------------------------------------------
 
 let tmpDir: string;
 beforeEach(() => {
@@ -193,5 +296,32 @@ describe('writeMetadata', () => {
   it('throws for a non-EPUB file (no container.xml)', () => {
     const f = toFile(Buffer.from('not a zip'), 'bad.epub');
     expect(() => writeMetadata(f, { title: 'x' })).toThrow();
+  });
+
+  describe('EPUBs whose ZIP entries use data descriptors (bit 3 set)', () => {
+    // Many commercial EPUB tools set the ZIP general-purpose bit 3 (data
+    // descriptor flag) on every entry, storing CRC/sizes in a trailing
+    // descriptor rather than the local file header. adm-zip previously
+    // preserved this flag on rewrite but omitted the descriptors, making
+    // the resulting archive unreadable.
+    it('writes series info and remains fully readable after the round-trip', () => {
+      // Extract entries from a normal synthetic EPUB and rebuild the ZIP so
+      // that every entry uses a data descriptor, reproducing the commercial
+      // tool layout without depending on any external fixture file.
+      const srcZip = new AdmZip(makeEpub({ title: 'Descriptor Test' }));
+      const entries = srcZip
+        .getEntries()
+        .map((e) => ({ name: e.entryName, data: e.isDirectory ? Buffer.alloc(0) : e.getData() }));
+      const f = toFile(zipWithDataDescriptors(entries), 'descriptor-test.epub');
+
+      expect(parseEpub(f).series).toBe('');
+
+      writeMetadata(f, { series: 'Test Series', seriesIndex: 2 });
+
+      const after = parseEpub(f);
+      expect(after.series).toBe('Test Series');
+      expect(after.seriesIndex).toBe(2);
+      expect(after.title).toBe('Descriptor Test');
+    });
   });
 });

@@ -17,7 +17,19 @@ export interface EpubChanges {
 }
 
 export function writeMetadata(filePath: string, changes: EpubChanges): void {
-  const zip = new AdmZip(filePath);
+  // Some EPUB authoring tools set the ZIP general-purpose bit 3 (data descriptor
+  // flag) on every entry. adm-zip preserves this flag when rewriting but does not
+  // emit the corresponding data descriptors, making the resulting file unreadable.
+  // Rebuilding the zip from decompressed entry data produces a clean archive.
+  const srcZip = new AdmZip(filePath);
+  const zip = new AdmZip();
+  for (const entry of srcZip.getEntries()) {
+    zip.addFile(
+      entry.entryName,
+      entry.isDirectory ? Buffer.alloc(0) : entry.getData(),
+      entry.comment
+    );
+  }
 
   // Step 1: resolve OPF path from container.xml
   const containerEntry = zip.getEntry('META-INF/container.xml');
