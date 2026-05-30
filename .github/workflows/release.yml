@@ -3,12 +3,20 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 1.2.3)"
+        description: 'Version to release (e.g. 1.2.3 or 1.2.3-rc.1)'
         required: true
+      channel:
+        description: 'Release channel'
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
 
 permissions:
   contents: write
@@ -80,19 +88,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      target_branch: ${{ steps.resolve.outputs.target_branch }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
 
-      - name: Resolve version
+      - name: Resolve version and channel
         id: resolve
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
+            CHANNEL="${{ github.event.inputs.channel }}"
           else
             VERSION="${GITHUB_REF_NAME#v}"
+            # A pre-release tag (e.g. v1.2.0-rc.1) routes to the beta channel
+            if echo "$VERSION" | grep -q '-'; then
+              CHANNEL="beta"
+            else
+              CHANNEL="stable"
+            fi
+          fi
+          if [ "$CHANNEL" = "beta" ]; then
+            echo "target_branch=beta" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "target_branch=main" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -106,7 +130,22 @@ jobs:
           yq e '.version = env(VERSION)' -i config.yaml
           npm version --no-git-tag-version --allow-same-version "$VERSION"
 
+      # Beta: reset the beta branch to main's current HEAD, commit the version bump there,
+      # and force-push. This keeps main untouched during the RC cycle so regular HA users
+      # are not prompted to update.
+      - name: Commit and push to beta branch
+        if: steps.resolve.outputs.target_branch == 'beta'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config.yaml package.json package-lock.json
+          git diff --cached --quiet && echo "No change" && exit 0
+          git checkout -B beta
+          git commit -m "chore: bump version to ${{ steps.resolve.outputs.version }} [skip ci]"
+          git push origin beta --force
+
       - name: Commit version bump
+        if: steps.resolve.outputs.target_branch == 'main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -123,7 +162,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: main
+          ref: ${{ needs.version.outputs.target_branch }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
@@ -141,9 +180,12 @@ jobs:
             --docker-hub ghcr.io/${{ github.repository_owner }}
             --addon
 
+  # Skipped for beta releases — the CHANGELOG is only updated on stable releases so
+  # that pre-release noise doesn't appear in the HA add-on store change history.
   changelog:
     name: Update CHANGELOG.md
     needs: version
+    if: needs.version.outputs.is_prerelease == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -196,12 +238,17 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [version, build, changelog]
+    # changelog is intentionally excluded from needs — it is skipped for beta releases,
+    # and a skipped job would cascade and block this job. release and changelog are
+    # independent and safe to run concurrently.
+    needs: [version, build]
     runs-on: ubuntu-latest
     steps:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ needs.version.outputs.target_branch }}
           generate_release_notes: true
-          make_latest: true
+          prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ needs.version.outputs.is_prerelease == 'false' }}
