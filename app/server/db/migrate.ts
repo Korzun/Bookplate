@@ -71,8 +71,8 @@ async function applyPendingMigrations(prisma: PrismaClient): Promise<void> {
     const startedAt = new Date().toISOString();
 
     // For the baseline migration, skip executing the SQL when the schema is
-    // already present (i.e. a database created by the legacy migration system).
-    // All other migrations are always executed.
+    // already present (databases upgraded from the pre-Prisma migration system).
+    // All subsequent migrations generated with `prisma migrate dev` are always executed.
     let skipSql = false;
     if (migName === '0_baseline') {
       const existing = await prisma.$queryRaw<Array<{ name: string }>>`
@@ -112,12 +112,34 @@ async function applyPendingMigrations(prisma: PrismaClient): Promise<void> {
 }
 
 /**
- * Runs all database migrations in order (v1–v9) and creates the users/progress
- * tables.  Safe to call on every startup — all steps are idempotent.
- *
- * PRAGMA calls that read or write session/header state are intentionally kept
- * outside Prisma transactions, since the SQLite adapter does not support them
- * inside a transaction context.
+ * Runs a named data migration exactly once, tracking completion in
+ * `_prisma_migrations` alongside the Prisma DDL migrations.
+ */
+async function runDataMigration(
+  prisma: PrismaClient,
+  name: string,
+  fn: () => Promise<void>
+): Promise<void> {
+  const existing = await prisma.$queryRaw<{ migration_name: string }[]>`
+    SELECT migration_name FROM _prisma_migrations
+    WHERE migration_name = ${name} AND rolled_back_at IS NULL
+    LIMIT 1
+  `;
+  if (existing.length > 0) return;
+
+  await fn();
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await prisma.$executeRaw`
+    INSERT INTO _prisma_migrations (id, checksum, migration_name, started_at, finished_at, applied_steps_count)
+    VALUES (${id}, '', ${name}, ${now}, ${now}, 1)
+  `;
+}
+
+/**
+ * Applies all pending Prisma DDL migrations and one-time data migrations.
+ * Safe to call on every startup.
  */
 export async function runMigrations(prisma: PrismaClient, booksDir: string): Promise<void> {
   // Enable FK enforcement for the lifetime of this connection so that ON DELETE
@@ -127,71 +149,22 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
   // Apply any pending Prisma Migrate SQL files and keep _prisma_migrations in sync.
   await applyPendingMigrations(prisma);
 
-  // ── User-store tables ────────────────────────────────────────────────────────
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS users (
-      username TEXT PRIMARY KEY,
-      key      TEXT NOT NULL
-    )
-  `;
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS progress (
-      username   TEXT    NOT NULL,
-      document   TEXT    NOT NULL,
-      progress   TEXT    NOT NULL,
-      percentage REAL    NOT NULL,
-      device     TEXT    NOT NULL,
-      device_id  TEXT    NOT NULL,
-      timestamp  INTEGER NOT NULL,
-      PRIMARY KEY (username, document)
-    )
-  `;
-
-  // ── Base books table (original schema, pre-v3 columns) ───────────────────────
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS books (
-      id            TEXT    PRIMARY KEY,
-      title         TEXT    NOT NULL,
-      file_as       TEXT    NOT NULL DEFAULT '',
-      author        TEXT    NOT NULL DEFAULT '',
-      description   TEXT    NOT NULL DEFAULT '',
-      publisher     TEXT    NOT NULL DEFAULT '',
-      series        TEXT    NOT NULL DEFAULT '',
-      series_index  REAL    NOT NULL DEFAULT 0,
-      identifiers   TEXT    NOT NULL DEFAULT '[]',
-      subjects      TEXT    NOT NULL DEFAULT '[]',
-      cover_data    BLOB,
-      cover_mime    TEXT,
-      size          INTEGER NOT NULL,
-      mtime         INTEGER NOT NULL,
-      added_at      INTEGER NOT NULL
-    )
-  `;
-
-  // ── Pre-v1: ensure file_as column exists (added before versioning began) ─────
-  const baseColumns = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-  if (!baseColumns.some((c) => c.name === 'file_as')) {
-    await prisma.$executeRaw`ALTER TABLE books ADD COLUMN file_as TEXT NOT NULL DEFAULT ''`;
-  }
-
-  // ── Read current schema version ──────────────────────────────────────────────
-  const versionRows = await prisma.$queryRaw<Array<{ user_version: number }>>`PRAGMA user_version`;
-  const user_version = versionRows[0].user_version;
-
-  // ── v2: recompute book IDs with corrected partial MD5 ───────────────────────
+  // Data migration: recompute book IDs with corrected partial MD5.
   // The original algorithm read 1 KiB starting at offset 256; the corrected one
-  // reads from offset 0.  Only runs when the old `path` column still exists.
-  if (user_version < 2) {
-    const v2Cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const hasPath = v2Cols.some((c) => c.name === 'path');
-    const books = hasPath
-      ? await prisma.$queryRaw<Array<{ id: string; path: string }>>`SELECT id, path FROM books`
-      : [];
+  // reads from offset 0. Only relevant for databases with the old `path` column.
+  await runDataMigration(prisma, 'data_v2_book_ids', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    if (!cols.some((c) => c.name === 'path')) return; // modern schema, skip
 
-    const progressCheck = await prisma.$queryRaw<Array<{ name: string }>>`
-      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'progress'
+    const books = await prisma.$queryRaw<Array<{ id: string; path: string }>>`
+      SELECT id, path FROM books
     `;
-    const progressExists = progressCheck.length > 0;
+    const progressExists =
+      (
+        await prisma.$queryRaw<Array<{ name: string }>>`
+          SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'progress'
+        `
+      ).length > 0;
 
     let recomputed = 0;
     await prisma.$transaction(async (tx) => {
@@ -211,182 +184,38 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         }
       }
     });
+    if (recomputed > 0) log.info(`Data migration (book IDs): recomputed ${recomputed} book ID(s)`);
+  });
 
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 2');
-    if (recomputed > 0) log.info(`Migration v2: recomputed ${recomputed} book ID(s)`);
-  }
-
-  // ── v3: add publisher, identifiers, subjects columns ────────────────────────
-  if (user_version < 3) {
+  // Data migration: backfill page_count from EPUB parsing for books imported
+  // before page counting was introduced.
+  await runDataMigration(prisma, 'data_v8_page_count', async () => {
     const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const colNames = new Set(cols.map((c) => c.name));
-    if (!colNames.has('publisher')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN publisher TEXT NOT NULL DEFAULT ''`;
-    }
-    if (!colNames.has('identifiers')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN identifiers TEXT NOT NULL DEFAULT '[]'`;
-    }
-    if (!colNames.has('subjects')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN subjects TEXT NOT NULL DEFAULT '[]'`;
-    }
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 3');
-  }
+    if (!cols.some((c) => c.name === 'page_count')) return; // pre-v8 schema, skip
 
-  // ── v4: add chapter_count, chapter_spine_map columns ────────────────────────
-  if (user_version < 4) {
-    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const colNames = new Set(cols.map((c) => c.name));
-    if (!colNames.has('chapter_count')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0`;
-    }
-    if (!colNames.has('chapter_spine_map')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN chapter_spine_map TEXT NOT NULL DEFAULT '[]'`;
-    }
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 4');
-  }
-
-  // ── v5: add chapter_names column ─────────────────────────────────────────────
-  if (user_version < 5) {
-    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    if (!cols.some((c) => c.name === 'chapter_names')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN chapter_names TEXT`;
-    }
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 5');
-  }
-
-  // ── v6: create book_thumbnails table ─────────────────────────────────────────
-  if (user_version < 6) {
-    await prisma.$executeRaw`
-      CREATE TABLE IF NOT EXISTS book_thumbnails (
-        book_id  TEXT    NOT NULL REFERENCES books(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        width    INTEGER NOT NULL,
-        data     BLOB    NOT NULL,
-        mime     TEXT    NOT NULL,
-        PRIMARY KEY (book_id, width)
-      )
+    const toBackfill = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM books WHERE page_count = 0
     `;
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 6');
-  }
-
-  // ── v7: canonicalize EPUB filenames and drop filename/path columns ───────────
-  // Old schema stored arbitrary filenames; new schema uses `<id>.epub` exclusively.
-  // Files are renamed on disk first, then the table is rebuilt inside a transaction
-  // (the only way to drop columns in SQLite < 3.35).
-  // PRAGMA foreign_keys must be toggled outside the transaction.
-  if (user_version < 7) {
-    const v7Cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const hasFilename = v7Cols.some((c) => c.name === 'filename');
-    const rows = hasFilename
-      ? await prisma.$queryRaw<Array<{ id: string; filename: string; path: string }>>`
-          SELECT id, filename, path FROM books
-        `
-      : [];
-
-    // Rename files on disk before touching the DB so that a crash mid-rename
-    // is recoverable: re-running will find the source gone (skip) or already
-    // at the canonical path (no-op).
-    for (const row of rows) {
-      const canonical = path.join(booksDir, row.id + '.epub');
-      const src = row.path && row.path.length > 0 ? row.path : path.join(booksDir, row.filename);
-
-      if (!fs.existsSync(src)) {
-        log.warn(`migration v7: source file missing for book ${row.id} (${src}); skipping rename`);
-        continue;
-      }
-      if (path.resolve(src) === path.resolve(canonical)) {
-        continue;
-      }
-      if (fs.existsSync(canonical)) {
-        log.warn(
-          `migration v7: canonical path ${canonical} already occupied; skipping rename for ${row.id}`
-        );
-        continue;
-      }
-      try {
-        fs.renameSync(src, canonical);
-      } catch (err: unknown) {
-        log.warn(
-          `migration v7: failed to rename ${src} → ${canonical}: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-    }
-
-    if (hasFilename) {
-      // Disable FK enforcement while rebuilding (must be outside the transaction)
-      await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF');
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`
-          CREATE TABLE books_new (
-            id                TEXT    PRIMARY KEY,
-            title             TEXT    NOT NULL,
-            file_as           TEXT    NOT NULL DEFAULT '',
-            author            TEXT    NOT NULL DEFAULT '',
-            description       TEXT    NOT NULL DEFAULT '',
-            publisher         TEXT    NOT NULL DEFAULT '',
-            series            TEXT    NOT NULL DEFAULT '',
-            series_index      REAL    NOT NULL DEFAULT 0,
-            identifiers       TEXT    NOT NULL DEFAULT '[]',
-            subjects          TEXT    NOT NULL DEFAULT '[]',
-            cover_data        BLOB,
-            cover_mime        TEXT,
-            size              INTEGER NOT NULL,
-            mtime             INTEGER NOT NULL,
-            added_at          INTEGER NOT NULL,
-            chapter_count     INTEGER NOT NULL DEFAULT 0,
-            chapter_spine_map TEXT    NOT NULL DEFAULT '[]',
-            chapter_names     TEXT
-          )
-        `;
-        await tx.$executeRaw`
-          INSERT INTO books_new (
-            id, title, file_as, author, description, publisher, series,
-            series_index, identifiers, subjects, cover_data, cover_mime,
-            size, mtime, added_at, chapter_count, chapter_spine_map, chapter_names
-          )
-          SELECT
-            id, title, file_as, author, description, publisher, series,
-            series_index, identifiers, subjects, cover_data, cover_mime,
-            size, mtime, added_at, chapter_count, chapter_spine_map, chapter_names
-          FROM books
-        `;
-        await tx.$executeRaw`DROP TABLE books`;
-        await tx.$executeRaw`ALTER TABLE books_new RENAME TO books`;
-      });
-      await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
-      log.info(
-        `Migration v7: canonicalized ${rows.length} book file(s); dropped filename/path columns`
-      );
-    }
-
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 7');
-  }
-
-  // ── v8: add page_count column and backfill from epub parsing ─────────────────
-  if (user_version < 8) {
-    const v8Cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    if (!v8Cols.some((c) => c.name === 'page_count')) {
-      await prisma.$executeRaw`ALTER TABLE books ADD COLUMN page_count INTEGER NOT NULL DEFAULT 0`;
-    }
-    const toBackfill = await prisma.$queryRaw<
-      Array<{ id: string }>
-    >`SELECT id FROM books WHERE page_count = 0`;
     for (const { id } of toBackfill) {
       const filePath = path.join(booksDir, id + '.epub');
       try {
         const meta = parseEpub(filePath);
         await prisma.$executeRaw`UPDATE books SET page_count = ${meta.pageCount} WHERE id = ${id}`;
       } catch {
-        log.warn(`Migration v8: failed to compute page count for book ${id}; leaving at 0`);
+        log.warn(`Data migration (page count): failed for book ${id}; leaving at 0`);
       }
     }
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 8');
-  }
+  });
 
-  // ── v9: backfill chapter_count / chapter_spine_map / chapter_names ───────────
-  if (user_version < 9) {
-    const toBackfill = await prisma.$queryRaw<
-      Array<{ id: string }>
-    >`SELECT id FROM books WHERE chapter_count = 0`;
+  // Data migration: backfill chapter_count / chapter_spine_map / chapter_names
+  // for books imported before chapter data extraction was introduced.
+  await runDataMigration(prisma, 'data_v9_chapter_data', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    if (!cols.some((c) => c.name === 'chapter_count')) return; // pre-v4 schema, skip
+
+    const toBackfill = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM books WHERE chapter_count = 0
+    `;
     let backfilled = 0;
     for (const { id } of toBackfill) {
       const filePath = path.join(booksDir, id + '.epub');
@@ -405,10 +234,9 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
           backfilled++;
         }
       } catch {
-        log.warn(`Migration v9: failed to compute chapter data for book ${id}; leaving at 0`);
+        log.warn(`Data migration (chapter data): failed for book ${id}; leaving at 0`);
       }
     }
-    await prisma.$executeRawUnsafe('PRAGMA user_version = 9');
-    if (backfilled > 0) log.info(`Migration v9: backfilled chapter data for ${backfilled} book(s)`);
-  }
+    if (backfilled > 0) log.info(`Data migration (chapter data): backfilled ${backfilled} book(s)`);
+  });
 }

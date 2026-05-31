@@ -608,50 +608,6 @@ const BOOKS_SCHEMA = `
 `;
 
 describe('migrations', () => {
-  it('adds the file_as column when opening an existing books table', async () => {
-    const migDbPath = path.join(
-      os.tmpdir(),
-      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
-    );
-    const adapter = new PrismaBetterSqlite3({ url: `file:${migDbPath}` });
-    const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-
-    await migPrisma.$executeRawUnsafe(`
-      CREATE TABLE books (
-        id TEXT PRIMARY KEY,
-        filename TEXT NOT NULL UNIQUE,
-        path TEXT NOT NULL,
-        title TEXT NOT NULL,
-        author TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        series TEXT NOT NULL DEFAULT '',
-        series_index REAL NOT NULL DEFAULT 0,
-        cover_data BLOB,
-        cover_mime TEXT,
-        size INTEGER NOT NULL,
-        mtime INTEGER NOT NULL,
-        added_at INTEGER NOT NULL
-      )
-    `);
-
-    await runMigrations(migPrisma, booksDir);
-
-    const migratedStore = new BookStore(booksDir, migPrisma);
-    const columns = await migPrisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-
-    expect(columns.some((column) => column.name === 'file_as')).toBe(true);
-    expect(await migratedStore.listBooks()).toEqual([]);
-
-    await migPrisma.$disconnect();
-    try {
-      fs.unlinkSync(migDbPath);
-    } catch {
-      /* best-effort cleanup */
-    }
-  });
-
   it('migration v2: recomputes stale book ID to match corrected partial MD5', async () => {
     const filePath = path.join(booksDir, 'migrate-v2.epub');
     fs.writeFileSync(filePath, Buffer.alloc(2048, 'x'));
@@ -673,8 +629,6 @@ describe('migrations', () => {
 
     const rows = await migPrisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
     expect(rows[0].id).toBe(correctId);
-    const uv = await migPrisma.$queryRaw<[{ user_version: number }]>`PRAGMA user_version`;
-    expect(Number(uv[0].user_version)).toBe(9);
 
     await migPrisma.$disconnect();
     try {
@@ -752,82 +706,13 @@ describe('migrations', () => {
     }
   });
 
-  it('migration v2: does not re-run when user_version is already 2', async () => {
-    const filePath = path.join(booksDir, 'already-migrated.epub');
-    fs.writeFileSync(filePath, Buffer.alloc(2048, 'z'));
-    const pinnedId = 'pinned-id-should-not-change';
-
-    const migDbPath = path.join(
-      os.tmpdir(),
-      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
-    );
-    const adapter = new PrismaBetterSqlite3({ url: `file:${migDbPath}` });
-    const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 2');
-    await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES (${pinnedId}, 'already-migrated.epub', ${filePath}, 'Test', 2048, 0, 0)`;
-
-    await runMigrations(migPrisma, booksDir);
-
-    const rows = await migPrisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
-    expect(rows[0].id).toBe(pinnedId);
-
-    await migPrisma.$disconnect();
-    try {
-      fs.unlinkSync(migDbPath);
-    } catch {
-      /* best-effort cleanup */
-    }
-  });
-
-  it('migration v4: adds chapter_count and chapter_spine_map columns to existing table', async () => {
-    const migDbPath = path.join(
-      os.tmpdir(),
-      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
-    );
-    const adapter = new PrismaBetterSqlite3({ url: `file:${migDbPath}` });
-    const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await migPrisma.$executeRawUnsafe(`
-      CREATE TABLE books (
-        id TEXT PRIMARY KEY, filename TEXT NOT NULL UNIQUE, path TEXT NOT NULL,
-        title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '', publisher TEXT NOT NULL DEFAULT '',
-        series TEXT NOT NULL DEFAULT '', series_index REAL NOT NULL DEFAULT 0,
-        identifiers TEXT NOT NULL DEFAULT '[]', subjects TEXT NOT NULL DEFAULT '[]',
-        cover_data BLOB, cover_mime TEXT,
-        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL
-      )
-    `);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 3');
-
-    await runMigrations(migPrisma, booksDir);
-
-    const cols = await migPrisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const names = cols.map((c) => c.name);
-    expect(names).toContain('chapter_count');
-    expect(names).toContain('chapter_spine_map');
-    const uv = await migPrisma.$queryRaw<[{ user_version: number }]>`PRAGMA user_version`;
-    expect(Number(uv[0].user_version)).toBe(9);
-
-    await migPrisma.$disconnect();
-    try {
-      fs.unlinkSync(migDbPath);
-    } catch {
-      /* best-effort cleanup */
-    }
-  });
-
   it('migration v5: adds chapter_names column with NULL default', async () => {
     const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
     const names = cols.map((c) => c.name);
     expect(names).toContain('chapter_names');
   });
 
-  it('migration v8: adds page_count column to existing v7 table', async () => {
+  it('data migration: backfills page_count for books with zero page count', async () => {
     const migDbPath = path.join(
       os.tmpdir(),
       `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -836,6 +721,8 @@ describe('migrations', () => {
     const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
       typeof PrismaClient
     >[0]);
+    // Full modern schema (matching 0_baseline) so applyPendingMigrations records
+    // it as applied and the data_v8_page_count migration can run.
     await migPrisma.$executeRawUnsafe(`
       CREATE TABLE books (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '',
@@ -843,58 +730,18 @@ describe('migrations', () => {
         publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
         series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
         subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
-        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL,
-        chapter_count INTEGER NOT NULL DEFAULT 0,
-        chapter_spine_map TEXT NOT NULL DEFAULT '[]',
-        chapter_names TEXT
+        size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL DEFAULT 0, chapter_count INTEGER NOT NULL DEFAULT 0,
+        chapter_spine_map TEXT NOT NULL DEFAULT '[]', chapter_names TEXT,
+        page_count INTEGER NOT NULL DEFAULT 0
       )
     `);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 7');
-
-    await runMigrations(migPrisma, booksDir);
-
-    const cols = await migPrisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    expect(cols.map((c) => c.name)).toContain('page_count');
-    const uv = await migPrisma.$queryRaw<[{ user_version: number }]>`PRAGMA user_version`;
-    expect(Number(uv[0].user_version)).toBe(9);
-
-    await migPrisma.$disconnect();
-    try {
-      fs.unlinkSync(migDbPath);
-    } catch {
-      /* best-effort cleanup */
-    }
-  });
-
-  it('migration v8: backfills page_count for existing books on disk', async () => {
-    const migDbPath = path.join(
-      os.tmpdir(),
-      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
-    );
-    const adapter = new PrismaBetterSqlite3({ url: `file:${migDbPath}` });
-    const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await migPrisma.$executeRawUnsafe(`
-      CREATE TABLE books (
-        id TEXT PRIMARY KEY, title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '',
-        author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
-        publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
-        series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
-        subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
-        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL,
-        chapter_count INTEGER NOT NULL DEFAULT 0,
-        chapter_spine_map TEXT NOT NULL DEFAULT '[]',
-        chapter_names TEXT
-      )
-    `);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 7');
 
     const id = 'backfill-test';
     const epubPath = path.join(booksDir, `${id}.epub`);
     fs.writeFileSync(epubPath, makeMinimalEpubWithContent('A'.repeat(2048)));
 
-    await migPrisma.$executeRaw`INSERT INTO books (id, title, size, mtime, added_at) VALUES (${id}, 'Test Book', 100, 0, 0)`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, title) VALUES (${id}, 'Test Book')`;
 
     await runMigrations(migPrisma, booksDir);
 
@@ -911,7 +758,7 @@ describe('migrations', () => {
     }
   });
 
-  it('migration v8: skips missing EPUB files and leaves page_count at 0', async () => {
+  it('data migration: skips missing EPUB files and leaves page_count at 0', async () => {
     const migDbPath = path.join(
       os.tmpdir(),
       `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -927,14 +774,13 @@ describe('migrations', () => {
         publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
         series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
         subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
-        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL,
-        chapter_count INTEGER NOT NULL DEFAULT 0,
-        chapter_spine_map TEXT NOT NULL DEFAULT '[]',
-        chapter_names TEXT
+        size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL DEFAULT 0, chapter_count INTEGER NOT NULL DEFAULT 0,
+        chapter_spine_map TEXT NOT NULL DEFAULT '[]', chapter_names TEXT,
+        page_count INTEGER NOT NULL DEFAULT 0
       )
     `);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 7');
-    await migPrisma.$executeRaw`INSERT INTO books (id, title, size, mtime, added_at) VALUES ('missing-id', 'Gone', 100, 0, 0)`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, title) VALUES ('missing-id', 'Gone')`;
 
     await expect(runMigrations(migPrisma, booksDir)).resolves.not.toThrow();
 
@@ -951,7 +797,7 @@ describe('migrations', () => {
     }
   });
 
-  it('migration v8: does not re-run when user_version is already 8', async () => {
+  it('data migration: does not overwrite existing non-zero page_count', async () => {
     const migDbPath = path.join(
       os.tmpdir(),
       `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -973,7 +819,6 @@ describe('migrations', () => {
         page_count INTEGER NOT NULL DEFAULT 0
       )
     `);
-    await migPrisma.$executeRawUnsafe('PRAGMA user_version = 8');
     await migPrisma.$executeRaw`INSERT INTO books (id, title, page_count) VALUES ('pinned-id', 'Test', 99)`;
 
     await runMigrations(migPrisma, booksDir);
@@ -1385,148 +1230,5 @@ describe('book_thumbnails', () => {
     // Both books must remain intact after the failed reimport
     expect(await bookStore.getBookById(bookAId)).not.toBeNull();
     expect(await bookStore.getBookById(bookBId)).not.toBeNull();
-  });
-});
-
-describe('migration v7 (drop filename/path columns and canonicalize on-disk names)', () => {
-  it('renames files to <id>.epub and rebuilds the books table', async () => {
-    const dbPath = path.join(booksDir, 'mig.sqlite');
-
-    // ── Seed phase: create old-schema DB with a book ──────────────────────────
-    const seedAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
-    const seedPrisma = new PrismaClient({ adapter: seedAdapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await seedPrisma.$executeRawUnsafe(`
-      CREATE TABLE books (
-        id            TEXT    PRIMARY KEY,
-        filename      TEXT    NOT NULL UNIQUE,
-        path          TEXT    NOT NULL,
-        title         TEXT    NOT NULL,
-        file_as       TEXT    NOT NULL DEFAULT '',
-        author        TEXT    NOT NULL DEFAULT '',
-        description   TEXT    NOT NULL DEFAULT '',
-        publisher     TEXT    NOT NULL DEFAULT '',
-        series        TEXT    NOT NULL DEFAULT '',
-        series_index  REAL    NOT NULL DEFAULT 0,
-        identifiers   TEXT    NOT NULL DEFAULT '[]',
-        subjects      TEXT    NOT NULL DEFAULT '[]',
-        cover_data    BLOB,
-        cover_mime    TEXT,
-        size          INTEGER NOT NULL,
-        mtime         INTEGER NOT NULL,
-        added_at      INTEGER NOT NULL,
-        chapter_count INTEGER NOT NULL DEFAULT 0,
-        chapter_spine_map TEXT NOT NULL DEFAULT '[]',
-        chapter_names TEXT
-      )
-    `);
-    await seedPrisma.$executeRawUnsafe(`
-      CREATE TABLE book_thumbnails (
-        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        width   INTEGER NOT NULL,
-        data    BLOB NOT NULL,
-        mime    TEXT NOT NULL,
-        PRIMARY KEY (book_id, width)
-      )
-    `);
-    await seedPrisma.$executeRawUnsafe('PRAGMA user_version = 6');
-
-    const oldOnDisk = path.join(booksDir, 'arbitrary.epub');
-    fs.writeFileSync(oldOnDisk, 'content');
-
-    await seedPrisma.$executeRaw`
-      INSERT INTO books (id, filename, path, title, size, mtime, added_at)
-      VALUES ('book-id-1', 'arbitrary.epub', ${oldOnDisk}, 'A Book', 7, 0, 0)
-    `;
-    await seedPrisma.$disconnect();
-
-    // ── Migration phase: open DB with new client and run migrations ───────────
-    const migAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
-    const migPrisma = new PrismaClient({ adapter: migAdapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await runMigrations(migPrisma, booksDir);
-    const store = new BookStore(booksDir, migPrisma);
-
-    expect(fs.existsSync(oldOnDisk)).toBe(false);
-    expect(fs.existsSync(path.join(booksDir, 'book-id-1.epub'))).toBe(true);
-
-    const book = await store.getBookById('book-id-1');
-    expect(book!.title).toBe('A Book');
-
-    const cols = await migPrisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
-    const colNames = cols.map((c) => c.name);
-    expect(colNames).not.toContain('filename');
-    expect(colNames).not.toContain('path');
-
-    const uvRows = await migPrisma.$queryRaw<[{ user_version: number }]>`PRAGMA user_version`;
-    expect(uvRows[0].user_version).toBeGreaterThanOrEqual(7);
-
-    await migPrisma.$disconnect();
-  });
-
-  it('logs and skips rows whose on-disk file is missing', async () => {
-    const dbPath = path.join(booksDir, 'missing.sqlite');
-
-    // ── Seed phase ────────────────────────────────────────────────────────────
-    const seedAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
-    const seedPrisma = new PrismaClient({ adapter: seedAdapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await seedPrisma.$executeRawUnsafe(`
-      CREATE TABLE books (
-        id TEXT PRIMARY KEY,
-        filename TEXT NOT NULL UNIQUE,
-        path TEXT NOT NULL,
-        title TEXT NOT NULL,
-        file_as TEXT NOT NULL DEFAULT '',
-        author TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        publisher TEXT NOT NULL DEFAULT '',
-        series TEXT NOT NULL DEFAULT '',
-        series_index REAL NOT NULL DEFAULT 0,
-        identifiers TEXT NOT NULL DEFAULT '[]',
-        subjects TEXT NOT NULL DEFAULT '[]',
-        cover_data BLOB,
-        cover_mime TEXT,
-        size INTEGER NOT NULL,
-        mtime INTEGER NOT NULL,
-        added_at INTEGER NOT NULL,
-        chapter_count INTEGER NOT NULL DEFAULT 0,
-        chapter_spine_map TEXT NOT NULL DEFAULT '[]',
-        chapter_names TEXT
-      )
-    `);
-    await seedPrisma.$executeRawUnsafe(`
-      CREATE TABLE book_thumbnails (
-        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        width INTEGER NOT NULL,
-        data BLOB NOT NULL,
-        mime TEXT NOT NULL,
-        PRIMARY KEY (book_id, width)
-      )
-    `);
-    await seedPrisma.$executeRawUnsafe('PRAGMA user_version = 6');
-
-    const nonexistent = path.join(booksDir, 'gone.epub');
-    await seedPrisma.$executeRaw`
-      INSERT INTO books (id, filename, path, title, size, mtime, added_at)
-      VALUES ('ghost-id', 'gone.epub', ${nonexistent}, 'Ghost', 7, 0, 0)
-    `;
-    await seedPrisma.$disconnect();
-
-    // ── Migration phase ───────────────────────────────────────────────────────
-    const migAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
-    const migPrisma = new PrismaClient({ adapter: migAdapter } as ConstructorParameters<
-      typeof PrismaClient
-    >[0]);
-    await runMigrations(migPrisma, booksDir);
-    const store = new BookStore(booksDir, migPrisma);
-
-    const book = await store.getBookById('ghost-id');
-    expect(book).not.toBeNull();
-
-    await migPrisma.$disconnect();
   });
 });
