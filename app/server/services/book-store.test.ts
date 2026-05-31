@@ -1029,7 +1029,15 @@ describe('reimportBook', () => {
     // Insert a progress record for the old ID using the shared prisma client
     await prisma.user.create({ data: { username: 'alice', key: 'k' } });
     await prisma.progress.create({
-      data: { username: 'alice', document: oldId, progress: '/p[1]', percentage: 0.5, device: 'Kobo', deviceId: 'd1', timestamp: 1000 },
+      data: {
+        username: 'alice',
+        document: oldId,
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp: 1000,
+      },
     });
 
     // Overwrite the file to force a different partial MD5
@@ -1075,7 +1083,15 @@ describe('reimportBook', () => {
     // Orphaned progress under newId (no book owns newId)
     await prisma.user.create({ data: { username: 'alice', key: 'k' } });
     await prisma.progress.create({
-      data: { username: 'alice', document: newId, progress: '/p[2]', percentage: 0.8, device: 'Kobo', deviceId: 'd1', timestamp: 2000 },
+      data: {
+        username: 'alice',
+        document: newId,
+        progress: '/p[2]',
+        percentage: 0.8,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp: 2000,
+      },
     });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
@@ -1117,23 +1133,57 @@ describe('reimportBook', () => {
     await prisma.user.create({ data: { username: 'alice', key: 'k' } });
     await prisma.user.create({ data: { username: 'bob', key: 'k' } });
     await prisma.progress.create({
-      data: { username: 'alice', document: oldId, progress: '/p[5]', percentage: 0.9, device: 'Kobo', deviceId: 'd1', timestamp: 3000 },
+      data: {
+        username: 'alice',
+        document: oldId,
+        progress: '/p[5]',
+        percentage: 0.9,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp: 3000,
+      },
     });
     await prisma.progress.create({
-      data: { username: 'alice', document: newId, progress: '/p[2]', percentage: 0.4, device: 'Kobo', deviceId: 'd1', timestamp: 1000 },
+      data: {
+        username: 'alice',
+        document: newId,
+        progress: '/p[2]',
+        percentage: 0.4,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp: 1000,
+      },
     });
     // bob: orphaned progress is newer (ts=5000) than current (ts=2000) → orphaned wins
     await prisma.progress.create({
-      data: { username: 'bob', document: oldId, progress: '/p[1]', percentage: 0.2, device: 'Kobo', deviceId: 'd2', timestamp: 2000 },
+      data: {
+        username: 'bob',
+        document: oldId,
+        progress: '/p[1]',
+        percentage: 0.2,
+        device: 'Kobo',
+        deviceId: 'd2',
+        timestamp: 2000,
+      },
     });
     await prisma.progress.create({
-      data: { username: 'bob', document: newId, progress: '/p[9]', percentage: 0.95, device: 'Kobo', deviceId: 'd2', timestamp: 5000 },
+      data: {
+        username: 'bob',
+        document: newId,
+        progress: '/p[9]',
+        percentage: 0.95,
+        device: 'Kobo',
+        deviceId: 'd2',
+        timestamp: 5000,
+      },
     });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
     await bookStore.reimportBook(oldId, mockImporter);
 
-    const aliceRows = await prisma.progress.findMany({ where: { username: 'alice', document: newId } });
+    const aliceRows = await prisma.progress.findMany({
+      where: { username: 'alice', document: newId },
+    });
     expect(aliceRows).toHaveLength(1);
     expect(aliceRows[0].progress).toBe('/p[5]'); // alice's newer current record won
     expect(aliceRows[0].timestamp).toBe(3000);
