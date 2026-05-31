@@ -1027,8 +1027,10 @@ describe('reimportBook', () => {
     const epubPath = path.join(booksDir, oldId + '.epub');
 
     // Insert a progress record for the old ID using the shared prisma client
-    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${oldId}, '/p[1]', 0.5, 'Kobo', 'd1', 1000)`;
+    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    await prisma.progress.create({
+      data: { username: 'alice', document: oldId, progress: '/p[1]', percentage: 0.5, device: 'Kobo', deviceId: 'd1', timestamp: 1000 },
+    });
 
     // Overwrite the file to force a different partial MD5
     const newBuf = makeMinimalEpub('After');
@@ -1040,13 +1042,9 @@ describe('reimportBook', () => {
 
     if (newId !== oldId) {
       // ID changed: old progress row should be gone, new one should exist
-      const oldRows = await prisma.$queryRaw<
-        Array<unknown>
-      >`SELECT * FROM progress WHERE document = ${oldId}`;
+      const oldRows = await prisma.progress.findMany({ where: { document: oldId } });
       expect(oldRows).toHaveLength(0);
-      const newRows = await prisma.$queryRaw<
-        Array<unknown>
-      >`SELECT * FROM progress WHERE document = ${newId}`;
+      const newRows = await prisma.progress.findMany({ where: { document: newId } });
       expect(newRows.length).toBeGreaterThan(0);
     }
     // If ID didn't change (unlikely but possible): still verify DB is consistent
@@ -1075,8 +1073,10 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // Orphaned progress under newId (no book owns newId)
-    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${newId}, '/p[2]', 0.8, 'Kobo', 'd1', 2000)`;
+    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    await prisma.progress.create({
+      data: { username: 'alice', document: newId, progress: '/p[2]', percentage: 0.8, device: 'Kobo', deviceId: 'd1', timestamp: 2000 },
+    });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
     const result = await bookStore.reimportBook(oldId, mockImporter);
@@ -1084,15 +1084,11 @@ describe('reimportBook', () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe(newId);
     // Orphaned progress is now owned by the book
-    const newRows = await prisma.$queryRaw<
-      Array<{ username: string }>
-    >`SELECT * FROM progress WHERE document = ${newId}`;
+    const newRows = await prisma.progress.findMany({ where: { document: newId } });
     expect(newRows).toHaveLength(1);
     expect(newRows[0].username).toBe('alice');
     // Old id has no progress
-    const oldRows = await prisma.$queryRaw<
-      Array<unknown>
-    >`SELECT * FROM progress WHERE document = ${oldId}`;
+    const oldRows = await prisma.progress.findMany({ where: { document: oldId } });
     expect(oldRows).toHaveLength(0);
   });
 
@@ -1118,37 +1114,38 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
-    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
-    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('bob', 'k')`;
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${oldId}, '/p[5]', 0.9, 'Kobo', 'd1', 3000)`;
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${newId}, '/p[2]', 0.4, 'Kobo', 'd1', 1000)`;
+    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    await prisma.user.create({ data: { username: 'bob', key: 'k' } });
+    await prisma.progress.create({
+      data: { username: 'alice', document: oldId, progress: '/p[5]', percentage: 0.9, device: 'Kobo', deviceId: 'd1', timestamp: 3000 },
+    });
+    await prisma.progress.create({
+      data: { username: 'alice', document: newId, progress: '/p[2]', percentage: 0.4, device: 'Kobo', deviceId: 'd1', timestamp: 1000 },
+    });
     // bob: orphaned progress is newer (ts=5000) than current (ts=2000) → orphaned wins
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('bob', ${oldId}, '/p[1]', 0.2, 'Kobo', 'd2', 2000)`;
-    await prisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('bob', ${newId}, '/p[9]', 0.95, 'Kobo', 'd2', 5000)`;
+    await prisma.progress.create({
+      data: { username: 'bob', document: oldId, progress: '/p[1]', percentage: 0.2, device: 'Kobo', deviceId: 'd2', timestamp: 2000 },
+    });
+    await prisma.progress.create({
+      data: { username: 'bob', document: newId, progress: '/p[9]', percentage: 0.95, device: 'Kobo', deviceId: 'd2', timestamp: 5000 },
+    });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
     await bookStore.reimportBook(oldId, mockImporter);
 
-    type Row = { username: string; progress: string; timestamp: number };
-    const aliceRows = await prisma.$queryRaw<
-      Row[]
-    >`SELECT * FROM progress WHERE username = 'alice' AND document = ${newId}`;
+    const aliceRows = await prisma.progress.findMany({ where: { username: 'alice', document: newId } });
     expect(aliceRows).toHaveLength(1);
     expect(aliceRows[0].progress).toBe('/p[5]'); // alice's newer current record won
     expect(aliceRows[0].timestamp).toBe(3000);
 
-    const bobRows = await prisma.$queryRaw<
-      Row[]
-    >`SELECT * FROM progress WHERE username = 'bob' AND document = ${newId}`;
+    const bobRows = await prisma.progress.findMany({ where: { username: 'bob', document: newId } });
     expect(bobRows).toHaveLength(1);
     expect(bobRows[0].progress).toBe('/p[9]'); // bob's newer orphaned record won
     expect(bobRows[0].timestamp).toBe(5000);
 
     // No records left under oldId
-    const countResult = await prisma.$queryRaw<
-      [{ n: number }]
-    >`SELECT COUNT(*) AS n FROM progress WHERE document = ${oldId}`;
-    expect(Number(countResult[0].n)).toBe(0);
+    const oldIdCount = await prisma.progress.count({ where: { document: oldId } });
+    expect(oldIdCount).toBe(0);
   });
 });
 

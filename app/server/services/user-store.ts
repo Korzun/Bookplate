@@ -84,20 +84,13 @@ export class UserStore {
   }
 
   async listUsers(): Promise<{ username: string; progressCount: number }[]> {
-    const rows = await this.prisma.$queryRaw<
-      { username: string; progressCount: bigint | number }[]
-    >(
-      Prisma.sql`
-        SELECT u.username, COUNT(p.document) AS progressCount
-        FROM users u
-        LEFT JOIN progress p ON p.username = u.username
-        GROUP BY u.username
-        ORDER BY u.username ASC
-      `
-    );
+    const rows = await this.prisma.user.findMany({
+      orderBy: { username: 'asc' },
+      include: { _count: { select: { progresses: true } } },
+    });
     return rows.map((row) => ({
       username: row.username,
-      progressCount: Number(row.progressCount),
+      progressCount: row._count.progresses,
     }));
   }
 
