@@ -154,6 +154,10 @@ jobs:
           git commit -m "chore: bump version to ${{ steps.resolve.outputs.version }} [skip ci]"
           git push origin main
 
+      - name: Sync beta branch to stable release
+        if: steps.resolve.outputs.target_branch == 'main'
+        run: git push origin HEAD:beta --force
+
   build:
     name: Build & push images
     needs: version
