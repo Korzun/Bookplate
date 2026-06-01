@@ -184,6 +184,33 @@ jobs:
             --docker-hub ghcr.io/${{ github.repository_owner }}
             --addon
 
+  build-beta-sync:
+    name: Build & push images (beta channel sync)
+    needs: [version, build]
+    if: needs.version.outputs.target_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: beta
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: home-assistant/builder@2024.03.5
+        with:
+          args: >-
+            --all
+            --target /data
+            --docker-hub ghcr.io/${{ github.repository_owner }}
+            --addon
+
   # Skipped for beta releases — the CHANGELOG is only updated on stable releases so
   # that pre-release noise doesn't appear in the HA add-on store change history.
   changelog:
