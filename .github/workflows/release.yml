@@ -184,6 +184,10 @@ jobs:
             --docker-hub ghcr.io/${{ github.repository_owner }}
             --addon
 
+  # Syncs Docker images for the beta channel after a stable release. By this point the
+  # version job has already force-pushed beta to match main, so building from beta produces
+  # the same image content — but ensures the HA builder runs against the beta ref specifically.
+  # ref is hardcoded to beta: target_branch is 'main' at this point, but we want the beta ref.
   build-beta-sync:
     name: Build & push images (beta channel sync)
     needs: [version, build]
