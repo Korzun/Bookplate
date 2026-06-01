@@ -19,7 +19,7 @@
   },
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && npm install && chmod 700 /home/node/.gnupg && sudo mkdir -p /Users/korzun && sudo ln -sfn /home/node/.claude /Users/korzun/.claude",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
 
   // Configure tool-specific properties.
   "customizations": {
