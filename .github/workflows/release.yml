@@ -18,6 +18,10 @@ on:
           - stable
           - beta
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
