@@ -1,4 +1,5 @@
 export { BookEditForm } from './book-edit-form';
+export { BookLineageCard } from './book-lineage-card';
 export { BookRow } from './book-row';
 export { Card } from './card';
 export { ChapterProgress } from './chapter-progress';
