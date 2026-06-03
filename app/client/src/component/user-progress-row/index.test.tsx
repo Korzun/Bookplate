@@ -2,7 +2,15 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useBook } from '~/provider/book';
+import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
 import { renderWithProviders } from '~/test-utils';
+
+import { UserProgressRow } from './index';
+
+// vi.mock is hoisted by Vitest regardless of position in file
+vi.mock('~/provider/book');
+vi.mock('~/provider/progress');
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -12,14 +20,6 @@ beforeAll(() => {
     this.removeAttribute('open');
   });
 });
-
-// vi.mock is hoisted before imports — mocks are in place when ./index loads
-vi.mock('~/provider/book');
-vi.mock('~/provider/progress');
-
-import { useBook } from '~/provider/book';
-import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
-import { UserProgressRow } from './index';
 
 const mockProgress = { document: 'book-1', percentage: 75, device: 'Kobo', timestamp: 2000 };
 const mockBook = { id: 'book-1', title: 'Foundation' };
@@ -87,8 +87,6 @@ describe('UserProgressRow', () => {
     await user.click(screen.getByRole('button', { name: /clear/i }));
     const buttons = screen.getAllByRole('button', { name: /^clear$/i });
     await user.click(buttons[buttons.length - 1]);
-    await waitFor(() =>
-      expect(screen.getByText('Failed to clear progress')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText('Failed to clear progress')).toBeInTheDocument());
   });
 });

@@ -6,8 +6,8 @@ import { useBook } from '~/provider/book';
 import { useDeleteMyProgress, useMyProgress } from '~/provider/progress';
 import { relativeTime } from '~/utils';
 
-import { Toast } from '../toast';
 import { ProgressIndicator } from '../progress-indicator';
+import { Toast } from '../toast';
 
 import { useStyle } from './style';
 
@@ -31,6 +31,7 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
   useEffect(() => {
     if (submitCount === 0) return;
     if (deleting) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setToast(null);
       return;
     }
