@@ -102,7 +102,15 @@ export interface Theme {
   };
   radius: { sm: string; md: string; lg: string; circle: string };
   size: { metadataValue: string };
-  fontSize: { xs: string; sm: string; md: string; lg: string; xl: string; xxl: string };
+  fontSize: {
+    xxs: string;
+    xs: string;
+    sm: string;
+    md: string;
+    lg: string;
+    xl: string;
+    xxl: string;
+  };
   fontWeight: { medium: number; semibold: number; bold: number; extrabold: number };
   lineHeight: { tight: number; body: number };
   shadow: {
@@ -215,6 +223,7 @@ function buildTheme(): Theme {
   const radius: Theme['radius'] = { sm: '4px', md: '8px', lg: '16px', circle: '50%' };
   const size: Theme['size'] = { metadataValue: '15rem' };
   const fontSize: Theme['fontSize'] = {
+    xxs: '0.6rem',
     xs: '0.7rem',
     sm: '0.75rem',
     md: '0.875rem',
