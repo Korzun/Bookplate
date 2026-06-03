@@ -1,3 +1,13 @@
+## 1.2.1
+
+- chore: devcontainer improvements for Zed + Claude Code
+- chore: complete Prisma migration — services and data migration tracking
+- Feat: Track book ID lineage to keep KOSync progress in sync across edits and reimports
+- feat: beta channel follows stable releases
+- chore: ignore Claude worktree directory
+- feat: admin book ID lineage card
+- fix: add concurrency guard to Release workflow
+
 ## 1.2.0
 
 - chore: upgrade supertest v6 → v7
