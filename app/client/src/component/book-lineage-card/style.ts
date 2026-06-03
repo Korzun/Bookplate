@@ -25,7 +25,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     height: '10px',
     borderRadius: theme.radius.circle,
     backgroundColor: theme.color.blue[400],
-    marginTop: '4px',
+    marginTop: theme.space.xs,
     flexShrink: 0,
   },
   dotCurrent: {
