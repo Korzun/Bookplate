@@ -2,7 +2,7 @@ IMAGE   := hass-odps:dev
 PORT    := 3000
 BOOKS   := $(HOME)/Books
 
-.PHONY: build run stop logs shell clean dev dev-down
+.PHONY: build run stop logs shell clean dev dev-down dev-clean
 
 build:
 	docker build -t $(IMAGE) .
@@ -28,6 +28,9 @@ shell:
 
 clean:
 	docker rmi $(IMAGE) 2>/dev/null || true
+
+dev-clean:
+	docker compose down --rmi all 2>/dev/null || true
 
 # Dev: live-reload via docker compose (backend on :3000, frontend on :5173)
 dev:
