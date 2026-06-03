@@ -3,10 +3,10 @@ import type { ReactNode } from 'react';
 import { useCallback, useContext, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Context } from '../context';
-import type { Book, BookList } from '../type';
 import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
+import { Context } from '../context';
+import type { Book, BookList } from '../type';
 
 import { useRegenChapters } from './use-regen-chapters';
 
@@ -118,10 +118,9 @@ describe('useRegenChapters', () => {
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
-    const { result } = renderHook(
-      () => ({ hook: useRegenChapters(), ctx: useContext(Context) }),
-      { wrapper: makeWrapper([makeBook({ id: 'book-1' })]) }
-    );
+    const { result } = renderHook(() => ({ hook: useRegenChapters(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper([makeBook({ id: 'book-1' })]),
+    });
     await act(() => result.current.hook[0]('book-1'));
     expect(result.current.ctx.bookList['book-1'].chapterCount).toBe(5);
   });
@@ -132,10 +131,9 @@ describe('useRegenChapters', () => {
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
-    const { result } = renderHook(
-      () => ({ hook: useRegenChapters(), ctx: useContext(Context) }),
-      { wrapper: makeWrapper([makeBook({ id: 'old-id' })]) }
-    );
+    const { result } = renderHook(() => ({ hook: useRegenChapters(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper([makeBook({ id: 'old-id' })]),
+    });
     await act(() => result.current.hook[0]('old-id'));
     expect(result.current.ctx.bookList['old-id']).toBeUndefined();
     expect(result.current.ctx.bookList['new-id']).toBeDefined();
@@ -162,10 +160,7 @@ describe('useRegenChapters', () => {
   });
 
   it('sets error state on failed response', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false })
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const { result } = renderHook(() => useRegenChapters(), {
       wrapper: makeWrapper([makeBook({ id: 'book-1' })]),
     });
