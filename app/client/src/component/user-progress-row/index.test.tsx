@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useBook } from '~/provider/book';
+import { useBook, type Book } from '~/provider/book';
 import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
 import { renderWithProviders } from '~/test-utils';
 
@@ -22,13 +22,13 @@ beforeAll(() => {
 });
 
 const mockProgress = { document: 'book-1', percentage: 75, device: 'Kobo', timestamp: 2000 };
-const mockBook = { id: 'book-1', title: 'Foundation' };
+const mockBook = { id: 'book-1', title: 'Foundation' } as unknown as Book;
 
 describe('UserProgressRow', () => {
-  let mockDelete: ReturnType<typeof vi.fn>;
+  let mockDelete: (bookId: string) => Promise<void>;
 
   beforeEach(() => {
-    mockDelete = vi.fn();
+    mockDelete = vi.fn<(bookId: string) => Promise<void>>();
     vi.mocked(useBook).mockReturnValue([mockBook, false, false, undefined]);
     vi.mocked(useUserProgress).mockReturnValue([mockProgress, false, false, undefined]);
     vi.mocked(useDeleteUserProgress).mockReturnValue([mockDelete, false, false, undefined]);
