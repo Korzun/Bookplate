@@ -1354,15 +1354,15 @@ describe('resolveBookId — lineage via reimportBook', () => {
       expect(result!.entries[0].timestamp).toBeGreaterThanOrEqual(result!.entries[1].timestamp);
     });
 
-  it('returns null when called with a stale (old) ID that has been reimported', async () => {
-    await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
-    fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
-    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+    it('returns null when called with a stale (old) ID that has been reimported', async () => {
+      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
+      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
 
-    // id-a is no longer a current book; getBookLineage should return null for it
-    expect(await bookStore.getBookLineage('id-a')).toBeNull();
-    // id-b is the current book and should return normally
-    expect(await bookStore.getBookLineage('id-b')).not.toBeNull();
-  });
+      // id-a is no longer a current book; getBookLineage should return null for it
+      expect(await bookStore.getBookLineage('id-a')).toBeNull();
+      // id-b is the current book and should return normally
+      expect(await bookStore.getBookLineage('id-b')).not.toBeNull();
+    });
   });
 });
