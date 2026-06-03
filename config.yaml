@@ -1,6 +1,6 @@
 name: "HASS-ODPS Book Server"
 description: "OPDS 1.2 book catalog, KOSync progress sync, and web library manager for KoReader"
-version: "1.2.0"
+version: "1.2.1"
 slug: "hass-odps"
 image: "ghcr.io/korzun/hass-odps-{arch}"
 init: false
