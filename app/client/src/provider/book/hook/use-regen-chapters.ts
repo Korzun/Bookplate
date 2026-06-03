@@ -1,7 +1,7 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
-import { Context } from '../context';
 import { Context as ProgressContext } from '../../progress/context';
+import { Context } from '../context';
 import type { Book } from '../type';
 
 export type UseRegenChapters = [

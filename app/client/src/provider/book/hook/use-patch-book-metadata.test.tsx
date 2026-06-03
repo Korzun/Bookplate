@@ -3,10 +3,10 @@ import type { ReactNode } from 'react';
 import { useCallback, useContext, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Context } from '../context';
-import type { Book, BookList } from '../type';
 import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
+import { Context } from '../context';
+import type { Book, BookList } from '../type';
 
 import { usePatchBookMetadata } from './use-patch-book-metadata';
 
@@ -242,7 +242,10 @@ describe('usePatchBookMetadata', () => {
   it('moves progress from old to new id in all users caches when book id changes', async () => {
     const initialProgress: ProgressList = {
       alice: { 'old-id': { document: 'old-id', percentage: 0.5 } },
-      bob: { 'old-id': { document: 'old-id', percentage: 0.3 }, 'other-book': { document: 'other-book', percentage: 0.8 } },
+      bob: {
+        'old-id': { document: 'old-id', percentage: 0.3 },
+        'other-book': { document: 'other-book', percentage: 0.8 },
+      },
     };
     vi.stubGlobal(
       'fetch',
