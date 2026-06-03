@@ -1,7 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { Card, Page, ProgressIndicator, Tag, MetadataList, type Metadata } from '~/component';
+import {
+  Card,
+  Page,
+  ProgressIndicator,
+  Tag,
+  MetadataList,
+  BookLineageCard,
+  type Metadata,
+} from '~/component';
 import { Button, DeleteBookButton, RegenChaptersButton, SetProgressModal } from '~/control';
 import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
@@ -135,6 +143,12 @@ export const BookPage = () => {
           </div>
         )}
       </Card>
+      {isAdmin && (
+        <BookLineageCard
+          bookId={book.id}
+          addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
+        />
+      )}
       {isAdmin && (
         <div className={styles.buttonContainer}>
           <div className={styles.spacer} />
