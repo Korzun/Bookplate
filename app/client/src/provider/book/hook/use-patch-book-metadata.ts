@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { Context } from '../context';
+import { Context as ProgressContext } from '../../progress/context';
 import { Book } from '../type';
 
 export type BookMetadataPatch = Partial<{
@@ -24,6 +25,7 @@ export type UsePatchBookMetadata = [
 ];
 export const usePatchBookMetadata = (): UsePatchBookMetadata => {
   const { setBookList } = useContext(Context);
+  const { renameProgressKey } = useContext(ProgressContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -64,6 +66,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
           if (updatedBook.id !== bookId) delete next[bookId];
           return next;
         });
+        if (updatedBook.id !== bookId) renameProgressKey(bookId, updatedBook.id);
         return updatedBook.id;
       } catch (err) {
         setError(true);
@@ -74,7 +77,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         setLoading(false);
       }
     },
-    [loading, setBookList]
+    [loading, setBookList, renameProgressKey]
   );
 
   return useMemo(

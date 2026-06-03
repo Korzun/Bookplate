@@ -7,8 +7,28 @@ import session from 'express-session';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { runMigrations } from '../db/migrate';
+import { BookStore, ScanImporter } from '../services/book-store';
 import { UserStore } from '../services/user-store';
 import { createUsersRouter } from './users';
+import { EpubMeta } from '../types';
+
+const FAKE_META: EpubMeta = {
+  title: 'Test Book',
+  author: 'Author Name',
+  description: '',
+  publisher: '',
+  series: '',
+  seriesIndex: 0,
+  fileAs: '',
+  identifiers: [],
+  subjects: [],
+  coverData: null,
+  coverMime: null,
+  chapterCount: 0,
+  chapterSpineMap: [],
+  chapterNames: [],
+  pageCount: 0,
+};
 
 jest.mock('../logger');
 
@@ -132,6 +152,36 @@ describe('GET /api/users/:username/progress', () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0].document).toBe('dune.epub');
     expect(res.body[0].percentage).toBeCloseTo(0.42);
+  });
+
+  it('returns only the current-id entry after a reimport changes the book id', async () => {
+    const booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'users-lineage-'));
+    const bookStore = new BookStore(booksDir, prisma);
+    try {
+      const stagedPath = path.join(booksDir, 'staged-lin.epub');
+      fs.writeFileSync(stagedPath, 'x');
+      await bookStore.addBook('lin-old', stagedPath, FAKE_META);
+      await userStore.createUser('alice', 'pass');
+      await userStore.saveProgress('alice', {
+        document: 'lin-old',
+        progress: '/p[2]',
+        percentage: 0.4,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      const mockImporter: ScanImporter = {
+        parseEpub: () => FAKE_META,
+        partialMD5: () => 'lin-new',
+      };
+      await bookStore.reimportBook('lin-old', mockImporter);
+      const agent = await adminAgent();
+      const res = await agent.get('/api/users/alice/progress');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].document).toBe('lin-new');
+    } finally {
+      fs.rmSync(booksDir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -443,7 +443,7 @@ export function createUiRouter(
     sessionAuth,
     adminAuth,
     async (req: Request, res: Response) => {
-      const book = bookStore.getBookById(req.params.id);
+      const book = await bookStore.getBookById(req.params.id);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;

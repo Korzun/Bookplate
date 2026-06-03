@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { Context } from '../context';
+import { Context as ProgressContext } from '../../progress/context';
 import type { Book } from '../type';
 
 export type UseRegenChapters = [
@@ -12,6 +13,7 @@ export type UseRegenChapters = [
 
 export const useRegenChapters = (): UseRegenChapters => {
   const { setBookList } = useContext(Context);
+  const { renameProgressKey } = useContext(ProgressContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -29,7 +31,12 @@ export const useRegenChapters = (): UseRegenChapters => {
         });
         if (!res.ok) throw new Error('Failed to regenerate chapters');
         const updated = await (res.json() as Promise<Book>);
-        setBookList((prev) => ({ ...prev, [updated.id]: updated }));
+        setBookList((prev) => {
+          const next = { ...prev, [updated.id]: updated };
+          if (updated.id !== id) delete next[id];
+          return next;
+        });
+        if (updated.id !== id) renameProgressKey(id, updated.id);
       } catch (err) {
         setError(true);
         if (err instanceof Error) setErrorMessage(err.message);
@@ -37,7 +44,7 @@ export const useRegenChapters = (): UseRegenChapters => {
         setLoading(false);
       }
     },
-    [loading, setBookList]
+    [loading, setBookList, renameProgressKey]
   );
 
   return useMemo(

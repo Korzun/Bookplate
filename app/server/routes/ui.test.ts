@@ -894,6 +894,54 @@ describe('GET /api/my/progress', () => {
     const res = await agent.get('/api/my/progress');
     expect(res.body[0].chapterSpineMap).toBeUndefined();
   });
+
+  it('returns only the current-id entry after a reimport changes the book id', async () => {
+    await bookStore.addBook('lin-old', stage('lin-old'), FAKE_META);
+    await userStore.saveProgress('alice', {
+      document: 'lin-old',
+      progress: '/p[1]',
+      percentage: 0.5,
+      device: 'Kobo',
+      device_id: 'd1',
+    });
+    await bookStore.reimportBook('lin-old', {
+      parseEpub: () => FAKE_META,
+      partialMD5: () => 'lin-new',
+    });
+    const agent = await userAgent();
+    const res = await agent.get('/api/my/progress');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].document).toBe('lin-new');
+  });
+});
+
+describe('POST /api/books/:id/regen-chapters', () => {
+  it('returns 302 without session', async () => {
+    const res = await request(app).post('/api/books/any/regen-chapters');
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for regular user', async () => {
+    const agent = await userAgent();
+    const res = await agent.post('/api/books/any/regen-chapters');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for unknown book id', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post('/api/books/nonexistent/regen-chapters');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns the updated book on success', async () => {
+    const epubBuf = makeEpub({ title: FAKE_META.title, author: FAKE_META.author });
+    await bookStore.addBook('regen-ok', stage('regen-ok', epubBuf), FAKE_META);
+    const agent = await adminAgent();
+    const res = await agent.post('/api/books/regen-ok/regen-chapters');
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe(FAKE_META.title);
+  });
 });
 
 describe('DELETE /api/my/progress/:document', () => {

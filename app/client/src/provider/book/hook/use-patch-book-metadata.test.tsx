@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
+import { Context as ProgressContext } from '../../progress/context';
+import type { ProgressList, UserProgressList } from '../../progress/type';
 
 import { usePatchBookMetadata } from './use-patch-book-metadata';
 
@@ -27,7 +29,7 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function makeWrapper(initialBooks: Book[] = []) {
+function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
       Object.fromEntries(initialBooks.map((b) => [b.id, b]))
@@ -36,28 +38,57 @@ function makeWrapper(initialBooks: Book[] = []) {
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
       []
     );
+    const [progressList, setProgressListRaw] = useState<ProgressList>(initialProgress);
+    const setProgressForUsername = useCallback((username: string, data: UserProgressList) => {
+      setProgressListRaw((prev) => ({ ...prev, [username]: data }));
+    }, []);
+    const renameProgressKey = useCallback((oldId: string, newId: string) => {
+      setProgressListRaw((prev) => {
+        const next = { ...prev };
+        for (const username of Object.keys(next)) {
+          const userProgress = next[username];
+          if (userProgress && oldId in userProgress) {
+            const { [oldId]: oldEntry, ...rest } = userProgress;
+            next[username] = { ...rest, [newId]: { ...oldEntry, document: newId } };
+          }
+        }
+        return next;
+      });
+    }, []);
     return (
-      <Context.Provider
+      <ProgressContext.Provider
         value={{
-          bookList,
-          bookListFetched: true,
-          bookListLoading: false,
-          bookListError: undefined,
-          loadingByBookId: {},
-          errorByBookId: {},
-          completeBookIds: new Set(),
-          setBookList,
-          setBookListFetched: () => {},
-          setBookListLoading: () => {},
-          setBookListError: () => {},
-          setLoadingForBook: () => {},
-          setErrorForBook: () => {},
-          setBookComplete: () => {},
-          clearCompleteBookIds: () => {},
+          progressList,
+          loadingByUsername: {},
+          errorByUsername: {},
+          setProgressForUsername,
+          setLoadingForUsername: () => {},
+          setErrorForUsername: () => {},
+          renameProgressKey,
         }}
       >
-        {children}
-      </Context.Provider>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: true,
+            bookListLoading: false,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(),
+            setBookList,
+            setBookListFetched: () => {},
+            setBookListLoading: () => {},
+            setBookListError: () => {},
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ProgressContext.Provider>
     );
   };
 }
@@ -206,5 +237,48 @@ describe('usePatchBookMetadata', () => {
     await act(() => result.current[0]('1', { title: 'Second' }));
 
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves progress from old to new id in all users caches when book id changes', async () => {
+    const initialProgress: ProgressList = {
+      alice: { 'old-id': { document: 'old-id', percentage: 0.5 } },
+      bob: { 'old-id': { document: 'old-id', percentage: 0.3 }, 'other-book': { document: 'other-book', percentage: 0.8 } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBook({ id: 'new-id', title: 'Updated' })),
+      })
+    );
+    const { result } = renderHook(
+      () => ({ hook: usePatchBookMetadata(), ctx: useContext(ProgressContext) }),
+      { wrapper: makeWrapper([makeBook({ id: 'old-id' })], initialProgress) }
+    );
+    await act(() => result.current.hook[0]('old-id', { title: 'Updated' }));
+    expect(result.current.ctx.progressList['alice']['new-id']).toBeDefined();
+    expect(result.current.ctx.progressList['alice']['old-id']).toBeUndefined();
+    expect(result.current.ctx.progressList['bob']['new-id']).toBeDefined();
+    expect(result.current.ctx.progressList['bob']['old-id']).toBeUndefined();
+    expect(result.current.ctx.progressList['bob']['other-book']).toBeDefined();
+  });
+
+  it('does not touch progress cache when book id is unchanged', async () => {
+    const initialProgress: ProgressList = {
+      alice: { 'book-1': { document: 'book-1', percentage: 0.5 } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBook({ id: 'book-1', title: 'Updated' })),
+      })
+    );
+    const { result } = renderHook(
+      () => ({ hook: usePatchBookMetadata(), ctx: useContext(ProgressContext) }),
+      { wrapper: makeWrapper([makeBook({ id: 'book-1' })], initialProgress) }
+    );
+    await act(() => result.current.hook[0]('book-1', { title: 'Updated' }));
+    expect(result.current.ctx.progressList['alice']['book-1']).toBeDefined();
   });
 });

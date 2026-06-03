@@ -171,4 +171,24 @@ describe('useUserProgressList', () => {
     });
     expect(result.current.bob[0]).toEqual({ 'book-bob': { document: 'book-bob', percentage: 50 } });
   });
+
+  it('deduplicates entries with the same document id, keeping the last occurrence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            { document: 'book-1', percentage: 0.5 },
+            { document: 'book-1', percentage: 0.9 },
+          ]),
+      })
+    );
+    const { result } = renderHook(() => useUserProgressList('alice'), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current[1]).toBe(false));
+    expect(Object.keys(result.current[0]!)).toHaveLength(1);
+    expect(result.current[0]!['book-1'].percentage).toBe(0.9);
+  });
 });

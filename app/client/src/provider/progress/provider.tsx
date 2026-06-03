@@ -21,6 +21,20 @@ export const ProgressProvider = ({ children }: ProgressProviderProps) => {
     setErrorByUsernameRaw((prev) => ({ ...prev, [username]: error }));
   }, []);
 
+  const renameProgressKey = useCallback((oldId: string, newId: string) => {
+    setProgressListRaw((prev) => {
+      const next = { ...prev };
+      for (const username of Object.keys(next)) {
+        const userProgress = next[username];
+        if (userProgress && oldId in userProgress) {
+          const { [oldId]: oldEntry, ...rest } = userProgress;
+          next[username] = { ...rest, [newId]: { ...oldEntry, document: newId } };
+        }
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <Context.Provider
       value={{
@@ -30,6 +44,7 @@ export const ProgressProvider = ({ children }: ProgressProviderProps) => {
         setProgressForUsername,
         setLoadingForUsername,
         setErrorForUsername,
+        renameProgressKey,
       }}
     >
       {children}

@@ -9,6 +9,7 @@ export type ProgressContext = {
   setProgressForUsername: (username: string, data: UserProgressList) => void;
   setLoadingForUsername: (username: string, loading: boolean) => void;
   setErrorForUsername: (username: string, error: string | undefined) => void;
+  renameProgressKey: (oldId: string, newId: string) => void;
 };
 
 export const Context = createContext<ProgressContext>({
@@ -18,4 +19,5 @@ export const Context = createContext<ProgressContext>({
   setProgressForUsername: () => {},
   setLoadingForUsername: () => {},
   setErrorForUsername: () => {},
+  renameProgressKey: () => {},
 });
