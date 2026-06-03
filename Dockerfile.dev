@@ -4,7 +4,9 @@ WORKDIR /hass-odps
 COPY package*.json ./
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
+COPY app/server/prisma ./app/server/prisma
 RUN npm ci
+RUN npm run prisma:generate -w app/server
 
 EXPOSE 3000
 CMD ["npm", "run", "dev"]
