@@ -130,6 +130,28 @@ export class BookStore {
     return rows.length > 0 ? rows[0].current_id : id;
   }
 
+  async getBookLineage(id: string): Promise<{
+    currentId: string;
+    entries: { oldId: string; newId: string; timestamp: number }[];
+  } | null> {
+    const book = await this.prisma.book.findUnique({ where: { id }, select: { id: true } });
+    if (!book) return null;
+
+    const rows = await this.prisma.$queryRaw<Array<{ old_id: string; timestamp: number }>>`
+      SELECT old_id, timestamp FROM book_id_history
+      WHERE current_id = ${id}
+      ORDER BY timestamp DESC
+    `;
+
+    const entries = rows.map((row, i, arr) => ({
+      oldId: row.old_id,
+      newId: i === 0 ? id : arr[i - 1].old_id,
+      timestamp: row.timestamp,
+    }));
+
+    return { currentId: id, entries };
+  }
+
   async deleteBook(id: string): Promise<Book | null> {
     const book = await this.getBookById(id);
     if (!book) return null;
@@ -246,8 +268,14 @@ export class BookStore {
         }
 
         // Record lineage and flatten any prior chains pointing to old id
-        await tx.$executeRaw`INSERT OR REPLACE INTO book_id_history (old_id, current_id) VALUES (${id}, ${newId})`;
-        await tx.$executeRaw`UPDATE book_id_history SET current_id = ${newId} WHERE current_id = ${id}`;
+        await tx.$executeRaw`
+          INSERT OR REPLACE INTO book_id_history (old_id, current_id, timestamp)
+          VALUES (${id}, ${newId}, ${Date.now()})
+        `;
+        await tx.$executeRaw`
+          UPDATE book_id_history SET current_id = ${newId}
+          WHERE current_id = ${id}
+        `;
       } else {
         await tx.book.update({
           where: { id },

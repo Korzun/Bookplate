@@ -1308,4 +1308,50 @@ describe('resolveBookId — lineage via reimportBook', () => {
     `;
     expect(rows).toHaveLength(0);
   });
+
+  describe('getBookLineage', () => {
+    it('returns null for a book that does not exist', async () => {
+      expect(await bookStore.getBookLineage('no-such-id')).toBeNull();
+    });
+
+    it('returns currentId with empty entries for a book with no history', async () => {
+      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      const result = await bookStore.getBookLineage('id-a');
+      expect(result).toEqual({ currentId: 'id-a', entries: [] });
+    });
+
+    it('returns one entry after a single reimport that changes the ID', async () => {
+      const before = Date.now();
+      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      const epubPath = path.join(booksDir, 'id-a.epub');
+      fs.writeFileSync(epubPath, 'content-a');
+      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+      const after = Date.now();
+
+      const result = await bookStore.getBookLineage('id-b');
+      expect(result).not.toBeNull();
+      expect(result!.currentId).toBe('id-b');
+      expect(result!.entries).toHaveLength(1);
+      expect(result!.entries[0].oldId).toBe('id-a');
+      expect(result!.entries[0].newId).toBe('id-b');
+      expect(result!.entries[0].timestamp).toBeGreaterThanOrEqual(before);
+      expect(result!.entries[0].timestamp).toBeLessThanOrEqual(after);
+    });
+
+    it('entries are ordered newest-first', async () => {
+      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
+      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+      fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'content-b');
+      await bookStore.reimportBook('id-b', makeImporterWithId('id-c'));
+
+      const result = await bookStore.getBookLineage('id-c');
+      expect(result!.entries).toHaveLength(2);
+      expect(result!.entries[0].oldId).toBe('id-b');
+      expect(result!.entries[0].newId).toBe('id-c');
+      expect(result!.entries[1].oldId).toBe('id-a');
+      expect(result!.entries[1].newId).toBe('id-b');
+      expect(result!.entries[0].timestamp).toBeGreaterThanOrEqual(result!.entries[1].timestamp);
+    });
+  });
 });
