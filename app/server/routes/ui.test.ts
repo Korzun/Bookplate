@@ -503,6 +503,38 @@ describe('GET /api/books/:id', () => {
   });
 });
 
+describe('GET /api/books/:id/lineage', () => {
+  it('returns 302 when not authenticated', async () => {
+    const res = await request(app).get('/api/books/some-id/lineage');
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 when authenticated as a regular user', async () => {
+    const agent = await userAgent();
+    const res = await agent.get('/api/books/some-id/lineage');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 when book does not exist', async () => {
+    const agent = await adminAgent();
+    const res = await agent.get('/api/books/no-such-book/lineage');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns lineage with empty entries for a book with no history', async () => {
+    const agent = await adminAgent();
+    const epubBuf = makeEpub({ title: 'Lineage Test' });
+    const epubPath = path.join(booksDir, 'lin-id.epub');
+    fs.writeFileSync(epubPath, epubBuf);
+    await bookStore.addBook('lin-id', epubPath, FAKE_META);
+
+    const res = await agent.get('/api/books/lin-id/lineage');
+    expect(res.status).toBe(200);
+    expect(res.body.currentId).toBe('lin-id');
+    expect(res.body.entries).toEqual([]);
+  });
+});
+
 describe('GET /api/books/:id/cover', () => {
   it('returns 200 with cover image for a book with cover', async () => {
     const coverBuf = Buffer.from('fake-jpeg-bytes');

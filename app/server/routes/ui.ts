@@ -271,6 +271,15 @@ export function createUiRouter(
     res.json(rest);
   });
 
+  router.get('/api/books/:id/lineage', sessionAuth, adminAuth, async (req: Request, res: Response) => {
+    const lineage = await bookStore.getBookLineage(req.params.id);
+    if (!lineage) {
+      res.status(404).json({ error: 'Book not found' });
+      return;
+    }
+    res.json(lineage);
+  });
+
   router.get('/api/books/:id/cover', sessionAuth, async (req: Request, res: Response) => {
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
