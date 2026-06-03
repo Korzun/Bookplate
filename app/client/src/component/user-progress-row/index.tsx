@@ -1,7 +1,12 @@
+import { Fragment, useCallback, useEffect, useState } from 'react';
+
+import { Button, ConfirmModal } from '~/control';
+import { AlertOctagonIcon } from '~/icon';
 import { useBook } from '~/provider/book';
-import { useUserProgress } from '~/provider/progress';
+import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
 import { relativeTime } from '~/utils';
 
+import { Toast } from '../toast';
 import { ProgressIndicator } from '../progress-indicator';
 
 import { useStyle } from './style';
@@ -16,6 +21,34 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
 
   const [book] = useBook(bookId);
   const [progress, progressLoading, progressError] = useUserProgress(username, bookId);
+  const [deleteUserProgress, deleting, error, errorMessage] = useDeleteUserProgress(username);
+
+  const [showModal, setShowModal] = useState(false);
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [submitCount, setSubmitCount] = useState(0);
+
+  const handleDismiss = useCallback(() => setToast(null), []);
+
+  useEffect(() => {
+    if (submitCount === 0) return;
+    if (deleting) {
+      setToast(null);
+      return;
+    }
+    if (error) {
+      setToast({ text: errorMessage ?? 'Failed to clear progress', type: 'error' });
+      return;
+    }
+    setToast({ text: 'Progress cleared', type: 'success' });
+  }, [submitCount, deleting, error, errorMessage]);
+
+  const handleClear = useCallback(() => setShowModal(true), []);
+  const handleCancel = useCallback(() => setShowModal(false), []);
+  const handleConfirm = useCallback(() => {
+    setShowModal(false);
+    setSubmitCount((c) => c + 1);
+    deleteUserProgress(bookId);
+  }, [deleteUserProgress, bookId]);
 
   if (progressLoading) {
     return <div className={styles.loading}>Loading…</div>;
@@ -34,12 +67,34 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
   if (progress.timestamp != null) metadataList.push(relativeTime(progress.timestamp));
 
   return (
-    <div className={styles.root}>
-      <div className={styles.progress}>
-        <ProgressIndicator value={progress.percentage} size={14} />
+    <Fragment>
+      <div className={styles.root}>
+        <div className={styles.progress}>
+          <ProgressIndicator value={progress.percentage} size={14} />
+        </div>
+        <div className={styles.book}>{bookTitle}</div>
+        <div className={styles.metadata}>{metadataList.join(' · ')}</div>
+        <Button type="link" danger onClick={handleClear} loading={deleting}>
+          Clear
+        </Button>
       </div>
-      <div className={styles.book}>{bookTitle}</div>
-      <div className={styles.metadata}>{metadataList.join(' · ')}</div>
-    </div>
+      {showModal && (
+        <ConfirmModal
+          isOpen
+          onCancel={handleCancel}
+          onConfirm={handleConfirm}
+          icon={AlertOctagonIcon}
+          danger
+          title="Clear reading progress?"
+          confirmText="Clear"
+          loading={deleting}
+        >
+          This will remove synced reading progress for <strong>{bookTitle}</strong>.
+        </ConfirmModal>
+      )}
+      {toast && (
+        <Toast key={submitCount} message={toast.text} type={toast.type} onDismiss={handleDismiss} />
+      )}
+    </Fragment>
   );
 };
