@@ -51,6 +51,7 @@ function makeWrapper(initialProgress: ProgressList = {}, auth: { username?: stri
             setProgressForUsername,
             setLoadingForUsername,
             setErrorForUsername,
+            renameProgressKey: () => {},
           }}
         >
           {children}

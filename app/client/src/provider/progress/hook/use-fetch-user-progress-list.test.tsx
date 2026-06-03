@@ -46,6 +46,7 @@ function makeWrapper({
             setProgressForUsername,
             setLoadingForUsername,
             setErrorForUsername,
+            renameProgressKey: () => {},
           }}
         >
           {children}

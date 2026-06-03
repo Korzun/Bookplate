@@ -40,6 +40,7 @@ function makeWrapper(initialProgress: ProgressList = {}, username?: string) {
             setProgressForUsername,
             setLoadingForUsername: () => {},
             setErrorForUsername: () => {},
+            renameProgressKey: () => {},
           }}
         >
           {children}
