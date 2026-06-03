@@ -533,6 +533,26 @@ describe('GET /api/books/:id/lineage', () => {
     expect(res.body.currentId).toBe('lin-id');
     expect(res.body.entries).toEqual([]);
   });
+
+  it('returns lineage with history entries when history exists', async () => {
+    const agent = await adminAgent();
+    const epubPath = path.join(booksDir, 'curr-id.epub');
+    fs.writeFileSync(epubPath, makeEpub({ title: 'History Test' }));
+    await bookStore.addBook('curr-id', epubPath, FAKE_META);
+    // Insert a history row directly to simulate a prior reimport
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp)
+      VALUES ('old-id', 'curr-id', ${Date.now() - 1000})
+    `;
+
+    const res = await agent.get('/api/books/curr-id/lineage');
+    expect(res.status).toBe(200);
+    expect(res.body.currentId).toBe('curr-id');
+    expect(res.body.entries).toHaveLength(1);
+    expect(res.body.entries[0].oldId).toBe('old-id');
+    expect(res.body.entries[0].newId).toBe('curr-id');
+    expect(typeof res.body.entries[0].timestamp).toBe('number');
+  });
 });
 
 describe('GET /api/books/:id/cover', () => {

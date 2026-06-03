@@ -140,7 +140,7 @@ export class BookStore {
     const rows = await this.prisma.$queryRaw<Array<{ old_id: string; timestamp: number }>>`
       SELECT old_id, timestamp FROM book_id_history
       WHERE current_id = ${id}
-      ORDER BY timestamp DESC
+      ORDER BY timestamp DESC, rowid DESC
     `;
 
     const entries = rows.map((row, i, arr) => ({
@@ -156,17 +156,22 @@ export class BookStore {
     const book = await this.getBookById(id);
     if (!book) return null;
     try {
-      fs.unlinkSync(book.path);
-    } catch {
-      /* file already gone */
+      await this.prisma.$transaction(async (tx) => {
+        try {
+          await tx.book.delete({ where: { id } });
+        } catch (err) {
+          if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'))
+            throw err;
+        }
+        await tx.$executeRaw`DELETE FROM book_id_history WHERE old_id = ${id} OR current_id = ${id}`;
+      });
+    } finally {
+      try {
+        fs.unlinkSync(book.path);
+      } catch {
+        /* file already gone */
+      }
     }
-    try {
-      await this.prisma.book.delete({ where: { id } });
-    } catch (err) {
-      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) throw err;
-    }
-    await this.prisma
-      .$executeRaw`DELETE FROM book_id_history WHERE old_id = ${id} OR current_id = ${id}`;
     return book;
   }
 
