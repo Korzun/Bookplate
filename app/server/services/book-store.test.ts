@@ -5,7 +5,14 @@ import * as crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import AdmZip from 'adm-zip';
-import { BookStore, BookHashCollisionError, ScanImporter, SelfLinkError, DocumentAlreadyLinkedError } from './book-store';
+import {
+  BookStore,
+  BookHashCollisionError,
+  ScanImporter,
+  SelfLinkError,
+  DocumentAlreadyLinkedError,
+  DocumentIsBookError,
+} from './book-store';
 import { partialMD5 } from './epub-parser';
 import { EpubMeta } from '../types';
 import { runMigrations } from '../db/migrate';
@@ -1537,6 +1544,14 @@ describe('linkDocument', () => {
       where: { username_document: { username: 'carol', document: 'ow-target' } },
     });
     expect(targetProgress!.percentage).toBe(0.9);
+  });
+
+  it('throws DocumentIsBookError when documentId is an existing book', async () => {
+    await bookStore.addBook('doc-is-book-target', stage('doc-is-book-target'), FAKE_META);
+    await bookStore.addBook('doc-is-book-doc', stage('doc-is-book-doc'), FAKE_META);
+    await expect(bookStore.linkDocument('doc-is-book-target', 'doc-is-book-doc')).rejects.toThrow(
+      DocumentIsBookError
+    );
   });
 });
 

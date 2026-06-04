@@ -9,6 +9,7 @@ import {
   BookAlreadyExistsError,
   SelfLinkError,
   DocumentAlreadyLinkedError,
+  DocumentIsBookError,
 } from '../services/book-store';
 import { AppConfig, EpubMeta } from '../types';
 import { UserStore } from '../services/user-store';
@@ -314,6 +315,10 @@ export function createUiRouter(
           return;
         }
         if (err instanceof DocumentAlreadyLinkedError) {
+          res.status(409).json({ error: err.message });
+          return;
+        }
+        if (err instanceof DocumentIsBookError) {
           res.status(409).json({ error: err.message });
           return;
         }
