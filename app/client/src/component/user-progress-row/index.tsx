@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 
-import { Button, ConfirmModal } from '~/control';
+import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { AlertOctagonIcon } from '~/icon';
+import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
 import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
 import { relativeTime } from '~/utils';
@@ -19,11 +20,13 @@ interface UserProgressRowProps {
 export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
   const styles = useStyle();
 
-  const [book] = useBook(bookId);
+  const [isAdmin] = useIsAdmin();
+  const [book, bookLoading] = useBook(bookId);
   const [progress, progressLoading, progressError] = useUserProgress(username, bookId);
   const [deleteUserProgress, deleting, error, errorMessage] = useDeleteUserProgress(username);
 
-  const [showModal, setShowModal] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [submitCount, setSubmitCount] = useState(0);
 
@@ -43,10 +46,10 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
     setToast({ text: 'Progress cleared', type: 'success' });
   }, [submitCount, deleting, error, errorMessage]);
 
-  const handleClear = useCallback(() => setShowModal(true), []);
-  const handleCancel = useCallback(() => setShowModal(false), []);
-  const handleConfirm = useCallback(() => {
-    setShowModal(false);
+  const handleClear = useCallback(() => setShowClearModal(true), []);
+  const handleCancelClear = useCallback(() => setShowClearModal(false), []);
+  const handleConfirmClear = useCallback(() => {
+    setShowClearModal(false);
     setSubmitCount((c) => c + 1);
     deleteUserProgress(bookId);
   }, [deleteUserProgress, bookId]);
@@ -62,6 +65,7 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
   }
 
   const bookTitle = book?.title ?? progress.document;
+  const isUnresolved = book === undefined && !bookLoading;
 
   const metadataList: string[] = [];
   if (progress.device) metadataList.push(progress.device);
@@ -75,23 +79,37 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
         </div>
         <div className={styles.book}>{bookTitle}</div>
         <div className={styles.metadata}>{metadataList.join(' · ')}</div>
+        {isUnresolved && isAdmin && (
+          <Button type="link" onClick={() => setShowLinkModal(true)}>
+            Link
+          </Button>
+        )}
         <Button type="link" danger onClick={handleClear} loading={deleting}>
           Clear
         </Button>
       </div>
-      {showModal && (
+      {showClearModal && (
         <ConfirmModal
           isOpen
-          onCancel={handleCancel}
-          onConfirm={handleConfirm}
+          onCancel={handleCancelClear}
+          onConfirm={handleConfirmClear}
           icon={AlertOctagonIcon}
           danger
           title="Clear reading progress?"
           confirmText="Clear"
           loading={deleting}
         >
-          This will remove synced reading progress for <strong>{bookTitle}</strong>.
+          This will remove <strong>{username}</strong>'s synced reading progress for{' '}
+          <strong>{bookTitle}</strong>.
         </ConfirmModal>
+      )}
+      {showLinkModal && (
+        <LinkProgressModal
+          isOpen
+          documentId={bookId}
+          username={username}
+          onClose={() => setShowLinkModal(false)}
+        />
       )}
       {toast && (
         <Toast key={submitCount} message={toast.text} type={toast.type} onDismiss={handleDismiss} />
