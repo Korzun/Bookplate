@@ -66,8 +66,12 @@ export const UnlinkBookLineageButton = ({
         confirmText="Unlink"
         loading={unlinking}
       >
-        This action will unlink <span className={style.document}>{documentId}</span> from{' '}
-        <span className={style.book}>{book?.title ?? 'book'}</span> leaving all progress behind.
+        This action will unlink{' '}
+        <span className={style.document}>
+          {documentId.slice(0, 4)}…{documentId.slice(-4)}
+        </span>{' '}
+        from <span className={style.book}>{book?.title ?? 'book'}</span> leaving all progress
+        behind.
       </ConfirmModal>
     </Fragment>
   );
