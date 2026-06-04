@@ -58,6 +58,13 @@ export class DocumentAlreadyLinkedError extends Error {
   }
 }
 
+export class DocumentIsBookError extends Error {
+  constructor(public readonly documentId: string) {
+    super(`Document "${documentId}" is an existing book — use the book's lineage to link instead`);
+    this.name = 'DocumentIsBookError';
+  }
+}
+
 export interface ScanImporter {
   parseEpub: (filePath: string) => EpubMeta;
   partialMD5: (filePath: string) => string;
@@ -181,6 +188,9 @@ export class BookStore {
       `;
       if (existing.length > 0) throw new DocumentAlreadyLinkedError(documentId);
 
+      const isBook = await tx.book.findUnique({ where: { id: documentId }, select: { id: true } });
+      if (isBook) throw new DocumentIsBookError(documentId);
+
       const orphanProgresses = await tx.progress.findMany({ where: { document: documentId } });
       const targetProgresses = await tx.progress.findMany({ where: { document: bookId } });
       const targetByUsername = new Map(targetProgresses.map((p) => [p.username, p]));
@@ -220,19 +230,21 @@ export class BookStore {
     bookId: string,
     documentId: string
   ): Promise<'deleted' | 'not_found' | 'edit_row'> {
-    const rows = await this.prisma.$queryRaw<Array<{ type: string }>>`
-      SELECT type FROM book_id_history
-      WHERE old_id = ${documentId} AND current_id = ${bookId}
-    `;
-    if (rows.length === 0) return 'not_found';
-    if (rows[0].type === 'edit') return 'edit_row';
+    return await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ type: string }>>`
+        SELECT type FROM book_id_history
+        WHERE old_id = ${documentId} AND current_id = ${bookId}
+      `;
+      if (rows.length === 0) return 'not_found';
+      if (rows[0].type === 'edit') return 'edit_row';
 
-    // By design, unlinking does not reverse the progress migration.
-    // Progress that was migrated from documentId to bookId during linkDocument stays on bookId.
-    await this.prisma.$executeRaw`
-      DELETE FROM book_id_history WHERE old_id = ${documentId} AND current_id = ${bookId}
-    `;
-    return 'deleted';
+      // By design, unlinking does not reverse the progress migration.
+      // Progress that was migrated from documentId to bookId during linkDocument stays on bookId.
+      await tx.$executeRaw`
+        DELETE FROM book_id_history WHERE old_id = ${documentId} AND current_id = ${bookId}
+      `;
+      return 'deleted';
+    });
   }
 
   async deleteBook(id: string): Promise<Book | null> {
