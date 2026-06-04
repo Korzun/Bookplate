@@ -56,6 +56,7 @@ model BookIdHistory {
   oldId     String @id @map("old_id")
   currentId String @map("current_id")
   timestamp Float  @default(dbgenerated("strftime('%s', 'now') * 1000"))
+  type      String @default("edit")
 
   @@map("book_id_history")
 }

@@ -1265,6 +1265,31 @@ describe('book_id_history table', () => {
     `;
     expect(await bookStore.resolveBookId('old-id')).toBe('new-id');
   });
+
+  it('has a type column with default value edit', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM pragma_table_info('book_id_history')
+    `;
+    expect(cols.map((c) => c.name)).toContain('type');
+
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp)
+      VALUES ('type-test-old', 'type-test-new', ${Date.now()})
+    `;
+    const rows = await prisma.$queryRaw<Array<{ type: string }>>`
+      SELECT type FROM book_id_history WHERE old_id = 'type-test-old'
+    `;
+    expect(rows[0].type).toBe('edit');
+  });
+
+  it('rejects invalid type values via CHECK constraint', async () => {
+    await expect(
+      prisma.$executeRaw`
+        INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+        VALUES ('check-old', 'check-new', ${Date.now()}, 'invalid')
+      `
+    ).rejects.toThrow();
+  });
 });
 
 describe('resolveBookId — lineage via reimportBook', () => {
