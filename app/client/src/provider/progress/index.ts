@@ -3,6 +3,7 @@ export {
   useDeleteUserProgress,
   useFetchMyProgressList,
   useFetchUserProgressList,
+  useLinkProgress,
   useMyProgress,
   useMyProgressList,
   useMySeriesProgress,
