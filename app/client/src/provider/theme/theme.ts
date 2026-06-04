@@ -304,7 +304,11 @@ function buildTheme(): Theme {
       dialog: {
         cursor: 'default',
         fontFamily: fontFamily.body,
-        fontSize: fontSize.md,
+        fontSize: fontSize.lg,
+        fontStyle: 'normal',
+        letterSpacing: 'normal',
+        lineHeight: lineHeight.body,
+        textTransform: 'none',
         borderRadius: radius.lg,
         border: 'none',
         padding: 0,
