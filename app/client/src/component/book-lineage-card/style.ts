@@ -48,7 +48,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minWidth: 0,
   },
   entryId: {
-    fontFamily: "'Cascadia Code', 'Fira Code', monospace",
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     color: theme.color.text.secondary,
     display: 'flex',

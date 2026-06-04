@@ -39,6 +39,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     ...theme.recipe.label,
   },
   input: {
+    fontFamily: theme.fontFamily.body,
     outlineWidth: '2px',
     outlineStyle: 'solid',
     outlineColor: 'transparent',

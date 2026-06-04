@@ -5,7 +5,7 @@ import type { Theme } from './theme';
 const useGlobalStyles = createUseStyles((theme: Theme) => ({
   '@global': {
     body: {
-      fontFamily: 'system-ui, sans-serif',
+      fontFamily: theme.fontFamily.body,
       backgroundColor: theme.color.bg.page,
       color: theme.color.text.primary,
       minHeight: '100vh',

@@ -111,6 +111,7 @@ export interface Theme {
     xl: string;
     xxl: string;
   };
+  fontFamily: { body: string; mono: string };
   fontWeight: { medium: number; semibold: number; bold: number; extrabold: number };
   lineHeight: { tight: number; body: number };
   shadow: {
@@ -231,6 +232,10 @@ function buildTheme(): Theme {
     xl: '1.25rem',
     xxl: '1.75rem',
   };
+  const fontFamily: Theme['fontFamily'] = {
+    body: 'system-ui, sans-serif',
+    mono: "'Cascadia Code', 'Fira Code', monospace",
+  };
   const fontWeight: Theme['fontWeight'] = { medium: 500, semibold: 600, bold: 700, extrabold: 800 };
   const lineHeight: Theme['lineHeight'] = { tight: 1, body: 1.3 };
 
@@ -264,6 +269,7 @@ function buildTheme(): Theme {
 
   const recipe: Theme['recipe'] = {
     input: {
+      fontFamily: fontFamily.body,
       outlineWidth: '2px',
       outlineStyle: 'solid',
       outlineColor: 'transparent',
@@ -297,6 +303,7 @@ function buildTheme(): Theme {
     modal: {
       dialog: {
         cursor: 'default',
+        fontFamily: fontFamily.body,
         borderRadius: radius.lg,
         border: 'none',
         padding: 0,
@@ -363,6 +370,7 @@ function buildTheme(): Theme {
     radius,
     size,
     fontSize,
+    fontFamily,
     fontWeight,
     lineHeight,
     shadow,
