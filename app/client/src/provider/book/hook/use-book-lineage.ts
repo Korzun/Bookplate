@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type LineageEntry = {
   oldId: string;
   newId: string;
   timestamp: number;
+  type: 'edit' | 'merge';
 };
 
 export type BookLineage = {
@@ -12,14 +13,15 @@ export type BookLineage = {
 };
 
 export type UseBookLineage =
-  | [undefined, true, false]
-  | [undefined, false, true]
-  | [BookLineage, false, false];
+  | [undefined, true, false, () => void]
+  | [undefined, false, true, () => void]
+  | [BookLineage, false, false, () => void];
 
 type FetchResult = { bookId: string; data: BookLineage } | { bookId: string; error: true };
 
 export const useBookLineage = (bookId: string): UseBookLineage => {
   const [result, setResult] = useState<FetchResult | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +41,11 @@ export const useBookLineage = (bookId: string): UseBookLineage => {
     return () => {
       cancelled = true;
     };
-  }, [bookId]);
+  }, [bookId, fetchKey]);
 
-  if (result === null || result.bookId !== bookId) return [undefined, true, false];
-  if ('error' in result) return [undefined, false, true];
-  return [result.data, false, false];
+  const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
+
+  if (result === null || result.bookId !== bookId) return [undefined, true, false, refetch];
+  if ('error' in result) return [undefined, false, true, refetch];
+  return [result.data, false, false, refetch];
 };

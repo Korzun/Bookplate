@@ -1,4 +1,5 @@
 export { useBook } from './use-book';
+export { useBookLineage } from './use-book-lineage';
 export { useBookList } from './use-book-list';
 export { useDeleteBook } from './use-delete-book';
 export { useFetchBook } from './use-fetch-book';
