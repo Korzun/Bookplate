@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-export type UnlinkBookLineage = (documentId: string) => Promise<void>;
+export type UnlinkBookLineage = (documentId: string) => Promise<boolean>;
 export type UseUnlinkBookLineage =
   | [UnlinkBookLineage, false, false, undefined]
   | [UnlinkBookLineage, true, false, undefined]
@@ -14,8 +14,8 @@ export const useUnlinkBookLineage = (bookId: string): UseUnlinkBookLineage => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const unlink = useCallback(
-    async (documentId: string) => {
-      if (unlinkingRef.current) return;
+    async (documentId: string): Promise<boolean> => {
+      if (unlinkingRef.current) return false;
       unlinkingRef.current = true;
       setUnlinking(true);
       setError(false);
@@ -35,9 +35,11 @@ export const useUnlinkBookLineage = (bookId: string): UseUnlinkBookLineage => {
           }
           throw new Error(message);
         }
+        return true;
       } catch (err) {
         setError(true);
         if (err instanceof Error) setErrorMessage(err.message);
+        return false;
       } finally {
         unlinkingRef.current = false;
         setUnlinking(false);
