@@ -552,6 +552,130 @@ describe('GET /api/books/:id/lineage', () => {
     expect(res.body.entries[0].oldId).toBe('old-id');
     expect(res.body.entries[0].newId).toBe('curr-id');
     expect(typeof res.body.entries[0].timestamp).toBe('number');
+    expect(res.body.entries[0].type).toBe('edit');
+  });
+});
+
+describe('POST /api/books/:id/link', () => {
+  it('returns 302 when not authenticated', async () => {
+    const res = await request(app).post('/api/books/some-id/link').send({ documentId: 'doc' });
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 when authenticated as a regular user', async () => {
+    const agent = await userAgent();
+    const res = await agent.post('/api/books/some-id/link').send({ documentId: 'doc' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when documentId is missing', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('link-book', stage('link-book'), FAKE_META);
+    const res = await agent.post('/api/books/link-book/link').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when book does not exist', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post('/api/books/no-such-book/link').send({ documentId: 'doc' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when documentId equals bookId', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('self-link-book', stage('self-link-book'), FAKE_META);
+    const res = await agent
+      .post('/api/books/self-link-book/link')
+      .send({ documentId: 'self-link-book' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 409 when documentId is already linked', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('already-linked-book', stage('already-linked-book'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('already-orphan', 'already-linked-book', ${Date.now()}, 'merge')
+    `;
+    const res = await agent
+      .post('/api/books/already-linked-book/link')
+      .send({ documentId: 'already-orphan' });
+    expect(res.status).toBe(409);
+  });
+
+  it('returns 204 and migrates progress on success', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('route-link-target', stage('route-link-target'), FAKE_META);
+    await userStore.createUser('alice-route', 'hashed-pass');
+    await prisma.progress.create({
+      data: {
+        username: 'alice-route',
+        document: 'route-orphan',
+        progress: '',
+        percentage: 0.42,
+        device: 'Kobo',
+        deviceId: 'dev-x',
+        timestamp: 1000,
+      },
+    });
+
+    const res = await agent
+      .post('/api/books/route-link-target/link')
+      .send({ documentId: 'route-orphan' });
+    expect(res.status).toBe(204);
+
+    const migrated = await prisma.progress.findUnique({
+      where: { username_document: { username: 'alice-route', document: 'route-link-target' } },
+    });
+    expect(migrated).not.toBeNull();
+    expect(migrated!.percentage).toBe(0.42);
+  });
+});
+
+describe('DELETE /api/books/:id/link/:documentId', () => {
+  it('returns 302 when not authenticated', async () => {
+    const res = await request(app).delete('/api/books/some-id/link/some-doc');
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 when authenticated as a regular user', async () => {
+    const agent = await userAgent();
+    const res = await agent.delete('/api/books/some-id/link/some-doc');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 when no matching merge row exists', async () => {
+    const agent = await adminAgent();
+    const res = await agent.delete('/api/books/no-book/link/no-doc');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when row exists but is type=edit', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('unlink-book', stage('unlink-book'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('edit-doc', 'unlink-book', ${Date.now()}, 'edit')
+    `;
+    const res = await agent.delete('/api/books/unlink-book/link/edit-doc');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 204 and removes the merge row', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('unlink-target', stage('unlink-target'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('merge-doc', 'unlink-target', ${Date.now()}, 'merge')
+    `;
+
+    const res = await agent.delete('/api/books/unlink-target/link/merge-doc');
+    expect(res.status).toBe(204);
+
+    const rows = await prisma.$queryRaw<Array<unknown>>`
+      SELECT * FROM book_id_history WHERE old_id = 'merge-doc'
+    `;
+    expect(rows).toHaveLength(0);
   });
 });
 

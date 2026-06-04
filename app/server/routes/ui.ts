@@ -3,7 +3,13 @@ import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createHash } from 'crypto';
-import { BookStore, BookHashCollisionError, BookAlreadyExistsError } from '../services/book-store';
+import {
+  BookStore,
+  BookHashCollisionError,
+  BookAlreadyExistsError,
+  SelfLinkError,
+  DocumentAlreadyLinkedError,
+} from '../services/book-store';
 import { AppConfig, EpubMeta } from '../types';
 import { UserStore } from '../services/user-store';
 import { sessionAuth, adminAuth } from '../middleware/auth';
@@ -282,6 +288,55 @@ export function createUiRouter(
         return;
       }
       res.json(lineage);
+    }
+  );
+
+  router.post(
+    '/api/books/:id/link',
+    sessionAuth,
+    adminAuth,
+    async (req: Request, res: Response) => {
+      const { documentId } = req.body as { documentId?: unknown };
+      if (typeof documentId !== 'string' || !documentId.trim()) {
+        res.status(400).json({ error: 'documentId is required' });
+        return;
+      }
+      try {
+        const result = await bookStore.linkDocument(req.params.id, documentId.trim());
+        if (result === null) {
+          res.status(404).json({ error: 'Book not found' });
+          return;
+        }
+        res.status(204).send();
+      } catch (err) {
+        if (err instanceof SelfLinkError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        if (err instanceof DocumentAlreadyLinkedError) {
+          res.status(409).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+    }
+  );
+
+  router.delete(
+    '/api/books/:id/link/:documentId',
+    sessionAuth,
+    adminAuth,
+    async (req: Request, res: Response) => {
+      const result = await bookStore.unlinkDocument(req.params.id, req.params.documentId);
+      if (result === 'not_found') {
+        res.status(404).json({ error: 'Lineage entry not found' });
+        return;
+      }
+      if (result === 'edit_row') {
+        res.status(400).json({ error: 'Cannot unlink an organic edit entry' });
+        return;
+      }
+      res.status(204).send();
     }
   );
 
