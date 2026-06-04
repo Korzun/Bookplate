@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
@@ -17,12 +17,14 @@ export type UseLinkProgress =
 export const useLinkProgress = (bookId: string, username: string): UseLinkProgress => {
   const { progressList, setProgressForUsername } = useContext(Context);
   const [linking, setLinking] = useState(false);
+  const linkingRef = useRef(false);
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const link = useCallback(
     async (documentId: string) => {
-      if (linking) return;
+      if (linkingRef.current) return;
+      linkingRef.current = true;
       setLinking(true);
       setError(false);
       setErrorMessage(undefined);
@@ -44,10 +46,11 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
         setError(true);
         if (err instanceof Error) setErrorMessage(err.message);
       } finally {
+        linkingRef.current = false;
         setLinking(false);
       }
     },
-    [bookId, username, progressList, setProgressForUsername, linking]
+    [bookId, username, progressList, setProgressForUsername]
   );
 
   return useMemo(

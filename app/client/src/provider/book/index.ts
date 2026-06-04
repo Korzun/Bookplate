@@ -11,6 +11,7 @@ export {
   useSeriesBookList,
   useSeriesList,
   useStandaloneBookList,
+  useUnlinkBookLineage,
   useUploadBookList,
   useUploadQueue,
 } from './hook';

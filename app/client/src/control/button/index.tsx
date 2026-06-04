@@ -67,3 +67,5 @@ export const Button = ({
     </div>
   );
 };
+
+export type { ButtonTypeValue };
