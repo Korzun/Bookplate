@@ -1,5 +1,6 @@
 export {
   useBook,
+  useBookLineage,
   useBookList,
   useDeleteBook,
   useFetchBook,
@@ -7,8 +8,8 @@ export {
   usePatchBookMetadata,
   useRegenChapters,
   useScanLibrary,
-  useSeriesList,
   useSeriesBookList,
+  useSeriesList,
   useStandaloneBookList,
   useUploadBookList,
   useUploadQueue,
