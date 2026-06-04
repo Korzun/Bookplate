@@ -9,3 +9,4 @@ export { useSetMyProgress } from './use-set-my-progress';
 export { useUserProgress } from './use-user-progress';
 export { useUserProgressList } from './use-user-progress-list';
 export { useUserSeriesProgress } from './use-user-series-progress';
+export { useLinkProgress } from './use-link-progress';
