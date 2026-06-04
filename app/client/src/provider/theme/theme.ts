@@ -309,6 +309,8 @@ function buildTheme(): Theme {
         letterSpacing: 'normal',
         lineHeight: lineHeight.body,
         textTransform: 'none',
+        wordBreak: 'normal',
+        overflowWrap: 'break-word',
         borderRadius: radius.lg,
         border: 'none',
         padding: 0,
