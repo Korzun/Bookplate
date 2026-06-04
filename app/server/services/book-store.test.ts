@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import AdmZip from 'adm-zip';
-import { BookStore, BookHashCollisionError, ScanImporter } from './book-store';
+import { BookStore, BookHashCollisionError, ScanImporter, SelfLinkError, DocumentAlreadyLinkedError } from './book-store';
 import { partialMD5 } from './epub-parser';
 import { EpubMeta } from '../types';
 import { runMigrations } from '../db/migrate';
@@ -1389,5 +1389,213 @@ describe('resolveBookId — lineage via reimportBook', () => {
       // id-b is the current book and should return normally
       expect(await bookStore.getBookLineage('id-b')).not.toBeNull();
     });
+  });
+});
+
+describe('getBookLineage returns type on entries', () => {
+  function makeImporterWithId(newId: string): ScanImporter {
+    return {
+      parseEpub: (_filePath: string): EpubMeta => ({
+        ...FAKE_META,
+        title: 'Lineage Book',
+      }),
+      partialMD5: (_filePath: string): string => newId,
+    };
+  }
+
+  it('returns type edit for reimport-created entries', async () => {
+    await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+    fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content');
+    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+
+    const result = await bookStore.getBookLineage('id-b');
+    expect(result!.entries[0].type).toBe('edit');
+  });
+});
+
+describe('linkDocument', () => {
+  it('returns null when target book does not exist', async () => {
+    const result = await bookStore.linkDocument('no-such-book', 'orphan-1');
+    expect(result).toBeNull();
+  });
+
+  it('throws SelfLinkError when documentId equals bookId', async () => {
+    await bookStore.addBook('self-link', stage('self-link'), FAKE_META);
+    await expect(bookStore.linkDocument('self-link', 'self-link')).rejects.toThrow(SelfLinkError);
+  });
+
+  it('throws DocumentAlreadyLinkedError when documentId is already linked', async () => {
+    await bookStore.addBook('target', stage('target'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('already-linked', 'target', ${Date.now()}, 'merge')
+    `;
+    await expect(bookStore.linkDocument('target', 'already-linked')).rejects.toThrow(
+      DocumentAlreadyLinkedError
+    );
+  });
+
+  it('inserts a merge entry and migrates progress', async () => {
+    await bookStore.addBook('link-target', stage('link-target'), FAKE_META);
+    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    await prisma.progress.create({
+      data: {
+        username: 'alice',
+        document: 'orphan-doc',
+        progress: '',
+        percentage: 0.5,
+        device: 'Kobo',
+        deviceId: 'dev-1',
+        timestamp: 1000,
+      },
+    });
+
+    const result = await bookStore.linkDocument('link-target', 'orphan-doc');
+    expect(result).toBe(true);
+
+    const rows = await prisma.$queryRaw<Array<{ type: string }>>`
+      SELECT type FROM book_id_history WHERE old_id = 'orphan-doc' AND current_id = 'link-target'
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('merge');
+
+    const targetProgress = await prisma.progress.findUnique({
+      where: { username_document: { username: 'alice', document: 'link-target' } },
+    });
+    expect(targetProgress).not.toBeNull();
+    expect(targetProgress!.percentage).toBe(0.5);
+
+    const orphanProgress = await prisma.progress.findUnique({
+      where: { username_document: { username: 'alice', document: 'orphan-doc' } },
+    });
+    expect(orphanProgress).toBeNull();
+  });
+
+  it('keeps newer progress when both orphan and target have records (newer-wins)', async () => {
+    await bookStore.addBook('nw-target', stage('nw-target'), FAKE_META);
+    await prisma.user.create({ data: { username: 'bob', key: 'k' } });
+    await prisma.progress.create({
+      data: {
+        username: 'bob',
+        document: 'nw-orphan',
+        progress: '',
+        percentage: 0.3,
+        device: 'Kobo',
+        deviceId: 'dev-2',
+        timestamp: 100,
+      },
+    });
+    await prisma.progress.create({
+      data: {
+        username: 'bob',
+        document: 'nw-target',
+        progress: '',
+        percentage: 0.8,
+        device: 'Web',
+        deviceId: 'dev-3',
+        timestamp: 200,
+      },
+    });
+
+    await bookStore.linkDocument('nw-target', 'nw-orphan');
+
+    const targetProgress = await prisma.progress.findUnique({
+      where: { username_document: { username: 'bob', document: 'nw-target' } },
+    });
+    expect(targetProgress!.percentage).toBe(0.8);
+  });
+
+  it('orphan progress wins when it is newer', async () => {
+    await bookStore.addBook('ow-target', stage('ow-target'), FAKE_META);
+    await prisma.user.create({ data: { username: 'carol', key: 'k' } });
+    await prisma.progress.create({
+      data: {
+        username: 'carol',
+        document: 'ow-orphan',
+        progress: '',
+        percentage: 0.9,
+        device: 'Kobo',
+        deviceId: 'dev-4',
+        timestamp: 300,
+      },
+    });
+    await prisma.progress.create({
+      data: {
+        username: 'carol',
+        document: 'ow-target',
+        progress: '',
+        percentage: 0.1,
+        device: 'Web',
+        deviceId: 'dev-5',
+        timestamp: 100,
+      },
+    });
+
+    await bookStore.linkDocument('ow-target', 'ow-orphan');
+
+    const targetProgress = await prisma.progress.findUnique({
+      where: { username_document: { username: 'carol', document: 'ow-target' } },
+    });
+    expect(targetProgress!.percentage).toBe(0.9);
+  });
+});
+
+describe('unlinkDocument', () => {
+  it('returns not_found when no matching row exists', async () => {
+    const result = await bookStore.unlinkDocument('no-book', 'no-doc');
+    expect(result).toBe('not_found');
+  });
+
+  it('returns edit_row when the row has type=edit', async () => {
+    await bookStore.addBook('ul-target', stage('ul-target'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('ul-edit-doc', 'ul-target', ${Date.now()}, 'edit')
+    `;
+    const result = await bookStore.unlinkDocument('ul-target', 'ul-edit-doc');
+    expect(result).toBe('edit_row');
+  });
+
+  it('deletes the merge row and returns deleted', async () => {
+    await bookStore.addBook('ul-target2', stage('ul-target2'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('ul-merge-doc', 'ul-target2', ${Date.now()}, 'merge')
+    `;
+    const result = await bookStore.unlinkDocument('ul-target2', 'ul-merge-doc');
+    expect(result).toBe('deleted');
+
+    const rows = await prisma.$queryRaw<Array<unknown>>`
+      SELECT * FROM book_id_history WHERE old_id = 'ul-merge-doc'
+    `;
+    expect(rows).toHaveLength(0);
+  });
+
+  it('leaves progress records untouched when unlinking', async () => {
+    await bookStore.addBook('ul-prog-target', stage('ul-prog-target'), FAKE_META);
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+      VALUES ('ul-prog-orphan', 'ul-prog-target', ${Date.now()}, 'merge')
+    `;
+    await prisma.user.create({ data: { username: 'dave', key: 'k' } });
+    await prisma.progress.create({
+      data: {
+        username: 'dave',
+        document: 'ul-prog-target',
+        progress: '',
+        percentage: 0.6,
+        device: 'Kobo',
+        deviceId: 'dev-6',
+        timestamp: 500,
+      },
+    });
+
+    await bookStore.unlinkDocument('ul-prog-target', 'ul-prog-orphan');
+
+    const progress = await prisma.progress.findUnique({
+      where: { username_document: { username: 'dave', document: 'ul-prog-target' } },
+    });
+    expect(progress).not.toBeNull();
+    expect(progress!.percentage).toBe(0.6);
   });
 });

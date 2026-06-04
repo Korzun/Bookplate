@@ -44,6 +44,20 @@ export class BookAlreadyExistsError extends Error {
   }
 }
 
+export class SelfLinkError extends Error {
+  constructor() {
+    super('Cannot link a document ID to itself');
+    this.name = 'SelfLinkError';
+  }
+}
+
+export class DocumentAlreadyLinkedError extends Error {
+  constructor(public readonly documentId: string) {
+    super(`Document "${documentId}" is already linked to a book`);
+    this.name = 'DocumentAlreadyLinkedError';
+  }
+}
+
 export interface ScanImporter {
   parseEpub: (filePath: string) => EpubMeta;
   partialMD5: (filePath: string) => string;
@@ -132,13 +146,15 @@ export class BookStore {
 
   async getBookLineage(id: string): Promise<{
     currentId: string;
-    entries: { oldId: string; newId: string; timestamp: number }[];
+    entries: { oldId: string; newId: string; timestamp: number; type: string }[];
   } | null> {
     const book = await this.prisma.book.findUnique({ where: { id }, select: { id: true } });
     if (!book) return null;
 
-    const rows = await this.prisma.$queryRaw<Array<{ old_id: string; timestamp: number }>>`
-      SELECT old_id, timestamp FROM book_id_history
+    const rows = await this.prisma.$queryRaw<
+      Array<{ old_id: string; timestamp: number; type: string }>
+    >`
+      SELECT old_id, timestamp, type FROM book_id_history
       WHERE current_id = ${id}
       ORDER BY timestamp DESC, rowid DESC
     `;
@@ -147,9 +163,76 @@ export class BookStore {
       oldId: row.old_id,
       newId: i === 0 ? id : arr[i - 1].old_id,
       timestamp: row.timestamp,
+      type: row.type,
     }));
 
     return { currentId: id, entries };
+  }
+
+  async linkDocument(bookId: string, documentId: string): Promise<true | null> {
+    if (documentId === bookId) throw new SelfLinkError();
+
+    const book = await this.prisma.book.findUnique({ where: { id: bookId }, select: { id: true } });
+    if (!book) return null;
+
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.$queryRaw<Array<{ current_id: string }>>`
+        SELECT current_id FROM book_id_history WHERE old_id = ${documentId}
+      `;
+      if (existing.length > 0) throw new DocumentAlreadyLinkedError(documentId);
+
+      const orphanProgresses = await tx.progress.findMany({ where: { document: documentId } });
+      const targetProgresses = await tx.progress.findMany({ where: { document: bookId } });
+      const targetByUsername = new Map(targetProgresses.map((p) => [p.username, p]));
+
+      const keptProgresses: typeof orphanProgresses = [];
+      for (const orphanP of orphanProgresses) {
+        const targetP = targetByUsername.get(orphanP.username);
+        if (targetP) {
+          if (orphanP.timestamp >= targetP.timestamp) {
+            await tx.progress.delete({
+              where: { username_document: { username: orphanP.username, document: bookId } },
+            });
+            keptProgresses.push(orphanP);
+          }
+        } else {
+          keptProgresses.push(orphanP);
+        }
+      }
+
+      await tx.progress.deleteMany({ where: { document: documentId } });
+      if (keptProgresses.length > 0) {
+        await tx.progress.createMany({
+          data: keptProgresses.map((p) => ({ ...p, document: bookId })),
+        });
+      }
+
+      await tx.$executeRaw`
+        INSERT INTO book_id_history (old_id, current_id, timestamp, type)
+        VALUES (${documentId}, ${bookId}, ${Date.now()}, 'merge')
+      `;
+    });
+
+    return true;
+  }
+
+  async unlinkDocument(
+    bookId: string,
+    documentId: string
+  ): Promise<'deleted' | 'not_found' | 'edit_row'> {
+    const rows = await this.prisma.$queryRaw<Array<{ type: string }>>`
+      SELECT type FROM book_id_history
+      WHERE old_id = ${documentId} AND current_id = ${bookId}
+    `;
+    if (rows.length === 0) return 'not_found';
+    if (rows[0].type === 'edit') return 'edit_row';
+
+    // By design, unlinking does not reverse the progress migration.
+    // Progress that was migrated from documentId to bookId during linkDocument stays on bookId.
+    await this.prisma.$executeRaw`
+      DELETE FROM book_id_history WHERE old_id = ${documentId} AND current_id = ${bookId}
+    `;
+    return 'deleted';
   }
 
   async deleteBook(id: string): Promise<Book | null> {
