@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { useIsAdmin } from '~/provider/auth';
 import { useBook, type Book } from '~/provider/book';
@@ -149,6 +149,9 @@ describe('UserProgressRow — Link button visibility', () => {
 });
 
 describe('UserProgressRow — Clear functionality', () => {
+  const origShowModal = HTMLDialogElement.prototype.showModal;
+  const origClose = HTMLDialogElement.prototype.close;
+
   beforeAll(() => {
     HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
       this.setAttribute('open', '');
@@ -156,6 +159,11 @@ describe('UserProgressRow — Clear functionality', () => {
     HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
       this.removeAttribute('open');
     });
+  });
+
+  afterAll(() => {
+    HTMLDialogElement.prototype.showModal = origShowModal;
+    HTMLDialogElement.prototype.close = origClose;
   });
 
   const mockBook = { id: 'book-1', title: 'Foundation' } as unknown as Book;

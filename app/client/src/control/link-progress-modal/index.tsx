@@ -144,7 +144,9 @@ export function LinkProgressModal({
           </Button>
           <Button
             type="primary"
-            disabled={!selectedBookId || linking}
+            disabled={
+              !selectedBookId || !filteredBooks.some((b) => b.id === selectedBookId) || linking
+            }
             loading={linking}
             onClick={handleConfirm}
           >
