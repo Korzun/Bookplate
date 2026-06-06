@@ -1,21 +1,15 @@
-import cx from 'classnames';
-
 import { useBookLineage } from '~/provider/book/hook/use-book-lineage';
 
+import { BookLineageRow, type BookLineageRowProps } from '../book-lineage-row';
 import { Card } from '../card';
 
 import { useStyle } from './style';
 
 type Props = { bookId: string; addedAt?: number };
 
-function formatTimestamp(ms: number): string {
-  const d = new Date(ms);
-  return `${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
-}
-
 export const BookLineageCard = ({ bookId, addedAt }: Props) => {
   const styles = useStyle();
-  const [lineage, loading, error] = useBookLineage(bookId);
+  const [lineage, loading, error, refetch] = useBookLineage(bookId);
 
   if (loading) {
     return (
@@ -33,57 +27,55 @@ export const BookLineageCard = ({ bookId, addedAt }: Props) => {
     );
   }
 
-  // Build display rows: current ID first, then old IDs newest-first.
-  // Each row's timestamp = "when this ID first became the current book ID":
-  //   current  → entries[0].timestamp  (last rename), or addedAt if no history
-  //   entries[i].oldId → entries[i+1].timestamp (the rename that created it), or addedAt
-  type Row = { id: string; timestamp: number | undefined; isCurrent: boolean; isInitial: boolean };
-  const { entries } = lineage;
-
-  const rows: Row[] = [
-    {
-      id: lineage.currentId,
-      timestamp: entries.length > 0 ? entries[0].timestamp : addedAt,
-      isCurrent: true,
-      isInitial: false,
+  const { editEntries, mergeEntries } = lineage.entries.reduce(
+    (entries, entry, index) => {
+      if (entry.type === 'edit') {
+        entries.editEntries.push({ entry, originalIndex: index });
+      } else if (entry.type === 'merge') {
+        entries.mergeEntries.push({ entry, originalIndex: index });
+      }
+      return entries;
     },
-    ...entries.map((entry, i) => ({
-      id: entry.oldId,
-      timestamp: entries[i + 1]?.timestamp ?? addedAt,
-      isCurrent: false,
-      isInitial: i === entries.length - 1,
+    {
+      editEntries: [] as Array<{ entry: (typeof lineage.entries)[0]; originalIndex: number }>,
+      mergeEntries: [] as Array<{ entry: (typeof lineage.entries)[0]; originalIndex: number }>,
+    }
+  );
+
+  const lineageRowList: BookLineageRowProps[] = [
+    {
+      documentId: lineage.currentId,
+      timestamp: lineage.entries.length > 0 ? lineage.entries[0].timestamp : addedAt,
+      mergeRows: [],
+    },
+    ...editEntries.map(({ entry, originalIndex }) => ({
+      documentId: entry.oldId,
+      timestamp: lineage.entries[originalIndex + 1]?.timestamp ?? addedAt,
+      mergeRows: [],
     })),
   ];
+
+  mergeEntries.forEach(({ entry, originalIndex }) => {
+    const parentIndex = lineageRowList.findIndex((row) => row.documentId === entry.newId);
+    if (parentIndex === -1) return;
+    lineageRowList[parentIndex].mergeRows.push({
+      bookId: bookId,
+      documentId: entry.oldId,
+      timestamp: lineage.entries[originalIndex + 1]?.timestamp ?? addedAt,
+      onSuccess: refetch,
+    });
+  });
 
   return (
     <Card title="ID Lineage">
       <ul className={styles.list}>
-        {rows.map((row, i) => (
-          <li key={row.id} className={styles.entry}>
-            <div className={styles.connector}>
-              <div
-                className={cx(styles.dot, {
-                  [styles.dotCurrent]: row.isCurrent,
-                  [styles.dotInitial]: row.isInitial,
-                })}
-              />
-              {i < rows.length - 1 && <div className={styles.line} />}
-            </div>
-            <div className={styles.entryContent}>
-              <div className={styles.entryId}>
-                {row.id}
-                {row.isCurrent && (
-                  <span className={cx(styles.badge, styles.badgeCurrent)}>current</span>
-                )}
-                {row.isInitial && (
-                  <span className={cx(styles.badge, styles.badgeInitial)}>initial</span>
-                )}
-              </div>
-              {row.timestamp !== undefined && (
-                <div className={styles.timestamp}>{formatTimestamp(row.timestamp)}</div>
-              )}
-            </div>
-          </li>
+        {lineageRowList.map((lineageRow, index) => (
+          <BookLineageRow
+            key={lineageRow.documentId}
+            isCurrent={index === 0}
+            isInitial={index === lineageRowList.length - 1}
+            {...lineageRow}
+          />
         ))}
       </ul>
     </Card>

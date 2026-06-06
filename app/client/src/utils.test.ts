@@ -2,6 +2,7 @@ import {
   areObjectArraysIdentical,
   areStringArraysIdentical,
   formatSize,
+  formatTimestamp,
   generateUUID,
   relativeTime,
 } from './utils';
@@ -115,6 +116,29 @@ describe('areStringArraysIdentical', () => {
   });
   it('returns false when one array has a superset of the other', () => {
     expect(areStringArraysIdentical(['a', 'b', 'c'], ['a', 'b', 'b'])).toBe(false);
+  });
+});
+
+describe('formatTimestamp', () => {
+  it('returns an empty array for undefined', () => {
+    expect(formatTimestamp(undefined)).toEqual([]);
+  });
+
+  it('returns exactly two strings for a valid timestamp', () => {
+    const result = formatTimestamp(new Date('2024-03-15T10:30:00Z').getTime());
+    expect(result).toHaveLength(2);
+    expect(typeof result[0]).toBe('string');
+    expect(typeof result[1]).toBe('string');
+  });
+
+  it('includes the year in the date part', () => {
+    const [date] = formatTimestamp(new Date('2024-03-15T10:30:00Z').getTime());
+    expect(date).toContain('2024');
+  });
+
+  it('formats the time part as HH:MM', () => {
+    const [, time] = formatTimestamp(new Date('2024-03-15T10:30:00Z').getTime());
+    expect(time).toMatch(/\d{1,2}:\d{2}/);
   });
 });
 

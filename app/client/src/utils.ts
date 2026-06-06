@@ -30,6 +30,17 @@ export function relativeTime(timestamp: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+export const formatTimestamp = (milliseconds: number | undefined): string[] => {
+  if (milliseconds === undefined) {
+    return [];
+  }
+  const date = new Date(milliseconds);
+  return [
+    date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
+    date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+  ];
+};
+
 export function applyTransparency(color: string, alpha: number): string {
   // Clamp alpha between 0 and 1
   const clampedAlpha = Math.min(1, Math.max(0, alpha));
