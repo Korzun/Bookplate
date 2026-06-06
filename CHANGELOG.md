@@ -1,3 +1,12 @@
+## 1.2.2
+
+- chore: add CodeRabbit configuration
+- fix: preserve progress cache and fix regen-chapters 404 when book id changes
+- feat: delete synced reading progress
+- chore(deps): bump react-router from 6.30.3 to 6.30.4 in the npm_and_yarn group across 1 directory
+- feat: add fontFamily tokens to Theme
+- feat: book lineage link/unlink for orphaned progress
+
 ## 1.2.1
 
 - chore: devcontainer improvements for Zed + Claude Code
