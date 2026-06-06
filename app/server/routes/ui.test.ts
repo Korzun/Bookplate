@@ -603,6 +603,14 @@ describe('POST /api/books/:id/link', () => {
     expect(res.status).toBe(409);
   });
 
+  it('returns 409 when documentId is a live book', async () => {
+    const agent = await adminAgent();
+    await bookStore.addBook('live-book-1', stage('live-book-1'), FAKE_META);
+    await bookStore.addBook('live-book-2', stage('live-book-2'), FAKE_META);
+    const res = await agent.post('/api/books/live-book-1/link').send({ documentId: 'live-book-2' });
+    expect(res.status).toBe(409);
+  });
+
   it('returns 204 and migrates progress on success', async () => {
     const agent = await adminAgent();
     await bookStore.addBook('route-link-target', stage('route-link-target'), FAKE_META);
