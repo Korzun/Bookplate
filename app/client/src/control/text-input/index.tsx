@@ -80,7 +80,10 @@ export const TextInput = ({
         <input
           autoCapitalize={autoCapitalize}
           autoComplete={autoComplete}
-          className={cx(style.input, { [style.isAction]: action !== undefined })}
+          className={cx(style.input, {
+            [style.danger]: !isValid,
+            [style.isAction]: action !== undefined,
+          })}
           name={name}
           onChange={handleValueChange}
           onKeyDown={onKeyDown}
