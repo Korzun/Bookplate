@@ -40,7 +40,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     height: '20px',
     width: '20px',
     margin: '-6px',
-    transition: `transform ${theme.transition.slow}`,
+    transition: `transform ${theme.transition.medium}`,
   },
   chevronCollapsed: {
     transform: 'rotate(0deg)',

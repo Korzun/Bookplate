@@ -59,10 +59,10 @@ export const Card = ({
             [style.collapsed]: !visibleChildren,
             [style.clickable]: onClickHeader !== undefined || isCollapsible,
           })}
-          onClick={isCollapsible ? handleToggle : onClickHeader ?? undefined}
+          onClick={isCollapsible ? handleToggle : (onClickHeader ?? undefined)}
         >
-          {title && (
-            isCollapsible ? (
+          {title &&
+            (isCollapsible ? (
               <div className={style.titleWrapper}>
                 <ChevronCircleIcon
                   className={cx(
@@ -74,8 +74,7 @@ export const Card = ({
               </div>
             ) : (
               <div className={style.title}>{title}</div>
-            )
-          )}
+            ))}
           {subTitle && <div className={style.subTitle}>{subTitle}</div>}
           <div className={style.spacer} />
           {headerAction}
