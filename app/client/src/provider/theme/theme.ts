@@ -121,7 +121,7 @@ export interface Theme {
     dangerStack: string;
     brandStack: string;
   };
-  transition: { fast: string; slide: string; slow: string };
+  transition: { fast: string; medium: string; slide: string; slow: string };
   zIndex: {
     behind: number;
     base: number;
@@ -249,6 +249,7 @@ function buildTheme(): Theme {
 
   const transition: Theme['transition'] = {
     fast: '0.1s ease-in',
+    medium: '0.2s ease-in',
     slide: '0.2s ease-out',
     slow: '0.3s linear',
   };
