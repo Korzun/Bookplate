@@ -27,6 +27,27 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '&$large': { padding: theme.space.xl },
   },
+  titleWrapper: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: theme.space.xl,
+  },
+  chevron: {
+    position: 'relative',
+    top: '4.5px', // sub-pixel optical centering
+    left: '1.5px',
+    display: 'block',
+    height: '20px',
+    width: '20px',
+    margin: '-6px',
+    transition: `transform ${theme.transition.slow}`,
+  },
+  chevronCollapsed: {
+    transform: 'rotate(0deg)',
+  },
+  chevronExpanded: {
+    transform: 'rotate(90deg)',
+  },
   clickable: { cursor: 'pointer' },
   collapsed: {},
   danger: {},

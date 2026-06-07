@@ -1,11 +1,15 @@
 import cx from 'classnames';
-import { PropsWithChildren, ReactNode, ReactElement, useCallback } from 'react';
+import { PropsWithChildren, ReactNode, ReactElement, useCallback, useState } from 'react';
+
+import { ChevronCircleIcon } from '~/icon';
 
 import { useStyle } from './style';
 
 export type Props = PropsWithChildren<{
   className?: string;
+  defaultCollapsed?: boolean;
   headerAction?: ReactNode | ReactElement[];
+  isCollapsible?: boolean;
   onClick?: () => void;
   onClickHeader?: () => void;
   size?: 'small' | 'large';
@@ -15,7 +19,9 @@ export type Props = PropsWithChildren<{
 export const Card = ({
   children,
   className,
+  defaultCollapsed = true,
   headerAction,
+  isCollapsible = false,
   onClick,
   onClickHeader,
   size = 'large',
@@ -23,6 +29,8 @@ export const Card = ({
   title,
 }: Props) => {
   const style = useStyle();
+  const [isExpanded, setIsExpanded] = useState<boolean>(!defaultCollapsed);
+  const handleToggle = useCallback(() => setIsExpanded((prev) => !prev), []);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -35,6 +43,8 @@ export const Card = ({
     [onClick]
   );
 
+  const visibleChildren = isCollapsible ? (isExpanded ? children : null) : children;
+
   return (
     <div
       className={cx(style.root, style[size], className, {
@@ -43,21 +53,35 @@ export const Card = ({
       onClick={onClick}
       onKeyDown={handleKeyDown}
     >
-      {(title || subTitle || headerAction || onClickHeader) && (
+      {(title || subTitle || headerAction || onClickHeader || isCollapsible) && (
         <div
           className={cx(style.header, {
-            [style.collapsed]: !children,
-            [style.clickable]: onClickHeader !== undefined,
+            [style.collapsed]: !visibleChildren,
+            [style.clickable]: onClickHeader !== undefined || isCollapsible,
           })}
-          onClick={onClickHeader ?? undefined}
+          onClick={isCollapsible ? handleToggle : onClickHeader ?? undefined}
         >
-          {title && <div className={style.title}>{title}</div>}
+          {title && (
+            isCollapsible ? (
+              <div className={style.titleWrapper}>
+                <ChevronCircleIcon
+                  className={cx(
+                    style.chevron,
+                    isExpanded ? style.chevronExpanded : style.chevronCollapsed
+                  )}
+                />
+                <div className={style.title}>{title}</div>
+              </div>
+            ) : (
+              <div className={style.title}>{title}</div>
+            )
+          )}
           {subTitle && <div className={style.subTitle}>{subTitle}</div>}
           <div className={style.spacer} />
           {headerAction}
         </div>
       )}
-      {children && <div className={cx(style.content, style[size])}>{children}</div>}
+      {visibleChildren && <div className={cx(style.content, style[size])}>{visibleChildren}</div>}
     </div>
   );
 };
