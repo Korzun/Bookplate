@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
+import { Fragment, useCallback } from 'react';
 
-import { Page, MyProgress } from '~/component';
+import { Page, MyProgress, UserChangePassword } from '~/component';
 import { Button } from '~/control';
 import { useIsAdmin, useLogout } from '~/provider/auth';
 
@@ -14,10 +14,15 @@ export const UserPage = () => {
 
   return (
     <Page>
-      {!isAdmin && <MyProgress />}
       <Button loading={loggingOut} onClick={handleLogout} danger>
         Log out
       </Button>
+      {!isAdmin && (
+        <Fragment>
+          <UserChangePassword />
+          <MyProgress />
+        </Fragment>
+      )}
     </Page>
   );
 };

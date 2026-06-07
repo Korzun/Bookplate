@@ -1,3 +1,4 @@
+export { useChangeMyPassword } from './use-change-my-password';
 export { useDeleteUser } from './use-delete-user';
 export { useRegisterUser } from './use-register-user';
 export { useUser } from './use-user';

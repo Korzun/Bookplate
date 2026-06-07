@@ -1334,6 +1334,56 @@ describe('GET /api/config', () => {
   });
 });
 
+describe('PATCH /api/my/password', () => {
+  it('redirects to /login without session', async () => {
+    const res = await request(app)
+      .patch('/api/my/password')
+      .send({ currentPassword: 'alicepass', newPassword: 'newpass' });
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for admin session', async () => {
+    const agent = await adminAgent();
+    const res = await agent
+      .patch('/api/my/password')
+      .send({ currentPassword: 'pass', newPassword: 'newpass' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when currentPassword is missing', async () => {
+    const agent = await userAgent();
+    const res = await agent.patch('/api/my/password').send({ newPassword: 'newpass' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Current and new password are required');
+  });
+
+  it('returns 400 when newPassword is missing', async () => {
+    const agent = await userAgent();
+    const res = await agent.patch('/api/my/password').send({ currentPassword: 'alicepass' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Current and new password are required');
+  });
+
+  it('returns 401 when currentPassword is wrong', async () => {
+    const agent = await userAgent();
+    const res = await agent
+      .patch('/api/my/password')
+      .send({ currentPassword: 'wrongpass', newPassword: 'newpass' });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Current password is incorrect');
+  });
+
+  it('changes the password and returns 204', async () => {
+    const agent = await userAgent();
+    const res = await agent
+      .patch('/api/my/password')
+      .send({ currentPassword: 'alicepass', newPassword: 'newpass' });
+    expect(res.status).toBe(204);
+    expect(await userStore.validateUser('alice', 'newpass')).toBe(true);
+    expect(await userStore.validateUser('alice', 'alicepass')).toBe(false);
+  });
+});
+
 describe('SPA routes serve index.html', () => {
   it('GET /books/:id returns 200 with HTML', async () => {
     const agent = await adminAgent();

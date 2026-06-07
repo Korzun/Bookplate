@@ -123,6 +123,18 @@ export class UserStore {
     }
   }
 
+  async changePassword(username: string, key: string): Promise<boolean> {
+    try {
+      await this.prisma.user.update({ where: { username }, data: { key } });
+      return true;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        return false;
+      }
+      throw e;
+    }
+  }
+
   async deleteUser(username: string): Promise<boolean> {
     try {
       // Explicitly delete progress first — the progress table has no FK constraint

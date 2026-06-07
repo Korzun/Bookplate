@@ -19,6 +19,7 @@ export { Tag } from './tag';
 export { Toast } from './toast';
 export { UploadItem } from './upload-item';
 export { UploadZone } from './upload-zone';
+export { UserChangePassword } from './user-change-password';
 export { UserList } from './user-list';
 export { UserProgressRow } from './user-progress-row';
 export { UserRegister } from './user-register';

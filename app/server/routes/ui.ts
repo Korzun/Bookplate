@@ -186,6 +186,34 @@ export function createUiRouter(
     res.status(200).json({});
   });
 
+  router.patch('/api/my/password', sessionAuth, async (req: Request, res: Response) => {
+    if (req.session.isAdmin) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+    if (
+      typeof currentPassword !== 'string' ||
+      !currentPassword ||
+      typeof newPassword !== 'string' ||
+      !newPassword
+    ) {
+      res.status(400).json({ error: 'Current and new password are required' });
+      return;
+    }
+    const valid = await userStore.validateUser(req.session.username!, currentPassword);
+    if (!valid) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+    await userStore.changePassword(req.session.username!, UserStore.hashPassword(newPassword));
+    log.info(`User "${req.session.username}" changed their password`);
+    res.status(204).send();
+  });
+
   // ── Static assets (no auth required) ──────────────────
   router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
 
