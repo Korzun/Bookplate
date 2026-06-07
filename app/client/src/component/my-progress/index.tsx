@@ -13,6 +13,8 @@ export const MyProgress = () => {
   return (
     <Card
       title="Progress"
+      isCollapsible
+      defaultCollapsed
       subTitle={
         progressList ? `${syncedCount} book${syncedCount === 1 ? '' : 's'} synced` : undefined
       }
