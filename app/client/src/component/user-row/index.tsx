@@ -1,8 +1,7 @@
-import cx from 'classnames';
 import { Fragment, useCallback, useState } from 'react';
 
 import { Button, ConfirmModal } from '~/control';
-import { AlertOctagonIcon, ChevronCircleIcon } from '~/icon';
+import { AlertOctagonIcon } from '~/icon';
 import { useDeleteUser, useUser } from '~/provider/user';
 
 import { Card } from '../card';
@@ -17,11 +16,6 @@ interface UserRowProps {
 export const UserRow = ({ username }: UserRowProps) => {
   const styles = useStyle();
   const [user] = useUser(username);
-
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const handleExpandToggle = useCallback(() => {
-    setIsExpanded((prev) => !prev);
-  }, []);
 
   const [deleteUser, deleting] = useDeleteUser();
 
@@ -40,15 +34,9 @@ export const UserRow = ({ username }: UserRowProps) => {
   return (
     <Fragment>
       <Card
-        onClickHeader={handleExpandToggle}
-        title={
-          <div className={styles.title}>
-            <ChevronCircleIcon
-              className={cx(styles.chevron, isExpanded ? styles.expanded : styles.collapsed)}
-            />
-            {username}
-          </div>
-        }
+        isCollapsible
+        defaultCollapsed
+        title={username}
         subTitle={
           user
             ? `${user.progressCount} book${user.progressCount === 1 ? '' : 's'} synced`
@@ -60,11 +48,9 @@ export const UserRow = ({ username }: UserRowProps) => {
           </Button>
         }
       >
-        {isExpanded && (
-          <div className={styles.content}>
-            <UserRowContent username={username} />
-          </div>
-        )}
+        <div className={styles.content}>
+          <UserRowContent username={username} />
+        </div>
       </Card>
       <ConfirmModal
         isOpen={showDeleteUserModal}
