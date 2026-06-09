@@ -40,6 +40,14 @@ export class UserStore {
     return this.authenticate(username, UserStore.hashPassword(password));
   }
 
+  async getUserIdByUsername(username: string): Promise<string | null> {
+    const row = await this.prisma.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
   async getProgress(userId: string, document: string): Promise<Progress | null> {
     const row = await this.prisma.progress.findUnique({
       where: { userId_document: { userId, document } },
@@ -132,20 +140,11 @@ export class UserStore {
 
   async deleteUser(username: string): Promise<boolean> {
     try {
-      await this.prisma.$transaction(async (tx) => {
-        const user = await tx.user.findUnique({ where: { username }, select: { id: true } });
-        if (!user)
-          throw new Prisma.PrismaClientKnownRequestError('Not found', {
-            code: 'P2025',
-            clientVersion: '',
-          });
-        await tx.progress.deleteMany({ where: { userId: user.id } });
-        await tx.user.delete({ where: { username } });
-      });
+      await this.prisma.user.delete({ where: { username } });
       return true;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return false; // user not found
+        return false;
       }
       throw e;
     }

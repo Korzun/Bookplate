@@ -275,6 +275,25 @@ describe('UserStore.validateUser', () => {
   });
 });
 
+describe('UserStore.getUserIdByUsername', () => {
+  it('returns null for unknown user', async () => {
+    expect(await store.getUserIdByUsername('nobody')).toBeNull();
+  });
+
+  it('returns the user ID for a known user', async () => {
+    await store.createUser('alice', 'pass');
+    const id = await store.getUserIdByUsername('alice');
+    expect(id).toMatch(/^[A-Za-z0-9]{21}$/);
+  });
+
+  it('returns consistent ID matching authenticate', async () => {
+    await store.createUser('alice', 'pass');
+    const idFromLookup = await store.getUserIdByUsername('alice');
+    const idFromAuth = await store.authenticate('alice', 'pass') as string;
+    expect(idFromLookup).toBe(idFromAuth);
+  });
+});
+
 describe('UserStore.clearProgress', () => {
   let aliceId: string;
   let bobId: string;
