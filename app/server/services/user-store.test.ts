@@ -33,13 +33,26 @@ afterEach(async () => {
 });
 
 describe('UserStore.createUser', () => {
-  it('returns true on first registration', async () => {
-    expect(await store.createUser('alice', 'secret')).toBe(true);
+  it('creates a user and returns true', async () => {
+    const hash = await UserStore.hashLoginPassword('pass');
+    expect(await store.createUser('alice', hash)).toBe(true);
   });
 
-  it('returns false on duplicate username', async () => {
-    await store.createUser('alice', 'secret');
-    expect(await store.createUser('alice', 'other')).toBe(false);
+  it('creates a user with null passwordHash', async () => {
+    expect(await store.createUser('nopass', null)).toBe(true);
+  });
+
+  it('returns false for duplicate username', async () => {
+    const hash = await UserStore.hashLoginPassword('pass');
+    await store.createUser('alice', hash);
+    expect(await store.createUser('alice', hash)).toBe(false);
+  });
+
+  it('auto-generates syncPassword if not provided', async () => {
+    await store.createUser('alice', null);
+    const syncPwd = await store.getSyncPassword('alice');
+    expect(syncPwd).not.toBeNull();
+    expect(syncPwd!.split(' ')).toHaveLength(2);
   });
 
   it('assigns a unique 21-char alphanumeric ID to each user', async () => {
@@ -53,24 +66,190 @@ describe('UserStore.createUser', () => {
   });
 });
 
-describe('UserStore.authenticate', () => {
-  beforeEach(async () => {
-    await store.createUser('alice', UserStore.hashPassword('secret'));
-  });
-
-  it('returns the user ID string with correct MD5 key', async () => {
-    const key = UserStore.hashPassword('secret');
-    const result = await store.authenticate('alice', key);
+describe('UserStore.validateUser', () => {
+  it('returns the user ID string for correct password', async () => {
+    const hash = await UserStore.hashLoginPassword('mypass');
+    await store.createUser('alice', hash);
+    const result = await store.validateUser('alice', 'mypass');
     expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
-  it('returns false with wrong key', async () => {
-    expect(await store.authenticate('alice', 'wronghash')).toBe(false);
+  it('returns false for wrong password', async () => {
+    const hash = await UserStore.hashLoginPassword('mypass');
+    await store.createUser('alice', hash);
+    expect(await store.validateUser('alice', 'wrong')).toBe(false);
+  });
+
+  it('returns false when passwordHash is null', async () => {
+    await store.createUser('alice', null);
+    expect(await store.validateUser('alice', 'anything')).toBe(false);
+  });
+});
+
+describe('UserStore.userHasPassword', () => {
+  it('returns true when passwordHash is set', async () => {
+    const hash = await UserStore.hashLoginPassword('pw');
+    await store.createUser('alice', hash);
+    expect(await store.userHasPassword('alice')).toBe(true);
+  });
+
+  it('returns false when passwordHash is null', async () => {
+    await store.createUser('alice', null);
+    expect(await store.userHasPassword('alice')).toBe(false);
   });
 
   it('returns false for unknown user', async () => {
-    const key = UserStore.hashPassword('secret');
-    expect(await store.authenticate('nobody', key)).toBe(false);
+    expect(await store.userHasPassword('nobody')).toBe(false);
+  });
+});
+
+describe('UserStore.changePassword', () => {
+  it('updates passwordHash and allows login with new password', async () => {
+    const oldHash = await UserStore.hashLoginPassword('old');
+    await store.createUser('alice', oldHash);
+    const newHash = await UserStore.hashLoginPassword('new');
+    expect(await store.changePassword('alice', newHash)).toBe(true);
+    expect(await store.validateUser('alice', 'new')).toBeTruthy();
+    expect(await store.validateUser('alice', 'old')).toBe(false);
+  });
+
+  it('returns false for unknown user', async () => {
+    expect(await store.changePassword('nobody', 'hash')).toBe(false);
+  });
+
+  it('clears mustChangePassword flag', async () => {
+    await store.createUser('alice', null);
+    await store.resetPassword('alice');
+    expect(await store.getMustChangePassword('alice')).toBe(true);
+
+    const newHash = await UserStore.hashLoginPassword('newpass');
+    await store.changePassword('alice', newHash);
+
+    expect(await store.getMustChangePassword('alice')).toBe(false);
+  });
+});
+
+describe('UserStore.authenticateSync', () => {
+  it('returns true when key equals MD5(syncPassword)', async () => {
+    await store.createUser('alice', null);
+    const syncPwd = await store.getSyncPassword('alice');
+    const key = UserStore.hashSyncPassword(syncPwd!);
+    expect(await store.authenticateSync('alice', key)).toBe(true);
+  });
+
+  it('returns false for wrong key', async () => {
+    await store.createUser('alice', null);
+    expect(await store.authenticateSync('alice', 'wrongkey')).toBe(false);
+  });
+
+  it('returns false when syncPassword is null', async () => {
+    // createUser with explicit syncPassword: null (bypassing auto-generation)
+    await prisma.user.create({
+      data: {
+        id: `test-id-${Math.random().toString(36).slice(2)}`,
+        username: 'alice',
+        passwordHash: null,
+        syncPassword: null,
+      },
+    });
+    expect(await store.authenticateSync('alice', 'anything')).toBe(false);
+  });
+
+  it('returns false for unknown user', async () => {
+    expect(await store.authenticateSync('nobody', 'key')).toBe(false);
+  });
+});
+
+describe('UserStore.getSyncPassword', () => {
+  it('returns the stored syncPassword', async () => {
+    await store.createUser('alice', null);
+    const p1 = await store.getSyncPassword('alice');
+    const p2 = await store.getSyncPassword('alice');
+    expect(p1).toBe(p2); // same value on second call (persisted)
+  });
+
+  it('lazy-generates and saves when syncPassword is null', async () => {
+    await prisma.user.create({
+      data: {
+        id: `test-id-${Math.random().toString(36).slice(2)}`,
+        username: 'alice',
+        passwordHash: null,
+        syncPassword: null,
+      },
+    });
+    const pwd = await store.getSyncPassword('alice');
+    expect(pwd).not.toBeNull();
+    expect(pwd!.split(' ')).toHaveLength(2);
+    // Confirm it was persisted
+    expect(await store.getSyncPassword('alice')).toBe(pwd);
+  });
+
+  it('returns null for unknown user', async () => {
+    expect(await store.getSyncPassword('nobody')).toBeNull();
+  });
+});
+
+describe('UserStore.changeSyncPassword', () => {
+  it('updates syncPassword and returns true', async () => {
+    await store.createUser('alice', null);
+    expect(await store.changeSyncPassword('alice', 'swift stone')).toBe(true);
+    expect(await store.getSyncPassword('alice')).toBe('swift stone');
+  });
+
+  it('returns false for unknown user', async () => {
+    expect(await store.changeSyncPassword('nobody', 'phrase')).toBe(false);
+  });
+});
+
+describe('UserStore.generateLoginPassword', () => {
+  it('returns a 16-character password', () => {
+    expect(UserStore.generateLoginPassword()).toHaveLength(16);
+  });
+
+  it('only uses unambiguous alphanumeric characters', () => {
+    const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    for (let i = 0; i < 50; i++) {
+      const password = UserStore.generateLoginPassword();
+      for (const ch of password) {
+        expect(charset).toContain(ch);
+      }
+    }
+  });
+});
+
+describe('UserStore.resetPassword', () => {
+  it('sets a new passwordHash and mustChangePassword flag, returns the plaintext password', async () => {
+    const oldHash = await UserStore.hashLoginPassword('old');
+    await store.createUser('alice', oldHash);
+
+    const newPassword = await store.resetPassword('alice');
+
+    expect(newPassword).not.toBeNull();
+    expect(newPassword).toHaveLength(16);
+    expect(await store.validateUser('alice', newPassword!)).toBeTruthy();
+    expect(await store.validateUser('alice', 'old')).toBe(false);
+    expect(await store.getMustChangePassword('alice')).toBe(true);
+  });
+
+  it('returns null for unknown user', async () => {
+    expect(await store.resetPassword('nobody')).toBeNull();
+  });
+});
+
+describe('UserStore.getMustChangePassword', () => {
+  it('returns false by default', async () => {
+    await store.createUser('alice', null);
+    expect(await store.getMustChangePassword('alice')).toBe(false);
+  });
+
+  it('returns true after resetPassword', async () => {
+    await store.createUser('alice', null);
+    await store.resetPassword('alice');
+    expect(await store.getMustChangePassword('alice')).toBe(true);
+  });
+
+  it('returns false for unknown user', async () => {
+    expect(await store.getMustChangePassword('nobody')).toBe(false);
   });
 });
 
@@ -78,8 +257,8 @@ describe('UserStore.saveProgress + getProgress', () => {
   let aliceId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', 'secret');
-    aliceId = (await store.authenticate('alice', 'secret')) as string;
+    await store.createUser('alice', null);
+    aliceId = (await store.getUserIdByUsername('alice'))!;
   });
 
   it('retrieves saved progress', async () => {
@@ -126,7 +305,7 @@ describe('UserStore.userExists', () => {
   });
 
   it('returns true for a registered user', async () => {
-    await store.createUser('alice', 'secret');
+    await store.createUser('alice', null);
     expect(await store.userExists('alice')).toBe(true);
   });
 });
@@ -137,9 +316,9 @@ describe('UserStore.listUsers', () => {
   });
 
   it('returns users sorted by username with progress count', async () => {
-    await store.createUser('zara', 'pass');
-    await store.createUser('alice', 'pass');
-    const aliceId = (await store.authenticate('alice', 'pass')) as string;
+    await store.createUser('zara', null);
+    await store.createUser('alice', null);
+    const aliceId = (await store.getUserIdByUsername('alice'))!;
     await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
@@ -168,8 +347,8 @@ describe('UserStore.getUserProgress', () => {
   let bobId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', 'pass');
-    aliceId = (await store.authenticate('alice', 'pass')) as string;
+    await store.createUser('alice', null);
+    aliceId = (await store.getUserIdByUsername('alice'))!;
   });
 
   it('returns empty array when user has no progress', async () => {
@@ -200,8 +379,8 @@ describe('UserStore.getUserProgress', () => {
   });
 
   it('only returns records for the specified user', async () => {
-    await store.createUser('bob', 'pass');
-    bobId = (await store.authenticate('bob', 'pass')) as string;
+    await store.createUser('bob', null);
+    bobId = (await store.getUserIdByUsername('bob'))!;
     await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
@@ -226,8 +405,8 @@ describe('UserStore.deleteUser', () => {
   let aliceId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', 'pass');
-    aliceId = (await store.authenticate('alice', 'pass')) as string;
+    await store.createUser('alice', null);
+    aliceId = (await store.getUserIdByUsername('alice'))!;
     await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
@@ -252,28 +431,33 @@ describe('UserStore.deleteUser', () => {
   });
 
   it('does not affect other users', async () => {
-    await store.createUser('bob', 'pass');
+    await store.createUser('bob', null);
     await store.deleteUser('alice');
     expect(await store.userExists('bob')).toBe(true);
   });
 });
 
-describe('UserStore.validateUser', () => {
-  beforeEach(async () => {
-    await store.createUser('alice', UserStore.hashPassword('secret'));
-  });
-
-  it('returns the user ID string with correct plaintext password', async () => {
-    const result = await store.validateUser('alice', 'secret');
+describe('UserStore.authenticate', () => {
+  it('returns the user ID string with correct sync password key', async () => {
+    await store.createUser('alice', null);
+    const syncPwd = await store.getSyncPassword('alice');
+    const key = UserStore.hashSyncPassword(syncPwd!);
+    const result = await store.authenticate('alice', key);
     expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
-  it('returns false with wrong password', async () => {
-    expect(await store.validateUser('alice', 'wrongpass')).toBe(false);
+  it('returns false for wrong sync key', async () => {
+    await store.createUser('alice', null);
+    expect(await store.authenticate('alice', 'wrongkey')).toBe(false);
+  });
+
+  it('returns false when syncPassword is null', async () => {
+    await prisma.user.create({ data: { id: 'nosync-id', username: 'nosync', syncPassword: null } });
+    expect(await store.authenticate('nosync', 'anything')).toBe(false);
   });
 
   it('returns false for unknown user', async () => {
-    expect(await store.validateUser('nobody', 'secret')).toBe(false);
+    expect(await store.authenticate('nobody', 'key')).toBe(false);
   });
 });
 
@@ -283,16 +467,16 @@ describe('UserStore.getUserIdByUsername', () => {
   });
 
   it('returns the user ID for a known user', async () => {
-    await store.createUser('alice', 'pass');
+    await store.createUser('alice', null);
     const id = await store.getUserIdByUsername('alice');
     expect(id).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
-  it('returns consistent ID matching authenticate', async () => {
-    await store.createUser('alice', 'pass');
-    const idFromLookup = await store.getUserIdByUsername('alice');
-    const idFromAuth = (await store.authenticate('alice', 'pass')) as string;
-    expect(idFromLookup).toBe(idFromAuth);
+  it('returns consistent ID across calls', async () => {
+    await store.createUser('alice', null);
+    const id1 = await store.getUserIdByUsername('alice');
+    const id2 = await store.getUserIdByUsername('alice');
+    expect(id1).toBe(id2);
   });
 });
 
@@ -301,10 +485,10 @@ describe('UserStore.clearProgress', () => {
   let bobId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', 'pass');
-    await store.createUser('bob', 'pass');
-    aliceId = (await store.authenticate('alice', 'pass')) as string;
-    bobId = (await store.authenticate('bob', 'pass')) as string;
+    await store.createUser('alice', null);
+    await store.createUser('bob', null);
+    aliceId = (await store.getUserIdByUsername('alice'))!;
+    bobId = (await store.getUserIdByUsername('bob'))!;
   });
 
   it('returns false when no record exists', async () => {
