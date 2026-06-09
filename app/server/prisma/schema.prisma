@@ -45,7 +45,8 @@ model BookThumbnail {
 }
 
 model User {
-  username   String     @id
+  id         String     @id
+  username   String     @unique
   key        String
   progresses Progress[]
 
@@ -62,15 +63,15 @@ model BookIdHistory {
 }
 
 model Progress {
-  username   String
+  userId     String  @map("user_id")
   document   String
   progress   String
   percentage Float
   device     String
   deviceId   String  @map("device_id")
   timestamp  Int
-  user       User    @relation(fields: [username], references: [username], onDelete: Cascade)
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([username, document])
+  @@id([userId, document])
   @@map("progress")
 }
