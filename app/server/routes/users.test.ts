@@ -236,11 +236,11 @@ describe('POST /api/users', () => {
     expect(res.status).toBe(201);
     expect(res.body.username).toBe('bob');
     expect(await userStore.userExists('bob')).toBe(true);
-    expect(await userStore.authenticate('bob', UserStore.hashPassword('secret'))).toBeTruthy();
+    expect(await userStore.validateUser('bob', 'secret')).toBeTruthy();
   });
 
   it('returns 409 for duplicate username', async () => {
-    await userStore.createUser('bob', UserStore.hashPassword('pass'));
+    await userStore.createUser('bob', null);
     const agent = await adminAgent();
     const res = await agent.post('/api/users').send({ username: 'bob', password: 'other' });
     expect(res.status).toBe(409);
@@ -279,6 +279,41 @@ describe('POST /api/users', () => {
     const agent = await adminAgent();
     const res = await agent.post('/api/users').send({ username: 'admin', password: 'anything' });
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /api/users/:username/reset-password', () => {
+  it('redirects to /login without session', async () => {
+    const res = await request(app).post('/api/users/alice/reset-password');
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 404 for unknown user', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post('/api/users/nobody/reset-password');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('User not found');
+  });
+
+  it('resets the password and returns it', async () => {
+    const oldHash = await UserStore.hashLoginPassword('oldpass');
+    await userStore.createUser('alice', oldHash);
+    const agent = await adminAgent();
+
+    const res = await agent.post('/api/users/alice/reset-password');
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.password).toBe('string');
+    expect(res.body.password).toHaveLength(16);
+    expect(await userStore.validateUser('alice', res.body.password)).toBeTruthy();
+    expect(await userStore.validateUser('alice', 'oldpass')).toBe(false);
+    expect(await userStore.getMustChangePassword('alice')).toBe(true);
+  });
+
+  it('returns 403 for the built-in admin username', async () => {
+    const agent = await adminAgent();
+    const res = await agent.post(`/api/users/admin/reset-password`);
+    expect(res.status).toBe(403);
   });
 });
 
@@ -351,6 +386,13 @@ describe('RBAC — regular user is forbidden from all /api/users routes', () => 
     await userStore.createUser('alice', 'pass');
     const agent = await userAgent();
     const res = await agent.delete('/api/users/alice/progress/doc1');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /api/users/:username/reset-password returns 403 for regular user', async () => {
+    await userStore.createUser('victim', 'pass');
+    const agent = await userAgent();
+    const res = await agent.post('/api/users/victim/reset-password');
     expect(res.status).toBe(403);
   });
 });
