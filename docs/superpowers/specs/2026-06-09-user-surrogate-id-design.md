@@ -1,7 +1,7 @@
 # User Surrogate ID Design
 
 **Date:** 2026-06-09
-**Branch:** feat/change-my-password (ongoing feature branch)
+**Branch:** feat/change-my-passwrod (ongoing feature branch)
 
 ## Motivation
 
@@ -83,7 +83,7 @@ Generates a NanoID before the Prisma `create` call. Signature unchanged.
 
 ### Progress methods — new signatures
 
-```ts
+```
 getProgress(userId: string, document: string): Promise<Progress | null>
 saveProgress(userId: string, p: ...): Promise<Progress>
 getUserProgress(userId: string): Promise<Progress[]>
