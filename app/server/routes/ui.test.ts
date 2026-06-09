@@ -36,6 +36,7 @@ let bookStore: BookStore;
 let userStore: UserStore;
 let app: express.Express;
 let dbPath: string;
+let aliceId: string;
 
 const config: AppConfig = {
   username: 'admin',
@@ -161,6 +162,7 @@ beforeEach(async () => {
   bookStore = new BookStore(booksDir, prisma);
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', UserStore.hashPassword('alicepass'));
+  aliceId = (await userStore.getUserIdByUsername('alice'))!;
 
   app = express();
   app.use(express.json());
@@ -615,9 +617,10 @@ describe('POST /api/books/:id/link', () => {
     const agent = await adminAgent();
     await bookStore.addBook('route-link-target', stage('route-link-target'), FAKE_META);
     await userStore.createUser('alice-route', 'hashed-pass');
+    const aliceRouteId = (await userStore.getUserIdByUsername('alice-route'))!;
     await prisma.progress.create({
       data: {
-        username: 'alice-route',
+        userId: aliceRouteId,
         document: 'route-orphan',
         progress: '',
         percentage: 0.42,
@@ -633,7 +636,7 @@ describe('POST /api/books/:id/link', () => {
     expect(res.status).toBe(204);
 
     const migrated = await prisma.progress.findUnique({
-      where: { username_document: { username: 'alice-route', document: 'route-link-target' } },
+      where: { userId_document: { userId: aliceRouteId, document: 'route-link-target' } },
     });
     expect(migrated).not.toBeNull();
     expect(migrated!.percentage).toBe(0.42);
@@ -865,7 +868,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('returns own progress records for regular user', async () => {
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.72,
@@ -881,7 +884,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('exposes device, device_id, timestamp, and progress CFI', async () => {
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -900,7 +903,8 @@ describe('GET /api/my/progress', () => {
 
   it("does not return another user's progress", async () => {
     await userStore.createUser('bob', UserStore.hashPassword('bobpass'));
-    await userStore.saveProgress('bob', {
+    const bobId = (await userStore.getUserIdByUsername('bob'))!;
+    await userStore.saveProgress(bobId, {
       document: 'doc2',
       progress: '/p[1]',
       percentage: 0.9,
@@ -921,7 +925,7 @@ describe('GET /api/my/progress', () => {
       chapterSpineMap: [1, 2, 3],
     });
     // EPUB_CFI(/6/6...) → N=6 → spineIndex=(6-2)/2=2 → chapter 2 (ch2 is at spineIndex 2)
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc-with-chapters',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -942,7 +946,7 @@ describe('GET /api/my/progress', () => {
       chapterNames: ['Chapter 1', 'Chapter 2', 'Chapter 3'],
     });
     // EPUB_CFI(/6/6...) → spineIndex=2 → chapter 2 → chapterNames[1] = 'Chapter 2'
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc-with-names',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -963,7 +967,7 @@ describe('GET /api/my/progress', () => {
       chapterNames: [],
     });
     // Same CFI as above — resolves to chapter 2, but chapterNames is empty
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc-no-names',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
       percentage: 0.5,
@@ -977,7 +981,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapter when the book is not in the DB', async () => {
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'unknown-book-id',
       progress: 'EPUB_CFI(/6/4!/4/1:0)',
       percentage: 0.3,
@@ -996,7 +1000,7 @@ describe('GET /api/my/progress', () => {
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc-bad-cfi',
       progress: '/p[1]',
       percentage: 0.1,
@@ -1015,7 +1019,7 @@ describe('GET /api/my/progress', () => {
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc-no-expose',
       progress: 'EPUB_CFI(/6/4!/4/1:0)',
       percentage: 0.3,
@@ -1029,7 +1033,7 @@ describe('GET /api/my/progress', () => {
 
   it('returns only the current-id entry after a reimport changes the book id', async () => {
     await bookStore.addBook('lin-old', stage('lin-old'), FAKE_META);
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'lin-old',
       progress: '/p[1]',
       percentage: 0.5,
@@ -1078,7 +1082,7 @@ describe('POST /api/books/:id/regen-chapters', () => {
 
 describe('DELETE /api/my/progress/:document', () => {
   beforeEach(async () => {
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -1103,7 +1107,7 @@ describe('DELETE /api/my/progress/:document', () => {
     const agent = await userAgent();
     const res = await agent.delete('/api/my/progress/doc1');
     expect(res.status).toBe(204);
-    expect(await userStore.getProgress('alice', 'doc1')).toBeNull();
+    expect(await userStore.getProgress(aliceId, 'doc1')).toBeNull();
   });
 
   it('returns 404 when no record exists', async () => {
@@ -1176,13 +1180,13 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25 });
     expect(res.status).toBe(200);
-    const saved = await userStore.getProgress('alice', 'doc1');
+    const saved = await userStore.getProgress(aliceId, 'doc1');
     expect(saved).not.toBeNull();
     expect(saved!.percentage).toBe(0.25);
   });
 
   it('overwrites an existing progress record', async () => {
-    await userStore.saveProgress('alice', {
+    await userStore.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -1194,7 +1198,7 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 10, percentage: 0.75 });
     expect(res.status).toBe(200);
-    expect((await userStore.getProgress('alice', 'doc1'))!.percentage).toBe(0.75);
+    expect((await userStore.getProgress(aliceId, 'doc1'))!.percentage).toBe(0.75);
   });
 
   it('saves device and device_id when provided', async () => {
@@ -1203,7 +1207,7 @@ describe('PUT /api/my/progress/:document', () => {
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25, device: 'Web', device_id: 'test-uuid' });
     expect(res.status).toBe(200);
-    const saved = await userStore.getProgress('alice', 'doc1');
+    const saved = await userStore.getProgress(aliceId, 'doc1');
     expect(saved!.device).toBe('Web');
     expect(saved!.device_id).toBe('test-uuid');
   });
@@ -1211,7 +1215,7 @@ describe('PUT /api/my/progress/:document', () => {
   it('defaults device to "Web" when not provided', async () => {
     const agent = await userAgent();
     await agent.put('/api/my/progress/doc1').send({ currentChapter: 5, percentage: 0.25 });
-    expect((await userStore.getProgress('alice', 'doc1'))!.device).toBe('Web');
+    expect((await userStore.getProgress(aliceId, 'doc1'))!.device).toBe('Web');
   });
 
   it('synthesises an EPUB CFI when the book has a chapterSpineMap', async () => {
@@ -1226,7 +1230,7 @@ describe('PUT /api/my/progress/:document', () => {
       .send({ currentChapter: 3, percentage: 0.3 });
     expect(res.status).toBe(200);
     // chapterSpineMap[2] = 3, so spineIndex = 3, CFI n = 3*2+2 = 8
-    expect((await userStore.getProgress('alice', 'cfidoc'))!.progress).toBe(
+    expect((await userStore.getProgress(aliceId, 'cfidoc'))!.progress).toBe(
       'EPUB_CFI(/6/8!/4/2:0)'
     );
   });

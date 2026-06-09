@@ -86,10 +86,12 @@ export function createUiRouter(
       res.sendStatus(200);
       return;
     }
-    if (await userStore.validateUser(username, password)) {
+    const userId = await userStore.validateUser(username, password);
+    if (userId) {
       req.session.authenticated = true;
       req.session.isAdmin = false;
       req.session.username = username;
+      req.session.userId = userId;
       log.info(`User "${username}" logged in`);
       res.sendStatus(200);
       return;
@@ -116,7 +118,7 @@ export function createUiRouter(
       res.json([]);
       return;
     }
-    const progressList = await userStore.getUserProgress(req.session.username!);
+    const progressList = await userStore.getUserProgress(req.session.userId!);
     const items = await Promise.all(
       progressList.map(async (p) => {
         const spineIndex = parseCfiSpineIndex(p.progress);
@@ -144,7 +146,7 @@ export function createUiRouter(
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
-    const cleared = await userStore.clearProgress(req.session.username!, req.params.document);
+    const cleared = await userStore.clearProgress(req.session.userId!, req.params.document);
     if (!cleared) {
       res.status(404).json({ error: 'Progress record not found' });
       return;
@@ -176,7 +178,7 @@ export function createUiRouter(
       const spineIndex = book.chapterSpineMap[currentChapter - 1];
       progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
     }
-    await userStore.saveProgress(req.session.username!, {
+    await userStore.saveProgress(req.session.userId!, {
       document: req.params.document,
       progress,
       percentage,

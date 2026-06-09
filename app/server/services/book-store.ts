@@ -193,15 +193,15 @@ export class BookStore {
 
       const orphanProgresses = await tx.progress.findMany({ where: { document: documentId } });
       const targetProgresses = await tx.progress.findMany({ where: { document: bookId } });
-      const targetByUsername = new Map(targetProgresses.map((p) => [p.username, p]));
+      const targetByUserId = new Map(targetProgresses.map((p) => [p.userId, p]));
 
       const keptProgresses: typeof orphanProgresses = [];
       for (const orphanP of orphanProgresses) {
-        const targetP = targetByUsername.get(orphanP.username);
+        const targetP = targetByUserId.get(orphanP.userId);
         if (targetP) {
           if (orphanP.timestamp >= targetP.timestamp) {
             await tx.progress.delete({
-              where: { username_document: { username: orphanP.username, document: bookId } },
+              where: { userId_document: { userId: orphanP.userId, document: bookId } },
             });
             keptProgresses.push(orphanP);
           }
@@ -331,17 +331,17 @@ export class BookStore {
         // First collect all progress records for both ids so we can resolve conflicts in JS.
         const oldProgresses = await tx.progress.findMany({ where: { document: id } });
         const newProgresses = await tx.progress.findMany({ where: { document: newId } });
-        const newProgressByUsername = new Map(newProgresses.map((p) => [p.username, p]));
+        const newProgressByUserId = new Map(newProgresses.map((p) => [p.userId, p]));
 
         // Determine which old-id records to carry forward after resolving per-user conflicts.
         const keptOldProgresses: typeof oldProgresses = [];
         for (const oldP of oldProgresses) {
-          const newP = newProgressByUsername.get(oldP.username);
+          const newP = newProgressByUserId.get(oldP.userId);
           if (newP) {
             if (oldP.timestamp >= newP.timestamp) {
               // Old record wins: remove the new-id duplicate so we can recreate it below.
               await tx.progress.delete({
-                where: { username_document: { username: oldP.username, document: newId } },
+                where: { userId_document: { userId: oldP.userId, document: newId } },
               });
               keptOldProgresses.push(oldP);
             }
@@ -356,7 +356,7 @@ export class BookStore {
         if (keptOldProgresses.length > 0) {
           await tx.progress.createMany({
             data: keptOldProgresses.map((p) => ({
-              username: p.username,
+              userId: p.userId,
               document: newId,
               progress: p.progress,
               percentage: p.percentage,
