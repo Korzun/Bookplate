@@ -19,7 +19,8 @@
     "react-router-dom": "^6.30.4"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.60.4"
+    "@rollup/rollup-linux-arm64-gnu": "^4.60.4",
+    "@rollup/rollup-linux-x64-gnu": "^4.60.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
