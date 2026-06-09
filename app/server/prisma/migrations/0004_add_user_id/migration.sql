@@ -22,6 +22,18 @@ DROP TABLE "users";
 ALTER TABLE "users_new" RENAME TO "users";
 CREATE UNIQUE INDEX "users_username_key" ON "users"("username");
 
+-- Ensure progress table exists before migration (defensive guard for test databases)
+CREATE TABLE IF NOT EXISTS "progress" (
+    "username" TEXT NOT NULL,
+    "document" TEXT NOT NULL,
+    "progress" TEXT NOT NULL,
+    "percentage" REAL NOT NULL,
+    "device" TEXT NOT NULL,
+    "device_id" TEXT NOT NULL,
+    "timestamp" INTEGER NOT NULL,
+    PRIMARY KEY ("username", "document")
+);
+
 -- Recreate progress with user_id FK (inner join: orphaned progress rows are dropped)
 CREATE TABLE "progress_new" (
     "user_id" TEXT NOT NULL,

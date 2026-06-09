@@ -673,12 +673,19 @@ describe('migrations', () => {
     >[0]);
     await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
     await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (
+        username TEXT NOT NULL PRIMARY KEY,
+        key TEXT NOT NULL
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
       CREATE TABLE progress (
         username TEXT NOT NULL, document TEXT NOT NULL, progress TEXT NOT NULL,
         percentage REAL NOT NULL, device TEXT NOT NULL, device_id TEXT NOT NULL,
         timestamp INTEGER NOT NULL, PRIMARY KEY (username, document)
       )
     `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES (${staleId}, 'migrate-v2-prog.epub', ${filePath}, 'Test', 2048, 0, 0)`;
     await migPrisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${staleId}, 'epub://', 0.5, 'Kobo', 'dev1', 1000)`;
 
@@ -891,10 +898,10 @@ describe('reimportBook', () => {
     const epubPath = path.join(booksDir, oldId + '.epub');
 
     // Insert a progress record for the old ID using the shared prisma client
-    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'alice',
+        userId: alice.id,
         document: oldId,
         progress: '/p[1]',
         percentage: 0.5,
@@ -945,10 +952,10 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // Orphaned progress under newId (no book owns newId)
-    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'alice',
+        userId: alice.id,
         document: newId,
         progress: '/p[2]',
         percentage: 0.8,
@@ -966,7 +973,7 @@ describe('reimportBook', () => {
     // Orphaned progress is now owned by the book
     const newRows = await prisma.progress.findMany({ where: { document: newId } });
     expect(newRows).toHaveLength(1);
-    expect(newRows[0].username).toBe('alice');
+    expect(newRows[0].userId).toBe(alice.id);
     // Old id has no progress
     const oldRows = await prisma.progress.findMany({ where: { document: oldId } });
     expect(oldRows).toHaveLength(0);
@@ -994,11 +1001,11 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
-    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
-    await prisma.user.create({ data: { username: 'bob', key: 'k' } });
+    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
+    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'alice',
+        userId: alice.id,
         document: oldId,
         progress: '/p[5]',
         percentage: 0.9,
@@ -1009,7 +1016,7 @@ describe('reimportBook', () => {
     });
     await prisma.progress.create({
       data: {
-        username: 'alice',
+        userId: alice.id,
         document: newId,
         progress: '/p[2]',
         percentage: 0.4,
@@ -1021,7 +1028,7 @@ describe('reimportBook', () => {
     // bob: orphaned progress is newer (ts=5000) than current (ts=2000) → orphaned wins
     await prisma.progress.create({
       data: {
-        username: 'bob',
+        userId: bob.id,
         document: oldId,
         progress: '/p[1]',
         percentage: 0.2,
@@ -1032,7 +1039,7 @@ describe('reimportBook', () => {
     });
     await prisma.progress.create({
       data: {
-        username: 'bob',
+        userId: bob.id,
         document: newId,
         progress: '/p[9]',
         percentage: 0.95,
@@ -1046,13 +1053,13 @@ describe('reimportBook', () => {
     await bookStore.reimportBook(oldId, mockImporter);
 
     const aliceRows = await prisma.progress.findMany({
-      where: { username: 'alice', document: newId },
+      where: { userId: alice.id, document: newId },
     });
     expect(aliceRows).toHaveLength(1);
     expect(aliceRows[0].progress).toBe('/p[5]'); // alice's newer current record won
     expect(aliceRows[0].timestamp).toBe(3000);
 
-    const bobRows = await prisma.progress.findMany({ where: { username: 'bob', document: newId } });
+    const bobRows = await prisma.progress.findMany({ where: { userId: bob.id, document: newId } });
     expect(bobRows).toHaveLength(1);
     expect(bobRows[0].progress).toBe('/p[9]'); // bob's newer orphaned record won
     expect(bobRows[0].timestamp).toBe(5000);
@@ -1444,10 +1451,10 @@ describe('linkDocument', () => {
 
   it('inserts a merge entry and migrates progress', async () => {
     await bookStore.addBook('link-target', stage('link-target'), FAKE_META);
-    await prisma.user.create({ data: { username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'alice',
+        userId: alice.id,
         document: 'orphan-doc',
         progress: '',
         percentage: 0.5,
@@ -1467,23 +1474,23 @@ describe('linkDocument', () => {
     expect(rows[0].type).toBe('merge');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { username_document: { username: 'alice', document: 'link-target' } },
+      where: { userId_document: { userId: alice.id, document: 'link-target' } },
     });
     expect(targetProgress).not.toBeNull();
     expect(targetProgress!.percentage).toBe(0.5);
 
     const orphanProgress = await prisma.progress.findUnique({
-      where: { username_document: { username: 'alice', document: 'orphan-doc' } },
+      where: { userId_document: { userId: alice.id, document: 'orphan-doc' } },
     });
     expect(orphanProgress).toBeNull();
   });
 
   it('keeps newer progress when both orphan and target have records (newer-wins)', async () => {
     await bookStore.addBook('nw-target', stage('nw-target'), FAKE_META);
-    await prisma.user.create({ data: { username: 'bob', key: 'k' } });
+    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'bob',
+        userId: bob.id,
         document: 'nw-orphan',
         progress: '',
         percentage: 0.3,
@@ -1494,7 +1501,7 @@ describe('linkDocument', () => {
     });
     await prisma.progress.create({
       data: {
-        username: 'bob',
+        userId: bob.id,
         document: 'nw-target',
         progress: '',
         percentage: 0.8,
@@ -1507,17 +1514,17 @@ describe('linkDocument', () => {
     await bookStore.linkDocument('nw-target', 'nw-orphan');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { username_document: { username: 'bob', document: 'nw-target' } },
+      where: { userId_document: { userId: bob.id, document: 'nw-target' } },
     });
     expect(targetProgress!.percentage).toBe(0.8);
   });
 
   it('orphan progress wins when it is newer', async () => {
     await bookStore.addBook('ow-target', stage('ow-target'), FAKE_META);
-    await prisma.user.create({ data: { username: 'carol', key: 'k' } });
+    const carol = await prisma.user.create({ data: { id: 'carol-id', username: 'carol', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'carol',
+        userId: carol.id,
         document: 'ow-orphan',
         progress: '',
         percentage: 0.9,
@@ -1528,7 +1535,7 @@ describe('linkDocument', () => {
     });
     await prisma.progress.create({
       data: {
-        username: 'carol',
+        userId: carol.id,
         document: 'ow-target',
         progress: '',
         percentage: 0.1,
@@ -1541,7 +1548,7 @@ describe('linkDocument', () => {
     await bookStore.linkDocument('ow-target', 'ow-orphan');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { username_document: { username: 'carol', document: 'ow-target' } },
+      where: { userId_document: { userId: carol.id, document: 'ow-target' } },
     });
     expect(targetProgress!.percentage).toBe(0.9);
   });
@@ -1592,10 +1599,10 @@ describe('unlinkDocument', () => {
       INSERT INTO book_id_history (old_id, current_id, timestamp, type)
       VALUES ('ul-prog-orphan', 'ul-prog-target', ${Date.now()}, 'merge')
     `;
-    await prisma.user.create({ data: { username: 'dave', key: 'k' } });
+    const dave = await prisma.user.create({ data: { id: 'dave-id', username: 'dave', key: 'k' } });
     await prisma.progress.create({
       data: {
-        username: 'dave',
+        userId: dave.id,
         document: 'ul-prog-target',
         progress: '',
         percentage: 0.6,
@@ -1608,7 +1615,7 @@ describe('unlinkDocument', () => {
     await bookStore.unlinkDocument('ul-prog-target', 'ul-prog-orphan');
 
     const progress = await prisma.progress.findUnique({
-      where: { username_document: { username: 'dave', document: 'ul-prog-target' } },
+      where: { userId_document: { userId: dave.id, document: 'ul-prog-target' } },
     });
     expect(progress).not.toBeNull();
     expect(progress!.percentage).toBe(0.6);
