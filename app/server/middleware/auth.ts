@@ -24,7 +24,7 @@ export function opdsAuth(userStore: UserStore) {
       const colonIndex = decoded.indexOf(':');
       const username = decoded.slice(0, colonIndex);
       const password = decoded.slice(colonIndex + 1);
-      if (!(await userStore.authenticate(username, UserStore.hashPassword(password)))) {
+      if (!(await userStore.authenticateSync(username, UserStore.hashSyncPassword(password)))) {
         log.warn(`OPDS auth failed for user "${username}"`);
         res.set('WWW-Authenticate', 'Basic realm="HASS-ODPS"');
         res.status(401).send();

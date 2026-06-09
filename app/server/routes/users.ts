@@ -77,8 +77,8 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
-    const key = UserStore.hashPassword(password);
-    const created = await userStore.createUser(trimmedUsername, key);
+    const passwordHash = await UserStore.hashLoginPassword(password);
+    const created = await userStore.createUser(trimmedUsername, passwordHash);
     if (!created) {
       log.warn(`Registration failed — duplicate username "${trimmedUsername}"`);
       res.status(409).json({ error: 'Username already exists' });

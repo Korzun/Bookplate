@@ -61,8 +61,8 @@ beforeEach(async () => {
   await runMigrations(prisma, booksDir);
   bookStore = new BookStore(booksDir, prisma);
   userStore = new UserStore(prisma);
-  // Register a test user the same way KOSync registration does: store MD5(password).
-  await userStore.createUser('alice', UserStore.hashPassword('secret'));
+  // Register a test user with syncPassword 'secret' so OPDS Basic Auth works.
+  await userStore.createUser('alice', null, 'secret');
   app = express();
   app.use('/opds', createOpdsRouter(bookStore, userStore, [60, 170]));
 });
