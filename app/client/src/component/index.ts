@@ -15,6 +15,7 @@ export { MyProgressRow } from './my-progress-row';
 export { Page } from './page';
 export { ProgressIndicator } from './progress-indicator';
 export { SeriesRow } from './series-row';
+export { SyncPassword } from './sync-password';
 export { Tag } from './tag';
 export { Toast } from './toast';
 export { UploadItem } from './upload-item';
