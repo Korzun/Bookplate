@@ -289,7 +289,7 @@ describe('UserStore.getUserIdByUsername', () => {
   it('returns consistent ID matching authenticate', async () => {
     await store.createUser('alice', 'pass');
     const idFromLookup = await store.getUserIdByUsername('alice');
-    const idFromAuth = await store.authenticate('alice', 'pass') as string;
+    const idFromAuth = (await store.authenticate('alice', 'pass')) as string;
     expect(idFromLookup).toBe(idFromAuth);
   });
 });
