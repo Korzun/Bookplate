@@ -56,15 +56,11 @@ export const SyncPassword = () => {
         {!fetchError && (
           <div className={styles.row}>
             <span className={styles.password}>{loadingFetch ? '…' : (displayPassword ?? '—')}</span>
-            <Button
-              type="secondary"
-              disabled={!displayPassword || loadingFetch}
-              onClick={handleCopy}
-            >
+            <Button type="default" disabled={!displayPassword || loadingFetch} onClick={handleCopy}>
               {copied ? 'Copied!' : 'Copy'}
             </Button>
             <Button
-              type="secondary"
+              type="default"
               loading={regenerating}
               disabled={loadingFetch}
               onClick={handleRegenerateClick}
