@@ -47,7 +47,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
       return;
     }
     const currentId = await bookStore.resolveBookId(document);
-    const saved = await userStore.saveProgress(req.kosyncUser!, {
+    const saved = await userStore.saveProgress(req.kosyncUserId!, {
       document: currentId,
       progress,
       percentage,
@@ -67,7 +67,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
     kosyncAuth(userStore),
     async (req: Request, res: Response) => {
       const currentId = await bookStore.resolveBookId(req.params.document);
-      const p = await userStore.getProgress(req.kosyncUser!, currentId);
+      const p = await userStore.getProgress(req.kosyncUserId!, currentId);
       if (!p) {
         log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
         res.status(404).json({ message: 'Not found' });
