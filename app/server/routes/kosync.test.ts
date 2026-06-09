@@ -207,9 +207,10 @@ describe('KOSync lineage resolution', () => {
 
   it('GET with old ID returns progress stored under current ID', async () => {
     // Save progress under the current ID directly via Prisma
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
     await prisma.$executeRaw`
-      INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp)
-      VALUES ('alice', 'current-doc-id', '/body/DocFragment[7]', 0.7, 'Kobo', 'dev-1', 1700000000)
+      INSERT INTO progress (user_id, document, progress, percentage, device, device_id, timestamp)
+      VALUES (${alice!.id}, 'current-doc-id', '/body/DocFragment[7]', 0.7, 'Kobo', 'dev-1', 1700000000)
     `;
 
     const res = await request(app)
