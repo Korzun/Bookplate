@@ -39,6 +39,16 @@ describe('UserStore.createUser', () => {
     await store.createUser('alice', 'secret');
     expect(await store.createUser('alice', 'other')).toBe(false);
   });
+
+  it('assigns a unique 21-char alphanumeric ID to each user', async () => {
+    await store.createUser('alice', 'k1');
+    await store.createUser('bob', 'k2');
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
+    const bob = await prisma.user.findUnique({ where: { username: 'bob' } });
+    expect(alice!.id).toMatch(/^[A-Za-z0-9]{21}$/);
+    expect(bob!.id).toMatch(/^[A-Za-z0-9]{21}$/);
+    expect(alice!.id).not.toBe(bob!.id);
+  });
 });
 
 describe('UserStore.authenticate', () => {
@@ -49,8 +59,7 @@ describe('UserStore.authenticate', () => {
   it('returns the user ID string with correct MD5 key', async () => {
     const key = UserStore.hashPassword('secret');
     const result = await store.authenticate('alice', key);
-    expect(typeof result).toBe('string');
-    expect((result as string).length).toBe(21);
+    expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
   it('returns false with wrong key', async () => {
@@ -242,8 +251,7 @@ describe('UserStore.validateUser', () => {
 
   it('returns the user ID string with correct plaintext password', async () => {
     const result = await store.validateUser('alice', 'secret');
-    expect(typeof result).toBe('string');
-    expect((result as string).length).toBe(21);
+    expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
   it('returns false with wrong password', async () => {
