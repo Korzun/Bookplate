@@ -1,6 +1,12 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import { customAlphabet } from 'nanoid';
 import { Progress } from '../types';
+
+const generateId = customAlphabet(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+  21
+);
 
 export class UserStore {
   constructor(private readonly prisma: PrismaClient) {}
@@ -11,7 +17,7 @@ export class UserStore {
 
   async createUser(username: string, key: string): Promise<boolean> {
     try {
-      await this.prisma.user.create({ data: { username, key } });
+      await this.prisma.user.create({ data: { id: generateId(), username, key } });
       return true;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -21,15 +27,16 @@ export class UserStore {
     }
   }
 
-  async authenticate(username: string, key: string): Promise<boolean> {
+  async authenticate(username: string, key: string): Promise<string | false> {
     const row = await this.prisma.user.findUnique({
       where: { username },
-      select: { key: true },
+      select: { id: true, key: true },
     });
-    return row?.key === key;
+    if (!row || row.key !== key) return false;
+    return row.id;
   }
 
-  async validateUser(username: string, password: string): Promise<boolean> {
+  async validateUser(username: string, password: string): Promise<string | false> {
     return this.authenticate(username, UserStore.hashPassword(password));
   }
 
