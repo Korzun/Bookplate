@@ -48,12 +48,14 @@ export function kosyncAuth(userStore: UserStore) {
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
-      if (!(await userStore.authenticate(username, key))) {
+      const userId = await userStore.authenticate(username, key);
+      if (!userId) {
         log.warn(`KOSync auth failed for user "${username}"`);
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
       req.kosyncUser = username;
+      req.kosyncUserId = userId;
       next();
     } catch (err) {
       next(err);
