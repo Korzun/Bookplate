@@ -898,7 +898,9 @@ describe('reimportBook', () => {
     const epubPath = path.join(booksDir, oldId + '.epub');
 
     // Insert a progress record for the old ID using the shared prisma client
-    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({
+      data: { id: 'alice-id', username: 'alice', key: 'k' },
+    });
     await prisma.progress.create({
       data: {
         userId: alice.id,
@@ -952,7 +954,9 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // Orphaned progress under newId (no book owns newId)
-    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({
+      data: { id: 'alice-id', username: 'alice', key: 'k' },
+    });
     await prisma.progress.create({
       data: {
         userId: alice.id,
@@ -1001,7 +1005,9 @@ describe('reimportBook', () => {
     await bookStore.addBook(oldId, epubPath, FAKE_META);
 
     // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
-    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({
+      data: { id: 'alice-id', username: 'alice', key: 'k' },
+    });
     const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob', key: 'k' } });
     await prisma.progress.create({
       data: {
@@ -1451,7 +1457,9 @@ describe('linkDocument', () => {
 
   it('inserts a merge entry and migrates progress', async () => {
     await bookStore.addBook('link-target', stage('link-target'), FAKE_META);
-    const alice = await prisma.user.create({ data: { id: 'alice-id', username: 'alice', key: 'k' } });
+    const alice = await prisma.user.create({
+      data: { id: 'alice-id', username: 'alice', key: 'k' },
+    });
     await prisma.progress.create({
       data: {
         userId: alice.id,
@@ -1521,7 +1529,9 @@ describe('linkDocument', () => {
 
   it('orphan progress wins when it is newer', async () => {
     await bookStore.addBook('ow-target', stage('ow-target'), FAKE_META);
-    const carol = await prisma.user.create({ data: { id: 'carol-id', username: 'carol', key: 'k' } });
+    const carol = await prisma.user.create({
+      data: { id: 'carol-id', username: 'carol', key: 'k' },
+    });
     await prisma.progress.create({
       data: {
         userId: carol.id,
