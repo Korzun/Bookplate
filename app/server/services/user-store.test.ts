@@ -42,14 +42,15 @@ describe('UserStore.createUser', () => {
 });
 
 describe('UserStore.authenticate', () => {
-  // KoReader sends MD5(password) in registration; createUser stores it as-is.
   beforeEach(async () => {
     await store.createUser('alice', UserStore.hashPassword('secret'));
   });
 
-  it('returns true with correct MD5 key', async () => {
+  it('returns the user ID string with correct MD5 key', async () => {
     const key = UserStore.hashPassword('secret');
-    expect(await store.authenticate('alice', key)).toBe(true);
+    const result = await store.authenticate('alice', key);
+    expect(typeof result).toBe('string');
+    expect((result as string).length).toBe(21);
   });
 
   it('returns false with wrong key', async () => {
@@ -239,8 +240,10 @@ describe('UserStore.validateUser', () => {
     await store.createUser('alice', UserStore.hashPassword('secret'));
   });
 
-  it('returns true with correct plaintext password', async () => {
-    expect(await store.validateUser('alice', 'secret')).toBe(true);
+  it('returns the user ID string with correct plaintext password', async () => {
+    const result = await store.validateUser('alice', 'secret');
+    expect(typeof result).toBe('string');
+    expect((result as string).length).toBe(21);
   });
 
   it('returns false with wrong password', async () => {
