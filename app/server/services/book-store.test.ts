@@ -965,7 +965,7 @@ describe('reimportBook', () => {
 
     // Insert a progress record for the old ID using the shared prisma client
     const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice', key: 'k' },
+      data: { id: 'alice-id', username: 'alice' },
     });
     await prisma.progress.create({
       data: {
@@ -1021,7 +1021,7 @@ describe('reimportBook', () => {
 
     // Orphaned progress under newId (no book owns newId)
     const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice', key: 'k' },
+      data: { id: 'alice-id', username: 'alice' },
     });
     await prisma.progress.create({
       data: {
@@ -1072,9 +1072,9 @@ describe('reimportBook', () => {
 
     // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
     const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice', key: 'k' },
+      data: { id: 'alice-id', username: 'alice' },
     });
-    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob', key: 'k' } });
+    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob' } });
     await prisma.progress.create({
       data: {
         userId: alice.id,
@@ -1524,7 +1524,7 @@ describe('linkDocument', () => {
   it('inserts a merge entry and migrates progress', async () => {
     await bookStore.addBook('link-target', stage('link-target'), FAKE_META);
     const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice', key: 'k' },
+      data: { id: 'alice-id', username: 'alice' },
     });
     await prisma.progress.create({
       data: {
@@ -1561,7 +1561,7 @@ describe('linkDocument', () => {
 
   it('keeps newer progress when both orphan and target have records (newer-wins)', async () => {
     await bookStore.addBook('nw-target', stage('nw-target'), FAKE_META);
-    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob', key: 'k' } });
+    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob' } });
     await prisma.progress.create({
       data: {
         userId: bob.id,
@@ -1596,7 +1596,7 @@ describe('linkDocument', () => {
   it('orphan progress wins when it is newer', async () => {
     await bookStore.addBook('ow-target', stage('ow-target'), FAKE_META);
     const carol = await prisma.user.create({
-      data: { id: 'carol-id', username: 'carol', key: 'k' },
+      data: { id: 'carol-id', username: 'carol' },
     });
     await prisma.progress.create({
       data: {
@@ -1675,7 +1675,7 @@ describe('unlinkDocument', () => {
       INSERT INTO book_id_history (old_id, current_id, timestamp, type)
       VALUES ('ul-prog-orphan', 'ul-prog-target', ${Date.now()}, 'merge')
     `;
-    const dave = await prisma.user.create({ data: { id: 'dave-id', username: 'dave', key: 'k' } });
+    const dave = await prisma.user.create({ data: { id: 'dave-id', username: 'dave' } });
     await prisma.progress.create({
       data: {
         userId: dave.id,
