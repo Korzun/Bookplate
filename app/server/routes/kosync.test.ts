@@ -45,45 +45,27 @@ afterEach(async () => {
   fs.rmSync(booksDir, { recursive: true, force: true });
 });
 
-function authHeaders(username: string, password: string) {
+const ALICE_SYNC_PASSWORD = 'secret';
+
+function authHeaders(username: string, syncPassword: string) {
   return {
     'x-auth-user': username,
-    'x-auth-key': UserStore.hashPassword(password),
+    'x-auth-key': UserStore.hashSyncPassword(syncPassword),
   };
 }
 
-// KoReader sends MD5(password) in the registration body, not the raw password.
-function registerBody(username: string, password: string) {
-  return { username, password: UserStore.hashPassword(password) };
-}
-
 describe('POST /kosync/users/create', () => {
-  it('returns 201 and username on success', async () => {
+  it('returns 404 — self-registration is disabled', async () => {
     const res = await request(app)
       .post('/kosync/users/create')
-      .send(registerBody('alice', 'secret'));
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ username: 'alice' });
-  });
-
-  it('returns 402 on duplicate username', async () => {
-    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
-    const res = await request(app)
-      .post('/kosync/users/create')
-      .send(registerBody('alice', 'other'));
-    expect(res.status).toBe(402);
-    expect(res.body).toEqual({ username: null });
-  });
-
-  it('returns 400 when username or password missing', async () => {
-    const res = await request(app).post('/kosync/users/create').send({ username: 'alice' });
-    expect(res.status).toBe(400);
+      .send({ username: 'newuser', password: 'abc123' });
+    expect(res.status).toBe(404);
   });
 });
 
 describe('GET /kosync/users/auth', () => {
   beforeEach(async () => {
-    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
+    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('returns 200 with correct credentials', async () => {
@@ -107,7 +89,7 @@ describe('GET /kosync/users/auth', () => {
 
 describe('PUT /kosync/syncs/progress', () => {
   beforeEach(async () => {
-    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
+    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('saves progress and returns document + timestamp', async () => {
@@ -137,14 +119,17 @@ describe('PUT /kosync/syncs/progress', () => {
 
 describe('GET /kosync/syncs/progress/:document', () => {
   beforeEach(async () => {
-    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
-    await request(app).put('/kosync/syncs/progress').set(authHeaders('alice', 'secret')).send({
-      document: 'docHash123',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-    });
+    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await request(app)
+      .put('/kosync/syncs/progress')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .send({
+        document: 'docHash123',
+        progress: '/body/DocFragment[5]',
+        percentage: 0.42,
+        device: 'Kobo',
+        device_id: 'dev-1',
+      });
   });
 
   it('returns saved progress', async () => {
@@ -166,7 +151,7 @@ describe('GET /kosync/syncs/progress/:document', () => {
 
 describe('KOSync lineage resolution', () => {
   beforeEach(async () => {
-    await request(app).post('/kosync/users/create').send(registerBody('alice', 'secret'));
+    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
     // Seed a history entry: 'old-doc-id' → 'current-doc-id'
     await prisma.$executeRaw`
       INSERT INTO book_id_history (old_id, current_id) VALUES ('old-doc-id', 'current-doc-id')
