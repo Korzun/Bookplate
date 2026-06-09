@@ -73,12 +73,28 @@ async function applyPendingMigrations(prisma: PrismaClient): Promise<void> {
     // For the baseline migration, skip executing the SQL when the schema is
     // already present (databases upgraded from the pre-Prisma migration system).
     // All subsequent migrations generated with `prisma migrate dev` are always executed.
+    // Note: the directory was renamed from 0_baseline → 0000_baseline; both names
+    // are treated as the baseline guard so that production databases with the old
+    // migration name recorded continue to work correctly.
     let skipSql = false;
-    if (migName === '0_baseline') {
-      const existing = await prisma.$queryRaw<Array<{ name: string }>>`
-        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'books'
-      `;
-      skipSql = existing.length > 0;
+    if (migName === '0_baseline' || migName === '0000_baseline') {
+      // Also mark the legacy name as applied so it is not re-run after the rename.
+      const legacyName = '0_baseline';
+      if (migName === '0000_baseline' && !appliedSet.has(legacyName)) {
+        const legacyApplied = await prisma.$queryRaw<Array<{ migration_name: string }>>`
+          SELECT migration_name FROM _prisma_migrations
+          WHERE migration_name = ${legacyName} AND rolled_back_at IS NULL
+        `;
+        if (legacyApplied.length > 0) {
+          skipSql = true;
+        }
+      }
+      if (!skipSql) {
+        const existing = await prisma.$queryRaw<Array<{ name: string }>>`
+          SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'books'
+        `;
+        skipSql = existing.length > 0;
+      }
     }
 
     await prisma.$executeRaw`

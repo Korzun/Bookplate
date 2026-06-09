@@ -40,9 +40,9 @@ export class UserStore {
     return this.authenticate(username, UserStore.hashPassword(password));
   }
 
-  async getProgress(username: string, document: string): Promise<Progress | null> {
+  async getProgress(userId: string, document: string): Promise<Progress | null> {
     const row = await this.prisma.progress.findUnique({
-      where: { username_document: { username, document } },
+      where: { userId_document: { userId, document } },
     });
     if (!row) return null;
     return {
@@ -56,14 +56,14 @@ export class UserStore {
   }
 
   async saveProgress(
-    username: string,
+    userId: string,
     p: Omit<Progress, 'timestamp'> & { timestamp?: number }
   ): Promise<Progress> {
     const timestamp = p.timestamp ?? Math.floor(Date.now() / 1000);
     await this.prisma.progress.upsert({
-      where: { username_document: { username, document: p.document } },
+      where: { userId_document: { userId, document: p.document } },
       create: {
-        username,
+        userId,
         document: p.document,
         progress: p.progress,
         percentage: p.percentage,
@@ -101,9 +101,9 @@ export class UserStore {
     }));
   }
 
-  async getUserProgress(username: string): Promise<Progress[]> {
+  async getUserProgress(userId: string): Promise<Progress[]> {
     const rows = await this.prisma.progress.findMany({
-      where: { username },
+      where: { userId },
       orderBy: { timestamp: 'desc' },
     });
     return rows.map((row) => ({
@@ -116,15 +116,15 @@ export class UserStore {
     }));
   }
 
-  async clearProgress(username: string, document: string): Promise<boolean> {
+  async clearProgress(userId: string, document: string): Promise<boolean> {
     try {
       await this.prisma.progress.delete({
-        where: { username_document: { username, document } },
+        where: { userId_document: { userId, document } },
       });
       return true;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return false; // record not found
+        return false;
       }
       throw e;
     }
@@ -132,10 +132,14 @@ export class UserStore {
 
   async deleteUser(username: string): Promise<boolean> {
     try {
-      // Explicitly delete progress first — the progress table has no FK constraint
-      // to users, so we cannot rely on database-level cascading.
       await this.prisma.$transaction(async (tx) => {
-        await tx.progress.deleteMany({ where: { username } });
+        const user = await tx.user.findUnique({ where: { username }, select: { id: true } });
+        if (!user)
+          throw new Prisma.PrismaClientKnownRequestError('Not found', {
+            code: 'P2025',
+            clientVersion: '',
+          });
+        await tx.progress.deleteMany({ where: { userId: user.id } });
         await tx.user.delete({ where: { username } });
       });
       return true;

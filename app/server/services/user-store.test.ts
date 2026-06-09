@@ -73,45 +73,48 @@ describe('UserStore.authenticate', () => {
 });
 
 describe('UserStore.saveProgress + getProgress', () => {
+  let aliceId: string;
+
   beforeEach(async () => {
     await store.createUser('alice', 'secret');
+    aliceId = (await store.authenticate('alice', 'secret')) as string;
   });
 
   it('retrieves saved progress', async () => {
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'abc123',
       progress: '/body/DocFragment[5]',
       percentage: 0.42,
       device: 'Kobo',
       device_id: 'dev-1',
     });
-    const p = await store.getProgress('alice', 'abc123');
+    const p = await store.getProgress(aliceId, 'abc123');
     expect(p).not.toBeNull();
     expect(p!.progress).toBe('/body/DocFragment[5]');
     expect(p!.percentage).toBeCloseTo(0.42);
   });
 
   it('updates existing progress on conflict', async () => {
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'abc123',
       progress: '/body/DocFragment[5]',
       percentage: 0.42,
       device: 'Kobo',
       device_id: 'dev-1',
     });
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'abc123',
       progress: '/body/DocFragment[10]',
       percentage: 0.8,
       device: 'Kobo',
       device_id: 'dev-1',
     });
-    const p = await store.getProgress('alice', 'abc123');
+    const p = await store.getProgress(aliceId, 'abc123');
     expect(p!.percentage).toBeCloseTo(0.8);
   });
 
   it('returns null when no progress exists', async () => {
-    expect(await store.getProgress('alice', 'unknown')).toBeNull();
+    expect(await store.getProgress(aliceId, 'unknown')).toBeNull();
   });
 });
 
@@ -134,14 +137,15 @@ describe('UserStore.listUsers', () => {
   it('returns users sorted by username with progress count', async () => {
     await store.createUser('zara', 'pass');
     await store.createUser('alice', 'pass');
-    await store.saveProgress('alice', {
+    const aliceId = (await store.authenticate('alice', 'pass')) as string;
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
       device: 'Kobo',
       device_id: 'd1',
     });
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'doc2',
       progress: '/p[1]',
       percentage: 0.2,
@@ -158,16 +162,20 @@ describe('UserStore.listUsers', () => {
 });
 
 describe('UserStore.getUserProgress', () => {
+  let aliceId: string;
+  let bobId: string;
+
   beforeEach(async () => {
     await store.createUser('alice', 'pass');
+    aliceId = (await store.authenticate('alice', 'pass')) as string;
   });
 
   it('returns empty array when user has no progress', async () => {
-    expect(await store.getUserProgress('alice')).toEqual([]);
+    expect(await store.getUserProgress(aliceId)).toEqual([]);
   });
 
   it('returns all progress records ordered by timestamp descending', async () => {
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.3,
@@ -175,7 +183,7 @@ describe('UserStore.getUserProgress', () => {
       device_id: 'd1',
       timestamp: 100,
     });
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'doc2',
       progress: '/p[2]',
       percentage: 0.8,
@@ -183,38 +191,42 @@ describe('UserStore.getUserProgress', () => {
       device_id: 'd1',
       timestamp: 200,
     });
-    const records = await store.getUserProgress('alice');
+    const records = await store.getUserProgress(aliceId);
     expect(records).toHaveLength(2);
-    expect(records[0].document).toBe('doc2'); // most recent first
+    expect(records[0].document).toBe('doc2');
     expect(records[1].document).toBe('doc1');
   });
 
   it('only returns records for the specified user', async () => {
     await store.createUser('bob', 'pass');
-    await store.saveProgress('alice', {
+    bobId = (await store.authenticate('bob', 'pass')) as string;
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
       device: 'Kobo',
       device_id: 'd1',
     });
-    await store.saveProgress('bob', {
+    await store.saveProgress(bobId, {
       document: 'doc2',
       progress: '/p[1]',
       percentage: 0.3,
       device: 'Kobo',
       device_id: 'd2',
     });
-    const aliceRecords = await store.getUserProgress('alice');
+    const aliceRecords = await store.getUserProgress(aliceId);
     expect(aliceRecords).toHaveLength(1);
     expect(aliceRecords[0].document).toBe('doc1');
   });
 });
 
 describe('UserStore.deleteUser', () => {
+  let aliceId: string;
+
   beforeEach(async () => {
     await store.createUser('alice', 'pass');
-    await store.saveProgress('alice', {
+    aliceId = (await store.authenticate('alice', 'pass')) as string;
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -234,7 +246,7 @@ describe('UserStore.deleteUser', () => {
 
   it('cascades to delete all progress records', async () => {
     await store.deleteUser('alice');
-    expect(await store.getUserProgress('alice')).toEqual([]);
+    expect(await store.getUserProgress(aliceId)).toEqual([]);
   });
 
   it('does not affect other users', async () => {
@@ -264,43 +276,48 @@ describe('UserStore.validateUser', () => {
 });
 
 describe('UserStore.clearProgress', () => {
+  let aliceId: string;
+  let bobId: string;
+
   beforeEach(async () => {
     await store.createUser('alice', 'pass');
     await store.createUser('bob', 'pass');
+    aliceId = (await store.authenticate('alice', 'pass')) as string;
+    bobId = (await store.authenticate('bob', 'pass')) as string;
   });
 
   it('returns false when no record exists', async () => {
-    expect(await store.clearProgress('alice', 'doc1')).toBe(false);
+    expect(await store.clearProgress(aliceId, 'doc1')).toBe(false);
   });
 
   it('deletes an existing record and returns true', async () => {
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
       device: 'Kobo',
       device_id: 'd1',
     });
-    expect(await store.clearProgress('alice', 'doc1')).toBe(true);
-    expect(await store.getProgress('alice', 'doc1')).toBeNull();
+    expect(await store.clearProgress(aliceId, 'doc1')).toBe(true);
+    expect(await store.getProgress(aliceId, 'doc1')).toBeNull();
   });
 
   it("does not affect another user's progress for the same document", async () => {
-    await store.saveProgress('alice', {
+    await store.saveProgress(aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
       device: 'Kobo',
       device_id: 'd1',
     });
-    await store.saveProgress('bob', {
+    await store.saveProgress(bobId, {
       document: 'doc1',
       progress: '/p[2]',
       percentage: 0.7,
       device: 'Kobo',
       device_id: 'd2',
     });
-    await store.clearProgress('alice', 'doc1');
-    expect(await store.getProgress('bob', 'doc1')).not.toBeNull();
+    await store.clearProgress(aliceId, 'doc1');
+    expect(await store.getProgress(bobId, 'doc1')).not.toBeNull();
   });
 });
