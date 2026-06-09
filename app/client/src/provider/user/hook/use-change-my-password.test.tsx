@@ -70,10 +70,16 @@ describe('useChangeMyPassword', () => {
     let resolveFetch!: (value: unknown) => void;
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; }))
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        })
+      )
     );
     const { result } = renderHook(() => useChangeMyPassword());
-    act(() => { void result.current[0]('oldpass', 'newpass'); });
+    act(() => {
+      void result.current[0]('oldpass', 'newpass');
+    });
     expect(result.current[1]).toBe(true);
     resolveFetch({ status: 204 });
     await waitFor(() => expect(result.current[1]).toBe(false));
