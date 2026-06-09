@@ -4,6 +4,11 @@
   - You are about to drop the column `key` on the `users` table. All the data in the column will be lost.
 
 */
+-- Create legacy users table if missing (for databases that skipped the baseline migration)
+CREATE TABLE IF NOT EXISTS "users" (
+    "username" TEXT NOT NULL PRIMARY KEY,
+    "key" TEXT NOT NULL DEFAULT ''
+);
 -- RedefineTables
 PRAGMA defer_foreign_keys=ON;
 PRAGMA foreign_keys=OFF;
