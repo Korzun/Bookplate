@@ -233,7 +233,14 @@ export function createUiRouter(
       res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
-    await userStore.changePassword(req.session.username!, UserStore.hashPassword(newPassword));
+    const changed = await userStore.changePassword(
+      req.session.username!,
+      UserStore.hashPassword(newPassword)
+    );
+    if (!changed) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
     log.info(`User "${req.session.username}" changed their password`);
     res.status(204).send();
   });

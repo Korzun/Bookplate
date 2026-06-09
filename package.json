@@ -12,7 +12,7 @@
     "dev": "npm run dev -w app/server",
     "dev:client": "npm run dev -w app/client",
     "test": "npm test -w app/server && npm test -w app/client",
-    "test:watch": "npm run test:watch -w app/server && npm run test:watch -w app/client",
+    "test:watch": "npm run test:watch -w app/server & npm run test:watch -w app/client",
     "lint": "npm run lint -w app/server && npm run lint -w app/client",
     "lint:fix": "npm run lint:fix -w app/server && npm run lint:fix -w app/client"
   }

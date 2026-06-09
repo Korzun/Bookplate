@@ -43,6 +43,17 @@ export const Card = ({
     [onClick]
   );
 
+  const handleHeaderKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!isCollapsible) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handleToggle();
+      }
+    },
+    [handleToggle, isCollapsible]
+  );
+
   const visibleChildren = isCollapsible ? (isExpanded ? children : null) : children;
 
   return (
@@ -60,6 +71,10 @@ export const Card = ({
             [style.clickable]: onClickHeader !== undefined || isCollapsible,
           })}
           onClick={isCollapsible ? handleToggle : (onClickHeader ?? undefined)}
+          onKeyDown={handleHeaderKeyDown}
+          role={isCollapsible ? 'button' : undefined}
+          tabIndex={isCollapsible ? 0 : undefined}
+          aria-expanded={isCollapsible ? isExpanded : undefined}
         >
           {title &&
             (isCollapsible ? (
@@ -77,7 +92,7 @@ export const Card = ({
             ))}
           {subTitle && <div className={style.subTitle}>{subTitle}</div>}
           <div className={style.spacer} />
-          {headerAction}
+          {headerAction && <div onClick={(e) => e.stopPropagation()}>{headerAction}</div>}
         </div>
       )}
       {visibleChildren && <div className={cx(style.content, style[size])}>{visibleChildren}</div>}

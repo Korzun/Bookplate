@@ -47,6 +47,8 @@ export const UserChangePassword = () => {
   }, []);
   const handleNewPasswordChange = useCallback((newValue: string | undefined) => {
     setNewPassword(newValue ?? '');
+    setConfirmPassword('');
+    setIsPasswordValid(false);
   }, []);
   const handleConfirmPasswordChange = useCallback((newValue: string | undefined) => {
     setConfirmPassword(newValue ?? '');
