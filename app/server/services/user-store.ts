@@ -1,13 +1,42 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import argon2 from 'argon2';
 import { Progress } from '../types';
 import { generateUserId } from '../utils/id';
+import { WORDLIST } from './wordlist';
 
 export class UserStore {
   constructor(private readonly prisma: PrismaClient) {}
 
   static hashPassword(password: string): string {
     return crypto.createHash('md5').update(password).digest('hex');
+  }
+
+  static generateSyncPassword(): string {
+    let attempts = 0;
+    while (attempts < 200) {
+      const w1 = WORDLIST[Math.floor(Math.random() * WORDLIST.length)];
+      const w2 = WORDLIST[Math.floor(Math.random() * WORDLIST.length)];
+      if ((w1 + ' ' + w2).length <= 15) return `${w1} ${w2}`;
+      attempts++;
+    }
+    return 'blue oak'; // all wordlist words are ≤7 chars so this is unreachable in practice
+  }
+
+  static hashSyncPassword(syncPassword: string): string {
+    return crypto.createHash('md5').update(syncPassword).digest('hex');
+  }
+
+  static async hashLoginPassword(password: string): Promise<string> {
+    return argon2.hash(password);
+  }
+
+  static async verifyLoginPassword(password: string, hash: string): Promise<boolean> {
+    try {
+      return await argon2.verify(hash, password);
+    } catch {
+      return false;
+    }
   }
 
   async createUser(username: string, key: string): Promise<boolean> {

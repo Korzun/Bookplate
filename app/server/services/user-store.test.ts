@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { UserStore } from './user-store';
 import { runMigrations } from '../db/migrate';
+import { WORDLIST } from './wordlist';
 
 let prisma: PrismaClient;
 let store: UserStore;
@@ -338,5 +340,43 @@ describe('UserStore.clearProgress', () => {
     });
     await store.clearProgress(aliceId, 'doc1');
     expect(await store.getProgress(bobId, 'doc1')).not.toBeNull();
+  });
+});
+
+describe('UserStore.generateSyncPassword', () => {
+  it('returns two words separated by a space', () => {
+    const result = UserStore.generateSyncPassword();
+    expect(result.split(' ')).toHaveLength(2);
+  });
+
+  it('never exceeds 15 characters across 100 calls', () => {
+    for (let i = 0; i < 100; i++) {
+      expect(UserStore.generateSyncPassword().length).toBeLessThanOrEqual(15);
+    }
+  });
+
+  it('uses words from the wordlist', () => {
+    const [w1, w2] = UserStore.generateSyncPassword().split(' ');
+    expect(WORDLIST).toContain(w1);
+    expect(WORDLIST).toContain(w2);
+  });
+});
+
+describe('UserStore.hashSyncPassword', () => {
+  it('returns the MD5 hex digest of the input', () => {
+    const expected = crypto.createHash('md5').update('blue oak').digest('hex');
+    expect(UserStore.hashSyncPassword('blue oak')).toBe(expected);
+  });
+});
+
+describe('UserStore.hashLoginPassword / verifyLoginPassword', () => {
+  it('produces a hash that verifies correctly', async () => {
+    const hash = await UserStore.hashLoginPassword('s3cr3t');
+    expect(await UserStore.verifyLoginPassword('s3cr3t', hash)).toBe(true);
+  });
+
+  it('rejects wrong password', async () => {
+    const hash = await UserStore.hashLoginPassword('s3cr3t');
+    expect(await UserStore.verifyLoginPassword('wrong', hash)).toBe(false);
   });
 });
