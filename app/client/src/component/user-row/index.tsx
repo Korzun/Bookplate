@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useState } from 'react';
 
-import { Button, ConfirmModal } from '~/control';
+import { Button, ConfirmModal, ResetPasswordButton } from '~/control';
 import { AlertOctagonIcon } from '~/icon';
 import { useDeleteUser, useUser } from '~/provider/user';
 
@@ -43,9 +43,12 @@ export const UserRow = ({ username }: UserRowProps) => {
             : undefined
         }
         headerAction={
-          <Button type="link" danger onClick={handleDeleteUser} loading={deleting}>
-            Delete user
-          </Button>
+          <Fragment>
+            <ResetPasswordButton username={username} />
+            <Button type="link" danger onClick={handleDeleteUser} loading={deleting}>
+              Delete user
+            </Button>
+          </Fragment>
         }
       >
         <div className={styles.content}>
