@@ -60,6 +60,23 @@ export function createUsersRouter(userStore: UserStore, adminUsername: string): 
     res.status(204).send();
   });
 
+  router.post('/:username/reset-password', async (req: Request, res: Response) => {
+    const { username } = req.params;
+    if (username === adminUsername) {
+      log.warn(`Password reset attempted for built-in admin "${username}"`);
+      res.status(403).json({ error: 'Cannot reset the built-in admin password' });
+      return;
+    }
+    const password = await userStore.resetPassword(username);
+    if (password === null) {
+      log.warn(`Password reset attempted for unknown user "${username}"`);
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    log.info(`Password reset for user "${username}"`);
+    res.json({ password });
+  });
+
   router.post('/', async (req: Request, res: Response) => {
     const { username, password } = req.body as { username?: string; password?: string };
     if (
