@@ -704,6 +704,72 @@ describe('migrations', () => {
     }
   });
 
+  it('data migration: assigns NanoID surrogate ids to users and preserves progress with working FK cascade', async () => {
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const adapter = new PrismaBetterSqlite3({ url: `file:${migDbPath}` });
+    const migPrisma = new PrismaClient({ adapter } as ConstructorParameters<
+      typeof PrismaClient
+    >[0]);
+    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE "users" (
+        "username" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE "progress" (
+        "username" TEXT NOT NULL,
+        "document" TEXT NOT NULL,
+        "progress" TEXT NOT NULL,
+        "percentage" REAL NOT NULL,
+        "device" TEXT NOT NULL,
+        "device_id" TEXT NOT NULL,
+        "timestamp" INTEGER NOT NULL,
+        PRIMARY KEY ("username", "document"),
+        CONSTRAINT "progress_username_fkey" FOREIGN KEY ("username") REFERENCES "users" ("username") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`
+      INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp)
+      VALUES ('alice', 'doc-1', 'epub://', 0.5, 'Kobo', 'dev1', 1000)
+    `;
+
+    await runMigrations(migPrisma, booksDir);
+
+    const users = await migPrisma.$queryRaw<Array<{ id: string; username: string }>>`
+      SELECT id, username FROM users
+    `;
+    expect(users).toHaveLength(1);
+    expect(users[0].id).toMatch(/^[A-Za-z0-9]{21}$/);
+
+    const progressRows = await migPrisma.$queryRaw<
+      Array<{ user_id: string; document: string; percentage: number }>
+    >`SELECT user_id, document, percentage FROM progress`;
+    expect(progressRows).toHaveLength(1);
+    expect(progressRows[0].user_id).toBe(users[0].id);
+    expect(progressRows[0].document).toBe('doc-1');
+    expect(progressRows[0].percentage).toBe(0.5);
+
+    // FK cascade still works post-migration: deleting the user removes their progress.
+    await migPrisma.$executeRaw`DELETE FROM users WHERE id = ${users[0].id}`;
+    const remaining = await migPrisma.$queryRaw<Array<{ document: string }>>`
+      SELECT document FROM progress
+    `;
+    expect(remaining).toHaveLength(0);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
   it('migration v2: skips books whose files are missing', async () => {
     const missingPath = path.join(booksDir, 'gone.epub');
 

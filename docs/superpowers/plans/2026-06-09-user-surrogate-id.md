@@ -1402,7 +1402,7 @@ cd app/server && npm test 2>&1 | tail -10
 ```
 
 Expected:
-```
+```text
 Test Suites: 12 passed, 12 total
 Tests:       NNN passed, 0 failures
 ```

@@ -168,6 +168,13 @@ beforeEach(async () => {
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
   app.use(session({ secret: 'test-secret', resave: false, saveUninitialized: false }));
+  // Test-only seam: simulate a pre-migration session that lacks `userId`.
+  app.use((req, _res, next) => {
+    if (req.headers['x-test-strip-userid']) {
+      delete req.session.userId;
+    }
+    next();
+  });
   app.use('/', createUiRouter(bookStore, userStore, { ...config, booksDir }, mockThumbnailQueue));
   (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
   (mockThumbnailQueue.reconcile as jest.Mock).mockClear();
@@ -867,6 +874,13 @@ describe('GET /api/my/progress', () => {
     expect(res.body).toEqual([]);
   });
 
+  it('returns 401 when session is missing userId', async () => {
+    const agent = await userAgent();
+    const res = await agent.get('/api/my/progress').set('x-test-strip-userid', '1');
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
+  });
+
   it('returns own progress records for regular user', async () => {
     await userStore.saveProgress(aliceId, {
       document: 'doc1',
@@ -1116,6 +1130,13 @@ describe('DELETE /api/my/progress/:document', () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Progress record not found' });
   });
+
+  it('returns 401 when session is missing userId', async () => {
+    const agent = await userAgent();
+    const res = await agent.delete('/api/my/progress/doc1').set('x-test-strip-userid', '1');
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
+  });
 });
 
 describe('PUT /api/my/progress/:document', () => {
@@ -1233,6 +1254,16 @@ describe('PUT /api/my/progress/:document', () => {
     expect((await userStore.getProgress(aliceId, 'cfidoc'))!.progress).toBe(
       'EPUB_CFI(/6/8!/4/2:0)'
     );
+  });
+
+  it('returns 401 when session is missing userId', async () => {
+    const agent = await userAgent();
+    const res = await agent
+      .put('/api/my/progress/doc1')
+      .set('x-test-strip-userid', '1')
+      .send({ currentChapter: 5, percentage: 0.25 });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
   });
 });
 

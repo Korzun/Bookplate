@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
+import { generateUserId } from '../utils/id';
 import { logger } from '../logger';
 
 const log = logger('Migrate');
@@ -164,6 +165,80 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
 
   // Apply any pending Prisma Migrate SQL files and keep _prisma_migrations in sync.
   await applyPendingMigrations(prisma);
+
+  // Data migration: backfill NanoID-format surrogate IDs for any users left
+  // over from before the "id" column existed, then recreate "users" with "id"
+  // as its primary key and "progress" with a "user_id" foreign key.
+  //
+  // FK enforcement is disabled for the recreate: with it on, dropping "users"
+  // while "progress.username" still carries an ON DELETE CASCADE foreign key
+  // referencing it triggers SQLite's implicit cascade, silently deleting every
+  // progress row before "progress" itself is rebuilt.
+  await runDataMigration(prisma, 'data_v10_user_surrogate_id', async () => {
+    const pending = await prisma.$queryRaw<Array<{ username: string }>>`
+      SELECT username FROM users WHERE id IS NULL
+    `;
+    for (const { username } of pending) {
+      await prisma.$executeRaw`UPDATE users SET id = ${generateUserId()} WHERE username = ${username}`;
+    }
+
+    await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "users_new" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "username" TEXT NOT NULL,
+        "key" TEXT NOT NULL
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "users_new" ("id", "username", "key")
+        SELECT "id", "username", "key" FROM "users"
+    `);
+    await prisma.$executeRawUnsafe(`DROP TABLE "users"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "users_new" RENAME TO "users"`);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX "users_username_key" ON "users"("username")`
+    );
+
+    // Defensive guard for legacy test databases that don't create "progress".
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "progress" (
+        "username" TEXT NOT NULL,
+        "document" TEXT NOT NULL,
+        "progress" TEXT NOT NULL,
+        "percentage" REAL NOT NULL,
+        "device" TEXT NOT NULL,
+        "device_id" TEXT NOT NULL,
+        "timestamp" INTEGER NOT NULL,
+        PRIMARY KEY ("username", "document")
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "progress_new" (
+        "user_id" TEXT NOT NULL,
+        "document" TEXT NOT NULL,
+        "progress" TEXT NOT NULL,
+        "percentage" REAL NOT NULL,
+        "device" TEXT NOT NULL,
+        "device_id" TEXT NOT NULL,
+        "timestamp" INTEGER NOT NULL,
+        PRIMARY KEY ("user_id", "document"),
+        CONSTRAINT "progress_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "progress_new" ("user_id", "document", "progress", "percentage", "device", "device_id", "timestamp")
+        SELECT u."id", p."document", p."progress", p."percentage", p."device", p."device_id", p."timestamp"
+        FROM "progress" p
+        INNER JOIN "users" u ON u."username" = p."username"
+    `);
+    await prisma.$executeRawUnsafe(`DROP TABLE "progress"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "progress_new" RENAME TO "progress"`);
+
+    await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
+  });
 
   // Data migration: recompute book IDs with corrected partial MD5.
   // The original algorithm read 1 KiB starting at offset 256; the corrected one

@@ -24,6 +24,22 @@ const log = logger('UI');
 
 const ALLOWED_EXTENSIONS = new Set(['.epub']);
 
+/**
+ * Returns the authenticated user's surrogate ID, or null after responding
+ * with 401 and destroying the session if it's missing (e.g. a session
+ * created before userId was added to SessionData).
+ */
+function requireUserId(req: Request, res: Response): string | null {
+  const userId = req.session.userId;
+  if (!userId) {
+    log.warn(`Session missing userId for "${req.session.username ?? 'unknown'}"`);
+    req.session.destroy(() => undefined);
+    res.status(401).json({ error: 'Session expired. Please log in again.' });
+    return null;
+  }
+  return userId;
+}
+
 export function createUiRouter(
   bookStore: BookStore,
   userStore: UserStore,
@@ -118,7 +134,9 @@ export function createUiRouter(
       res.json([]);
       return;
     }
-    const progressList = await userStore.getUserProgress(req.session.userId!);
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    const progressList = await userStore.getUserProgress(userId);
     const items = await Promise.all(
       progressList.map(async (p) => {
         const spineIndex = parseCfiSpineIndex(p.progress);
@@ -146,7 +164,9 @@ export function createUiRouter(
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
-    const cleared = await userStore.clearProgress(req.session.userId!, req.params.document);
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    const cleared = await userStore.clearProgress(userId, req.params.document);
     if (!cleared) {
       res.status(404).json({ error: 'Progress record not found' });
       return;
@@ -159,6 +179,8 @@ export function createUiRouter(
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
+    const userId = requireUserId(req, res);
+    if (!userId) return;
     const { currentChapter, percentage, device, device_id } = req.body as Record<string, unknown>;
     if (
       typeof currentChapter !== 'number' ||
@@ -178,7 +200,7 @@ export function createUiRouter(
       const spineIndex = book.chapterSpineMap[currentChapter - 1];
       progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
     }
-    await userStore.saveProgress(req.session.userId!, {
+    await userStore.saveProgress(userId, {
       document: req.params.document,
       progress,
       percentage,
