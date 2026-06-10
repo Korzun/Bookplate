@@ -6,6 +6,8 @@ export type AuthProviderProps = { children: ReactNode };
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [username, setUsername] = useState<AuthContext['username']>();
   const [isAdmin, setIsAdmin] = useState<AuthContext['isAdmin']>(false);
+  const [mustChangePassword, setMustChangePassword] =
+    useState<AuthContext['mustChangePassword']>(false);
   const [loading, setLoading] = useState<AuthContext['loading']>(true);
   const [error, setError] = useState<AuthContext['error']>(false);
   const [errorMessage, setErrorMessage] = useState<AuthContext['errorMessage']>();
@@ -22,12 +24,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const currentUser = await (response.json() as Promise<{
         username: string;
         isAdmin: boolean;
+        mustChangePassword: boolean;
       }>);
       setUsername(currentUser.username);
       setIsAdmin(currentUser.isAdmin);
+      setMustChangePassword(currentUser.mustChangePassword);
     } catch (error) {
       setUsername(undefined);
       setIsAdmin(false);
+      setMustChangePassword(false);
       setError(true);
       if (error instanceof Error) {
         setErrorMessage(error.message);
@@ -48,12 +53,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setUsername,
         isAdmin,
         setIsAdmin,
+        mustChangePassword,
+        setMustChangePassword,
         refetch: fetchMe,
         loading,
         error,
         errorMessage,
       }) as AuthContext,
-    [username, isAdmin, loading, error, errorMessage, fetchMe]
+    [username, isAdmin, mustChangePassword, loading, error, errorMessage, fetchMe]
   );
 
   return <Context.Provider value={state}>{children}</Context.Provider>;

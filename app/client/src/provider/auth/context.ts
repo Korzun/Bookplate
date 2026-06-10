@@ -3,6 +3,8 @@ import { createContext } from 'react';
 interface AuthContextMutators {
   setUsername: (username: string) => void;
   setIsAdmin: (isAdmin: boolean) => void;
+  mustChangePassword: boolean;
+  setMustChangePassword: (mustChangePassword: boolean) => void;
   refetch: () => Promise<void>;
 }
 
@@ -31,6 +33,8 @@ export const Context = createContext<AuthContext>({
   setUsername: () => {},
   isAdmin: false,
   setIsAdmin: () => {},
+  mustChangePassword: false,
+  setMustChangePassword: () => {},
   refetch: () => Promise.resolve(),
   loading: true,
   error: false,
