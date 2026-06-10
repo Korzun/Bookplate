@@ -2,12 +2,14 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 
 import { Card, Toast } from '~/component';
 import { Button, TextInput } from '~/control';
+import { useAuthRefresh } from '~/provider/auth';
 import { useChangeMyPassword } from '~/provider/user';
 
 import { useStyle } from './style';
 
 export const UserChangePassword = () => {
   const styles = useStyle();
+  const refetchAuth = useAuthRefresh();
   const [changeMyPassword, loading, okay, error, errorMessage] = useChangeMyPassword();
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
@@ -34,8 +36,9 @@ export const UserChangePassword = () => {
       setConfirmPassword('');
       setIsPasswordValid(false);
       setToast({ text: 'Password changed', type: 'success' });
+      void refetchAuth();
     }
-  }, [submitCount, loading, okay, error, errorMessage]);
+  }, [submitCount, loading, okay, error, errorMessage, refetchAuth]);
 
   const handleChangePassword = useCallback(() => {
     setSubmitCount((count) => count + 1);
