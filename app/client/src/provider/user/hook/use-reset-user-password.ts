@@ -25,7 +25,9 @@ export const useResetUserPassword = (): UseResetUserPassword => {
         try {
           const body = (await response.json()) as { error?: string };
           if (body.error) message = body.error;
-        } catch { /* ignore parse error */ }
+        } catch {
+          /* ignore parse error */
+        }
         throw new Error(message);
       }
       const data = (await response.json()) as { password: string };

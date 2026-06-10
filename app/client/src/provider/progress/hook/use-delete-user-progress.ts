@@ -3,7 +3,6 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const removeProgressById = (bookId: string, { [bookId]: _, ...rest }: UserProgressList) => rest;
 
 export type DeleteUserProgress = (bookId: string) => Promise<void>;

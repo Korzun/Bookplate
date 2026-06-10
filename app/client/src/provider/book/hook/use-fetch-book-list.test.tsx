@@ -31,7 +31,7 @@ function makeWrapper({
   initialBooks = {} as BookList,
   bookListLoading = false,
   completeBookIds = new Set<string>(),
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   onSetBookList = (_: BookList) => {},
   onSetBookListFetched = vi.fn(),
   onSetBookListError = vi.fn(),
