@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-export const useRegenerateSyncPassword = (): [() => void, boolean, string | null, boolean] => {
+export const useRegenerateSyncPassword = (): [() => Promise<void>, boolean, string | null, boolean] => {
   const [loading, setLoading] = useState(false);
   const [syncPassword, setSyncPassword] = useState<string | null>(null);
   const [error, setError] = useState(false);
