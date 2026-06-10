@@ -7,6 +7,7 @@ export { NumberInput } from './number-input';
 export { PasswordResultModal } from './password-result-modal';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
 export { RegenChaptersButton } from './regen-chapters-button';
+export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
 export { Switch } from './switch';
 export { TextArea } from './text-area';
