@@ -21,7 +21,12 @@ export const useResetUserPassword = (): UseResetUserPassword => {
         method: 'POST',
       });
       if (response.status !== 200) {
-        throw new Error('Failed to reset password');
+        let message = 'Failed to reset password';
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch { /* ignore parse error */ }
+        throw new Error(message);
       }
       const data = (await response.json()) as { password: string };
       return data.password;

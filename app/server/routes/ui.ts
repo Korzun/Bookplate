@@ -110,6 +110,7 @@ export function createUiRouter(
       req.session.authenticated = true;
       req.session.isAdmin = true;
       req.session.username = username;
+      req.session.mustChangePassword = false;
       log.info(`Admin "${username}" logged in`);
       res.sendStatus(200);
       return;

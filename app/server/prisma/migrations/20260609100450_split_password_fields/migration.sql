@@ -18,7 +18,7 @@ CREATE TABLE "new_users" (
     "password_hash" TEXT,
     "sync_password" TEXT
 );
-INSERT INTO "new_users" ("id", "username") SELECT "id", "username" FROM "users";
+INSERT INTO "new_users" ("username") SELECT "username" FROM "users";
 DROP TABLE "users";
 ALTER TABLE "new_users" RENAME TO "users";
 PRAGMA foreign_keys=ON;

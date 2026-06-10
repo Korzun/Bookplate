@@ -33,7 +33,12 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       if (response.status !== 204) {
-        throw new Error('Password change failed');
+        let message = 'Password change failed';
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch { /* ignore parse error */ }
+        throw new Error(message);
       }
       setOkay(true);
     } catch (err) {
