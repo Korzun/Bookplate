@@ -3,7 +3,6 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 import { Context } from '../context';
 import { BookList } from '../type';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const removeBookById = (bookId: string, { [bookId]: _, ...rest }: BookList) => rest;
 
 export type UseDeleteBook = [(id: string) => Promise<void>, boolean, boolean, string | undefined];

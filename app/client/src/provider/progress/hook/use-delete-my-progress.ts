@@ -4,7 +4,6 @@ import { useUsername } from '../../../provider/auth';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const removeProgressById = (bookId: string, { [bookId]: _, ...rest }: UserProgressList) => rest;
 
 export type DeleteMyProgress = (bookId: string) => Promise<void>;
