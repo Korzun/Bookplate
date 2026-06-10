@@ -39,8 +39,15 @@ COPY package*.json ./
 COPY package.json ./app/package.json
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
+# ARGON2=1 skips node-gyp-build's install-time prebuild load-test for argon2:
+# that test dlopen()s the resolved prebuild to verify it works, which fails
+# when cross-compiling (an arm64 .node file can't be loaded by the amd64
+# build host's Node), causing it to fall back to `node-gyp rebuild` (which
+# then fails because alpine has no Python). Skipping the test still leaves
+# node-gyp-build's runtime loader to pick the correct linux-arm64 musl
+# prebuild when the app actually runs on the target platform.
 RUN NPMARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x64" || echo "${TARGETARCH}") && \
-    npm_config_arch=${NPMARCH} npm ci --cpu=${NPMARCH} --omit=dev && \
+    ARGON2=1 npm_config_arch=${NPMARCH} npm ci --cpu=${NPMARCH} --omit=dev && \
     npm cache clean --force
 
 # ── runtime ──────────────────────────────────────────────────────────────────
