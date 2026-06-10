@@ -188,12 +188,14 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       CREATE TABLE "users_new" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "username" TEXT NOT NULL,
-        "key" TEXT NOT NULL
+        "password_hash" TEXT,
+        "sync_password" TEXT,
+        "must_change_password" BOOLEAN NOT NULL DEFAULT 0
       )
     `);
     await prisma.$executeRawUnsafe(`
-      INSERT INTO "users_new" ("id", "username", "key")
-        SELECT "id", "username", "key" FROM "users"
+      INSERT INTO "users_new" ("id", "username", "password_hash", "sync_password", "must_change_password")
+        SELECT "id", "username", "password_hash", "sync_password", 0 FROM "users"
     `);
     await prisma.$executeRawUnsafe(`DROP TABLE "users"`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "users_new" RENAME TO "users"`);
