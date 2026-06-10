@@ -9,7 +9,7 @@ import {
 import { ThemeProvider } from './provider/theme/provider';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
-  user?: { username: string; isAdmin: boolean };
+  user?: { username: string; isAdmin: boolean; mustChangePassword?: boolean };
   initialEntries?: string[];
 }
 
@@ -23,11 +23,13 @@ export function renderWithProviders(
 ) {
   const authState: AuthContextType = {
     ...user,
+    mustChangePassword: user.mustChangePassword ?? false,
     loading: false,
     error: false,
     errorMessage: undefined,
     setUsername: () => {},
     setIsAdmin: () => {},
+    setMustChangePassword: () => {},
     refetch: () => Promise.resolve(),
   };
 
