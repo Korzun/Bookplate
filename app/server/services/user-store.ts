@@ -5,6 +5,9 @@ import { Progress } from '../types';
 import { generateUserId } from '../utils/id';
 import { WORDLIST } from './wordlist';
 
+const LOGIN_PASSWORD_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const LOGIN_PASSWORD_LENGTH = 16;
+
 export class UserStore {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -33,6 +36,14 @@ export class UserStore {
     } catch {
       return false;
     }
+  }
+
+  static generateLoginPassword(): string {
+    let password = '';
+    for (let i = 0; i < LOGIN_PASSWORD_LENGTH; i++) {
+      password += LOGIN_PASSWORD_CHARSET[crypto.randomInt(LOGIN_PASSWORD_CHARSET.length)];
+    }
+    return password;
   }
 
   async createUser(
@@ -92,7 +103,10 @@ export class UserStore {
 
   async changePassword(username: string, passwordHash: string): Promise<boolean> {
     try {
-      await this.prisma.user.update({ where: { username }, data: { passwordHash } });
+      await this.prisma.user.update({
+        where: { username },
+        data: { passwordHash, mustChangePassword: false },
+      });
       return true;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
@@ -100,6 +114,31 @@ export class UserStore {
       }
       throw e;
     }
+  }
+
+  async resetPassword(username: string): Promise<string | null> {
+    const password = UserStore.generateLoginPassword();
+    const passwordHash = await UserStore.hashLoginPassword(password);
+    try {
+      await this.prisma.user.update({
+        where: { username },
+        data: { passwordHash, mustChangePassword: true },
+      });
+      return password;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  async getMustChangePassword(username: string): Promise<boolean> {
+    const row = await this.prisma.user.findUnique({
+      where: { username },
+      select: { mustChangePassword: true },
+    });
+    return row?.mustChangePassword ?? false;
   }
 
   async getSyncPassword(username: string): Promise<string | null> {
