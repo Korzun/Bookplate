@@ -3,6 +3,7 @@ export {
   useDeleteUser,
   useRegenerateSyncPassword,
   useRegisterUser,
+  useResetUserPassword,
   useSyncPassword,
   useUser,
   useUserList,
