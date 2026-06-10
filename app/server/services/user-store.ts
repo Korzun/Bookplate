@@ -14,8 +14,8 @@ export class UserStore {
   static generateSyncPassword(): string {
     let attempts = 0;
     while (attempts < 200) {
-      const w1 = WORDLIST[Math.floor(Math.random() * WORDLIST.length)];
-      const w2 = WORDLIST[Math.floor(Math.random() * WORDLIST.length)];
+      const w1 = WORDLIST[crypto.randomInt(WORDLIST.length)];
+      const w2 = WORDLIST[crypto.randomInt(WORDLIST.length)];
       if ((w1 + ' ' + w2).length <= 15) return `${w1} ${w2}`;
       attempts++;
     }

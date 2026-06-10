@@ -19,6 +19,8 @@ function makeAuthValue(overrides: { username?: string } = {}): AuthContextType {
     errorMessage: undefined,
     setUsername: () => {},
     setIsAdmin: () => {},
+    mustChangePassword: false,
+    setMustChangePassword: () => {},
     refetch: () => Promise.resolve(),
   } as AuthContextType;
 }

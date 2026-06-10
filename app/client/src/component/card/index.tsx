@@ -92,7 +92,11 @@ export const Card = ({
             ))}
           {subTitle && <div className={style.subTitle}>{subTitle}</div>}
           <div className={style.spacer} />
-          {headerAction && <div onClick={(e) => e.stopPropagation()}>{headerAction}</div>}
+          {headerAction && (
+            <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              {headerAction}
+            </div>
+          )}
         </div>
       )}
       {visibleChildren && <div className={cx(style.content, style[size])}>{visibleChildren}</div>}
