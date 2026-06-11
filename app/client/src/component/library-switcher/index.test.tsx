@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 function renderAsUser(ui: ReactNode) {
-  vi.mocked(useIsAdmin).mockReturnValue([false, false, false, undefined]);
+  vi.mocked(useIsAdmin).mockReturnValue([false, false]);
   vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
 
   return render(
@@ -38,7 +38,7 @@ function renderAsUser(ui: ReactNode) {
 }
 
 function renderAsAdmin(ui: ReactNode) {
-  vi.mocked(useIsAdmin).mockReturnValue([true, false, false, undefined]);
+  vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([
     [
       { username: 'alice', progressCount: 0 },

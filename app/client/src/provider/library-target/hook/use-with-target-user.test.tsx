@@ -2,6 +2,8 @@ import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { makeJwt } from '~/lib/test-jwt';
+import { setToken } from '~/lib/token';
 import { AuthProvider } from '~/provider/auth';
 import { LibraryTargetProvider } from '~/provider/library-target';
 
@@ -14,12 +16,15 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </AuthProvider>
 );
 
-const mockMe = (isAdmin: boolean) => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ username: 'x', isAdmin, mustChangePassword: false }),
+// Auth state derives from the stored JWT; seed one instead of mocking fetch.
+const seedAuth = (isAdmin: boolean) => {
+  setToken(
+    makeJwt({
+      ...(isAdmin ? {} : { sub: 'u1' }),
+      username: isAdmin ? 'admin' : 'x',
+      isAdmin,
+      mustChangePassword: false,
+      exp: Math.floor(Date.now() / 1000) + 900,
     })
   );
 };
@@ -30,7 +35,7 @@ afterEach(() => {
 });
 
 it('returns URLs unchanged for non-admin users', async () => {
-  mockMe(false);
+  seedAuth(false);
   const { result } = renderHook(
     () => ({ withTarget: useWithTargetUser(), target: useLibraryTarget() }),
     { wrapper }
@@ -42,7 +47,7 @@ it('returns URLs unchanged for non-admin users', async () => {
 });
 
 it('appends ?user= for admins with a target selected', async () => {
-  mockMe(true);
+  seedAuth(true);
   const { result } = renderHook(
     () => ({ withTarget: useWithTargetUser(), target: useLibraryTarget() }),
     { wrapper }
@@ -57,7 +62,7 @@ it('appends ?user= for admins with a target selected', async () => {
 });
 
 it('persists the target in localStorage', async () => {
-  mockMe(true);
+  seedAuth(true);
   const { result } = renderHook(() => useLibraryTarget(), { wrapper });
   await act(async () => {
     result.current[1]('bob');
@@ -67,7 +72,7 @@ it('persists the target in localStorage', async () => {
 
 it('reads an existing localStorage value on mount', async () => {
   localStorage.setItem('library-target-user', 'alice');
-  mockMe(true);
+  seedAuth(true);
   const { result } = renderHook(() => useLibraryTarget(), { wrapper });
   await act(async () => {});
   expect(result.current[0]).toBe('alice');

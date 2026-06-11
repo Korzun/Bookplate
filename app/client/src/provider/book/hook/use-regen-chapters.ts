@@ -1,8 +1,8 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
 import { useWithTargetUser } from '~/provider/library-target';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context as ProgressContext } from '../../progress/context';
 import { Context } from '../context';
 import type { Book } from '../type';
@@ -30,9 +30,12 @@ export const useRegenChapters = (): UseRegenChapters => {
         setLoading(true);
         setError(false);
         setErrorMessage(undefined);
-        const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}/regen-chapters`), {
-          method: 'POST',
-        });
+        const res = await apiFetch(
+          withTargetUser(`/api/books/${encodeURIComponent(id)}/regen-chapters`),
+          {
+            method: 'POST',
+          }
+        );
         if (!res.ok) throw new Error('Failed to regenerate chapters');
         const updated = await (res.json() as Promise<Book>);
         setBookList((prev) => {

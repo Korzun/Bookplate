@@ -155,7 +155,7 @@ describe('useBookList', () => {
 
     // The target change clears the error and unfetched state, letting the
     // trigger effect refetch with a callback built after the reset.
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books'));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books', {}));
     await waitFor(() => expect(result.current.list[2]).toBe(false));
   });
 });

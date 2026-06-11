@@ -1,8 +1,8 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
 import { useWithTargetUser } from '~/provider/library-target';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context as ProgressContext } from '../../progress/context';
 import { Context } from '../context';
 import { Book } from '../type';
@@ -56,10 +56,13 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         if (identifiers !== undefined) fd.append('identifiers', JSON.stringify(identifiers));
         if (cover !== undefined) fd.append('cover', cover);
 
-        const response = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(bookId)}/metadata`), {
-          method: 'PATCH',
-          body: fd,
-        });
+        const response = await apiFetch(
+          withTargetUser(`/api/books/${encodeURIComponent(bookId)}/metadata`),
+          {
+            method: 'PATCH',
+            body: fd,
+          }
+        );
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? 'Save failed');

@@ -1,8 +1,8 @@
 import { useCallback, useContext, useMemo, useRef, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
 import { useIsAdmin } from '~/provider/auth';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 

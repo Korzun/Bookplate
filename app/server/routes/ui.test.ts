@@ -666,7 +666,12 @@ describe('POST /api/books/:id/link', () => {
 
   it('returns 409 when documentId is already linked', async () => {
     const token = await loginAlice();
-    await bookStore.addBook(aliceOwner, 'already-linked-book', stage('already-linked-book'), FAKE_META);
+    await bookStore.addBook(
+      aliceOwner,
+      'already-linked-book',
+      stage('already-linked-book'),
+      FAKE_META
+    );
     await prisma.$executeRaw`
       INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
       VALUES (${aliceId}, 'already-orphan', 'already-linked-book', ${Date.now()}, 'merge')
@@ -692,8 +697,8 @@ describe('POST /api/books/:id/link', () => {
   it('returns 204 and migrates progress on success', async () => {
     const token = await loginAlice();
     await bookStore.addBook(aliceOwner, 'route-link-target', stage('route-link-target'), FAKE_META);
-    await userStore.createUser('alice-route', 'hashed-pass');
-    const aliceRouteId = (await userStore.getUserIdByUsername('alice-route'))!;
+    // Lineage and progress migration are owner-scoped, so only the session
+    // user's (alice's) progress migrates.
     await prisma.progress.create({
       data: {
         userId: aliceId,
