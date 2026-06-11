@@ -55,8 +55,8 @@ export function DeleteBookButton({ bookId }: DeleteBookButton) {
         confirmText="Delete"
         loading={deleting}
       >
-        This action will delete <span className={style.book}>{book?.title ?? 'book'}</span> from all
-        user libraries, along with any synced progress, and{' '}
+        This action will delete <span className={style.book}>{book?.title ?? 'book'}</span> and its
+        file from this library, along with any synced progress, and{' '}
         <span className={style.undone}>can not be undone</span>.
       </ConfirmModal>
     </Fragment>
