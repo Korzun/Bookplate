@@ -4,7 +4,7 @@ import { Context } from '../context';
 
 import { removeUserByUsername } from './util';
 
-export type RegisterUser = (username: string, password: string) => Promise<void>;
+export type RegisterUser = (username: string, password: string) => Promise<boolean>;
 export type UseRegisterUser =
   | [RegisterUser, false, false, false, undefined] // Initial
   | [RegisterUser, true, false, false, undefined] // Registering
@@ -19,19 +19,19 @@ export const useRegisterUser = (): UseRegisterUser => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const registerUser = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string): Promise<boolean> => {
       setOkay(false);
 
       if (!username.trim() || !password) {
         setError(true);
         setErrorMessage('Username and password are required');
-        return;
+        return false;
       }
 
       if (userList[username] !== undefined) {
         setError(true);
         setErrorMessage('Username already taken');
-        return;
+        return false;
       }
 
       setUserList((prev) => ({ ...prev, [username]: { username, progressCount: 0 } }));
@@ -46,10 +46,9 @@ export const useRegisterUser = (): UseRegisterUser => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         });
-        if (response.status !== 201) {
-          throw new Error('Registration failed');
-        }
+        if (response.status !== 201) throw new Error('Registration failed');
         setOkay(true);
+        return true;
       } catch (err) {
         setError(true);
         setUserList((prev) => removeUserByUsername(username, prev));
@@ -58,6 +57,7 @@ export const useRegisterUser = (): UseRegisterUser => {
         } else {
           setErrorMessage('Registration failed');
         }
+        return false;
       } finally {
         setLoading(false);
       }

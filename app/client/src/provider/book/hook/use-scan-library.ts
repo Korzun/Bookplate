@@ -9,7 +9,7 @@ export type ScanResult = {
   removed: string[];
 };
 
-export type ScanLibrary = () => Promise<void>;
+export type ScanLibrary = () => Promise<ScanResult | null>;
 export type UseScanLibrary =
   | [ScanLibrary, undefined, false, false, undefined] // Initial state
   | [ScanLibrary, undefined, true, false, undefined] // Scan is under way
@@ -26,9 +26,7 @@ export const useScanLibrary = (): UseScanLibrary => {
 
   const scanLibrary: ScanLibrary = useCallback(async () => {
     // Prevent multiple parallel requests
-    if (loading) {
-      return;
-    }
+    if (loading) return null;
 
     setLoading(true);
     setError(false);
@@ -40,15 +38,17 @@ export const useScanLibrary = (): UseScanLibrary => {
       if (!response.ok) {
         throw new Error('Scan failed');
       }
-      const scanResult = await (response.json() as Promise<ScanResult>);
-      setScanResult(scanResult);
+      const result = await (response.json() as Promise<ScanResult>);
+      setScanResult(result);
       clearCompleteBookIds();
       fetchBookList();
+      return result;
     } catch (err) {
       setError(true);
       if (err instanceof Error) {
         setErrorMessage(err.message);
       }
+      return null;
     } finally {
       setLoading(false);
     }

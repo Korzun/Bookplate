@@ -25,10 +25,10 @@ const mockProgress = { document: 'book-1', percentage: 50, device: 'Kindle', tim
 const mockBook = { id: 'book-1', title: 'Dune' } as unknown as Book;
 
 describe('MyProgressRow', () => {
-  let mockDelete: (bookId: string) => Promise<void>;
+  let mockDelete: (bookId: string) => Promise<boolean>;
 
   beforeEach(() => {
-    mockDelete = vi.fn<(bookId: string) => Promise<void>>();
+    mockDelete = vi.fn<(bookId: string) => Promise<boolean>>();
     vi.mocked(useBook).mockReturnValue([mockBook, false, false, undefined]);
     vi.mocked(useMyProgress).mockReturnValue([mockProgress, false, false, undefined]);
     vi.mocked(useDeleteMyProgress).mockReturnValue([mockDelete, false, false, undefined]);

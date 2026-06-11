@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 export const useRegenerateSyncPassword = (): [
-  () => Promise<void>,
+  () => Promise<boolean>,
   boolean,
   string | null,
   boolean,
@@ -10,7 +10,7 @@ export const useRegenerateSyncPassword = (): [
   const [syncPassword, setSyncPassword] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
-  const regenerate = useCallback(async () => {
+  const regenerate = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     setError(false);
     setSyncPassword(null);
@@ -18,12 +18,14 @@ export const useRegenerateSyncPassword = (): [
       const res = await fetch('/api/my/sync-password/regenerate', { method: 'POST' });
       if (res.status !== 200) {
         setError(true);
-        return;
+        return false;
       }
       const data = (await res.json()) as { syncPassword: string };
       setSyncPassword(data.syncPassword);
+      return true;
     } catch {
       setError(true);
+      return false;
     } finally {
       setLoading(false);
     }

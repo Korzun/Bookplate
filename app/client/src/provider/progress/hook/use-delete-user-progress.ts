@@ -5,7 +5,7 @@ import type { UserProgressList } from '../type';
 
 const removeProgressById = (bookId: string, { [bookId]: _, ...rest }: UserProgressList) => rest;
 
-export type DeleteUserProgress = (bookId: string) => Promise<void>;
+export type DeleteUserProgress = (bookId: string) => Promise<boolean>;
 export type UseDeleteUserProgress =
   | [DeleteUserProgress, false, false, undefined]
   | [DeleteUserProgress, true, false, undefined]
@@ -19,13 +19,13 @@ export const useDeleteUserProgress = (username?: string): UseDeleteUserProgress 
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const deleteUserProgress = useCallback(
-    async (bookId: string) => {
-      if (deleting) return;
+    async (bookId: string): Promise<boolean> => {
+      if (deleting) return false;
 
       if (username === undefined) {
         setError(true);
         setErrorMessage('Failed to delete progress');
-        return;
+        return false;
       }
 
       const userProgressList = progressList[username];
@@ -33,7 +33,7 @@ export const useDeleteUserProgress = (username?: string): UseDeleteUserProgress 
       if (progress === undefined) {
         setError(true);
         setErrorMessage('Failed to delete progress');
-        return;
+        return false;
       }
 
       setProgressForUsername(username, removeProgressById(bookId, userProgressList));
@@ -47,10 +47,12 @@ export const useDeleteUserProgress = (username?: string): UseDeleteUserProgress 
           { method: 'DELETE' }
         );
         if (response.status !== 204) throw new Error('Failed to clear progress');
+        return true;
       } catch (err) {
         setError(true);
         setProgressForUsername(username, { ...userProgressList, [bookId]: progress });
         if (err instanceof Error) setErrorMessage(err.message);
+        return false;
       } finally {
         setDeleting(false);
       }
