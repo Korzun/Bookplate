@@ -35,6 +35,9 @@ export const Toast = ({
     <div
       className={isDismissing ? `${styles.toast} ${styles.toastExiting}` : styles.toast}
       onAnimationEnd={isDismissing ? () => onRemove(id) : undefined}
+      role="status"
+      aria-live={type === 'error' ? 'assertive' : 'polite'}
+      aria-atomic="true"
     >
       <span className={type === 'success' ? styles.iconSuccess : styles.iconError}>
         {type === 'success' ? (

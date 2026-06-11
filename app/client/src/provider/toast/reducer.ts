@@ -20,7 +20,10 @@ export function toastReducer(state: ToastEntry[], action: ToastAction): ToastEnt
         isDismissing: false,
       };
       if (state.length >= action.maxToasts) {
-        return [...state.map((t, i) => (i === 0 ? { ...t, isDismissing: true } : t)), next];
+        const base = state[0]?.isDismissing
+          ? state.slice(1)
+          : state.map((t, i) => (i === 0 ? { ...t, isDismissing: true } : t));
+        return [...base, next];
       }
       return [...state, next];
     }

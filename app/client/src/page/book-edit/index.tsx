@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { BookEditForm, Page } from '~/component';
@@ -11,11 +11,13 @@ export const BookEditPage = () => {
   const { id } = useParams<{ id: string }>();
   const styles = useStyle();
   const showToast = useToast();
+  const lastErrorRef = useRef<string | undefined>();
 
   const [original, loading, hasError, errorMessage] = useBook(id!);
 
   useEffect(() => {
-    if (errorMessage !== undefined) {
+    if (errorMessage !== undefined && errorMessage !== lastErrorRef.current) {
+      lastErrorRef.current = errorMessage;
       showToast(errorMessage, 'error');
     }
   }, [errorMessage, showToast]);
