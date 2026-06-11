@@ -21,6 +21,10 @@ const useGlobalStyles = createUseStyles((theme: Theme) => ({
       from: { opacity: 0, transform: 'translateY(0.4rem)' },
       to: { opacity: 1, transform: 'translateY(0)' },
     },
+    '@keyframes theme-slide-out': {
+      from: { opacity: 1, transform: 'translateY(0)' },
+      to: { opacity: 0, transform: 'translateY(0.4rem)' },
+    },
   },
 }));
 
