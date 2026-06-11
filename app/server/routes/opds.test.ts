@@ -9,7 +9,7 @@ import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
 import { createOpdsRouter } from './opds';
-import { EpubMeta } from '../types';
+import { EpubMeta, Owner } from '../types';
 
 jest.mock('../logger');
 
@@ -43,6 +43,7 @@ let bookStore: BookStore;
 let userStore: UserStore;
 let app: express.Express;
 let dbPath: string;
+let alice: Owner;
 
 // OPDS uses HTTP Basic Auth — password is sent plaintext (RFC 7617).
 function basicAuth(username: string, password: string) {
@@ -63,6 +64,8 @@ beforeEach(async () => {
   userStore = new UserStore(prisma);
   // Register a test user with syncPassword 'secret' so OPDS Basic Auth works.
   await userStore.createUser('alice', null, 'secret');
+  const aliceId = await userStore.getUserIdByUsername('alice');
+  alice = { userId: aliceId!, username: 'alice' };
   app = express();
   app.use('/opds', createOpdsRouter(bookStore, userStore, [60, 170]));
 });
@@ -114,27 +117,33 @@ describe('GET /opds/books', () => {
   });
 
   it('includes an entry for each book', async () => {
-    await bookStore.addBook('book1', stage('book1'), { ...FAKE_META, title: 'My Book' });
+    await bookStore.addBook(alice, 'book1', stage('book1'), { ...FAKE_META, title: 'My Book' });
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('My Book');
     expect(res.text).toContain('opds-spec.org/acquisition');
   });
 
   it('escapes special characters in titles', async () => {
-    await bookStore.addBook('book2', stage('book2'), { ...FAKE_META, title: 'A & B <Test>' });
+    await bookStore.addBook(alice, 'book2', stage('book2'), {
+      ...FAKE_META,
+      title: 'A & B <Test>',
+    });
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('A &amp; B &lt;Test&gt;');
     expect(res.text).not.toContain('<Test>');
   });
 
   it('includes author in book entry', async () => {
-    await bookStore.addBook('book3', stage('book3'), { ...FAKE_META, author: 'Test Author' });
+    await bookStore.addBook(alice, 'book3', stage('book3'), {
+      ...FAKE_META,
+      author: 'Test Author',
+    });
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('<author><name>Test Author</name></author>');
   });
 
   it('includes summary (description) in book entry', async () => {
-    await bookStore.addBook('book4', stage('book4'), {
+    await bookStore.addBook(alice, 'book4', stage('book4'), {
       ...FAKE_META,
       description: 'A great book about things.',
     });
@@ -144,7 +153,7 @@ describe('GET /opds/books', () => {
 
   it('includes cover link when hasCover is true', async () => {
     const coverData = Buffer.from('fake-cover-data');
-    await bookStore.addBook('bookcover', stage('bookcover'), {
+    await bookStore.addBook(alice, 'bookcover', stage('bookcover'), {
       ...FAKE_META,
       coverData,
       coverMime: 'image/jpeg',
@@ -155,7 +164,7 @@ describe('GET /opds/books', () => {
   });
 
   it('does not include cover link when hasCover is false', async () => {
-    await bookStore.addBook('booknocover', stage('booknocover'), {
+    await bookStore.addBook(alice, 'booknocover', stage('booknocover'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -174,7 +183,7 @@ describe('GET /opds/books/:id/download', () => {
   });
 
   it('returns the file with correct content type', async () => {
-    await bookStore.addBook('bookdl', stage('bookdl', 'epub-content'), FAKE_META);
+    await bookStore.addBook(alice, 'bookdl', stage('bookdl', 'epub-content'), FAKE_META);
     const res = await request(app)
       .get('/opds/books/bookdl/download')
       .set(basicAuth('alice', 'secret'));
@@ -183,7 +192,7 @@ describe('GET /opds/books/:id/download', () => {
   });
 
   it('uses the computed download name in Content-Disposition', async () => {
-    await bookStore.addBook('lotr1', stage('lotr1', 'epub-content'), {
+    await bookStore.addBook(alice, 'lotr1', stage('lotr1', 'epub-content'), {
       ...FAKE_META,
       title: 'The Fellowship of the Ring',
       author: 'J.R.R. Tolkien',
@@ -211,7 +220,7 @@ describe('GET /opds/books/:id/cover', () => {
   });
 
   it('returns 404 when book exists but has no cover', async () => {
-    await bookStore.addBook('booknocover2', stage('booknocover2'), {
+    await bookStore.addBook(alice, 'booknocover2', stage('booknocover2'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -224,7 +233,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns cover image with correct content type', async () => {
     const coverData = Buffer.from('fake-jpeg-data');
-    await bookStore.addBook('bookcoverimg', stage('bookcoverimg'), {
+    await bookStore.addBook(alice, 'bookcoverimg', stage('bookcoverimg'), {
       ...FAKE_META,
       coverData,
       coverMime: 'image/jpeg',
@@ -239,7 +248,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns full cover when book has one', async () => {
     const coverBuf = Buffer.from('opds-cover-data');
-    await bookStore.addBook('opds1', stage('opds1'), {
+    await bookStore.addBook(alice, 'opds1', stage('opds1'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -251,12 +260,12 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns thumbnail when ?width= matches', async () => {
     const thumbBuf = Buffer.from('opds-thumb');
-    await bookStore.addBook('opds2', stage('opds2'), {
+    await bookStore.addBook(alice, 'opds2', stage('opds2'), {
       ...FAKE_META,
       coverData: Buffer.from('orig'),
       coverMime: 'image/jpeg',
     });
-    await bookStore.saveThumbnail('opds2', 60, thumbBuf, 'image/jpeg');
+    await bookStore.saveThumbnail(alice.userId, 'opds2', 60, thumbBuf, 'image/jpeg');
     const res = await request(app)
       .get('/opds/books/opds2/cover?width=60')
       .set(basicAuth('alice', 'secret'));
@@ -266,7 +275,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('falls back to full-size when thumbnail missing', async () => {
     const coverBuf = Buffer.from('fallback-cover');
-    await bookStore.addBook('opds3', stage('opds3'), {
+    await bookStore.addBook(alice, 'opds3', stage('opds3'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -281,7 +290,7 @@ describe('GET /opds/books/:id/cover', () => {
 
 describe('OPDS feed thumbnail link', () => {
   it('includes opds thumbnail link for books with covers', async () => {
-    await bookStore.addBook('opds4', stage('opds4'), {
+    await bookStore.addBook(alice, 'opds4', stage('opds4'), {
       ...FAKE_META,
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
@@ -292,7 +301,7 @@ describe('OPDS feed thumbnail link', () => {
   });
 
   it('does not include thumbnail link for books without covers', async () => {
-    await bookStore.addBook('opds5', stage('opds5'), FAKE_META);
+    await bookStore.addBook(alice, 'opds5', stage('opds5'), FAKE_META);
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).not.toContain('opds-spec.org/image/thumbnail');
   });

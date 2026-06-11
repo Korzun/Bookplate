@@ -16,11 +16,6 @@ function escapeXml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function decodeBasicUser(authHeader: string): string {
-  const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
-  return decoded.slice(0, decoded.indexOf(':'));
-}
-
 function rootFeed(baseUrl: string): string {
   const now = new Date().toISOString();
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -95,7 +90,8 @@ export function createOpdsRouter(
   });
 
   router.get('/books', auth, async (req: Request, res: Response) => {
-    const books = await bookStore.listBooks();
+    const owner = req.opdsOwner!;
+    const books = await bookStore.listBooks(owner);
     log.debug(`Books feed served (${books.length} books)`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.set('Content-Type', 'application/atom+xml;charset=utf-8');
@@ -103,14 +99,14 @@ export function createOpdsRouter(
   });
 
   router.get('/books/:id/download', auth, async (req: Request, res: Response) => {
-    const book = await bookStore.getBookById(req.params.id);
+    const owner = req.opdsOwner!;
+    const book = await bookStore.getBookById(owner, req.params.id);
     if (!book) {
       log.warn(`Download requested for unknown book ID: ${req.params.id}`);
       res.status(404).send('Not found');
       return;
     }
-    const username = decodeBasicUser(req.headers.authorization!);
-    log.info(`User "${username}" downloaded "${book.filename}"`);
+    log.info(`User "${owner.username}" downloaded "${book.filename}"`);
     res.set('Content-Type', 'application/epub+zip');
     res.set(
       'Content-Disposition',
@@ -120,11 +116,12 @@ export function createOpdsRouter(
   });
 
   router.get('/books/:id/cover', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
     if (!isNaN(parsedWidth) && parsedWidth > 0) {
-      const thumbnail = await bookStore.getThumbnail(req.params.id, parsedWidth);
+      const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
       if (thumbnail) {
         res.set('Content-Type', thumbnail.mime);
         res.send(thumbnail.data);
@@ -135,7 +132,7 @@ export function createOpdsRouter(
       );
     }
 
-    const cover = await bookStore.getCover(req.params.id);
+    const cover = await bookStore.getCover(owner.userId, req.params.id);
     if (!cover) {
       res.status(404).send('Not found');
       return;

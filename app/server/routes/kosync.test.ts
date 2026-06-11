@@ -152,9 +152,11 @@ describe('GET /kosync/syncs/progress/:document', () => {
 describe('KOSync lineage resolution', () => {
   beforeEach(async () => {
     await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
-    // Seed a history entry: 'old-doc-id' → 'current-doc-id'
+    // Seed a per-user history entry for alice: 'old-doc-id' → 'current-doc-id'
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-doc-id', 'current-doc-id')
+      INSERT INTO book_id_history (user_id, old_id, current_id)
+      VALUES (${alice!.id}, 'old-doc-id', 'current-doc-id')
     `;
   });
 

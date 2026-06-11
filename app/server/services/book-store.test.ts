@@ -14,10 +14,12 @@ import {
   DocumentIsBookError,
 } from './book-store';
 import { partialMD5 } from './epub-parser';
-import { EpubMeta } from '../types';
+import { EpubMeta, Owner } from '../types';
 import { runMigrations } from '../db/migrate';
 
 jest.mock('../logger');
+
+const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
 function makeMinimalEpub(title: string): Buffer {
   const zip = new AdmZip();
@@ -71,6 +73,26 @@ function stage(id: string, content: string | Buffer = 'x'): string {
   return p;
 }
 
+// Direct SQL helpers scoped to OWNER, keeping the per-user table shape in mind.
+async function insertHistory(
+  oldId: string,
+  currentId: string,
+  opts: { timestamp?: number; type?: string } = {}
+): Promise<void> {
+  const ts = opts.timestamp ?? Date.now();
+  if (opts.type !== undefined) {
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES (${OWNER.userId}, ${oldId}, ${currentId}, ${ts}, ${opts.type})
+    `;
+  } else {
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp)
+      VALUES (${OWNER.userId}, ${oldId}, ${currentId}, ${ts})
+    `;
+  }
+}
+
 const FAKE_META: EpubMeta = {
   title: 'Test Book',
   author: 'Author Name',
@@ -90,20 +112,26 @@ const FAKE_META: EpubMeta = {
 };
 
 let prisma: PrismaClient;
+let booksRoot: string;
+// Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
+// and assert on-disk paths here, matching the owner-scoped BookStore.
 let booksDir: string;
 let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
-  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
+  booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
+  booksDir = path.join(booksRoot, OWNER.username);
+  fs.mkdirSync(booksDir, { recursive: true });
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
   );
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
-  await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma);
+  await runMigrations(prisma, booksRoot);
+  await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
+  bookStore = new BookStore(booksRoot, prisma);
 });
 
 afterEach(async () => {
@@ -113,13 +141,13 @@ afterEach(async () => {
   } catch {
     /* best-effort cleanup */
   }
-  fs.rmSync(booksDir, { recursive: true });
+  fs.rmSync(booksRoot, { recursive: true });
 });
 
 describe('addBook and listBooks', () => {
   it('inserts a book and lists it', async () => {
-    await bookStore.addBook('abc123', stage('abc123'), FAKE_META);
-    const books = await bookStore.listBooks();
+    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
+    const books = await bookStore.listBooks(OWNER);
     expect(books).toHaveLength(1);
     expect(books[0].id).toBe('abc123');
     expect(books[0].title).toBe('Test Book');
@@ -132,8 +160,8 @@ describe('addBook and listBooks', () => {
     const bPath = path.join(booksDir, 'b.epub');
     fs.writeFileSync(aPath, 'first');
     fs.writeFileSync(bPath, 'second');
-    await bookStore.addBook('same-id', aPath, FAKE_META);
-    await expect(bookStore.addBook('same-id', bPath, FAKE_META)).rejects.toThrow(
+    await bookStore.addBook(OWNER, 'same-id', aPath, FAKE_META);
+    await expect(bookStore.addBook(OWNER, 'same-id', bPath, FAKE_META)).rejects.toThrow(
       'Book with id "same-id" already exists'
     );
   });
@@ -141,7 +169,7 @@ describe('addBook and listBooks', () => {
   it('moves the source file to <booksDir>/<id>.epub', async () => {
     const stagedPath = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(stagedPath, 'content');
-    await bookStore.addBook('move-id', stagedPath, FAKE_META);
+    await bookStore.addBook(OWNER, 'move-id', stagedPath, FAKE_META);
     expect(fs.existsSync(stagedPath)).toBe(false);
     expect(fs.existsSync(path.join(booksDir, 'move-id.epub'))).toBe(true);
   });
@@ -149,7 +177,7 @@ describe('addBook and listBooks', () => {
   it('is a no-op for the file when source is already at <id>.epub', async () => {
     const canonical = path.join(booksDir, 'noop-id.epub');
     fs.writeFileSync(canonical, 'content');
-    await bookStore.addBook('noop-id', canonical, FAKE_META);
+    await bookStore.addBook(OWNER, 'noop-id', canonical, FAKE_META);
     expect(fs.existsSync(canonical)).toBe(true);
     expect(fs.readFileSync(canonical, 'utf8')).toBe('content');
   });
@@ -157,164 +185,162 @@ describe('addBook and listBooks', () => {
   it('records size and mtime by stat-ing the source file', async () => {
     const stagedPath = path.join(booksDir, 'sized.epub');
     fs.writeFileSync(stagedPath, '0123456789');
-    await bookStore.addBook('size-id', stagedPath, FAKE_META);
-    const book = await bookStore.getBookById('size-id');
+    await bookStore.addBook(OWNER, 'size-id', stagedPath, FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'size-id');
     expect(book!.size).toBe(10);
     expect(Math.abs(book!.mtime.getTime() - Date.now())).toBeLessThan(5000);
   });
 
   it('sorts by title', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       title: 'Zebra',
     });
-    await bookStore.addBook('id2', stage('id2'), {
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
       ...FAKE_META,
       title: 'Apple',
     });
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
     expect(books[0].title).toBe('Apple');
     expect(books[1].title).toBe('Zebra');
   });
 
   it('returns hasCover false when no cover', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
     });
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
     expect(books[0].hasCover).toBe(false);
   });
 
   it('persists fileAs on stored books', async () => {
-    await bookStore.addBook('abc123', stage('abc123'), {
+    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), {
       ...FAKE_META,
       fileAs: 'Asimov, Isaac',
     });
 
-    const book = await bookStore.getBookById('abc123');
+    const book = await bookStore.getBookById(OWNER, 'abc123');
 
     expect(book!.fileAs).toBe('Asimov, Isaac');
   });
 
   it('stores trimmed fileAs even when metadata has extra whitespace', async () => {
-    await bookStore.addBook('trim1', stage('trim1'), {
+    await bookStore.addBook(OWNER, 'trim1', stage('trim1'), {
       ...FAKE_META,
       fileAs: '  Asimov, Isaac  ',
     });
 
-    const book = await bookStore.getBookById('trim1');
+    const book = await bookStore.getBookById(OWNER, 'trim1');
     expect(book!.fileAs).toBe('Asimov, Isaac');
   });
 
   it('sorts by fileAs before title', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       title: 'Zebra Stories',
       fileAs: 'Apple, A.',
     });
-    await bookStore.addBook('id2', stage('id2'), {
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
       ...FAKE_META,
       title: 'Apple Stories',
       fileAs: 'Zulu, Z.',
     });
 
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
 
     expect(books[0].title).toBe('Zebra Stories');
     expect(books[1].title).toBe('Apple Stories');
   });
 
   it('falls back to title when fileAs is empty', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       title: 'Bravo',
       fileAs: '',
     });
-    await bookStore.addBook('id2', stage('id2'), {
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
       ...FAKE_META,
       title: 'Alpha',
       fileAs: '',
     });
 
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
 
     expect(books[0].title).toBe('Alpha');
     expect(books[1].title).toBe('Bravo');
   });
 
   it('stores and retrieves chapterNames (JSON round-trip)', async () => {
-    await bookStore.addBook('ch1', stage('ch1'), {
+    await bookStore.addBook(OWNER, 'ch1', stage('ch1'), {
       ...FAKE_META,
       chapterCount: 2,
       chapterSpineMap: [1, 2],
       chapterNames: ['The Storm', 'The Calm'],
     });
-    const book = await bookStore.getBookById('ch1');
+    const book = await bookStore.getBookById(OWNER, 'ch1');
     expect(book?.chapterNames).toEqual(['The Storm', 'The Calm']);
   });
 
   it('returns empty chapterNames array when column is NULL (pre-migration books)', async () => {
     // Simulate a book inserted without chapter_names (NULL default)
     await prisma.$executeRawUnsafe(
-      `INSERT INTO books (id, title, size, mtime, added_at, chapter_count, chapter_spine_map) VALUES ('old-book', 'Old Book', 100, 0, 0, 0, '[]')`
+      `INSERT INTO books (user_id, id, title, size, mtime, added_at, chapter_count, chapter_spine_map) VALUES ('${OWNER.userId}', 'old-book', 'Old Book', 100, 0, 0, 0, '[]')`
     );
-    const book = await bookStore.getBookById('old-book');
+    const book = await bookStore.getBookById(OWNER, 'old-book');
     expect(book?.chapterNames).toEqual([]);
   });
 
   it('exposes book.filename as the computed download name', async () => {
-    await bookStore.addBook('fname-1', stage('fname-1'), {
+    await bookStore.addBook(OWNER, 'fname-1', stage('fname-1'), {
       ...FAKE_META,
       author: 'Frank Herbert',
       series: '',
       seriesIndex: 0,
       title: 'Dune',
     });
-    const book = await bookStore.getBookById('fname-1');
+    const book = await bookStore.getBookById(OWNER, 'fname-1');
     expect(book!.filename).toBe('Frank_Herbert-Dune.epub');
   });
 
   it('exposes book.path as <booksDir>/<id>.epub regardless of stored path', async () => {
-    await bookStore.addBook('path-1', stage('path-1'), FAKE_META);
-    const book = await bookStore.getBookById('path-1');
+    await bookStore.addBook(OWNER, 'path-1', stage('path-1'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'path-1');
     expect(book!.path).toBe(path.join(booksDir, 'path-1.epub'));
   });
 });
 
 describe('getBookById', () => {
   it('returns the book by id', async () => {
-    await bookStore.addBook('myid', stage('myid'), FAKE_META);
-    const book = await bookStore.getBookById('myid');
+    await bookStore.addBook(OWNER, 'myid', stage('myid'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'myid');
     expect(book).not.toBeNull();
     expect(book!.filename).toBe('Author_Name-Test_Series-1-Test_Book.epub');
   });
 
   it('returns null for unknown id', async () => {
-    expect(await bookStore.getBookById('unknown')).toBeNull();
+    expect(await bookStore.getBookById(OWNER, 'unknown')).toBeNull();
   });
 });
 
 describe('deleteBook', () => {
   it('removes book from db and returns it', async () => {
-    await bookStore.addBook('del1', stage('del1'), FAKE_META);
-    const deleted = await bookStore.deleteBook('del1');
+    await bookStore.addBook(OWNER, 'del1', stage('del1'), FAKE_META);
+    const deleted = await bookStore.deleteBook(OWNER, 'del1');
     expect(deleted).not.toBeNull();
     expect(deleted!.id).toBe('del1');
-    expect(await bookStore.listBooks()).toHaveLength(0);
+    expect(await bookStore.listBooks(OWNER)).toHaveLength(0);
   });
 
   it('returns null for unknown id', async () => {
-    expect(await bookStore.deleteBook('nope')).toBeNull();
+    expect(await bookStore.deleteBook(OWNER, 'nope')).toBeNull();
   });
 
   it('removes book_id_history entries for the deleted book', async () => {
-    await bookStore.addBook('del2', stage('del2'), FAKE_META);
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-del2', 'del2')
-    `;
-    await bookStore.deleteBook('del2');
+    await bookStore.addBook(OWNER, 'del2', stage('del2'), FAKE_META);
+    await insertHistory('old-del2', 'del2', { type: 'merge' });
+    await bookStore.deleteBook(OWNER, 'del2');
     const rows = await prisma.$queryRaw<Array<unknown>>`
       SELECT * FROM book_id_history WHERE old_id = 'old-del2' OR current_id = 'del2'
     `;
@@ -324,24 +350,24 @@ describe('deleteBook', () => {
 
 describe('getCover', () => {
   it('returns cover data and mime', async () => {
-    await bookStore.addBook('cov1', stage('cov1'), FAKE_META);
-    const cover = await bookStore.getCover('cov1');
+    await bookStore.addBook(OWNER, 'cov1', stage('cov1'), FAKE_META);
+    const cover = await bookStore.getCover(OWNER.userId, 'cov1');
     expect(cover).not.toBeNull();
     expect(Buffer.from(cover!.data)).toEqual(Buffer.from('fake-cover'));
     expect(cover!.mime).toBe('image/jpeg');
   });
 
   it('returns null when no cover', async () => {
-    await bookStore.addBook('nocov', stage('nocov'), {
+    await bookStore.addBook(OWNER, 'nocov', stage('nocov'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
     });
-    expect(await bookStore.getCover('nocov')).toBeNull();
+    expect(await bookStore.getCover(OWNER.userId, 'nocov')).toBeNull();
   });
 
   it('returns null for unknown id', async () => {
-    expect(await bookStore.getCover('unknown')).toBeNull();
+    expect(await bookStore.getCover(OWNER.userId, 'unknown')).toBeNull();
   });
 });
 
@@ -373,17 +399,17 @@ function makeMockImporter(): ScanImporter {
 
 describe('BookStore.scan()', () => {
   it('returns empty lists when booksDir is empty and DB is empty', async () => {
-    const result = await bookStore.scan(makeMockImporter());
+    const result = await bookStore.scan(OWNER, makeMockImporter());
     expect(result).toEqual({ imported: [], removed: [] });
   });
 
   it('imports an epub found on disk but not in DB', async () => {
     const filePath = path.join(booksDir, 'new-book.epub');
     fs.writeFileSync(filePath, 'fake-epub-content');
-    const result = await bookStore.scan(makeMockImporter());
+    const result = await bookStore.scan(OWNER, makeMockImporter());
     expect(result.imported).toEqual(['new-book.epub']);
     expect(result.removed).toEqual([]);
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('Mock Title');
   });
@@ -391,17 +417,17 @@ describe('BookStore.scan()', () => {
   it('does not re-import a book already in the DB', async () => {
     const filePath = path.join(booksDir, 'existing.epub');
     fs.writeFileSync(filePath, 'fake-epub-content');
-    await bookStore.scan(makeMockImporter()); // first scan imports it
-    const result = await bookStore.scan(makeMockImporter()); // second scan is a no-op
+    await bookStore.scan(OWNER, makeMockImporter()); // first scan imports it
+    const result = await bookStore.scan(OWNER, makeMockImporter()); // second scan is a no-op
     expect(result.imported).toEqual([]);
     expect(result.removed).toEqual([]);
-    expect(await bookStore.listBooks()).toHaveLength(1);
+    expect(await bookStore.listBooks(OWNER)).toHaveLength(1);
   });
 
   it('removes a stale DB entry whose file no longer exists on disk', async () => {
     // Add the book with a real file, then delete the file to simulate a stale DB entry
     const ghostStagedPath = stage('ghostid001');
-    await bookStore.addBook('ghostid001', ghostStagedPath, {
+    await bookStore.addBook(OWNER, 'ghostid001', ghostStagedPath, {
       title: 'Ghost Book',
       author: '',
       description: '',
@@ -420,11 +446,11 @@ describe('BookStore.scan()', () => {
     });
     // Delete the canonical file to make the DB entry stale
     fs.unlinkSync(path.join(booksDir, 'ghostid001.epub'));
-    expect(await bookStore.listBooks()).toHaveLength(1);
-    const result = await bookStore.scan(makeMockImporter());
+    expect(await bookStore.listBooks(OWNER)).toHaveLength(1);
+    const result = await bookStore.scan(OWNER, makeMockImporter());
     expect(result.removed).toEqual(['ghostid001.epub']);
     expect(result.imported).toEqual([]);
-    expect(await bookStore.listBooks()).toHaveLength(0);
+    expect(await bookStore.listBooks(OWNER)).toHaveLength(0);
   });
 
   it('skips a file that fails to parse and continues scanning others', async () => {
@@ -454,7 +480,7 @@ describe('BookStore.scan()', () => {
       partialMD5: (filePath: string): string =>
         crypto.createHash('md5').update(filePath).digest('hex'),
     };
-    const result = await bookStore.scan(errorImporter);
+    const result = await bookStore.scan(OWNER, errorImporter);
     expect(result.imported).toHaveLength(1);
     expect(result.imported).toContain('good.epub');
     expect(result.removed).toEqual([]);
@@ -463,7 +489,7 @@ describe('BookStore.scan()', () => {
   it('ignores non-epub files in booksDir', async () => {
     fs.writeFileSync(path.join(booksDir, 'readme.txt'), 'text');
     fs.writeFileSync(path.join(booksDir, 'book.epub'), 'epub');
-    const result = await bookStore.scan(makeMockImporter());
+    const result = await bookStore.scan(OWNER, makeMockImporter());
     expect(result.imported).toEqual(['book.epub']);
   });
 
@@ -471,10 +497,10 @@ describe('BookStore.scan()', () => {
     const arbitraryPath = path.join(booksDir, 'arbitrary-name.epub');
     fs.writeFileSync(arbitraryPath, makeMinimalEpub('A Book'));
     const importer = makeMockImporter();
-    const result = await bookStore.scan(importer);
+    const result = await bookStore.scan(OWNER, importer);
     expect(result.imported).toContain('arbitrary-name.epub');
     expect(fs.existsSync(arbitraryPath)).toBe(false);
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(OWNER);
     expect(books).toHaveLength(1);
     const expectedPath = path.join(booksDir, books[0].id + '.epub');
     expect(fs.existsSync(expectedPath)).toBe(true);
@@ -484,12 +510,12 @@ describe('BookStore.scan()', () => {
     const id = 'orphan-id-123';
     const filePath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(filePath, makeMinimalEpub('To Delete'));
-    await bookStore.addBook(id, filePath, FAKE_META);
+    await bookStore.addBook(OWNER, id, filePath, FAKE_META);
     fs.unlinkSync(filePath);
 
-    const result = await bookStore.scan(makeMockImporter());
+    const result = await bookStore.scan(OWNER, makeMockImporter());
     expect(result.removed).toContain(id + '.epub');
-    expect(await bookStore.getBookById(id)).toBeNull();
+    expect(await bookStore.getBookById(OWNER, id)).toBeNull();
   });
 
   it('skips canonically-named files already in the DB without calling partialMD5', async () => {
@@ -497,7 +523,7 @@ describe('BookStore.scan()', () => {
     const id = 'a1b2c3d4e5f6789012345678901234ab';
     const filePath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(filePath, makeMinimalEpub('Already Here'));
-    await bookStore.addBook(id, filePath, FAKE_META);
+    await bookStore.addBook(OWNER, id, filePath, FAKE_META);
 
     // Spy on importer.partialMD5 — it should NOT be called for this file.
     let mdCallCount = 0;
@@ -510,7 +536,7 @@ describe('BookStore.scan()', () => {
         return 'should-not-happen';
       },
     };
-    const result = await bookStore.scan(importer);
+    const result = await bookStore.scan(OWNER, importer);
     expect(result.imported).toEqual([]);
     expect(mdCallCount).toBe(0);
   });
@@ -526,38 +552,38 @@ describe('publisher, identifiers, subjects', () => {
   });
 
   it('stores and retrieves publisher', async () => {
-    await bookStore.addBook('id1', stage('id1'), FAKE_META);
-    const book = await bookStore.getBookById('id1');
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.publisher).toBe('Test Publisher');
   });
 
   it('stores and retrieves identifiers (JSON round-trip)', async () => {
-    await bookStore.addBook('id1', stage('id1'), FAKE_META);
-    const book = await bookStore.getBookById('id1');
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.identifiers).toEqual([{ scheme: 'ISBN', value: '978-0000000000' }]);
   });
 
   it('stores and retrieves subjects (JSON round-trip)', async () => {
-    await bookStore.addBook('id1', stage('id1'), FAKE_META);
-    const book = await bookStore.getBookById('id1');
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.subjects).toEqual(['Fiction']);
   });
 
   it('stores empty identifiers as empty array', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       identifiers: [],
     });
-    const book = await bookStore.getBookById('id1');
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.identifiers).toEqual([]);
   });
 
   it('stores empty subjects as empty array', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       subjects: [],
     });
-    const book = await bookStore.getBookById('id1');
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.subjects).toEqual([]);
   });
 });
@@ -571,29 +597,29 @@ describe('chapter data', () => {
   });
 
   it('stores and retrieves chapterCount', async () => {
-    await bookStore.addBook('id1', stage('id1'), {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       chapterCount: 12,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     });
-    const book = await bookStore.getBookById('id1');
+    const book = await bookStore.getBookById(OWNER, 'id1');
     expect(book?.chapterCount).toBe(12);
   });
 
   it('stores and retrieves chapterSpineMap (JSON round-trip)', async () => {
     const spineMap = [2, 4, 6, 8];
-    await bookStore.addBook('id2', stage('id2'), {
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
       ...FAKE_META,
       chapterCount: 4,
       chapterSpineMap: spineMap,
     });
-    const book = await bookStore.getBookById('id2');
+    const book = await bookStore.getBookById(OWNER, 'id2');
     expect(book?.chapterSpineMap).toEqual(spineMap);
   });
 
   it('defaults to chapterCount 0 and empty chapterSpineMap', async () => {
-    await bookStore.addBook('id3', stage('id3'), FAKE_META);
-    const book = await bookStore.getBookById('id3');
+    await bookStore.addBook(OWNER, 'id3', stage('id3'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'id3');
     expect(book?.chapterCount).toBe(0);
     expect(book?.chapterSpineMap).toEqual([]);
   });
@@ -606,13 +632,13 @@ describe('page count data', () => {
   });
 
   it('stores and retrieves pageCount', async () => {
-    await bookStore.addBook('id1', stage('id1'), { ...FAKE_META, pageCount: 42 });
-    expect((await bookStore.getBookById('id1'))?.pageCount).toBe(42);
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), { ...FAKE_META, pageCount: 42 });
+    expect((await bookStore.getBookById(OWNER, 'id1'))?.pageCount).toBe(42);
   });
 
   it('defaults to 0 when pageCount is not set', async () => {
-    await bookStore.addBook('id2', stage('id2'), { ...FAKE_META, pageCount: 0 });
-    expect((await bookStore.getBookById('id2'))?.pageCount).toBe(0);
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), { ...FAKE_META, pageCount: 0 });
+    expect((await bookStore.getBookById(OWNER, 'id2'))?.pageCount).toBe(0);
   });
 });
 
@@ -642,10 +668,16 @@ describe('migrations', () => {
       typeof PrismaClient
     >[0]);
     await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES (${staleId}, 'migrate-v2.epub', ${filePath}, 'Test', 2048, 0, 0)`;
 
     await runMigrations(migPrisma, booksDir);
 
+    // The book ID is recomputed by data_v2 (before per-user distribution), so the
+    // single user's copy of the book carries the corrected id.
     const rows = await migPrisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
     expect(rows[0].id).toBe(correctId);
 
@@ -782,6 +814,10 @@ describe('migrations', () => {
       typeof PrismaClient
     >[0]);
     await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES ('some-id', 'gone.epub', ${missingPath}, 'Gone', 100, 0, 0)`;
 
     // Should not throw; the book with the missing file keeps its old ID
@@ -829,6 +865,11 @@ describe('migrations', () => {
       )
     `);
 
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+
     const id = 'backfill-test';
     const epubPath = path.join(booksDir, `${id}.epub`);
     fs.writeFileSync(epubPath, makeMinimalEpubWithContent('A'.repeat(2048)));
@@ -872,6 +913,10 @@ describe('migrations', () => {
         page_count INTEGER NOT NULL DEFAULT 0
       )
     `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await migPrisma.$executeRaw`INSERT INTO books (id, title) VALUES ('missing-id', 'Gone')`;
 
     await expect(runMigrations(migPrisma, booksDir)).resolves.not.toThrow();
@@ -911,6 +956,10 @@ describe('migrations', () => {
         page_count INTEGER NOT NULL DEFAULT 0
       )
     `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
     await migPrisma.$executeRaw`INSERT INTO books (id, title, page_count) VALUES ('pinned-id', 'Test', 99)`;
 
     await runMigrations(migPrisma, booksDir);
@@ -931,7 +980,7 @@ describe('migrations', () => {
 
 describe('reimportBook', () => {
   it('returns null for unknown book id', async () => {
-    expect(await bookStore.reimportBook('doesnotexist')).toBeNull();
+    expect(await bookStore.reimportBook(OWNER, 'doesnotexist')).toBeNull();
   });
 
   it('re-reads metadata from disk and updates the DB row', async () => {
@@ -939,7 +988,7 @@ describe('reimportBook', () => {
     const stagedPath = path.join(booksDir, 'staged-original.epub');
     fs.writeFileSync(stagedPath, epubBuf);
     const id = partialMD5(stagedPath);
-    await bookStore.addBook(id, stagedPath, {
+    await bookStore.addBook(OWNER, id, stagedPath, {
       ...FAKE_META,
       title: 'Original',
     });
@@ -949,7 +998,7 @@ describe('reimportBook', () => {
     const updatedBuf = makeMinimalEpub('Updated');
     fs.writeFileSync(canonicalPath, updatedBuf);
 
-    const updated = await bookStore.reimportBook(id);
+    const updated = await bookStore.reimportBook(OWNER, id);
     // ID may have changed due to ZIP rewrite — updated reflects new state
     expect(updated).not.toBeNull();
     expect(updated!.title).toBe('Updated');
@@ -960,16 +1009,13 @@ describe('reimportBook', () => {
     const stagedPath = path.join(booksDir, 'staged-cascade.epub');
     fs.writeFileSync(stagedPath, epubBuf);
     const oldId = partialMD5(stagedPath);
-    await bookStore.addBook(oldId, stagedPath, FAKE_META);
+    await bookStore.addBook(OWNER, oldId, stagedPath, FAKE_META);
     const epubPath = path.join(booksDir, oldId + '.epub');
 
     // Insert a progress record for the old ID using the shared prisma client
-    const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice' },
-    });
     await prisma.progress.create({
       data: {
-        userId: alice.id,
+        userId: OWNER.userId,
         document: oldId,
         progress: '/p[1]',
         percentage: 0.5,
@@ -983,7 +1029,7 @@ describe('reimportBook', () => {
     const newBuf = makeMinimalEpub('After');
     fs.writeFileSync(epubPath, newBuf);
 
-    const updated = await bookStore.reimportBook(oldId);
+    const updated = await bookStore.reimportBook(OWNER, oldId);
     expect(updated).not.toBeNull();
     const newId = updated!.id;
 
@@ -995,7 +1041,7 @@ describe('reimportBook', () => {
       expect(newRows.length).toBeGreaterThan(0);
     }
     // If ID didn't change (unlikely but possible): still verify DB is consistent
-    expect(await bookStore.getBookById(newId)).not.toBeNull();
+    expect(await bookStore.getBookById(OWNER, newId)).not.toBeNull();
   });
 
   it('inherits orphaned progress under newId when no book owns that hash', async () => {
@@ -1017,15 +1063,12 @@ describe('reimportBook', () => {
 
     const oldId = 'orphan-old';
     const newId = 'orphan-new';
-    await bookStore.addBook(oldId, epubPath, FAKE_META);
+    await bookStore.addBook(OWNER, oldId, epubPath, FAKE_META);
 
     // Orphaned progress under newId (no book owns newId)
-    const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice' },
-    });
     await prisma.progress.create({
       data: {
-        userId: alice.id,
+        userId: OWNER.userId,
         document: newId,
         progress: '/p[2]',
         percentage: 0.8,
@@ -1036,14 +1079,14 @@ describe('reimportBook', () => {
     });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
-    const result = await bookStore.reimportBook(oldId, mockImporter);
+    const result = await bookStore.reimportBook(OWNER, oldId, mockImporter);
 
     expect(result).not.toBeNull();
     expect(result!.id).toBe(newId);
     // Orphaned progress is now owned by the book
     const newRows = await prisma.progress.findMany({ where: { document: newId } });
     expect(newRows).toHaveLength(1);
-    expect(newRows[0].userId).toBe(alice.id);
+    expect(newRows[0].userId).toBe(OWNER.userId);
     // Old id has no progress
     const oldRows = await prisma.progress.findMany({ where: { document: oldId } });
     expect(oldRows).toHaveLength(0);
@@ -1068,16 +1111,15 @@ describe('reimportBook', () => {
 
     const oldId = 'merge-old';
     const newId = 'merge-new';
-    await bookStore.addBook(oldId, epubPath, FAKE_META);
+    await bookStore.addBook(OWNER, oldId, epubPath, FAKE_META);
 
-    // alice: current progress is newer (ts=3000) than orphaned (ts=1000) → current wins
-    const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice' },
-    });
+    // OWNER (the book's owner): current progress is newer (ts=3000) than the
+    // old-id record (ts=1000) → current wins. Reimport is owner-scoped, so only
+    // OWNER's rows are touched.
     const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob' } });
     await prisma.progress.create({
       data: {
-        userId: alice.id,
+        userId: OWNER.userId,
         document: oldId,
         progress: '/p[5]',
         percentage: 0.9,
@@ -1088,7 +1130,7 @@ describe('reimportBook', () => {
     });
     await prisma.progress.create({
       data: {
-        userId: alice.id,
+        userId: OWNER.userId,
         document: newId,
         progress: '/p[2]',
         percentage: 0.4,
@@ -1097,7 +1139,8 @@ describe('reimportBook', () => {
         timestamp: 1000,
       },
     });
-    // bob: orphaned progress is newer (ts=5000) than current (ts=2000) → orphaned wins
+    // bob does not own this book; his progress rows under the same ids must be
+    // left untouched by OWNER's reimport.
     await prisma.progress.create({
       data: {
         userId: bob.id,
@@ -1122,64 +1165,73 @@ describe('reimportBook', () => {
     });
 
     const mockImporter = { parseEpub: () => FAKE_META, partialMD5: () => newId };
-    await bookStore.reimportBook(oldId, mockImporter);
+    await bookStore.reimportBook(OWNER, oldId, mockImporter);
 
-    const aliceRows = await prisma.progress.findMany({
-      where: { userId: alice.id, document: newId },
+    const ownerRows = await prisma.progress.findMany({
+      where: { userId: OWNER.userId, document: newId },
     });
-    expect(aliceRows).toHaveLength(1);
-    expect(aliceRows[0].progress).toBe('/p[5]'); // alice's newer current record won
-    expect(aliceRows[0].timestamp).toBe(3000);
+    expect(ownerRows).toHaveLength(1);
+    expect(ownerRows[0].progress).toBe('/p[5]'); // OWNER's newer current record won
+    expect(ownerRows[0].timestamp).toBe(3000);
 
-    const bobRows = await prisma.progress.findMany({ where: { userId: bob.id, document: newId } });
-    expect(bobRows).toHaveLength(1);
-    expect(bobRows[0].progress).toBe('/p[9]'); // bob's newer orphaned record won
-    expect(bobRows[0].timestamp).toBe(5000);
+    // OWNER has no record left under oldId.
+    const ownerOldCount = await prisma.progress.count({
+      where: { userId: OWNER.userId, document: oldId },
+    });
+    expect(ownerOldCount).toBe(0);
 
-    // No records left under oldId
-    const oldIdCount = await prisma.progress.count({ where: { document: oldId } });
-    expect(oldIdCount).toBe(0);
+    // bob's rows are completely untouched (reimport is owner-scoped).
+    const bobOld = await prisma.progress.findUnique({
+      where: { userId_document: { userId: bob.id, document: oldId } },
+    });
+    expect(bobOld!.progress).toBe('/p[1]');
+    const bobNew = await prisma.progress.findUnique({
+      where: { userId_document: { userId: bob.id, document: newId } },
+    });
+    expect(bobNew!.progress).toBe('/p[9]');
   });
 });
 
 describe('book_thumbnails', () => {
   it('saveThumbnail stores and getThumbnail retrieves', async () => {
-    await bookStore.addBook('bk1', stage('bk1'), FAKE_META);
+    await bookStore.addBook(OWNER, 'bk1', stage('bk1'), FAKE_META);
     const data = Buffer.from('thumb-data');
-    await bookStore.saveThumbnail('bk1', 150, data, 'image/jpeg');
-    const result = await bookStore.getThumbnail('bk1', 150);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk1', 150, data, 'image/jpeg');
+    const result = await bookStore.getThumbnail(OWNER.userId, 'bk1', 150);
     expect(result).not.toBeNull();
     expect(Buffer.from(result!.data).toString()).toBe('thumb-data');
     expect(result!.mime).toBe('image/jpeg');
   });
 
   it('getThumbnail returns null when not present', async () => {
-    await bookStore.addBook('bk2', stage('bk2'), FAKE_META);
-    expect(await bookStore.getThumbnail('bk2', 150)).toBeNull();
+    await bookStore.addBook(OWNER, 'bk2', stage('bk2'), FAKE_META);
+    expect(await bookStore.getThumbnail(OWNER.userId, 'bk2', 150)).toBeNull();
   });
 
   it('saveThumbnail upserts on (book_id, width) conflict', async () => {
-    await bookStore.addBook('bk3', stage('bk3'), FAKE_META);
-    await bookStore.saveThumbnail('bk3', 150, Buffer.from('v1'), 'image/jpeg');
-    await bookStore.saveThumbnail('bk3', 150, Buffer.from('v2'), 'image/jpeg');
-    expect(Buffer.from((await bookStore.getThumbnail('bk3', 150))!.data).toString()).toBe('v2');
+    await bookStore.addBook(OWNER, 'bk3', stage('bk3'), FAKE_META);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk3', 150, Buffer.from('v1'), 'image/jpeg');
+    await bookStore.saveThumbnail(OWNER.userId, 'bk3', 150, Buffer.from('v2'), 'image/jpeg');
+    expect(
+      Buffer.from((await bookStore.getThumbnail(OWNER.userId, 'bk3', 150))!.data).toString()
+    ).toBe('v2');
   });
 
   it('pruneThumbnails removes rows whose width is not in the config list', async () => {
-    await bookStore.addBook('bk4', stage('bk4'), FAKE_META);
-    await bookStore.saveThumbnail('bk4', 60, Buffer.from('x'), 'image/jpeg');
-    await bookStore.saveThumbnail('bk4', 150, Buffer.from('y'), 'image/jpeg');
-    await bookStore.saveThumbnail('bk4', 300, Buffer.from('z'), 'image/jpeg');
+    await bookStore.addBook(OWNER, 'bk4', stage('bk4'), FAKE_META);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg');
+    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 150, Buffer.from('y'), 'image/jpeg');
+    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 300, Buffer.from('z'), 'image/jpeg');
     const removed = await bookStore.pruneThumbnails([60, 150]);
     expect(removed).toBe(1);
-    expect(await bookStore.getThumbnail('bk4', 60)).not.toBeNull();
-    expect(await bookStore.getThumbnail('bk4', 150)).not.toBeNull();
-    expect(await bookStore.getThumbnail('bk4', 300)).toBeNull();
+    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 60)).not.toBeNull();
+    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 150)).not.toBeNull();
+    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 300)).toBeNull();
   });
 
   it('pruneThumbnails with empty array removes all thumbnails', async () => {
-    await bookStore.addBook('bk5', stage('bk5'), FAKE_META);
-    await bookStore.saveThumbnail('bk5', 60, Buffer.from('x'), 'image/jpeg');
+    await bookStore.addBook(OWNER, 'bk5', stage('bk5'), FAKE_META);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk5', 60, Buffer.from('x'), 'image/jpeg');
     const removed = await bookStore.pruneThumbnails([]);
     expect(removed).toBe(1);
   });
@@ -1190,20 +1242,20 @@ describe('book_thumbnails', () => {
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
     };
-    await bookStore.addBook('bk6', stage('bk6'), metaWithCover);
-    await bookStore.addBook('bk7', stage('bk7'), metaWithCover);
-    await bookStore.saveThumbnail('bk6', 60, Buffer.from('x'), 'image/jpeg'); // already has 60px
+    await bookStore.addBook(OWNER, 'bk6', stage('bk6'), metaWithCover);
+    await bookStore.addBook(OWNER, 'bk7', stage('bk7'), metaWithCover);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk6', 60, Buffer.from('x'), 'image/jpeg'); // already has 60px
 
     const missing = await bookStore.getMissingThumbnailPairs([60, 170]);
     // bk6 needs 170, bk7 needs both
-    expect(missing).toContainEqual({ bookId: 'bk6', width: 170 });
-    expect(missing).toContainEqual({ bookId: 'bk7', width: 60 });
-    expect(missing).toContainEqual({ bookId: 'bk7', width: 170 });
-    expect(missing).not.toContainEqual({ bookId: 'bk6', width: 60 });
+    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk6', width: 170 });
+    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk7', width: 60 });
+    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk7', width: 170 });
+    expect(missing).not.toContainEqual({ userId: OWNER.userId, bookId: 'bk6', width: 60 });
   });
 
   it('getMissingThumbnailPairs ignores books without covers', async () => {
-    await bookStore.addBook('bk8', stage('bk8'), {
+    await bookStore.addBook(OWNER, 'bk8', stage('bk8'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -1213,10 +1265,10 @@ describe('book_thumbnails', () => {
   });
 
   it('deleting a book cascades to book_thumbnails', async () => {
-    await bookStore.addBook('bk9', stage('bk9'), FAKE_META);
-    await bookStore.saveThumbnail('bk9', 60, Buffer.from('x'), 'image/jpeg');
-    await bookStore.deleteBook('bk9');
-    expect(await bookStore.getThumbnail('bk9', 60)).toBeNull();
+    await bookStore.addBook(OWNER, 'bk9', stage('bk9'), FAKE_META);
+    await bookStore.saveThumbnail(OWNER.userId, 'bk9', 60, Buffer.from('x'), 'image/jpeg');
+    await bookStore.deleteBook(OWNER, 'bk9');
+    expect(await bookStore.getThumbnail(OWNER.userId, 'bk9', 60)).toBeNull();
   });
 
   it('reimportBook updates book_thumbnails book_id when id changes', async () => {
@@ -1244,32 +1296,32 @@ describe('book_thumbnails', () => {
     // Use a mock importer that returns a different ID on reimport
     const originalId = 'original-id';
     const newId = 'new-id';
-    await bookStore.addBook(originalId, epubPath, FAKE_META);
-    await bookStore.saveThumbnail(originalId, 60, Buffer.from('thumb'), 'image/jpeg');
+    await bookStore.addBook(OWNER, originalId, epubPath, FAKE_META);
+    await bookStore.saveThumbnail(OWNER.userId, originalId, 60, Buffer.from('thumb'), 'image/jpeg');
 
     const mockImporter = {
       parseEpub: () => FAKE_META,
       partialMD5: () => newId,
     };
-    await bookStore.reimportBook(originalId, mockImporter);
+    await bookStore.reimportBook(OWNER, originalId, mockImporter);
 
     // Thumbnail should now be under new ID (not lost, not causing FK error)
-    expect(await bookStore.getThumbnail(newId, 60)).not.toBeNull();
-    expect(await bookStore.getThumbnail(originalId, 60)).toBeNull();
+    expect(await bookStore.getThumbnail(OWNER.userId, newId, 60)).not.toBeNull();
+    expect(await bookStore.getThumbnail(OWNER.userId, originalId, 60)).toBeNull();
   });
 
   it('renames file on disk from <oldId>.epub to <newId>.epub when hash changes', async () => {
     const oldId = 'old-id-aaaa';
     const oldPath = path.join(booksDir, oldId + '.epub');
     fs.writeFileSync(oldPath, 'epub-bytes');
-    await bookStore.addBook(oldId, oldPath, FAKE_META);
+    await bookStore.addBook(OWNER, oldId, oldPath, FAKE_META);
 
     const newId = 'new-id-bbbb';
     const mockImporter: ScanImporter = {
       parseEpub: () => ({ ...FAKE_META, title: 'New Title' }),
       partialMD5: () => newId,
     };
-    await bookStore.reimportBook(oldId, mockImporter);
+    await bookStore.reimportBook(OWNER, oldId, mockImporter);
 
     expect(fs.existsSync(oldPath)).toBe(false);
     expect(fs.existsSync(path.join(booksDir, newId + '.epub'))).toBe(true);
@@ -1279,13 +1331,13 @@ describe('book_thumbnails', () => {
     const id = 'stable-id';
     const filePath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(filePath, 'epub-bytes');
-    await bookStore.addBook(id, filePath, FAKE_META);
+    await bookStore.addBook(OWNER, id, filePath, FAKE_META);
 
     const mockImporter: ScanImporter = {
       parseEpub: () => ({ ...FAKE_META, title: 'Edited' }),
       partialMD5: () => id,
     };
-    await bookStore.reimportBook(id, mockImporter);
+    await bookStore.reimportBook(OWNER, id, mockImporter);
 
     expect(fs.existsSync(filePath)).toBe(true);
   });
@@ -1313,8 +1365,8 @@ describe('book_thumbnails', () => {
 
     const bookAId = 'book-a-id';
     const bookBId = 'book-b-id';
-    await bookStore.addBook(bookAId, epubPath, FAKE_META);
-    await bookStore.addBook(bookBId, stage('book-b-id'), FAKE_META);
+    await bookStore.addBook(OWNER, bookAId, epubPath, FAKE_META);
+    await bookStore.addBook(OWNER, bookBId, stage('book-b-id'), FAKE_META);
 
     // Mock importer returns bookBId as the new hash — collision with existing book
     const mockImporter = {
@@ -1322,12 +1374,12 @@ describe('book_thumbnails', () => {
       partialMD5: () => bookBId,
     };
 
-    await expect(bookStore.reimportBook(bookAId, mockImporter)).rejects.toThrow(
+    await expect(bookStore.reimportBook(OWNER, bookAId, mockImporter)).rejects.toThrow(
       BookHashCollisionError
     );
     // Both books must remain intact after the failed reimport
-    expect(await bookStore.getBookById(bookAId)).not.toBeNull();
-    expect(await bookStore.getBookById(bookBId)).not.toBeNull();
+    expect(await bookStore.getBookById(OWNER, bookAId)).not.toBeNull();
+    expect(await bookStore.getBookById(OWNER, bookBId)).not.toBeNull();
   });
 });
 
@@ -1342,14 +1394,21 @@ describe('book_id_history table', () => {
   });
 
   it('resolveBookId returns the input unchanged when no history exists', async () => {
-    expect(await bookStore.resolveBookId('unknown-id')).toBe('unknown-id');
+    expect(await bookStore.resolveBookId(OWNER.userId, 'unknown-id')).toBe('unknown-id');
   });
 
   it('resolveBookId returns current_id when a mapping exists', async () => {
+    await insertHistory('old-id', 'new-id', { type: 'merge' });
+    expect(await bookStore.resolveBookId(OWNER.userId, 'old-id')).toBe('new-id');
+  });
+
+  it('resolveBookId is scoped to the owner — a mapping for another user is ignored', async () => {
+    await prisma.user.create({ data: { id: 'usr_other00000000000000', username: 'bob' } });
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id) VALUES ('old-id', 'new-id')
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES ('usr_other00000000000000', 'shared-old', 'bob-new', ${Date.now()}, 'merge')
     `;
-    expect(await bookStore.resolveBookId('old-id')).toBe('new-id');
+    expect(await bookStore.resolveBookId(OWNER.userId, 'shared-old')).toBe('shared-old');
   });
 
   it('has a type column with default value edit', async () => {
@@ -1358,10 +1417,7 @@ describe('book_id_history table', () => {
     `;
     expect(cols.map((c) => c.name)).toContain('type');
 
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp)
-      VALUES ('type-test-old', 'type-test-new', ${Date.now()})
-    `;
+    await insertHistory('type-test-old', 'type-test-new');
     const rows = await prisma.$queryRaw<Array<{ type: string }>>`
       SELECT type FROM book_id_history WHERE old_id = 'type-test-old'
     `;
@@ -1371,8 +1427,8 @@ describe('book_id_history table', () => {
   it('rejects invalid type values via CHECK constraint', async () => {
     await expect(
       prisma.$executeRaw`
-        INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-        VALUES ('check-old', 'check-new', ${Date.now()}, 'invalid')
+        INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+        VALUES (${OWNER.userId}, 'check-old', 'check-new', ${Date.now()}, 'invalid')
       `
     ).rejects.toThrow();
   });
@@ -1391,29 +1447,29 @@ describe('resolveBookId — lineage via reimportBook', () => {
 
   it('single hop: resolveBookId(old) returns new after reimport changes ID', async () => {
     const stagedPath = stage('lineage-a');
-    await bookStore.addBook('id-a', stagedPath, FAKE_META);
-    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
-    expect(await bookStore.resolveBookId('id-a')).toBe('id-b');
+    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
+    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+    expect(await bookStore.resolveBookId(OWNER.userId, 'id-a')).toBe('id-b');
   });
 
   it('multi-hop: resolveBookId(original) returns latest after two reimports', async () => {
     const stagedPath = stage('lineage-multi');
-    await bookStore.addBook('id-a', stagedPath, FAKE_META);
+    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
     // First hop: id-a → id-b
-    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
     // Write a file at id-b so reimportBook can stat it
     fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'epub-content');
     // Second hop: id-b → id-c (also flattens id-a → id-c)
-    await bookStore.reimportBook('id-b', makeImporterWithId('id-c'));
-    expect(await bookStore.resolveBookId('id-a')).toBe('id-c');
-    expect(await bookStore.resolveBookId('id-b')).toBe('id-c');
+    await bookStore.reimportBook(OWNER, 'id-b', makeImporterWithId('id-c'));
+    expect(await bookStore.resolveBookId(OWNER.userId, 'id-a')).toBe('id-c');
+    expect(await bookStore.resolveBookId(OWNER.userId, 'id-b')).toBe('id-c');
   });
 
   it('no history entry when ID does not change on reimport', async () => {
     const stagedPath = stage('lineage-noop');
-    await bookStore.addBook('id-a', stagedPath, FAKE_META);
-    await bookStore.reimportBook('id-a', makeImporterWithId('id-a'));
-    expect(await bookStore.resolveBookId('id-a')).toBe('id-a');
+    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
+    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-a'));
+    expect(await bookStore.resolveBookId(OWNER.userId, 'id-a')).toBe('id-a');
     const rows = await prisma.$queryRaw<Array<unknown>>`
       SELECT * FROM book_id_history WHERE old_id = 'id-a'
     `;
@@ -1422,24 +1478,24 @@ describe('resolveBookId — lineage via reimportBook', () => {
 
   describe('getBookLineage', () => {
     it('returns null for a book that does not exist', async () => {
-      expect(await bookStore.getBookLineage('no-such-id')).toBeNull();
+      expect(await bookStore.getBookLineage(OWNER, 'no-such-id')).toBeNull();
     });
 
     it('returns currentId with empty entries for a book with no history', async () => {
-      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
-      const result = await bookStore.getBookLineage('id-a');
+      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+      const result = await bookStore.getBookLineage(OWNER, 'id-a');
       expect(result).toEqual({ currentId: 'id-a', entries: [] });
     });
 
     it('returns one entry after a single reimport that changes the ID', async () => {
       const before = Date.now();
-      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       const epubPath = path.join(booksDir, 'id-a.epub');
       fs.writeFileSync(epubPath, 'content-a');
-      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
       const after = Date.now();
 
-      const result = await bookStore.getBookLineage('id-b');
+      const result = await bookStore.getBookLineage(OWNER, 'id-b');
       expect(result).not.toBeNull();
       expect(result!.currentId).toBe('id-b');
       expect(result!.entries).toHaveLength(1);
@@ -1450,13 +1506,13 @@ describe('resolveBookId — lineage via reimportBook', () => {
     });
 
     it('entries are ordered newest-first', async () => {
-      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
-      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
       fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'content-b');
-      await bookStore.reimportBook('id-b', makeImporterWithId('id-c'));
+      await bookStore.reimportBook(OWNER, 'id-b', makeImporterWithId('id-c'));
 
-      const result = await bookStore.getBookLineage('id-c');
+      const result = await bookStore.getBookLineage(OWNER, 'id-c');
       expect(result!.entries).toHaveLength(2);
       expect(result!.entries[0].oldId).toBe('id-b');
       expect(result!.entries[0].newId).toBe('id-c');
@@ -1466,14 +1522,14 @@ describe('resolveBookId — lineage via reimportBook', () => {
     });
 
     it('returns null when called with a stale (old) ID that has been reimported', async () => {
-      await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
-      await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
 
       // id-a is no longer a current book; getBookLineage should return null for it
-      expect(await bookStore.getBookLineage('id-a')).toBeNull();
+      expect(await bookStore.getBookLineage(OWNER, 'id-a')).toBeNull();
       // id-b is the current book and should return normally
-      expect(await bookStore.getBookLineage('id-b')).not.toBeNull();
+      expect(await bookStore.getBookLineage(OWNER, 'id-b')).not.toBeNull();
     });
   });
 });
@@ -1490,45 +1546,41 @@ describe('getBookLineage returns type on entries', () => {
   }
 
   it('returns type edit for reimport-created entries', async () => {
-    await bookStore.addBook('id-a', stage('id-a'), FAKE_META);
+    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
     fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content');
-    await bookStore.reimportBook('id-a', makeImporterWithId('id-b'));
+    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
 
-    const result = await bookStore.getBookLineage('id-b');
+    const result = await bookStore.getBookLineage(OWNER, 'id-b');
     expect(result!.entries[0].type).toBe('edit');
   });
 });
 
 describe('linkDocument', () => {
   it('returns null when target book does not exist', async () => {
-    const result = await bookStore.linkDocument('no-such-book', 'orphan-1');
+    const result = await bookStore.linkDocument(OWNER, 'no-such-book', 'orphan-1');
     expect(result).toBeNull();
   });
 
   it('throws SelfLinkError when documentId equals bookId', async () => {
-    await bookStore.addBook('self-link', stage('self-link'), FAKE_META);
-    await expect(bookStore.linkDocument('self-link', 'self-link')).rejects.toThrow(SelfLinkError);
+    await bookStore.addBook(OWNER, 'self-link', stage('self-link'), FAKE_META);
+    await expect(bookStore.linkDocument(OWNER, 'self-link', 'self-link')).rejects.toThrow(
+      SelfLinkError
+    );
   });
 
   it('throws DocumentAlreadyLinkedError when documentId is already linked', async () => {
-    await bookStore.addBook('target', stage('target'), FAKE_META);
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('already-linked', 'target', ${Date.now()}, 'merge')
-    `;
-    await expect(bookStore.linkDocument('target', 'already-linked')).rejects.toThrow(
+    await bookStore.addBook(OWNER, 'target', stage('target'), FAKE_META);
+    await insertHistory('already-linked', 'target', { type: 'merge' });
+    await expect(bookStore.linkDocument(OWNER, 'target', 'already-linked')).rejects.toThrow(
       DocumentAlreadyLinkedError
     );
   });
 
   it('inserts a merge entry and migrates progress', async () => {
-    await bookStore.addBook('link-target', stage('link-target'), FAKE_META);
-    const alice = await prisma.user.create({
-      data: { id: 'alice-id', username: 'alice' },
-    });
+    await bookStore.addBook(OWNER, 'link-target', stage('link-target'), FAKE_META);
     await prisma.progress.create({
       data: {
-        userId: alice.id,
+        userId: OWNER.userId,
         document: 'orphan-doc',
         progress: '',
         percentage: 0.5,
@@ -1538,7 +1590,7 @@ describe('linkDocument', () => {
       },
     });
 
-    const result = await bookStore.linkDocument('link-target', 'orphan-doc');
+    const result = await bookStore.linkDocument(OWNER, 'link-target', 'orphan-doc');
     expect(result).toBe(true);
 
     const rows = await prisma.$queryRaw<Array<{ type: string }>>`
@@ -1548,23 +1600,22 @@ describe('linkDocument', () => {
     expect(rows[0].type).toBe('merge');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { userId_document: { userId: alice.id, document: 'link-target' } },
+      where: { userId_document: { userId: OWNER.userId, document: 'link-target' } },
     });
     expect(targetProgress).not.toBeNull();
     expect(targetProgress!.percentage).toBe(0.5);
 
     const orphanProgress = await prisma.progress.findUnique({
-      where: { userId_document: { userId: alice.id, document: 'orphan-doc' } },
+      where: { userId_document: { userId: OWNER.userId, document: 'orphan-doc' } },
     });
     expect(orphanProgress).toBeNull();
   });
 
   it('keeps newer progress when both orphan and target have records (newer-wins)', async () => {
-    await bookStore.addBook('nw-target', stage('nw-target'), FAKE_META);
-    const bob = await prisma.user.create({ data: { id: 'bob-id', username: 'bob' } });
+    await bookStore.addBook(OWNER, 'nw-target', stage('nw-target'), FAKE_META);
     await prisma.progress.create({
       data: {
-        userId: bob.id,
+        userId: OWNER.userId,
         document: 'nw-orphan',
         progress: '',
         percentage: 0.3,
@@ -1575,7 +1626,7 @@ describe('linkDocument', () => {
     });
     await prisma.progress.create({
       data: {
-        userId: bob.id,
+        userId: OWNER.userId,
         document: 'nw-target',
         progress: '',
         percentage: 0.8,
@@ -1585,22 +1636,19 @@ describe('linkDocument', () => {
       },
     });
 
-    await bookStore.linkDocument('nw-target', 'nw-orphan');
+    await bookStore.linkDocument(OWNER, 'nw-target', 'nw-orphan');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { userId_document: { userId: bob.id, document: 'nw-target' } },
+      where: { userId_document: { userId: OWNER.userId, document: 'nw-target' } },
     });
     expect(targetProgress!.percentage).toBe(0.8);
   });
 
   it('orphan progress wins when it is newer', async () => {
-    await bookStore.addBook('ow-target', stage('ow-target'), FAKE_META);
-    const carol = await prisma.user.create({
-      data: { id: 'carol-id', username: 'carol' },
-    });
+    await bookStore.addBook(OWNER, 'ow-target', stage('ow-target'), FAKE_META);
     await prisma.progress.create({
       data: {
-        userId: carol.id,
+        userId: OWNER.userId,
         document: 'ow-orphan',
         progress: '',
         percentage: 0.9,
@@ -1611,7 +1659,7 @@ describe('linkDocument', () => {
     });
     await prisma.progress.create({
       data: {
-        userId: carol.id,
+        userId: OWNER.userId,
         document: 'ow-target',
         progress: '',
         percentage: 0.1,
@@ -1621,46 +1669,40 @@ describe('linkDocument', () => {
       },
     });
 
-    await bookStore.linkDocument('ow-target', 'ow-orphan');
+    await bookStore.linkDocument(OWNER, 'ow-target', 'ow-orphan');
 
     const targetProgress = await prisma.progress.findUnique({
-      where: { userId_document: { userId: carol.id, document: 'ow-target' } },
+      where: { userId_document: { userId: OWNER.userId, document: 'ow-target' } },
     });
     expect(targetProgress!.percentage).toBe(0.9);
   });
 
   it('throws DocumentIsBookError when documentId is an existing book', async () => {
-    await bookStore.addBook('doc-is-book-target', stage('doc-is-book-target'), FAKE_META);
-    await bookStore.addBook('doc-is-book-doc', stage('doc-is-book-doc'), FAKE_META);
-    await expect(bookStore.linkDocument('doc-is-book-target', 'doc-is-book-doc')).rejects.toThrow(
-      DocumentIsBookError
-    );
+    await bookStore.addBook(OWNER, 'doc-is-book-target', stage('doc-is-book-target'), FAKE_META);
+    await bookStore.addBook(OWNER, 'doc-is-book-doc', stage('doc-is-book-doc'), FAKE_META);
+    await expect(
+      bookStore.linkDocument(OWNER, 'doc-is-book-target', 'doc-is-book-doc')
+    ).rejects.toThrow(DocumentIsBookError);
   });
 });
 
 describe('unlinkDocument', () => {
   it('returns not_found when no matching row exists', async () => {
-    const result = await bookStore.unlinkDocument('no-book', 'no-doc');
+    const result = await bookStore.unlinkDocument(OWNER, 'no-book', 'no-doc');
     expect(result).toBe('not_found');
   });
 
   it('returns edit_row when the row has type=edit', async () => {
-    await bookStore.addBook('ul-target', stage('ul-target'), FAKE_META);
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('ul-edit-doc', 'ul-target', ${Date.now()}, 'edit')
-    `;
-    const result = await bookStore.unlinkDocument('ul-target', 'ul-edit-doc');
+    await bookStore.addBook(OWNER, 'ul-target', stage('ul-target'), FAKE_META);
+    await insertHistory('ul-edit-doc', 'ul-target', { type: 'edit' });
+    const result = await bookStore.unlinkDocument(OWNER, 'ul-target', 'ul-edit-doc');
     expect(result).toBe('edit_row');
   });
 
   it('deletes the merge row and returns deleted', async () => {
-    await bookStore.addBook('ul-target2', stage('ul-target2'), FAKE_META);
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('ul-merge-doc', 'ul-target2', ${Date.now()}, 'merge')
-    `;
-    const result = await bookStore.unlinkDocument('ul-target2', 'ul-merge-doc');
+    await bookStore.addBook(OWNER, 'ul-target2', stage('ul-target2'), FAKE_META);
+    await insertHistory('ul-merge-doc', 'ul-target2', { type: 'merge' });
+    const result = await bookStore.unlinkDocument(OWNER, 'ul-target2', 'ul-merge-doc');
     expect(result).toBe('deleted');
 
     const rows = await prisma.$queryRaw<Array<unknown>>`
@@ -1670,15 +1712,11 @@ describe('unlinkDocument', () => {
   });
 
   it('leaves progress records untouched when unlinking', async () => {
-    await bookStore.addBook('ul-prog-target', stage('ul-prog-target'), FAKE_META);
-    await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('ul-prog-orphan', 'ul-prog-target', ${Date.now()}, 'merge')
-    `;
-    const dave = await prisma.user.create({ data: { id: 'dave-id', username: 'dave' } });
+    await bookStore.addBook(OWNER, 'ul-prog-target', stage('ul-prog-target'), FAKE_META);
+    await insertHistory('ul-prog-orphan', 'ul-prog-target', { type: 'merge' });
     await prisma.progress.create({
       data: {
-        userId: dave.id,
+        userId: OWNER.userId,
         document: 'ul-prog-target',
         progress: '',
         percentage: 0.6,
@@ -1688,10 +1726,10 @@ describe('unlinkDocument', () => {
       },
     });
 
-    await bookStore.unlinkDocument('ul-prog-target', 'ul-prog-orphan');
+    await bookStore.unlinkDocument(OWNER, 'ul-prog-target', 'ul-prog-orphan');
 
     const progress = await prisma.progress.findUnique({
-      where: { userId_document: { userId: dave.id, document: 'ul-prog-target' } },
+      where: { userId_document: { userId: OWNER.userId, document: 'ul-prog-target' } },
     });
     expect(progress).not.toBeNull();
     expect(progress!.percentage).toBe(0.6);

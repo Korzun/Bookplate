@@ -4,6 +4,7 @@ import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { generateUserId } from '../utils/id';
+import { isValidUsername, sanitizeUsername } from '../utils/username';
 import { logger } from '../logger';
 
 const log = logger('Migrate');
@@ -334,5 +335,164 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       }
     }
     if (backfilled > 0) log.info(`Data migration (chapter data): backfilled ${backfilled} book(s)`);
+  });
+
+  // Data migration: per-user libraries. Renames filesystem-unsafe usernames,
+  // rebuilds the book tables with composite (user_id, ...) primary keys, copies
+  // every legacy book (rows + epub files) into every user's library, and removes
+  // the legacy flat files. With zero users the legacy books are deleted outright.
+  await runDataMigration(prisma, 'data_v11_per_user_libraries', async () => {
+    const users = await prisma.$queryRaw<Array<{ id: string; username: string }>>`
+      SELECT id, username FROM users ORDER BY username
+    `;
+
+    // 1. Rename filesystem-unsafe usernames (folder names derive from usernames).
+    const taken = new Set(users.map((u) => u.username));
+    for (const u of users) {
+      if (isValidUsername(u.username)) continue;
+      const base = sanitizeUsername(u.username);
+      let candidate = base;
+      let suffix = 2;
+      while (taken.has(candidate)) candidate = `${base}-${suffix++}`;
+      await prisma.$executeRaw`UPDATE users SET username = ${candidate} WHERE id = ${u.id}`;
+      log.warn(
+        `Per-user libraries: renamed user "${u.username}" to "${candidate}" (filesystem-unsafe username). ` +
+          `KOReader sync and OPDS clients must update their username.`
+      );
+      taken.delete(u.username);
+      taken.add(candidate);
+      u.username = candidate;
+    }
+
+    // 2. Rebuild book tables with composite primary keys. FK enforcement off so
+    // dropping the old tables doesn't cascade.
+    await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "books_new" (
+        "user_id" TEXT NOT NULL,
+        "id" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "file_as" TEXT NOT NULL DEFAULT '',
+        "author" TEXT NOT NULL DEFAULT '',
+        "description" TEXT NOT NULL DEFAULT '',
+        "publisher" TEXT NOT NULL DEFAULT '',
+        "series" TEXT NOT NULL DEFAULT '',
+        "series_index" REAL NOT NULL DEFAULT 0,
+        "identifiers" TEXT NOT NULL DEFAULT '[]',
+        "subjects" TEXT NOT NULL DEFAULT '[]',
+        "cover_data" BLOB,
+        "cover_mime" TEXT,
+        "size" INTEGER NOT NULL,
+        "mtime" REAL NOT NULL,
+        "added_at" REAL NOT NULL,
+        "chapter_count" INTEGER NOT NULL DEFAULT 0,
+        "chapter_spine_map" TEXT NOT NULL DEFAULT '[]',
+        "chapter_names" TEXT,
+        "page_count" INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY ("user_id", "id"),
+        CONSTRAINT "books_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "book_thumbnails_new" (
+        "user_id" TEXT NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "width" INTEGER NOT NULL,
+        "data" BLOB NOT NULL,
+        "mime" TEXT NOT NULL,
+        PRIMARY KEY ("user_id", "book_id", "width"),
+        CONSTRAINT "book_thumbnails_user_id_book_id_fkey" FOREIGN KEY ("user_id", "book_id") REFERENCES "books" ("user_id", "id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "book_id_history_new" (
+        "user_id" TEXT NOT NULL,
+        "old_id" TEXT NOT NULL,
+        "current_id" TEXT NOT NULL,
+        "timestamp" REAL NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+        "type" TEXT NOT NULL DEFAULT 'edit' CHECK (type IN ('edit', 'merge')),
+        PRIMARY KEY ("user_id", "old_id")
+      )
+    `);
+
+    // 3. Copy every legacy row once per user, and the epub files into per-user folders.
+    // Legacy databases (and reduced test fixtures) may predate some book columns;
+    // copy a column from the source table when present, otherwise fall back to the
+    // books_new default so the INSERT is shape-agnostic.
+    const bookCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    const bookColSet = new Set(bookCols.map((c) => c.name));
+    const COPY_COLUMNS: Array<{ name: string; fallback: string }> = [
+      { name: 'title', fallback: `''` },
+      { name: 'file_as', fallback: `''` },
+      { name: 'author', fallback: `''` },
+      { name: 'description', fallback: `''` },
+      { name: 'publisher', fallback: `''` },
+      { name: 'series', fallback: `''` },
+      { name: 'series_index', fallback: `0` },
+      { name: 'identifiers', fallback: `'[]'` },
+      { name: 'subjects', fallback: `'[]'` },
+      { name: 'cover_data', fallback: `NULL` },
+      { name: 'cover_mime', fallback: `NULL` },
+      { name: 'size', fallback: `0` },
+      { name: 'mtime', fallback: `0` },
+      { name: 'added_at', fallback: `0` },
+      { name: 'chapter_count', fallback: `0` },
+      { name: 'chapter_spine_map', fallback: `'[]'` },
+      { name: 'chapter_names', fallback: `NULL` },
+      { name: 'page_count', fallback: `0` },
+    ];
+    const insertCols = ['user_id', 'id', ...COPY_COLUMNS.map((c) => c.name)].join(', ');
+    const selectExprs = COPY_COLUMNS.map((c) =>
+      bookColSet.has(c.name) ? c.name : c.fallback
+    ).join(', ');
+    const legacyBooks = await prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
+    for (const u of users) {
+      fs.mkdirSync(path.join(booksDir, u.username), { recursive: true });
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO books_new (${insertCols})
+         SELECT ?, id, ${selectExprs} FROM books`,
+        u.id
+      );
+      await prisma.$executeRaw`
+        INSERT INTO book_thumbnails_new (user_id, book_id, width, data, mime)
+        SELECT ${u.id}, book_id, width, data, mime FROM book_thumbnails
+      `;
+      await prisma.$executeRaw`
+        INSERT INTO book_id_history_new (user_id, old_id, current_id, timestamp, type)
+        SELECT ${u.id}, old_id, current_id, timestamp, type FROM book_id_history
+      `;
+      for (const { id } of legacyBooks) {
+        const src = path.join(booksDir, id + '.epub');
+        const dest = path.join(booksDir, u.username, id + '.epub');
+        try {
+          fs.copyFileSync(src, dest);
+        } catch {
+          log.warn(
+            `Per-user libraries: could not copy ${id}.epub for "${u.username}" (missing file)`
+          );
+        }
+      }
+    }
+
+    await prisma.$executeRawUnsafe(`DROP TABLE "book_thumbnails"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "book_thumbnails_new" RENAME TO "book_thumbnails"`);
+    await prisma.$executeRawUnsafe(`DROP TABLE "books"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "books_new" RENAME TO "books"`);
+    await prisma.$executeRawUnsafe(`DROP TABLE "book_id_history"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "book_id_history_new" RENAME TO "book_id_history"`);
+
+    await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
+
+    // 4. Remove legacy flat files — also when there are zero users (per spec,
+    // the unreachable legacy library is deleted).
+    for (const { id } of legacyBooks) {
+      fs.rmSync(path.join(booksDir, id + '.epub'), { force: true });
+    }
+    if (legacyBooks.length > 0) {
+      log.info(
+        `Per-user libraries: distributed ${legacyBooks.length} book(s) to ${users.length} user(s)`
+      );
+    }
   });
 }

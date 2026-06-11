@@ -14,7 +14,7 @@ import { UserStore } from '../services/user-store';
 import { TokenStore } from '../services/token-store';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { createUiRouter } from './ui';
-import { AppConfig, EpubMeta } from '../types';
+import { AppConfig, EpubMeta, Owner } from '../types';
 
 jest.mock('../logger');
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -41,6 +41,10 @@ let tokenStore: TokenStore;
 let app: express.Express;
 let dbPath: string;
 let aliceId: string;
+// The book-route tests seed books into alice's library and exercise them as
+// alice (her own library, no ?user= needed). Admin sessions must target a
+// library with ?user=<username>.
+let aliceOwner: Owner;
 
 const jwtSecret = crypto.randomBytes(32);
 
@@ -169,6 +173,7 @@ beforeEach(async () => {
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
   tokenStore = new TokenStore(prisma);
+  aliceOwner = { userId: aliceId, username: 'alice' };
 
   app = express();
   app.use(express.json());
@@ -266,11 +271,11 @@ describe('GET /api/books', () => {
   });
 
   it('returns JSON array of books', async () => {
-    await bookStore.addBook('book1', stage('book1'), {
+    await bookStore.addBook(aliceOwner, 'book1', stage('book1'), {
       ...FAKE_META,
       title: 'book',
     });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books')
       .set(...bearer(token));
@@ -289,8 +294,8 @@ describe('GET /api/books', () => {
       coverData: null,
       coverMime: null,
     };
-    await bookStore.addBook('enriched1', stage('enriched1'), meta);
-    const token = await loginAdmin();
+    await bookStore.addBook(aliceOwner, 'enriched1', stage('enriched1'), meta);
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books')
       .set(...bearer(token));
@@ -312,9 +317,9 @@ describe('GET /api/books', () => {
       author: 'Isaac Asimov',
     };
 
-    await bookStore.addBook('foundation1', stage('foundation1'), meta);
+    await bookStore.addBook(aliceOwner, 'foundation1', stage('foundation1'), meta);
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books')
       .set(...bearer(token));
@@ -329,12 +334,12 @@ describe('GET /api/books', () => {
   });
 
   it('includes chapterCount in the book list response', async () => {
-    await bookStore.addBook('id-ch', stage('id-ch'), {
+    await bookStore.addBook(aliceOwner, 'id-ch', stage('id-ch'), {
       ...FAKE_META,
       chapterCount: 7,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7],
     });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books')
       .set(...bearer(token));
@@ -346,7 +351,7 @@ describe('GET /api/books', () => {
 
 describe('POST /api/books/upload', () => {
   it('rejects .pdf files with 400 and "Supported: epub"', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .set(...bearer(token))
@@ -356,7 +361,7 @@ describe('POST /api/books/upload', () => {
   });
 
   it('rejects .mobi files with 400 and "Supported: epub"', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .set(...bearer(token))
@@ -366,7 +371,7 @@ describe('POST /api/books/upload', () => {
   });
 
   it('rejects unsupported file types', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .set(...bearer(token))
@@ -375,7 +380,7 @@ describe('POST /api/books/upload', () => {
   });
 
   it('rejects invalid EPUB content with 400', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .set(...bearer(token))
@@ -391,7 +396,7 @@ describe('POST /api/books/upload', () => {
       series: 'Parsed Series',
       seriesIndex: 3,
     });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'parsed.epub')
@@ -400,7 +405,7 @@ describe('POST /api/books/upload', () => {
     expect(res.body.uploaded).toContain('parsed.epub');
 
     // Verify metadata was stored and file is on disk at canonical path
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(aliceOwner);
     expect(fs.existsSync(books[0].path)).toBe(true);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('Parsed Title');
@@ -417,20 +422,20 @@ describe('POST /api/books/upload', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'cover.epub')
       .set(...bearer(token));
     expect(res.status).toBe(200);
 
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(aliceOwner);
     expect(books[0].hasCover).toBe(true);
   });
 
   it('enqueues thumbnails after a successful upload', async () => {
     const epubBuf = makeEpub({ title: 'Queued Book' });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'queued.epub')
@@ -439,23 +444,23 @@ describe('POST /api/books/upload', () => {
   });
 
   it('places uploaded file at <booksDir>/<id>.epub', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubBuf = makeEpub({ title: 'Stored Book', author: 'A' });
     const res = await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'human-name.epub')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(aliceOwner);
     expect(books).toHaveLength(1);
     const onDisk = fs
-      .readdirSync(booksDir)
+      .readdirSync(path.join(booksDir, 'alice'))
       .filter((f) => f.endsWith('.epub') && !f.startsWith('staged-'));
     expect(onDisk).toEqual([books[0].id + '.epub']);
   });
 
   it('returns 409 when uploading a duplicate (same content twice)', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubBuf = makeEpub({ title: 'Dup', author: 'A' });
     await request(app)
       .post('/api/books/upload')
@@ -470,19 +475,19 @@ describe('POST /api/books/upload', () => {
   });
 
   it('falls back to original-filename stem when title metadata is empty', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubBuf = makeEpub({ author: 'A' }); // no title
     await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'my-book.epub')
       .set(...bearer(token));
-    const books = await bookStore.listBooks();
+    const books = await bookStore.listBooks(aliceOwner);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('my-book');
   });
 
   it('cleans up staging directory after successful upload', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubBuf = makeEpub({ title: 'Clean', author: 'A' });
     await request(app)
       .post('/api/books/upload')
@@ -496,7 +501,7 @@ describe('POST /api/books/upload', () => {
 
 describe('GET /api/books/:id', () => {
   it('returns full book data including description, publisher, identifiers, subjects', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const meta: EpubMeta = {
       ...FAKE_META,
       title: 'Detail Book',
@@ -505,7 +510,7 @@ describe('GET /api/books/:id', () => {
       identifiers: [{ scheme: 'ISBN', value: '978-1234567890' }],
       subjects: ['Fiction', 'Mystery'],
     };
-    await bookStore.addBook('detailid1', stage('detailid1'), meta);
+    await bookStore.addBook(aliceOwner, 'detailid1', stage('detailid1'), meta);
 
     const res = await request(app)
       .get('/api/books/detailid1')
@@ -522,7 +527,7 @@ describe('GET /api/books/:id', () => {
   });
 
   it('returns 404 for unknown book ID', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/doesnotexist')
       .set(...bearer(token));
@@ -535,13 +540,13 @@ describe('GET /api/books/:id', () => {
   });
 
   it('includes chapterCount, chapterSpineMap, and chapterNames', async () => {
-    await bookStore.addBook('bk1', stage('bk1'), {
+    await bookStore.addBook(aliceOwner, 'bk1', stage('bk1'), {
       ...FAKE_META,
       chapterCount: 5,
       chapterSpineMap: [1, 2, 3, 4, 5],
       chapterNames: ['Prologue', 'Ch 1', 'Ch 2', 'Ch 3', 'Ch 4'],
     });
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/bk1')
       .set(...bearer(token));
@@ -560,16 +565,16 @@ describe('GET /api/books/:id/lineage', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when authenticated as a regular user', async () => {
+  it('lets a regular user view lineage in their own library (404 for unknown book)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/some-id/lineage')
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('returns 404 when book does not exist', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/no-such-book/lineage')
       .set(...bearer(token));
@@ -577,11 +582,11 @@ describe('GET /api/books/:id/lineage', () => {
   });
 
   it('returns lineage with empty entries for a book with no history', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubBuf = makeEpub({ title: 'Lineage Test' });
     const epubPath = path.join(booksDir, 'lin-id.epub');
     fs.writeFileSync(epubPath, epubBuf);
-    await bookStore.addBook('lin-id', epubPath, FAKE_META);
+    await bookStore.addBook(aliceOwner, 'lin-id', epubPath, FAKE_META);
 
     const res = await request(app)
       .get('/api/books/lin-id/lineage')
@@ -592,14 +597,14 @@ describe('GET /api/books/:id/lineage', () => {
   });
 
   it('returns lineage with history entries when history exists', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const epubPath = path.join(booksDir, 'curr-id.epub');
     fs.writeFileSync(epubPath, makeEpub({ title: 'History Test' }));
-    await bookStore.addBook('curr-id', epubPath, FAKE_META);
+    await bookStore.addBook(aliceOwner, 'curr-id', epubPath, FAKE_META);
     // Insert a history row directly to simulate a prior reimport
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp)
-      VALUES ('old-id', 'curr-id', ${Date.now() - 1000})
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp)
+      VALUES (${aliceId}, 'old-id', 'curr-id', ${Date.now() - 1000})
     `;
 
     const res = await request(app)
@@ -621,18 +626,18 @@ describe('POST /api/books/:id/link', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when authenticated as a regular user', async () => {
+  it('lets a regular user link within their own library (404 for unknown book)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/some-id/link')
       .send({ documentId: 'doc' })
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('returns 400 when documentId is missing', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('link-book', stage('link-book'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'link-book', stage('link-book'), FAKE_META);
     const res = await request(app)
       .post('/api/books/link-book/link')
       .send({})
@@ -641,7 +646,7 @@ describe('POST /api/books/:id/link', () => {
   });
 
   it('returns 404 when book does not exist', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/no-such-book/link')
       .send({ documentId: 'doc' })
@@ -650,8 +655,8 @@ describe('POST /api/books/:id/link', () => {
   });
 
   it('returns 400 when documentId equals bookId', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('self-link-book', stage('self-link-book'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'self-link-book', stage('self-link-book'), FAKE_META);
     const res = await request(app)
       .post('/api/books/self-link-book/link')
       .set(...bearer(token))
@@ -660,11 +665,11 @@ describe('POST /api/books/:id/link', () => {
   });
 
   it('returns 409 when documentId is already linked', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('already-linked-book', stage('already-linked-book'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'already-linked-book', stage('already-linked-book'), FAKE_META);
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('already-orphan', 'already-linked-book', ${Date.now()}, 'merge')
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES (${aliceId}, 'already-orphan', 'already-linked-book', ${Date.now()}, 'merge')
     `;
     const res = await request(app)
       .post('/api/books/already-linked-book/link')
@@ -674,9 +679,9 @@ describe('POST /api/books/:id/link', () => {
   });
 
   it('returns 409 when documentId is a live book', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('live-book-1', stage('live-book-1'), FAKE_META);
-    await bookStore.addBook('live-book-2', stage('live-book-2'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'live-book-1', stage('live-book-1'), FAKE_META);
+    await bookStore.addBook(aliceOwner, 'live-book-2', stage('live-book-2'), FAKE_META);
     const res = await request(app)
       .post('/api/books/live-book-1/link')
       .send({ documentId: 'live-book-2' })
@@ -685,13 +690,13 @@ describe('POST /api/books/:id/link', () => {
   });
 
   it('returns 204 and migrates progress on success', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('route-link-target', stage('route-link-target'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'route-link-target', stage('route-link-target'), FAKE_META);
     await userStore.createUser('alice-route', 'hashed-pass');
     const aliceRouteId = (await userStore.getUserIdByUsername('alice-route'))!;
     await prisma.progress.create({
       data: {
-        userId: aliceRouteId,
+        userId: aliceId,
         document: 'route-orphan',
         progress: '',
         percentage: 0.42,
@@ -708,7 +713,7 @@ describe('POST /api/books/:id/link', () => {
     expect(res.status).toBe(204);
 
     const migrated = await prisma.progress.findUnique({
-      where: { userId_document: { userId: aliceRouteId, document: 'route-link-target' } },
+      where: { userId_document: { userId: aliceId, document: 'route-link-target' } },
     });
     expect(migrated).not.toBeNull();
     expect(migrated!.percentage).toBe(0.42);
@@ -721,16 +726,16 @@ describe('DELETE /api/books/:id/link/:documentId', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when authenticated as a regular user', async () => {
+  it('lets a regular user unlink within their own library (404 for unknown row)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .delete('/api/books/some-id/link/some-doc')
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('returns 404 when no matching merge row exists', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .delete('/api/books/no-book/link/no-doc')
       .set(...bearer(token));
@@ -738,11 +743,11 @@ describe('DELETE /api/books/:id/link/:documentId', () => {
   });
 
   it('returns 400 when row exists but is type=edit', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('unlink-book', stage('unlink-book'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'unlink-book', stage('unlink-book'), FAKE_META);
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('edit-doc', 'unlink-book', ${Date.now()}, 'edit')
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES (${aliceId}, 'edit-doc', 'unlink-book', ${Date.now()}, 'edit')
     `;
     const res = await request(app)
       .delete('/api/books/unlink-book/link/edit-doc')
@@ -751,11 +756,11 @@ describe('DELETE /api/books/:id/link/:documentId', () => {
   });
 
   it('returns 204 and removes the merge row', async () => {
-    const token = await loginAdmin();
-    await bookStore.addBook('unlink-target', stage('unlink-target'), FAKE_META);
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'unlink-target', stage('unlink-target'), FAKE_META);
     await prisma.$executeRaw`
-      INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-      VALUES ('merge-doc', 'unlink-target', ${Date.now()}, 'merge')
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES (${aliceId}, 'merge-doc', 'unlink-target', ${Date.now()}, 'merge')
     `;
 
     const res = await request(app)
@@ -778,9 +783,9 @@ describe('GET /api/books/:id/cover', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     };
-    await bookStore.addBook('coverId1', stage('coverId1'), meta);
+    await bookStore.addBook(aliceOwner, 'coverId1', stage('coverId1'), meta);
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/coverId1/cover')
       .set(...bearer(token));
@@ -790,9 +795,9 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('returns 404 for a book without cover', async () => {
-    await bookStore.addBook('noCoverId', stage('noCoverId'), FAKE_META);
+    await bookStore.addBook(aliceOwner, 'noCoverId', stage('noCoverId'), FAKE_META);
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/noCoverId/cover')
       .set(...bearer(token));
@@ -800,7 +805,7 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('returns 404 for an unknown book id', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/unknownId/cover')
       .set(...bearer(token));
@@ -810,14 +815,14 @@ describe('GET /api/books/:id/cover', () => {
   it('returns thumbnail when ?width= matches a stored thumbnail', async () => {
     const coverBuf = Buffer.from('original-cover');
     const thumbBuf = Buffer.from('thumbnail-data');
-    await bookStore.addBook('thumbBook', stage('thumbBook'), {
+    await bookStore.addBook(aliceOwner, 'thumbBook', stage('thumbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
-    await bookStore.saveThumbnail('thumbBook', 150, thumbBuf, 'image/jpeg');
+    await bookStore.saveThumbnail(aliceOwner.userId, 'thumbBook', 150, thumbBuf, 'image/jpeg');
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/thumbBook/cover?width=150')
       .set(...bearer(token));
@@ -827,13 +832,13 @@ describe('GET /api/books/:id/cover', () => {
 
   it('falls back to full-size when ?width= has no matching thumbnail', async () => {
     const coverBuf = Buffer.from('full-size-cover');
-    await bookStore.addBook('fbBook', stage('fbBook'), {
+    await bookStore.addBook(aliceOwner, 'fbBook', stage('fbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .get('/api/books/fbBook/cover?width=150')
       .set(...bearer(token));
@@ -844,19 +849,19 @@ describe('GET /api/books/:id/cover', () => {
 
 describe('DELETE /api/books/:id', () => {
   it('deletes a book and returns 204', async () => {
-    await bookStore.addBook('book1', stage('book1'), FAKE_META);
-    const [book] = await bookStore.listBooks();
+    await bookStore.addBook(aliceOwner, 'book1', stage('book1'), FAKE_META);
+    const [book] = await bookStore.listBooks(aliceOwner);
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .delete(`/api/books/${book.id}`)
       .set(...bearer(token));
     expect(res.status).toBe(204);
-    expect(fs.existsSync(path.join(booksDir, 'book1.epub'))).toBe(false);
+    expect(fs.existsSync(path.join(booksDir, 'alice', 'book1.epub'))).toBe(false);
   });
 
   it('returns 404 for unknown book id', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .delete('/api/books/deadbeefdeadbeef')
       .set(...bearer(token));
@@ -871,7 +876,7 @@ describe('POST /api/books/scan', () => {
   });
 
   it('returns { imported: [], removed: [] } when nothing to scan', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
@@ -880,11 +885,12 @@ describe('POST /api/books/scan', () => {
   });
 
   it('imports an epub file found on disk but not in DB', async () => {
-    // Write a real EPUB to booksDir without going through the upload route
+    // Write a real EPUB into alice's library folder without going through upload.
     const epubBuf = makeEpub({ title: 'Found Book', author: 'Found Author' });
-    fs.writeFileSync(path.join(booksDir, 'found.epub'), epubBuf);
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    fs.writeFileSync(path.join(booksDir, 'alice', 'found.epub'), epubBuf);
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
@@ -902,13 +908,13 @@ describe('POST /api/books/scan', () => {
 
   it('reports removed for a DB entry whose file is gone', async () => {
     // Add a book to the DB then remove the file so the scan reports it removed
-    await bookStore.addBook('stale001', stage('stale001'), {
+    await bookStore.addBook(aliceOwner, 'stale001', stage('stale001'), {
       ...FAKE_META,
       title: 'Stale Book',
     });
-    fs.rmSync(path.join(booksDir, 'stale001.epub'));
+    fs.rmSync(path.join(booksDir, 'alice', 'stale001.epub'));
 
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
@@ -918,7 +924,7 @@ describe('POST /api/books/scan', () => {
   });
 
   it('calls thumbnailQueue.reconcile after scan', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
@@ -926,43 +932,59 @@ describe('POST /api/books/scan', () => {
   });
 });
 
-describe('DELETE /api/books/:id (admin-only)', () => {
+describe('DELETE /api/books/:id (admin needs ?user=)', () => {
   beforeEach(async () => {
-    await bookStore.addBook('b1', stage('b1'), FAKE_META);
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), FAKE_META);
   });
 
-  it('returns 204 for admin', async () => {
+  it('admin can delete a targeted library book with ?user=', async () => {
     const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/b1?user=alice')
+      .set(...bearer(token));
+    expect(res.status).toBe(204);
+  });
+
+  it('admin without ?user= gets 400', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/b1')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('regular user deletes their own book (204)', async () => {
+    const token = await loginAlice();
     const res = await request(app)
       .delete('/api/books/b1')
       .set(...bearer(token));
     expect(res.status).toBe(204);
   });
-
-  it('returns 403 for regular user', async () => {
-    const token = await loginAlice();
-    const res = await request(app)
-      .delete('/api/books/b1')
-      .set(...bearer(token));
-    expect(res.status).toBe(403);
-  });
 });
 
-describe('POST /api/books/scan (admin-only)', () => {
-  it('returns 200 for admin', async () => {
+describe('POST /api/books/scan (admin needs ?user=)', () => {
+  it('admin can scan a targeted library with ?user=', async () => {
     const token = await loginAdmin();
     const res = await request(app)
-      .post('/api/books/scan')
+      .post('/api/books/scan?user=alice')
       .set(...bearer(token));
     expect(res.status).toBe(200);
   });
 
-  it('returns 403 for regular user', async () => {
+  it('admin without ?user= gets 400', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('regular user scans their own library (200)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 });
 
@@ -1052,7 +1074,7 @@ describe('GET /api/my/progress', () => {
 
   it('includes currentChapter when a matching book has chapter data and CFI is valid', async () => {
     // spine: cover(0) ch1(1) ch2(2) ch3(3); nav: ch1→1, ch2→2, ch3→3
-    await bookStore.addBook('doc-with-chapters', stage('doc-with-chapters'), {
+    await bookStore.addBook(aliceOwner, 'doc-with-chapters', stage('doc-with-chapters'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
@@ -1074,7 +1096,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('includes currentChapterName when the book has chapterNames and CFI resolves to a chapter', async () => {
-    await bookStore.addBook('doc-with-names', stage('doc-with-names'), {
+    await bookStore.addBook(aliceOwner, 'doc-with-names', stage('doc-with-names'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
@@ -1097,7 +1119,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapterName when the book has no chapterNames', async () => {
-    await bookStore.addBook('doc-no-names', stage('doc-no-names'), {
+    await bookStore.addBook(aliceOwner, 'doc-no-names', stage('doc-no-names'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
@@ -1136,7 +1158,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('omits currentChapter when the CFI is not in KoReader EPUB_CFI format', async () => {
-    await bookStore.addBook('doc-bad-cfi', stage('doc-bad-cfi'), {
+    await bookStore.addBook(aliceOwner, 'doc-bad-cfi', stage('doc-bad-cfi'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
@@ -1157,7 +1179,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('does not expose chapterSpineMap on progress records', async () => {
-    await bookStore.addBook('doc-no-expose', stage('doc-no-expose'), {
+    await bookStore.addBook(aliceOwner, 'doc-no-expose', stage('doc-no-expose'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
@@ -1177,7 +1199,7 @@ describe('GET /api/my/progress', () => {
   });
 
   it('returns only the current-id entry after a reimport changes the book id', async () => {
-    await bookStore.addBook('lin-old', stage('lin-old'), FAKE_META);
+    await bookStore.addBook(aliceOwner, 'lin-old', stage('lin-old'), FAKE_META);
     await userStore.saveProgress(aliceId, {
       document: 'lin-old',
       progress: '/p[1]',
@@ -1185,7 +1207,7 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    await bookStore.reimportBook('lin-old', {
+    await bookStore.reimportBook(aliceOwner, 'lin-old', {
       parseEpub: () => FAKE_META,
       partialMD5: () => 'lin-new',
     });
@@ -1205,16 +1227,16 @@ describe('POST /api/books/:id/regen-chapters', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 for regular user', async () => {
+  it('lets a regular user regen in their own library (404 for unknown book)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/any/regen-chapters')
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('returns 404 for unknown book id', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/nonexistent/regen-chapters')
       .set(...bearer(token));
@@ -1223,8 +1245,8 @@ describe('POST /api/books/:id/regen-chapters', () => {
 
   it('returns the updated book on success', async () => {
     const epubBuf = makeEpub({ title: FAKE_META.title, author: FAKE_META.author });
-    await bookStore.addBook('regen-ok', stage('regen-ok', epubBuf), FAKE_META);
-    const token = await loginAdmin();
+    await bookStore.addBook(aliceOwner, 'regen-ok', stage('regen-ok', epubBuf), FAKE_META);
+    const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/regen-ok/regen-chapters')
       .set(...bearer(token));
@@ -1409,7 +1431,7 @@ describe('PUT /api/my/progress/:document', () => {
   });
 
   it('synthesises an EPUB CFI when the book has a chapterSpineMap', async () => {
-    await bookStore.addBook('cfidoc', stage('cfidoc'), {
+    await bookStore.addBook(aliceOwner, 'cfidoc', stage('cfidoc'), {
       ...FAKE_META,
       chapterCount: 10,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -1463,23 +1485,25 @@ describe('PATCH /api/books/:id/metadata', () => {
   <spine toc="ncx"/>
 </package>`)
     );
-    const epubPath = path.join(booksDir, 'edit-test.epub');
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    const epubPath = path.join(booksDir, 'alice', 'edit-test.epub');
     fs.writeFileSync(epubPath, zip.toBuffer());
-    await bookStore.scan(); // import the file into the DB
-    bookId = (await bookStore.listBooks())[0].id;
+    await bookStore.scan(aliceOwner); // import the file into the DB
+    bookId = (await bookStore.listBooks(aliceOwner))[0].id;
   });
 
-  it('returns 403 for regular user', async () => {
+  it('lets a regular user edit metadata in their own library', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .patch(`/api/books/${bookId}/metadata`)
       .field('title', 'New')
       .set(...bearer(token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('New');
   });
 
   it('returns 404 for unknown book id', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .patch('/api/books/doesnotexist/metadata')
       .field('title', 'New')
@@ -1493,7 +1517,7 @@ describe('PATCH /api/books/:id/metadata', () => {
   });
 
   it('updates title and returns the updated book', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const res = await request(app)
       .patch(`/api/books/${bookId}/metadata`)
       .field('title', 'Updated Title')
@@ -1504,12 +1528,12 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(res.body.chapterSpineMap).toBeUndefined();
     // Verify the returned book ID is now in the DB (ID may have shifted)
     const newId: string = res.body.id;
-    expect(await bookStore.getBookById(newId)).not.toBeNull();
-    expect((await bookStore.getBookById(newId))!.title).toBe('Updated Title');
+    expect(await bookStore.getBookById(aliceOwner, newId)).not.toBeNull();
+    expect((await bookStore.getBookById(aliceOwner, newId))!.title).toBe('Updated Title');
   });
 
   it('updates cover when image file is attached', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     const coverBytes = Buffer.from('fake-png-cover');
     const res = await request(app)
       .patch(`/api/books/${bookId}/metadata`)
@@ -1519,13 +1543,13 @@ describe('PATCH /api/books/:id/metadata', () => {
     const newId: string = res.body.id;
     expect(res.body.hasCover).toBe(true);
     // Verify cover is stored in DB
-    const cover = await bookStore.getCover(newId);
+    const cover = await bookStore.getCover(aliceOwner.userId, newId);
     expect(cover).not.toBeNull();
     expect(Buffer.from(cover!.data)).toEqual(coverBytes);
   });
 
   it('enqueues thumbnails after metadata update', async () => {
-    const token = await loginAdmin();
+    const token = await loginAlice();
     (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
     await request(app)
       .patch(`/api/books/${bookId}/metadata`)
@@ -1664,6 +1688,87 @@ describe('POST /api/my/sync-password/regenerate', () => {
       .post('/api/my/sync-password/regenerate')
       .set(...bearer(token));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('per-user library authorization', () => {
+  let aliceToken: string;
+  let bobToken: string;
+  let aliceBookId: string;
+
+  beforeEach(async () => {
+    // alice already exists (created in the outer beforeEach); add a second user bob.
+    await userStore.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+
+    aliceToken = await loginAlice();
+    const bobRes = await request(app)
+      .post('/api/login')
+      .send('username=bob&password=bobpass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    bobToken = (bobRes.body as { accessToken: string }).accessToken;
+
+    // alice uploads a book into her own library.
+    const epubBuf = makeEpub({ title: 'Alice Book', author: 'Alice' });
+    await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'alice-book.epub')
+      .set(...bearer(aliceToken));
+    aliceBookId = (await bookStore.listBooks(aliceOwner))[0].id;
+  });
+
+  it("user A cannot see user B's book", async () => {
+    const res = await request(app)
+      .get(`/api/books/${aliceBookId}`)
+      .set(...bearer(bobToken));
+    expect(res.status).toBe(404);
+  });
+
+  it("user A cannot delete user B's book", async () => {
+    const res = await request(app)
+      .delete(`/api/books/${aliceBookId}`)
+      .set(...bearer(bobToken));
+    expect(res.status).toBe(404);
+  });
+
+  it('non-admin sending ?user= gets 403', async () => {
+    const res = await request(app)
+      .get('/api/books?user=alice')
+      .set(...bearer(bobToken));
+    expect(res.status).toBe(403);
+  });
+
+  it('admin without ?user= gets 400', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('admin with ?user= operates on the target library', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books?user=alice')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.map((b: { id: string }) => b.id)).toContain(aliceBookId);
+  });
+
+  it('admin targeting an unknown user gets 404', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books?user=nobody')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+  });
+
+  it('two users can own the same epub without conflict', async () => {
+    const epubBuf = makeEpub({ title: 'Alice Book', author: 'Alice' });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'same-book.epub')
+      .set(...bearer(bobToken));
+    expect(res.status).toBe(200);
   });
 });
 

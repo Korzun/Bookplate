@@ -9,7 +9,8 @@ datasource db {
 // mtime and addedAt store milliseconds since epoch; Float avoids Int's 32-bit validation limit
 // while still round-tripping correctly through SQLite's INTEGER affinity.
 model Book {
-  id              String          @id
+  userId          String          @map("user_id")
+  id              String
   title           String
   fileAs          String          @default("") @map("file_as")
   author          String          @default("")
@@ -28,19 +29,22 @@ model Book {
   chapterSpineMap String          @default("[]") @map("chapter_spine_map")
   chapterNames    String?         @map("chapter_names")
   pageCount       Int             @default(0) @map("page_count")
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   thumbnails      BookThumbnail[]
 
+  @@id([userId, id])
   @@map("books")
 }
 
 model BookThumbnail {
+  userId String @map("user_id")
   bookId String @map("book_id")
   width  Int
   data   Bytes
   mime   String
-  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  book   Book   @relation(fields: [userId, bookId], references: [userId, id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@id([bookId, width])
+  @@id([userId, bookId, width])
   @@map("book_thumbnails")
 }
 
@@ -52,16 +56,19 @@ model User {
   mustChangePassword Boolean        @default(false) @map("must_change_password")
   progresses         Progress[]
   refreshTokens      RefreshToken[]
+  books              Book[]
 
   @@map("users")
 }
 
 model BookIdHistory {
-  oldId     String @id @map("old_id")
+  userId    String @map("user_id")
+  oldId     String @map("old_id")
   currentId String @map("current_id")
   timestamp Float  @default(dbgenerated("strftime('%s', 'now') * 1000"))
   type      String @default("edit")
 
+  @@id([userId, oldId])
   @@map("book_id_history")
 }
 

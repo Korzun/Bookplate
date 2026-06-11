@@ -28,7 +28,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
       res.status(400).json({ message: 'Missing required fields' });
       return;
     }
-    const currentId = await bookStore.resolveBookId(document);
+    const currentId = await bookStore.resolveBookId(req.kosyncUserId!, document);
     const saved = await userStore.saveProgress(req.kosyncUserId!, {
       document: currentId,
       progress,
@@ -48,7 +48,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
     '/syncs/progress/:document',
     kosyncAuth(userStore),
     async (req: Request, res: Response) => {
-      const currentId = await bookStore.resolveBookId(req.params.document);
+      const currentId = await bookStore.resolveBookId(req.kosyncUserId!, req.params.document);
       const p = await userStore.getProgress(req.kosyncUserId!, currentId);
       if (!p) {
         log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
