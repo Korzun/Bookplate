@@ -1722,7 +1722,7 @@ describe('passwordChangeGate middleware', () => {
     const newPassword = await userStore.resetPassword('alice');
     const res = await request(app)
       .post('/api/login')
-      .send(`username=alice&password=${newPassword}`)
+      .send(new URLSearchParams({ username: 'alice', password: newPassword! }).toString())
       .set('Content-Type', 'application/x-www-form-urlencoded');
     return { token: (res.body as { accessToken: string }).accessToken, newPassword: newPassword! };
   }

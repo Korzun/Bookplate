@@ -104,9 +104,23 @@ describe('refreshAccessToken', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('returns false and clears the token on a network error', async () => {
+  it('returns false but keeps the token on a network error', async () => {
     setToken(validToken);
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
+    expect(await refreshAccessToken()).toBe(false);
+    expect(getToken()).toBe(validToken);
+  });
+
+  it('returns false but keeps the token on a 5xx response', async () => {
+    setToken(validToken);
+    fetchMock.mockResolvedValueOnce(jsonResponse(503));
+    expect(await refreshAccessToken()).toBe(false);
+    expect(getToken()).toBe(validToken);
+  });
+
+  it('clears the token only on an explicit 401 rejection', async () => {
+    setToken(validToken);
+    fetchMock.mockResolvedValueOnce(jsonResponse(401));
     expect(await refreshAccessToken()).toBe(false);
     expect(getToken()).toBeNull();
   });

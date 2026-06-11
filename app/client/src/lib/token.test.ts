@@ -71,6 +71,14 @@ describe('decodeClaims', () => {
     expect(decodeClaims(makeJwt({ username: 'a' }))).toBeNull(); // no exp
   });
 
+  it('returns null when boolean claims are missing or mistyped', () => {
+    expect(decodeClaims(makeJwt({ username: 'a', exp: 1, mustChangePassword: false }))).toBeNull();
+    expect(decodeClaims(makeJwt({ username: 'a', exp: 1, isAdmin: false }))).toBeNull();
+    expect(
+      decodeClaims(makeJwt({ username: 'a', exp: 1, isAdmin: 'yes', mustChangePassword: false }))
+    ).toBeNull();
+  });
+
   it('decodes non-ASCII claim values correctly', () => {
     const claims = decodeClaims(
       makeJwt({

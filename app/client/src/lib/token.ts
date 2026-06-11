@@ -36,12 +36,21 @@ export const decodeClaims = (token: string): AuthClaims | null => {
     const payload = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     if (typeof payload !== 'object' || payload === null) return null;
     const p = payload as Record<string, unknown>;
-    if (typeof p.username !== 'string' || typeof p.exp !== 'number') return null;
+    // Full claim contract required; sub stays optional because the
+    // config-based admin has no DB row and its tokens carry no sub.
+    if (
+      typeof p.username !== 'string' ||
+      typeof p.exp !== 'number' ||
+      typeof p.isAdmin !== 'boolean' ||
+      typeof p.mustChangePassword !== 'boolean'
+    ) {
+      return null;
+    }
     return {
       ...(typeof p.sub === 'string' ? { userId: p.sub } : {}),
       username: p.username,
-      isAdmin: p.isAdmin === true,
-      mustChangePassword: p.mustChangePassword === true,
+      isAdmin: p.isAdmin,
+      mustChangePassword: p.mustChangePassword,
       exp: p.exp,
     };
   } catch {
