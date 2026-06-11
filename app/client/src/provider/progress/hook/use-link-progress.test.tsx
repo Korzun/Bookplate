@@ -3,31 +3,48 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { Context as AuthContext } from '~/provider/auth/context';
+
 import { Context } from '../context';
 import type { ProgressList, UserProgressList } from '../type';
 
 import { useLinkProgress } from './use-link-progress';
 
-function makeWrapper(initialProgress: ProgressList = {}) {
+function makeWrapper(initialProgress: ProgressList = {}, isAdmin = false) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [progressList, setProgressListRaw] = useState<ProgressList>(initialProgress);
     const setProgressForUsername = useCallback((username: string, data: UserProgressList) => {
       setProgressListRaw((prev) => ({ ...prev, [username]: data }));
     }, []);
     return (
-      <Context.Provider
+      <AuthContext.Provider
         value={{
-          progressList,
-          loadingByUsername: {},
-          errorByUsername: {},
-          setProgressForUsername,
-          setLoadingForUsername: () => {},
-          setErrorForUsername: () => {},
-          renameProgressKey: () => {},
+          username: isAdmin ? 'admin' : 'user',
+          setUsername: () => {},
+          isAdmin,
+          setIsAdmin: () => {},
+          mustChangePassword: false,
+          setMustChangePassword: () => {},
+          refetch: () => Promise.resolve(),
+          loading: false,
+          error: false,
+          errorMessage: undefined,
         }}
       >
-        {children}
-      </Context.Provider>
+        <Context.Provider
+          value={{
+            progressList,
+            loadingByUsername: {},
+            errorByUsername: {},
+            setProgressForUsername,
+            setLoadingForUsername: () => {},
+            setErrorForUsername: () => {},
+            renameProgressKey: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </AuthContext.Provider>
     );
   };
 }
@@ -86,7 +103,7 @@ describe('useLinkProgress', () => {
     expect(result.current[3]).toBe('Already linked');
   });
 
-  it('calls POST /api/books/:bookId/link with the correct body', async () => {
+  it('calls POST /api/books/:bookId/link with the correct body (non-admin: bare URL)', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ status: 204, ok: true });
     vi.stubGlobal('fetch', mockFetch);
 
@@ -101,5 +118,38 @@ describe('useLinkProgress', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ documentId: 'orphan-id' }),
     });
+  });
+
+  it('scopes the link POST to the row user (not the switcher) when admin', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ status: 204, ok: true });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { result } = renderHook(() => useLinkProgress('target-book', 'alice'), {
+      wrapper: makeWrapper({}, true),
+    });
+
+    await act(() => result.current[0]('orphan-id'));
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/books/target-book/link?user=alice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId: 'orphan-id' }),
+    });
+  });
+
+  it('URL-encodes the row username when admin', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ status: 204, ok: true });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { result } = renderHook(() => useLinkProgress('target-book', 'a/b user'), {
+      wrapper: makeWrapper({}, true),
+    });
+
+    await act(() => result.current[0]('orphan-id'));
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/books/target-book/link?user=a%2Fb%20user',
+      expect.anything()
+    );
   });
 });

@@ -1,12 +1,12 @@
 import cx from 'classnames';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useBookList } from '~/provider/book';
 import { useLinkProgress } from '~/provider/progress';
 
 import { Button } from '../button';
 
 import { useStyle } from './style';
+import { useUserBookList } from './use-user-book-list';
 
 type LinkProgressModalProps = {
   isOpen: boolean;
@@ -24,7 +24,7 @@ export function LinkProgressModal({
   const styles = useStyle();
   const modalRef = useRef<HTMLDialogElement>(null);
 
-  const [books, booksLoading, booksError, booksErrorMessage] = useBookList();
+  const [books, booksLoading, booksError, booksErrorMessage] = useUserBookList(username, isOpen);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 

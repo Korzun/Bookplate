@@ -1,7 +1,7 @@
 import { useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
-import { useWithTargetUser } from '~/provider/library-target';
+import { useIsAdmin } from '~/provider/auth';
 
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
@@ -19,7 +19,7 @@ export type UseLinkProgress =
 
 export const useLinkProgress = (bookId: string, username: string): UseLinkProgress => {
   const { progressList, setProgressForUsername } = useContext(Context);
-  const withTargetUser = useWithTargetUser();
+  const [isAdmin] = useIsAdmin();
   const [linking, setLinking] = useState(false);
   const linkingRef = useRef(false);
   const [error, setError] = useState(false);
@@ -33,7 +33,12 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
       setError(false);
       setErrorMessage(undefined);
       try {
-        const response = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(bookId)}/link`), {
+        // This flow is admin-only (the Users page is admin-gated). The server
+        // rejects ?user= from non-admins, so scope the URL to the row user only
+        // when the session is admin; otherwise leave it bare.
+        const url = `/api/books/${encodeURIComponent(bookId)}/link`;
+        const scopedUrl = isAdmin ? `${url}?user=${encodeURIComponent(username)}` : url;
+        const response = await apiFetch(scopedUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ documentId }),
@@ -54,7 +59,7 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
         setLinking(false);
       }
     },
-    [withTargetUser, bookId, username, progressList, setProgressForUsername]
+    [isAdmin, bookId, username, progressList, setProgressForUsername]
   );
 
   return useMemo(
