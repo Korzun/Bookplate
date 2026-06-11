@@ -47,14 +47,18 @@ export class TokenStore {
   /**
    * Validates and deletes (rotates out) the presented token in one step.
    * Returns the identity it was issued for, or null if unknown or expired.
+   * A single DELETE...RETURNING keeps consumption atomic: of two concurrent
+   * presentations of the same token, exactly one wins.
    */
   async consumeRefreshToken(token: string): Promise<RefreshIdentity | null> {
     const tokenHash = TokenStore.hashToken(token);
-    const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
+    const rows = await this.prisma.$queryRaw<
+      Array<{ username: string; user_id: string | null; expires_at: number }>
+    >`DELETE FROM refresh_tokens WHERE token_hash = ${tokenHash} RETURNING username, user_id, expires_at`;
+    const row = rows[0];
     if (!row) return null;
-    await this.prisma.refreshToken.deleteMany({ where: { tokenHash } });
-    if (row.expiresAt <= Date.now()) return null;
-    return { username: row.username, userId: row.userId };
+    if (Number(row.expires_at) <= Date.now()) return null;
+    return { username: row.username, userId: row.user_id };
   }
 
   async revokeRefreshToken(token: string): Promise<void> {

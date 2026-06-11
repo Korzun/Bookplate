@@ -338,6 +338,7 @@ describe('POST /api/users/:username/reset-password', () => {
     await userStore.createUser('alice', 'pass');
     const aliceId = (await userStore.getUserIdByUsername('alice'))!;
     await tokenStore.createRefreshToken({ username: 'alice', userId: aliceId });
+    expect(await prisma.refreshToken.count({ where: { username: 'alice' } })).toBe(1);
     await request(app)
       .post('/api/users/alice/reset-password')
       .set('Authorization', `Bearer ${adminToken()}`)

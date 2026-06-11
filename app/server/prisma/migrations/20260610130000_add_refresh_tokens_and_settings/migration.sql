@@ -12,3 +12,12 @@ CREATE TABLE "settings" (
     "key" TEXT NOT NULL PRIMARY KEY,
     "value" TEXT NOT NULL
 );
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_username_idx" ON "refresh_tokens"("username");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_expires_at_idx" ON "refresh_tokens"("expires_at");
