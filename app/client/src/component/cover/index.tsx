@@ -1,3 +1,5 @@
+import { useAuthorizedSrc } from '~/lib/use-authorized-src';
+
 import { useStyle } from './style';
 
 interface CoverProps {
@@ -11,9 +13,13 @@ interface CoverProps {
 
 export function Cover({ bookId, title, sequence, width, height, thumbnailWidth }: CoverProps) {
   const style = useStyle({ sequence, height, width, isGhost: !bookId });
-  const src = thumbnailWidth
-    ? `/api/books/${encodeURIComponent(bookId!)}/cover?width=${thumbnailWidth}`
-    : `/api/books/${encodeURIComponent(bookId!)}/cover`;
+  const url = bookId
+    ? thumbnailWidth
+      ? `/api/books/${encodeURIComponent(bookId)}/cover?width=${thumbnailWidth}`
+      : `/api/books/${encodeURIComponent(bookId)}/cover`
+    : null;
+  const src = useAuthorizedSrc(url);
+
   return bookId ? (
     <img src={src} alt={title ?? ''} className={`${style.layer} ${style.coverImg}`} />
   ) : (
