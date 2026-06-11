@@ -61,6 +61,7 @@ function renderAsAdmin(ui: ReactNode) {
 it('renders nothing for non-admin users', () => {
   renderAsUser(<LibrarySwitcher />);
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  expect(vi.mocked(useUserList)).not.toHaveBeenCalled();
 });
 
 it('lists users and selects a target library', async () => {

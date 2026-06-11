@@ -4,15 +4,10 @@ import { useUserList } from '~/provider/user';
 
 import { useStyle } from './style';
 
-export const LibrarySwitcher = () => {
+const AdminLibrarySwitcher = () => {
   const styles = useStyle();
-  const [isAdmin] = useIsAdmin();
   const [targetUsername, setTargetUsername] = useLibraryTarget();
   const [userList] = useUserList();
-
-  if (!isAdmin) {
-    return null;
-  }
 
   return (
     <select
@@ -29,4 +24,14 @@ export const LibrarySwitcher = () => {
       ))}
     </select>
   );
+};
+
+export const LibrarySwitcher = () => {
+  const [isAdmin] = useIsAdmin();
+
+  if (!isAdmin) {
+    return null;
+  }
+
+  return <AdminLibrarySwitcher />;
 };
