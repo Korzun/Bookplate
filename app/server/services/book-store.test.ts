@@ -166,6 +166,24 @@ describe('addBook and listBooks', () => {
     );
   });
 
+  it('lets two different owners each own a book with the same id', async () => {
+    const other: Owner = { userId: 'usr_test000000000000001', username: 'bob' };
+    await prisma.user.create({ data: { id: other.userId, username: other.username } });
+    fs.mkdirSync(path.join(booksRoot, other.username), { recursive: true });
+
+    await bookStore.addBook(OWNER, 'shared-id', stage('alice-copy'), FAKE_META);
+    // Same id under a different owner must not collide (composite PK is per-user).
+    await expect(
+      bookStore.addBook(other, 'shared-id', stage('bob-copy'), FAKE_META)
+    ).resolves.toBeUndefined();
+
+    expect((await bookStore.listBooks(OWNER)).map((b) => b.id)).toEqual(['shared-id']);
+    expect((await bookStore.listBooks(other)).map((b) => b.id)).toEqual(['shared-id']);
+    // Each copy lives in its own folder.
+    expect(fs.existsSync(path.join(booksRoot, OWNER.username, 'shared-id.epub'))).toBe(true);
+    expect(fs.existsSync(path.join(booksRoot, other.username, 'shared-id.epub'))).toBe(true);
+  });
+
   it('moves the source file to <booksDir>/<id>.epub', async () => {
     const stagedPath = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(stagedPath, 'content');
