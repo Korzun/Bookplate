@@ -25,7 +25,7 @@ const mockProgress = { document: 'book-1', percentage: 50, device: 'Kindle', tim
 const mockBook = { id: 'book-1', title: 'Dune' } as unknown as Book;
 
 describe('MyProgressRow', () => {
-  let mockDelete: (bookId: string) => Promise<boolean>;
+  let mockDelete: ReturnType<typeof vi.fn<(bookId: string) => Promise<boolean>>>;
 
   beforeEach(() => {
     mockDelete = vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true);
