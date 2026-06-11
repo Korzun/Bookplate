@@ -48,6 +48,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
     return () => {
       cancelled = true;
+      bootstrapped.current = false;
     };
   }, [valid]);
 
