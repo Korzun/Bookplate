@@ -11,6 +11,7 @@ import {
   type Metadata,
 } from '~/component';
 import { Button, DeleteBookButton, RegenChaptersButton, SetProgressModal } from '~/control';
+import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
 import { useMyProgress } from '~/provider/progress';
@@ -77,6 +78,10 @@ export const BookPage = () => {
       .map((paragraph) => <p key={hashString(paragraph.trim())}>{paragraph.trim()}</p>);
   }, [book]);
 
+  const coverSrc = useAuthorizedSrc(
+    book?.hasCover ? `/api/books/${encodeURIComponent(book.id)}/cover?width=170` : null
+  );
+
   if (loading) {
     return (
       <Page>
@@ -105,7 +110,7 @@ export const BookPage = () => {
             {book.hasCover ? (
               <img
                 className={styles.coverImg}
-                src={`/api/books/${encodeURIComponent(book.id)}/cover?width=170`}
+                src={coverSrc}
                 alt={book.title}
                 width={80}
                 height={118}
