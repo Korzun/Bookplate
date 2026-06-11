@@ -18,9 +18,9 @@ OPDS (HTTP Basic) and KOSync (header) authentication are unchanged.
   `jsonwebtoken`. Stored in localStorage; sent as `Authorization: Bearer` on
   API calls.
 - **Refresh token:** opaque random 256-bit value (not a JWT), 30-day expiry,
-  delivered as an httpOnly `SameSite=Strict` cookie path-scoped to the
-  refresh/logout endpoints. The server stores only its SHA-256 hash and
-  rotates it on every refresh.
+  delivered as an httpOnly `SameSite=Strict` cookie with `Path=/api/auth`, so
+  it is only ever sent to the refresh and logout endpoints. The server stores
+  only its SHA-256 hash and rotates it on every refresh.
 - **Client:** the `AuthProvider` proactively refreshes the access token one
   minute before expiry; a central `apiFetch` wrapper injects the header and
   retries once through a refresh on 401 as a safety net.
@@ -90,8 +90,8 @@ model Setting {
 | Endpoint | Change |
 | --- | --- |
 | `POST /api/login` | Same credential checks (config admin first, then `UserStore`). On success returns `200 { accessToken }` and sets the refresh cookie. `mustChangePassword` is baked into the claims. |
-| `POST /api/refresh` | **New.** Reads the refresh cookie, looks up the hash, checks expiry, rotates the token, returns a fresh `{ accessToken }` with up-to-date claims. Any failure → 401 and the cookie is cleared. |
-| `POST /logout` | Deletes the refresh-token row, clears the cookie, returns 204. No server-side redirect. |
+| `POST /api/auth/refresh` | **New.** Reads the refresh cookie, looks up the hash, checks expiry, rotates the token, returns a fresh `{ accessToken }`. Claims are rebuilt from current state (`UserStore` lookup for users; config match for the admin), so a changed `mustChangePassword` propagates and a deleted/renamed user gets 401. Any failure → 401 and the cookie is cleared. |
+| `POST /api/auth/logout` | **New** (replaces `POST /logout`). Deletes the refresh-token row, clears the cookie, returns 204. No server-side redirect. |
 | `GET /api/me` | **Removed.** Claims come from the token. |
 | `PATCH /api/my/password` | On success, revokes all the user's refresh tokens and returns a brand-new token pair (`{ accessToken }` + new refresh cookie), clearing the `mustChangePassword` claim immediately. |
 
@@ -102,8 +102,9 @@ model Setting {
   returns `401 { error: 'Unauthorized' }` — no redirect; login-gating is the
   SPA's job.
 - `adminAuth` reads `req.user.isAdmin`.
-- `requirePasswordChange` reads `req.user.mustChangePassword`; same path
-  allowlist minus `/api/me`.
+- `requirePasswordChange` reads `req.user.mustChangePassword`; the allowlist
+  becomes `/api/my/password`, `/api/auth/*` (refresh and logout must keep
+  working in the forced-change state), and non-`/api/` paths.
 - `requireUserId` reads `req.user.userId` (no session destruction).
 - `opdsAuth` and `kosyncAuth` are untouched.
 
@@ -130,9 +131,10 @@ model Setting {
 ### `src/lib/api-fetch.ts` (new)
 
 - Injects `Authorization: Bearer <token>` when a token exists.
-- On 401: calls `POST /api/refresh` once (single-flight — parallel 401s share
-  one in-flight refresh promise), stores the new token, retries the original
-  request once. If the refresh fails: clears the token and signals logged-out.
+- On 401: calls `POST /api/auth/refresh` once (single-flight — parallel 401s
+  share one in-flight refresh promise), stores the new token, retries the
+  original request once. If the refresh fails: clears the token and signals
+  logged-out.
 - All data hooks switch `fetch(...)` → `apiFetch(...)`.
 
 ### `AuthProvider` (`provider/auth/provider.tsx`)
@@ -141,8 +143,9 @@ model Setting {
   `mustChangePassword` are derived via `decodeClaims`.
 - **Logged in = valid, unexpired token in localStorage.**
 - On mount: if the stored token is missing or expired, silently try one
-  `POST /api/refresh` (the httpOnly cookie may still be valid — this keeps
-  users logged in across browser restarts). On failure, render logged-out.
+  `POST /api/auth/refresh` (the httpOnly cookie may still be valid — this
+  keeps users logged in across browser restarts). On failure, render
+  logged-out.
 - **Proactive refresh:** a `useEffect` keyed on the token schedules
   `refreshToken()` one minute before `exp`; each refresh re-arms the timer.
   The `apiFetch` 401-retry covers what the timer misses (laptop sleep, drift).
@@ -150,7 +153,8 @@ model Setting {
 ### Auth hooks (`provider/auth/hook/`)
 
 - `useLogin` stores the returned `accessToken` into context.
-- `useLogout` posts `/logout`, clears the token, navigates to `/login`.
+- `useLogout` posts `/api/auth/logout`, clears the token, navigates to
+  `/login`.
 - The password-change flow stores the fresh token returned by
   `PATCH /api/my/password`, which clears the must-change-password banner.
 
@@ -165,8 +169,8 @@ mount-time silent-refresh attempt.
 - Expired/invalid access token → 401 from `jwtAuth` → `apiFetch` refreshes
   once → on failure, token cleared, SPA routes to `/login`. No redirect loops
   (`/login` and `POST /api/login` are unauthenticated).
-- Revoked/expired refresh token → `/api/refresh` returns 401 and clears the
-  cookie.
+- Revoked/expired refresh token → `/api/auth/refresh` returns 401 and clears
+  the cookie.
 - Malformed localStorage tokens are treated as logged-out, not as errors.
 - Clock skew is a non-issue server-side (same machine signs and verifies);
   the 1-minute-early client refresh tolerates minor client drift.
