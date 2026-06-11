@@ -3,6 +3,7 @@ import * as path from 'path';
 import { loadConfig } from './config';
 import { UserStore } from './services/user-store';
 import { BookStore } from './services/book-store';
+import { TokenStore } from './services/token-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { createServer } from './server';
 import { logger } from './logger';
@@ -26,8 +27,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const userStore = new UserStore(prisma);
   const bookStore = new BookStore(config.booksDir, prisma);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
+  const tokenStore = new TokenStore(prisma);
+  const jwtSecret = await tokenStore.getOrCreateJwtSecret();
 
-  const server = createServer(config, userStore, bookStore, thumbnailQueue);
+  const server = createServer(config, userStore, bookStore, thumbnailQueue, tokenStore, jwtSecret);
 
   // Startup scan: import untracked EPUBs, clean up stale DB entries
   try {
