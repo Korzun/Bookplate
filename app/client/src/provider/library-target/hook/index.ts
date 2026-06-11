@@ -1,2 +1,2 @@
-export * from './use-library-target';
-export * from './use-with-target-user';
+export { useLibraryTarget } from './use-library-target';
+export { useWithTargetUser } from './use-with-target-user';

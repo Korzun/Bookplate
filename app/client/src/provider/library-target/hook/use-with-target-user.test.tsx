@@ -64,3 +64,11 @@ it('persists the target in localStorage', async () => {
   });
   expect(localStorage.getItem('library-target-user')).toBe('bob');
 });
+
+it('reads an existing localStorage value on mount', async () => {
+  localStorage.setItem('library-target-user', 'alice');
+  mockMe(true);
+  const { result } = renderHook(() => useLibraryTarget(), { wrapper });
+  await act(async () => {});
+  expect(result.current[0]).toBe('alice');
+});
