@@ -170,19 +170,22 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
   // over from before the "id" column existed, then recreate "users" with "id"
   // as its primary key and "progress" with a "user_id" foreign key.
   //
-  // FK enforcement is disabled for the recreate: with it on, dropping "users"
+  // FK enforcement is disabled for both the backfill and the recreate: (1) the
+  // backfill UPDATE needs FKs off because the new `refresh_tokens` table's FK
+  // to `users(id)` fails SQLite's FK validation while legacy `users.id` lacks a
+  // unique index; (2) the recreate needs FKs off to prevent dropping "users"
   // while "progress.username" still carries an ON DELETE CASCADE foreign key
-  // referencing it triggers SQLite's implicit cascade, silently deleting every
-  // progress row before "progress" itself is rebuilt.
+  // referencing it, which would trigger SQLite's implicit cascade and silently
+  // delete every progress row before "progress" itself is rebuilt.
   await runDataMigration(prisma, 'data_v10_user_surrogate_id', async () => {
+    await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
+
     const pending = await prisma.$queryRaw<Array<{ username: string }>>`
       SELECT username FROM users WHERE id IS NULL
     `;
     for (const { username } of pending) {
       await prisma.$executeRaw`UPDATE users SET id = ${generateUserId()} WHERE username = ${username}`;
     }
-
-    await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
 
     await prisma.$executeRawUnsafe(`
       CREATE TABLE "users_new" (
