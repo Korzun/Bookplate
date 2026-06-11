@@ -28,8 +28,6 @@ export function PasswordResultModal({
     }
     if (isOpen) {
       modalElement.showModal();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCopied(false);
     } else {
       modalElement.close();
     }
@@ -43,6 +41,7 @@ export function PasswordResultModal({
   }, [password]);
 
   const handleDone = useCallback(() => {
+    setCopied(false);
     onDone();
   }, [onDone]);
 

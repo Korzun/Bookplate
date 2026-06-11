@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
-export type ChangeMyPassword = (currentPassword: string, newPassword: string) => Promise<void>;
+export type ChangeMyPassword = (currentPassword: string, newPassword: string) => Promise<boolean>;
 export type UseChangeMyPassword =
   | [ChangeMyPassword, false, false, false, undefined] // Initial
   | [ChangeMyPassword, true, false, false, undefined] // Changing
@@ -19,7 +19,7 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
     if (!currentPassword || !newPassword) {
       setError(true);
       setErrorMessage('Current and new password are required');
-      return;
+      return false;
     }
 
     try {
@@ -43,6 +43,7 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
         throw new Error(message);
       }
       setOkay(true);
+      return true;
     } catch (err) {
       setError(true);
       if (err instanceof Error) {
@@ -50,6 +51,7 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
       } else {
         setErrorMessage('Password change failed');
       }
+      return false;
     } finally {
       setLoading(false);
     }

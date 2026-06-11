@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { AlertOctagonIcon } from '~/icon';
@@ -27,24 +27,16 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
 
   const [showClearModal, setShowClearModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [submitCount, setSubmitCount] = useState(0);
+  const [dismissedCount, setDismissedCount] = useState(0);
 
-  const handleDismiss = useCallback(() => setToast(null), []);
+  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
 
-  useEffect(() => {
-    if (submitCount === 0) return;
-    if (deleting) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
-    if (error) {
-      setToast({ text: errorMessage ?? 'Failed to clear progress', type: 'error' });
-      return;
-    }
-    setToast({ text: 'Progress cleared', type: 'success' });
-  }, [submitCount, deleting, error, errorMessage]);
+  const toast = (() => {
+    if (submitCount === 0 || dismissedCount >= submitCount || deleting) return null;
+    if (error) return { text: errorMessage ?? 'Failed to clear progress', type: 'error' as const };
+    return { text: 'Progress cleared', type: 'success' as const };
+  })();
 
   const handleClear = useCallback(() => setShowClearModal(true), []);
   const handleCancelClear = useCallback(() => setShowClearModal(false), []);

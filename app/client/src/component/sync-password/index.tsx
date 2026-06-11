@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Card, Toast } from '~/component';
 import { Button, ConfirmModal } from '~/control';
@@ -15,24 +15,17 @@ export const SyncPassword = () => {
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [regenerateCount, setRegenerateCount] = useState(0);
+  const [dismissedCount, setDismissedCount] = useState(0);
 
-  useEffect(() => {
-    if (regenerateCount === 0) return;
-    if (regenerating) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
+  const toast = (() => {
+    if (regenerateCount === 0 || dismissedCount >= regenerateCount || regenerating) return null;
     if (regenerateError) {
-      setToast({ text: 'Failed to regenerate sync password', type: 'error' });
-      return;
+      return { text: 'Failed to regenerate sync password', type: 'error' as const };
     }
-    if (newPassword) {
-      setToast({ text: 'Sync password regenerated', type: 'success' });
-    }
-  }, [regenerateCount, regenerating, regenerateError, newPassword]);
+    if (newPassword) return { text: 'Sync password regenerated', type: 'success' as const };
+    return null;
+  })();
 
   const handleCopy = useCallback(async () => {
     if (!displayPassword) return;
@@ -88,7 +81,7 @@ export const SyncPassword = () => {
           key={regenerateCount}
           message={toast.text}
           type={toast.type}
-          onDismiss={() => setToast(null)}
+          onDismiss={() => setDismissedCount(regenerateCount)}
         />
       )}
     </Fragment>
