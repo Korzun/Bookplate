@@ -20,7 +20,10 @@ OPDS (HTTP Basic) and KOSync (header) authentication are unchanged.
 - **Refresh token:** opaque random 256-bit value (not a JWT), 30-day expiry,
   delivered as an httpOnly `SameSite=Strict` cookie with `Path=/api/auth`, so
   it is only ever sent to the refresh and logout endpoints. The server stores
-  only its SHA-256 hash and rotates it on every refresh.
+  only its SHA-256 hash and rotates it on every refresh. The `Secure` cookie
+  flag is intentionally omitted: the app is self-hosted and served over plain
+  HTTP on a trusted LAN, where `Secure` would prevent the cookie from being
+  set at all.
 - **Client:** the `AuthProvider` proactively refreshes the access token one
   minute before expiry; a central `apiFetch` wrapper injects the header and
   retries once through a refresh on 401 as a safety net.
