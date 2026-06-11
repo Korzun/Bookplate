@@ -1,5 +1,7 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+import { getToken } from '../../../lib/token';
 import { Context } from '../context';
 
 import { useFetchBookList } from './use-fetch-book-list';
@@ -41,7 +43,7 @@ export const useUploadQueue = (): UseUploadQueue => {
 
   // Fetch server config on mount
   useEffect(() => {
-    void fetch('/api/config')
+    void apiFetch('/api/config')
       .then((r) => r.json() as Promise<{ maxConcurrentUploads: number }>)
       .then((cfg) => setMaxConcurrent(cfg.maxConcurrentUploads))
       .catch(() => {
@@ -126,6 +128,8 @@ export const useUploadQueue = (): UseUploadQueue => {
       };
 
       xhr.open('POST', '/api/books/upload');
+      const token = getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       const formData = new FormData();
       formData.append('files', item.file);
       xhr.send(formData);

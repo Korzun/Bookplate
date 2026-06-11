@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+
 export const useSyncPassword = (): [string | null, boolean, boolean] => {
   const [syncPassword, setSyncPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -8,7 +10,7 @@ export const useSyncPassword = (): [string | null, boolean, boolean] => {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/my/sync-password');
+        const res = await apiFetch('/api/my/sync-password');
         if (res.status !== 200) {
           setError(true);
           return;

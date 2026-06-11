@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 
 import { removeUserByUsername } from './util';
@@ -41,7 +42,7 @@ export const useRegisterUser = (): UseRegisterUser => {
         setError(false);
         setErrorMessage(undefined);
 
-        const response = await fetch('/api/users', {
+        const response = await apiFetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),

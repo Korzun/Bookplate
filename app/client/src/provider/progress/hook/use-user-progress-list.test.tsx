@@ -89,7 +89,7 @@ describe('useUserProgressList', () => {
     });
 
     await waitFor(() => expect(result.current[1]).toBe(false));
-    expect(mockFetch).toHaveBeenCalledWith('/api/users/alice/progress');
+    expect(mockFetch).toHaveBeenCalledWith('/api/users/alice/progress', {});
     expect(result.current[0]).toEqual({ 'book-1': { document: 'book-1', percentage: 75 } });
   });
 

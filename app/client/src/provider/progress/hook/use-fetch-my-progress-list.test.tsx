@@ -104,7 +104,7 @@ describe('useFetchMyProgressList', () => {
       wrapper: makeWrapper({ auth: { username: 'alice' } }),
     });
     await result.current();
-    expect(fetch).toHaveBeenCalledWith('/api/my/progress');
+    expect(fetch).toHaveBeenCalledWith('/api/my/progress', {});
   });
 
   it('calls setProgressForUsername with data keyed by document id', async () => {

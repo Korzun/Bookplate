@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 
 import { useFetchBookList } from './use-fetch-book-list';
@@ -34,7 +35,7 @@ export const useScanLibrary = (): UseScanLibrary => {
     setScanResult(undefined);
 
     try {
-      const response = await fetch('/api/books/scan', { method: 'POST' });
+      const response = await apiFetch('/api/books/scan', { method: 'POST' });
       if (!response.ok) {
         throw new Error('Scan failed');
       }

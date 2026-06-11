@@ -92,7 +92,7 @@ describe('useMyProgressList', () => {
       wrapper: makeWrapper({}, { username: 'alice' }),
     });
     await waitFor(() => expect(result.current[1]).toBe(false));
-    expect(fetch).toHaveBeenCalledWith('/api/my/progress');
+    expect(fetch).toHaveBeenCalledWith('/api/my/progress', {});
     expect(result.current[0]).toEqual({ 'book-1': { document: 'book-1', percentage: 80 } });
   });
 

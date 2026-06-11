@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { User } from '../type';
 
@@ -19,7 +20,7 @@ export const useUserList = (): UseUserList => {
     setLoading(true);
     setError(undefined);
     try {
-      const response = await fetch('/api/users');
+      const response = await apiFetch('/api/users');
       const users = await (response.json() as Promise<User[]>);
       setUserList(() =>
         users.reduce(

@@ -77,7 +77,7 @@ describe('useBookList', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
     );
     renderHook(() => useBookList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books', {}));
   });
 
   it('does not fetch when bookListFetched is already true', async () => {

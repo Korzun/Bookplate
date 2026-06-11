@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+
 export type ResetUserPassword = (username: string) => Promise<string | null>;
 export type UseResetUserPassword =
   | [ResetUserPassword, false, false, undefined] // Initial/ready
@@ -17,7 +19,7 @@ export const useResetUserPassword = (): UseResetUserPassword => {
       setError(false);
       setErrorMessage(undefined);
 
-      const response = await fetch(`/api/users/${encodeURIComponent(username)}/reset-password`, {
+      const response = await apiFetch(`/api/users/${encodeURIComponent(username)}/reset-password`, {
         method: 'POST',
       });
       if (response.status !== 200) {

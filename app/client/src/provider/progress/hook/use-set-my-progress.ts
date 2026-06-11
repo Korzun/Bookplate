@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { useUsername } from '../../../provider/auth';
 import { generateUUID } from '../../../utils';
 import { Context } from '../context';
@@ -43,7 +44,7 @@ export const useSetMyProgress = (bookId: string): UseSetMyProgress => {
         setSaving(true);
         setError(false);
         setErrorMessage(undefined);
-        const response = await fetch(`/api/my/progress/${encodeURIComponent(bookId)}`, {
+        const response = await apiFetch(`/api/my/progress/${encodeURIComponent(bookId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

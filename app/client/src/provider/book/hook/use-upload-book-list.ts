@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { UploadResult } from '../type';
 
@@ -38,7 +39,7 @@ export const useUploadBookList = (): UseUploadBookList => {
           formData.append('files', file);
         }
 
-        const response = await fetch('/api/books/upload', { method: 'POST', body: formData });
+        const response = await apiFetch('/api/books/upload', { method: 'POST', body: formData });
         if (!response.ok) {
           const data = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(data.error ?? 'Upload failed');

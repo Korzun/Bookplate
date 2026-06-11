@@ -91,7 +91,7 @@ describe('useFetchUserProgressList', () => {
       wrapper: makeWrapper({ isAdmin: true }),
     });
     await result.current('alice');
-    expect(fetch).toHaveBeenCalledWith('/api/users/alice/progress');
+    expect(fetch).toHaveBeenCalledWith('/api/users/alice/progress', {});
   });
 
   it('URL-encodes the username in the endpoint', async () => {
@@ -103,7 +103,7 @@ describe('useFetchUserProgressList', () => {
       wrapper: makeWrapper({ isAdmin: true }),
     });
     await result.current('alice smith');
-    expect(fetch).toHaveBeenCalledWith('/api/users/alice%20smith/progress');
+    expect(fetch).toHaveBeenCalledWith('/api/users/alice%20smith/progress', {});
   });
 
   it('calls setProgressForUsername with data keyed by document id', async () => {

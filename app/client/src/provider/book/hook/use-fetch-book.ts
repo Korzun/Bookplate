@@ -1,5 +1,6 @@
 import { useCallback, useContext } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { Book } from '../type';
 
@@ -16,7 +17,7 @@ export const useFetchBook = (): FetchBook => {
       setLoadingForBook(bookId, true);
       setErrorForBook(bookId, undefined);
       try {
-        const response = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
+        const response = await apiFetch(`/api/books/${encodeURIComponent(bookId)}`);
         if (!response.ok) throw new Error('Book not found');
         const book = await (response.json() as Promise<Book>);
         setBookList((prev) => ({ ...prev, [book.id]: book }));

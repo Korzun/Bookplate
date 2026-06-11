@@ -90,7 +90,7 @@ describe('useBook', () => {
 
     renderHook(() => useBook('1'), { wrapper: makeWrapper() });
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books/1'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books/1', {}));
   });
 
   it('triggers fetch when book exists in context but is not complete', async () => {
@@ -106,7 +106,7 @@ describe('useBook', () => {
       wrapper: makeWrapper([makeBook({ id: '1' })], new Set()),
     });
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books/1'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books/1', {}));
   });
 
   it('does not trigger fetch when book exists and is complete', async () => {
@@ -153,6 +153,6 @@ describe('useBook', () => {
     // Changing to completeBook=true should trigger a fetch for the full data
     rerender({ complete: true });
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books/1'));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books/1', {}));
   });
 });

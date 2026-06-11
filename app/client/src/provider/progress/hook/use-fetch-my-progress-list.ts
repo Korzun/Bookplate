@@ -1,5 +1,6 @@
 import { useCallback, useContext } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { useIsAdmin, useUsername } from '../../../provider/auth';
 import { Context } from '../context';
 import type { Progress, UserProgressList } from '../type';
@@ -19,7 +20,7 @@ export const useFetchMyProgressList = (): FetchMyProgressList => {
     setLoadingForUsername(username, true);
     setErrorForUsername(username, undefined);
     try {
-      const response = await fetch('/api/my/progress');
+      const response = await apiFetch('/api/my/progress');
       if (!response.ok) throw new Error('Failed to fetch progress');
       const data = await (response.json() as Promise<Progress[]>);
       setProgressForUsername(

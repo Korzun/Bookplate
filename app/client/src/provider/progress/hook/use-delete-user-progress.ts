@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 
@@ -42,7 +43,7 @@ export const useDeleteUserProgress = (username?: string): UseDeleteUserProgress 
         setDeleting(true);
         setError(false);
         setErrorMessage(undefined);
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/users/${encodeURIComponent(username)}/progress/${encodeURIComponent(bookId)}`,
           { method: 'DELETE' }
         );

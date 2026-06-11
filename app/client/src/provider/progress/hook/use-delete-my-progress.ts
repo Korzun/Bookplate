@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { useUsername } from '../../../provider/auth';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
@@ -37,7 +38,7 @@ export const useDeleteMyProgress = (): UseDeleteMyProgress => {
         setDeleting(true);
         setError(false);
         setErrorMessage(undefined);
-        const response = await fetch(`/api/my/progress/${encodeURIComponent(bookId)}`, {
+        const response = await apiFetch(`/api/my/progress/${encodeURIComponent(bookId)}`, {
           method: 'DELETE',
         });
         if (response.status !== 204) throw new Error('Failed to clear progress');

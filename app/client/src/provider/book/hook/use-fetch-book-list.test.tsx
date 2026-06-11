@@ -82,7 +82,7 @@ describe('useFetchBookList', () => {
     );
     const { result } = renderHook(() => useFetchBookList(), { wrapper: makeWrapper() });
     await act(() => result.current());
-    expect(fetch).toHaveBeenCalledWith('/api/books');
+    expect(fetch).toHaveBeenCalledWith('/api/books', {});
   });
 
   it('sets bookListFetched to true on success', async () => {

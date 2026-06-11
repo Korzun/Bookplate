@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 
 import { removeUserByUsername } from './util';
@@ -32,7 +33,7 @@ export const useDeleteUser = (): UseDeleteUser => {
         setError(false);
         setErrorMessage(undefined);
 
-        const response = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+        const response = await apiFetch(`/api/users/${encodeURIComponent(username)}`, {
           method: 'DELETE',
         });
         if (response.status !== 204) {

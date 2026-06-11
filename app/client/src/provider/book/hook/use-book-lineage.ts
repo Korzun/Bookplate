@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+
 export type LineageEntry = {
   oldId: string;
   newId: string;
@@ -26,7 +28,7 @@ export const useBookLineage = (bookId: string): UseBookLineage => {
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`/api/books/${encodeURIComponent(bookId)}/lineage`)
+    apiFetch(`/api/books/${encodeURIComponent(bookId)}/lineage`)
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to fetch lineage');
         return response.json() as Promise<BookLineage>;

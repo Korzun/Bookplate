@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+
 export type UnlinkBookLineage = (documentId: string) => Promise<boolean>;
 export type UseUnlinkBookLineage =
   | [UnlinkBookLineage, false, false, undefined]
@@ -21,7 +23,7 @@ export const useUnlinkBookLineage = (bookId: string): UseUnlinkBookLineage => {
       setError(false);
       setErrorMessage(undefined);
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/books/${encodeURIComponent(bookId)}/link/${encodeURIComponent(documentId)}`,
           { method: 'DELETE' }
         );

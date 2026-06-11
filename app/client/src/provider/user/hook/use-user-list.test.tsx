@@ -64,7 +64,7 @@ describe('useUserList', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
     vi.stubGlobal('fetch', mockFetch);
     renderHook(() => useUserList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/users'));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/users', {}));
   });
 
   it('does not fetch when the user list is already populated', async () => {

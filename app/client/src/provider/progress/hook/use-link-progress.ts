@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, useRef, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 
@@ -29,7 +30,7 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
       setError(false);
       setErrorMessage(undefined);
       try {
-        const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/link`, {
+        const response = await apiFetch(`/api/books/${encodeURIComponent(bookId)}/link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ documentId }),

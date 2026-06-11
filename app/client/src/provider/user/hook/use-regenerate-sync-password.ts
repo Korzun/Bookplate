@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+
 export const useRegenerateSyncPassword = (): [
   () => Promise<boolean>,
   boolean,
@@ -15,7 +17,7 @@ export const useRegenerateSyncPassword = (): [
     setError(false);
     setSyncPassword(null);
     try {
-      const res = await fetch('/api/my/sync-password/regenerate', { method: 'POST' });
+      const res = await apiFetch('/api/my/sync-password/regenerate', { method: 'POST' });
       if (res.status !== 200) {
         setError(true);
         return false;
