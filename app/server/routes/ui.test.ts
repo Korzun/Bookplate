@@ -1,15 +1,18 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import request from 'supertest';
 import express from 'express';
-import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import AdmZip from 'adm-zip';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
+import { TokenStore } from '../services/token-store';
+import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { createUiRouter } from './ui';
 import { AppConfig, EpubMeta } from '../types';
 
@@ -34,9 +37,12 @@ let booksDir: string;
 let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
+let tokenStore: TokenStore;
 let app: express.Express;
 let dbPath: string;
 let aliceId: string;
+
+const jwtSecret = crypto.randomBytes(32);
 
 const config: AppConfig = {
   username: 'admin',
@@ -131,24 +137,23 @@ function makeEpub(
   return zip.toBuffer();
 }
 
-// Returns a supertest agent that has a valid session cookie
-async function adminAgent() {
-  const agent = request.agent(app);
-  await agent
+async function loginAdmin(): Promise<string> {
+  const res = await request(app)
     .post('/api/login')
     .send('username=admin&password=pass')
     .set('Content-Type', 'application/x-www-form-urlencoded');
-  return agent;
+  return (res.body as { accessToken: string }).accessToken;
 }
 
-async function userAgent() {
-  const agent = request.agent(app);
-  await agent
+async function loginAlice(): Promise<string> {
+  const res = await request(app)
     .post('/api/login')
     .send('username=alice&password=alicepass')
     .set('Content-Type', 'application/x-www-form-urlencoded');
-  return agent;
+  return (res.body as { accessToken: string }).accessToken;
 }
+
+const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${token}`];
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hass-odps-ui-'));
@@ -163,19 +168,23 @@ beforeEach(async () => {
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
+  tokenStore = new TokenStore(prisma);
 
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
-  app.use(session({ secret: 'test-secret', resave: false, saveUninitialized: false }));
-  // Test-only seam: simulate a pre-migration session that lacks `userId`.
-  app.use((req, _res, next) => {
-    if (req.headers['x-test-strip-userid']) {
-      delete req.session.userId;
-    }
-    next();
-  });
-  app.use('/', createUiRouter(bookStore, userStore, { ...config, booksDir }, mockThumbnailQueue));
+  app.use(cookieParser());
+  app.use(
+    '/',
+    createUiRouter(
+      bookStore,
+      userStore,
+      { ...config, booksDir },
+      mockThumbnailQueue,
+      tokenStore,
+      jwtSecret
+    )
+  );
   (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
   (mockThumbnailQueue.reconcile as jest.Mock).mockClear();
 });
@@ -191,15 +200,16 @@ afterEach(async () => {
 });
 
 describe('GET /', () => {
-  it('redirects to /login without a session', async () => {
+  it('serves the SPA without auth', async () => {
     const res = await request(app).get('/');
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login');
+    expect(res.status).toBe(200);
   });
 
   it('returns 200 with a valid session', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
   });
 });
@@ -211,6 +221,7 @@ describe('POST /api/login', () => {
       .send('username=admin&password=pass')
       .set('Content-Type', 'application/x-www-form-urlencoded');
     expect(res.status).toBe(200);
+    expect(res.body.accessToken).toEqual(expect.any(String));
   });
 
   it('returns 200 on correct regular user credentials', async () => {
@@ -219,6 +230,7 @@ describe('POST /api/login', () => {
       .send('username=alice&password=alicepass')
       .set('Content-Type', 'application/x-www-form-urlencoded');
     expect(res.status).toBe(200);
+    expect(res.body.accessToken).toEqual(expect.any(String));
   });
 
   it('returns 401 on wrong password', async () => {
@@ -247,45 +259,10 @@ describe('POST /api/login', () => {
   });
 });
 
-describe('GET /api/me', () => {
-  it('redirects to /login without session', async () => {
-    const res = await request(app).get('/api/me');
-    expect(res.status).toBe(302);
-  });
-
-  it('returns isAdmin true for admin session', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/me');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ username: 'admin', isAdmin: true, mustChangePassword: false });
-  });
-
-  it('returns isAdmin false for regular user session', async () => {
-    const agent = await userAgent();
-    const res = await agent.get('/api/me');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ username: 'alice', isAdmin: false, mustChangePassword: false });
-  });
-
-  it('returns mustChangePassword true after an admin password reset', async () => {
-    const newPassword = await userStore.resetPassword('alice');
-    const agent = request.agent(app);
-    await agent
-      .post('/api/login')
-      .send(`username=alice&password=${newPassword}`)
-      .set('Content-Type', 'application/x-www-form-urlencoded');
-
-    const res = await agent.get('/api/me');
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ username: 'alice', isAdmin: false, mustChangePassword: true });
-  });
-});
-
 describe('GET /api/books', () => {
   it('returns 302 without session', async () => {
     const res = await request(app).get('/api/books');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns JSON array of books', async () => {
@@ -293,8 +270,10 @@ describe('GET /api/books', () => {
       ...FAKE_META,
       title: 'book',
     });
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].filename).toBe('Test_Author-book.epub');
@@ -311,8 +290,10 @@ describe('GET /api/books', () => {
       coverMime: null,
     };
     await bookStore.addBook('enriched1', stage('enriched1'), meta);
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     const book = res.body[0];
     expect(book.author).toBe('Jane Doe');
@@ -333,8 +314,10 @@ describe('GET /api/books', () => {
 
     await bookStore.addBook('foundation1', stage('foundation1'), meta);
 
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -351,8 +334,10 @@ describe('GET /api/books', () => {
       chapterCount: 7,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7],
     });
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].chapterCount).toBe(7);
     expect(res.body[0].chapterSpineMap).toBeUndefined();
@@ -361,35 +346,39 @@ describe('GET /api/books', () => {
 
 describe('POST /api/books/upload', () => {
   it('rejects .pdf files with 400 and "Supported: epub"', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .post('/api/books/upload')
+      .set(...bearer(token))
       .attach('files', Buffer.from('pdf-content'), 'notes.pdf');
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Supported: epub/);
   });
 
   it('rejects .mobi files with 400 and "Supported: epub"', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .post('/api/books/upload')
+      .set(...bearer(token))
       .attach('files', Buffer.from('mobi-content'), 'book.mobi');
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Supported: epub/);
   });
 
   it('rejects unsupported file types', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .post('/api/books/upload')
+      .set(...bearer(token))
       .attach('files', Buffer.from('text'), 'notes.txt');
     expect(res.status).toBe(400);
   });
 
   it('rejects invalid EPUB content with 400', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .post('/api/books/upload')
+      .set(...bearer(token))
       .attach('files', Buffer.from('not-an-epub'), 'bad.epub');
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Failed to parse EPUB/);
@@ -402,8 +391,11 @@ describe('POST /api/books/upload', () => {
       series: 'Parsed Series',
       seriesIndex: 3,
     });
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'parsed.epub');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'parsed.epub')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.uploaded).toContain('parsed.epub');
 
@@ -425,8 +417,11 @@ describe('POST /api/books/upload', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'cover.epub');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'cover.epub')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
 
     const books = await bookStore.listBooks();
@@ -435,15 +430,21 @@ describe('POST /api/books/upload', () => {
 
   it('enqueues thumbnails after a successful upload', async () => {
     const epubBuf = makeEpub({ title: 'Queued Book' });
-    const agent = await adminAgent();
-    await agent.post('/api/books/upload').attach('files', epubBuf, 'queued.epub');
+    const token = await loginAdmin();
+    await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'queued.epub')
+      .set(...bearer(token));
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
   it('places uploaded file at <booksDir>/<id>.epub', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubBuf = makeEpub({ title: 'Stored Book', author: 'A' });
-    const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'human-name.epub');
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'human-name.epub')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     const books = await bookStore.listBooks();
     expect(books).toHaveLength(1);
@@ -454,27 +455,39 @@ describe('POST /api/books/upload', () => {
   });
 
   it('returns 409 when uploading a duplicate (same content twice)', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubBuf = makeEpub({ title: 'Dup', author: 'A' });
-    await agent.post('/api/books/upload').attach('files', epubBuf, 'first.epub');
-    const res = await agent.post('/api/books/upload').attach('files', epubBuf, 'second.epub');
+    await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'first.epub')
+      .set(...bearer(token));
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'second.epub')
+      .set(...bearer(token));
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already in the library/i);
   });
 
   it('falls back to original-filename stem when title metadata is empty', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubBuf = makeEpub({ author: 'A' }); // no title
-    await agent.post('/api/books/upload').attach('files', epubBuf, 'my-book.epub');
+    await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'my-book.epub')
+      .set(...bearer(token));
     const books = await bookStore.listBooks();
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('my-book');
   });
 
   it('cleans up staging directory after successful upload', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubBuf = makeEpub({ title: 'Clean', author: 'A' });
-    await agent.post('/api/books/upload').attach('files', epubBuf, 'clean.epub');
+    await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'clean.epub')
+      .set(...bearer(token));
     const stagingDir = path.join(booksDir, '.staging');
     const staged = fs.existsSync(stagingDir) ? fs.readdirSync(stagingDir) : [];
     expect(staged).toEqual([]);
@@ -483,7 +496,7 @@ describe('POST /api/books/upload', () => {
 
 describe('GET /api/books/:id', () => {
   it('returns full book data including description, publisher, identifiers, subjects', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const meta: EpubMeta = {
       ...FAKE_META,
       title: 'Detail Book',
@@ -494,7 +507,9 @@ describe('GET /api/books/:id', () => {
     };
     await bookStore.addBook('detailid1', stage('detailid1'), meta);
 
-    const res = await agent.get('/api/books/detailid1');
+    const res = await request(app)
+      .get('/api/books/detailid1')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.id).toBe('detailid1');
     expect(res.body.title).toBe('Detail Book');
@@ -507,14 +522,16 @@ describe('GET /api/books/:id', () => {
   });
 
   it('returns 404 for unknown book ID', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/doesnotexist');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/doesnotexist')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('requires authentication', async () => {
     const res = await request(app).get('/api/books/anyid');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('includes chapterCount, chapterSpineMap, and chapterNames', async () => {
@@ -524,8 +541,10 @@ describe('GET /api/books/:id', () => {
       chapterSpineMap: [1, 2, 3, 4, 5],
       chapterNames: ['Prologue', 'Ch 1', 'Ch 2', 'Ch 3', 'Ch 4'],
     });
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/bk1');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/bk1')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.chapterCount).toBe(5);
     expect(res.body.chapterSpineMap).toEqual([1, 2, 3, 4, 5]);
@@ -538,36 +557,42 @@ describe('GET /api/books/:id', () => {
 describe('GET /api/books/:id/lineage', () => {
   it('returns 302 when not authenticated', async () => {
     const res = await request(app).get('/api/books/some-id/lineage');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 when authenticated as a regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.get('/api/books/some-id/lineage');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/some-id/lineage')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 
   it('returns 404 when book does not exist', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/no-such-book/lineage');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/no-such-book/lineage')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns lineage with empty entries for a book with no history', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubBuf = makeEpub({ title: 'Lineage Test' });
     const epubPath = path.join(booksDir, 'lin-id.epub');
     fs.writeFileSync(epubPath, epubBuf);
     await bookStore.addBook('lin-id', epubPath, FAKE_META);
 
-    const res = await agent.get('/api/books/lin-id/lineage');
+    const res = await request(app)
+      .get('/api/books/lin-id/lineage')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.currentId).toBe('lin-id');
     expect(res.body.entries).toEqual([]);
   });
 
   it('returns lineage with history entries when history exists', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const epubPath = path.join(booksDir, 'curr-id.epub');
     fs.writeFileSync(epubPath, makeEpub({ title: 'History Test' }));
     await bookStore.addBook('curr-id', epubPath, FAKE_META);
@@ -577,7 +602,9 @@ describe('GET /api/books/:id/lineage', () => {
       VALUES ('old-id', 'curr-id', ${Date.now() - 1000})
     `;
 
-    const res = await agent.get('/api/books/curr-id/lineage');
+    const res = await request(app)
+      .get('/api/books/curr-id/lineage')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.currentId).toBe('curr-id');
     expect(res.body.entries).toHaveLength(1);
@@ -591,60 +618,74 @@ describe('GET /api/books/:id/lineage', () => {
 describe('POST /api/books/:id/link', () => {
   it('returns 302 when not authenticated', async () => {
     const res = await request(app).post('/api/books/some-id/link').send({ documentId: 'doc' });
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 when authenticated as a regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.post('/api/books/some-id/link').send({ documentId: 'doc' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/some-id/link')
+      .send({ documentId: 'doc' })
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 
   it('returns 400 when documentId is missing', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('link-book', stage('link-book'), FAKE_META);
-    const res = await agent.post('/api/books/link-book/link').send({});
+    const res = await request(app)
+      .post('/api/books/link-book/link')
+      .send({})
+      .set(...bearer(token));
     expect(res.status).toBe(400);
   });
 
   it('returns 404 when book does not exist', async () => {
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/no-such-book/link').send({ documentId: 'doc' });
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/no-such-book/link')
+      .send({ documentId: 'doc' })
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns 400 when documentId equals bookId', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('self-link-book', stage('self-link-book'), FAKE_META);
-    const res = await agent
+    const res = await request(app)
       .post('/api/books/self-link-book/link')
+      .set(...bearer(token))
       .send({ documentId: 'self-link-book' });
     expect(res.status).toBe(400);
   });
 
   it('returns 409 when documentId is already linked', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('already-linked-book', stage('already-linked-book'), FAKE_META);
     await prisma.$executeRaw`
       INSERT INTO book_id_history (old_id, current_id, timestamp, type)
       VALUES ('already-orphan', 'already-linked-book', ${Date.now()}, 'merge')
     `;
-    const res = await agent
+    const res = await request(app)
       .post('/api/books/already-linked-book/link')
+      .set(...bearer(token))
       .send({ documentId: 'already-orphan' });
     expect(res.status).toBe(409);
   });
 
   it('returns 409 when documentId is a live book', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('live-book-1', stage('live-book-1'), FAKE_META);
     await bookStore.addBook('live-book-2', stage('live-book-2'), FAKE_META);
-    const res = await agent.post('/api/books/live-book-1/link').send({ documentId: 'live-book-2' });
+    const res = await request(app)
+      .post('/api/books/live-book-1/link')
+      .send({ documentId: 'live-book-2' })
+      .set(...bearer(token));
     expect(res.status).toBe(409);
   });
 
   it('returns 204 and migrates progress on success', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('route-link-target', stage('route-link-target'), FAKE_META);
     await userStore.createUser('alice-route', 'hashed-pass');
     const aliceRouteId = (await userStore.getUserIdByUsername('alice-route'))!;
@@ -660,8 +701,9 @@ describe('POST /api/books/:id/link', () => {
       },
     });
 
-    const res = await agent
+    const res = await request(app)
       .post('/api/books/route-link-target/link')
+      .set(...bearer(token))
       .send({ documentId: 'route-orphan' });
     expect(res.status).toBe(204);
 
@@ -676,41 +718,49 @@ describe('POST /api/books/:id/link', () => {
 describe('DELETE /api/books/:id/link/:documentId', () => {
   it('returns 302 when not authenticated', async () => {
     const res = await request(app).delete('/api/books/some-id/link/some-doc');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 when authenticated as a regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.delete('/api/books/some-id/link/some-doc');
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/books/some-id/link/some-doc')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 
   it('returns 404 when no matching merge row exists', async () => {
-    const agent = await adminAgent();
-    const res = await agent.delete('/api/books/no-book/link/no-doc');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/no-book/link/no-doc')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns 400 when row exists but is type=edit', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('unlink-book', stage('unlink-book'), FAKE_META);
     await prisma.$executeRaw`
       INSERT INTO book_id_history (old_id, current_id, timestamp, type)
       VALUES ('edit-doc', 'unlink-book', ${Date.now()}, 'edit')
     `;
-    const res = await agent.delete('/api/books/unlink-book/link/edit-doc');
+    const res = await request(app)
+      .delete('/api/books/unlink-book/link/edit-doc')
+      .set(...bearer(token));
     expect(res.status).toBe(400);
   });
 
   it('returns 204 and removes the merge row', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     await bookStore.addBook('unlink-target', stage('unlink-target'), FAKE_META);
     await prisma.$executeRaw`
       INSERT INTO book_id_history (old_id, current_id, timestamp, type)
       VALUES ('merge-doc', 'unlink-target', ${Date.now()}, 'merge')
     `;
 
-    const res = await agent.delete('/api/books/unlink-target/link/merge-doc');
+    const res = await request(app)
+      .delete('/api/books/unlink-target/link/merge-doc')
+      .set(...bearer(token));
     expect(res.status).toBe(204);
 
     const rows = await prisma.$queryRaw<Array<unknown>>`
@@ -730,8 +780,10 @@ describe('GET /api/books/:id/cover', () => {
     };
     await bookStore.addBook('coverId1', stage('coverId1'), meta);
 
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/coverId1/cover');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/coverId1/cover')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/image\/jpeg/);
     expect(Buffer.from(res.body).toString()).toBe('fake-jpeg-bytes');
@@ -740,14 +792,18 @@ describe('GET /api/books/:id/cover', () => {
   it('returns 404 for a book without cover', async () => {
     await bookStore.addBook('noCoverId', stage('noCoverId'), FAKE_META);
 
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/noCoverId/cover');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/noCoverId/cover')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns 404 for an unknown book id', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/unknownId/cover');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/unknownId/cover')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
@@ -761,8 +817,10 @@ describe('GET /api/books/:id/cover', () => {
     });
     await bookStore.saveThumbnail('thumbBook', 150, thumbBuf, 'image/jpeg');
 
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/thumbBook/cover?width=150');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/thumbBook/cover?width=150')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(Buffer.from(res.body).toString()).toBe('thumbnail-data');
   });
@@ -775,8 +833,10 @@ describe('GET /api/books/:id/cover', () => {
       coverMime: 'image/jpeg',
     });
 
-    const agent = await adminAgent();
-    const res = await agent.get('/api/books/fbBook/cover?width=150');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/books/fbBook/cover?width=150')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(Buffer.from(res.body).toString()).toBe('full-size-cover');
   });
@@ -787,15 +847,19 @@ describe('DELETE /api/books/:id', () => {
     await bookStore.addBook('book1', stage('book1'), FAKE_META);
     const [book] = await bookStore.listBooks();
 
-    const agent = await adminAgent();
-    const res = await agent.delete(`/api/books/${book.id}`);
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete(`/api/books/${book.id}`)
+      .set(...bearer(token));
     expect(res.status).toBe(204);
     expect(fs.existsSync(path.join(booksDir, 'book1.epub'))).toBe(false);
   });
 
   it('returns 404 for unknown book id', async () => {
-    const agent = await adminAgent();
-    const res = await agent.delete('/api/books/deadbeefdeadbeef');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/deadbeefdeadbeef')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 });
@@ -803,12 +867,14 @@ describe('DELETE /api/books/:id', () => {
 describe('POST /api/books/scan', () => {
   it('returns 302 without session', async () => {
     const res = await request(app).post('/api/books/scan');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns { imported: [], removed: [] } when nothing to scan', async () => {
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/scan');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ imported: [], removed: [] });
   });
@@ -818,14 +884,18 @@ describe('POST /api/books/scan', () => {
     const epubBuf = makeEpub({ title: 'Found Book', author: 'Found Author' });
     fs.writeFileSync(path.join(booksDir, 'found.epub'), epubBuf);
 
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/scan');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.imported).toContain('found.epub');
     expect(res.body.removed).toEqual([]);
 
     // Verify it's now in the library
-    const listRes = await agent.get('/api/books');
+    const listRes = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
     expect(listRes.body).toHaveLength(1);
     expect(listRes.body[0].title).toBe('Found Book');
   });
@@ -838,16 +908,20 @@ describe('POST /api/books/scan', () => {
     });
     fs.rmSync(path.join(booksDir, 'stale001.epub'));
 
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/scan');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.removed).toContain('stale001.epub');
     expect(res.body.imported).toEqual([]);
   });
 
   it('calls thumbnailQueue.reconcile after scan', async () => {
-    const agent = await adminAgent();
-    await agent.post('/api/books/scan');
+    const token = await loginAdmin();
+    await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(mockThumbnailQueue.reconcile).toHaveBeenCalledTimes(1);
   });
 });
@@ -858,28 +932,36 @@ describe('DELETE /api/books/:id (admin-only)', () => {
   });
 
   it('returns 204 for admin', async () => {
-    const agent = await adminAgent();
-    const res = await agent.delete('/api/books/b1');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/b1')
+      .set(...bearer(token));
     expect(res.status).toBe(204);
   });
 
   it('returns 403 for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.delete('/api/books/b1');
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/books/b1')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 });
 
 describe('POST /api/books/scan (admin-only)', () => {
   it('returns 200 for admin', async () => {
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/scan');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
   });
 
   it('returns 403 for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.post('/api/books/scan');
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 });
@@ -887,19 +969,27 @@ describe('POST /api/books/scan (admin-only)', () => {
 describe('GET /api/my/progress', () => {
   it('redirects to /login without session', async () => {
     const res = await request(app).get('/api/my/progress');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns [] for admin', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
-  it('returns 401 when session is missing userId', async () => {
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress').set('x-test-strip-userid', '1');
+  it('returns 401 when the token has no userId (non-admin)', async () => {
+    const token = signAccessToken(jwtSecret, {
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    });
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
   });
@@ -912,8 +1002,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].document).toBe('doc1');
@@ -928,8 +1020,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].device).toBe('Kobo');
@@ -948,8 +1042,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd2',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(0);
   });
@@ -969,8 +1065,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].currentChapter).toBe(2);
   });
@@ -990,8 +1088,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].currentChapterName).toBe('Chapter 2');
   });
@@ -1011,8 +1111,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].currentChapterName).toBeUndefined();
   });
@@ -1025,8 +1127,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].currentChapter).toBeUndefined();
   });
@@ -1044,8 +1148,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body[0].currentChapter).toBeUndefined();
   });
@@ -1063,8 +1169,10 @@ describe('GET /api/my/progress', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.body[0].chapterSpineMap).toBeUndefined();
   });
 
@@ -1081,8 +1189,10 @@ describe('GET /api/my/progress', () => {
       parseEpub: () => FAKE_META,
       partialMD5: () => 'lin-new',
     });
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/progress');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/progress')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].document).toBe('lin-new');
@@ -1092,26 +1202,32 @@ describe('GET /api/my/progress', () => {
 describe('POST /api/books/:id/regen-chapters', () => {
   it('returns 302 without session', async () => {
     const res = await request(app).post('/api/books/any/regen-chapters');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.post('/api/books/any/regen-chapters');
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/any/regen-chapters')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 
   it('returns 404 for unknown book id', async () => {
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/nonexistent/regen-chapters');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/nonexistent/regen-chapters')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns the updated book on success', async () => {
     const epubBuf = makeEpub({ title: FAKE_META.title, author: FAKE_META.author });
     await bookStore.addBook('regen-ok', stage('regen-ok', epubBuf), FAKE_META);
-    const agent = await adminAgent();
-    const res = await agent.post('/api/books/regen-ok/regen-chapters');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/regen-ok/regen-chapters')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.title).toBe(FAKE_META.title);
   });
@@ -1130,33 +1246,45 @@ describe('DELETE /api/my/progress/:document', () => {
 
   it('redirects to /login without session', async () => {
     const res = await request(app).delete('/api/my/progress/doc1');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 for admin', async () => {
-    const agent = await adminAgent();
-    const res = await agent.delete('/api/my/progress/doc1');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/my/progress/doc1')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'Forbidden' });
   });
 
   it('returns 204 and clears the record for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.delete('/api/my/progress/doc1');
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/my/progress/doc1')
+      .set(...bearer(token));
     expect(res.status).toBe(204);
     expect(await userStore.getProgress(aliceId, 'doc1')).toBeNull();
   });
 
   it('returns 404 when no record exists', async () => {
-    const agent = await userAgent();
-    const res = await agent.delete('/api/my/progress/nonexistent');
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/my/progress/nonexistent')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Progress record not found' });
   });
 
-  it('returns 401 when session is missing userId', async () => {
-    const agent = await userAgent();
-    const res = await agent.delete('/api/my/progress/doc1').set('x-test-strip-userid', '1');
+  it('returns 401 when the token has no userId (non-admin)', async () => {
+    const token = signAccessToken(jwtSecret, {
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    });
+    const res = await request(app)
+      .delete('/api/my/progress/doc1')
+      .set(...bearer(token));
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
   });
@@ -1167,61 +1295,74 @@ describe('PUT /api/my/progress/:document', () => {
     const res = await request(app)
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25 });
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 for admin', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 5, percentage: 0.25 });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'Forbidden' });
   });
 
   it('returns 400 when currentChapter is missing', async () => {
-    const agent = await userAgent();
-    const res = await agent.put('/api/my/progress/doc1').send({ percentage: 0.25 });
+    const token = await loginAlice();
+    const res = await request(app)
+      .put('/api/my/progress/doc1')
+      .send({ percentage: 0.25 })
+      .set(...bearer(token));
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Invalid body' });
   });
 
   it('returns 400 when percentage is missing', async () => {
-    const agent = await userAgent();
-    const res = await agent.put('/api/my/progress/doc1').send({ currentChapter: 5 });
+    const token = await loginAlice();
+    const res = await request(app)
+      .put('/api/my/progress/doc1')
+      .send({ currentChapter: 5 })
+      .set(...bearer(token));
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Invalid body' });
   });
 
   it('returns 400 when currentChapter is less than 1', async () => {
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 0, percentage: 0.1 });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Invalid body' });
   });
 
   it('returns 400 when percentage is greater than 1', async () => {
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 5, percentage: 1.5 });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Invalid body' });
   });
 
   it('returns 400 when percentage is not positive', async () => {
-    const agent = await userAgent();
-    const res = await agent.put('/api/my/progress/doc1').send({ currentChapter: 5, percentage: 0 });
+    const token = await loginAlice();
+    const res = await request(app)
+      .put('/api/my/progress/doc1')
+      .send({ currentChapter: 5, percentage: 0 })
+      .set(...bearer(token));
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Invalid body' });
   });
 
   it('saves progress and returns 200 for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 5, percentage: 0.25 });
     expect(res.status).toBe(200);
     const saved = await userStore.getProgress(aliceId, 'doc1');
@@ -1237,18 +1378,20 @@ describe('PUT /api/my/progress/:document', () => {
       device: 'Kobo',
       device_id: 'd1',
     });
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 10, percentage: 0.75 });
     expect(res.status).toBe(200);
     expect((await userStore.getProgress(aliceId, 'doc1'))!.percentage).toBe(0.75);
   });
 
   it('saves device and device_id when provided', async () => {
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/doc1')
+      .set(...bearer(token))
       .send({ currentChapter: 5, percentage: 0.25, device: 'Web', device_id: 'test-uuid' });
     expect(res.status).toBe(200);
     const saved = await userStore.getProgress(aliceId, 'doc1');
@@ -1257,8 +1400,11 @@ describe('PUT /api/my/progress/:document', () => {
   });
 
   it('defaults device to "Web" when not provided', async () => {
-    const agent = await userAgent();
-    await agent.put('/api/my/progress/doc1').send({ currentChapter: 5, percentage: 0.25 });
+    const token = await loginAlice();
+    await request(app)
+      .put('/api/my/progress/doc1')
+      .send({ currentChapter: 5, percentage: 0.25 })
+      .set(...bearer(token));
     expect((await userStore.getProgress(aliceId, 'doc1'))!.device).toBe('Web');
   });
 
@@ -1268,9 +1414,10 @@ describe('PUT /api/my/progress/:document', () => {
       chapterCount: 10,
       chapterSpineMap: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     });
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .put('/api/my/progress/cfidoc')
+      .set(...bearer(token))
       .send({ currentChapter: 3, percentage: 0.3 });
     expect(res.status).toBe(200);
     // chapterSpineMap[2] = 3, so spineIndex = 3, CFI n = 3*2+2 = 8
@@ -1279,11 +1426,15 @@ describe('PUT /api/my/progress/:document', () => {
     );
   });
 
-  it('returns 401 when session is missing userId', async () => {
-    const agent = await userAgent();
-    const res = await agent
+  it('returns 401 when the token has no userId (non-admin)', async () => {
+    const token = signAccessToken(jwtSecret, {
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    });
+    const res = await request(app)
       .put('/api/my/progress/doc1')
-      .set('x-test-strip-userid', '1')
+      .set(...bearer(token))
       .send({ currentChapter: 5, percentage: 0.25 });
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Session expired. Please log in again.' });
@@ -1319,25 +1470,34 @@ describe('PATCH /api/books/:id/metadata', () => {
   });
 
   it('returns 403 for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.patch(`/api/books/${bookId}/metadata`).field('title', 'New');
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'New')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 
   it('returns 404 for unknown book id', async () => {
-    const agent = await adminAgent();
-    const res = await agent.patch('/api/books/doesnotexist/metadata').field('title', 'New');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .patch('/api/books/doesnotexist/metadata')
+      .field('title', 'New')
+      .set(...bearer(token));
     expect(res.status).toBe(404);
   });
 
   it('returns 302 without session', async () => {
     const res = await request(app).patch(`/api/books/${bookId}/metadata`).field('title', 'New');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('updates title and returns the updated book', async () => {
-    const agent = await adminAgent();
-    const res = await agent.patch(`/api/books/${bookId}/metadata`).field('title', 'Updated Title');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'Updated Title')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('Updated Title');
     expect(res.body.path).toBeUndefined(); // path must not be exposed
@@ -1349,10 +1509,11 @@ describe('PATCH /api/books/:id/metadata', () => {
   });
 
   it('updates cover when image file is attached', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     const coverBytes = Buffer.from('fake-png-cover');
-    const res = await agent
+    const res = await request(app)
       .patch(`/api/books/${bookId}/metadata`)
+      .set(...bearer(token))
       .attach('cover', coverBytes, { filename: 'cover.png', contentType: 'image/png' });
     expect(res.status).toBe(200);
     const newId: string = res.body.id;
@@ -1364,9 +1525,12 @@ describe('PATCH /api/books/:id/metadata', () => {
   });
 
   it('enqueues thumbnails after metadata update', async () => {
-    const agent = await adminAgent();
+    const token = await loginAdmin();
     (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
-    await agent.patch(`/api/books/${bookId}/metadata`).field('title', 'Updated');
+    await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'Updated')
+      .set(...bearer(token));
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 });
@@ -1374,19 +1538,23 @@ describe('PATCH /api/books/:id/metadata', () => {
 describe('GET /api/config', () => {
   it('redirects to /login without session', async () => {
     const res = await request(app).get('/api/config');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns maxConcurrentUploads for authenticated user', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/config');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/config')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ maxConcurrentUploads: 3 });
   });
 
   it('returns maxConcurrentUploads for regular user', async () => {
-    const agent = await userAgent();
-    const res = await agent.get('/api/config');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/config')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ maxConcurrentUploads: 3 });
   });
@@ -1397,55 +1565,69 @@ describe('PATCH /api/my/password', () => {
     const res = await request(app)
       .patch('/api/my/password')
       .send({ currentPassword: 'alicepass', newPassword: 'newpass' });
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 for admin session', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const token = await loginAdmin();
+    const res = await request(app)
       .patch('/api/my/password')
+      .set(...bearer(token))
       .send({ currentPassword: 'pass', newPassword: 'newpass' });
     expect(res.status).toBe(403);
   });
 
   it('returns 400 when currentPassword is missing', async () => {
-    const agent = await userAgent();
-    const res = await agent.patch('/api/my/password').send({ newPassword: 'newpass' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch('/api/my/password')
+      .send({ newPassword: 'newpass' })
+      .set(...bearer(token));
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Current and new password are required');
   });
 
   it('returns 400 when newPassword is missing', async () => {
-    const agent = await userAgent();
-    const res = await agent.patch('/api/my/password').send({ currentPassword: 'alicepass' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch('/api/my/password')
+      .send({ currentPassword: 'alicepass' })
+      .set(...bearer(token));
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Current and new password are required');
   });
 
   it('returns 401 when currentPassword is wrong', async () => {
-    const agent = await userAgent();
-    const res = await agent
+    const token = await loginAlice();
+    const res = await request(app)
       .patch('/api/my/password')
+      .set(...bearer(token))
       .send({ currentPassword: 'wrongpass', newPassword: 'newpass' });
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Current password is incorrect');
   });
 
-  it('changes the password and returns 204', async () => {
-    const agent = await userAgent();
-    const res = await agent
+  it('changes the password and returns 200 with a fresh access token', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
       .patch('/api/my/password')
-      .send({ currentPassword: 'alicepass', newPassword: 'newpass' });
-    expect(res.status).toBe(204);
-    expect(await userStore.validateUser('alice', 'newpass')).toBeTruthy();
+      .set(...bearer(token))
+      .send({ currentPassword: 'alicepass', newPassword: 'newpass123' });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toEqual(expect.any(String));
+    const decoded = verifyAccessToken(jwtSecret, res.body.accessToken as string);
+    expect(decoded?.mustChangePassword).toBe(false);
+    expect(await userStore.validateUser('alice', 'newpass123')).toBeTruthy();
     expect(await userStore.validateUser('alice', 'alicepass')).toBe(false);
   });
 });
 
 describe('GET /api/my/sync-password', () => {
   it('returns syncPassword for authenticated non-admin user', async () => {
-    const agent = await userAgent();
-    const res = await agent.get('/api/my/sync-password');
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/my/sync-password')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(typeof res.body.syncPassword).toBe('string');
     expect(res.body.syncPassword.split(' ')).toHaveLength(2);
@@ -1453,118 +1635,243 @@ describe('GET /api/my/sync-password', () => {
 
   it('redirects unauthenticated requests', async () => {
     const res = await request(app).get('/api/my/sync-password');
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(401);
   });
 
   it('returns 403 for admin user', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/api/my/sync-password');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/my/sync-password')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 });
 
 describe('POST /api/my/sync-password/regenerate', () => {
   it('returns a new syncPassword', async () => {
-    const agent = await userAgent();
-    const res = await agent.post('/api/my/sync-password/regenerate');
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/my/sync-password/regenerate')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(typeof res.body.syncPassword).toBe('string');
     expect(res.body.syncPassword.split(' ')).toHaveLength(2);
   });
 
   it('returns 403 for admin user', async () => {
-    const agent = await adminAgent();
-    const res = await agent.post('/api/my/sync-password/regenerate');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/my/sync-password/regenerate')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
   });
 });
 
 describe('SPA routes serve index.html', () => {
   it('GET /books/:id returns 200 with HTML', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/books/someid');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/books/someid')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
   it('GET /books/:id/edit returns 200 with HTML', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/books/someid/edit');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/books/someid/edit')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
   it('GET /series/:name returns 200 with HTML', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/series/My%20Series');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/series/My%20Series')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
-  it('SPA routes redirect to /login without session', async () => {
+  it('serves SPA routes without auth', async () => {
     const res = await request(app).get('/books/someid');
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<!DOCTYPE html>');
   });
 
   it('GET /upload returns 200 with HTML', async () => {
-    const agent = await adminAgent();
-    const res = await agent.get('/upload');
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/upload')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
-  it('GET /upload redirects to /login without session', async () => {
+  it('GET /upload serves the SPA without auth', async () => {
     const res = await request(app).get('/upload');
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<!DOCTYPE html>');
   });
 });
 
-describe('requirePasswordChange middleware', () => {
-  async function resetAndLoginAlice() {
+describe('passwordChangeGate middleware', () => {
+  async function resetAndLoginAlice(): Promise<{ token: string; newPassword: string }> {
     const newPassword = await userStore.resetPassword('alice');
-    const agent = request.agent(app);
-    await agent
+    const res = await request(app)
       .post('/api/login')
       .send(`username=alice&password=${newPassword}`)
       .set('Content-Type', 'application/x-www-form-urlencoded');
-    return { agent, newPassword: newPassword! };
+    return { token: (res.body as { accessToken: string }).accessToken, newPassword: newPassword! };
   }
 
   it('blocks other /api/* routes with 403 when mustChangePassword is true', async () => {
-    const { agent } = await resetAndLoginAlice();
-    const res = await agent.get('/api/books');
+    const { token } = await resetAndLoginAlice();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('Password change required');
   });
 
-  it('allows GET /api/me when mustChangePassword is true', async () => {
-    const { agent } = await resetAndLoginAlice();
-    const res = await agent.get('/api/me');
-    expect(res.status).toBe(200);
-    expect(res.body.mustChangePassword).toBe(true);
+  it('signs a token with mustChangePassword true after a reset', async () => {
+    const { token } = await resetAndLoginAlice();
+    const decoded = verifyAccessToken(jwtSecret, token);
+    expect(decoded?.mustChangePassword).toBe(true);
   });
 
   it('allows non-API routes (SPA) when mustChangePassword is true', async () => {
-    const { agent } = await resetAndLoginAlice();
-    const res = await agent.get('/library');
+    const { token } = await resetAndLoginAlice();
+    const res = await request(app)
+      .get('/library')
+      .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
   it('clears the flag after PATCH /api/my/password succeeds, allowing other routes again', async () => {
-    const { agent, newPassword } = await resetAndLoginAlice();
+    const { token, newPassword } = await resetAndLoginAlice();
 
-    const changeRes = await agent
+    const changeRes = await request(app)
       .patch('/api/my/password')
+      .set(...bearer(token))
       .send({ currentPassword: newPassword, newPassword: 'brandnewpass' });
-    expect(changeRes.status).toBe(204);
+    expect(changeRes.status).toBe(200);
 
-    const meRes = await agent.get('/api/me');
-    expect(meRes.body.mustChangePassword).toBe(false);
+    const newToken = (changeRes.body as { accessToken: string }).accessToken;
+    expect(verifyAccessToken(jwtSecret, newToken)?.mustChangePassword).toBe(false);
 
-    const booksRes = await agent.get('/api/books');
+    const booksRes = await request(app)
+      .get('/api/books')
+      .set(...bearer(newToken));
     expect(booksRes.status).toBe(200);
+  });
+});
+
+describe('POST /api/auth/refresh', () => {
+  it('rotates the refresh token and returns a new access token', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+
+    const first = await agent.post('/api/auth/refresh');
+    expect(first.status).toBe(200);
+    expect(first.body.accessToken).toEqual(expect.any(String));
+
+    const second = await agent.post('/api/auth/refresh');
+    expect(second.status).toBe(200); // new cookie from rotation works
+  });
+
+  it('rejects a reused (rotated-out) refresh token', async () => {
+    const agent = request.agent(app);
+    const login = await agent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    const originalCookie = login.headers['set-cookie']![0].split(';')[0];
+
+    await agent.post('/api/auth/refresh'); // rotates, old token now dead
+
+    const res = await request(app).post('/api/auth/refresh').set('Cookie', originalCookie);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects when there is no cookie', async () => {
+    const res = await request(app).post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects when the user has been deleted', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    await userStore.deleteUser('alice');
+    const res = await agent.post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+  });
+
+  it('works for the config admin', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/login')
+      .send('username=admin&password=pass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    const res = await agent.post('/api/auth/refresh');
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /api/auth/logout', () => {
+  it('revokes the refresh token and clears the cookie', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+
+    const res = await agent.post('/api/auth/logout');
+    expect(res.status).toBe(204);
+
+    const refresh = await agent.post('/api/auth/refresh');
+    expect(refresh.status).toBe(401);
+  });
+
+  it('returns 204 even without a cookie', async () => {
+    const res = await request(app).post('/api/auth/logout');
+    expect(res.status).toBe(204);
+  });
+});
+
+describe('password change revokes refresh tokens', () => {
+  it('old refresh cookies stop working after a password change', async () => {
+    const agent = request.agent(app);
+    const login = await agent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    const token = (login.body as { accessToken: string }).accessToken;
+
+    // Second session whose refresh token should be revoked
+    const otherAgent = request.agent(app);
+    await otherAgent
+      .post('/api/login')
+      .send('username=alice&password=alicepass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+
+    const change = await agent
+      .patch('/api/my/password')
+      .set(...bearer(token))
+      .send({ currentPassword: 'alicepass', newPassword: 'newpass123' });
+    expect(change.status).toBe(200);
+    expect(change.body.accessToken).toEqual(expect.any(String));
+
+    const res = await otherAgent.post('/api/auth/refresh');
+    expect(res.status).toBe(401);
   });
 });

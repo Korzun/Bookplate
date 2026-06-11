@@ -1,9 +1,11 @@
 import express from 'express';
-import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import { AppConfig } from './types';
 import { BookStore } from './services/book-store';
 import { UserStore } from './services/user-store';
+import { TokenStore } from './services/token-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
+import { jwtAuth } from './middleware/auth';
 import { createOpdsRouter } from './routes/opds';
 import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
@@ -13,25 +15,23 @@ export function createServer(
   config: AppConfig,
   userStore: UserStore,
   bookStore: BookStore,
-  thumbnailQueue: ThumbnailQueue
+  thumbnailQueue: ThumbnailQueue,
+  tokenStore: TokenStore,
+  jwtSecret: Buffer
 ): express.Express {
   const server = express();
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));
-  server.use(
-    session({
-      secret: config.password,
-      resave: false,
-      saveUninitialized: false,
-      cookie: { httpOnly: true },
-    })
-  );
+  server.use(cookieParser());
 
   server.use('/opds', createOpdsRouter(bookStore, userStore, config.thumbnailWidths));
   server.use('/kosync', createKosyncRouter(userStore, bookStore));
-  server.use('/api/users', createUsersRouter(userStore, config.username));
-  server.use('/', createUiRouter(bookStore, userStore, config, thumbnailQueue));
+  server.use('/api/users', createUsersRouter(userStore, config.username, jwtAuth(jwtSecret)));
+  server.use(
+    '/',
+    createUiRouter(bookStore, userStore, config, thumbnailQueue, tokenStore, jwtSecret)
+  );
 
   return server;
 }

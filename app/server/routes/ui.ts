@@ -1,4 +1,4 @@
-import express, { Router, Request, Response, NextFunction } from 'express';
+import express, { Router, Request, Response } from 'express';
 import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -13,7 +13,9 @@ import {
 } from '../services/book-store';
 import { AppConfig, EpubMeta } from '../types';
 import { UserStore } from '../services/user-store';
-import { sessionAuth, adminAuth } from '../middleware/auth';
+import { jwtAuth, adminAuth, passwordChangeGate } from '../middleware/auth';
+import { signAccessToken, AuthUser } from '../services/jwt';
+import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
 import { logger } from '../logger';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { writeMetadata, EpubChanges } from '../services/epub-writer';
@@ -26,39 +28,52 @@ const ALLOWED_EXTENSIONS = new Set(['.epub']);
 
 /**
  * Returns the authenticated user's surrogate ID, or null after responding
- * with 401 and destroying the session if it's missing (e.g. a session
- * created before userId was added to SessionData).
+ * with 401 (e.g. a token for a since-deleted user, or an admin token used
+ * on a user-only route that already passed the isAdmin check).
  */
 function requireUserId(req: Request, res: Response): string | null {
-  const userId = req.session.userId;
+  const userId = req.user?.userId;
   if (!userId) {
-    log.warn(`Session missing userId for "${req.session.username ?? 'unknown'}"`);
-    req.session.destroy(() => undefined);
+    log.warn(`Token missing userId for "${req.user?.username ?? 'unknown'}"`);
     res.status(401).json({ error: 'Session expired. Please log in again.' });
     return null;
   }
   return userId;
 }
 
-function requirePasswordChange(req: Request, res: Response, next: NextFunction): void {
-  if (!req.session.mustChangePassword) {
-    next();
-    return;
-  }
-  if (req.path === '/api/me' || req.path === '/api/my/password' || !req.path.startsWith('/api/')) {
-    next();
-    return;
-  }
-  res.status(403).json({ error: 'Password change required' });
-}
-
 export function createUiRouter(
   bookStore: BookStore,
   userStore: UserStore,
   config: AppConfig,
-  thumbnailQueue: ThumbnailQueue
+  thumbnailQueue: ThumbnailQueue,
+  tokenStore: TokenStore,
+  jwtSecret: Buffer
 ): Router {
   const router = Router();
+
+  const requireAuth = jwtAuth(jwtSecret);
+
+  const REFRESH_COOKIE = 'refresh_token';
+  const REFRESH_COOKIE_PATH = '/api/auth';
+
+  async function issueTokens(res: Response, user: AuthUser): Promise<void> {
+    const accessToken = signAccessToken(jwtSecret, user);
+    const refreshToken = await tokenStore.createRefreshToken({
+      username: user.username,
+      userId: user.userId ?? null,
+    });
+    res.cookie(REFRESH_COOKIE, refreshToken, {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: REFRESH_COOKIE_PATH,
+      maxAge: REFRESH_TOKEN_TTL_MS,
+    });
+    res.json({ accessToken });
+  }
+
+  function clearRefreshCookie(res: Response): void {
+    res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+  }
 
   const stagingDir = path.join(bookStore.getBooksDir(), '.staging');
   const storage = multer.diskStorage({
@@ -100,6 +115,8 @@ export function createUiRouter(
 
   router.get('/login', serveSpa);
 
+  router.use(passwordChangeGate(jwtSecret));
+
   router.post('/api/login', async (req: Request, res: Response) => {
     const { username, password } = req.body as { username?: string; password?: string };
     if (typeof username !== 'string' || typeof password !== 'string') {
@@ -107,12 +124,9 @@ export function createUiRouter(
       return;
     }
     if (username === config.username && password === config.password) {
-      req.session.authenticated = true;
-      req.session.isAdmin = true;
-      req.session.username = username;
-      req.session.mustChangePassword = false;
       log.info(`Admin "${username}" logged in`);
-      res.sendStatus(200);
+      await tokenStore.deleteExpired();
+      await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
       return;
     }
     if ((await userStore.userExists(username)) && !(await userStore.userHasPassword(username))) {
@@ -122,40 +136,75 @@ export function createUiRouter(
     }
     const userId = await userStore.validateUser(username, password);
     if (userId) {
-      req.session.authenticated = true;
-      req.session.isAdmin = false;
-      req.session.username = username;
-      req.session.userId = userId;
-      req.session.mustChangePassword = await userStore.getMustChangePassword(username);
       log.info(`User "${username}" logged in`);
-      res.sendStatus(200);
+      await tokenStore.deleteExpired();
+      await issueTokens(res, {
+        userId,
+        username,
+        isAdmin: false,
+        mustChangePassword: await userStore.getMustChangePassword(username),
+      });
       return;
     }
     log.warn(`Login failed for username "${username ?? ''}"`);
     res.sendStatus(401);
   });
 
-  router.post('/logout', (req: Request, res: Response) => {
-    log.info('User logged out');
-    req.session.destroy(() => res.redirect('/login'));
-  });
-
-  router.get('/api/me', sessionAuth, (req: Request, res: Response) => {
-    res.json({
-      username: req.session.username,
-      isAdmin: req.session.isAdmin,
-      mustChangePassword: req.session.mustChangePassword ?? false,
+  router.post('/api/auth/refresh', async (req: Request, res: Response) => {
+    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+    const reject = (): void => {
+      clearRefreshCookie(res);
+      res.status(401).json({ error: 'Unauthorized' });
+    };
+    if (typeof raw !== 'string' || !raw) {
+      reject();
+      return;
+    }
+    const identity = await tokenStore.consumeRefreshToken(raw);
+    if (!identity) {
+      log.warn('Refresh rejected — unknown, reused, or expired refresh token');
+      reject();
+      return;
+    }
+    if (identity.username === config.username) {
+      await issueTokens(res, {
+        username: identity.username,
+        isAdmin: true,
+        mustChangePassword: false,
+      });
+      return;
+    }
+    // Rebuild claims from current state so renames/deletes and admin actions propagate.
+    const userId = await userStore.getUserIdByUsername(identity.username);
+    if (!userId) {
+      log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
+      reject();
+      return;
+    }
+    await issueTokens(res, {
+      userId,
+      username: identity.username,
+      isAdmin: false,
+      mustChangePassword: await userStore.getMustChangePassword(identity.username),
     });
   });
 
-  router.use(requirePasswordChange);
+  router.post('/api/auth/logout', async (req: Request, res: Response) => {
+    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+    if (typeof raw === 'string' && raw) {
+      await tokenStore.revokeRefreshToken(raw);
+    }
+    log.info('User logged out');
+    clearRefreshCookie(res);
+    res.status(204).send();
+  });
 
-  router.get('/api/config', sessionAuth, (_req: Request, res: Response) => {
+  router.get('/api/config', requireAuth, (_req: Request, res: Response) => {
     res.json({ maxConcurrentUploads: config.maxConcurrentUploads });
   });
 
-  router.get('/api/my/progress', sessionAuth, async (req: Request, res: Response) => {
-    if (req.session.isAdmin) {
+  router.get('/api/my/progress', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.isAdmin) {
       res.json([]);
       return;
     }
@@ -184,8 +233,8 @@ export function createUiRouter(
     res.json(items);
   });
 
-  router.delete('/api/my/progress/:document', sessionAuth, async (req: Request, res: Response) => {
-    if (req.session.isAdmin) {
+  router.delete('/api/my/progress/:document', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
@@ -199,8 +248,8 @@ export function createUiRouter(
     res.status(204).send();
   });
 
-  router.put('/api/my/progress/:document', sessionAuth, async (req: Request, res: Response) => {
-    if (req.session.isAdmin) {
+  router.put('/api/my/progress/:document', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
@@ -235,11 +284,13 @@ export function createUiRouter(
     res.status(200).json({});
   });
 
-  router.patch('/api/my/password', sessionAuth, async (req: Request, res: Response) => {
-    if (req.session.isAdmin) {
+  router.patch('/api/my/password', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
+    const userId = requireUserId(req, res);
+    if (!userId) return;
     const { currentPassword, newPassword } = req.body as {
       currentPassword?: string;
       newPassword?: string;
@@ -253,28 +304,35 @@ export function createUiRouter(
       res.status(400).json({ error: 'Current and new password are required' });
       return;
     }
-    const valid = await userStore.validateUser(req.session.username!, currentPassword);
+    const valid = await userStore.validateUser(req.user!.username, currentPassword);
     if (!valid) {
       res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
     const newHash = await UserStore.hashLoginPassword(newPassword);
-    const changed = await userStore.changePassword(req.session.username!, newHash);
+    const changed = await userStore.changePassword(req.user!.username, newHash);
     if (!changed) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    req.session.mustChangePassword = false;
-    log.info(`User "${req.session.username}" changed their password`);
-    res.status(204).send();
+    log.info(`User "${req.user!.username}" changed their password`);
+    // Revoke all outstanding refresh tokens, then hand back a fresh pair so
+    // the client immediately holds claims with mustChangePassword: false.
+    await tokenStore.revokeAllForUsername(req.user!.username);
+    await issueTokens(res, {
+      userId,
+      username: req.user!.username,
+      isAdmin: false,
+      mustChangePassword: false,
+    });
   });
 
-  router.get('/api/my/sync-password', sessionAuth, async (req: Request, res: Response) => {
-    if (req.session.isAdmin) {
+  router.get('/api/my/sync-password', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.isAdmin) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
-    const syncPassword = await userStore.getSyncPassword(req.session.username!);
+    const syncPassword = await userStore.getSyncPassword(req.user!.username);
     if (syncPassword === null) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -284,19 +342,19 @@ export function createUiRouter(
 
   router.post(
     '/api/my/sync-password/regenerate',
-    sessionAuth,
+    requireAuth,
     async (req: Request, res: Response) => {
-      if (req.session.isAdmin) {
+      if (req.user!.isAdmin) {
         res.status(403).json({ error: 'Forbidden' });
         return;
       }
       const newPassword = UserStore.generateSyncPassword();
-      const changed = await userStore.changeSyncPassword(req.session.username!, newPassword);
+      const changed = await userStore.changeSyncPassword(req.user!.username, newPassword);
       if (!changed) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
-      log.info(`User "${req.session.username}" regenerated sync password`);
+      log.info(`User "${req.user!.username}" regenerated sync password`);
       res.json({ syncPassword: newPassword });
     }
   );
@@ -304,7 +362,7 @@ export function createUiRouter(
   // ── Static assets (no auth required) ──────────────────
   router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
 
-  router.get('/api/books', sessionAuth, async (_req: Request, res: Response) => {
+  router.get('/api/books', requireAuth, async (_req: Request, res: Response) => {
     res.json(
       (await bookStore.listBooks()).map((b) => {
         const {
@@ -324,7 +382,7 @@ export function createUiRouter(
 
   router.post(
     '/api/books/upload',
-    sessionAuth,
+    requireAuth,
     upload.array('files'),
     async (req: Request, res: Response) => {
       const files = req.files as Express.Multer.File[] | undefined;
@@ -383,7 +441,7 @@ export function createUiRouter(
     }
   );
 
-  router.get('/api/books/:id', sessionAuth, async (req: Request, res: Response) => {
+  router.get('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
     const book = await bookStore.getBookById(req.params.id);
     if (!book) {
       res.status(404).json({ error: 'Book not found' });
@@ -395,7 +453,7 @@ export function createUiRouter(
 
   router.get(
     '/api/books/:id/lineage',
-    sessionAuth,
+    requireAuth,
     adminAuth,
     async (req: Request, res: Response) => {
       const lineage = await bookStore.getBookLineage(req.params.id);
@@ -409,7 +467,7 @@ export function createUiRouter(
 
   router.post(
     '/api/books/:id/link',
-    sessionAuth,
+    requireAuth,
     adminAuth,
     async (req: Request, res: Response) => {
       const { documentId } = req.body as { documentId?: unknown };
@@ -444,7 +502,7 @@ export function createUiRouter(
 
   router.delete(
     '/api/books/:id/link/:documentId',
-    sessionAuth,
+    requireAuth,
     adminAuth,
     async (req: Request, res: Response) => {
       const result = await bookStore.unlinkDocument(req.params.id, req.params.documentId);
@@ -460,7 +518,7 @@ export function createUiRouter(
     }
   );
 
-  router.get('/api/books/:id/cover', sessionAuth, async (req: Request, res: Response) => {
+  router.get('/api/books/:id/cover', requireAuth, async (req: Request, res: Response) => {
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
@@ -506,7 +564,7 @@ export function createUiRouter(
     res.send(data);
   });
 
-  router.delete('/api/books/:id', sessionAuth, adminAuth, async (req: Request, res: Response) => {
+  router.delete('/api/books/:id', requireAuth, adminAuth, async (req: Request, res: Response) => {
     const deleted = await bookStore.deleteBook(req.params.id);
     if (!deleted) {
       log.warn(`Delete attempted for unknown book ID: ${req.params.id}`);
@@ -517,7 +575,7 @@ export function createUiRouter(
     res.status(204).send();
   });
 
-  router.post('/api/books/scan', sessionAuth, adminAuth, async (_req: Request, res: Response) => {
+  router.post('/api/books/scan', requireAuth, adminAuth, async (_req: Request, res: Response) => {
     const result = await bookStore.scan();
     await thumbnailQueue.reconcile();
     log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
@@ -526,7 +584,7 @@ export function createUiRouter(
 
   router.patch(
     '/api/books/:id/metadata',
-    sessionAuth,
+    requireAuth,
     adminAuth,
     coverUpload.single('cover'),
     async (req: Request, res: Response) => {
@@ -615,7 +673,7 @@ export function createUiRouter(
 
   router.post(
     '/api/books/:id/regen-chapters',
-    sessionAuth,
+    requireAuth,
     adminAuth,
     async (req: Request, res: Response) => {
       const book = await bookStore.getBookById(req.params.id);
@@ -646,7 +704,7 @@ export function createUiRouter(
   );
 
   // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
-  router.get('*', sessionAuth, serveSpa);
+  router.get('*', serveSpa);
 
   return router;
 }
