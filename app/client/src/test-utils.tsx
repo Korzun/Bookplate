@@ -7,6 +7,7 @@ import {
   type AuthContext as AuthContextType,
 } from './provider/auth/context';
 import { ThemeProvider } from './provider/theme/provider';
+import { ToastProvider } from './provider/toast';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   user?: { username: string; isAdmin: boolean; mustChangePassword?: boolean };
@@ -37,7 +38,9 @@ export function renderWithProviders(
     return (
       <MemoryRouter initialEntries={initialEntries}>
         <ThemeProvider>
-          <AuthContext.Provider value={authState}>{children}</AuthContext.Provider>
+          <ToastProvider>
+            <AuthContext.Provider value={authState}>{children}</AuthContext.Provider>
+          </ToastProvider>
         </ThemeProvider>
       </MemoryRouter>
     );

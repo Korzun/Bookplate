@@ -3,6 +3,7 @@ import { AuthProvider } from './provider/auth';
 import { BookProvider } from './provider/book';
 import { ProgressProvider } from './provider/progress';
 import { ThemeProvider } from './provider/theme';
+import { ToastProvider } from './provider/toast';
 import { UserProvider } from './provider/user';
 import { AppRouter } from './router/';
 
@@ -12,6 +13,7 @@ const ProvidersTree = buildProvidersTree([
   [UserProvider],
   [BookProvider],
   [ProgressProvider],
+  [ToastProvider],
 ]);
 
 export const App = () => (
