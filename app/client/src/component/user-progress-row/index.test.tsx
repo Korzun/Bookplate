@@ -168,7 +168,7 @@ describe('UserProgressRow — Clear functionality', () => {
   const mockBook = { id: 'book-1', title: 'Foundation' } as unknown as Book;
   const mockProgressBook = { document: 'book-1', percentage: 75, device: 'Kobo', timestamp: 2000 };
 
-  let mockDelete: (bookId: string) => Promise<boolean>;
+  let mockDelete: ReturnType<typeof vi.fn<(bookId: string) => Promise<boolean>>>;
 
   beforeEach(() => {
     mockDelete = vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true);
