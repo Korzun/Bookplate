@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { apiFetch } from '../../../lib/api-fetch';
+import { setToken } from '../../../lib/token';
+
 export type ChangeMyPassword = (currentPassword: string, newPassword: string) => Promise<boolean>;
 export type UseChangeMyPassword =
   | [ChangeMyPassword, false, false, false, undefined] // Initial
@@ -27,12 +30,12 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
       setError(false);
       setErrorMessage(undefined);
 
-      const response = await fetch('/api/my/password', {
+      const response = await apiFetch('/api/my/password', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
-      if (response.status !== 204) {
+      if (response.status !== 200) {
         let message = 'Password change failed';
         try {
           const body = (await response.json()) as { error?: string };
@@ -42,6 +45,8 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
         }
         throw new Error(message);
       }
+      const { accessToken } = (await response.json()) as { accessToken: string };
+      setToken(accessToken);
       setOkay(true);
       return true;
     } catch (err) {

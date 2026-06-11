@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useChangeMyPassword } from '.';
 
 describe('useChangeMyPassword', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
 
   it('returns changeMyPassword function and initial false/undefined state', () => {
     const { result } = renderHook(() => useChangeMyPassword());
@@ -31,9 +34,17 @@ describe('useChangeMyPassword', () => {
   });
 
   it('sends PATCH to /api/my/password with currentPassword and newPassword', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+    const newToken = 'h.p.s';
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ accessToken: newToken }), { status: 200 }))
+    );
     const { result } = renderHook(() => useChangeMyPassword());
     await act(() => result.current[0]('oldpass', 'newpass'));
+    // No token in localStorage → apiFetch passes through without Authorization header,
+    // so the underlying fetch call args are identical to a plain fetch call.
     expect(fetch).toHaveBeenCalledWith('/api/my/password', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -41,16 +52,26 @@ describe('useChangeMyPassword', () => {
     });
   });
 
-  it('sets okay to true on 204', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+  it('sets okay to true on 200 and stores the returned token', async () => {
+    const newToken = 'h.p.s';
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ accessToken: newToken }), { status: 200 }))
+    );
     const { result } = renderHook(() => useChangeMyPassword());
     await act(() => result.current[0]('oldpass', 'newpass'));
     expect(result.current[2]).toBe(true);
     expect(result.current[3]).toBe(false);
+    expect(localStorage.getItem('accessToken')).toBe(newToken);
   });
 
-  it('sets error when server returns non-204', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401 }));
+  it('sets error when server returns non-200', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ status: 401, json: vi.fn().mockResolvedValue({}) })
+    );
     const { result } = renderHook(() => useChangeMyPassword());
     await act(() => result.current[0]('wrongpass', 'newpass'));
     expect(result.current[2]).toBe(false);
@@ -81,7 +102,7 @@ describe('useChangeMyPassword', () => {
       void result.current[0]('oldpass', 'newpass');
     });
     expect(result.current[1]).toBe(true);
-    resolveFetch({ status: 204 });
+    resolveFetch(new Response(JSON.stringify({ accessToken: 'h.p.s' }), { status: 200 }));
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
 });
