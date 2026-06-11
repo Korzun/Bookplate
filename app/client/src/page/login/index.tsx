@@ -3,14 +3,13 @@ import { useCallback, useState } from 'react';
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { BooksIcon } from '~/icon';
-import { useAuthRefresh } from '~/provider/auth';
+import { setToken } from '~/lib/token';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
 
 export const LoginPage = () => {
   const styles = useStyle();
-  const refetch = useAuthRefresh();
   const showToast = useToast();
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -34,7 +33,8 @@ export const LoginPage = () => {
         body: new URLSearchParams({ username: username ?? '', password: password ?? '' }),
       });
       if (response.ok) {
-        await refetch();
+        const { accessToken } = (await response.json()) as { accessToken: string };
+        setToken(accessToken);
       } else {
         showToast('Invalid credentials', 'error');
       }
@@ -43,7 +43,7 @@ export const LoginPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [username, password, refetch, showToast]);
+  }, [username, password, showToast]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
