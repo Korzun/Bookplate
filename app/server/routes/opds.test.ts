@@ -288,6 +288,60 @@ describe('GET /opds/books/:id/cover', () => {
   });
 });
 
+describe('Cross-user library isolation', () => {
+  let bob: Owner;
+
+  beforeEach(async () => {
+    await userStore.createUser('bob', null, 'bobsecret');
+    const bobId = await userStore.getUserIdByUsername('bob');
+    bob = { userId: bobId!, username: 'bob' };
+  });
+
+  it("alice's feed contains her book and not bob's book", async () => {
+    await bookStore.addBook(alice, 'alice-book', stage('alice-book'), {
+      ...FAKE_META,
+      title: 'Alice Book',
+    });
+    await bookStore.addBook(bob, 'bob-book', stage('bob-book'), {
+      ...FAKE_META,
+      title: 'Bob Book',
+    });
+
+    const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Alice Book');
+    expect(res.text).not.toContain('Bob Book');
+  });
+
+  it("bob's feed contains his book and not alice's book", async () => {
+    await bookStore.addBook(alice, 'alice-book2', stage('alice-book2'), {
+      ...FAKE_META,
+      title: 'Alice Book',
+    });
+    await bookStore.addBook(bob, 'bob-book2', stage('bob-book2'), {
+      ...FAKE_META,
+      title: 'Bob Book',
+    });
+
+    const res = await request(app).get('/opds/books').set(basicAuth('bob', 'bobsecret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Bob Book');
+    expect(res.text).not.toContain('Alice Book');
+  });
+
+  it("alice cannot download bob's book — returns 404", async () => {
+    await bookStore.addBook(bob, 'bob-exclusive', stage('bob-exclusive', 'epub-content'), {
+      ...FAKE_META,
+      title: 'Bob Exclusive',
+    });
+
+    const res = await request(app)
+      .get('/opds/books/bob-exclusive/download')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('OPDS feed thumbnail link', () => {
   it('includes opds thumbnail link for books with covers', async () => {
     await bookStore.addBook(alice, 'opds4', stage('opds4'), {
