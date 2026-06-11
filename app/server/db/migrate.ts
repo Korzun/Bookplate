@@ -467,10 +467,14 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         const dest = path.join(booksDir, u.username, id + '.epub');
         try {
           fs.copyFileSync(src, dest);
-        } catch {
-          log.warn(
-            `Per-user libraries: could not copy ${id}.epub for "${u.username}" (missing file)`
-          );
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            log.warn(
+              `Per-user libraries: could not copy ${id}.epub for "${u.username}" (missing file)`
+            );
+          } else {
+            throw err;
+          }
         }
       }
     }
