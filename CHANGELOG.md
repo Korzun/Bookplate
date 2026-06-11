@@ -1,3 +1,7 @@
+## 1.3.0
+
+- feat: switch Web UI authentication from server-side sessions to JWTs with rotating refresh tokens. All users are logged out once by this upgrade and must sign in again. OPDS and KOSync authentication are unchanged.
+
 ## 1.2.2
 
 - chore: add CodeRabbit configuration

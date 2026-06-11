@@ -47,9 +47,7 @@ describe('UserProgressRow — Link button visibility', () => {
   afterEach(() => vi.clearAllMocks());
 
   it('shows Link button for admin when book is unresolved (not loading)', () => {
-    vi.mocked(useIsAdmin).mockReturnValue([true, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
+    vi.mocked(useIsAdmin).mockReturnValue([true, false] as ReturnType<typeof useIsAdmin>);
     vi.mocked(useBook).mockReturnValue([
       undefined,
       false,
@@ -75,9 +73,7 @@ describe('UserProgressRow — Link button visibility', () => {
   });
 
   it('does not show Link button while book is loading', () => {
-    vi.mocked(useIsAdmin).mockReturnValue([true, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
+    vi.mocked(useIsAdmin).mockReturnValue([true, false] as ReturnType<typeof useIsAdmin>);
     vi.mocked(useBook).mockReturnValue([undefined, true, false, undefined] as ReturnType<
       typeof useBook
     >);
@@ -99,9 +95,7 @@ describe('UserProgressRow — Link button visibility', () => {
   });
 
   it('does not show Link button for non-admin', () => {
-    vi.mocked(useIsAdmin).mockReturnValue([false, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
+    vi.mocked(useIsAdmin).mockReturnValue([false, false] as ReturnType<typeof useIsAdmin>);
     vi.mocked(useBook).mockReturnValue([
       undefined,
       false,
@@ -140,9 +134,7 @@ describe('UserProgressRow — Link button visibility', () => {
       chapterCount: 0,
       pageCount: 0,
     };
-    vi.mocked(useIsAdmin).mockReturnValue([true, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
+    vi.mocked(useIsAdmin).mockReturnValue([true, false] as ReturnType<typeof useIsAdmin>);
     vi.mocked(useBook).mockReturnValue([book, false, false, undefined] as ReturnType<
       typeof useBook
     >);
@@ -172,9 +164,7 @@ describe('UserProgressRow — Clear functionality', () => {
 
   beforeEach(() => {
     mockDelete = vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true);
-    vi.mocked(useIsAdmin).mockReturnValue([false, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
+    vi.mocked(useIsAdmin).mockReturnValue([false, false] as ReturnType<typeof useIsAdmin>);
     vi.mocked(useBook).mockReturnValue([mockBook, false, false, undefined] as ReturnType<
       typeof useBook
     >);
