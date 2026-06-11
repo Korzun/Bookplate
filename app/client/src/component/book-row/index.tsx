@@ -2,6 +2,7 @@ import cx from 'classnames';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useBook } from '~/provider/book';
 import { useMyProgress } from '~/provider/progress';
 import { path } from '~/router';
@@ -29,6 +30,10 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
     }
     navigate(path.book(book.id));
   }, [book, navigate]);
+
+  const coverSrc = useAuthorizedSrc(
+    book?.hasCover ? `/api/books/${encodeURIComponent(book.id)}/cover?width=60` : null
+  );
 
   if (loading) {
     const loadingContent = <div className={styles.root}>Loading...</div>;
@@ -62,11 +67,7 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
     >
       <div className={styles.cover}>
         {book.hasCover ? (
-          <img
-            src={`/api/books/${encodeURIComponent(book.id)}/cover?width=60`}
-            alt={book.title}
-            className={styles.coverImg}
-          />
+          <img src={coverSrc} alt={book.title} className={styles.coverImg} />
         ) : (
           <div className={styles.coverPlaceholder} />
         )}
