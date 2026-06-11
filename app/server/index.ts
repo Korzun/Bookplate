@@ -32,12 +32,19 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   const server = createServer(config, userStore, bookStore, thumbnailQueue, tokenStore, jwtSecret);
 
-  // Startup scan: import untracked EPUBs, clean up stale DB entries
+  // Startup scan: per user — create missing folders, import untracked EPUBs,
+  // clean up stale DB entries.
   try {
-    const scanResult = await bookStore.scan();
-    log.info(
-      `Startup scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed`
-    );
+    const owners = await userStore.listOwners();
+    let imported = 0;
+    let removed = 0;
+    for (const owner of owners) {
+      fs.mkdirSync(path.join(config.booksDir, owner.username), { recursive: true });
+      const scanResult = await bookStore.scan(owner);
+      imported += scanResult.imported.length;
+      removed += scanResult.removed.length;
+    }
+    log.info(`Startup scan (${owners.length} user(s)): ${imported} imported, ${removed} removed`);
   } catch (err: unknown) {
     log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
   }

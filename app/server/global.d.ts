@@ -4,6 +4,7 @@ declare global {
       kosyncUser?: string;
       kosyncUserId?: string;
       user?: import('./services/jwt').AuthUser;
+      opdsOwner?: { userId: string; username: string };
     }
   }
 }

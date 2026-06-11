@@ -15,5 +15,8 @@
     "test:watch": "npm run test:watch -w app/server & npm run test:watch -w app/client",
     "lint": "npm run lint -w app/server && npm run lint -w app/client",
     "lint:fix": "npm run lint:fix -w app/server && npm run lint:fix -w app/client"
+  },
+  "dependencies": {
+    "sharp": "^0.35.1"
   }
 }

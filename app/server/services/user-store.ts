@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import argon2 from 'argon2';
-import { Progress } from '../types';
+import { Owner, Progress } from '../types';
 import { generateUserId } from '../utils/id';
 import { WORDLIST } from './wordlist';
 
@@ -232,6 +232,14 @@ export class UserStore {
       username: row.username,
       progressCount: row._count.progresses,
     }));
+  }
+
+  async listOwners(): Promise<Owner[]> {
+    const rows = await this.prisma.user.findMany({
+      select: { id: true, username: true },
+      orderBy: { username: 'asc' },
+    });
+    return rows.map((r) => ({ userId: r.id, username: r.username }));
   }
 
   async getUserProgress(userId: string): Promise<Progress[]> {

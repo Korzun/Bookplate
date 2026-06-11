@@ -6,7 +6,7 @@ export interface Book {
    * book is stored as `<id>.epub`.
    */
   filename: string;
-  /** Absolute on-disk path: `<booksDir>/<id>.epub`. */
+  /** Absolute on-disk path: `<booksRoot>/<username>/<id>.epub`. */
   path: string;
   title: string;
   fileAs: string;
@@ -52,6 +52,14 @@ export interface Progress {
   device: string;
   device_id: string;
   timestamp: number;
+}
+
+/** Identifies the user whose library an operation targets. */
+export interface Owner {
+  /** Surrogate user ID — scopes all database queries. */
+  userId: string;
+  /** Username — names the on-disk folder `<booksRoot>/<username>/`. */
+  username: string;
 }
 
 export interface AppConfig {

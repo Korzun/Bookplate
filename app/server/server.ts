@@ -29,7 +29,7 @@ export function createServer(
   server.use('/kosync', createKosyncRouter(userStore, bookStore));
   server.use(
     '/api/users',
-    createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore)
+    createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
   );
   server.use(
     '/',

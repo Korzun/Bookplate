@@ -1,4 +1,6 @@
 // app/routes/users.ts
+import * as fs from 'fs';
+import * as path from 'path';
 import { Router, Request, RequestHandler, Response } from 'express';
 import { UserStore } from '../services/user-store';
 import { TokenStore } from '../services/token-store';
@@ -12,7 +14,8 @@ export function createUsersRouter(
   userStore: UserStore,
   adminUsername: string,
   requireAuth: RequestHandler,
-  tokenStore: TokenStore
+  tokenStore: TokenStore,
+  booksRoot: string
 ): Router {
   const router = Router();
   router.use(requireAuth);
@@ -62,6 +65,9 @@ export function createUsersRouter(
       log.warn(`Delete attempted for unknown user "${username}"`);
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+    if (isValidUsername(username)) {
+      fs.rmSync(path.join(booksRoot, username), { recursive: true, force: true });
     }
     log.info(`User "${username}" deleted`);
     res.status(204).send();
@@ -117,6 +123,7 @@ export function createUsersRouter(
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
+    fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
     log.info(`User "${trimmedUsername}" registered by admin`);
     res.status(201).json({ username: trimmedUsername });
   });

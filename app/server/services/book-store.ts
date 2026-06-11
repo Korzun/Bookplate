@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { Book, EpubMeta } from '../types';
+import { Book, EpubMeta, Owner } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
@@ -74,16 +74,31 @@ const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
 
 export class BookStore {
   constructor(
-    private readonly booksDir: string,
+    private readonly booksRoot: string,
     private readonly prisma: PrismaClient
   ) {}
 
-  getBooksDir(): string {
-    return this.booksDir;
+  getBooksRoot(): string {
+    return this.booksRoot;
   }
 
-  async listBooks(): Promise<Book[]> {
-    const rows = await this.prisma.book.findMany({ select: BOOK_SELECT });
+  getStagingDir(): string {
+    return path.join(this.booksRoot, '.staging');
+  }
+
+  getUserDir(owner: Owner): string {
+    return path.join(this.booksRoot, owner.username);
+  }
+
+  private bookPath(owner: Owner, id: string): string {
+    return path.join(this.getUserDir(owner), id + '.epub');
+  }
+
+  async listBooks(owner: Owner): Promise<Book[]> {
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId },
+      select: BOOK_SELECT,
+    });
     // Replicate: ORDER BY CASE WHEN file_as != '' THEN file_as ELSE title END, title, id
     rows.sort((a, b) => {
       const aKey = a.fileAs !== '' ? a.fileAs : a.title;
@@ -96,21 +111,28 @@ export class BookStore {
       if (a.id > b.id) return 1;
       return 0;
     });
-    return rows.map((r) => this.prismaBookToBook(r));
+    return rows.map((r) => this.prismaBookToBook(owner, r));
   }
 
-  async getBookById(id: string): Promise<Book | null> {
-    const row = await this.prisma.book.findUnique({ where: { id }, select: BOOK_SELECT });
-    return row ? this.prismaBookToBook(row) : null;
+  async getBookById(owner: Owner, id: string): Promise<Book | null> {
+    const row = await this.prisma.book.findUnique({
+      where: { userId_id: { userId: owner.userId, id } },
+      select: BOOK_SELECT,
+    });
+    return row ? this.prismaBookToBook(owner, row) : null;
   }
 
-  async addBook(id: string, srcPath: string, meta: EpubMeta): Promise<void> {
-    const existing = await this.prisma.book.findUnique({ where: { id }, select: { id: true } });
+  async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
+    const existing = await this.prisma.book.findUnique({
+      where: { userId_id: { userId: owner.userId, id } },
+      select: { id: true },
+    });
     if (existing) {
       throw new BookAlreadyExistsError(id);
     }
 
-    const targetPath = path.join(this.booksDir, id + '.epub');
+    fs.mkdirSync(this.getUserDir(owner), { recursive: true });
+    const targetPath = this.bookPath(owner, id);
     if (path.resolve(srcPath) !== path.resolve(targetPath)) {
       fs.renameSync(srcPath, targetPath);
     }
@@ -121,6 +143,7 @@ export class BookStore {
 
     await this.prisma.book.create({
       data: {
+        userId: owner.userId,
         id,
         title,
         fileAs,
@@ -144,25 +167,31 @@ export class BookStore {
     });
   }
 
-  async resolveBookId(id: string): Promise<string> {
+  async resolveBookId(userId: string, id: string): Promise<string> {
     const rows = await this.prisma.$queryRaw<Array<{ current_id: string }>>`
-      SELECT current_id FROM book_id_history WHERE old_id = ${id}
+      SELECT current_id FROM book_id_history WHERE user_id = ${userId} AND old_id = ${id}
     `;
     return rows.length > 0 ? rows[0].current_id : id;
   }
 
-  async getBookLineage(id: string): Promise<{
+  async getBookLineage(
+    owner: Owner,
+    id: string
+  ): Promise<{
     currentId: string;
     entries: { oldId: string; newId: string; timestamp: number; type: string }[];
   } | null> {
-    const book = await this.prisma.book.findUnique({ where: { id }, select: { id: true } });
+    const book = await this.prisma.book.findUnique({
+      where: { userId_id: { userId: owner.userId, id } },
+      select: { id: true },
+    });
     if (!book) return null;
 
     const rows = await this.prisma.$queryRaw<
       Array<{ old_id: string; timestamp: number; type: string }>
     >`
       SELECT old_id, timestamp, type FROM book_id_history
-      WHERE current_id = ${id}
+      WHERE user_id = ${owner.userId} AND current_id = ${id}
       ORDER BY timestamp DESC, rowid DESC
     `;
 
@@ -176,50 +205,56 @@ export class BookStore {
     return { currentId: id, entries };
   }
 
-  async linkDocument(bookId: string, documentId: string): Promise<true | null> {
+  async linkDocument(owner: Owner, bookId: string, documentId: string): Promise<true | null> {
     if (documentId === bookId) throw new SelfLinkError();
 
-    const book = await this.prisma.book.findUnique({ where: { id: bookId }, select: { id: true } });
+    const book = await this.prisma.book.findUnique({
+      where: { userId_id: { userId: owner.userId, id: bookId } },
+      select: { id: true },
+    });
     if (!book) return null;
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await tx.$queryRaw<Array<{ current_id: string }>>`
-        SELECT current_id FROM book_id_history WHERE old_id = ${documentId}
+        SELECT current_id FROM book_id_history
+        WHERE user_id = ${owner.userId} AND old_id = ${documentId}
       `;
       if (existing.length > 0) throw new DocumentAlreadyLinkedError(documentId);
 
-      const isBook = await tx.book.findUnique({ where: { id: documentId }, select: { id: true } });
+      const isBook = await tx.book.findUnique({
+        where: { userId_id: { userId: owner.userId, id: documentId } },
+        select: { id: true },
+      });
       if (isBook) throw new DocumentIsBookError(documentId);
 
-      const orphanProgresses = await tx.progress.findMany({ where: { document: documentId } });
-      const targetProgresses = await tx.progress.findMany({ where: { document: bookId } });
-      const targetByUserId = new Map(targetProgresses.map((p) => [p.userId, p]));
-
-      const keptProgresses: typeof orphanProgresses = [];
-      for (const orphanP of orphanProgresses) {
-        const targetP = targetByUserId.get(orphanP.userId);
-        if (targetP) {
-          if (orphanP.timestamp >= targetP.timestamp) {
+      // Lineage is per-user, so only the owner's progress rows migrate.
+      const orphanProgress = await tx.progress.findUnique({
+        where: { userId_document: { userId: owner.userId, document: documentId } },
+      });
+      if (orphanProgress) {
+        const targetProgress = await tx.progress.findUnique({
+          where: { userId_document: { userId: owner.userId, document: bookId } },
+        });
+        if (!targetProgress || orphanProgress.timestamp >= targetProgress.timestamp) {
+          if (targetProgress) {
             await tx.progress.delete({
-              where: { userId_document: { userId: orphanP.userId, document: bookId } },
+              where: { userId_document: { userId: owner.userId, document: bookId } },
             });
-            keptProgresses.push(orphanP);
           }
+          await tx.progress.delete({
+            where: { userId_document: { userId: owner.userId, document: documentId } },
+          });
+          await tx.progress.create({ data: { ...orphanProgress, document: bookId } });
         } else {
-          keptProgresses.push(orphanP);
+          await tx.progress.delete({
+            where: { userId_document: { userId: owner.userId, document: documentId } },
+          });
         }
       }
 
-      await tx.progress.deleteMany({ where: { document: documentId } });
-      if (keptProgresses.length > 0) {
-        await tx.progress.createMany({
-          data: keptProgresses.map((p) => ({ ...p, document: bookId })),
-        });
-      }
-
       await tx.$executeRaw`
-        INSERT INTO book_id_history (old_id, current_id, timestamp, type)
-        VALUES (${documentId}, ${bookId}, ${Date.now()}, 'merge')
+        INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+        VALUES (${owner.userId}, ${documentId}, ${bookId}, ${Date.now()}, 'merge')
       `;
     });
 
@@ -227,13 +262,14 @@ export class BookStore {
   }
 
   async unlinkDocument(
+    owner: Owner,
     bookId: string,
     documentId: string
   ): Promise<'deleted' | 'not_found' | 'edit_row'> {
     return await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ type: string }>>`
         SELECT type FROM book_id_history
-        WHERE old_id = ${documentId} AND current_id = ${bookId}
+        WHERE user_id = ${owner.userId} AND old_id = ${documentId} AND current_id = ${bookId}
       `;
       if (rows.length === 0) return 'not_found';
       if (rows[0].type === 'edit') return 'edit_row';
@@ -241,24 +277,28 @@ export class BookStore {
       // By design, unlinking does not reverse the progress migration.
       // Progress that was migrated from documentId to bookId during linkDocument stays on bookId.
       await tx.$executeRaw`
-        DELETE FROM book_id_history WHERE old_id = ${documentId} AND current_id = ${bookId}
+        DELETE FROM book_id_history
+        WHERE user_id = ${owner.userId} AND old_id = ${documentId} AND current_id = ${bookId}
       `;
       return 'deleted';
     });
   }
 
-  async deleteBook(id: string): Promise<Book | null> {
-    const book = await this.getBookById(id);
+  async deleteBook(owner: Owner, id: string): Promise<Book | null> {
+    const book = await this.getBookById(owner, id);
     if (!book) return null;
     try {
       await this.prisma.$transaction(async (tx) => {
         try {
-          await tx.book.delete({ where: { id } });
+          await tx.book.delete({ where: { userId_id: { userId: owner.userId, id } } });
         } catch (err) {
           if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'))
             throw err;
         }
-        await tx.$executeRaw`DELETE FROM book_id_history WHERE old_id = ${id} OR current_id = ${id}`;
+        await tx.$executeRaw`
+          DELETE FROM book_id_history
+          WHERE user_id = ${owner.userId} AND (old_id = ${id} OR current_id = ${id})
+        `;
       });
     } finally {
       try {
@@ -270,11 +310,18 @@ export class BookStore {
     return book;
   }
 
-  async reimportBook(id: string, importer: ScanImporter = defaultImporter): Promise<Book | null> {
-    const exists = await this.prisma.book.findUnique({ where: { id }, select: { id: true } });
+  async reimportBook(
+    owner: Owner,
+    id: string,
+    importer: ScanImporter = defaultImporter
+  ): Promise<Book | null> {
+    const exists = await this.prisma.book.findUnique({
+      where: { userId_id: { userId: owner.userId, id } },
+      select: { id: true },
+    });
     if (!exists) return null;
 
-    const filePath = path.join(this.booksDir, id + '.epub');
+    const filePath = this.bookPath(owner, id);
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -286,7 +333,7 @@ export class BookStore {
 
     if (newId !== id) {
       const collision = await this.prisma.book.findUnique({
-        where: { id: newId },
+        where: { userId_id: { userId: owner.userId, id: newId } },
         select: { id: true },
       });
       if (collision) {
@@ -296,15 +343,15 @@ export class BookStore {
 
     await this.prisma.$transaction(async (tx) => {
       if (newId !== id) {
-        const oldPath = path.join(this.booksDir, id + '.epub');
-        const newPath = path.join(this.booksDir, newId + '.epub');
+        const oldPath = this.bookPath(owner, id);
+        const newPath = this.bookPath(owner, newId);
         if (oldPath !== newPath) {
           fs.renameSync(oldPath, newPath);
         }
 
         // Update the book row (and cascade-update thumbnails via the FK onUpdate: Cascade).
         await tx.book.update({
-          where: { id },
+          where: { userId_id: { userId: owner.userId, id } },
           data: {
             id: newId,
             title: meta.title.trim(),
@@ -327,58 +374,44 @@ export class BookStore {
           },
         });
 
-        // Progress has no FK to books, so migrate it manually.
-        // First collect all progress records for both ids so we can resolve conflicts in JS.
-        const oldProgresses = await tx.progress.findMany({ where: { document: id } });
-        const newProgresses = await tx.progress.findMany({ where: { document: newId } });
-        const newProgressByUserId = new Map(newProgresses.map((p) => [p.userId, p]));
-
-        // Determine which old-id records to carry forward after resolving per-user conflicts.
-        const keptOldProgresses: typeof oldProgresses = [];
-        for (const oldP of oldProgresses) {
-          const newP = newProgressByUserId.get(oldP.userId);
-          if (newP) {
-            if (oldP.timestamp >= newP.timestamp) {
-              // Old record wins: remove the new-id duplicate so we can recreate it below.
-              await tx.progress.delete({
-                where: { userId_document: { userId: oldP.userId, document: newId } },
-              });
-              keptOldProgresses.push(oldP);
-            }
-            // else: new-id record wins; the old-id record is dropped in the deleteMany below.
-          } else {
-            keptOldProgresses.push(oldP);
-          }
-        }
-
-        // Remove all old-id progress records, then recreate the winners under the new id.
-        await tx.progress.deleteMany({ where: { document: id } });
-        if (keptOldProgresses.length > 0) {
-          await tx.progress.createMany({
-            data: keptOldProgresses.map((p) => ({
-              userId: p.userId,
-              document: newId,
-              progress: p.progress,
-              percentage: p.percentage,
-              device: p.device,
-              deviceId: p.deviceId,
-              timestamp: p.timestamp,
-            })),
+        // Progress has no FK to books and lineage is per-user, so migrate only
+        // the owner's progress rows.
+        const oldProgress = await tx.progress.findUnique({
+          where: { userId_document: { userId: owner.userId, document: id } },
+        });
+        if (oldProgress) {
+          const newProgress = await tx.progress.findUnique({
+            where: { userId_document: { userId: owner.userId, document: newId } },
           });
+          if (!newProgress || oldProgress.timestamp >= newProgress.timestamp) {
+            if (newProgress) {
+              await tx.progress.delete({
+                where: { userId_document: { userId: owner.userId, document: newId } },
+              });
+            }
+            await tx.progress.delete({
+              where: { userId_document: { userId: owner.userId, document: id } },
+            });
+            await tx.progress.create({ data: { ...oldProgress, document: newId } });
+          } else {
+            await tx.progress.delete({
+              where: { userId_document: { userId: owner.userId, document: id } },
+            });
+          }
         }
 
         // Record lineage and flatten any prior chains pointing to old id
         await tx.$executeRaw`
-          INSERT OR REPLACE INTO book_id_history (old_id, current_id, timestamp)
-          VALUES (${id}, ${newId}, ${Date.now()})
+          INSERT OR REPLACE INTO book_id_history (user_id, old_id, current_id, timestamp)
+          VALUES (${owner.userId}, ${id}, ${newId}, ${Date.now()})
         `;
         await tx.$executeRaw`
           UPDATE book_id_history SET current_id = ${newId}
-          WHERE current_id = ${id}
+          WHERE user_id = ${owner.userId} AND current_id = ${id}
         `;
       } else {
         await tx.book.update({
-          where: { id },
+          where: { userId_id: { userId: owner.userId, id } },
           data: {
             title: meta.title.trim(),
             fileAs: (meta.fileAs || '').trim(),
@@ -402,20 +435,20 @@ export class BookStore {
       }
     });
 
-    return this.getBookById(newId);
+    return this.getBookById(owner, newId);
   }
 
-  private async removeStaleBook(id: string): Promise<void> {
+  private async removeStaleBook(userId: string, id: string): Promise<void> {
     try {
-      await this.prisma.book.delete({ where: { id } });
+      await this.prisma.book.delete({ where: { userId_id: { userId, id } } });
     } catch (err) {
       if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) throw err;
     }
   }
 
-  async getCover(id: string): Promise<{ data: Buffer; mime: string } | null> {
+  async getCover(userId: string, id: string): Promise<{ data: Buffer; mime: string } | null> {
     const row = await this.prisma.book.findUnique({
-      where: { id },
+      where: { userId_id: { userId, id } },
       select: { coverData: true, coverMime: true },
     });
     if (!row || !row.coverData) return null;
@@ -423,20 +456,27 @@ export class BookStore {
     return { data: Buffer.from(row.coverData), mime: row.coverMime as string };
   }
 
-  async saveThumbnail(bookId: string, width: number, data: Buffer, mime: string): Promise<void> {
+  async saveThumbnail(
+    userId: string,
+    bookId: string,
+    width: number,
+    data: Buffer,
+    mime: string
+  ): Promise<void> {
     await this.prisma.bookThumbnail.upsert({
-      where: { bookId_width: { bookId, width } },
+      where: { userId_bookId_width: { userId, bookId, width } },
       update: { data: data as unknown as Prisma.Bytes, mime },
-      create: { bookId, width, data: data as unknown as Prisma.Bytes, mime },
+      create: { userId, bookId, width, data: data as unknown as Prisma.Bytes, mime },
     });
   }
 
   async getThumbnail(
+    userId: string,
     bookId: string,
     width: number
   ): Promise<{ data: Buffer; mime: string } | null> {
     const row = await this.prisma.bookThumbnail.findUnique({
-      where: { bookId_width: { bookId, width } },
+      where: { userId_bookId_width: { userId, bookId, width } },
     });
     // Prisma returns BLOB columns as Uint8Array; Buffer.from() ensures Express sends binary
     return row ? { data: Buffer.from(row.data), mime: row.mime } : null;
@@ -455,38 +495,43 @@ export class BookStore {
 
   async getMissingThumbnailPairs(
     widths: number[]
-  ): Promise<Array<{ bookId: string; width: number }>> {
-    const result: Array<{ bookId: string; width: number }> = [];
+  ): Promise<Array<{ userId: string; bookId: string; width: number }>> {
+    const result: Array<{ userId: string; bookId: string; width: number }> = [];
     for (const width of widths) {
       const rows = await this.prisma.book.findMany({
         where: {
           coverMime: { not: null },
           thumbnails: { none: { width } },
         },
-        select: { id: true },
+        select: { userId: true, id: true },
       });
-      for (const { id } of rows) {
-        result.push({ bookId: id, width });
+      for (const { userId, id } of rows) {
+        result.push({ userId, bookId: id, width });
       }
     }
     return result;
   }
 
   async scan(
+    owner: Owner,
     importer: ScanImporter = defaultImporter
   ): Promise<{ imported: string[]; removed: string[] }> {
     const imported: string[] = [];
     const removed: string[] = [];
+    const userDir = this.getUserDir(owner);
 
-    const dbIdRows = await this.prisma.book.findMany({ select: { id: true } });
+    const dbIdRows = await this.prisma.book.findMany({
+      where: { userId: owner.userId },
+      select: { id: true },
+    });
     const dbIds = new Set(dbIdRows.map((r) => r.id));
 
-    const diskFilenames: string[] = fs.existsSync(this.booksDir)
-      ? fs.readdirSync(this.booksDir).filter((f) => path.extname(f).toLowerCase() === '.epub')
+    const diskFilenames: string[] = fs.existsSync(userDir)
+      ? fs.readdirSync(userDir).filter((f) => path.extname(f).toLowerCase() === '.epub')
       : [];
 
     for (const filename of diskFilenames) {
-      const filePath = path.join(this.booksDir, filename);
+      const filePath = path.join(userDir, filename);
       const stem = path.basename(filename, '.epub');
 
       // Fast path: file already at <id>.epub and that id is imported.
@@ -506,7 +551,7 @@ export class BookStore {
         continue;
       }
 
-      const canonicalPath = path.join(this.booksDir, id + '.epub');
+      const canonicalPath = this.bookPath(owner, id);
       if (filePath !== canonicalPath) {
         if (fs.existsSync(canonicalPath)) {
           log.warn(`scan: skipping "${filename}" — canonical path ${id}.epub already occupied`);
@@ -522,7 +567,7 @@ export class BookStore {
 
       try {
         const titleFallback = meta.title.trim() || path.basename(filename, path.extname(filename));
-        await this.addBook(id, canonicalPath, { ...meta, title: titleFallback });
+        await this.addBook(owner, id, canonicalPath, { ...meta, title: titleFallback });
         dbIds.add(id);
         imported.push(filename);
       } catch (err: unknown) {
@@ -533,11 +578,13 @@ export class BookStore {
     }
 
     // Stale rows: in DB but their canonical file is missing.
-    const allIdRows = await this.prisma.book.findMany({ select: { id: true } });
+    const allIdRows = await this.prisma.book.findMany({
+      where: { userId: owner.userId },
+      select: { id: true },
+    });
     for (const { id } of allIdRows) {
-      const canonicalPath = path.join(this.booksDir, id + '.epub');
-      if (!fs.existsSync(canonicalPath)) {
-        await this.removeStaleBook(id);
+      if (!fs.existsSync(this.bookPath(owner, id))) {
+        await this.removeStaleBook(owner.userId, id);
         removed.push(id + '.epub');
       }
     }
@@ -545,7 +592,10 @@ export class BookStore {
     return { imported, removed };
   }
 
-  private prismaBookToBook(r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>): Book {
+  private prismaBookToBook(
+    owner: Owner,
+    r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>
+  ): Book {
     return {
       id: r.id,
       filename: downloadFilename({
@@ -554,7 +604,7 @@ export class BookStore {
         seriesIndex: r.seriesIndex,
         title: r.title,
       }),
-      path: path.join(this.booksDir, r.id + '.epub'),
+      path: this.bookPath(owner, r.id),
       title: r.title,
       fileAs: r.fileAs,
       author: r.author,

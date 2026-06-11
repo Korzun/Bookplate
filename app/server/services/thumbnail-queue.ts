@@ -11,6 +11,7 @@ const defaultResize: ResizeFn = (buffer, width) =>
   sharp(buffer).resize({ width, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
 
 interface Job {
+  userId: string;
   bookId: string;
   width: number;
 }
@@ -39,9 +40,9 @@ export class ThumbnailQueue {
     this.running = false;
   }
 
-  enqueue(bookId: string): void {
+  enqueue(userId: string, bookId: string): void {
     for (const width of this.widths) {
-      this.queue.push({ bookId, width });
+      this.queue.push({ userId, bookId, width });
     }
   }
 
@@ -84,7 +85,7 @@ export class ThumbnailQueue {
   private async processJob(job: Job): Promise<void> {
     let cover;
     try {
-      cover = await this.bookStore.getCover(job.bookId);
+      cover = await this.bookStore.getCover(job.userId, job.bookId);
     } catch (err: unknown) {
       log.warn(
         `Failed to get cover for book ${job.bookId}: ${err instanceof Error ? err.message : String(err)}`
@@ -94,7 +95,7 @@ export class ThumbnailQueue {
     if (!cover) return;
     try {
       const resized = await this.resize(cover.data, job.width);
-      await this.bookStore.saveThumbnail(job.bookId, job.width, resized, 'image/jpeg');
+      await this.bookStore.saveThumbnail(job.userId, job.bookId, job.width, resized, 'image/jpeg');
     } catch (err: unknown) {
       log.warn(
         `Failed to generate ${job.width}px thumbnail for book ${job.bookId}: ${

@@ -42,22 +42,27 @@ let userStore: UserStore;
 let tokenStore: TokenStore;
 let app: express.Express;
 let dbPath: string;
+let booksRoot: string;
 
 beforeEach(async () => {
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
   );
+  booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'users-test-'));
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
-  await runMigrations(prisma, os.tmpdir());
+  await runMigrations(prisma, booksRoot);
   userStore = new UserStore(prisma);
   tokenStore = new TokenStore(prisma);
 
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
-  app.use('/api/users', createUsersRouter(userStore, 'admin', jwtAuth(jwtSecret), tokenStore));
+  app.use(
+    '/api/users',
+    createUsersRouter(userStore, 'admin', jwtAuth(jwtSecret), tokenStore, booksRoot)
+  );
 });
 
 afterEach(async () => {
@@ -67,6 +72,7 @@ afterEach(async () => {
   } catch {
     /* best-effort cleanup */
   }
+  fs.rmSync(booksRoot, { recursive: true, force: true });
 });
 
 const adminToken = () =>
@@ -156,11 +162,12 @@ describe('GET /api/users/:username/progress', () => {
     const booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'users-lineage-'));
     const bookStore = new BookStore(booksDir, prisma);
     try {
-      const stagedPath = path.join(booksDir, 'staged-lin.epub');
-      fs.writeFileSync(stagedPath, 'x');
-      await bookStore.addBook('lin-old', stagedPath, FAKE_META);
       await userStore.createUser('alice', 'pass');
       const aliceId = (await userStore.getUserIdByUsername('alice'))!;
+      const aliceOwner = { userId: aliceId, username: 'alice' };
+      const stagedPath = path.join(booksDir, 'staged-lin.epub');
+      fs.writeFileSync(stagedPath, 'x');
+      await bookStore.addBook(aliceOwner, 'lin-old', stagedPath, FAKE_META);
       await userStore.saveProgress(aliceId, {
         document: 'lin-old',
         progress: '/p[2]',
@@ -172,7 +179,7 @@ describe('GET /api/users/:username/progress', () => {
         parseEpub: () => FAKE_META,
         partialMD5: () => 'lin-new',
       };
-      await bookStore.reimportBook('lin-old', mockImporter);
+      await bookStore.reimportBook(aliceOwner, 'lin-old', mockImporter);
       const res = await request(app)
         .get('/api/users/alice/progress')
         .set('Authorization', `Bearer ${adminToken()}`);
@@ -208,6 +215,15 @@ describe('DELETE /api/users/:username', () => {
     expect(await userStore.userExists('alice')).toBe(false);
   });
 
+  it("removes the user's library folder on disk", async () => {
+    await userStore.createUser('alice', 'pass');
+    const userDir = path.join(booksRoot, 'alice');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'book.epub'), 'x');
+    await request(app).delete('/api/users/alice').set('Authorization', `Bearer ${adminToken()}`);
+    expect(fs.existsSync(userDir)).toBe(false);
+  });
+
   it('cascades to delete progress records', async () => {
     await userStore.createUser('alice', 'pass');
     const aliceId = (await userStore.getUserIdByUsername('alice'))!;
@@ -228,6 +244,14 @@ describe('POST /api/users', () => {
     const res = await request(app).post('/api/users').send({ username: 'bob', password: 'pass' });
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Unauthorized' });
+  });
+
+  it("creates the user's library folder on disk", async () => {
+    await request(app)
+      .post('/api/users')
+      .send({ username: 'bob', password: 'secret' })
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(fs.existsSync(path.join(booksRoot, 'bob'))).toBe(true);
   });
 
   it('creates a user and returns 201', async () => {
@@ -296,27 +320,27 @@ describe('POST /api/users', () => {
   });
 
   it('rejects usernames with invalid characters', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bad/name', password: 'secret123' });
+      .send({ username: 'bad/name', password: 'secret123' })
+      .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/letters, numbers/i);
   });
 
   it('rejects usernames starting with a dot', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const res = await request(app)
       .post('/api/users')
-      .send({ username: '.staging', password: 'secret123' });
+      .send({ username: '.staging', password: 'secret123' })
+      .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
   });
 
   it('accepts a valid username with dot and dash', async () => {
-    const agent = await adminAgent();
-    const res = await agent
+    const res = await request(app)
       .post('/api/users')
-      .send({ username: 'jane.doe-2', password: 'secret123' });
+      .send({ username: 'jane.doe-2', password: 'secret123' })
+      .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(201);
   });
 });

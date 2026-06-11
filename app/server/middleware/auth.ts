@@ -27,12 +27,14 @@ export function opdsAuth(userStore: UserStore) {
       const colonIndex = decoded.indexOf(':');
       const username = decoded.slice(0, colonIndex);
       const password = decoded.slice(colonIndex + 1);
-      if (!(await userStore.authenticateSync(username, UserStore.hashSyncPassword(password)))) {
+      const userId = await userStore.authenticate(username, UserStore.hashSyncPassword(password));
+      if (!userId) {
         log.warn(`OPDS auth failed for user "${username}"`);
         res.set('WWW-Authenticate', 'Basic realm="HASS-ODPS"');
         res.status(401).send();
         return;
       }
+      req.opdsOwner = { userId, username };
       next();
     } catch (err) {
       next(err);
