@@ -4,10 +4,10 @@ import { Button, ConfirmModal } from '~/control';
 import { AlertOctagonIcon } from '~/icon';
 import { useBook } from '~/provider/book';
 import { useDeleteMyProgress, useMyProgress } from '~/provider/progress';
+import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
 
 import { ProgressIndicator } from '../progress-indicator';
-import { Toast } from '../toast';
 
 import { useStyle } from './style';
 
@@ -20,27 +20,22 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
 
   const [book] = useBook(bookId);
   const [progress, progressLoading, progressError] = useMyProgress(bookId);
-  const [deleteMyProgress, deleting, error, errorMessage] = useDeleteMyProgress();
+  const [deleteMyProgress, deleting] = useDeleteMyProgress();
+  const showToast = useToast();
 
   const [showModal, setShowModal] = useState(false);
-  const [submitCount, setSubmitCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
-
-  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
-
-  const toast = (() => {
-    if (submitCount === 0 || dismissedCount >= submitCount || deleting) return null;
-    if (error) return { text: errorMessage ?? 'Failed to clear progress', type: 'error' as const };
-    return { text: 'Progress cleared', type: 'success' as const };
-  })();
 
   const handleClear = useCallback(() => setShowModal(true), []);
   const handleCancel = useCallback(() => setShowModal(false), []);
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     setShowModal(false);
-    setSubmitCount((c) => c + 1);
-    deleteMyProgress(bookId);
-  }, [deleteMyProgress, bookId]);
+    const ok = await deleteMyProgress(bookId);
+    if (ok) {
+      showToast('Progress cleared', 'success');
+    } else {
+      showToast('Failed to clear progress', 'error');
+    }
+  }, [deleteMyProgress, bookId, showToast]);
 
   if (progressLoading) {
     return <div className={styles.loading}>Loading…</div>;
@@ -83,9 +78,6 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
         >
           This will remove your synced reading progress for <strong>{bookTitle}</strong>.
         </ConfirmModal>
-      )}
-      {toast && (
-        <Toast key={submitCount} message={toast.text} type={toast.type} onDismiss={handleDismiss} />
       )}
     </Fragment>
   );
