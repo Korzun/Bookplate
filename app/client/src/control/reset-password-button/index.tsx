@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useState } from 'react';
 
-import { Toast } from '~/component';
+import { useToast } from '~/provider/toast';
 import { useResetUserPassword } from '~/provider/user';
 
 import { Button } from '../button';
@@ -12,31 +12,28 @@ interface ResetPasswordButtonProps {
 }
 
 export const ResetPasswordButton = ({ username }: ResetPasswordButtonProps) => {
-  const [resetUserPassword, resetting, resetError] = useResetUserPassword();
+  const [resetUserPassword, resetting] = useResetUserPassword();
+  const showToast = useToast();
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [password, setPassword] = useState<string | null>(null);
-  const [resetCount, setResetCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
 
   const showResult = password !== null;
-  const toast = (() => {
-    if (resetCount === 0 || dismissedCount >= resetCount || resetting) return null;
-    if (resetError) return { text: 'Failed to reset password', type: 'error' as const };
-    return null;
-  })();
 
   const handleClick = useCallback(() => setShowConfirm(true), []);
   const handleCancel = useCallback(() => setShowConfirm(false), []);
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     setShowConfirm(false);
-    setResetCount((c) => c + 1);
-    void resetUserPassword(username).then(setPassword);
-  }, [resetUserPassword, username]);
+    const newPassword = await resetUserPassword(username);
+    if (newPassword === null) {
+      showToast('Failed to reset password', 'error');
+    } else {
+      setPassword(newPassword);
+    }
+  }, [resetUserPassword, username, showToast]);
   const handleDone = useCallback(() => {
     setPassword(null);
   }, []);
-  const handleToastDismiss = useCallback(() => setDismissedCount(resetCount), [resetCount]);
 
   return (
     <Fragment>
@@ -60,14 +57,6 @@ export const ResetPasswordButton = ({ username }: ResetPasswordButtonProps) => {
         password={password}
         onDone={handleDone}
       />
-      {toast && (
-        <Toast
-          key={resetCount}
-          message={toast.text}
-          type={toast.type}
-          onDismiss={handleToastDismiss}
-        />
-      )}
     </Fragment>
   );
 };
