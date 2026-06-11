@@ -150,20 +150,16 @@ export const BookPage = () => {
           </div>
         )}
       </Card>
-      {isAdmin && (
-        <BookLineageCard
-          bookId={book.id}
-          addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
-        />
-      )}
-      {isAdmin && (
-        <div className={styles.buttonContainer}>
-          <div className={styles.spacer} />
-          <RegenChaptersButton bookId={book.id} />
-          <Button onClick={handleEditMetadata}>Edit metadata</Button>
-          <DeleteBookButton bookId={book.id} />
-        </div>
-      )}
+      <BookLineageCard
+        bookId={book.id}
+        addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
+      />
+      <div className={styles.buttonContainer}>
+        <div className={styles.spacer} />
+        <RegenChaptersButton bookId={book.id} />
+        <Button onClick={handleEditMetadata}>Edit metadata</Button>
+        <DeleteBookButton bookId={book.id} />
+      </div>
       {!isAdmin && book.chapterCount > 0 && (
         <div className={styles.buttonContainer}>
           <div className={styles.spacer} />

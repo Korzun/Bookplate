@@ -2,7 +2,6 @@ import { Fragment, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AlertOctagonIcon } from '~/icon';
-import { useIsAdmin } from '~/provider/auth';
 import { useBook, useDeleteBook } from '~/provider/book';
 import { path } from '~/router';
 
@@ -18,7 +17,6 @@ interface DeleteBookButton {
 export function DeleteBookButton({ bookId }: DeleteBookButton) {
   const style = useStyle();
 
-  const [isAdmin] = useIsAdmin();
   const navigate = useNavigate();
 
   const [book] = useBook(bookId);
@@ -41,10 +39,6 @@ export function DeleteBookButton({ bookId }: DeleteBookButton) {
     await deleteBook(book.id);
     navigate(path.home());
   }, [deleteBook, book, navigate]);
-
-  if (!isAdmin) {
-    return null;
-  }
 
   return (
     <Fragment>

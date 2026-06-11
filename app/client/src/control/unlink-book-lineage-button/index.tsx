@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useState } from 'react';
 
 import { AlertOctagonIcon } from '~/icon';
-import { useIsAdmin } from '~/provider/auth';
 import { useBook, useUnlinkBookLineage } from '~/provider/book';
 
 import { Button, type ButtonTypeValue } from '../button';
@@ -24,8 +23,6 @@ export const UnlinkBookLineageButton = ({
 }: UnlinkBookLineageButtonProps) => {
   const style = useStyle();
 
-  const [isAdmin] = useIsAdmin();
-
   const [book] = useBook(bookId);
   const [unlink, unlinking] = useUnlinkBookLineage(bookId);
   const [showUnlinkModal, setShowUnlinkModal] = useState<boolean>(false);
@@ -46,10 +43,6 @@ export const UnlinkBookLineageButton = ({
     const success = await unlink(documentId);
     if (success) onSuccess?.();
   }, [book, documentId, unlink, onSuccess]);
-
-  if (!isAdmin) {
-    return null;
-  }
 
   return (
     <Fragment>
