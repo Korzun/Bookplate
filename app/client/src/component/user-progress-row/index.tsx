@@ -5,10 +5,10 @@ import { AlertOctagonIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
 import { useDeleteUserProgress, useUserProgress } from '~/provider/progress';
+import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
 
 import { ProgressIndicator } from '../progress-indicator';
-import { Toast } from '../toast';
 
 import { useStyle } from './style';
 
@@ -23,28 +23,23 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
   const [isAdmin] = useIsAdmin();
   const [book, bookLoading] = useBook(bookId);
   const [progress, progressLoading, progressError] = useUserProgress(username, bookId);
-  const [deleteUserProgress, deleting, error, errorMessage] = useDeleteUserProgress(username);
+  const [deleteUserProgress, deleting] = useDeleteUserProgress(username);
+  const showToast = useToast();
 
   const [showClearModal, setShowClearModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [submitCount, setSubmitCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
-
-  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
-
-  const toast = (() => {
-    if (submitCount === 0 || dismissedCount >= submitCount || deleting) return null;
-    if (error) return { text: errorMessage ?? 'Failed to clear progress', type: 'error' as const };
-    return { text: 'Progress cleared', type: 'success' as const };
-  })();
 
   const handleClear = useCallback(() => setShowClearModal(true), []);
   const handleCancelClear = useCallback(() => setShowClearModal(false), []);
-  const handleConfirmClear = useCallback(() => {
+  const handleConfirmClear = useCallback(async () => {
     setShowClearModal(false);
-    setSubmitCount((c) => c + 1);
-    deleteUserProgress(bookId);
-  }, [deleteUserProgress, bookId]);
+    const ok = await deleteUserProgress(bookId);
+    if (ok) {
+      showToast('Progress cleared', 'success');
+    } else {
+      showToast('Failed to clear progress', 'error');
+    }
+  }, [deleteUserProgress, bookId, showToast]);
 
   if (progressLoading) {
     return <div className={styles.loading}>Loading…</div>;
@@ -102,9 +97,6 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
           username={username}
           onClose={() => setShowLinkModal(false)}
         />
-      )}
-      {toast && (
-        <Toast key={submitCount} message={toast.text} type={toast.type} onDismiss={handleDismiss} />
       )}
     </Fragment>
   );

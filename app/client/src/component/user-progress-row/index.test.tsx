@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useIsAdmin } from '~/provider/auth';
 import { useBook, type Book } from '~/provider/book';
@@ -27,12 +27,14 @@ vi.mock('~/control', async (importOriginal) => {
   };
 });
 
-const noopDeleteProgress: [(_bookId: string) => Promise<void>, false, false, undefined] = [
-  () => Promise.resolve(),
-  false,
-  false,
-  undefined,
-];
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  });
+});
 
 const mockProgress = {
   document: 'orphan-id',
@@ -42,6 +44,8 @@ const mockProgress = {
 };
 
 describe('UserProgressRow — Link button visibility', () => {
+  afterEach(() => vi.clearAllMocks());
+
   it('shows Link button for admin when book is unresolved (not loading)', () => {
     vi.mocked(useIsAdmin).mockReturnValue([true, false, false, undefined] as ReturnType<
       typeof useIsAdmin
@@ -58,9 +62,12 @@ describe('UserProgressRow — Link button visibility', () => {
       false,
       undefined,
     ] as ReturnType<typeof useUserProgress>);
-    vi.mocked(useDeleteUserProgress).mockReturnValue(
-      noopDeleteProgress as unknown as ReturnType<typeof useDeleteUserProgress>
-    );
+    vi.mocked(useDeleteUserProgress).mockReturnValue([
+      vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true),
+      false,
+      false,
+      undefined,
+    ] as unknown as ReturnType<typeof useDeleteUserProgress>);
 
     renderWithProviders(<UserProgressRow bookId="orphan-id" username="alice" />);
     // Button renders a <div>, not a <button> element — query by text content
@@ -80,9 +87,12 @@ describe('UserProgressRow — Link button visibility', () => {
       false,
       undefined,
     ] as ReturnType<typeof useUserProgress>);
-    vi.mocked(useDeleteUserProgress).mockReturnValue(
-      noopDeleteProgress as unknown as ReturnType<typeof useDeleteUserProgress>
-    );
+    vi.mocked(useDeleteUserProgress).mockReturnValue([
+      vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true),
+      false,
+      false,
+      undefined,
+    ] as unknown as ReturnType<typeof useDeleteUserProgress>);
 
     renderWithProviders(<UserProgressRow bookId="orphan-id" username="alice" />);
     expect(screen.queryByText('Link')).toBeNull();
@@ -104,9 +114,12 @@ describe('UserProgressRow — Link button visibility', () => {
       false,
       undefined,
     ] as ReturnType<typeof useUserProgress>);
-    vi.mocked(useDeleteUserProgress).mockReturnValue(
-      noopDeleteProgress as unknown as ReturnType<typeof useDeleteUserProgress>
-    );
+    vi.mocked(useDeleteUserProgress).mockReturnValue([
+      vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true),
+      false,
+      false,
+      undefined,
+    ] as unknown as ReturnType<typeof useDeleteUserProgress>);
 
     renderWithProviders(<UserProgressRow bookId="orphan-id" username="alice" />);
     expect(screen.queryByText('Link')).toBeNull();
@@ -139,9 +152,12 @@ describe('UserProgressRow — Link button visibility', () => {
       false,
       undefined,
     ] as ReturnType<typeof useUserProgress>);
-    vi.mocked(useDeleteUserProgress).mockReturnValue(
-      noopDeleteProgress as unknown as ReturnType<typeof useDeleteUserProgress>
-    );
+    vi.mocked(useDeleteUserProgress).mockReturnValue([
+      vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true),
+      false,
+      false,
+      undefined,
+    ] as unknown as ReturnType<typeof useDeleteUserProgress>);
 
     renderWithProviders(<UserProgressRow bookId="known-book" username="alice" />);
     expect(screen.queryByText('Link')).toBeNull();
@@ -149,27 +165,13 @@ describe('UserProgressRow — Link button visibility', () => {
 });
 
 describe('UserProgressRow — Clear functionality', () => {
-  const origShowModal = HTMLDialogElement.prototype.showModal;
-  const origClose = HTMLDialogElement.prototype.close;
-
-  beforeAll(() => {
-    HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    });
-    HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-      this.removeAttribute('open');
-    });
-  });
-
-  afterAll(() => {
-    HTMLDialogElement.prototype.showModal = origShowModal;
-    HTMLDialogElement.prototype.close = origClose;
-  });
-
   const mockBook = { id: 'book-1', title: 'Foundation' } as unknown as Book;
   const mockProgressBook = { document: 'book-1', percentage: 75, device: 'Kobo', timestamp: 2000 };
 
-  function setupMocks(deleteImpl: (bookId: string) => Promise<void> = vi.fn()) {
+  let mockDelete: (bookId: string) => Promise<boolean>;
+
+  beforeEach(() => {
+    mockDelete = vi.fn<(bookId: string) => Promise<boolean>>().mockResolvedValue(true);
     vi.mocked(useIsAdmin).mockReturnValue([false, false, false, undefined] as ReturnType<
       typeof useIsAdmin
     >);
@@ -183,22 +185,22 @@ describe('UserProgressRow — Clear functionality', () => {
       undefined,
     ] as ReturnType<typeof useUserProgress>);
     vi.mocked(useDeleteUserProgress).mockReturnValue([
-      deleteImpl,
+      mockDelete,
       false,
       false,
       undefined,
     ] as unknown as ReturnType<typeof useDeleteUserProgress>);
-  }
+  });
+
+  afterEach(() => vi.clearAllMocks());
 
   it('renders a Clear button when progress is loaded', () => {
-    setupMocks();
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     expect(screen.getByText('Clear')).toBeDefined();
   });
 
   it('opens the confirm modal when Clear is clicked', async () => {
     const user = userEvent.setup();
-    setupMocks();
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     await user.click(screen.getByText('Clear'));
     expect(screen.getByText(/clear reading progress\?/i)).toBeDefined();
@@ -206,8 +208,6 @@ describe('UserProgressRow — Clear functionality', () => {
 
   it('calls deleteUserProgress with bookId when confirmed', async () => {
     const user = userEvent.setup();
-    const mockDelete = vi.fn<(bookId: string) => Promise<void>>().mockResolvedValue(undefined);
-    setupMocks(mockDelete);
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     await user.click(screen.getByText('Clear'));
     const clearButtons = screen.getAllByText('Clear');
@@ -217,7 +217,6 @@ describe('UserProgressRow — Clear functionality', () => {
 
   it('closes the modal when Cancel is clicked', async () => {
     const user = userEvent.setup();
-    setupMocks();
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     await user.click(screen.getByText('Clear'));
     await user.click(screen.getByText('Cancel'));
@@ -226,8 +225,6 @@ describe('UserProgressRow — Clear functionality', () => {
 
   it('shows a success toast after clearing', async () => {
     const user = userEvent.setup();
-    const mockDelete = vi.fn<(bookId: string) => Promise<void>>().mockResolvedValue(undefined);
-    setupMocks(mockDelete);
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     await user.click(screen.getByText('Clear'));
     const clearButtons = screen.getAllByText('Clear');
@@ -236,25 +233,7 @@ describe('UserProgressRow — Clear functionality', () => {
   });
 
   it('shows an error toast when delete fails', async () => {
-    vi.mocked(useDeleteUserProgress).mockReturnValue([
-      vi.fn<(bookId: string) => Promise<void>>().mockResolvedValue(undefined),
-      false,
-      true,
-      'Failed to clear progress',
-    ] as unknown as ReturnType<typeof useDeleteUserProgress>);
-    vi.mocked(useIsAdmin).mockReturnValue([false, false, false, undefined] as ReturnType<
-      typeof useIsAdmin
-    >);
-    vi.mocked(useBook).mockReturnValue([mockBook, false, false, undefined] as ReturnType<
-      typeof useBook
-    >);
-    vi.mocked(useUserProgress).mockReturnValue([
-      mockProgressBook,
-      false,
-      false,
-      undefined,
-    ] as ReturnType<typeof useUserProgress>);
-
+    mockDelete.mockResolvedValue(false);
     const user = userEvent.setup();
     renderWithProviders(<UserProgressRow bookId="book-1" username="alice" />);
     await user.click(screen.getByText('Clear'));
