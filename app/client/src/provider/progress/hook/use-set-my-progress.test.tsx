@@ -13,10 +13,11 @@ import { useSetMyProgress } from './use-set-my-progress';
 function makeAuthValue(username: string | undefined): AuthContextType {
   return {
     username,
+    userId: username ? 'test-user-id' : undefined,
     isAdmin: false,
     loading: false,
     mustChangePassword: false,
-  } as AuthContextType;
+  };
 }
 
 function makeWrapper(initialProgress: ProgressList = {}, username?: string) {

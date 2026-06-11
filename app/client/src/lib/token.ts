@@ -29,7 +29,11 @@ export const decodeClaims = (token: string): AuthClaims | null => {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as unknown;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob(padded);
+    const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     if (typeof payload !== 'object' || payload === null) return null;
     const p = payload as Record<string, unknown>;
     if (typeof p.username !== 'string' || typeof p.exp !== 'number') return null;
@@ -46,3 +50,13 @@ export const decodeClaims = (token: string): AuthClaims | null => {
 };
 
 export const isExpired = (claims: AuthClaims): boolean => claims.exp * 1000 <= Date.now();
+
+/**
+ * Pulls the accessToken string out of an auth response body, or null when
+ * the shape is wrong — guards against persisting "undefined" as a token.
+ */
+export const extractAccessToken = (body: unknown): string | null => {
+  if (typeof body !== 'object' || body === null) return null;
+  const token = (body as Record<string, unknown>).accessToken;
+  return typeof token === 'string' && token.length > 0 ? token : null;
+};

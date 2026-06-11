@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { apiFetch, refreshAccessToken } from './api-fetch';
+import { apiFetch, ensureFreshToken, refreshAccessToken } from './api-fetch';
 import { makeJwt } from './test-jwt';
 import { getToken, setToken } from './token';
 
@@ -27,24 +27,24 @@ afterEach(() => {
 const jsonResponse = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status });
 
+const callHeaders = (n: number) => new Headers((fetchMock.mock.calls[n][1] as RequestInit).headers);
+
 describe('apiFetch', () => {
   it('adds the Authorization header when a token is stored', async () => {
     setToken(validToken);
     fetchMock.mockResolvedValueOnce(jsonResponse(200, []));
     await apiFetch('/api/books');
-    expect(fetchMock).toHaveBeenCalledWith('/api/books', {
-      headers: { Authorization: `Bearer ${validToken}` },
-    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/books', expect.objectContaining({}));
+    expect(callHeaders(0).get('Authorization')).toBe(`Bearer ${validToken}`);
   });
 
   it('preserves caller init and headers', async () => {
     setToken(validToken);
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
     await apiFetch('/api/x', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-    expect(fetchMock).toHaveBeenCalledWith('/api/x', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${validToken}` },
-    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/x', expect.objectContaining({ method: 'POST' }));
+    expect(callHeaders(0).get('Authorization')).toBe(`Bearer ${validToken}`);
+    expect(callHeaders(0).get('Content-Type')).toBe('application/json');
   });
 
   it('sends no header when no token is stored', async () => {
@@ -69,9 +69,8 @@ describe('apiFetch', () => {
     const res = await apiFetch('/api/books');
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/auth/refresh', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/books', {
-      headers: { Authorization: `Bearer ${newToken}` },
-    });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/books', expect.objectContaining({}));
+    expect(callHeaders(2).get('Authorization')).toBe(`Bearer ${newToken}`);
     expect(getToken()).toBe(newToken);
   });
 
@@ -110,5 +109,39 @@ describe('refreshAccessToken', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('network'));
     expect(await refreshAccessToken()).toBe(false);
     expect(getToken()).toBeNull();
+  });
+});
+
+describe('ensureFreshToken', () => {
+  it('returns the current token without fetching when exp is far out', async () => {
+    setToken(validToken);
+    expect(await ensureFreshToken()).toBe(validToken);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes and returns the new token when the current one is expired', async () => {
+    const expired = makeJwt({
+      sub: 'u1',
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+      exp: Math.floor(Date.now() / 1000) - 10,
+    });
+    setToken(expired);
+    const newToken = makeJwt({
+      sub: 'u1',
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+      exp: Math.floor(Date.now() / 1000) + 900,
+    });
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { accessToken: newToken }));
+    expect(await ensureFreshToken()).toBe(newToken);
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/refresh', { method: 'POST' });
+  });
+
+  it('returns null when there is no token and refresh fails', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(401));
+    expect(await ensureFreshToken()).toBeNull();
   });
 });

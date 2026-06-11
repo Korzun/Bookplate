@@ -13,10 +13,11 @@ import { useMyProgressList } from './use-my-progress-list';
 function makeAuthValue(overrides: { username?: string } = {}): AuthContextType {
   return {
     username: overrides.username,
+    userId: overrides.username ? 'test-user-id' : undefined,
     isAdmin: false,
     loading: false,
     mustChangePassword: false,
-  } as AuthContextType;
+  };
 }
 
 function makeWrapper(initialProgress: ProgressList = {}, auth: { username?: string } = {}) {

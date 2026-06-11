@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
-import { setToken } from '../../../lib/token';
+import { extractAccessToken, setToken } from '../../../lib/token';
 
 export type ChangeMyPassword = (currentPassword: string, newPassword: string) => Promise<boolean>;
 export type UseChangeMyPassword =
@@ -45,7 +45,10 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
         }
         throw new Error(message);
       }
-      const { accessToken } = (await response.json()) as { accessToken: string };
+      const accessToken = extractAccessToken(await response.json());
+      if (!accessToken) {
+        throw new Error('Unexpected response from server');
+      }
       setToken(accessToken);
       setOkay(true);
       return true;

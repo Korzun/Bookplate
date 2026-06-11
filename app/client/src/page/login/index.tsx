@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { BooksIcon } from '~/icon';
-import { setToken } from '~/lib/token';
+import { extractAccessToken, setToken } from '~/lib/token';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -33,8 +33,12 @@ export const LoginPage = () => {
         body: new URLSearchParams({ username: username ?? '', password: password ?? '' }),
       });
       if (response.ok) {
-        const { accessToken } = (await response.json()) as { accessToken: string };
-        setToken(accessToken);
+        const accessToken = extractAccessToken(await response.json());
+        if (accessToken) {
+          setToken(accessToken);
+        } else {
+          showToast('Unexpected response from server', 'error');
+        }
       } else {
         showToast('Invalid credentials', 'error');
       }
