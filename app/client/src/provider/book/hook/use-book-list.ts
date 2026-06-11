@@ -20,6 +20,7 @@ export const useBookList = (): UseBookList => {
     bookListLoading,
     bookListError,
     setBookListFetched,
+    setBookListError,
     clearCompleteBookIds,
   } = useContext(Context);
   const fetchBookList = useFetchBookList();
@@ -31,14 +32,19 @@ export const useBookList = (): UseBookList => {
     }
   }, [bookListFetched, bookListLoading, bookListError, fetchBookList]);
 
+  // On target change only reset state; calling fetchBookList here would use a
+  // callback that still closes over the previous target's completeBookIds and
+  // bookList, reusing cached entries when book ids collide across libraries.
+  // The trigger effect above refetches once the cleared state has flushed, and
+  // clearing the error unblocks it after a failed fetch of a stale target.
   const prevTargetRef = useRef(targetUsername);
   useEffect(() => {
     if (prevTargetRef.current === targetUsername) return;
     prevTargetRef.current = targetUsername;
     clearCompleteBookIds();
+    setBookListError(undefined);
     setBookListFetched(false);
-    void fetchBookList();
-  }, [targetUsername, fetchBookList, setBookListFetched, clearCompleteBookIds]);
+  }, [targetUsername, setBookListFetched, setBookListError, clearCompleteBookIds]);
 
   return useMemo(
     () =>

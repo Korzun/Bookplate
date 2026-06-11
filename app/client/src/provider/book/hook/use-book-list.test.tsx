@@ -1,7 +1,9 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
@@ -69,7 +71,10 @@ function makeWrapper({
 }
 
 describe('useBookList', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
 
   it('triggers a fetch when bookListFetched is false', async () => {
     vi.stubGlobal(
@@ -125,5 +130,32 @@ describe('useBookList', () => {
     });
     expect(result.current[2]).toBe(true);
     expect(result.current[3]).toBe('Failed to fetch books');
+  });
+
+  it('clears a previous error and refetches when the library target changes', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    vi.stubGlobal('fetch', mockFetch);
+    const ContextWrapper = makeWrapper({
+      bookListFetched: true,
+      bookListError: 'Failed to fetch books',
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <LibraryTargetProvider>
+        <ContextWrapper>{children}</ContextWrapper>
+      </LibraryTargetProvider>
+    );
+    const { result } = renderHook(() => ({ list: useBookList(), target: useLibraryTarget() }), {
+      wrapper,
+    });
+
+    // Fetched with a standing error: the trigger effect must stay blocked.
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    act(() => result.current.target[1]('alice'));
+
+    // The target change clears the error and unfetched state, letting the
+    // trigger effect refetch with a callback built after the reset.
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books'));
+    await waitFor(() => expect(result.current.list[2]).toBe(false));
   });
 });

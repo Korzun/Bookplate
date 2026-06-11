@@ -36,15 +36,20 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // clean up stale DB entries.
   try {
     const owners = await userStore.listOwners();
+    let scanned = 0;
     let imported = 0;
     let removed = 0;
     for (const owner of owners) {
+      // The config-based admin owns no library; a legacy DB row bearing its
+      // username must not materialize one.
+      if (owner.username === config.username) continue;
       fs.mkdirSync(path.join(config.booksDir, owner.username), { recursive: true });
       const scanResult = await bookStore.scan(owner);
+      scanned++;
       imported += scanResult.imported.length;
       removed += scanResult.removed.length;
     }
-    log.info(`Startup scan (${owners.length} user(s)): ${imported} imported, ${removed} removed`);
+    log.info(`Startup scan (${scanned} user(s)): ${imported} imported, ${removed} removed`);
   } catch (err: unknown) {
     log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
   }

@@ -335,7 +335,7 @@ export interface Owner {
 }
 ```
 
-Also update the `Book.path` doc comment: `Absolute on-disk path: `<booksRoot>/<username>/<id>.epub`.`
+Also update the `Book.path` doc comment to: Absolute on-disk path: `<booksRoot>/<username>/<id>.epub`
 
 - [ ] **Step 3: Rewrite `book-store.ts` as owner-scoped**
 
