@@ -1,7 +1,6 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
-import { getToken } from '../../../lib/token';
+import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
 import { Context } from '../context';
 
 import { useFetchBookList } from './use-fetch-book-list';
@@ -127,12 +126,16 @@ export const useUploadQueue = (): UseUploadQueue => {
         );
       };
 
-      xhr.open('POST', '/api/books/upload');
-      const token = getToken();
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      const formData = new FormData();
-      formData.append('files', item.file);
-      xhr.send(formData);
+      void (async () => {
+        const token = await ensureFreshToken();
+        // The XHR may have been aborted (unmount) while we awaited the refresh.
+        if (xhrMapRef.current.get(item.id) !== xhr) return;
+        xhr.open('POST', '/api/books/upload');
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        const formData = new FormData();
+        formData.append('files', item.file);
+        xhr.send(formData);
+      })();
     }
   }, [items, maxConcurrent]);
 

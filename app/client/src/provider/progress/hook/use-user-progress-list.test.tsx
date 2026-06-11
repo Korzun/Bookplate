@@ -13,10 +13,11 @@ import { useUserProgressList } from './use-user-progress-list';
 function makeAuthValue(): AuthContextType {
   return {
     username: 'alice',
+    userId: undefined,
     isAdmin: true,
     loading: false,
     mustChangePassword: false,
-  } as AuthContextType;
+  };
 }
 
 function makeWrapper(initialProgress: ProgressList = {}) {

@@ -27,7 +27,7 @@ describe('useLogout', () => {
   });
 
   it('calls POST /api/auth/logout', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const { result } = renderHook(() => useLogout());
     await act(() => result.current[0]());
     expect(fetch).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' });
@@ -35,7 +35,7 @@ describe('useLogout', () => {
 
   it('clears the stored access token on logout', async () => {
     localStorage.setItem('accessToken', 'some-token');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const { result } = renderHook(() => useLogout());
     await act(() => result.current[0]());
     expect(localStorage.getItem('accessToken')).toBeNull();
@@ -56,15 +56,25 @@ describe('useLogout', () => {
       void result.current[0]();
     });
     expect(result.current[1]).toBe(true);
-    resolve({});
+    resolve({ ok: true });
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
 
   it('redirects to /login on success', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const { result } = renderHook(() => useLogout());
     await act(() => result.current[0]());
     expect(window.location.href).toBe('/login');
+  });
+
+  it('does not clear the token or redirect when the server rejects logout', async () => {
+    localStorage.setItem('accessToken', 'some-token');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    const { result } = renderHook(() => useLogout());
+    await act(() => result.current[0]());
+    expect(result.current[2]).toBe(true);
+    expect(localStorage.getItem('accessToken')).toBe('some-token');
+    expect(window.location.href).toBe('');
   });
 
   it('sets error state when fetch throws', async () => {

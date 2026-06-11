@@ -6,6 +6,7 @@ import {
   TOKEN_CHANGED_EVENT,
   clearToken,
   decodeClaims,
+  extractAccessToken,
   getToken,
   isExpired,
   setToken,
@@ -68,6 +69,32 @@ describe('decodeClaims', () => {
     expect(decodeClaims(`x.${btoa('"not an object"')}.y`)).toBeNull();
     expect(decodeClaims(makeJwt({ isAdmin: true, exp: 1 }))).toBeNull(); // no username
     expect(decodeClaims(makeJwt({ username: 'a' }))).toBeNull(); // no exp
+  });
+
+  it('decodes non-ASCII claim values correctly', () => {
+    const claims = decodeClaims(
+      makeJwt({
+        username: 'Simön Körzün',
+        isAdmin: false,
+        mustChangePassword: false,
+        exp: 1760000900,
+      })
+    );
+    expect(claims!.username).toBe('Simön Körzün');
+  });
+});
+
+describe('extractAccessToken', () => {
+  it('returns the string for a well-shaped body', () => {
+    expect(extractAccessToken({ accessToken: 'a.b.c' })).toBe('a.b.c');
+  });
+
+  it('returns null for malformed bodies', () => {
+    expect(extractAccessToken({})).toBeNull();
+    expect(extractAccessToken(null)).toBeNull();
+    expect(extractAccessToken('x')).toBeNull();
+    expect(extractAccessToken({ accessToken: 42 })).toBeNull();
+    expect(extractAccessToken({ accessToken: '' })).toBeNull();
   });
 });
 

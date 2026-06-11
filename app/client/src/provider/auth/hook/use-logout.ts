@@ -13,7 +13,10 @@ export const useLogout = (): UseLogout => {
     setError(false);
     setErrorMessage(undefined);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) {
+        throw new Error('Logout failed');
+      }
       clearToken();
       window.location.href = '/login';
     } catch (err) {

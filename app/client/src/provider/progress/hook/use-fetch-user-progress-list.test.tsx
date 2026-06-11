@@ -12,10 +12,11 @@ import { useFetchUserProgressList } from './use-fetch-user-progress-list';
 function makeAuthValue(overrides: { isAdmin?: boolean } = {}): AuthContextType {
   return {
     username: 'alice',
+    userId: 'test-user-id',
     isAdmin: overrides.isAdmin ?? false,
     loading: false,
     mustChangePassword: false,
-  } as AuthContextType;
+  };
 }
 
 function makeWrapper({

@@ -1,4 +1,4 @@
-import { clearToken, getToken, setToken } from './token';
+import { clearToken, decodeClaims, extractAccessToken, getToken, setToken } from './token';
 
 let refreshInFlight: Promise<boolean> | null = null;
 
@@ -15,7 +15,11 @@ export const refreshAccessToken = (): Promise<boolean> => {
         clearToken();
         return false;
       }
-      const { accessToken } = (await response.json()) as { accessToken: string };
+      const accessToken = extractAccessToken(await response.json());
+      if (!accessToken) {
+        clearToken();
+        return false;
+      }
       setToken(accessToken);
       return true;
     } catch {
@@ -31,7 +35,9 @@ export const refreshAccessToken = (): Promise<boolean> => {
 const withAuth = (init?: RequestInit): RequestInit => {
   const token = getToken();
   if (!token) return init ?? {};
-  return { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}` } };
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return { ...init, headers };
 };
 
 /**
@@ -45,4 +51,19 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   const refreshed = await refreshAccessToken();
   if (!refreshed) return response;
   return fetch(input, withAuth(init));
+};
+
+/**
+ * Ensures the stored access token is good for at least the next minute,
+ * refreshing through the cookie if not. For callers (XHR uploads) that
+ * can't use apiFetch's 401 retry.
+ */
+export const ensureFreshToken = async (): Promise<string | null> => {
+  const token = getToken();
+  if (token) {
+    const claims = decodeClaims(token);
+    if (claims && claims.exp * 1000 - Date.now() > 60_000) return token;
+  }
+  await refreshAccessToken();
+  return getToken();
 };
