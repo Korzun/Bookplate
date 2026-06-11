@@ -22,7 +22,9 @@ export function useAuthorizedSrc(url: string | null): string | undefined {
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (import.meta.env.DEV) console.error('[useAuthorizedSrc]', err);
+      });
 
     return () => {
       cancelled = true;
