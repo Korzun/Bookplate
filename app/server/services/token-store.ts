@@ -21,12 +21,13 @@ export class TokenStore {
   async getOrCreateJwtSecret(): Promise<Buffer> {
     const existing = await this.prisma.setting.findUnique({ where: { key: JWT_SECRET_KEY } });
     if (existing) return Buffer.from(existing.value, 'hex');
-    await this.prisma.setting.upsert({
+    // On conflict the empty update is a no-op and upsert returns the first
+    // writer's row, so concurrent first boots converge on one secret.
+    const row = await this.prisma.setting.upsert({
       where: { key: JWT_SECRET_KEY },
       create: { key: JWT_SECRET_KEY, value: crypto.randomBytes(32).toString('hex') },
       update: {},
     });
-    const row = await this.prisma.setting.findUniqueOrThrow({ where: { key: JWT_SECRET_KEY } });
     return Buffer.from(row.value, 'hex');
   }
 
