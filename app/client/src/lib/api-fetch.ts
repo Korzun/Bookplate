@@ -4,26 +4,30 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 /**
  * Calls POST /api/auth/refresh (the refresh token rides the httpOnly cookie).
- * Single-flight: concurrent callers share one request. On failure the stored
- * access token is cleared, which the AuthProvider observes as logged-out.
+ * Single-flight: concurrent callers share one request. Only an explicit
+ * rejection (401/403) clears the stored access token — transient failures
+ * (network errors, 5xx) leave it in place, since the proactive timer calls
+ * this while the current token is still valid and a brief outage must not
+ * log the user out.
  */
 export const refreshAccessToken = (): Promise<boolean> => {
   refreshInFlight ??= (async () => {
     try {
       const response = await fetch('/api/auth/refresh', { method: 'POST' });
-      if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
         clearToken();
+        return false;
+      }
+      if (!response.ok) {
         return false;
       }
       const accessToken = extractAccessToken(await response.json());
       if (!accessToken) {
-        clearToken();
         return false;
       }
       setToken(accessToken);
       return true;
     } catch {
-      clearToken();
       return false;
     } finally {
       refreshInFlight = null;
