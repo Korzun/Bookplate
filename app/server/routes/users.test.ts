@@ -9,6 +9,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { BookStore, ScanImporter } from '../services/book-store';
 import { UserStore } from '../services/user-store';
+import { TokenStore } from '../services/token-store';
 import { createUsersRouter } from './users';
 import { jwtAuth } from '../middleware/auth';
 import { signAccessToken } from '../services/jwt';
@@ -38,6 +39,7 @@ jest.mock('../logger');
 
 let prisma: PrismaClient;
 let userStore: UserStore;
+let tokenStore: TokenStore;
 let app: express.Express;
 let dbPath: string;
 
@@ -50,11 +52,12 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, os.tmpdir());
   userStore = new UserStore(prisma);
+  tokenStore = new TokenStore(prisma);
 
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
-  app.use('/api/users', createUsersRouter(userStore, 'admin', jwtAuth(jwtSecret)));
+  app.use('/api/users', createUsersRouter(userStore, 'admin', jwtAuth(jwtSecret), tokenStore));
 });
 
 afterEach(async () => {
@@ -329,6 +332,17 @@ describe('POST /api/users/:username/reset-password', () => {
       .post(`/api/users/admin/reset-password`)
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(403);
+  });
+
+  it("revokes the user's refresh tokens", async () => {
+    await userStore.createUser('alice', 'pass');
+    const aliceId = (await userStore.getUserIdByUsername('alice'))!;
+    await tokenStore.createRefreshToken({ username: 'alice', userId: aliceId });
+    await request(app)
+      .post('/api/users/alice/reset-password')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .expect(200);
+    expect(await prisma.refreshToken.count({ where: { username: 'alice' } })).toBe(0);
   });
 });
 

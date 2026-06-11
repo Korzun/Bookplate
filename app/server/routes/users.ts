@@ -1,6 +1,7 @@
 // app/routes/users.ts
 import { Router, Request, RequestHandler, Response } from 'express';
 import { UserStore } from '../services/user-store';
+import { TokenStore } from '../services/token-store';
 import { adminAuth } from '../middleware/auth';
 import { logger } from '../logger';
 
@@ -9,7 +10,8 @@ const log = logger('Users');
 export function createUsersRouter(
   userStore: UserStore,
   adminUsername: string,
-  requireAuth: RequestHandler
+  requireAuth: RequestHandler,
+  tokenStore: TokenStore
 ): Router {
   const router = Router();
   router.use(requireAuth);
@@ -77,6 +79,7 @@ export function createUsersRouter(
       res.status(404).json({ error: 'User not found' });
       return;
     }
+    await tokenStore.revokeAllForUsername(username);
     log.info(`Password reset for user "${username}"`);
     res.json({ password });
   });
