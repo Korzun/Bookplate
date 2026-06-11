@@ -1,46 +1,35 @@
 import { useCallback, useState } from 'react';
 
-import { Card, Toast } from '~/component';
+import { Card } from '~/component';
 import { Button, TextInput } from '~/control';
+import { useToast } from '~/provider/toast';
 import { useRegisterUser } from '~/provider/user';
 
 import { useStyle } from './style';
 
 export const UserRegister = () => {
   const styles = useStyle();
-
-  const [registerUser, loading, okay, error, errorMessage] = useRegisterUser();
+  const [registerUser, loading] = useRegisterUser();
+  const showToast = useToast();
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [submitCount, setSubmitCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
-  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
 
-  const toast = (() => {
-    if (submitCount === 0 || dismissedCount >= submitCount || loading) return null;
-    if (error) return { text: errorMessage ?? 'Registration failed', type: 'error' as const };
-    if (okay) return { text: 'User registered', type: 'success' as const };
-    return null;
-  })();
+  const handleRegisterUser = useCallback(async () => {
+    const ok = await registerUser(username, password);
+    if (ok) {
+      showToast('User registered', 'success');
+    } else {
+      showToast('Registration failed', 'error');
+    }
+  }, [registerUser, username, password, showToast]);
 
-  const handleRegisterUser = useCallback(() => {
-    setSubmitCount((c) => c + 1);
-    registerUser(username, password);
-  }, [registerUser, username, password]);
+  const handleUsernameChange = useCallback((newValue: string | undefined) => {
+    setUsername(newValue ?? '');
+  }, []);
 
-  const handleUsernameChange = useCallback(
-    (newValue: string | undefined) => {
-      setUsername(newValue ?? '');
-    },
-    [setUsername]
-  );
-
-  const handlePasswordChange = useCallback(
-    (newValue: string | undefined) => {
-      setPassword(newValue ?? '');
-    },
-    [setPassword]
-  );
+  const handlePasswordChange = useCallback((newValue: string | undefined) => {
+    setPassword(newValue ?? '');
+  }, []);
 
   return (
     <Card title="Register new User">
@@ -66,9 +55,6 @@ export const UserRegister = () => {
       <Button type="primary" loading={loading} onClick={handleRegisterUser}>
         {loading ? 'Registering…' : 'Register'}
       </Button>
-      {toast && (
-        <Toast key={submitCount} message={toast.text} type={toast.type} onDismiss={handleDismiss} />
-      )}
     </Card>
   );
 };

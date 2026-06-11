@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useState } from 'react';
 
-import { Card, Toast } from '~/component';
+import { Card } from '~/component';
 import { Button, ConfirmModal } from '~/control';
+import { useToast } from '~/provider/toast';
 import { useRegenerateSyncPassword, useSyncPassword } from '~/provider/user';
 
 import { useStyle } from './style';
@@ -9,23 +10,13 @@ import { useStyle } from './style';
 export const SyncPassword = () => {
   const styles = useStyle();
   const [syncPassword, loadingFetch, fetchError] = useSyncPassword();
-  const [regenerate, regenerating, newPassword, regenerateError] = useRegenerateSyncPassword();
+  const [regenerate, regenerating, newPassword] = useRegenerateSyncPassword();
+  const showToast = useToast();
 
   const displayPassword = newPassword ?? syncPassword;
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [regenerateCount, setRegenerateCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
-
-  const toast = (() => {
-    if (regenerateCount === 0 || dismissedCount >= regenerateCount || regenerating) return null;
-    if (regenerateError) {
-      return { text: 'Failed to regenerate sync password', type: 'error' as const };
-    }
-    if (newPassword) return { text: 'Sync password regenerated', type: 'success' as const };
-    return null;
-  })();
 
   const handleCopy = useCallback(async () => {
     if (!displayPassword) return;
@@ -36,11 +27,15 @@ export const SyncPassword = () => {
 
   const handleRegenerateClick = useCallback(() => setShowConfirm(true), []);
   const handleCancel = useCallback(() => setShowConfirm(false), []);
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     setShowConfirm(false);
-    setRegenerateCount((c) => c + 1);
-    regenerate();
-  }, [regenerate]);
+    const ok = await regenerate();
+    if (ok) {
+      showToast('Sync password regenerated', 'success');
+    } else {
+      showToast('Failed to regenerate sync password', 'error');
+    }
+  }, [regenerate, showToast]);
 
   return (
     <Fragment>
@@ -75,15 +70,6 @@ export const SyncPassword = () => {
         This will create a new sync password. Your KoReader devices and any OPDS clients will stop
         syncing until you update them with the new password.
       </ConfirmModal>
-
-      {toast && (
-        <Toast
-          key={regenerateCount}
-          message={toast.text}
-          type={toast.type}
-          onDismiss={() => setDismissedCount(regenerateCount)}
-        />
-      )}
     </Fragment>
   );
 };
