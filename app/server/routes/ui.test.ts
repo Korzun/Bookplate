@@ -260,7 +260,7 @@ describe('POST /api/login', () => {
 });
 
 describe('GET /api/books', () => {
-  it('returns 302 without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/books');
     expect(res.status).toBe(401);
   });
@@ -555,7 +555,7 @@ describe('GET /api/books/:id', () => {
 });
 
 describe('GET /api/books/:id/lineage', () => {
-  it('returns 302 when not authenticated', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/books/some-id/lineage');
     expect(res.status).toBe(401);
   });
@@ -616,7 +616,7 @@ describe('GET /api/books/:id/lineage', () => {
 });
 
 describe('POST /api/books/:id/link', () => {
-  it('returns 302 when not authenticated', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/some-id/link').send({ documentId: 'doc' });
     expect(res.status).toBe(401);
   });
@@ -716,7 +716,7 @@ describe('POST /api/books/:id/link', () => {
 });
 
 describe('DELETE /api/books/:id/link/:documentId', () => {
-  it('returns 302 when not authenticated', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).delete('/api/books/some-id/link/some-doc');
     expect(res.status).toBe(401);
   });
@@ -865,7 +865,7 @@ describe('DELETE /api/books/:id', () => {
 });
 
 describe('POST /api/books/scan', () => {
-  it('returns 302 without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/scan');
     expect(res.status).toBe(401);
   });
@@ -967,7 +967,7 @@ describe('POST /api/books/scan (admin-only)', () => {
 });
 
 describe('GET /api/my/progress', () => {
-  it('redirects to /login without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/my/progress');
     expect(res.status).toBe(401);
   });
@@ -1200,7 +1200,7 @@ describe('GET /api/my/progress', () => {
 });
 
 describe('POST /api/books/:id/regen-chapters', () => {
-  it('returns 302 without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/any/regen-chapters');
     expect(res.status).toBe(401);
   });
@@ -1244,7 +1244,7 @@ describe('DELETE /api/my/progress/:document', () => {
     });
   });
 
-  it('redirects to /login without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).delete('/api/my/progress/doc1');
     expect(res.status).toBe(401);
   });
@@ -1291,7 +1291,7 @@ describe('DELETE /api/my/progress/:document', () => {
 });
 
 describe('PUT /api/my/progress/:document', () => {
-  it('redirects to /login without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app)
       .put('/api/my/progress/doc1')
       .send({ currentChapter: 5, percentage: 0.25 });
@@ -1487,7 +1487,7 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 302 without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).patch(`/api/books/${bookId}/metadata`).field('title', 'New');
     expect(res.status).toBe(401);
   });
@@ -1536,7 +1536,7 @@ describe('PATCH /api/books/:id/metadata', () => {
 });
 
 describe('GET /api/config', () => {
-  it('redirects to /login without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/config');
     expect(res.status).toBe(401);
   });
@@ -1561,7 +1561,7 @@ describe('GET /api/config', () => {
 });
 
 describe('PATCH /api/my/password', () => {
-  it('redirects to /login without session', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app)
       .patch('/api/my/password')
       .send({ currentPassword: 'alicepass', newPassword: 'newpass' });
@@ -1633,7 +1633,7 @@ describe('GET /api/my/sync-password', () => {
     expect(res.body.syncPassword.split(' ')).toHaveLength(2);
   });
 
-  it('redirects unauthenticated requests', async () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/my/sync-password');
     expect(res.status).toBe(401);
   });
