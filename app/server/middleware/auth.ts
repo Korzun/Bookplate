@@ -66,16 +66,6 @@ export function kosyncAuth(userStore: UserStore) {
   };
 }
 
-/** Session auth — redirects unauthenticated requests to /login. Used for web UI. */
-export function sessionAuth(req: Request, res: Response, next: NextFunction): void {
-  if (req.session.authenticated) {
-    next();
-  } else {
-    log.debug('Session auth rejected — redirecting to /login');
-    res.redirect('/login');
-  }
-}
-
 /** Bearer-JWT auth for the web UI/API. Attaches req.user on success. */
 export function jwtAuth(secret: Buffer) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -125,15 +115,9 @@ export function passwordChangeGate(secret: Buffer) {
   };
 }
 
-/**
- * Admin-only gate — must run after jwtAuth. Returns 403 for non-admins.
- * The req.session fallback is transitional while routes migrate off sessions
- * (removed in the cleanup task at the end of the JWT migration).
- */
+/** Admin-only gate — must run after jwtAuth. Returns 403 for non-admins. */
 export function adminAuth(req: Request, res: Response, next: NextFunction): void {
-  // req.session fallback is transitional while routes migrate off sessions
-  // (removed in the cleanup task at the end of the JWT migration).
-  if (!req.user?.isAdmin && !req.session?.isAdmin) {
+  if (!req.user?.isAdmin) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
