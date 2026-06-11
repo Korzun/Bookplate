@@ -294,6 +294,31 @@ describe('POST /api/users', () => {
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(409);
   });
+
+  it('rejects usernames with invalid characters', async () => {
+    const agent = await adminAgent();
+    const res = await agent
+      .post('/api/users')
+      .send({ username: 'bad/name', password: 'secret123' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/letters, numbers/i);
+  });
+
+  it('rejects usernames starting with a dot', async () => {
+    const agent = await adminAgent();
+    const res = await agent
+      .post('/api/users')
+      .send({ username: '.staging', password: 'secret123' });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a valid username with dot and dash', async () => {
+    const agent = await adminAgent();
+    const res = await agent
+      .post('/api/users')
+      .send({ username: 'jane.doe-2', password: 'secret123' });
+    expect(res.status).toBe(201);
+  });
 });
 
 describe('POST /api/users/:username/reset-password', () => {

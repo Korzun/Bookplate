@@ -4,6 +4,7 @@ import { UserStore } from '../services/user-store';
 import { TokenStore } from '../services/token-store';
 import { adminAuth } from '../middleware/auth';
 import { logger } from '../logger';
+import { isValidUsername } from '../utils/username';
 
 const log = logger('Users');
 
@@ -96,6 +97,14 @@ export function createUsersRouter(
       return;
     }
     const trimmedUsername = username.trim();
+    if (!isValidUsername(trimmedUsername)) {
+      log.warn(`Registration rejected — invalid username "${trimmedUsername}"`);
+      res.status(400).json({
+        error:
+          'Username may only contain letters, numbers, dots, underscores and dashes, and must start with a letter or number',
+      });
+      return;
+    }
     if (trimmedUsername === adminUsername) {
       log.warn(`Registration rejected — username "${trimmedUsername}" is reserved`);
       res.status(409).json({ error: 'Username already exists' });
