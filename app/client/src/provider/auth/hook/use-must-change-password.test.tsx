@@ -7,15 +7,10 @@ import { useMustChangePassword } from './use-must-change-password';
 
 const baseState: AuthContext = {
   username: 'alice',
+  userId: 'u1',
   isAdmin: false,
   mustChangePassword: false,
   loading: false,
-  error: false,
-  errorMessage: undefined,
-  setUsername: () => {},
-  setIsAdmin: () => {},
-  setMustChangePassword: () => {},
-  refetch: () => Promise.resolve(),
 };
 
 describe('useMustChangePassword', () => {

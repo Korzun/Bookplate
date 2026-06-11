@@ -23,15 +23,11 @@ export function renderWithProviders(
   }: RenderWithProvidersOptions = {}
 ) {
   const authState: AuthContextType = {
-    ...user,
+    username: user.username || undefined,
+    userId: user.username ? 'test-user-id' : undefined,
+    isAdmin: user.isAdmin,
     mustChangePassword: user.mustChangePassword ?? false,
     loading: false,
-    error: false,
-    errorMessage: undefined,
-    setUsername: () => {},
-    setIsAdmin: () => {},
-    setMustChangePassword: () => {},
-    refetch: () => Promise.resolve(),
   };
 
   function Wrapper({ children }: { children: ReactNode }) {

@@ -11,10 +11,7 @@ import { ThemeProvider } from '../provider/theme/provider';
 import { ProtectedRoute } from './protected-route';
 
 const baseState = {
-  setUsername: () => {},
-  setIsAdmin: () => {},
-  setMustChangePassword: () => {},
-  refetch: () => Promise.resolve(),
+  userId: undefined,
 };
 
 function renderWithAuth(authState: AuthContextType, initialEntries: string[]) {
@@ -44,8 +41,6 @@ describe('ProtectedRoute', () => {
         isAdmin: false,
         mustChangePassword: false,
         loading: false,
-        error: true,
-        errorMessage: undefined,
       },
       ['/library']
     );
@@ -60,8 +55,6 @@ describe('ProtectedRoute', () => {
         isAdmin: false,
         mustChangePassword: false,
         loading: false,
-        error: false,
-        errorMessage: undefined,
       },
       ['/library']
     );
@@ -76,8 +69,6 @@ describe('ProtectedRoute', () => {
         isAdmin: false,
         mustChangePassword: true,
         loading: false,
-        error: false,
-        errorMessage: undefined,
       },
       ['/library']
     );
@@ -92,8 +83,6 @@ describe('ProtectedRoute', () => {
         isAdmin: false,
         mustChangePassword: true,
         loading: false,
-        error: false,
-        errorMessage: undefined,
       },
       ['/user']
     );

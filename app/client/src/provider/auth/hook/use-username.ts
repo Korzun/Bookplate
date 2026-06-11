@@ -2,16 +2,8 @@ import { useContext, useMemo } from 'react';
 
 import { Context } from '../context';
 
-export type UseUsername =
-  | [string, false, false, undefined]
-  | [string | undefined, true, false, undefined]
-  | [undefined, false, true, undefined]
-  | [undefined, false, true, string];
+export type UseUsername = [string | undefined, boolean];
 export const useUsername = (): UseUsername => {
-  const { username, loading, error, errorMessage } = useContext(Context);
-
-  return useMemo(
-    () => [username, loading, error, errorMessage] as UseUsername,
-    [username, loading, error, errorMessage]
-  );
+  const { username, loading } = useContext(Context);
+  return useMemo(() => [username, loading], [username, loading]);
 };

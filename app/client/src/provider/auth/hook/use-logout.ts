@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { clearToken } from '../../../lib/token';
+
 export type UseLogout = [() => Promise<void>, boolean, boolean, string | undefined];
 export const useLogout = (): UseLogout => {
   const [loading, setLoading] = useState(false);
@@ -11,7 +13,8 @@ export const useLogout = (): UseLogout => {
     setError(false);
     setErrorMessage(undefined);
     try {
-      await fetch('/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST' });
+      clearToken();
       window.location.href = '/login';
     } catch (err) {
       setError(true);

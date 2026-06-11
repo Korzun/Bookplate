@@ -15,13 +15,7 @@ function makeAuthValue(username: string | undefined): AuthContextType {
     username,
     isAdmin: false,
     loading: false,
-    error: false,
-    errorMessage: undefined,
-    setUsername: () => {},
-    setIsAdmin: () => {},
     mustChangePassword: false,
-    setMustChangePassword: () => {},
-    refetch: () => Promise.resolve(),
   } as AuthContextType;
 }
 

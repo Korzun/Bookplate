@@ -11,7 +11,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
 
 describe('useLogout', () => {
   it('returns initial state', () => {
@@ -23,11 +26,19 @@ describe('useLogout', () => {
     expect(errorMessage).toBeUndefined();
   });
 
-  it('calls POST /logout', async () => {
+  it('calls POST /api/auth/logout', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}));
     const { result } = renderHook(() => useLogout());
     await act(() => result.current[0]());
-    expect(fetch).toHaveBeenCalledWith('/logout', { method: 'POST' });
+    expect(fetch).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' });
+  });
+
+  it('clears the stored access token on logout', async () => {
+    localStorage.setItem('accessToken', 'some-token');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}));
+    const { result } = renderHook(() => useLogout());
+    await act(() => result.current[0]());
+    expect(localStorage.getItem('accessToken')).toBeNull();
   });
 
   it('sets loading to true while fetch is in flight', async () => {

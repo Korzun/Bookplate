@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, TextInput } from '~/control';
-import { useAuthRefresh } from '~/provider/auth';
 import { useToast } from '~/provider/toast';
 import { useChangeMyPassword } from '~/provider/user';
 
@@ -10,7 +9,6 @@ import { useStyle } from './style';
 
 export const UserChangePassword = () => {
   const styles = useStyle();
-  const refetchAuth = useAuthRefresh();
   const [changeMyPassword, loading] = useChangeMyPassword();
   const showToast = useToast();
   const [currentPassword, setCurrentPassword] = useState<string>('');
@@ -25,12 +23,11 @@ export const UserChangePassword = () => {
       setNewPassword('');
       setConfirmPassword('');
       setIsPasswordValid(false);
-      void refetchAuth();
       showToast('Password changed', 'success');
     } else {
       showToast('Password change failed', 'error');
     }
-  }, [changeMyPassword, currentPassword, newPassword, refetchAuth, showToast]);
+  }, [changeMyPassword, currentPassword, newPassword, showToast]);
 
   const handleCurrentPasswordChange = useCallback((newValue: string | undefined) => {
     setCurrentPassword(newValue ?? '');
