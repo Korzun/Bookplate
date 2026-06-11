@@ -7,6 +7,7 @@ export { CollapsibleSection } from './collapsible-section';
 export { Cover } from './cover';
 export { CoverStack } from './cover-stack';
 export { Header } from './header';
+export { LibrarySwitcher } from './library-switcher';
 export { LibraryScan } from './library-scan';
 export { MetadataList, type Metadata } from './metadata-list';
 export { MyProgress } from './my-progress';
