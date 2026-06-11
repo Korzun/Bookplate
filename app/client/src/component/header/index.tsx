@@ -1,6 +1,7 @@
 import cx from 'classnames';
 import { Link, useLocation } from 'react-router-dom';
 
+import { LibrarySwitcher } from '~/component/library-switcher';
 import { BookIcon, UploadIcon, UserIcon, UsersIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { path } from '~/router';
@@ -67,6 +68,7 @@ export const Header = () => {
             Profile
           </Link>
         </div>
+        <LibrarySwitcher />
       </nav>
     </header>
   );
