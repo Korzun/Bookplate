@@ -12,15 +12,10 @@ function makeWrapper(isAdmin = false) {
       <AuthContext.Provider
         value={{
           username: isAdmin ? 'admin' : 'user',
-          setUsername: () => {},
+          userId: isAdmin ? undefined : 'u1',
           isAdmin,
-          setIsAdmin: () => {},
           mustChangePassword: false,
-          setMustChangePassword: () => {},
-          refetch: () => Promise.resolve(),
           loading: false,
-          error: false,
-          errorMessage: undefined,
         }}
       >
         {children}

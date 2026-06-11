@@ -1,8 +1,8 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
 import { useWithTargetUser } from '~/provider/library-target';
 
+import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import { BookList } from '../type';
 
@@ -36,7 +36,9 @@ export const useDeleteBook = (): UseDeleteBook => {
         setLoading(true);
         setError(false);
         setErrorMessage(undefined);
-        const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}`), { method: 'DELETE' });
+        const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}`), {
+          method: 'DELETE',
+        });
         if (res.status !== 204) throw new Error('Failed to delete book');
       } catch (err) {
         setError(true);
