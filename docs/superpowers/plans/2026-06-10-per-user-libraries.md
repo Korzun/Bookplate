@@ -1955,18 +1955,20 @@ const [targetUsername] = useLibraryTarget();
 
 - [ ] **Step 3: Refetch when the target changes**
 
-Find where the book list is initially fetched (the consumer calling `useFetchBookList` on mount — check `use-book-list.ts`). Add `targetUsername` to that effect's dependencies so switching libraries refetches, and clear stale state on change. In `use-book-list.ts` (or wherever the mount-fetch effect lives), the effect becomes:
+Find where the book list is initially fetched (the consumer calling `useFetchBookList` on mount — check `use-book-list.ts`). Switching libraries must mark the list unfetched and refetch. Use a previous-value ref so all dependencies stay in the array (repo rule: never `eslint-disable` react-hooks rules — restructure instead):
 
 ```typescript
 const [targetUsername] = useLibraryTarget();
+const prevTargetRef = useRef(targetUsername);
 useEffect(() => {
+  if (prevTargetRef.current === targetUsername) return;
+  prevTargetRef.current = targetUsername;
   setBookListFetched(false);
   fetchBookList();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [targetUsername]);
+}, [targetUsername, fetchBookList, setBookListFetched]);
 ```
 
-Adapt to the file's existing effect structure — the requirement: changing `targetUsername` marks the list unfetched and triggers a refetch.
+Adapt to the file's existing effect structure — the requirement: changing `targetUsername` marks the list unfetched and triggers exactly one refetch, with no lint suppressions.
 
 - [ ] **Step 4: Run client tests, fix fallout**
 
