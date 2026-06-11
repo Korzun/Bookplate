@@ -45,12 +45,13 @@ model BookThumbnail {
 }
 
 model User {
-  id                 String     @id
-  username           String     @unique
-  passwordHash       String?    @map("password_hash")
-  syncPassword       String?    @map("sync_password")
-  mustChangePassword Boolean    @default(false) @map("must_change_password")
+  id                 String         @id
+  username           String         @unique
+  passwordHash       String?        @map("password_hash")
+  syncPassword       String?        @map("sync_password")
+  mustChangePassword Boolean        @default(false) @map("must_change_password")
   progresses         Progress[]
+  refreshTokens      RefreshToken[]
 
   @@map("users")
 }
@@ -76,4 +77,21 @@ model Progress {
 
   @@id([userId, document])
   @@map("progress")
+}
+
+model RefreshToken {
+  tokenHash String  @id @map("token_hash")
+  userId    String? @map("user_id") // null for the config-based admin
+  username  String
+  expiresAt Float   @map("expires_at")
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
 }
