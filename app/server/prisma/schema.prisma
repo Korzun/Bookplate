@@ -84,7 +84,7 @@ model RefreshToken {
   userId    String? @map("user_id") // null for the config-based admin
   username  String
   expiresAt Float   @map("expires_at")
-  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("refresh_tokens")
 }
