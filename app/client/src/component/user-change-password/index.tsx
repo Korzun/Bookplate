@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Card, Toast } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -15,35 +15,28 @@ export const UserChangePassword = () => {
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [submitCount, setSubmitCount] = useState(0);
-  const handleDismiss = useCallback(() => setToast(null), []);
+  const [dismissedCount, setDismissedCount] = useState(0);
+  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
 
-  useEffect(() => {
-    if (submitCount === 0) return;
-    if (loading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
-    if (error) {
-      setToast({ text: errorMessage ?? 'Password change failed', type: 'error' });
-      return;
-    }
-    if (okay) {
+  const toast = (() => {
+    if (submitCount === 0 || dismissedCount >= submitCount || loading) return null;
+    if (error) return { text: errorMessage ?? 'Password change failed', type: 'error' as const };
+    if (okay) return { text: 'Password changed', type: 'success' as const };
+    return null;
+  })();
+
+  const handleChangePassword = useCallback(() => {
+    setSubmitCount((count) => count + 1);
+    void changeMyPassword(currentPassword, newPassword).then((changed) => {
+      if (!changed) return;
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setIsPasswordValid(false);
-      setToast({ text: 'Password changed', type: 'success' });
       void refetchAuth();
-    }
-  }, [submitCount, loading, okay, error, errorMessage, refetchAuth]);
-
-  const handleChangePassword = useCallback(() => {
-    setSubmitCount((count) => count + 1);
-    changeMyPassword(currentPassword, newPassword);
-  }, [changeMyPassword, currentPassword, newPassword]);
+    });
+  }, [changeMyPassword, currentPassword, newPassword, refetchAuth]);
 
   const handleCurrentPasswordChange = useCallback((newValue: string | undefined) => {
     setCurrentPassword(newValue ?? '');

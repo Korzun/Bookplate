@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Toast } from '~/component';
 import { useResetUserPassword } from '~/provider/user';
@@ -15,26 +15,16 @@ export const ResetPasswordButton = ({ username }: ResetPasswordButtonProps) => {
   const [resetUserPassword, resetting, resetError] = useResetUserPassword();
 
   const [showConfirm, setShowConfirm] = useState(false);
-  const [showResult, setShowResult] = useState(false);
   const [password, setPassword] = useState<string | null>(null);
   const [resetCount, setResetCount] = useState(0);
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [dismissedCount, setDismissedCount] = useState(0);
 
-  useEffect(() => {
-    if (resetCount === 0) return;
-    if (resetting) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
-    if (resetError) {
-      setToast({ text: 'Failed to reset password', type: 'error' });
-      return;
-    }
-    if (password) {
-      setShowResult(true);
-    }
-  }, [resetCount, resetting, resetError, password]);
+  const showResult = password !== null;
+  const toast = (() => {
+    if (resetCount === 0 || dismissedCount >= resetCount || resetting) return null;
+    if (resetError) return { text: 'Failed to reset password', type: 'error' as const };
+    return null;
+  })();
 
   const handleClick = useCallback(() => setShowConfirm(true), []);
   const handleCancel = useCallback(() => setShowConfirm(false), []);
@@ -44,10 +34,9 @@ export const ResetPasswordButton = ({ username }: ResetPasswordButtonProps) => {
     void resetUserPassword(username).then(setPassword);
   }, [resetUserPassword, username]);
   const handleDone = useCallback(() => {
-    setShowResult(false);
     setPassword(null);
   }, []);
-  const handleToastDismiss = useCallback(() => setToast(null), []);
+  const handleToastDismiss = useCallback(() => setDismissedCount(resetCount), [resetCount]);
 
   return (
     <Fragment>

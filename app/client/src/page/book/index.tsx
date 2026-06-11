@@ -163,15 +163,17 @@ export const BookPage = () => {
           <Button onClick={() => setProgressModalOpen(true)}>Set progress</Button>
         </div>
       )}
-      <SetProgressModal
-        isOpen={progressModalOpen}
-        bookId={book.id}
-        chapterCount={book.chapterCount}
-        initialChapter={progress?.currentChapter ?? 0}
-        chapterSpineMap={book.chapterSpineMap ?? []}
-        chapterNames={book.chapterNames ?? []}
-        onClose={() => setProgressModalOpen(false)}
-      />
+      {progressModalOpen && (
+        <SetProgressModal
+          isOpen
+          bookId={book.id}
+          chapterCount={book.chapterCount}
+          initialChapter={progress?.currentChapter ?? 0}
+          chapterSpineMap={book.chapterSpineMap ?? []}
+          chapterNames={book.chapterNames ?? []}
+          onClose={() => setProgressModalOpen(false)}
+        />
+      )}
     </Page>
   );
 };

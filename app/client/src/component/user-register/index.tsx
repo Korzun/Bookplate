@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Card, Toast } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -12,25 +12,16 @@ export const UserRegister = () => {
   const [registerUser, loading, okay, error, errorMessage] = useRegisterUser();
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [submitCount, setSubmitCount] = useState(0);
-  const handleDismiss = useCallback(() => setToast(null), []);
+  const [dismissedCount, setDismissedCount] = useState(0);
+  const handleDismiss = useCallback(() => setDismissedCount(submitCount), [submitCount]);
 
-  useEffect(() => {
-    if (submitCount === 0) return;
-    if (loading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
-    if (error) {
-      setToast({ text: errorMessage ?? 'Registration failed', type: 'error' });
-      return;
-    }
-    if (okay) {
-      setToast({ text: 'User registered', type: 'success' });
-    }
-  }, [submitCount, loading, okay, error, errorMessage]);
+  const toast = (() => {
+    if (submitCount === 0 || dismissedCount >= submitCount || loading) return null;
+    if (error) return { text: errorMessage ?? 'Registration failed', type: 'error' as const };
+    if (okay) return { text: 'User registered', type: 'success' as const };
+    return null;
+  })();
 
   const handleRegisterUser = useCallback(() => {
     setSubmitCount((c) => c + 1);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Button } from '~/control/button';
 import { useScanLibrary } from '~/provider/book';
@@ -15,38 +15,44 @@ export const LibraryScan = ({ disabled }: Props) => {
   const styles = useStyle();
 
   const [scanLibrary, scanResult, scanning, error] = useScanLibrary();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [scanCount, setScanCount] = useState(0);
+  const [dismissedCount, setDismissedCount] = useState(0);
 
-  useEffect(() => {
-    if (scanning) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToast(null);
-      return;
-    }
-    if (error) {
-      setToast({ message: 'Scan failed', type: 'error' });
-      return;
-    }
+  const handleScan = useCallback(() => {
+    setScanCount((c) => c + 1);
+    void scanLibrary();
+  }, [scanLibrary]);
+  const handleDismiss = useCallback(() => setDismissedCount(scanCount), [scanCount]);
+
+  const toast = (() => {
+    if (scanCount === 0 || dismissedCount >= scanCount || scanning) return null;
+    if (error) return { message: 'Scan failed', type: 'error' as const };
     if (scanResult !== undefined) {
       const changed = scanResult.imported.length + scanResult.removed.length;
-      setToast({
+      return {
         message:
           changed === 0
             ? 'Library already up to date'
             : `Scan complete: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed`,
-        type: 'success',
-      });
+        type: 'success' as const,
+      };
     }
-  }, [scanning, error, scanResult]);
-
-  const handleDismiss = useCallback(() => setToast(null), []);
+    return null;
+  })();
 
   return (
     <div className={styles.root}>
-      <Button disabled={disabled} loading={scanning} onClick={scanLibrary}>
+      <Button disabled={disabled} loading={scanning} onClick={handleScan}>
         {scanning ? 'Scanning…' : 'Library scan'}
       </Button>
-      {toast && <Toast message={toast.message} type={toast.type} onDismiss={handleDismiss} />}
+      {toast && (
+        <Toast
+          key={scanCount}
+          message={toast.message}
+          type={toast.type}
+          onDismiss={handleDismiss}
+        />
+      )}
     </div>
   );
 };

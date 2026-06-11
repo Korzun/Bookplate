@@ -14,9 +14,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const fetchMe = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(false);
-      setErrorMessage(undefined);
       const response = await fetch('/api/me');
       if (!response.ok) {
         throw new Error('Not authenticated');
@@ -41,9 +38,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setLoading(false);
     }
   }, []);
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    setErrorMessage(undefined);
+    await fetchMe();
+  }, [fetchMe]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchMe();
+    const load = async () => {
+      await fetchMe();
+    };
+    void load();
   }, [fetchMe]);
 
   const state = useMemo(
@@ -55,12 +60,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setIsAdmin,
         mustChangePassword,
         setMustChangePassword,
-        refetch: fetchMe,
+        refetch,
         loading,
         error,
         errorMessage,
       }) as AuthContext,
-    [username, isAdmin, mustChangePassword, loading, error, errorMessage, fetchMe]
+    [username, isAdmin, mustChangePassword, loading, error, errorMessage, refetch]
   );
 
   return <Context.Provider value={state}>{children}</Context.Provider>;

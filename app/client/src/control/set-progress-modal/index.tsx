@@ -47,13 +47,9 @@ export function SetProgressModal({
     if (!modal) return;
     if (isOpen) {
       modal.showModal();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedChapter(initialChapter);
     } else {
       modal.close();
     }
-    // initialChapter intentionally excluded — only reset on open, not while open
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Close when the API call completes without error
