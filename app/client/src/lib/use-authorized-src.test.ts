@@ -16,6 +16,9 @@ const makeOkResponse = (blob: Blob) => ({
 const createObjectURL = vi.fn(() => 'blob:test-url');
 const revokeObjectURL = vi.fn();
 
+const origCreateObjectURL = URL.createObjectURL;
+const origRevokeObjectURL = URL.revokeObjectURL;
+
 beforeEach(() => {
   URL.createObjectURL = createObjectURL;
   URL.revokeObjectURL = revokeObjectURL;
@@ -25,6 +28,8 @@ afterEach(() => {
   mockApiFetch.mockReset();
   createObjectURL.mockReset().mockReturnValue('blob:test-url');
   revokeObjectURL.mockReset();
+  URL.createObjectURL = origCreateObjectURL;
+  URL.revokeObjectURL = origRevokeObjectURL;
 });
 
 describe('useAuthorizedSrc', () => {
@@ -86,5 +91,44 @@ describe('useAuthorizedSrc', () => {
     await waitFor(() => expect(result.current).toBe('blob:to-revoke'));
     unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:to-revoke');
+  });
+
+  it('revokes the blob URL and clears src when url changes to null', async () => {
+    const blob = new Blob(['img'], { type: 'image/jpeg' });
+    createObjectURL.mockReturnValueOnce('blob:url-to-clear');
+    mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
+
+    const { result, rerender } = renderHook(
+      ({ url }: { url: string | null }) => useAuthorizedSrc(url),
+      { initialProps: { url: '/api/books/book1/cover' as string | null } }
+    );
+
+    await waitFor(() => expect(result.current).toBe('blob:url-to-clear'));
+
+    rerender({ url: null });
+
+    await waitFor(() => expect(result.current).toBeUndefined());
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:url-to-clear');
+  });
+
+  it('revokes the old blob URL and clears src when the new fetch returns non-ok', async () => {
+    const blob = new Blob(['img'], { type: 'image/jpeg' });
+    createObjectURL.mockReturnValueOnce('blob:stale-url');
+    mockApiFetch
+      .mockResolvedValueOnce(makeOkResponse(blob) as Response)
+      .mockResolvedValueOnce({ ok: false } as Response);
+
+    const { result, rerender } = renderHook(
+      ({ url }: { url: string | null }) => useAuthorizedSrc(url),
+      { initialProps: { url: '/api/books/book1/cover' as string | null } }
+    );
+
+    await waitFor(() => expect(result.current).toBe('blob:stale-url'));
+
+    rerender({ url: '/api/books/book2/cover' });
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(2));
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:stale-url');
+    expect(result.current).toBeUndefined();
   });
 });

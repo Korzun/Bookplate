@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Create `useAuthorizedSrc` hook (TDD)
+## Task 1: Create `useAuthorizedSrc` hook (TDD)
 
 **Files:**
 - Create: `app/client/src/lib/use-authorized-src.ts`
