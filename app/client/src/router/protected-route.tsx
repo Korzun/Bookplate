@@ -8,14 +8,17 @@ export const ProtectedRoute = () => {
   const [username, loading] = useUsername();
   const [mustChangePassword] = useMustChangePassword();
   const location = useLocation();
-  if (loading === true) {
+  if (!username && loading === true) {
     return <div>loading...</div>;
   }
   if (!username) {
     return <Navigate to={path.login()} state={{ from: location }} replace />;
   }
-  if (mustChangePassword && location.pathname !== path.user()) {
-    return <Navigate to={path.user()} replace />;
+  if (!mustChangePassword && location.pathname === path.passwordReset()) {
+    return <Navigate to={path.home()} replace />;
+  }
+  if (mustChangePassword && location.pathname !== path.passwordReset()) {
+    return <Navigate to={path.passwordReset()} replace />;
   }
   return <Outlet />;
 };

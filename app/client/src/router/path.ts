@@ -5,6 +5,7 @@ export const bookEdit = (bookId: string) => pathInternal.bookEdit(encodeURICompo
 export const home = () => pathInternal.home();
 export const library = () => pathInternal.library();
 export const series = (seriesName: string) => pathInternal.series(encodeURIComponent(seriesName));
+export const passwordReset = () => pathInternal.passwordReset();
 export const upload = () => pathInternal.upload();
 export const user = () => pathInternal.user();
 export const userList = () => pathInternal.userList();

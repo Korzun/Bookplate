@@ -1,37 +1,32 @@
-import { Fragment, useCallback } from 'react';
+import { useCallback } from 'react';
 
 import { Page, MyProgress, UserChangePassword, SyncPassword } from '~/component';
 import { Button } from '~/control';
-import { useIsAdmin, useLogout, useMustChangePassword } from '~/provider/auth';
-
-import { useStyle } from './style';
+import { useIsAdmin, useLogout } from '~/provider/auth';
 
 export const UserPage = () => {
-  const styles = useStyle();
   const [isAdmin] = useIsAdmin();
-  const [mustChangePassword] = useMustChangePassword();
 
   const [logout, loggingOut] = useLogout();
   const handleLogout = useCallback(() => {
     logout();
   }, [logout]);
 
+  if (isAdmin) {
+    return (
+      <Page>
+        <Button loading={loggingOut} onClick={handleLogout} danger>
+          Log out
+        </Button>
+      </Page>
+    );
+  }
+
   return (
     <Page>
-      {mustChangePassword && (
-        <div className={styles.banner}>You must change your password before continuing.</div>
-      )}
-      {!isAdmin && (
-        <Fragment>
-          {!mustChangePassword && (
-            <Fragment>
-              <SyncPassword />
-              <MyProgress />
-            </Fragment>
-          )}
-          <UserChangePassword />
-        </Fragment>
-      )}
+      <SyncPassword />
+      <MyProgress />
+      <UserChangePassword />
       <Button loading={loggingOut} onClick={handleLogout} danger>
         Log out
       </Button>
