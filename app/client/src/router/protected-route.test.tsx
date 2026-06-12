@@ -21,8 +21,10 @@ function renderWithAuth(authState: AuthContextType, initialEntries: string[]) {
         <AuthContext.Provider value={authState}>
           <Routes>
             <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<div>home page</div>} />
               <Route path="/user" element={<div>user page</div>} />
               <Route path="/library" element={<div>library page</div>} />
+              <Route path="/password-reset" element={<div>password reset page</div>} />
             </Route>
             <Route path="/login" element={<div>login page</div>} />
           </Routes>
@@ -47,6 +49,34 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('login page')).toBeInTheDocument();
   });
 
+  it('shows loading when not authenticated and loading', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: undefined,
+        isAdmin: false,
+        mustChangePassword: false,
+        loading: true,
+      },
+      ['/library']
+    );
+    expect(screen.getByText('loading...')).toBeInTheDocument();
+  });
+
+  it('renders the route when authenticated and loading', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'alice',
+        isAdmin: false,
+        mustChangePassword: false,
+        loading: true,
+      },
+      ['/library']
+    );
+    expect(screen.getByText('library page')).toBeInTheDocument();
+  });
+
   it('renders the route when authenticated and mustChangePassword is false', () => {
     renderWithAuth(
       {
@@ -61,7 +91,7 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('library page')).toBeInTheDocument();
   });
 
-  it('redirects to /user when mustChangePassword is true and not already on /user', () => {
+  it('redirects to /password-reset when mustChangePassword is true and not already on /password-reset', () => {
     renderWithAuth(
       {
         ...baseState,
@@ -72,10 +102,10 @@ describe('ProtectedRoute', () => {
       },
       ['/library']
     );
-    expect(screen.getByText('user page')).toBeInTheDocument();
+    expect(screen.getByText('password reset page')).toBeInTheDocument();
   });
 
-  it('renders /user when mustChangePassword is true', () => {
+  it('renders /password-reset when mustChangePassword is true', () => {
     renderWithAuth(
       {
         ...baseState,
@@ -84,8 +114,22 @@ describe('ProtectedRoute', () => {
         mustChangePassword: true,
         loading: false,
       },
-      ['/user']
+      ['/password-reset']
     );
-    expect(screen.getByText('user page')).toBeInTheDocument();
+    expect(screen.getByText('password reset page')).toBeInTheDocument();
+  });
+
+  it('redirects to home when mustChangePassword is false and at /password-reset', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'alice',
+        isAdmin: false,
+        mustChangePassword: false,
+        loading: false,
+      },
+      ['/password-reset']
+    );
+    expect(screen.getByText('home page')).toBeInTheDocument();
   });
 });

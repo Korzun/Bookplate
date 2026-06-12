@@ -1,14 +1,15 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import {
-  BookPage,
   BookEditPage,
+  BookPage,
   LibraryPage,
   LoginPage,
+  PasswordResetPage,
   SeriesPage,
   UploadPage,
-  UserPage,
   UserListPage,
+  UserPage,
 } from '~/page';
 
 import * as path from './path-internal';
@@ -32,6 +33,7 @@ export const AppRouter = () => {
           <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />
           <Route path={path.user()} element={<UserPage />} />
           <Route path={path.userList()} element={<UserListPage />} />
+          <Route path={path.passwordReset()} element={<PasswordResetPage />} />
           <Route path="*" element={<Navigate to={path.library()} replace />} />
         </Route>
       </Routes>

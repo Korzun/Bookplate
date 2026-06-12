@@ -1,8 +1,9 @@
-export { BookPage } from './book';
 export { BookEditPage } from './book-edit';
+export { BookPage } from './book';
 export { LibraryPage } from './library';
 export { LoginPage } from './login';
+export { PasswordResetPage } from './password-reset';
 export { SeriesPage } from './series';
 export { UploadPage } from './upload';
-export { UserPage } from './user';
 export { UserListPage } from './user-list';
+export { UserPage } from './user';
