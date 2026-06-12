@@ -14,7 +14,7 @@ export const ChevronCircleIcon = (props: IconProps) => {
       viewBox="0 0 24 24"
       fill={fill}
       stroke={stroke}
-      stroke-width={strokeWidth}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
