@@ -5,11 +5,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    marginBottom: theme.space.md,
+    // border: `1px solid ${theme.color.border.default}`,
+    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    backgroundColor: theme.color.gray[100],
   },
   password: {
     fontFamily: 'monospace',
-    fontSize: '1.1em',
     flex: 1,
+    color: theme.color.text.primary
   },
 }));
