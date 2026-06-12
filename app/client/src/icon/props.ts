@@ -1,7 +1,9 @@
 export type IconProps = {
+  'aria-label'?: string;
   className?: string;
   fill?: string;
   height?: number;
+  role?: string;
   stroke?: string;
   strokeWidth?: number;
   width?: number;
