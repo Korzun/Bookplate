@@ -45,14 +45,14 @@ describe('useAuthorizedSrc', () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob);
   });
 
-  it('returns undefined for a non-ok response', async () => {
+  it('returns undefined for a non-ok response without creating a blob URL', async () => {
     mockApiFetch.mockResolvedValueOnce({ ok: false } as Response);
 
     const { result } = renderHook(() => useAuthorizedSrc('/api/books/book1/cover'));
 
-    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled());
-    expect(result.current).toBeUndefined();
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/api/books/book1/cover'));
     expect(createObjectURL).not.toHaveBeenCalled();
+    expect(result.current).toBeUndefined();
   });
 
   it('revokes the old blob URL and fetches a new one when url changes', async () => {

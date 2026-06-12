@@ -29,7 +29,6 @@ export function useAuthorizedSrc(url: string | null): string | undefined {
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
-      setSrc(undefined);
     };
   }, [url]);
 
