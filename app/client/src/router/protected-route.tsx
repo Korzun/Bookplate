@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
+import { LoadingPage } from '../page';
 import { useMustChangePassword, useUsername } from '../provider/auth';
 
 import * as path from './path-internal';
@@ -9,7 +10,7 @@ export const ProtectedRoute = () => {
   const [mustChangePassword] = useMustChangePassword();
   const location = useLocation();
   if (!username && loading === true) {
-    return <div>loading...</div>;
+    return <LoadingPage />;
   }
   if (!username) {
     return <Navigate to={path.login()} state={{ from: location }} replace />;

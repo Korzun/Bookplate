@@ -60,7 +60,7 @@ describe('ProtectedRoute', () => {
       },
       ['/library']
     );
-    expect(screen.getByText('loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
   });
 
   it('renders the route when authenticated and loading', () => {

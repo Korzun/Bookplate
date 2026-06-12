@@ -1,6 +1,7 @@
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
 export { LibraryPage } from './library';
+export { LoadingPage } from './loading';
 export { LoginPage } from './login';
 export { PasswordResetPage } from './password-reset';
 export { SeriesPage } from './series';
