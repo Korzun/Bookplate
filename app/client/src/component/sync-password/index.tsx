@@ -6,6 +6,7 @@ import { useToast } from '~/provider/toast';
 import { useRegenerateSyncPassword, useSyncPassword } from '~/provider/user';
 
 import { useStyle } from './style';
+import { AlertOctagonIcon } from '~/icon';
 
 export const SyncPassword = () => {
   const styles = useStyle();
@@ -28,18 +29,30 @@ export const SyncPassword = () => {
   const handleRegenerateClick = useCallback(() => setShowConfirm(true), []);
   const handleCancel = useCallback(() => setShowConfirm(false), []);
   const handleConfirm = useCallback(async () => {
-    setShowConfirm(false);
     const ok = await regenerate();
     if (ok) {
       showToast('Sync password regenerated', 'success');
     } else {
       showToast('Failed to regenerate sync password', 'error');
     }
+    setShowConfirm(false);
   }, [regenerate, showToast]);
+
+  const regenerateElement = [
+    <Button
+      type="link"
+      danger
+      loading={regenerating}
+      disabled={loadingFetch}
+      onClick={handleRegenerateClick}
+    >
+      Regenerate
+    </Button>
+  ];
 
   return (
     <Fragment>
-      <Card isCollapsible defaultCollapsed title="Sync password">
+      <Card title="Sync password" headerAction={regenerateElement}>
         {fetchError && <div>Failed to load sync password.</div>}
         {!fetchError && (
           <div className={styles.row}>
@@ -47,23 +60,17 @@ export const SyncPassword = () => {
             <Button type="default" disabled={!displayPassword || loadingFetch} onClick={handleCopy}>
               {copied ? 'Copied!' : 'Copy'}
             </Button>
-            <Button
-              type="default"
-              loading={regenerating}
-              disabled={loadingFetch}
-              onClick={handleRegenerateClick}
-            >
-              Regenerate
-            </Button>
           </div>
         )}
       </Card>
-
       <ConfirmModal
         isOpen={showConfirm}
+        icon={AlertOctagonIcon}
         title="Regenerate sync password?"
         confirmText="Regenerate"
         cancelText="Cancel"
+        danger
+        loading={regenerating}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       >
