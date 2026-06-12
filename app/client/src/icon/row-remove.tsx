@@ -2,15 +2,17 @@ import { IconProps, defaultStrokeIconProps } from './props';
 
 // https://tabler.io/icons?icon=row-remove
 export const RowRemoveIcon = (props: IconProps) => {
-  const { className, fill, height, width, stroke, strokeWidth } = {
+  const { 'aria-label': ariaLabel, className, fill, height, role, stroke, strokeWidth, width } = {
     ...defaultStrokeIconProps,
     ...props,
   };
   return (
     <svg
+      aria-label={ariaLabel}
       className={className}
       fill={fill}
       height={height}
+      role={role}
       stroke={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"

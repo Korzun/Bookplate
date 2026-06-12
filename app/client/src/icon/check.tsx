@@ -2,13 +2,15 @@ import { IconProps, defaultFilledIconProps } from './props';
 
 // https://tabler.io/icons?icon=check
 export const CheckIcon = (props: IconProps) => {
-  const { className, fill, height, width } = { ...defaultFilledIconProps, ...props };
+  const { 'aria-label': ariaLabel, className, fill, height, role, width } = { ...defaultFilledIconProps, ...props };
 
   return (
     <svg
+      aria-label={ariaLabel}
       className={className}
       fill={fill}
       height={height}
+      role={role}
       viewBox="0 0 24 24"
       width={width}
       xmlns="http://www.w3.org/2000/svg"

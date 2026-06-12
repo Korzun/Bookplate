@@ -1,18 +1,23 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
 export const SpinnerIcon = (props: IconProps) => {
-  const { className, stroke, strokeWidth, height, width } = { ...defaultStrokeIconProps, ...props };
+  const { 'aria-label': ariaLabel, className, height, role, stroke, strokeWidth, width } = {
+    ...defaultStrokeIconProps,
+    ...props,
+  };
 
   return (
     <svg
+      aria-label={ariaLabel}
       className={className}
-      width={width}
-      height={height}
-      viewBox="0 0 24 24"
-      stroke={stroke}
       fill="none"
-      strokeWidth={strokeWidth}
+      height={height}
+      role={role}
+      stroke={stroke}
       strokeLinecap="round"
+      strokeWidth={strokeWidth}
+      viewBox="0 0 24 24"
+      width={width}
       xmlns="http://www.w3.org/2000/svg"
     >
       <path d="M12,1 C18,1 23,6 23,12" />

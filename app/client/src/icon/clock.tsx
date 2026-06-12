@@ -2,16 +2,18 @@ import { IconProps, defaultStrokeIconProps } from './props';
 
 // https://tabler.io/icons/icon/clock
 export const ClockIcon = (props: IconProps) => {
-  const { className, fill, height, stroke, strokeWidth, width } = {
+  const { 'aria-label': ariaLabel, className, fill, height, role, stroke, strokeWidth, width } = {
     ...defaultStrokeIconProps,
     ...props,
   };
 
   return (
     <svg
+      aria-label={ariaLabel}
       className={className}
       fill={fill}
       height={height}
+      role={role}
       stroke={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"
