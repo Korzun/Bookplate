@@ -2,11 +2,11 @@ import { Fragment, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, ConfirmModal } from '~/control';
+import { AlertOctagonIcon } from '~/icon';
 import { useToast } from '~/provider/toast';
 import { useRegenerateSyncPassword, useSyncPassword } from '~/provider/user';
 
 import { useStyle } from './style';
-import { AlertOctagonIcon } from '~/icon';
 
 export const SyncPassword = () => {
   const styles = useStyle();
@@ -47,7 +47,7 @@ export const SyncPassword = () => {
       onClick={handleRegenerateClick}
     >
       Regenerate
-    </Button>
+    </Button>,
   ];
 
   return (

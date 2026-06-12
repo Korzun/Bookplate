@@ -15,7 +15,7 @@ export const PasswordResetPage = () => {
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [_isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
+  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const handleChangePassword = useCallback(async () => {
     const changed = await changeMyPassword(currentPassword, newPassword);
@@ -41,6 +41,14 @@ export const PasswordResetPage = () => {
   const handleConfirmPasswordChange = useCallback((newValue: string | undefined) => {
     setConfirmPassword(newValue ?? '');
   }, []);
+  const handleSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      void handleChangePassword();
+    },
+    [handleChangePassword]
+  );
+
   const handleConfirmPasswordValidation = useCallback(
     (newValue: string): boolean => {
       const isValid = newPassword.length > 0 && newValue.length > 0 && newValue === newPassword;
@@ -58,39 +66,46 @@ export const PasswordResetPage = () => {
         </h1>
         <Card className={styles.card}>
           <div className={styles.banner}>You must change your password before continuing.</div>
-          <div className={styles.inputContainer}>
-            <TextInput
-              name="current-password"
-              password
-              value={currentPassword}
-              onChange={handleCurrentPasswordChange}
-              layout="horizontal"
-              placeholder="Current Password"
-              autoComplete="off"
-            />
-            <TextInput
-              name="new-password"
-              password
-              value={newPassword}
-              onChange={handleNewPasswordChange}
-              layout="horizontal"
-              placeholder="New Password"
-              autoComplete="off"
-            />
-            <TextInput
-              name="confirm-new-password"
-              password
-              value={confirmPassword}
-              onChange={handleConfirmPasswordChange}
-              layout="horizontal"
-              placeholder="Confirm New Password"
-              autoComplete="off"
-              validate={handleConfirmPasswordValidation}
-            />
-          </div>
-          <Button loading={loading} type="primary" onClick={handleChangePassword}>
-            Change password
-          </Button>
+          <form onSubmit={handleSubmit}>
+            <div className={styles.inputContainer}>
+              <TextInput
+                name="current-password"
+                password
+                value={currentPassword}
+                onChange={handleCurrentPasswordChange}
+                layout="horizontal"
+                placeholder="Current Password"
+                autoComplete="current-password"
+              />
+              <TextInput
+                name="new-password"
+                password
+                value={newPassword}
+                onChange={handleNewPasswordChange}
+                layout="horizontal"
+                placeholder="New Password"
+                autoComplete="new-password"
+              />
+              <TextInput
+                name="confirm-new-password"
+                password
+                value={confirmPassword}
+                onChange={handleConfirmPasswordChange}
+                layout="horizontal"
+                placeholder="Confirm New Password"
+                autoComplete="new-password"
+                validate={handleConfirmPasswordValidation}
+              />
+            </div>
+            <Button
+              disabled={!currentPassword || !newPassword || !isPasswordValid}
+              loading={loading}
+              type="primary"
+              onClick={handleChangePassword}
+            >
+              Change password
+            </Button>
+          </form>
         </Card>
       </div>
     </Page>
