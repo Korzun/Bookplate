@@ -2,7 +2,16 @@ import { IconProps, defaultStrokeIconProps } from './props';
 
 // https://tabler.io/icons?icon=users
 export const UsersIcon = (props: IconProps) => {
-  const { 'aria-label': ariaLabel, className, fill, height, role, stroke, strokeWidth, width } = {
+  const {
+    'aria-label': ariaLabel,
+    className,
+    fill,
+    height,
+    role,
+    stroke,
+    strokeWidth,
+    width,
+  } = {
     ...defaultStrokeIconProps,
     ...props,
   };

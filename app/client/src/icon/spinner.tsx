@@ -1,7 +1,15 @@
 import { IconProps, defaultStrokeIconProps } from './props';
 
 export const SpinnerIcon = (props: IconProps) => {
-  const { 'aria-label': ariaLabel, className, height, role, stroke, strokeWidth, width } = {
+  const {
+    'aria-label': ariaLabel,
+    className,
+    height,
+    role,
+    stroke,
+    strokeWidth,
+    width,
+  } = {
     ...defaultStrokeIconProps,
     ...props,
   };

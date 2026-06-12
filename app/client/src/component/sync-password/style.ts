@@ -13,6 +13,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   password: {
     fontFamily: 'monospace',
     flex: 1,
-    color: theme.color.text.primary
+    color: theme.color.text.primary,
   },
 }));

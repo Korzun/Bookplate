@@ -2,7 +2,16 @@ import { IconProps, defaultStrokeIconProps } from './props';
 
 // https://tabler.io/icons?icon=chevron-right
 export const ChevronIcon = (props: IconProps) => {
-  const { 'aria-label': ariaLabel, className, fill, height, role, stroke, strokeWidth, width } = {
+  const {
+    'aria-label': ariaLabel,
+    className,
+    fill,
+    height,
+    role,
+    stroke,
+    strokeWidth,
+    width,
+  } = {
     ...defaultStrokeIconProps,
     ...props,
   };

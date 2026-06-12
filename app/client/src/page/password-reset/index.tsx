@@ -3,8 +3,8 @@ import { useCallback, useState } from 'react';
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { BooksIcon } from '~/icon';
-import { useChangeMyPassword } from '~/provider/user';
 import { useToast } from '~/provider/toast';
+import { useChangeMyPassword } from '~/provider/user';
 
 import { useStyle } from './style';
 
@@ -15,7 +15,7 @@ export const PasswordResetPage = () => {
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
+  const [_isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const handleChangePassword = useCallback(async () => {
     const changed = await changeMyPassword(currentPassword, newPassword);
@@ -65,7 +65,7 @@ export const PasswordResetPage = () => {
               value={currentPassword}
               onChange={handleCurrentPasswordChange}
               layout="horizontal"
-              placeholder='Current Password'
+              placeholder="Current Password"
               autoComplete="off"
             />
             <TextInput
@@ -74,7 +74,7 @@ export const PasswordResetPage = () => {
               value={newPassword}
               onChange={handleNewPasswordChange}
               layout="horizontal"
-              placeholder='New Password'
+              placeholder="New Password"
               autoComplete="off"
             />
             <TextInput
@@ -83,7 +83,7 @@ export const PasswordResetPage = () => {
               value={confirmPassword}
               onChange={handleConfirmPasswordChange}
               layout="horizontal"
-              placeholder='Confirm New Password'
+              placeholder="Confirm New Password"
               autoComplete="off"
               validate={handleConfirmPasswordValidation}
             />
