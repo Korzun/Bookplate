@@ -75,7 +75,7 @@ export function ConfirmModal({
         </div>
         <div className={styles.body}>{children}</div>
         <div className={styles.footer}>
-          <Button onClick={handleCancel} loading={loading} type="text">
+          <Button onClick={handleCancel} disabled={loading} type="text">
             {cancelText}
           </Button>
           <Button onClick={handleConfirm} loading={loading} type="primary" danger={danger}>
