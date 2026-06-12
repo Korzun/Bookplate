@@ -1337,6 +1337,37 @@ describe('parseEpub', () => {
       expect(meta.chapterNames).toEqual(['Chapter 1']);
     });
 
+    it('decodes numeric HTML entities in chapter names from EPUB 3 nav', () => {
+      const filePath = path.join(tmpDir, 'entity-nav-chapter.epub');
+      fs.writeFileSync(
+        filePath,
+        makeEpubWithNav([
+          { title: '3: you&#8217;re on your way', href: 'ch3.xhtml' },
+          { title: '5: you&#8217;re not alone', href: 'ch5.xhtml' },
+          { title: 'Part One&#8212;The Beginning', href: 'ch6.xhtml' },
+        ])
+      );
+      const meta = parseEpub(filePath);
+      expect(meta.chapterNames).toEqual([
+        '3: you’re on your way',
+        '5: you’re not alone',
+        'Part One—The Beginning',
+      ]);
+    });
+
+    it('decodes numeric HTML entities in chapter names from EPUB 2 NCX', () => {
+      const filePath = path.join(tmpDir, 'entity-ncx-chapter.epub');
+      fs.writeFileSync(
+        filePath,
+        makeEpubWithNcx([
+          { title: '5: you&#8217;re not alone', href: 'ch5.xhtml' },
+          { title: 'Part Two&#8212;The End', href: 'ch6.xhtml' },
+        ])
+      );
+      const meta = parseEpub(filePath);
+      expect(meta.chapterNames).toEqual(['5: you’re not alone', 'Part Two—The End']);
+    });
+
     it('deny list does not filter prologue, epilogue, or numbered chapters', () => {
       const filePath = path.join(tmpDir, 'deny-safe.epub');
       fs.writeFileSync(
