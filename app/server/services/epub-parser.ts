@@ -39,7 +39,7 @@ function flattenNavOl(ol: unknown, leafOnly = true): { href: string; title: stri
     if (!leafOnly || !hasChildren) {
       if (aNode && typeof aNode === 'object') {
         const href = (aNode as Record<string, string>)['@_href'];
-        const title = ((aNode as Record<string, string>)['#text'] ?? '').trim();
+        const title = decodeEntities(((aNode as Record<string, string>)['#text'] ?? '').trim());
         if (href) result.push({ href, title });
       }
     }
@@ -56,7 +56,7 @@ function flattenNcxNavPoints(
   for (const np of navPoints as Array<Record<string, unknown>>) {
     const src = (np.content as Record<string, string> | undefined)?.['@_src'];
     const navLabel = np.navLabel as Record<string, unknown> | undefined;
-    const title = ((navLabel?.text as string | undefined) ?? '').trim();
+    const title = decodeEntities(((navLabel?.text as string | undefined) ?? '').trim());
     const hasChildren = !!np.navPoint;
     if (!leafOnly || !hasChildren) {
       if (src) result.push({ href: src, title });
