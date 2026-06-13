@@ -223,3 +223,50 @@ describe('KOSync lineage resolution', () => {
     expect(res.body.percentage).toBeCloseTo(0.5);
   });
 });
+
+describe('PUT /kosync/syncs/progress — history', () => {
+  beforeEach(async () => {
+    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+  });
+
+  it('creates a history row on first sync', async () => {
+    await request(app)
+      .put('/kosync/syncs/progress')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .send({
+        document: 'docHash123',
+        progress: '/body/DocFragment[5]',
+        percentage: 0.42,
+        device: 'Kobo',
+        device_id: 'dev-1',
+      });
+
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
+    const rows = await prisma.progressHistory.findMany({ where: { userId: alice!.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].progress).toBe('/body/DocFragment[5]');
+    expect(rows[0].startTimestamp).toBe(rows[0].endTimestamp);
+  });
+
+  it('collapses two immediate syncs of the same position into one dwell row', async () => {
+    const body = {
+      document: 'docHash123',
+      progress: '/body/DocFragment[5]',
+      percentage: 0.42,
+      device: 'Kobo',
+      device_id: 'dev-1',
+    };
+    await request(app)
+      .put('/kosync/syncs/progress')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .send(body);
+    await request(app)
+      .put('/kosync/syncs/progress')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .send(body);
+
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
+    const rows = await prisma.progressHistory.findMany({ where: { userId: alice!.id } });
+    expect(rows).toHaveLength(1);
+  });
+});
