@@ -77,6 +77,10 @@ History write failures are non-fatal. The KOSync `PUT /syncs/progress` response 
 | Different position | New history row; prior row untouched |
 | Different device, same position | New history row (separate device dwell) |
 
+## Clearing Progress
+
+`UserStore.clearProgress` deletes the current-position row from `Progress` but does **not** touch `ProgressHistory`. The history is an audit trail — it survives a progress reset and remains available for the future UI. Only deleting the user cascades the history rows.
+
 ## Out of Scope
 
 - Retention / pruning policy (unlimited rows for now)
