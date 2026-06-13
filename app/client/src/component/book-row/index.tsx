@@ -34,7 +34,9 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
   }, [book, navigate]);
 
   const coverSrc = useAuthorizedSrc(
-    book?.hasCover ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=60`) : null
+    book?.hasCover
+      ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=60`)
+      : null
   );
 
   if (loading) {
