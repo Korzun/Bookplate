@@ -1868,3 +1868,109 @@ describe('unlinkDocument', () => {
     expect(progress!.percentage).toBe(0.6);
   });
 });
+
+describe('BookStore.listBooksPage()', () => {
+  it('returns empty result for an empty library', async () => {
+    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    expect(result).toEqual({ items: [], books: [], nextCursor: null });
+  });
+
+  it('returns standalone books as display units', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '' });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '' });
+    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    expect(result.items).toEqual([
+      { type: 'standalone', bookId: 'b1' },
+      { type: 'standalone', bookId: 'b2' },
+    ]);
+    expect(result.books).toHaveLength(2);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('returns a series as a single display unit', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Dune 2',
+      series: 'Dune',
+    });
+    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+    expect(result.books).toHaveLength(2);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('includes all series books in the books array even when only one item is a series', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'D1',
+      series: 'Dune',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'D2',
+      series: 'Dune',
+    });
+    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const ids = result.books.map((b) => b.id).sort();
+    expect(ids).toEqual(['b1', 'b2'].sort());
+  });
+
+  it('merges series and standalones in title/name order', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Apple', series: '' });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Cherry',
+      series: 'Banana',
+    });
+    await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Dates', series: '' });
+    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    expect(result.items).toEqual([
+      { type: 'standalone', bookId: 'b1' },
+      { type: 'series', seriesName: 'Banana' },
+      { type: 'standalone', bookId: 'b3' },
+    ]);
+  });
+
+  it('returns nextCursor when take is less than total display units', async () => {
+    for (let i = 1; i <= 5; i++) {
+      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+        ...FAKE_META,
+        title: `Book ${String.fromCharCode(64 + i)}`,
+        series: '',
+      });
+    }
+    const result = await bookStore.listBooksPage(OWNER, '', 3);
+    expect(result.items).toHaveLength(3);
+    expect(result.nextCursor).not.toBeNull();
+  });
+
+  it('advances the cursor to load the next page', async () => {
+    for (let i = 1; i <= 4; i++) {
+      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+        ...FAKE_META,
+        title: `Book ${String.fromCharCode(64 + i)}`,
+        series: '',
+      });
+    }
+    const page1 = await bookStore.listBooksPage(OWNER, '', 2);
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await bookStore.listBooksPage(
+      OWNER,
+      Buffer.from(page1.nextCursor!, 'base64').toString('utf-8'),
+      2
+    );
+    expect(page2.items).toHaveLength(2);
+    expect(page2.nextCursor).toBeNull();
+    const allIds = [...page1.items, ...page2.items].map((item) =>
+      item.type === 'standalone' ? item.bookId : item.seriesName
+    );
+    expect(new Set(allIds).size).toBe(4);
+  });
+});
