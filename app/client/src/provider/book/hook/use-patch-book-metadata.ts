@@ -11,7 +11,9 @@ export type BookMetadataPatch = Partial<{
   author: string;
   cover: File;
   description: string;
-  fileAs: string;
+  titleSort: string;
+  authorSort: string;
+  publishDate: string;
   identifiers: { scheme: string; value: string }[];
   publisher: string;
   series: string;

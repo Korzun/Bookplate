@@ -4,7 +4,9 @@ export type Book = {
   id: string;
   title: string;
   author: string;
-  fileAs: string;
+  titleSort?: string;
+  authorSort?: string;
+  publishDate?: string;
   publisher?: string;
   series: string;
   seriesIndex: number;
