@@ -30,8 +30,13 @@ export type DisplayUnit =
   | { type: 'standalone'; bookId: string }
   | { type: 'series'; seriesName: string };
 
+export type BookSummary = Omit<
+  Book,
+  'description' | 'identifiers' | 'subjects' | 'addedAt' | 'chapterSpineMap' | 'chapterNames'
+>;
+
 export type PagedBookListResponse = {
   items: DisplayUnit[];
-  books: Book[];
+  books: BookSummary[];
   nextCursor: string | null;
 };

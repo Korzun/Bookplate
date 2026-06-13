@@ -19,11 +19,12 @@ export const LibraryPage = () => {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (hasError || bookListLoading || nextCursor === null) return;
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0]?.isIntersecting) {
           void fetchNextPage();
         }
       },
@@ -31,7 +32,7 @@ export const LibraryPage = () => {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchNextPage]);
+  }, [fetchNextPage, hasError, bookListLoading, nextCursor]);
 
   if (isAdmin && !targetUsername) {
     return (

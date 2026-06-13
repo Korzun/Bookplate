@@ -89,7 +89,10 @@ beforeEach(() => {
         });
       }
       // /api/books — called by fetchBookList
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) });
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      });
     })
   );
 });

@@ -108,7 +108,7 @@ describe('useFetchNextPage', () => {
   });
 
   it('fetches with the cursor URL-encoded', async () => {
-    const cursor = Buffer.from('Book B').toString('base64');
+    const cursor = btoa('Book B');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -128,7 +128,7 @@ describe('useFetchNextPage', () => {
   });
 
   it('appends new items to bookListItems', async () => {
-    const cursor = Buffer.from('Book A').toString('base64');
+    const cursor = btoa('Book A');
     const newBook = makeBook({ id: 'b2', title: 'Book B' });
     const onSetBookListItems = vi.fn();
     vi.stubGlobal(
@@ -158,8 +158,8 @@ describe('useFetchNextPage', () => {
   });
 
   it('updates nextCursor with the value from the response', async () => {
-    const cursor = Buffer.from('Book A').toString('base64');
-    const nextCursorFromServer = Buffer.from('Book B').toString('base64');
+    const cursor = btoa('Book A');
+    const nextCursorFromServer = btoa('Book B');
     const onSetNextCursor = vi.fn();
     vi.stubGlobal(
       'fetch',
@@ -177,7 +177,7 @@ describe('useFetchNextPage', () => {
   });
 
   it('sets error on non-ok response', async () => {
-    const cursor = Buffer.from('X').toString('base64');
+    const cursor = btoa('X');
     const onSetBookListError = vi.fn();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const { result } = renderHook(() => useFetchNextPage(), {
