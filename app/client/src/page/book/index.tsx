@@ -64,8 +64,8 @@ export const BookPage = () => {
   if (book !== undefined) {
     metadata.push({ title: 'size', value: formatSize(book.size) });
   }
-  if (book !== undefined && book.addedAt) {
-    metadata.push({ title: 'added', value: new Date(book.addedAt).toLocaleDateString() });
+  if (book !== undefined && book.publishDate) {
+    metadata.push({ title: 'published', value: book.publishDate });
   }
 
   // Description
