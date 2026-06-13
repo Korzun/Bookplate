@@ -11,7 +11,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: `4rem ${theme.space.xxl}`, // 4rem is library-specific empty-state vertical padding
+    padding: `4rem ${theme.space.xxl}`,
     gap: theme.space.md,
   },
   emptyStateTitle: {
@@ -22,5 +22,20 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   emptyStateSubtitle: {
     fontSize: theme.fontSize.sm,
     color: theme.color.text.faint,
+  },
+  pageError: {
+    textAlign: 'center',
+    padding: theme.space.md,
+    color: theme.color.text.muted,
+    fontSize: theme.fontSize.sm,
+  },
+  retryButton: {
+    marginTop: theme.space.sm,
+    cursor: 'pointer',
+    color: theme.color.text.link,
+    background: 'none',
+    border: 'none',
+    fontSize: theme.fontSize.sm,
+    padding: 0,
   },
 }));
