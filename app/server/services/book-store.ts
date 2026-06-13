@@ -666,6 +666,9 @@ export class BookStore {
   async listBooksPage(owner: Owner, after: string, take: number): Promise<PagedBookListResponse> {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
+    // Note: standalone books are sorted by `title`, not `fileAs || title`. This matches the
+    // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
+    // (listBooks) sorts by fileAs || title, so the two orderings intentionally differ.
     const [seriesRows, standaloneRows] = await Promise.all([
       this.prisma.series.findMany({
         where: { userId: owner.userId, sortKey: { gt: after } },
@@ -680,7 +683,11 @@ export class BookStore {
       }),
     ]);
 
-    // Merge-sort up to take+1 display units to detect overflow
+    // Merge-sort up to take+1 display units to detect overflow.
+    // Use binary string comparison (< and <=) to match SQLite's binary collation used
+    // in the WHERE/ORDER BY clauses above. Using localeCompare here would disagree with
+    // the DB ordering on case and accented characters, causing wrong picks at page
+    // boundaries.
     const merged: Array<
       | { sortKey: string; type: 'series'; row: (typeof seriesRows)[0] }
       | { sortKey: string; type: 'standalone'; row: (typeof standaloneRows)[0] }
@@ -694,7 +701,7 @@ export class BookStore {
       let pickSeries: boolean;
       if (!s) pickSeries = false;
       else if (!b) pickSeries = true;
-      else pickSeries = s.sortKey.localeCompare(b.title) <= 0;
+      else pickSeries = s.sortKey <= b.title;
       if (pickSeries) {
         merged.push({ sortKey: s.sortKey, type: 'series', row: s });
         si++;
