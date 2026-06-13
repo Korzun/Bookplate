@@ -331,9 +331,10 @@ export class BookStore {
   ): Promise<Book | null> {
     const exists = await this.prisma.book.findUnique({
       where: { userId_id: { userId: owner.userId, id } },
-      select: { id: true },
+      select: { id: true, series: true, seriesId: true },
     });
     if (!exists) return null;
+    const oldSeriesId = exists.seriesId;
 
     const filePath = this.bookPath(owner, id);
     let stat: fs.Stats;
@@ -356,6 +357,24 @@ export class BookStore {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      // Resolve new seriesId
+      let newSeriesId: string | null = null;
+      const newSeriesName = meta.series.trim();
+      if (newSeriesName) {
+        const s = await tx.series.upsert({
+          where: { userId_name: { userId: owner.userId, name: newSeriesName } },
+          create: {
+            id: randomUUID(),
+            userId: owner.userId,
+            name: newSeriesName,
+            sortKey: newSeriesName,
+          },
+          update: {},
+          select: { id: true },
+        });
+        newSeriesId = s.id;
+      }
+
       if (newId !== id) {
         const oldPath = this.bookPath(owner, id);
         const newPath = this.bookPath(owner, newId);
@@ -385,6 +404,7 @@ export class BookStore {
             chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
             chapterNames: JSON.stringify(meta.chapterNames),
             pageCount: meta.pageCount,
+            seriesId: newSeriesId,
           },
         });
 
@@ -444,8 +464,17 @@ export class BookStore {
             chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
             chapterNames: JSON.stringify(meta.chapterNames),
             pageCount: meta.pageCount,
+            seriesId: newSeriesId,
           },
         });
+      }
+
+      // Clean up the old Series row if it now has no books
+      if (oldSeriesId && oldSeriesId !== newSeriesId) {
+        const remaining = await tx.book.count({ where: { seriesId: oldSeriesId } });
+        if (remaining === 0) {
+          await tx.series.delete({ where: { id: oldSeriesId } });
+        }
       }
     });
 

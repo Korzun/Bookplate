@@ -368,6 +368,61 @@ describe('Series lifecycle — addBook', () => {
   });
 });
 
+describe('Series lifecycle — reimportBook', () => {
+  function makeImporterWithMeta(meta: Partial<EpubMeta>): ScanImporter {
+    return {
+      parseEpub: () => ({ ...FAKE_META, ...meta }),
+      partialMD5: (fp) => crypto.createHash('md5').update(fp).digest('hex'),
+    };
+  }
+
+  it('upserts a new Series when series name changes', async () => {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), { ...FAKE_META, series: 'Old' });
+    const importer = makeImporterWithMeta({ series: 'New' });
+    await bookStore.reimportBook(OWNER, 'id1', importer);
+    const newRow = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'New' } },
+    });
+    expect(newRow).not.toBeNull();
+  });
+
+  it('deletes the old Series when series name changes and it has no other books', async () => {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), { ...FAKE_META, series: 'Old' });
+    const importer = makeImporterWithMeta({ series: 'New' });
+    await bookStore.reimportBook(OWNER, 'id1', importer);
+    const oldRow = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Old' } },
+    });
+    expect(oldRow).toBeNull();
+  });
+
+  it('keeps the old Series when another book still belongs to it', async () => {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), { ...FAKE_META, series: 'Old' });
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), { ...FAKE_META, series: 'Old' });
+    const importer = makeImporterWithMeta({ series: 'New' });
+    await bookStore.reimportBook(OWNER, 'id1', importer);
+    const oldRow = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Old' } },
+    });
+    expect(oldRow).not.toBeNull();
+  });
+
+  it('clears seriesId when series name becomes empty', async () => {
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), { ...FAKE_META, series: 'Old' });
+    // Use a fixed partialMD5 that returns the same id so the book row stays at 'id1'
+    const importer: ScanImporter = {
+      parseEpub: () => ({ ...FAKE_META, series: '' }),
+      partialMD5: () => 'id1',
+    };
+    await bookStore.reimportBook(OWNER, 'id1', importer);
+    const book = await prisma.book.findUnique({
+      where: { userId_id: { userId: OWNER.userId, id: 'id1' } },
+      select: { seriesId: true },
+    });
+    expect(book!.seriesId).toBeNull();
+  });
+});
+
 describe('getBookById', () => {
   it('returns the book by id', async () => {
     await bookStore.addBook(OWNER, 'myid', stage('myid'), FAKE_META);
