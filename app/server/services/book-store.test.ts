@@ -423,6 +423,27 @@ describe('Series lifecycle — reimportBook', () => {
   });
 });
 
+describe('Series lifecycle — deleteBook', () => {
+  it('deletes the Series row when the last book in the series is deleted', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
+    await bookStore.deleteBook(OWNER, 'b1');
+    const row = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Dune' } },
+    });
+    expect(row).toBeNull();
+  });
+
+  it('keeps the Series row when another book still belongs to it', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, series: 'Dune' });
+    await bookStore.deleteBook(OWNER, 'b1');
+    const row = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Dune' } },
+    });
+    expect(row).not.toBeNull();
+  });
+});
+
 describe('getBookById', () => {
   it('returns the book by id', async () => {
     await bookStore.addBook(OWNER, 'myid', stage('myid'), FAKE_META);
