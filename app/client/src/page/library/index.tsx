@@ -80,7 +80,7 @@ export const LibraryPage = () => {
             <div className={style.pageError}>
               Failed to load more books
               <br />
-              <button className={style.retryButton} onClick={() => void fetchNextPage()}>
+              <button type="button" className={style.retryButton} onClick={() => void fetchNextPage()}>
                 Retry
               </button>
             </div>
