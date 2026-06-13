@@ -390,6 +390,7 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         "chapter_spine_map" TEXT NOT NULL DEFAULT '[]',
         "chapter_names" TEXT,
         "page_count" INTEGER NOT NULL DEFAULT 0,
+        "series_id" TEXT,
         PRIMARY KEY ("user_id", "id"),
         CONSTRAINT "books_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       )
@@ -441,6 +442,7 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       { name: 'chapter_spine_map', fallback: `'[]'` },
       { name: 'chapter_names', fallback: `NULL` },
       { name: 'page_count', fallback: `0` },
+      { name: 'series_id', fallback: `NULL` },
     ];
     const insertCols = ['user_id', 'id', ...COPY_COLUMNS.map((c) => c.name)].join(', ');
     const selectExprs = COPY_COLUMNS.map((c) =>
@@ -498,5 +500,59 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         `Per-user libraries: distributed ${legacyBooks.length} book(s) to ${users.length} user(s)`
       );
     }
+  });
+
+  // Data migration: create the series table and add series_id to books.
+  // This runs after data_v10_user_surrogate_id (which promotes users.id to PRIMARY KEY)
+  // and data_v11_per_user_libraries (which rebuilds the books table).
+  // The Prisma DDL migration (20260613200000_add_series_table) is a no-op; all the
+  // real schema work happens here so the FK constraint on users(id) is valid.
+  await runDataMigration(prisma, 'data_v12_series_table', async () => {
+    await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
+
+    // Create series table (idempotent — skip if already exists).
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "series" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "sort_key" TEXT NOT NULL,
+        CONSTRAINT "series_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "series_user_id_name_key" ON "series"("user_id", "name")
+    `);
+
+    // Add series_id column to books if not already present.
+    const bookCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    if (!bookCols.some((c) => c.name === 'series_id')) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "books" ADD COLUMN "series_id" TEXT REFERENCES "series"("id") ON DELETE SET NULL ON UPDATE CASCADE`
+      );
+    }
+
+    // Backfill: create Series rows for all existing books with a non-empty series string.
+    const booksWithSeries = await prisma.$queryRaw<Array<{ user_id: string; series: string }>>`
+      SELECT DISTINCT user_id, series FROM books WHERE series != ''
+    `;
+    for (const { user_id, series } of booksWithSeries) {
+      const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM series WHERE user_id = ${user_id} AND name = ${series}
+      `;
+      if (existing.length === 0) {
+        const { randomUUID } = await import('crypto');
+        const id = randomUUID();
+        await prisma.$executeRaw`
+          INSERT INTO series (id, user_id, name, sort_key) VALUES (${id}, ${user_id}, ${series}, ${series})
+        `;
+        await prisma.$executeRaw`
+          UPDATE books SET series_id = ${id} WHERE user_id = ${user_id} AND series = ${series}
+        `;
+      }
+    }
+
+    await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
+    log.info('Data migration (series table): series table and series_id backfill complete');
   });
 }
