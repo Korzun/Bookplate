@@ -16,8 +16,8 @@ export function RegenChaptersButton({ bookId }: RegenChaptersButtonProps) {
   }, [regenChapters, bookId]);
 
   return (
-    <Button onClick={handleClick} disabled={loading}>
-      {loading ? 'Regenerating…' : 'Regen chapters'}
+    <Button onClick={handleClick} loading={loading} disabled={loading}>
+      Regen chapters
     </Button>
   );
 }

@@ -157,17 +157,14 @@ export const BookPage = () => {
         addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
       />
       <div className={styles.buttonContainer}>
+        {book.chapterCount > 0 && (
+          <Button onClick={() => setProgressModalOpen(true)}>Set progress</Button>
+        )}
         <div className={styles.spacer} />
         <RegenChaptersButton bookId={book.id} />
         <Button onClick={handleEditMetadata}>Edit metadata</Button>
         <DeleteBookButton bookId={book.id} />
       </div>
-      {!isAdmin && book.chapterCount > 0 && (
-        <div className={styles.buttonContainer}>
-          <div className={styles.spacer} />
-          <Button onClick={() => setProgressModalOpen(true)}>Set progress</Button>
-        </div>
-      )}
       {progressModalOpen && (
         <SetProgressModal
           isOpen
