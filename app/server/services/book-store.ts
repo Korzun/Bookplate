@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { Book, EpubMeta, Owner } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
@@ -141,6 +142,18 @@ export class BookStore {
     const title = meta.title.trim();
     const fileAs = (meta.fileAs || '').trim();
 
+    let seriesId: string | null = null;
+    const seriesName = meta.series.trim();
+    if (seriesName) {
+      const s = await this.prisma.series.upsert({
+        where: { userId_name: { userId: owner.userId, name: seriesName } },
+        create: { id: randomUUID(), userId: owner.userId, name: seriesName, sortKey: seriesName },
+        update: {},
+        select: { id: true },
+      });
+      seriesId = s.id;
+    }
+
     await this.prisma.book.create({
       data: {
         userId: owner.userId,
@@ -163,6 +176,7 @@ export class BookStore {
         chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
         chapterNames: JSON.stringify(meta.chapterNames),
         pageCount: meta.pageCount,
+        seriesId,
       },
     });
   }

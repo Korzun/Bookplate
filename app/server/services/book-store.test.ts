@@ -329,6 +329,45 @@ describe('addBook and listBooks', () => {
   });
 });
 
+describe('Series lifecycle — addBook', () => {
+  it('creates a Series row when a book is added with a series name', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
+    const row = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Dune' } },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.name).toBe('Dune');
+    expect(row!.sortKey).toBe('Dune');
+  });
+
+  it('sets seriesId on the book to point at the Series row', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
+    const book = await prisma.book.findUnique({
+      where: { userId_id: { userId: OWNER.userId, id: 'b1' } },
+      select: { seriesId: true },
+    });
+    const row = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'Dune' } },
+    });
+    expect(book!.seriesId).toBe(row!.id);
+  });
+
+  it('does not create a Series row when series name is empty', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: '' });
+    const count = await prisma.series.count({ where: { userId: OWNER.userId } });
+    expect(count).toBe(0);
+  });
+
+  it('reuses the same Series row for two books in the same series', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, series: 'Dune' });
+    const count = await prisma.series.count({
+      where: { userId: OWNER.userId, name: 'Dune' },
+    });
+    expect(count).toBe(1);
+  });
+});
+
 describe('getBookById', () => {
   it('returns the book by id', async () => {
     await bookStore.addBook(OWNER, 'myid', stage('myid'), FAKE_META);
