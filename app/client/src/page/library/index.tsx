@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { Page, BookRow, SeriesRow } from '~/component';
 import { useIsAdmin } from '~/provider/auth';
-import { useSeriesList, useStandaloneBookList } from '~/provider/book';
+import { useBookList, useBookListItems, useFetchNextPage } from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
 
 import { useStyle } from './style';
@@ -12,16 +12,26 @@ export const LibraryPage = () => {
   const [isAdmin] = useIsAdmin();
   const [targetUsername] = useLibraryTarget();
 
-  const [standaloneBookList] = useStandaloneBookList();
-  const [seriesBookList] = useSeriesList();
+  // useBookList triggers the initial fetch and provides loading/error state
+  const [, bookListLoading, hasError, bookListError] = useBookList();
+  const [bookListItems, nextCursor] = useBookListItems();
+  const fetchNextPage = useFetchNextPage();
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const bookList = useMemo(() => {
-    return [...seriesBookList, ...standaloneBookList].sort((bookOrSeriesA, bookOrSeriesB) => {
-      const titleA = Array.isArray(bookOrSeriesA) ? bookOrSeriesA[0] : bookOrSeriesA.title;
-      const titleB = Array.isArray(bookOrSeriesB) ? bookOrSeriesB[0] : bookOrSeriesB.title;
-      return titleA.localeCompare(titleB);
-    });
-  }, [standaloneBookList, seriesBookList]);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          void fetchNextPage();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage]);
 
   if (isAdmin && !targetUsername) {
     return (
@@ -36,21 +46,44 @@ export const LibraryPage = () => {
     );
   }
 
+  if (!bookListLoading && hasError && bookListItems.length === 0) {
+    return (
+      <Page>
+        <div className={style.emptyState}>
+          <div className={style.emptyStateTitle}>Failed to load library</div>
+          <div className={style.emptyStateSubtitle}>{bookListError}</div>
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page>
-      {bookList.length === 0 ? (
+      {bookListItems.length === 0 ? (
         <div className={style.emptyState}>
           <div className={style.emptyStateTitle}>Your library is empty</div>
           <div className={style.emptyStateSubtitle}>No books have been added yet</div>
         </div>
       ) : (
         <div className={style.root}>
-          {bookList.map((book) =>
-            Array.isArray(book) ? (
-              <SeriesRow key={book[0]} seriesName={book[0]} />
+          {bookListItems.map((item) =>
+            item.type === 'series' ? (
+              <SeriesRow key={item.seriesName} seriesName={item.seriesName} />
             ) : (
-              <BookRow key={book.id} bookId={book.id} />
+              <BookRow key={item.bookId} bookId={item.bookId} />
             )
+          )}
+          {nextCursor !== null && (
+            <div ref={sentinelRef} />
+          )}
+          {hasError && bookListItems.length > 0 && (
+            <div className={style.pageError}>
+              Failed to load more books
+              <br />
+              <button className={style.retryButton} onClick={() => void fetchNextPage()}>
+                Retry
+              </button>
+            </div>
           )}
         </div>
       )}
