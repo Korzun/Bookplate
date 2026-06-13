@@ -57,6 +57,10 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds,
+          bookListItems: [],
+          nextCursor: null,
+          setBookListItems: () => {},
+          setNextCursor: () => {},
         }}
       >
         {children}
@@ -85,7 +89,7 @@ beforeEach(() => {
         });
       }
       // /api/books — called by fetchBookList
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) });
     })
   );
 });
@@ -171,7 +175,7 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0].status).toBe('done');
     expect(clearMock).toHaveBeenCalledTimes(1);
     const fetchCalls = vi.mocked(fetch).mock.calls.map((c) => c[0] as string);
-    expect(fetchCalls).toContain('/api/books');
+    expect(fetchCalls).toContain('/api/books?take=20');
   });
 
   it('transitions to error with message on non-200 response', async () => {

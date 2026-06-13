@@ -62,6 +62,10 @@ function makeWrapper({
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds: () => {},
+          bookListItems: [],
+          nextCursor: null,
+          setBookListItems: () => {},
+          setNextCursor: () => {},
         }}
       >
         {children}
@@ -79,10 +83,10 @@ describe('useBookList', () => {
   it('triggers a fetch when bookListFetched is false', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) })
     );
     renderHook(() => useBookList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books', {}));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books?take=20', {}));
   });
 
   it('does not fetch when bookListFetched is already true', async () => {
@@ -133,7 +137,7 @@ describe('useBookList', () => {
   });
 
   it('clears a previous error and refetches when the library target changes', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) });
     vi.stubGlobal('fetch', mockFetch);
     const ContextWrapper = makeWrapper({
       bookListFetched: true,
@@ -155,7 +159,7 @@ describe('useBookList', () => {
 
     // The target change clears the error and unfetched state, letting the
     // trigger effect refetch with a callback built after the reset.
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books', {}));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books?take=20', {}));
     await waitFor(() => expect(result.current.list[2]).toBe(false));
   });
 });

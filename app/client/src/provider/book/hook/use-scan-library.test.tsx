@@ -35,6 +35,10 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds,
+          bookListItems: [],
+          nextCursor: null,
+          setBookListItems: () => {},
+          setNextCursor: () => {},
         }}
       >
         {children}
@@ -60,7 +64,7 @@ describe('useScanLibrary', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve([]),
+          json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
         })
     );
 

@@ -35,6 +35,10 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds,
+          bookListItems: [],
+          nextCursor: null,
+          setBookListItems: () => {},
+          setNextCursor: () => {},
         }}
       >
         {children}
@@ -65,7 +69,7 @@ describe('useUploadBookList', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve([]),
+          json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
         })
     );
 

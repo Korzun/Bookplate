@@ -5,7 +5,7 @@ import { useLibraryTarget, useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-import type { Book, BookList } from '../type';
+import type { Book, BookList, PagedBookListResponse } from '../type';
 
 export type FetchBookList = () => Promise<void>;
 
@@ -18,6 +18,8 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListFetched,
     setBookListLoading,
     setBookListError,
+    setBookListItems,
+    setNextCursor,
   } = useContext(Context);
   const [isAdmin] = useIsAdmin();
   const [targetUsername] = useLibraryTarget();
@@ -30,11 +32,11 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListLoading(true);
     setBookListError(undefined);
     try {
-      const response = await apiFetch(withTargetUser('/api/books'));
+      const response = await apiFetch(withTargetUser('/api/books?take=20'));
       if (!response.ok) throw new Error('Failed to fetch books');
-      const bookListArray = await (response.json() as Promise<Book[]>);
+      const { items, books, nextCursor } = await (response.json() as Promise<PagedBookListResponse>);
       setBookList(() =>
-        bookListArray.reduce(
+        books.reduce(
           (acc, book) => ({
             ...acc,
             [book.id]:
@@ -45,6 +47,8 @@ export const useFetchBookList = (): FetchBookList => {
           {} as BookList
         )
       );
+      setBookListItems(() => items);
+      setNextCursor(nextCursor);
       setBookListFetched(true);
     } catch (err) {
       setBookListError(err instanceof Error ? err.message : 'Unknown error');
@@ -62,5 +66,7 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListFetched,
     setBookListLoading,
     setBookListError,
+    setBookListItems,
+    setNextCursor,
   ]);
 };

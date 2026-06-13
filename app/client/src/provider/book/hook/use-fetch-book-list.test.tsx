@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
-import type { Book, BookList } from '../type';
+import type { Book, BookList, DisplayUnit, PagedBookListResponse } from '../type';
 
 import { useFetchBookList } from './use-fetch-book-list';
 
@@ -27,22 +27,39 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
+function makeResponse(books: Book[], nextCursor: string | null = null): PagedBookListResponse {
+  return {
+    items: books.map((b) => ({ type: 'standalone' as const, bookId: b.id })),
+    books,
+    nextCursor,
+  };
+}
+
 function makeWrapper({
   initialBooks = {} as BookList,
   bookListLoading = false,
   completeBookIds = new Set<string>(),
-
   onSetBookList = (_: BookList) => {},
   onSetBookListFetched = vi.fn(),
   onSetBookListError = vi.fn(),
+  onSetBookListItems = vi.fn(),
+  onSetNextCursor = vi.fn(),
 } = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(initialBooks);
     const [loading, setLoading] = useState(bookListLoading);
+    const [bookListItems, setBookListItemsRaw] = useState<DisplayUnit[]>([]);
     const setBookList = useCallback((updater: (prev: BookList) => BookList) => {
       setBookListRaw((prev) => {
         const next = updater(prev);
         onSetBookList(next);
+        return next;
+      });
+    }, []);
+    const setBookListItems = useCallback((updater: (prev: DisplayUnit[]) => DisplayUnit[]) => {
+      setBookListItemsRaw((prev) => {
+        const next = updater(prev);
+        onSetBookListItems(next);
         return next;
       });
     }, []);
@@ -56,6 +73,8 @@ function makeWrapper({
           loadingByBookId: {},
           errorByBookId: {},
           completeBookIds,
+          bookListItems,
+          nextCursor: null,
           setBookList,
           setBookListFetched: onSetBookListFetched,
           setBookListLoading: (v) => setLoading(v),
@@ -64,6 +83,8 @@ function makeWrapper({
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds: () => {},
+          setBookListItems,
+          setNextCursor: onSetNextCursor,
         }}
       >
         {children}
@@ -75,21 +96,27 @@ function makeWrapper({
 describe('useFetchBookList', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('fetches GET /api/books', async () => {
+  it('fetches GET /api/books?take=20', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
     );
     const { result } = renderHook(() => useFetchBookList(), { wrapper: makeWrapper() });
     await act(() => result.current());
-    expect(fetch).toHaveBeenCalledWith('/api/books', {});
+    expect(fetch).toHaveBeenCalledWith('/api/books?take=20', {});
   });
 
   it('sets bookListFetched to true on success', async () => {
     const onSetBookListFetched = vi.fn();
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
     );
     const { result } = renderHook(() => useFetchBookList(), {
       wrapper: makeWrapper({ onSetBookListFetched }),
@@ -98,12 +125,48 @@ describe('useFetchBookList', () => {
     expect(onSetBookListFetched).toHaveBeenCalledWith(true);
   });
 
-  it('populates context with fetched books', async () => {
+  it('populates bookListItems with the items array from the response', async () => {
+    const book = makeBook({ id: '1', title: 'Dune' });
+    const onSetBookListItems = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([book])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ onSetBookListItems }),
+    });
+    await act(() => result.current());
+    expect(onSetBookListItems).toHaveBeenCalledWith([{ type: 'standalone', bookId: '1' }]);
+  });
+
+  it('sets nextCursor from the response', async () => {
+    const onSetNextCursor = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([], 'abc==')),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ onSetNextCursor }),
+    });
+    await act(() => result.current());
+    expect(onSetNextCursor).toHaveBeenCalledWith('abc==');
+  });
+
+  it('merges response books into bookList dict', async () => {
     const books = [makeBook({ id: '1', title: 'Dune' })];
     const onSetBookList = vi.fn();
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(books) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse(books)),
+      })
     );
     const { result } = renderHook(() => useFetchBookList(), {
       wrapper: makeWrapper({ onSetBookList }),
@@ -120,7 +183,10 @@ describe('useFetchBookList', () => {
     const onSetBookList = vi.fn();
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([serverBook]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([serverBook])),
+      })
     );
     const { result } = renderHook(() => useFetchBookList(), {
       wrapper: makeWrapper({
