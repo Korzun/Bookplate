@@ -1,6 +1,7 @@
 export { useBook } from './use-book';
 export { useBookLineage } from './use-book-lineage';
 export { useBookList } from './use-book-list';
+export { useBookListItems } from './use-book-list-items';
 export { useDeleteBook } from './use-delete-book';
 export { useFetchBook } from './use-fetch-book';
 export { useFetchBookList } from './use-fetch-book-list';
