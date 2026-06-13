@@ -124,7 +124,6 @@ describe('UserProgressRow — Link button visibility', () => {
       id: 'known-book',
       title: 'Known Book',
       author: 'Author',
-      fileAs: '',
       series: '',
       seriesIndex: 0,
       subjects: [],

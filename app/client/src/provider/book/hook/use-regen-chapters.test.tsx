@@ -14,7 +14,6 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   return {
     title: 'Dune',
     author: 'Herbert',
-    fileAs: '',
     publisher: '',
     series: '',
     seriesIndex: 0,
