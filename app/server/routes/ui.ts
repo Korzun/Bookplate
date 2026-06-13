@@ -26,6 +26,9 @@ const log = logger('UI');
 
 const ALLOWED_EXTENSIONS = new Set(['.epub']);
 
+const ISO_8601_RE =
+  /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
+
 /**
  * Returns the authenticated user's surrogate ID, or null after responding
  * with 401 (e.g. a token for a since-deleted user, or an admin token used
@@ -656,7 +659,15 @@ export function createUiRouter(
       const changes: EpubChanges = {};
       if (body.title !== undefined) changes.title = body.title;
       if (body.author !== undefined) changes.author = body.author;
-      if (body.fileAs !== undefined) changes.fileAs = body.fileAs;
+      if (body.titleSort !== undefined) changes.titleSort = body.titleSort;
+      if (body.authorSort !== undefined) changes.authorSort = body.authorSort;
+      if (body.publishDate !== undefined) {
+        if (body.publishDate !== '' && !ISO_8601_RE.test(body.publishDate)) {
+          res.status(400).json({ error: 'publishDate must be a valid ISO 8601 date string' });
+          return;
+        }
+        changes.publishDate = body.publishDate;
+      }
       if (body.description !== undefined) changes.description = body.description;
       if (body.publisher !== undefined) changes.publisher = body.publisher;
       if (body.series !== undefined) changes.series = body.series;
