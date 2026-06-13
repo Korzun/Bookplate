@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { Book, EpubMeta, Owner } from '../types';
+import { Book, BookSummary, EpubMeta, Owner, PagedBookListResponse } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
@@ -647,6 +647,106 @@ export class BookStore {
     }
 
     return { imported, removed };
+  }
+
+  private toBookSummary(book: Book): BookSummary {
+    const {
+      path: _path,
+      description: _description,
+      identifiers: _identifiers,
+      subjects: _subjects,
+      addedAt: _addedAt,
+      chapterSpineMap: _chapterSpineMap,
+      chapterNames: _chapterNames,
+      ...rest
+    } = book;
+    return rest;
+  }
+
+  async listBooksPage(owner: Owner, after: string, take: number): Promise<PagedBookListResponse> {
+    // Fetch take+1 from each source so we can detect whether another page exists
+    const fetchLimit = take + 1;
+    const [seriesRows, standaloneRows] = await Promise.all([
+      this.prisma.series.findMany({
+        where: { userId: owner.userId, sortKey: { gt: after } },
+        orderBy: { sortKey: 'asc' },
+        take: fetchLimit,
+      }),
+      this.prisma.book.findMany({
+        where: { userId: owner.userId, seriesId: null, title: { gt: after } },
+        orderBy: { title: 'asc' },
+        take: fetchLimit,
+        select: BOOK_SELECT,
+      }),
+    ]);
+
+    // Merge-sort up to take+1 display units to detect overflow
+    const merged: Array<
+      | { sortKey: string; type: 'series'; row: (typeof seriesRows)[0] }
+      | { sortKey: string; type: 'standalone'; row: (typeof standaloneRows)[0] }
+    > = [];
+    let si = 0;
+    let bi = 0;
+    while (merged.length < fetchLimit) {
+      const s = seriesRows[si];
+      const b = standaloneRows[bi];
+      if (!s && !b) break;
+      let pickSeries: boolean;
+      if (!s) pickSeries = false;
+      else if (!b) pickSeries = true;
+      else pickSeries = s.sortKey.localeCompare(b.title) <= 0;
+      if (pickSeries) {
+        merged.push({ sortKey: s.sortKey, type: 'series', row: s });
+        si++;
+      } else {
+        merged.push({ sortKey: b.title, type: 'standalone', row: b });
+        bi++;
+      }
+    }
+
+    const hasMore = merged.length > take;
+    const page = hasMore ? merged.slice(0, take) : merged;
+
+    // Fetch all member books for every series item
+    const seriesBooksMap = new Map<string, Book[]>();
+    await Promise.all(
+      page
+        .filter((p) => p.type === 'series')
+        .map(async (p) => {
+          const s = (p as { type: 'series'; row: (typeof seriesRows)[0] }).row;
+          const rows = await this.prisma.book.findMany({
+            where: { seriesId: s.id },
+            select: BOOK_SELECT,
+          });
+          seriesBooksMap.set(
+            s.name,
+            rows.map((r) => this.prismaBookToBook(owner, r))
+          );
+        })
+    );
+
+    const items: PagedBookListResponse['items'] = page.map((p) =>
+      p.type === 'series'
+        ? { type: 'series' as const, seriesName: (p.row as (typeof seriesRows)[0]).name }
+        : { type: 'standalone' as const, bookId: (p.row as (typeof standaloneRows)[0]).id }
+    );
+
+    const books: BookSummary[] = page.flatMap((p) => {
+      if (p.type === 'standalone') {
+        return [
+          this.toBookSummary(this.prismaBookToBook(owner, p.row as (typeof standaloneRows)[0])),
+        ];
+      }
+      return (seriesBooksMap.get((p.row as (typeof seriesRows)[0]).name) ?? []).map((b) =>
+        this.toBookSummary(b)
+      );
+    });
+
+    const nextCursor = hasMore
+      ? Buffer.from(page[page.length - 1].sortKey).toString('base64')
+      : null;
+
+    return { items, books, nextCursor };
   }
 
   private prismaBookToBook(
