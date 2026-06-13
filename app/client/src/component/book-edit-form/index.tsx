@@ -42,9 +42,19 @@ export const BookEditForm = ({ original, id }: Props) => {
     setAuthor(newAuthor);
   }, []);
 
-  const [fileAs, setFileAs] = useState<string | undefined>(original.fileAs);
-  const handleFileAsChange = useCallback((newFileAs: string | undefined) => {
-    setFileAs(newFileAs);
+  const [titleSort, setTitleSort] = useState<string | undefined>(original.titleSort);
+  const handleTitleSortChange = useCallback((newTitleSort: string | undefined) => {
+    setTitleSort(newTitleSort);
+  }, []);
+
+  const [authorSort, setAuthorSort] = useState<string | undefined>(original.authorSort);
+  const handleAuthorSortChange = useCallback((newAuthorSort: string | undefined) => {
+    setAuthorSort(newAuthorSort);
+  }, []);
+
+  const [publishDate, setPublishDate] = useState<string | undefined>(original.publishDate);
+  const handlePublishDateChange = useCallback((newPublishDate: string | undefined) => {
+    setPublishDate(newPublishDate);
   }, []);
 
   const [publisher, setPublisher] = useState<string | undefined>(original.publisher);
@@ -93,7 +103,16 @@ export const BookEditForm = ({ original, id }: Props) => {
       cover,
       author: author && author.trim() !== original.author ? author.trim() : undefined,
       title: title && title.trim() !== original.title ? title.trim() : undefined,
-      fileAs: fileAs && fileAs.trim() !== original.fileAs ? fileAs.trim() : undefined,
+      titleSort:
+        titleSort !== undefined && titleSort.trim() !== (original.titleSort ?? '')
+          ? titleSort.trim()
+          : undefined,
+      authorSort:
+        authorSort !== undefined && authorSort.trim() !== (original.authorSort ?? '')
+          ? authorSort.trim()
+          : undefined,
+      publishDate:
+        (publishDate ?? '') !== (original.publishDate ?? '') ? (publishDate ?? '') : undefined,
       publisher:
         publisher && publisher.trim() !== original.publisher ? publisher.trim() : undefined,
       // isSeries: isSeries !== original.isSeries ? isSeries : undefined,
@@ -120,12 +139,36 @@ export const BookEditForm = ({ original, id }: Props) => {
         <div className={styles.cardContainer}>
           <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
           <TextInput value={author} label="Author" name="author" onChange={handleAuthorChange} />
-          <TextInput value={fileAs} label="File As" name="fileAs" onChange={handleFileAsChange} />
+          <TextInput
+            value={authorSort}
+            label="Author Sort"
+            name="authorSort"
+            onChange={handleAuthorSortChange}
+          />
+          <TextInput
+            value={titleSort}
+            label="Title Sort"
+            name="titleSort"
+            onChange={handleTitleSortChange}
+          />
           <TextInput
             value={publisher}
             label="Publisher"
             name="publisher"
             onChange={handlePublisherChange}
+          />
+          <TextInput
+            value={publishDate}
+            label="Publish Date"
+            name="publishDate"
+            onChange={handlePublishDateChange}
+            onValidChange={handleIsValidChange}
+            validate={(v) =>
+              !v ||
+              /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/.test(
+                v
+              )
+            }
           />
         </div>
       </Card>
