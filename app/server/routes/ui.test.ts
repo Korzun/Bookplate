@@ -71,7 +71,9 @@ const FAKE_META: EpubMeta = {
   publisher: '',
   series: '',
   seriesIndex: 0,
-  fileAs: '',
+  titleSort: '',
+  authorSort: '',
+  publishDate: '',
   identifiers: [],
   subjects: [],
   coverData: null,
@@ -310,11 +312,11 @@ describe('GET /api/books', () => {
     expect(book.description).toBeUndefined();
   });
 
-  it('returns fileAs in the books API response', async () => {
+  it('returns titleSort in the books API response', async () => {
     const meta: EpubMeta = {
       ...FAKE_META,
       title: 'Foundation',
-      fileAs: 'Asimov, Isaac',
+      titleSort: 'Asimov, Isaac',
       author: 'Isaac Asimov',
     };
 
@@ -329,7 +331,7 @@ describe('GET /api/books', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(1);
     const [book] = res.body;
-    expect(book.fileAs).toBe('Asimov, Isaac');
+    expect(book.titleSort).toBe('Asimov, Isaac');
     expect(book.path).toBeUndefined();
     expect(book.description).toBeUndefined();
   });
