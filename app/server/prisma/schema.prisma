@@ -55,6 +55,7 @@ model User {
   syncPassword       String?        @map("sync_password")
   mustChangePassword Boolean        @default(false) @map("must_change_password")
   progresses         Progress[]
+  progressHistories  ProgressHistory[]
   refreshTokens      RefreshToken[]
   books              Book[]
 
@@ -104,4 +105,20 @@ model Setting {
   value String
 
   @@map("settings")
+}
+
+model ProgressHistory {
+  id             Int    @id @default(autoincrement())
+  userId         String @map("user_id")
+  document       String
+  progress       String
+  percentage     Float
+  device         String
+  deviceId       String @map("device_id")
+  startTimestamp Int    @map("start_timestamp")
+  endTimestamp   Int    @map("end_timestamp")
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, document])
+  @@map("progress_history")
 }
