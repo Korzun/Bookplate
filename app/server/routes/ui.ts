@@ -396,6 +396,23 @@ export function createUiRouter(
   router.get('/api/books', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
+
+    const { cursor, take } = req.query;
+
+    if (cursor !== undefined || take !== undefined) {
+      const after =
+        typeof cursor === 'string' && cursor
+          ? Buffer.from(cursor, 'base64').toString('utf-8')
+          : '';
+      const pageSize =
+        typeof take === 'string'
+          ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100)
+          : 20;
+      const result = await bookStore.listBooksPage(owner, after, pageSize);
+      res.json(result);
+      return;
+    }
+
     res.json(
       (await bookStore.listBooks(owner)).map((b) => {
         const {

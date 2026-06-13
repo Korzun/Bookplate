@@ -349,6 +349,97 @@ describe('GET /api/books', () => {
   });
 });
 
+describe('GET /api/books (paginated)', () => {
+  it('returns paginated shape when take param is present', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(Array.isArray(res.body.books)).toBe(true);
+    expect(res.body).toHaveProperty('nextCursor');
+  });
+
+  it('places a series as a single item in the items array', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+    });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Dune 2',
+      series: 'Dune',
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+    expect(res.body.books).toHaveLength(2);
+  });
+
+  it('returns nextCursor when more pages exist', async () => {
+    for (let i = 1; i <= 3; i++) {
+      await bookStore.addBook(aliceOwner, `b${i}`, stage(`b${i}`), {
+        ...FAKE_META,
+        title: `Book ${String.fromCharCode(64 + i)}`,
+        series: '',
+      });
+    }
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=2')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.nextCursor).not.toBeNull();
+  });
+
+  it('advances with cursor to load the next page', async () => {
+    for (let i = 1; i <= 4; i++) {
+      await bookStore.addBook(aliceOwner, `p${i}`, stage(`p${i}`), {
+        ...FAKE_META,
+        title: `Book ${String.fromCharCode(64 + i)}`,
+        series: '',
+      });
+    }
+    const token = await loginAlice();
+    const page1 = await request(app)
+      .get('/api/books?take=2')
+      .set(...bearer(token));
+    const cursor = page1.body.nextCursor as string;
+    const page2 = await request(app)
+      .get(`/api/books?cursor=${encodeURIComponent(cursor)}&take=2`)
+      .set(...bearer(token));
+    expect(page2.status).toBe(200);
+    expect(page2.body.items).toHaveLength(2);
+    expect(page2.body.nextCursor).toBeNull();
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/books?take=20');
+    expect(res.status).toBe(401);
+  });
+
+  it('non-paginated call (no params) still returns flat array', async () => {
+    await bookStore.addBook(aliceOwner, 'flat1', stage('flat1'), { ...FAKE_META, title: 'Flat' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+
 describe('POST /api/books/upload', () => {
   it('rejects .pdf files with 400 and "Supported: epub"', async () => {
     const token = await loginAlice();
