@@ -303,6 +303,13 @@ export class BookStore {
     if (!book) return null;
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Capture seriesId before deleting the row
+        const bookRow = await tx.book.findUnique({
+          where: { userId_id: { userId: owner.userId, id } },
+          select: { seriesId: true },
+        });
+        const seriesId = bookRow?.seriesId ?? null;
+
         try {
           await tx.book.delete({ where: { userId_id: { userId: owner.userId, id } } });
         } catch (err) {
@@ -313,6 +320,13 @@ export class BookStore {
           DELETE FROM book_id_history
           WHERE user_id = ${owner.userId} AND (old_id = ${id} OR current_id = ${id})
         `;
+
+        if (seriesId) {
+          const remaining = await tx.book.count({ where: { seriesId } });
+          if (remaining === 0) {
+            await tx.series.delete({ where: { id: seriesId } });
+          }
+        }
       });
     } finally {
       try {
