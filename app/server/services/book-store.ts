@@ -716,6 +716,7 @@ export class BookStore {
           const s = (p as { type: 'series'; row: (typeof seriesRows)[0] }).row;
           const rows = await this.prisma.book.findMany({
             where: { seriesId: s.id },
+            orderBy: { seriesIndex: 'asc' },
             select: BOOK_SELECT,
           });
           seriesBooksMap.set(
