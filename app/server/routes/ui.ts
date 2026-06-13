@@ -661,11 +661,12 @@ export function createUiRouter(
       if (body.titleSort !== undefined) changes.titleSort = body.titleSort;
       if (body.authorSort !== undefined) changes.authorSort = body.authorSort;
       if (body.publishDate !== undefined) {
-        if (body.publishDate !== '' && !ISO_8601_RE.test(body.publishDate)) {
+        const publishDate = body.publishDate.trim();
+        if (publishDate !== '' && !ISO_8601_RE.test(publishDate)) {
           res.status(400).json({ error: 'publishDate must be a valid ISO 8601 date string' });
           return;
         }
-        changes.publishDate = body.publishDate;
+        changes.publishDate = publishDate;
       }
       if (body.description !== undefined) changes.description = body.description;
       if (body.publisher !== undefined) changes.publisher = body.publisher;

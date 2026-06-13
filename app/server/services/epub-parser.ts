@@ -454,7 +454,15 @@ export function parseEpub(filePath: string): EpubMeta {
   const authorSort = creatorCandidate.fileAs;
 
   // publishDate: dc:date, validated as ISO 8601; discard invalid values
-  const rawDate = typeof metadata['dc:date'] === 'string' ? metadata['dc:date'].trim() : '';
+  // fast-xml-parser may give string, {#text:...} (when attrs present), or array (multiple elements)
+  const rawDateNode = metadata['dc:date'];
+  const rawDateCandidate = Array.isArray(rawDateNode) ? rawDateNode[0] : rawDateNode;
+  const rawDate =
+    typeof rawDateCandidate === 'string'
+      ? rawDateCandidate.trim()
+      : typeof rawDateCandidate === 'object' && rawDateCandidate !== null
+        ? ((rawDateCandidate as { '#text'?: string })['#text'] ?? '').trim()
+        : '';
   const publishDate = ISO_8601_RE.test(rawDate) ? rawDate : '';
 
   // Step 4: cover image

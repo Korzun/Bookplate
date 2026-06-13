@@ -12,6 +12,9 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   return {
     title: 'Dune',
     author: 'Herbert',
+    titleSort: '',
+    authorSort: '',
+    publishDate: '',
     publisher: '',
     series: '',
     seriesIndex: 0,

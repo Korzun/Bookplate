@@ -514,6 +514,47 @@ describe('parseEpub', () => {
     expect(parseEpub(filePath).publishDate).toBe('');
   });
 
+  it('parses publishDate from object-shaped dc:date (attributes present)', () => {
+    const zip = new AdmZip();
+    zip.addFile('META-INF/container.xml', Buffer.from(sharedContainerXml));
+    zip.addFile(
+      'OEBPS/content.opf',
+      Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>Object Date Book</dc:title>
+    <dc:date opf:event="publication">2023-05-01</dc:date>
+  </metadata>
+  <manifest/><spine/>
+</package>`)
+    );
+    const filePath = path.join(tmpDir, 'object-date.epub');
+    fs.writeFileSync(filePath, zip.toBuffer());
+
+    expect(parseEpub(filePath).publishDate).toBe('2023-05-01');
+  });
+
+  it('parses publishDate from first element of array-shaped dc:date', () => {
+    const zip = new AdmZip();
+    zip.addFile('META-INF/container.xml', Buffer.from(sharedContainerXml));
+    zip.addFile(
+      'OEBPS/content.opf',
+      Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Array Date Book</dc:title>
+    <dc:date>2022-03-15</dc:date>
+    <dc:date>2024-01-01</dc:date>
+  </metadata>
+  <manifest/><spine/>
+</package>`)
+    );
+    const filePath = path.join(tmpDir, 'array-date.epub');
+    fs.writeFileSync(filePath, zip.toBuffer());
+
+    expect(parseEpub(filePath).publishDate).toBe('2022-03-15');
+  });
+
   it('parses cover image', () => {
     const coverBuf = Buffer.from('fake-jpeg-data');
     const filePath = path.join(tmpDir, 'book.epub');
