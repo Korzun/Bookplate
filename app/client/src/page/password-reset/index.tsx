@@ -44,9 +44,10 @@ export const PasswordResetPage = () => {
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
+      if (loading) return;
       void handleChangePassword();
     },
-    [handleChangePassword]
+    [handleChangePassword, loading]
   );
 
   const handleConfirmPasswordValidation = useCallback(
