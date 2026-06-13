@@ -13,7 +13,9 @@ const log = logger('BookStore');
 const BOOK_SELECT = {
   id: true,
   title: true,
-  fileAs: true,
+  titleSort: true,
+  authorSort: true,
+  publishDate: true,
   author: true,
   description: true,
   publisher: true,
@@ -100,10 +102,10 @@ export class BookStore {
       where: { userId: owner.userId },
       select: BOOK_SELECT,
     });
-    // Replicate: ORDER BY CASE WHEN file_as != '' THEN file_as ELSE title END, title, id
+    // Replicate: ORDER BY CASE WHEN title_sort != '' THEN title_sort ELSE title END, title, id
     rows.sort((a, b) => {
-      const aKey = a.fileAs !== '' ? a.fileAs : a.title;
-      const bKey = b.fileAs !== '' ? b.fileAs : b.title;
+      const aKey = a.titleSort !== '' ? a.titleSort : a.title;
+      const bKey = b.titleSort !== '' ? b.titleSort : b.title;
       if (aKey < bKey) return -1;
       if (aKey > bKey) return 1;
       if (a.title < b.title) return -1;
@@ -140,7 +142,9 @@ export class BookStore {
 
     const stat = fs.statSync(targetPath);
     const title = meta.title.trim();
-    const fileAs = (meta.fileAs || '').trim();
+    const titleSort = (meta.titleSort || '').trim();
+    const authorSort = (meta.authorSort || '').trim();
+    const publishDate = (meta.publishDate || '').trim();
 
     let seriesId: string | null = null;
     const seriesName = meta.series.trim();
@@ -159,7 +163,9 @@ export class BookStore {
         userId: owner.userId,
         id,
         title,
-        fileAs,
+        titleSort,
+        authorSort,
+        publishDate,
         author: meta.author,
         description: meta.description,
         publisher: meta.publisher,
@@ -402,7 +408,9 @@ export class BookStore {
           data: {
             id: newId,
             title: meta.title.trim(),
-            fileAs: (meta.fileAs || '').trim(),
+            titleSort: (meta.titleSort || '').trim(),
+            authorSort: (meta.authorSort || '').trim(),
+            publishDate: (meta.publishDate || '').trim(),
             author: meta.author,
             description: meta.description,
             publisher: meta.publisher,
@@ -462,7 +470,9 @@ export class BookStore {
           where: { userId_id: { userId: owner.userId, id } },
           data: {
             title: meta.title.trim(),
-            fileAs: (meta.fileAs || '').trim(),
+            titleSort: (meta.titleSort || '').trim(),
+            authorSort: (meta.authorSort || '').trim(),
+            publishDate: (meta.publishDate || '').trim(),
             author: meta.author,
             description: meta.description,
             publisher: meta.publisher,
@@ -808,7 +818,9 @@ export class BookStore {
       }),
       path: this.bookPath(owner, r.id),
       title: r.title,
-      fileAs: r.fileAs,
+      titleSort: r.titleSort,
+      authorSort: r.authorSort,
+      publishDate: r.publishDate,
       author: r.author,
       description: r.description,
       publisher: r.publisher,

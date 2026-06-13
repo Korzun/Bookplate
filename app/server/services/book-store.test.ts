@@ -100,7 +100,9 @@ const FAKE_META: EpubMeta = {
   publisher: 'Test Publisher',
   series: 'Test Series',
   seriesIndex: 1,
-  fileAs: '',
+  titleSort: '',
+  authorSort: '',
+  publishDate: '',
   identifiers: [{ scheme: 'ISBN', value: '978-0000000000' }],
   subjects: ['Fiction'],
   coverData: Buffer.from('fake-cover'),
@@ -233,61 +235,63 @@ describe('addBook and listBooks', () => {
     expect(books[0].hasCover).toBe(false);
   });
 
-  it('persists fileAs on stored books', async () => {
-    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), {
+  it('persists titleSort on stored books', async () => {
+    const meta: EpubMeta = {
       ...FAKE_META,
-      fileAs: 'Asimov, Isaac',
-    });
-
-    const book = await bookStore.getBookById(OWNER, 'abc123');
-
-    expect(book!.fileAs).toBe('Asimov, Isaac');
+      title: 'Foundation',
+      author: 'Isaac Asimov',
+      titleSort: 'Asimov, Isaac',
+    };
+    await bookStore.addBook(OWNER, 'id1', stage('id1'), meta);
+    const book = await bookStore.getBookById(OWNER, 'id1');
+    expect(book!.titleSort).toBe('Asimov, Isaac');
   });
 
-  it('stores trimmed fileAs even when metadata has extra whitespace', async () => {
-    await bookStore.addBook(OWNER, 'trim1', stage('trim1'), {
+  it('stores trimmed titleSort even when metadata has extra whitespace', async () => {
+    const meta: EpubMeta = {
       ...FAKE_META,
-      fileAs: '  Asimov, Isaac  ',
-    });
-
-    const book = await bookStore.getBookById(OWNER, 'trim1');
-    expect(book!.fileAs).toBe('Asimov, Isaac');
+      titleSort: '  Asimov, Isaac  ',
+    };
+    await bookStore.addBook(OWNER, 'id2', stage('id2'), meta);
+    const book = await bookStore.getBookById(OWNER, 'id2');
+    expect(book!.titleSort).toBe('Asimov, Isaac');
   });
 
-  it('sorts by fileAs before title', async () => {
-    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
-      ...FAKE_META,
-      title: 'Zebra Stories',
-      fileAs: 'Apple, A.',
-    });
-    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
-      ...FAKE_META,
-      title: 'Apple Stories',
-      fileAs: 'Zulu, Z.',
-    });
-
+  it('sorts by titleSort before title', async () => {
+    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), { ...FAKE_META, title: 'Zzz', titleSort: 'Apple, A.' });
+    await bookStore.addBook(OWNER, 'id-z', stage('id-z'), { ...FAKE_META, title: 'Aaa', titleSort: 'Zulu, Z.' });
     const books = await bookStore.listBooks(OWNER);
-
-    expect(books[0].title).toBe('Zebra Stories');
-    expect(books[1].title).toBe('Apple Stories');
+    expect(books[0].id).toBe('id-a');
+    expect(books[1].id).toBe('id-z');
   });
 
-  it('falls back to title when fileAs is empty', async () => {
-    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
-      ...FAKE_META,
-      title: 'Bravo',
-      fileAs: '',
-    });
-    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
-      ...FAKE_META,
-      title: 'Alpha',
-      fileAs: '',
-    });
-
+  it('falls back to title when titleSort is empty', async () => {
+    await bookStore.addBook(OWNER, 'id-b', stage('id-b'), { ...FAKE_META, title: 'Banana', titleSort: '' });
+    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), { ...FAKE_META, title: 'Apple', titleSort: '' });
     const books = await bookStore.listBooks(OWNER);
+    expect(books[0].id).toBe('id-a');
+    expect(books[1].id).toBe('id-b');
+  });
 
-    expect(books[0].title).toBe('Alpha');
-    expect(books[1].title).toBe('Bravo');
+  it('persists authorSort on stored books', async () => {
+    const meta: EpubMeta = {
+      ...FAKE_META,
+      author: 'Isaac Asimov',
+      authorSort: 'Asimov, Isaac',
+    };
+    await bookStore.addBook(OWNER, 'id-as', stage('id-as'), meta);
+    const book = await bookStore.getBookById(OWNER, 'id-as');
+    expect(book!.authorSort).toBe('Asimov, Isaac');
+  });
+
+  it('persists publishDate on stored books', async () => {
+    const meta: EpubMeta = {
+      ...FAKE_META,
+      publishDate: '2001-01-16',
+    };
+    await bookStore.addBook(OWNER, 'id-pd', stage('id-pd'), meta);
+    const book = await bookStore.getBookById(OWNER, 'id-pd');
+    expect(book!.publishDate).toBe('2001-01-16');
   });
 
   it('stores and retrieves chapterNames (JSON round-trip)', async () => {
@@ -515,7 +519,9 @@ function makeMockImporter(): ScanImporter {
       publisher: '',
       series: '',
       seriesIndex: 0,
-      fileAs: '',
+      titleSort: '',
+      authorSort: '',
+      publishDate: '',
       identifiers: [],
       subjects: [],
       coverData: null,
@@ -567,7 +573,9 @@ describe('BookStore.scan()', () => {
       publisher: '',
       series: '',
       seriesIndex: 0,
-      fileAs: '',
+      titleSort: '',
+      authorSort: '',
+      publishDate: '',
       identifiers: [],
       subjects: [],
       coverData: null,
@@ -599,7 +607,9 @@ describe('BookStore.scan()', () => {
           publisher: '',
           series: '',
           seriesIndex: 0,
-          fileAs: '',
+          titleSort: '',
+          authorSort: '',
+          publishDate: '',
           identifiers: [],
           subjects: [],
           coverData: null,

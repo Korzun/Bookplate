@@ -373,7 +373,9 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         "user_id" TEXT NOT NULL,
         "id" TEXT NOT NULL,
         "title" TEXT NOT NULL,
-        "file_as" TEXT NOT NULL DEFAULT '',
+        "title_sort" TEXT NOT NULL DEFAULT '',
+        "author_sort" TEXT NOT NULL DEFAULT '',
+        "publish_date" TEXT NOT NULL DEFAULT '',
         "author" TEXT NOT NULL DEFAULT '',
         "description" TEXT NOT NULL DEFAULT '',
         "publisher" TEXT NOT NULL DEFAULT '',
@@ -424,7 +426,9 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     const bookColSet = new Set(bookCols.map((c) => c.name));
     const COPY_COLUMNS: Array<{ name: string; fallback: string }> = [
       { name: 'title', fallback: `''` },
-      { name: 'file_as', fallback: `''` },
+      { name: 'title_sort', fallback: `''` },
+      { name: 'author_sort', fallback: `''` },
+      { name: 'publish_date', fallback: `''` },
       { name: 'author', fallback: `''` },
       { name: 'description', fallback: `''` },
       { name: 'publisher', fallback: `''` },
