@@ -220,7 +220,7 @@ export class UserStore {
         where: { userId, document: p.document, progress: p.progress, deviceId: p.device_id },
         orderBy: { endTimestamp: 'desc' },
       });
-      if (recent && timestamp - recent.endTimestamp <= 600) {
+      if (recent && timestamp >= recent.endTimestamp && timestamp - recent.endTimestamp <= 600) {
         await this.prisma.progressHistory.update({
           where: { id: recent.id },
           data: { endTimestamp: timestamp },

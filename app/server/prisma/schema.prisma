@@ -119,6 +119,6 @@ model ProgressHistory {
   endTimestamp   Int    @map("end_timestamp")
   user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, document])
+  @@index([userId, document, progress, deviceId, endTimestamp])
   @@map("progress_history")
 }

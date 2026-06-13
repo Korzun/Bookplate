@@ -713,6 +713,34 @@ describe('UserStore.saveProgress — history', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('inserts a new row when a stale timestamp is earlier than the existing endTimestamp', async () => {
+    await store.saveProgress(aliceId, {
+      document: 'doc1',
+      progress: '/body/DocFragment[5]',
+      percentage: 0.42,
+      device: 'Kobo',
+      device_id: 'dev-1',
+      timestamp: 1000,
+    });
+    await store.saveProgress(aliceId, {
+      document: 'doc1',
+      progress: '/body/DocFragment[5]',
+      percentage: 0.42,
+      device: 'Kobo',
+      device_id: 'dev-1',
+      timestamp: 500, // stale — earlier than existing endTimestamp
+    });
+    const rows = await prisma.progressHistory.findMany({
+      where: { userId: aliceId },
+      orderBy: { startTimestamp: 'asc' },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].startTimestamp).toBe(500); // stale row recorded at its own timestamp
+    expect(rows[0].endTimestamp).toBe(500);
+    expect(rows[1].startTimestamp).toBe(1000); // original row untouched
+    expect(rows[1].endTimestamp).toBe(1000);
+  });
+
   it('does not throw and still saves current progress when history write fails', async () => {
     jest
       .spyOn(prisma.progressHistory, 'findFirst')

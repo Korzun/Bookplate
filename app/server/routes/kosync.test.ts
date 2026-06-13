@@ -248,7 +248,7 @@ describe('PUT /kosync/syncs/progress — history', () => {
     expect(rows[0].startTimestamp).toBe(rows[0].endTimestamp);
   });
 
-  it('collapses two immediate syncs of the same position into one dwell row', async () => {
+  it('collapses two immediate syncs of the same position into one dwell row with extended endTimestamp', async () => {
     const body = {
       document: 'docHash123',
       progress: '/body/DocFragment[5]',
@@ -256,17 +256,21 @@ describe('PUT /kosync/syncs/progress — history', () => {
       device: 'Kobo',
       device_id: 'dev-1',
     };
-    await request(app)
+    const r1 = await request(app)
       .put('/kosync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send(body);
-    await request(app)
+    const r2 = await request(app)
       .put('/kosync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send(body);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
 
     const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
     const rows = await prisma.progressHistory.findMany({ where: { userId: alice!.id } });
     expect(rows).toHaveLength(1);
+    expect(rows[0].startTimestamp).toBe(r1.body.timestamp);
+    expect(rows[0].endTimestamp).toBe(r2.body.timestamp);
   });
 });
