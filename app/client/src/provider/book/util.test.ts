@@ -8,7 +8,6 @@ function makeBook(title: string): Book {
     id: title,
     title,
     author: 'Author',
-    fileAs: '',
     publisher: '',
     series: '',
     seriesIndex: 0,

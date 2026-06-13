@@ -27,7 +27,6 @@ function makeBook(id: string, seriesIndex: number) {
     id,
     title: `Book ${id}`,
     author: 'Author',
-    fileAs: '',
     publisher: '',
     series: 'TestSeries',
     seriesIndex,

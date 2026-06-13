@@ -26,7 +26,6 @@ const BOOK_A = {
   id: 'a',
   title: 'Book A',
   author: 'Author',
-  fileAs: '',
   series: 'Dune',
   seriesIndex: 1,
   subjects: [],
