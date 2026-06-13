@@ -12,7 +12,9 @@ model Book {
   userId          String          @map("user_id")
   id              String
   title           String
-  fileAs          String          @default("") @map("file_as")
+  titleSort       String          @default("") @map("title_sort")
+  authorSort      String          @default("") @map("author_sort")
+  publishDate     String          @default("") @map("publish_date")
   author          String          @default("")
   description     String          @default("")
   publisher       String          @default("")

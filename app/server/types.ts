@@ -9,7 +9,9 @@ export interface Book {
   /** Absolute on-disk path: `<booksRoot>/<username>/<id>.epub`. */
   path: string;
   title: string;
-  fileAs: string;
+  titleSort: string;
+  authorSort: string;
+  publishDate: string;
   author: string;
   description: string;
   publisher: string;
@@ -29,7 +31,9 @@ export interface Book {
 
 export interface EpubMeta {
   title: string;
-  fileAs: string;
+  titleSort: string;
+  authorSort: string;
+  publishDate: string;
   author: string;
   description: string;
   publisher: string;
