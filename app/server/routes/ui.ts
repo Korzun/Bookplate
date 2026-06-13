@@ -26,8 +26,7 @@ const log = logger('UI');
 
 const ALLOWED_EXTENSIONS = new Set(['.epub']);
 
-const ISO_8601_RE =
-  /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
+const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
 
 /**
  * Returns the authenticated user's surrogate ID, or null after responding

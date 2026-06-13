@@ -258,16 +258,32 @@ describe('addBook and listBooks', () => {
   });
 
   it('sorts by titleSort before title', async () => {
-    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), { ...FAKE_META, title: 'Zzz', titleSort: 'Apple, A.' });
-    await bookStore.addBook(OWNER, 'id-z', stage('id-z'), { ...FAKE_META, title: 'Aaa', titleSort: 'Zulu, Z.' });
+    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), {
+      ...FAKE_META,
+      title: 'Zzz',
+      titleSort: 'Apple, A.',
+    });
+    await bookStore.addBook(OWNER, 'id-z', stage('id-z'), {
+      ...FAKE_META,
+      title: 'Aaa',
+      titleSort: 'Zulu, Z.',
+    });
     const books = await bookStore.listBooks(OWNER);
     expect(books[0].id).toBe('id-a');
     expect(books[1].id).toBe('id-z');
   });
 
   it('falls back to title when titleSort is empty', async () => {
-    await bookStore.addBook(OWNER, 'id-b', stage('id-b'), { ...FAKE_META, title: 'Banana', titleSort: '' });
-    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), { ...FAKE_META, title: 'Apple', titleSort: '' });
+    await bookStore.addBook(OWNER, 'id-b', stage('id-b'), {
+      ...FAKE_META,
+      title: 'Banana',
+      titleSort: '',
+    });
+    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), {
+      ...FAKE_META,
+      title: 'Apple',
+      titleSort: '',
+    });
     const books = await bookStore.listBooks(OWNER);
     expect(books[0].id).toBe('id-a');
     expect(books[1].id).toBe('id-b');
