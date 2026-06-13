@@ -296,8 +296,7 @@ function decodeEntities(text: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
-const ISO_8601_RE =
-  /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
+const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
 
 function inferScheme(value: string): string {
   const lower = value.toLowerCase();
@@ -449,15 +448,13 @@ export function parseEpub(filePath: string): EpubMeta {
         )
       : undefined;
   const titleSort =
-    attrTitleSort ||
-    (refinesMeta ? decodeEntities((refinesMeta['#text'] ?? '').trim()) : '');
+    attrTitleSort || (refinesMeta ? decodeEntities((refinesMeta['#text'] ?? '').trim()) : '');
 
   // authorSort: dc:creator file-as only; no fallback to title
   const authorSort = creatorCandidate.fileAs;
 
   // publishDate: dc:date, validated as ISO 8601; discard invalid values
-  const rawDate =
-    typeof metadata['dc:date'] === 'string' ? metadata['dc:date'].trim() : '';
+  const rawDate = typeof metadata['dc:date'] === 'string' ? metadata['dc:date'].trim() : '';
   const publishDate = ISO_8601_RE.test(rawDate) ? rawDate : '';
 
   // Step 4: cover image
