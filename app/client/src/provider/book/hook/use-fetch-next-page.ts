@@ -5,7 +5,7 @@ import { useLibraryTarget, useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-import type { Book, BookList, PagedBookListResponse } from '../type';
+import type { BookList, PagedBookListResponse } from '../type';
 
 export type FetchNextPage = () => Promise<void>;
 
@@ -41,12 +41,12 @@ export const useFetchNextPage = (): FetchNextPage => {
       const { items, books, nextCursor: newCursor } = await (response.json() as Promise<PagedBookListResponse>);
       setBookList((prev: BookList) =>
         books.reduce(
-          (acc, book: Book) => ({
+          (acc, book) => ({
             ...acc,
             [book.id]:
               completeBookIds.has(book.id) && prev[book.id] !== undefined
                 ? prev[book.id]
-                : { ...book, identifiers: book.identifiers ?? [], subjects: book.subjects ?? [] },
+                : { ...book, identifiers: [], subjects: [] },
           }),
           prev
         )

@@ -390,7 +390,6 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         "chapter_spine_map" TEXT NOT NULL DEFAULT '[]',
         "chapter_names" TEXT,
         "page_count" INTEGER NOT NULL DEFAULT 0,
-        "series_id" TEXT,
         PRIMARY KEY ("user_id", "id"),
         CONSTRAINT "books_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       )
@@ -442,7 +441,6 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       { name: 'chapter_spine_map', fallback: `'[]'` },
       { name: 'chapter_names', fallback: `NULL` },
       { name: 'page_count', fallback: `0` },
-      { name: 'series_id', fallback: `NULL` },
     ];
     const insertCols = ['user_id', 'id', ...COPY_COLUMNS.map((c) => c.name)].join(', ');
     const selectExprs = COPY_COLUMNS.map((c) =>
@@ -540,15 +538,15 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       const existing = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM series WHERE user_id = ${user_id} AND name = ${series}
       `;
+      const id = existing[0]?.id ?? crypto.randomUUID();
       if (existing.length === 0) {
-        const id = crypto.randomUUID();
         await prisma.$executeRaw`
           INSERT INTO series (id, user_id, name, sort_key) VALUES (${id}, ${user_id}, ${series}, ${series})
         `;
-        await prisma.$executeRaw`
-          UPDATE books SET series_id = ${id} WHERE user_id = ${user_id} AND series = ${series}
-        `;
       }
+      await prisma.$executeRaw`
+        UPDATE books SET series_id = ${id} WHERE user_id = ${user_id} AND series = ${series}
+      `;
     }
 
     await prisma.$executeRaw`PRAGMA foreign_keys = ON`;

@@ -32,7 +32,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   retryButton: {
     marginTop: theme.space.sm,
     cursor: 'pointer',
-    color: theme.color.text.link,
+    color: theme.color.text.secondary,
     background: 'none',
     border: 'none',
     fontSize: theme.fontSize.sm,

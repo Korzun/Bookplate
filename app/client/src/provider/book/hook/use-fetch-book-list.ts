@@ -5,7 +5,7 @@ import { useLibraryTarget, useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-import type { Book, BookList, PagedBookListResponse } from '../type';
+import type { BookList, PagedBookListResponse } from '../type';
 
 export type FetchBookList = () => Promise<void>;
 
@@ -42,7 +42,7 @@ export const useFetchBookList = (): FetchBookList => {
             [book.id]:
               completeBookIds.has(book.id) && bookList[book.id] !== undefined
                 ? bookList[book.id]
-                : { ...book, identifiers: book.identifiers ?? [], subjects: book.subjects ?? [] },
+                : { ...book, identifiers: [], subjects: [] },
           }),
           {} as BookList
         )
