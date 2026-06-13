@@ -5,7 +5,9 @@ import * as path from 'path';
 export interface EpubChanges {
   title?: string;
   author?: string;
-  fileAs?: string;
+  titleSort?: string;
+  authorSort?: string;
+  publishDate?: string;
   description?: string;
   publisher?: string;
   series?: string;
@@ -68,28 +70,56 @@ export function writeMetadata(filePath: string, changes: EpubChanges): void {
   const opfDir = path.dirname(opfRelPath);
 
   // Step 3: apply text field changes
-  if (changes.title !== undefined) {
-    metadata['dc:title'] = [changes.title];
-  }
 
-  // author and fileAs both live on dc:creator; update them together to preserve each other
-  if (changes.author !== undefined || changes.fileAs !== undefined) {
-    const existing = ((metadata['dc:creator'] as unknown[]) ?? [])[0];
-    const currentAuthor =
-      changes.author ??
-      (typeof existing === 'string'
-        ? existing
-        : ((existing as Record<string, string>)?.['#text'] ?? ''));
-    const currentFileAs =
-      changes.fileAs ??
-      (typeof existing === 'object' && existing !== null
-        ? ((existing as Record<string, string>)['@_file-as'] ??
-          (existing as Record<string, string>)['@_opf:file-as'] ??
+  // dc:title: update title and/or titleSort together to preserve each other
+  if (changes.title !== undefined || changes.titleSort !== undefined) {
+    const existingTitleArr = (metadata['dc:title'] as unknown[]) ?? [];
+    const existingTitle0 = existingTitleArr[0];
+    const currentTitle =
+      changes.title ??
+      (typeof existingTitle0 === 'string'
+        ? existingTitle0
+        : ((existingTitle0 as Record<string, string>)?.['#text'] ?? ''));
+    const currentTitleSort =
+      changes.titleSort ??
+      (typeof existingTitle0 === 'object' && existingTitle0 !== null
+        ? ((existingTitle0 as Record<string, string>)['@_file-as'] ??
+          (existingTitle0 as Record<string, string>)['@_opf:file-as'] ??
           '')
         : '');
-    metadata['dc:creator'] = currentFileAs
-      ? [{ '#text': currentAuthor, '@_file-as': currentFileAs }]
+    metadata['dc:title'] = currentTitleSort
+      ? [{ '#text': currentTitle, '@_file-as': currentTitleSort }]
+      : [currentTitle];
+  }
+
+  // dc:creator: update author and/or authorSort together to preserve each other
+  if (changes.author !== undefined || changes.authorSort !== undefined) {
+    const existingCreatorArr = (metadata['dc:creator'] as unknown[]) ?? [];
+    const existingCreator0 = existingCreatorArr[0];
+    const currentAuthor =
+      changes.author ??
+      (typeof existingCreator0 === 'string'
+        ? existingCreator0
+        : ((existingCreator0 as Record<string, string>)?.['#text'] ?? ''));
+    const currentAuthorSort =
+      changes.authorSort ??
+      (typeof existingCreator0 === 'object' && existingCreator0 !== null
+        ? ((existingCreator0 as Record<string, string>)['@_file-as'] ??
+          (existingCreator0 as Record<string, string>)['@_opf:file-as'] ??
+          '')
+        : '');
+    metadata['dc:creator'] = currentAuthorSort
+      ? [{ '#text': currentAuthor, '@_file-as': currentAuthorSort }]
       : [currentAuthor];
+  }
+
+  // dc:date: set or remove publishDate
+  if (changes.publishDate !== undefined) {
+    if (changes.publishDate === '') {
+      delete metadata['dc:date'];
+    } else {
+      metadata['dc:date'] = changes.publishDate;
+    }
   }
 
   if (changes.description !== undefined) {

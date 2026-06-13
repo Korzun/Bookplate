@@ -10,7 +10,9 @@ function makeEpub(
   opts: {
     title?: string;
     author?: string;
-    fileAs?: string;
+    titleSort?: string;
+    authorSort?: string;
+    publishDate?: string;
     description?: string;
     publisher?: string;
     series?: string;
@@ -32,7 +34,9 @@ function makeEpub(
 </container>`)
   );
 
-  const fileAsAttr = opts.fileAs ? ` file-as="${opts.fileAs}"` : '';
+  const titleSortAttr = opts.titleSort ? ` file-as="${opts.titleSort}"` : '';
+  const authorSortAttr = opts.authorSort ? ` file-as="${opts.authorSort}"` : '';
+  const dateElem = opts.publishDate ? `<dc:date>${opts.publishDate}</dc:date>` : '';
   const coverItem = opts.coverData
     ? `<item id="cover-img" href="cover.jpg" media-type="${opts.coverMime ?? 'image/jpeg'}"/>`
     : '';
@@ -56,8 +60,9 @@ function makeEpub(
     Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0" xmlns:opf="http://www.idpf.org/2007/opf">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    ${opts.title !== undefined ? `<dc:title>${opts.title}</dc:title>` : ''}
-    ${opts.author !== undefined ? `<dc:creator${fileAsAttr}>${opts.author}</dc:creator>` : ''}
+    ${opts.title !== undefined ? `<dc:title${titleSortAttr}>${opts.title}</dc:title>` : ''}
+    ${opts.author !== undefined ? `<dc:creator${authorSortAttr}>${opts.author}</dc:creator>` : ''}
+    ${dateElem}
     ${opts.description !== undefined ? `<dc:description>${opts.description}</dc:description>` : ''}
     ${opts.publisher !== undefined ? `<dc:publisher>${opts.publisher}</dc:publisher>` : ''}
     ${identifierElems}
@@ -205,10 +210,50 @@ describe('writeMetadata', () => {
     expect(parseEpub(f).author).toBe('New Author');
   });
 
-  it('updates fileAs', () => {
-    const f = toFile(makeEpub({ author: 'John Doe', fileAs: 'Doe, John' }));
-    writeMetadata(f, { fileAs: 'Doe, J.' });
-    expect(parseEpub(f).fileAs).toBe('Doe, J.');
+  it('updates authorSort independently of author', () => {
+    const f = toFile(makeEpub({ author: 'John Doe', authorSort: 'Doe, John' }));
+    writeMetadata(f, { authorSort: 'Doe, J.' });
+    expect(parseEpub(f).authorSort).toBe('Doe, J.');
+    expect(parseEpub(f).author).toBe('John Doe');
+  });
+
+  it('updates author without affecting authorSort', () => {
+    const f = toFile(makeEpub({ author: 'John Doe', authorSort: 'Doe, John' }));
+    writeMetadata(f, { author: 'Jane Doe' });
+    expect(parseEpub(f).author).toBe('Jane Doe');
+    expect(parseEpub(f).authorSort).toBe('Doe, John');
+  });
+
+  it('updates titleSort independently of title', () => {
+    const f = toFile(makeEpub({ title: 'The Foundation', titleSort: 'Foundation, The' }));
+    writeMetadata(f, { titleSort: 'Foundation' });
+    expect(parseEpub(f).titleSort).toBe('Foundation');
+    expect(parseEpub(f).title).toBe('The Foundation');
+  });
+
+  it('updates title without affecting titleSort', () => {
+    const f = toFile(makeEpub({ title: 'Old Title', titleSort: 'Title, Old' }));
+    writeMetadata(f, { title: 'New Title' });
+    expect(parseEpub(f).title).toBe('New Title');
+    expect(parseEpub(f).titleSort).toBe('Title, Old');
+  });
+
+  it('adds publishDate to an epub with no dc:date', () => {
+    const f = toFile(makeEpub({ title: 'No Date' }));
+    writeMetadata(f, { publishDate: '2001-01-16' });
+    expect(parseEpub(f).publishDate).toBe('2001-01-16');
+  });
+
+  it('updates an existing publishDate', () => {
+    const f = toFile(makeEpub({ title: 'Dated', publishDate: '2000-01-01' }));
+    writeMetadata(f, { publishDate: '2001-01-16' });
+    expect(parseEpub(f).publishDate).toBe('2001-01-16');
+  });
+
+  it('removes publishDate when empty string is given', () => {
+    const f = toFile(makeEpub({ title: 'Dated', publishDate: '2000-01-01' }));
+    writeMetadata(f, { publishDate: '' });
+    expect(parseEpub(f).publishDate).toBe('');
   });
 
   it('updates description', () => {
