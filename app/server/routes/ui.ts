@@ -11,7 +11,7 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from '../services/book-store';
-import { AppConfig, EpubMeta, Owner, PageCursor } from '../types';
+import { AppConfig, BookListFilters, EpubMeta, Owner, PageCursor } from '../types';
 import { UserStore } from '../services/user-store';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -399,9 +399,31 @@ export function createUiRouter(
     const owner = await resolveOwner(req, res);
     if (!owner) return;
 
-    const { cursor, take } = req.query;
+    const { cursor, take, type, status } = req.query;
 
-    if (cursor !== undefined || take !== undefined) {
+    const VALID_TYPES = new Set(['standalone', 'series']);
+    const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
+
+    if (type !== undefined && (typeof type !== 'string' || !VALID_TYPES.has(type))) {
+      res.status(400).json({ error: 'Invalid type. Must be "standalone" or "series".' });
+      return;
+    }
+    if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
+      res.status(400).json({
+        error: 'Invalid status. Must be "not-started", "in-progress", or "completed".',
+      });
+      return;
+    }
+
+    const filters: BookListFilters | undefined =
+      type !== undefined || status !== undefined
+        ? {
+            type: type as BookListFilters['type'],
+            status: status as BookListFilters['status'],
+          }
+        : undefined;
+
+    if (cursor !== undefined || take !== undefined || filters !== undefined) {
       let pageCursor: PageCursor | null = null;
       if (typeof cursor === 'string' && cursor) {
         try {
@@ -412,7 +434,7 @@ export function createUiRouter(
       }
       const pageSize =
         typeof take === 'string' ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100) : 20;
-      const result = await bookStore.listBooksPage(owner, pageCursor, pageSize);
+      const result = await bookStore.listBooksPage(owner, pageCursor, pageSize, filters);
       res.json(result);
       return;
     }
