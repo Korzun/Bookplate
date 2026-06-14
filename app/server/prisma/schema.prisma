@@ -41,12 +41,17 @@ model Book {
 }
 
 model Series {
-  id      String @id
-  userId  String @map("user_id")
-  name    String
-  sortKey String @map("sort_key")
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  books   Book[]
+  id         String @id
+  userId     String @map("user_id")
+  name       String
+  sortKey    String @map("sort_key")
+  subjects   String @default("[]")
+  bookCount  Int    @default(0) @map("book_count")
+  author     String @default("")
+  publisher  String @default("")
+  totalPages Int    @default(0) @map("total_pages")
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books      Book[]
 
   @@unique([userId, name])
   @@map("series")

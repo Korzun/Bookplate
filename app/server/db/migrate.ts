@@ -519,6 +519,11 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         "user_id" TEXT NOT NULL,
         "name" TEXT NOT NULL,
         "sort_key" TEXT NOT NULL,
+        "subjects" TEXT NOT NULL DEFAULT '[]',
+        "book_count" INTEGER NOT NULL DEFAULT 0,
+        "author" TEXT NOT NULL DEFAULT '',
+        "publisher" TEXT NOT NULL DEFAULT '',
+        "total_pages" INTEGER NOT NULL DEFAULT 0,
         CONSTRAINT "series_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       )
     `);
