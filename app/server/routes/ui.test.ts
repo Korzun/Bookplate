@@ -2254,3 +2254,71 @@ describe('GET /api/books (filtered)', () => {
     expect(res.body).toHaveProperty('nextCursor');
   });
 });
+
+describe('GET /api/series/:name', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/series/Dune');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 for unknown series', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/series/NonExistent')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+    expect((res.body as { error: string }).error).toBe('Series not found');
+  });
+
+  it('returns aggregate fields for a known series', async () => {
+    const token = await loginAlice();
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    await bookStore.addBook(aliceOwner, 'bk1', stage('bk1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      subjects: ['Science Fiction'],
+      author: 'Frank Herbert',
+      publisher: 'Chilton',
+      pageCount: 412,
+    });
+    await bookStore.addBook(aliceOwner, 'bk2', stage('bk2'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 2,
+      subjects: ['Science Fiction', 'Politics'],
+      author: 'Frank Herbert',
+      publisher: 'Chilton',
+      pageCount: 256,
+    });
+
+    const res = await request(app)
+      .get('/api/series/Dune')
+      .set(...bearer(token));
+
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      name: string;
+      subjects: string[];
+      bookCount: number;
+      author: string;
+      publisher: string;
+      totalPages: number;
+    };
+    expect(body.name).toBe('Dune');
+    expect(body.bookCount).toBe(2);
+    expect(body.author).toBe('Frank Herbert');
+    expect(body.publisher).toBe('Chilton');
+    expect(body.totalPages).toBe(668);
+    expect(body.subjects).toContain('Science Fiction');
+    expect(body.subjects).toContain('Politics');
+    expect(body.subjects).toHaveLength(2);
+  });
+
+  it('admin requires ?user= parameter', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/series/Dune')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+});

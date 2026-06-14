@@ -648,6 +648,17 @@ export function createUiRouter(
     res.send(data);
   });
 
+  router.get('/api/series/:name', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const series = await bookStore.getSeriesByName(owner, req.params.name);
+    if (!series) {
+      res.status(404).json({ error: 'Series not found' });
+      return;
+    }
+    res.json(series);
+  });
+
   router.delete('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
