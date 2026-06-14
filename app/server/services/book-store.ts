@@ -561,11 +561,24 @@ export class BookStore {
   }
 
   private async removeStaleBook(userId: string, id: string): Promise<void> {
-    try {
-      await this.prisma.book.delete({ where: { userId_id: { userId, id } } });
-    } catch (err) {
-      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) throw err;
-    }
+    await this.prisma.$transaction(async (tx) => {
+      const book = await tx.book.findUnique({
+        where: { userId_id: { userId, id } },
+        select: { seriesId: true },
+      });
+      if (!book) return;
+
+      await tx.book.delete({ where: { userId_id: { userId, id } } });
+
+      if (book.seriesId) {
+        const remaining = await tx.book.count({ where: { seriesId: book.seriesId } });
+        if (remaining === 0) {
+          await tx.series.delete({ where: { id: book.seriesId } });
+        } else {
+          await this.recomputeSeriesMeta(tx, book.seriesId);
+        }
+      }
+    });
   }
 
   async getCover(userId: string, id: string): Promise<{ data: Buffer; mime: string } | null> {
@@ -991,7 +1004,13 @@ export class BookStore {
 
     const seenSubjects = new Map<string, string>();
     for (const book of books) {
-      for (const s of JSON.parse(book.subjects) as string[]) {
+      let parsedSubjects: string[];
+      try {
+        parsedSubjects = JSON.parse(book.subjects) as string[];
+      } catch {
+        parsedSubjects = [];
+      }
+      for (const s of parsedSubjects) {
         const key = s.toLowerCase();
         if (!seenSubjects.has(key)) seenSubjects.set(key, s);
       }

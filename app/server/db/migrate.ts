@@ -596,7 +596,13 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
 
       const seenSubjects = new Map<string, string>();
       for (const book of books) {
-        for (const s of JSON.parse(book.subjects) as string[]) {
+        let parsedSubjects: string[];
+        try {
+          parsedSubjects = JSON.parse(book.subjects) as string[];
+        } catch {
+          parsedSubjects = [];
+        }
+        for (const s of parsedSubjects) {
           const key = s.toLowerCase();
           if (!seenSubjects.has(key)) seenSubjects.set(key, s);
         }
