@@ -74,14 +74,16 @@ export const LibraryPage = () => {
               <BookRow key={item.bookId} bookId={item.bookId} />
             )
           )}
-          {nextCursor !== null && (
-            <div ref={sentinelRef} />
-          )}
+          {nextCursor !== null && <div ref={sentinelRef} />}
           {hasError && bookListItems.length > 0 && (
             <div className={style.pageError}>
               Failed to load more books
               <br />
-              <button type="button" className={style.retryButton} onClick={() => void fetchNextPage()}>
+              <button
+                type="button"
+                className={style.retryButton}
+                onClick={() => void fetchNextPage()}
+              >
                 Retry
               </button>
             </div>

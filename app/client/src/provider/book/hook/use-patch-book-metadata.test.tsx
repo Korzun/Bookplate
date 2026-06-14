@@ -84,6 +84,10 @@ function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = 
             setErrorForBook: () => {},
             setBookComplete: () => {},
             clearCompleteBookIds: () => {},
+            bookListItems: [],
+            nextCursor: null,
+            setBookListItems: () => {},
+            setNextCursor: () => {},
           }}
         >
           {children}

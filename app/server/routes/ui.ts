@@ -11,7 +11,7 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from '../services/book-store';
-import { AppConfig, EpubMeta, Owner } from '../types';
+import { AppConfig, EpubMeta, Owner, PageCursor } from '../types';
 import { UserStore } from '../services/user-store';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -400,11 +400,17 @@ export function createUiRouter(
     const { cursor, take } = req.query;
 
     if (cursor !== undefined || take !== undefined) {
-      const after =
-        typeof cursor === 'string' && cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
+      let pageCursor: PageCursor | null = null;
+      if (typeof cursor === 'string' && cursor) {
+        try {
+          pageCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as PageCursor;
+        } catch {
+          pageCursor = null;
+        }
+      }
       const pageSize =
         typeof take === 'string' ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100) : 20;
-      const result = await bookStore.listBooksPage(owner, after, pageSize);
+      const result = await bookStore.listBooksPage(owner, pageCursor, pageSize);
       res.json(result);
       return;
     }

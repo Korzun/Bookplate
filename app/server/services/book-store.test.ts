@@ -14,7 +14,7 @@ import {
   DocumentIsBookError,
 } from './book-store';
 import { partialMD5 } from './epub-parser';
-import { EpubMeta, Owner } from '../types';
+import { EpubMeta, Owner, PageCursor } from '../types';
 import { runMigrations } from '../db/migrate';
 
 jest.mock('../logger');
@@ -1871,14 +1871,14 @@ describe('unlinkDocument', () => {
 
 describe('BookStore.listBooksPage()', () => {
   it('returns empty result for an empty library', async () => {
-    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const result = await bookStore.listBooksPage(OWNER, null, 20);
     expect(result).toEqual({ items: [], books: [], nextCursor: null });
   });
 
   it('returns standalone books as display units', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '' });
     await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '' });
-    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const result = await bookStore.listBooksPage(OWNER, null, 20);
     expect(result.items).toEqual([
       { type: 'standalone', bookId: 'b1' },
       { type: 'standalone', bookId: 'b2' },
@@ -1898,7 +1898,7 @@ describe('BookStore.listBooksPage()', () => {
       title: 'Dune 2',
       series: 'Dune',
     });
-    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const result = await bookStore.listBooksPage(OWNER, null, 20);
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
     expect(result.books).toHaveLength(2);
     expect(result.nextCursor).toBeNull();
@@ -1915,7 +1915,7 @@ describe('BookStore.listBooksPage()', () => {
       title: 'D2',
       series: 'Dune',
     });
-    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const result = await bookStore.listBooksPage(OWNER, null, 20);
     const ids = result.books.map((b) => b.id).sort();
     expect(ids).toEqual(['b1', 'b2'].sort());
   });
@@ -1928,7 +1928,7 @@ describe('BookStore.listBooksPage()', () => {
       series: 'Banana',
     });
     await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Dates', series: '' });
-    const result = await bookStore.listBooksPage(OWNER, '', 20);
+    const result = await bookStore.listBooksPage(OWNER, null, 20);
     expect(result.items).toEqual([
       { type: 'standalone', bookId: 'b1' },
       { type: 'series', seriesName: 'Banana' },
@@ -1944,7 +1944,7 @@ describe('BookStore.listBooksPage()', () => {
         series: '',
       });
     }
-    const result = await bookStore.listBooksPage(OWNER, '', 3);
+    const result = await bookStore.listBooksPage(OWNER, null, 3);
     expect(result.items).toHaveLength(3);
     expect(result.nextCursor).not.toBeNull();
   });
@@ -1957,20 +1957,49 @@ describe('BookStore.listBooksPage()', () => {
         series: '',
       });
     }
-    const page1 = await bookStore.listBooksPage(OWNER, '', 2);
+    const page1 = await bookStore.listBooksPage(OWNER, null, 2);
     expect(page1.items).toHaveLength(2);
     expect(page1.nextCursor).not.toBeNull();
 
-    const page2 = await bookStore.listBooksPage(
-      OWNER,
-      Buffer.from(page1.nextCursor!, 'base64').toString('utf-8'),
-      2
-    );
+    const cursor = JSON.parse(
+      Buffer.from(page1.nextCursor!, 'base64').toString('utf-8')
+    ) as PageCursor;
+    const page2 = await bookStore.listBooksPage(OWNER, cursor, 2);
     expect(page2.items).toHaveLength(2);
     expect(page2.nextCursor).toBeNull();
     const allIds = [...page1.items, ...page2.items].map((item) =>
       item.type === 'standalone' ? item.bookId : item.seriesName
     );
     expect(new Set(allIds).size).toBe(4);
+  });
+
+  it('does not skip standalones with duplicate titles at a page boundary', async () => {
+    // b1 and b2 share the same title; b3 is distinct. With take=1, the cursor
+    // after b1 must land correctly on b2 rather than skipping to b3.
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Same', series: '' });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Same', series: '' });
+    await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Zzz', series: '' });
+
+    const page1 = await bookStore.listBooksPage(OWNER, null, 1);
+    expect(page1.items).toHaveLength(1);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const c1 = JSON.parse(Buffer.from(page1.nextCursor!, 'base64').toString('utf-8')) as PageCursor;
+    const page2 = await bookStore.listBooksPage(OWNER, c1, 1);
+    expect(page2.items).toHaveLength(1);
+    expect(page2.nextCursor).not.toBeNull();
+
+    const c2 = JSON.parse(Buffer.from(page2.nextCursor!, 'base64').toString('utf-8')) as PageCursor;
+    const page3 = await bookStore.listBooksPage(OWNER, c2, 1);
+    expect(page3.items).toHaveLength(1);
+    expect(page3.nextCursor).toBeNull();
+
+    const allIds = [page1, page2, page3].flatMap((p) =>
+      p.items.map((item) => (item.type === 'standalone' ? item.bookId : item.seriesName))
+    );
+    expect(new Set(allIds).size).toBe(3); // all 3 books returned, none skipped
+    expect(allIds).toContain('b1');
+    expect(allIds).toContain('b2');
+    expect(allIds).toContain('b3');
   });
 });

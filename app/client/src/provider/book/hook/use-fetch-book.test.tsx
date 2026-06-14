@@ -60,6 +60,10 @@ function makeWrapper(mockSetBookComplete: () => void) {
           setErrorForBook,
           setBookComplete: mockSetBookComplete,
           clearCompleteBookIds: () => {},
+          bookListItems: [],
+          nextCursor: null,
+          setBookListItems: () => {},
+          setNextCursor: () => {},
         }}
       >
         {children}

@@ -79,6 +79,13 @@ export type PagedBookListResponse = {
   nextCursor: string | null;
 };
 
+/** Opaque base64-encoded JSON cursor stored in the client and echoed back on subsequent requests. */
+export type PageCursor = {
+  k: string; // sort key of the last display unit on the page
+  t: 's' | 'b'; // 's' = series, 'b' = standalone book
+  id: string; // secondary tiebreaker: series id for series, book id for standalones
+};
+
 export interface AppConfig {
   username: string;
   password: string;

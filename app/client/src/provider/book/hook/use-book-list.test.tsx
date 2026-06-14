@@ -83,7 +83,10 @@ describe('useBookList', () => {
   it('triggers a fetch when bookListFetched is false', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      })
     );
     renderHook(() => useBookList(), { wrapper: makeWrapper() });
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/books?take=20', {}));
@@ -137,7 +140,10 @@ describe('useBookList', () => {
   });
 
   it('clears a previous error and refetches when the library target changes', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ items: [], books: [], nextCursor: null }) });
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    });
     vi.stubGlobal('fetch', mockFetch);
     const ContextWrapper = makeWrapper({
       bookListFetched: true,
