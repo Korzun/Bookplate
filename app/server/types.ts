@@ -83,6 +83,11 @@ export type PagedBookListResponse = {
   nextCursor: string | null;
 };
 
+export type BookListFilters = {
+  type?: 'standalone' | 'series';
+  status?: 'not-started' | 'in-progress' | 'completed';
+};
+
 /** Opaque base64-encoded JSON cursor stored in the client and echoed back on subsequent requests. */
 export type PageCursor = {
   k: string; // sort key of the last display unit on the page
