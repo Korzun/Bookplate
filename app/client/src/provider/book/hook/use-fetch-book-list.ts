@@ -34,7 +34,8 @@ export const useFetchBookList = (): FetchBookList => {
     try {
       const response = await apiFetch(withTargetUser('/api/books?take=20'));
       if (!response.ok) throw new Error('Failed to fetch books');
-      const { items, books, nextCursor } = await (response.json() as Promise<PagedBookListResponse>);
+      const { items, books, nextCursor } =
+        await (response.json() as Promise<PagedBookListResponse>);
       setBookList(() =>
         books.reduce(
           (acc, book) => ({

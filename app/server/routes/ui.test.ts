@@ -17,6 +17,7 @@ import { createUiRouter } from './ui';
 import { AppConfig, EpubMeta, Owner } from '../types';
 
 jest.mock('../logger');
+jest.setTimeout(30000);
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a

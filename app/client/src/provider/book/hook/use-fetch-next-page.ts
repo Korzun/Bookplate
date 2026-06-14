@@ -33,12 +33,14 @@ export const useFetchNextPage = (): FetchNextPage => {
     setBookListLoading(true);
     setBookListError(undefined);
     try {
-      const url = withTargetUser(
-        `/api/books?cursor=${encodeURIComponent(nextCursor)}&take=20`
-      );
+      const url = withTargetUser(`/api/books?cursor=${encodeURIComponent(nextCursor)}&take=20`);
       const response = await apiFetch(url);
       if (!response.ok) throw new Error('Failed to fetch books');
-      const { items, books, nextCursor: newCursor } = await (response.json() as Promise<PagedBookListResponse>);
+      const {
+        items,
+        books,
+        nextCursor: newCursor,
+      } = await (response.json() as Promise<PagedBookListResponse>);
       setBookList((prev: BookList) =>
         books.reduce(
           (acc, book) => ({

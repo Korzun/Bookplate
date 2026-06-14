@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { Book, BookSummary, EpubMeta, Owner, PagedBookListResponse } from '../types';
+import { Book, BookSummary, EpubMeta, Owner, PageCursor, PagedBookListResponse } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
@@ -663,21 +663,51 @@ export class BookStore {
     return rest;
   }
 
-  async listBooksPage(owner: Owner, after: string, take: number): Promise<PagedBookListResponse> {
+  async listBooksPage(
+    owner: Owner,
+    cursor: PageCursor | null,
+    take: number
+  ): Promise<PagedBookListResponse> {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
+
+    // Build where conditions that resume cleanly after the cursor.
+    // Series names are unique per user so their sort key alone is sufficient.
+    // Standalones need a compound (title, id) tiebreaker because two books can
+    // share a title; `id` is the stable secondary key.
+    // When the last page ended on a series at sort key K, standalones at exactly
+    // K still need to be shown (series sorts before same-key standalone).
+    const seriesWhere: Prisma.SeriesWhereInput = cursor
+      ? { userId: owner.userId, sortKey: { gt: cursor.k } }
+      : { userId: owner.userId };
+
+    let bookWhere: Prisma.BookWhereInput;
+    if (!cursor) {
+      bookWhere = { userId: owner.userId, seriesId: null };
+    } else if (cursor.t === 's') {
+      // Last item was a series at K; standalones at K come next
+      bookWhere = { userId: owner.userId, seriesId: null, title: { gte: cursor.k } };
+    } else {
+      // Last item was a standalone at (K, id); resume with compound filter
+      bookWhere = {
+        userId: owner.userId,
+        seriesId: null,
+        OR: [{ title: { gt: cursor.k } }, { title: { equals: cursor.k }, id: { gt: cursor.id } }],
+      };
+    }
+
     // Note: standalone books are sorted by `title`, not `fileAs || title`. This matches the
     // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
     // (listBooks) sorts by fileAs || title, so the two orderings intentionally differ.
     const [seriesRows, standaloneRows] = await Promise.all([
       this.prisma.series.findMany({
-        where: { userId: owner.userId, sortKey: { gt: after } },
+        where: seriesWhere,
         orderBy: { sortKey: 'asc' },
         take: fetchLimit,
       }),
       this.prisma.book.findMany({
-        where: { userId: owner.userId, seriesId: null, title: { gt: after } },
-        orderBy: { title: 'asc' },
+        where: bookWhere,
+        orderBy: [{ title: 'asc' }, { id: 'asc' }],
         take: fetchLimit,
         select: BOOK_SELECT,
       }),
@@ -750,8 +780,15 @@ export class BookStore {
       );
     });
 
+    const last = page[page.length - 1];
     const nextCursor = hasMore
-      ? Buffer.from(page[page.length - 1].sortKey).toString('base64')
+      ? Buffer.from(
+          JSON.stringify({
+            k: last.sortKey,
+            t: last.type === 'series' ? 's' : 'b',
+            id: last.row.id,
+          })
+        ).toString('base64')
       : null;
 
     return { items, books, nextCursor };
