@@ -18,30 +18,30 @@ export type UseSeries =
   | [undefined, false, true, undefined]
   | [undefined, false, true, string];
 
+type FetchResult = { seriesName: string; meta: SeriesMeta } | { seriesName: string; error: string };
+
 export const useSeries = (seriesName: string): UseSeries => {
-  const [data, setData] = useState<SeriesMeta | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [result, setResult] = useState<FetchResult | null>(null);
   const withTargetUser = useWithTargetUser();
 
   useEffect(() => {
     let cancelled = false;
-    setError(undefined);
-    setData(undefined);
     void apiFetch(withTargetUser(`/api/series/${encodeURIComponent(seriesName)}`))
       .then(async (res) => {
         if (!res.ok) throw new Error('Series not found');
         const meta = await (res.json() as Promise<SeriesMeta>);
-        if (!cancelled) setData(meta);
+        if (!cancelled) setResult({ seriesName, meta });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error');
+        if (!cancelled)
+          setResult({ seriesName, error: err instanceof Error ? err.message : 'Unknown error' });
       });
     return () => {
       cancelled = true;
     };
   }, [seriesName, withTargetUser]);
 
-  if (error !== undefined) return [undefined, false, true, error];
-  if (data !== undefined) return [data, false, false, undefined];
-  return [undefined, true, false, undefined];
+  if (result === null || result.seriesName !== seriesName) return [undefined, true, false, undefined];
+  if ('error' in result) return [undefined, false, true, result.error];
+  return [result.meta, false, false, undefined];
 };
