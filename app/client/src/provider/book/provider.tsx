@@ -1,7 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 
 import { Context } from './context';
-import type { BookList, DisplayUnit } from './type';
+import type { BookList, BookListFilter, DisplayUnit } from './type';
 
 export type BookProviderProps = { children: ReactNode };
 export const BookProvider = ({ children }: BookProviderProps) => {
@@ -14,6 +14,7 @@ export const BookProvider = ({ children }: BookProviderProps) => {
   const [completeBookIds, setCompleteBookIdsRaw] = useState(new Set<string>());
   const [bookListItems, setBookListItemsRaw] = useState<DisplayUnit[]>([]);
   const [nextCursor, setNextCursorRaw] = useState<string | null>(null);
+  const [bookListFilter, setBookListFilterRaw] = useState<BookListFilter>({});
 
   const setBookList = useCallback(
     (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
@@ -36,6 +37,15 @@ export const BookProvider = ({ children }: BookProviderProps) => {
     []
   );
   const setNextCursor = useCallback((cursor: string | null) => setNextCursorRaw(cursor), []);
+  const setBookListFilter = useCallback((filter: BookListFilter) => {
+    setBookListFilterRaw(filter);
+    setBookListFetched(false);
+    setBookListError(undefined);
+    setBookListRaw({});
+    setBookListItemsRaw(() => []);
+    setNextCursorRaw(null);
+    setCompleteBookIdsRaw(new Set());
+  }, []);
 
   return (
     <Context.Provider
@@ -59,6 +69,8 @@ export const BookProvider = ({ children }: BookProviderProps) => {
         clearCompleteBookIds,
         setBookListItems,
         setNextCursor,
+        bookListFilter,
+        setBookListFilter,
       }}
     >
       {children}
