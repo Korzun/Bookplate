@@ -49,4 +49,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     gap: theme.space.xxl,
   },
+  subjects: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.space.md,
+  },
 }));

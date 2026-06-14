@@ -8,9 +8,10 @@ import {
   ProgressIndicator,
   MetadataList,
   Metadata,
+  Tag,
 } from '~/component';
 import { useIsAdmin } from '~/provider/auth';
-import { useSeriesBookList } from '~/provider/book';
+import { useSeries, useSeriesBookList } from '~/provider/book';
 import { useMySeriesProgress } from '~/provider/progress';
 
 import { useStyle } from './style';
@@ -20,8 +21,12 @@ export const SeriesPage = () => {
   const style = useStyle();
 
   const [isAdmin] = useIsAdmin();
-  const [seriesBookList, loading, error] = useSeriesBookList(name!);
+  const [seriesBookList, booksLoading, booksError] = useSeriesBookList(name!);
+  const [series, seriesLoading, seriesError] = useSeries(name!);
   const [seriesProgressPercent] = useMySeriesProgress(name!);
+
+  const loading = booksLoading || seriesLoading;
+  const error = booksError || seriesError;
 
   if (loading) {
     return (
@@ -33,7 +38,7 @@ export const SeriesPage = () => {
     );
   }
 
-  if (error || seriesBookList.length === 0) {
+  if (error || !seriesBookList || seriesBookList.length === 0 || !series) {
     return (
       <Page>
         <Card>
@@ -43,7 +48,6 @@ export const SeriesPage = () => {
     );
   }
 
-  // Metadata
   const metadata: Metadata[] = [];
   if (!isAdmin) {
     metadata.push({
@@ -53,24 +57,13 @@ export const SeriesPage = () => {
       ),
     });
   }
-  metadata.push({
-    title: 'books',
-    value: seriesBookList?.length,
-  });
-
-  const totalPages = seriesBookList.reduce((sum, book) => sum + book.pageCount, 0);
-  if (totalPages > 0) {
-    metadata.push({ title: 'pages', value: totalPages });
+  metadata.push({ title: 'books', value: series.bookCount });
+  if (series.totalPages > 0) {
+    metadata.push({ title: 'pages', value: series.totalPages });
   }
-
-  metadata.push({
-    title: 'publisher',
-    value: Array.from(new Set(seriesBookList.map((book) => book.publisher).filter(Boolean))).join(
-      ', '
-    ),
-  });
-
-  const author = seriesBookList[0].author;
+  if (series.publisher) {
+    metadata.push({ title: 'publisher', value: series.publisher });
+  }
 
   return (
     <Page>
@@ -86,7 +79,7 @@ export const SeriesPage = () => {
             />
             <div>
               <h1 className={style.title}>{name}</h1>
-              <div className={style.author}>{author}</div>
+              <div className={style.author}>{series.author}</div>
             </div>
           </div>
           <div className={style.metadata}>
@@ -101,6 +94,15 @@ export const SeriesPage = () => {
           ))}
         </div>
       </Card>
+      {series.subjects.length > 0 && (
+        <Card title="Subjects">
+          <div className={style.subjects}>
+            {series.subjects.map((subject, index) => (
+              <Tag key={subject + index}>{subject}</Tag>
+            ))}
+          </div>
+        </Card>
+      )}
     </Page>
   );
 };
