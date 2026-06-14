@@ -6,6 +6,7 @@ export { ChapterProgress } from './chapter-progress';
 export { CollapsibleSection } from './collapsible-section';
 export { Cover } from './cover';
 export { CoverStack } from './cover-stack';
+export { FilterBar } from './filter-bar';
 export { Header } from './header';
 export { LibraryScan } from './library-scan';
 export { LibrarySwitcher } from './library-switcher';
