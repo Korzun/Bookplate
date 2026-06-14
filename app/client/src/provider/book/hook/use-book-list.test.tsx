@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 
+import { BookProvider } from '../provider';
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
 
 import { useBookList } from './use-book-list';
+import { useBookListFilter } from './use-book-list-filter';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {
   return {
@@ -171,5 +173,34 @@ describe('useBookList', () => {
     // trigger effect refetch with a callback built after the reset.
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books?take=20', {}));
     await waitFor(() => expect(result.current.list[2]).toBe(false));
+  });
+
+  it('re-fetches with new filter params when bookListFilter changes', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <LibraryTargetProvider>
+        <BookProvider>{children}</BookProvider>
+      </LibraryTargetProvider>
+    );
+
+    const { result } = renderHook(
+      () => ({ list: useBookList(), filter: useBookListFilter() }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/books?take=20', {});
+
+    act(() => result.current.filter[1]({ type: 'series' }));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/books?type=series&take=20', {});
   });
 });
