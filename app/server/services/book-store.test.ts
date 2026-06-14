@@ -2050,6 +2050,15 @@ describe('getSubjects', () => {
     expect(subjects).toEqual([]);
   });
 
+  it('excludes non-string and blank subjects from mixed-type JSON', async () => {
+    await prisma.$executeRaw`
+      INSERT INTO books (user_id, id, title, subjects, size, mtime, added_at)
+      VALUES (${OWNER.userId}, 'mixed-types', 'Mixed', '["Valid", 42, true, null, "  ", "Also Valid"]', 1, 1, 1)
+    `;
+    const subjects = await bookStore.getSubjects(OWNER);
+    expect(subjects).toEqual(['Also Valid', 'Valid']);
+  });
+
   it('only returns subjects belonging to the given owner', async () => {
     const OTHER_ID = 'usr_other00000000000000000';
     await prisma.user.create({ data: { id: OTHER_ID, username: 'bob' } });

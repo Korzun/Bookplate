@@ -91,9 +91,11 @@ export class BookStore {
 
   async getSubjects(owner: Owner): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
-      SELECT DISTINCT value
+      SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
       FROM books, json_each(books.subjects)
       WHERE user_id = ${owner.userId}
+        AND json_each.type = 'text'
+        AND trim(CAST(json_each.value AS TEXT)) <> ''
       ORDER BY value
     `;
     return rows.map((r) => r.value);
