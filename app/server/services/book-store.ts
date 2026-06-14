@@ -89,6 +89,16 @@ export class BookStore {
     return path.join(this.booksRoot, '.staging');
   }
 
+  async getSubjects(owner: Owner): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
+      SELECT DISTINCT value
+      FROM books, json_each(books.subjects)
+      WHERE user_id = ${owner.userId}
+      ORDER BY value
+    `;
+    return rows.map((r) => r.value);
+  }
+
   getUserDir(owner: Owner): string {
     return path.join(this.booksRoot, owner.username);
   }

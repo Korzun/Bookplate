@@ -434,6 +434,13 @@ export function createUiRouter(
     );
   });
 
+  router.get('/api/subjects', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const subjects = await bookStore.getSubjects(owner);
+    res.json({ subjects });
+  });
+
   router.post(
     '/api/books/upload',
     requireAuth,

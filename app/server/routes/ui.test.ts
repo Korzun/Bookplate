@@ -2079,3 +2079,37 @@ describe('password change revokes refresh tokens', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/subjects', () => {
+  it('returns sorted unique subjects for the authenticated user', async () => {
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 's1', stage('s1'), {
+      ...FAKE_META,
+      subjects: ['Fiction', 'History'],
+    });
+    await bookStore.addBook(aliceOwner, 's2', stage('s2'), {
+      ...FAKE_META,
+      subjects: ['Fiction', 'Science'],
+    });
+    const res = await request(app)
+      .get('/api/subjects')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.subjects).toEqual(['Fiction', 'History', 'Science']);
+  });
+
+  it('returns empty array when no books have subjects', async () => {
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 's1', stage('s1'), { ...FAKE_META, subjects: [] });
+    const res = await request(app)
+      .get('/api/subjects')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.subjects).toEqual([]);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/subjects');
+    expect(res.status).toBe(401);
+  });
+});
