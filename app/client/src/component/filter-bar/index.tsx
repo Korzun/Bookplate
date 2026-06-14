@@ -1,0 +1,46 @@
+import type { BookListFilter } from '~/provider/book';
+
+import { useStyle } from './style';
+
+interface FilterBarProps {
+  filter: BookListFilter;
+  onChange: (filter: BookListFilter) => void;
+}
+
+export function FilterBar({ filter, onChange }: FilterBarProps) {
+  const style = useStyle();
+  return (
+    <div className={style.root}>
+      <select
+        className={style.select}
+        value={filter.type ?? ''}
+        onChange={(e) =>
+          onChange({
+            ...filter,
+            type: e.target.value === '' ? undefined : (e.target.value as BookListFilter['type']),
+          })
+        }
+      >
+        <option value="">All Types</option>
+        <option value="standalone">Standalone</option>
+        <option value="series">Series</option>
+      </select>
+      <select
+        className={style.select}
+        value={filter.status ?? ''}
+        onChange={(e) =>
+          onChange({
+            ...filter,
+            status:
+              e.target.value === '' ? undefined : (e.target.value as BookListFilter['status']),
+          })
+        }
+      >
+        <option value="">All Statuses</option>
+        <option value="not-started">Not Started</option>
+        <option value="in-progress">In Progress</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+  );
+}
