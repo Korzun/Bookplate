@@ -561,4 +561,78 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
     log.info('Data migration (series table): series table and series_id backfill complete');
   });
+
+  // Data migration: backfill series aggregate fields (bookCount, subjects, author,
+  // publisher, totalPages) for series rows that existed before these columns were added.
+  await runDataMigration(prisma, 'data_v13_series_meta', async () => {
+    // Add new columns to the series table if they don't already exist
+    // (for databases that ran data_v12_series_table before this feature was added)
+    const seriesCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(series)`;
+    const colNames = new Set(seriesCols.map((c) => c.name));
+    if (!colNames.has('subjects')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN subjects TEXT NOT NULL DEFAULT '[]'`;
+    }
+    if (!colNames.has('book_count')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN book_count INTEGER NOT NULL DEFAULT 0`;
+    }
+    if (!colNames.has('author')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN author TEXT NOT NULL DEFAULT ''`;
+    }
+    if (!colNames.has('publisher')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN publisher TEXT NOT NULL DEFAULT ''`;
+    }
+    if (!colNames.has('total_pages')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN total_pages INTEGER NOT NULL DEFAULT 0`;
+    }
+
+    const allSeries = await prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM series`;
+    for (const { id: seriesId } of allSeries) {
+      const books = await prisma.$queryRaw<
+        Array<{ subjects: string; author: string; publisher: string; page_count: number }>
+      >`SELECT subjects, author, publisher, page_count FROM books WHERE series_id = ${seriesId}`;
+
+      const bookCount = books.length;
+      const totalPages = books.reduce((sum, b) => sum + b.page_count, 0);
+
+      const seenSubjects = new Map<string, string>();
+      for (const book of books) {
+        for (const s of JSON.parse(book.subjects) as string[]) {
+          const key = s.toLowerCase();
+          if (!seenSubjects.has(key)) seenSubjects.set(key, s);
+        }
+      }
+      const subjects = JSON.stringify([...seenSubjects.values()].sort((a, b) => a.localeCompare(b)));
+
+      const seenAuthors = new Map<string, string>();
+      for (const book of books) {
+        if (book.author) {
+          const key = book.author.toLowerCase();
+          if (!seenAuthors.has(key)) seenAuthors.set(key, book.author);
+        }
+      }
+      const author = [...seenAuthors.values()].join(', ');
+
+      const seenPublishers = new Map<string, string>();
+      for (const book of books) {
+        if (book.publisher) {
+          const key = book.publisher.toLowerCase();
+          if (!seenPublishers.has(key)) seenPublishers.set(key, book.publisher);
+        }
+      }
+      const publisher = [...seenPublishers.values()].join(', ');
+
+      await prisma.$executeRaw`
+        UPDATE series
+        SET subjects = ${subjects},
+            book_count = ${bookCount},
+            author = ${author},
+            publisher = ${publisher},
+            total_pages = ${totalPages}
+        WHERE id = ${seriesId}
+      `;
+    }
+    if (allSeries.length > 0) {
+      log.info(`Data migration (series meta): backfilled ${allSeries.length} series`);
+    }
+  });
 }
