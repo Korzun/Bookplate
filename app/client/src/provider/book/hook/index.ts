@@ -11,6 +11,8 @@ export { useLibrarySubjects } from './use-library-subjects';
 export { usePatchBookMetadata } from './use-patch-book-metadata';
 export { useRegenChapters } from './use-regen-chapters';
 export { useScanLibrary } from './use-scan-library';
+export { useSeries } from './use-series';
+export type { SeriesMeta } from './use-series';
 export { useSeriesBookList } from './use-series-book-list';
 export { useSeriesList } from './use-series-list';
 export { useStandaloneBookList } from './use-standalone-book-list';
