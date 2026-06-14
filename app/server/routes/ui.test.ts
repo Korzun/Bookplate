@@ -90,6 +90,24 @@ function stage(id: string, content: string | Buffer = 'x'): string {
   return p;
 }
 
+async function seedProgress(
+  userId: string,
+  bookId: string,
+  percentage: number
+): Promise<void> {
+  await prisma.progress.create({
+    data: {
+      userId,
+      document: bookId,
+      progress: `epub:/${bookId}/${percentage}`,
+      percentage,
+      device: 'Kobo',
+      deviceId: 'dev1',
+      timestamp: 1,
+    },
+  });
+}
+
 // Helper: build a minimal EPUB zip as a Buffer
 function makeEpub(
   opts: {
@@ -2111,5 +2129,68 @@ describe('GET /api/subjects', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/subjects');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/books (filtered)', () => {
+  it('type=standalone excludes series', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&type=standalone').set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
+  });
+
+  it('type=series excludes standalones', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&type=series').set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
+  });
+
+  it('status=not-started returns books with no progress', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '', seriesIndex: 0 });
+    await seedProgress(aliceId, 'b1', 0.5);
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&status=not-started').set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'b2' }]);
+  });
+
+  it('combined type=series&status=completed', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    await seedProgress(aliceId, 'sa1', 1.0);
+    await seedProgress(aliceId, 'sr1', 1.0);
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&type=series&status=completed').set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
+  });
+
+  it('returns 400 for invalid type value', async () => {
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&type=invalid').set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid status value', async () => {
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?take=20&status=unknown').set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('filter works without take param (activates paginated path with default take)', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    const token = await loginAlice();
+    const res = await request(app).get('/api/books?type=standalone').set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
+    expect(res.body).toHaveProperty('nextCursor');
   });
 });
