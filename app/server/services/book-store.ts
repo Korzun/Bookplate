@@ -539,12 +539,19 @@ export class BookStore {
         });
       }
 
-      // Clean up the old Series row if it now has no books
+      // Clean up the old Series row if it now has no books; recompute if it still has some
       if (oldSeriesId && oldSeriesId !== newSeriesId) {
         const remaining = await tx.book.count({ where: { seriesId: oldSeriesId } });
         if (remaining === 0) {
           await tx.series.delete({ where: { id: oldSeriesId } });
+        } else {
+          await this.recomputeSeriesMeta(tx, oldSeriesId);
         }
+      }
+
+      // Recompute the new series aggregates
+      if (newSeriesId) {
+        await this.recomputeSeriesMeta(tx, newSeriesId);
       }
     });
 

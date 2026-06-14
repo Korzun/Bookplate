@@ -2373,4 +2373,76 @@ describe('series aggregate metadata', () => {
     const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'S' } });
     expect(series!.totalPages).toBe(300);
   });
+
+  it('updates series meta after reimportBook changes subjects', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      subjects: ['Science Fiction'],
+      pageCount: 100,
+    });
+
+    const epub = makeMinimalEpub('Dune Messiah');
+    const newPath = path.join(booksDir, 'b1.epub');
+    fs.writeFileSync(newPath, epub);
+
+    const mockImporter: ScanImporter = {
+      parseEpub: () => ({
+        ...FAKE_META,
+        title: 'Dune Messiah',
+        series: 'Dune',
+        subjects: ['Science Fiction', 'Politics'],
+        pageCount: 200,
+      }),
+      partialMD5: () => 'b1',
+    };
+
+    await bookStore.reimportBook(OWNER, 'b1', mockImporter);
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
+    expect(JSON.parse(series!.subjects)).toEqual(['Politics', 'Science Fiction']);
+    expect(series!.totalPages).toBe(200);
+  });
+
+  it('updates both old and new series when reimportBook changes series membership', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Old Series',
+      subjects: ['Fantasy'],
+      pageCount: 100,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'Old Series',
+      seriesIndex: 2,
+      subjects: ['Fantasy', 'Magic'],
+      pageCount: 150,
+    });
+
+    const newPath = path.join(booksDir, 'b1.epub');
+    fs.writeFileSync(newPath, makeMinimalEpub('New Book'));
+    const mockImporter: ScanImporter = {
+      parseEpub: () => ({
+        ...FAKE_META,
+        title: 'New Book',
+        series: 'New Series',
+        subjects: ['Horror'],
+        pageCount: 80,
+      }),
+      partialMD5: () => 'b1',
+    };
+
+    await bookStore.reimportBook(OWNER, 'b1', mockImporter);
+
+    const oldSeries = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Old Series' } });
+    expect(oldSeries).not.toBeNull();
+    expect(oldSeries!.bookCount).toBe(1);
+    expect(JSON.parse(oldSeries!.subjects)).toEqual(['Fantasy', 'Magic']);
+    expect(oldSeries!.totalPages).toBe(150);
+
+    const newSeries = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'New Series' } });
+    expect(newSeries).not.toBeNull();
+    expect(newSeries!.bookCount).toBe(1);
+    expect(JSON.parse(newSeries!.subjects)).toEqual(['Horror']);
+  });
 });
