@@ -1,8 +1,13 @@
 import { useEffect, useRef } from 'react';
 
-import { Page, BookRow, SeriesRow } from '~/component';
+import { Page, BookRow, FilterBar, SeriesRow } from '~/component';
 import { useIsAdmin } from '~/provider/auth';
-import { useBookList, useBookListItems, useFetchNextPage } from '~/provider/book';
+import {
+  useBookList,
+  useBookListFilter,
+  useBookListItems,
+  useFetchNextPage,
+} from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
 
 import { useStyle } from './style';
@@ -11,8 +16,8 @@ export const LibraryPage = () => {
   const style = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetUsername] = useLibraryTarget();
+  const [bookListFilter, setBookListFilter] = useBookListFilter();
 
-  // useBookList triggers the initial fetch and provides loading/error state
   const [, bookListLoading, hasError, bookListError] = useBookList();
   const [bookListItems, nextCursor] = useBookListItems();
   const fetchNextPage = useFetchNextPage();
@@ -67,6 +72,7 @@ export const LibraryPage = () => {
         </div>
       ) : (
         <div className={style.root}>
+          <FilterBar filter={bookListFilter} onChange={setBookListFilter} />
           {bookListItems.map((item) =>
             item.type === 'series' ? (
               <SeriesRow key={item.seriesName} seriesName={item.seriesName} />
