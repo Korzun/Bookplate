@@ -198,3 +198,71 @@ describe('data_v11_per_user_libraries', () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+describe('data_v13_series_meta backfill', () => {
+  let tmpDir: string;
+  let booksDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-v13-'));
+    booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('backfills aggregate fields for existing series', async () => {
+    // Run migrations to establish the full modern schema
+    await runMigrations(prisma, booksDir);
+
+    // Directly insert a user, series, and two books bypassing BookStore
+    // (simulates data that existed before this migration ran)
+    await prisma.$executeRaw`INSERT INTO users (id, username) VALUES ('u1', 'alice')`;
+    await prisma.$executeRaw`
+      INSERT INTO series (id, user_id, name, sort_key)
+      VALUES ('s1', 'u1', 'Dune', 'Dune')
+    `;
+    await prisma.$executeRaw`
+      INSERT INTO books (user_id, id, title, series, series_index, series_id,
+        subjects, author, publisher, page_count, size, mtime, added_at)
+      VALUES
+        ('u1', 'b1', 'Dune', 'Dune', 1, 's1',
+         '["Science Fiction","Space Opera"]', 'Frank Herbert', 'Chilton', 412, 1, 0, 0),
+        ('u1', 'b2', 'Dune Messiah', 'Dune', 2, 's1',
+         '["science fiction","Politics"]', 'frank herbert', 'Chilton', 256, 1, 0, 0)
+    `;
+
+    // Delete the data_v13_series_meta record so it runs again
+    await prisma.$executeRaw`
+      DELETE FROM _prisma_migrations WHERE migration_name = 'data_v13_series_meta'
+    `;
+
+    await runMigrations(prisma, booksDir);
+
+    const series = await prisma.$queryRaw<Array<{
+      book_count: number; author: string; publisher: string;
+      total_pages: number; subjects: string;
+    }>>`SELECT book_count, author, publisher, total_pages, subjects FROM series WHERE id = 's1'`;
+
+    expect(series[0].book_count).toBe(2);
+    expect(series[0].author).toBe('Frank Herbert'); // first-seen casing
+    expect(series[0].publisher).toBe('Chilton');
+    expect(series[0].total_pages).toBe(668);
+    const subjects = JSON.parse(series[0].subjects) as string[];
+    // case-insensitive dedup: 'science fiction' merges with 'Science Fiction'
+    expect(subjects).toContain('Science Fiction');
+    expect(subjects).toContain('Politics');
+    expect(subjects).toHaveLength(3); // Space Opera, Science Fiction, Politics
+  });
+
+  it('does not run twice', async () => {
+    await runMigrations(prisma, booksDir);
+    await runMigrations(prisma, booksDir);
+    // No error = idempotent
+  });
+});
