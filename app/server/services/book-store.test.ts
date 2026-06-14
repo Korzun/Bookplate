@@ -93,6 +93,20 @@ async function insertHistory(
   }
 }
 
+async function insertProgress(bookId: string, percentage: number): Promise<void> {
+  await prisma.progress.create({
+    data: {
+      userId: OWNER.userId,
+      document: bookId,
+      progress: `epub:/${bookId}/${percentage}`,
+      percentage,
+      device: 'Kobo',
+      deviceId: 'dev1',
+      timestamp: Date.now(),
+    },
+  });
+}
+
 const FAKE_META: EpubMeta = {
   title: 'Test Book',
   author: 'Author Name',
@@ -2078,5 +2092,93 @@ describe('getSubjects', () => {
     const subjects = await bookStore.getSubjects(OWNER);
     expect(subjects).toEqual(['AliceOnly']);
     expect(subjects).not.toContain('BobOnly');
+  });
+});
+
+describe('listBooksPage with filters', () => {
+  it('type=standalone excludes series rows', async () => {
+    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { type: 'standalone' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
+  });
+
+  it('type=series excludes standalone rows', async () => {
+    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'sr1', stage('sr1'), { ...FAKE_META, title: 'Beta 1', series: 'Beta', seriesIndex: 1 });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { type: 'series' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
+  });
+
+  it('status=not-started returns standalone books with no progress', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '', seriesIndex: 0 });
+    await insertProgress('b1', 0.5);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'not-started' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b2' }]);
+  });
+
+  it('status=in-progress returns standalone books with partial progress', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Gamma', series: '', seriesIndex: 0 });
+    await insertProgress('b1', 0.5);
+    await insertProgress('b2', 1.0);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'in-progress' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('status=completed returns standalone books with percentage >= 1', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '', seriesIndex: 0 });
+    await insertProgress('b1', 1.0);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'completed' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('status=not-started returns series where no member book has progress', async () => {
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), { ...FAKE_META, title: 'Dune 1', series: 'Dune', seriesIndex: 1 });
+    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), { ...FAKE_META, title: 'Foundation 1', series: 'Foundation', seriesIndex: 1 });
+    await insertProgress('s1b1', 0.5);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'not-started' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Foundation' }]);
+  });
+
+  it('status=completed returns series where all member books have percentage >= 1', async () => {
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), { ...FAKE_META, title: 'Dune 1', series: 'Dune', seriesIndex: 1 });
+    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), { ...FAKE_META, title: 'Dune 2', series: 'Dune', seriesIndex: 2 });
+    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), { ...FAKE_META, title: 'Foundation 1', series: 'Foundation', seriesIndex: 1 });
+    await insertProgress('s1b1', 1.0);
+    await insertProgress('s1b2', 1.0);
+    await insertProgress('s2b1', 0.5);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'completed' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('status=in-progress returns series with 2 completed + 1 unread', async () => {
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), { ...FAKE_META, title: 'Dune 1', series: 'Dune', seriesIndex: 1 });
+    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), { ...FAKE_META, title: 'Dune 2', series: 'Dune', seriesIndex: 2 });
+    await bookStore.addBook(OWNER, 's1b3', stage('s1b3'), { ...FAKE_META, title: 'Dune 3', series: 'Dune', seriesIndex: 3 });
+    await insertProgress('s1b1', 1.0);
+    await insertProgress('s1b2', 1.0);
+    // s1b3 has no progress
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'in-progress' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('type + status combined: series + completed', async () => {
+    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), { ...FAKE_META, title: 'Dune 1', series: 'Dune', seriesIndex: 1 });
+    await insertProgress('sa1', 1.0);
+    await insertProgress('s1b1', 1.0);
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { type: 'series', status: 'completed' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('no filters returns same result as calling without filters arg', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '', seriesIndex: 0 });
+    const withoutFilters = await bookStore.listBooksPage(OWNER, null, 20);
+    const withEmptyFilters = await bookStore.listBooksPage(OWNER, null, 20, {});
+    expect(withEmptyFilters.items).toEqual(withoutFilters.items);
   });
 });
