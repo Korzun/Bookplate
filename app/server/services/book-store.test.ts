@@ -2449,4 +2449,42 @@ describe('series aggregate metadata', () => {
     expect(newSeries!.bookCount).toBe(1);
     expect(JSON.parse(newSeries!.subjects)).toEqual(['Horror']);
   });
+
+  it('updates series meta after deleting one book when others remain', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      subjects: ['Science Fiction'],
+      author: 'Frank Herbert',
+      pageCount: 100,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 2,
+      subjects: ['Science Fiction', 'Politics'],
+      author: 'Frank Herbert',
+      pageCount: 200,
+    });
+
+    await bookStore.deleteBook(OWNER, 'b1');
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
+    expect(series).not.toBeNull();
+    expect(series!.bookCount).toBe(1);
+    expect(series!.totalPages).toBe(200);
+    expect(JSON.parse(series!.subjects)).toEqual(['Politics', 'Science Fiction']);
+  });
+
+  it('deletes the series when the last book is deleted', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+    });
+
+    await bookStore.deleteBook(OWNER, 'b1');
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
+    expect(series).toBeNull();
+  });
 });
