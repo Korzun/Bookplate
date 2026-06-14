@@ -12,6 +12,7 @@ export {
   usePatchBookMetadata,
   useRegenChapters,
   useScanLibrary,
+  useSeries,
   useSeriesBookList,
   useSeriesList,
   useStandaloneBookList,
@@ -29,4 +30,5 @@ export type {
   Series,
   UploadResult,
 } from './type';
+export type { SeriesMeta } from './hook';
 export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';
