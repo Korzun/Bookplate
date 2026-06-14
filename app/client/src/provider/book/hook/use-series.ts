@@ -41,7 +41,8 @@ export const useSeries = (seriesName: string): UseSeries => {
     };
   }, [seriesName, withTargetUser]);
 
-  if (result === null || result.seriesName !== seriesName) return [undefined, true, false, undefined];
+  if (result === null || result.seriesName !== seriesName)
+    return [undefined, true, false, undefined];
   if ('error' in result) return [undefined, false, true, result.error];
   return [result.meta, false, false, undefined];
 };
