@@ -2,7 +2,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaClient, Prisma, Series } from '@prisma/client';
-import { Book, BookSummary, EpubMeta, Owner, PageCursor, PagedBookListResponse, BookListFilters } from '../types';
+import {
+  Book,
+  BookSummary,
+  EpubMeta,
+  Owner,
+  PageCursor,
+  PagedBookListResponse,
+  BookListFilters,
+} from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
@@ -96,9 +104,7 @@ function standaloneStatusWhere(
   const inProgressIds = [...progressMap.entries()]
     .filter(([, pct]) => pct > 0 && pct < 1)
     .map(([id]) => id);
-  const completedIds = [...progressMap.entries()]
-    .filter(([, pct]) => pct >= 1)
-    .map(([id]) => id);
+  const completedIds = [...progressMap.entries()].filter(([, pct]) => pct >= 1).map(([id]) => id);
 
   switch (status) {
     case 'not-started':
@@ -782,14 +788,18 @@ export class BookStore {
         select: { id: true, books: { select: { id: true } } },
       });
       matchingSeriesIds = allSeriesWithBooks
-        .filter((s) => computeSeriesStatus(s.books.map((b) => b.id), pm) === filters.status)
+        .filter(
+          (s) =>
+            computeSeriesStatus(
+              s.books.map((b) => b.id),
+              pm
+            ) === filters.status
+        )
         .map((s) => s.id);
     }
 
     const finalSeriesWhere: Prisma.SeriesWhereInput =
-      matchingSeriesIds !== null
-        ? { ...seriesWhere, id: { in: matchingSeriesIds } }
-        : seriesWhere;
+      matchingSeriesIds !== null ? { ...seriesWhere, id: { in: matchingSeriesIds } } : seriesWhere;
 
     // Note: standalone books are sorted by `title`, not `fileAs || title`. This matches the
     // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
