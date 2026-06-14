@@ -634,6 +634,39 @@ export class BookStore {
     return result;
   }
 
+  async getSeriesByName(
+    owner: Owner,
+    name: string
+  ): Promise<{
+    name: string;
+    subjects: string[];
+    bookCount: number;
+    author: string;
+    publisher: string;
+    totalPages: number;
+  } | null> {
+    const row = await this.prisma.series.findUnique({
+      where: { userId_name: { userId: owner.userId, name } },
+      select: {
+        name: true,
+        subjects: true,
+        bookCount: true,
+        author: true,
+        publisher: true,
+        totalPages: true,
+      },
+    });
+    if (!row) return null;
+    return {
+      name: row.name,
+      subjects: JSON.parse(row.subjects) as string[],
+      bookCount: row.bookCount,
+      author: row.author,
+      publisher: row.publisher,
+      totalPages: row.totalPages,
+    };
+  }
+
   async scan(
     owner: Owner,
     importer: ScanImporter = defaultImporter
