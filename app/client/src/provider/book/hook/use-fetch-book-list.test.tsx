@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
-import type { Book, BookList, DisplayUnit, PagedBookListResponse } from '../type';
+import type { Book, BookList, BookListFilter, DisplayUnit, PagedBookListResponse } from '../type';
 
 import { useFetchBookList } from './use-fetch-book-list';
 
@@ -46,6 +46,7 @@ function makeWrapper({
   onSetBookListError = vi.fn(),
   onSetBookListItems = vi.fn(),
   onSetNextCursor = vi.fn(),
+  bookListFilter = {} as BookListFilter,
 } = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(initialBooks);
@@ -87,7 +88,7 @@ function makeWrapper({
           clearCompleteBookIds: () => {},
           setBookListItems,
           setNextCursor: onSetNextCursor,
-          bookListFilter: {},
+          bookListFilter,
           setBookListFilter: () => {},
         }}
       >
@@ -221,5 +222,50 @@ describe('useFetchBookList', () => {
     });
     await act(() => result.current());
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('appends type filter param to URL when bookListFilter.type is set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ bookListFilter: { type: 'series' } }),
+    });
+    await act(() => result.current());
+    expect(fetch).toHaveBeenCalledWith('/api/books?type=series&take=20', {});
+  });
+
+  it('appends status filter param to URL when bookListFilter.status is set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ bookListFilter: { status: 'in-progress' } }),
+    });
+    await act(() => result.current());
+    expect(fetch).toHaveBeenCalledWith('/api/books?status=in-progress&take=20', {});
+  });
+
+  it('omits filter params when bookListFilter is empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ bookListFilter: {} }),
+    });
+    await act(() => result.current());
+    expect(fetch).toHaveBeenCalledWith('/api/books?take=20', {});
   });
 });

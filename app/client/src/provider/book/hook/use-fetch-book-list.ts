@@ -20,6 +20,7 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListError,
     setBookListItems,
     setNextCursor,
+    bookListFilter,
   } = useContext(Context);
   const [isAdmin] = useIsAdmin();
   const [targetUsername] = useLibraryTarget();
@@ -32,7 +33,11 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListLoading(true);
     setBookListError(undefined);
     try {
-      const response = await apiFetch(withTargetUser('/api/books?take=20'));
+      const params = new URLSearchParams();
+      if (bookListFilter.type) params.append('type', bookListFilter.type);
+      if (bookListFilter.status) params.append('status', bookListFilter.status);
+      params.append('take', '20');
+      const response = await apiFetch(withTargetUser(`/api/books?${params.toString()}`));
       if (!response.ok) throw new Error('Failed to fetch books');
       const { items, books, nextCursor } =
         await (response.json() as Promise<PagedBookListResponse>);
@@ -69,5 +74,6 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListError,
     setBookListItems,
     setNextCursor,
+    bookListFilter,
   ]);
 };
