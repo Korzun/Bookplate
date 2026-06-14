@@ -2,16 +2,23 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
-import { Button, FieldList, NumberInput, Switch, TextArea, TextInput } from '~/control';
+import {
+  Button,
+  FieldList,
+  NumberInput,
+  SubjectChips,
+  Switch,
+  TextArea,
+  TextInput,
+} from '~/control';
 import type { FieldRow } from '~/control';
 import type { Book } from '~/provider/book';
-import { usePatchBookMetadata } from '~/provider/book';
+import { usePatchBookMetadata, useLibrarySubjects } from '~/provider/book';
 import { path } from '~/router';
 import { areObjectArraysIdentical, areStringArraysIdentical, generateUUID } from '~/utils';
 
 import { useStyle } from './style';
 
-type SubjectRow = { _key: string; value: string };
 type IdentifierRow = { _key: string; scheme: string; value: string };
 
 type Props = { original: Book; id: string };
@@ -26,6 +33,7 @@ export const BookEditForm = ({ original, id }: Props) => {
   }, []);
 
   const [patchBookMetadata, saving] = usePatchBookMetadata();
+  const [librarySubjects] = useLibrarySubjects();
 
   const [cover, setCover] = useState<File | undefined>(undefined);
   const handleCoverChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,9 +90,7 @@ export const BookEditForm = ({ original, id }: Props) => {
     setDescription(newDescription);
   }, []);
 
-  const [subjects, setSubjects] = useState<SubjectRow[]>(() =>
-    original.subjects.map((subject) => ({ value: subject, _key: generateUUID() }))
-  );
+  const [subjects, setSubjects] = useState<string[]>(original.subjects);
 
   const [identifiers, setIdentifiers] = useState<IdentifierRow[]>(() =>
     original.identifiers.map((identifier) => ({
@@ -95,7 +101,7 @@ export const BookEditForm = ({ original, id }: Props) => {
   );
 
   async function handleSave() {
-    const newSubjects = subjects.map((r) => r.value).filter(Boolean);
+    const newSubjects = subjects;
     const newIdentifiers = identifiers.map((row) => ({ scheme: row.scheme, value: row.value }));
     const originalSeriesIndex = original.seriesIndex !== 0 ? String(original.seriesIndex) : '';
 
@@ -211,16 +217,7 @@ export const BookEditForm = ({ original, id }: Props) => {
       </Card>
 
       <Card title="Subjects">
-        <FieldList
-          addLabel="Add subject"
-          columns={[{ type: 'text', key: 'value', placeholder: 'Subject' }]}
-          rows={subjects as FieldRow[]}
-          onAdd={() => setSubjects((prev) => [...prev, { _key: generateUUID(), value: '' }])}
-          onRemove={(key) => setSubjects((prev) => prev.filter((r) => r._key !== key))}
-          onChange={(key, field, val) =>
-            setSubjects((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: val } : r)))
-          }
-        />
+        <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
       </Card>
 
       <Card title="Identifiers">
