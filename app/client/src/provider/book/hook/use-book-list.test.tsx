@@ -68,6 +68,8 @@ function makeWrapper({
           nextCursor: null,
           setBookListItems: () => {},
           setNextCursor: () => {},
+          bookListFilter: {},
+          setBookListFilter: () => {},
         }}
       >
         {children}

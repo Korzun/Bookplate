@@ -78,6 +78,8 @@ function makeWrapper({
           clearCompleteBookIds: () => {},
           setBookListItems,
           setNextCursor: onSetNextCursor,
+          bookListFilter: {},
+          setBookListFilter: () => {},
         }}
       >
         {children}
