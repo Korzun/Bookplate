@@ -377,6 +377,8 @@ export class BookStore {
           const remaining = await tx.book.count({ where: { seriesId } });
           if (remaining === 0) {
             await tx.series.delete({ where: { id: seriesId } });
+          } else {
+            await this.recomputeSeriesMeta(tx, seriesId);
           }
         }
       });
