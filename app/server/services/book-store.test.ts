@@ -2029,3 +2029,45 @@ describe('BookStore.listBooksPage()', () => {
     expect(allIds).toContain('b3');
   });
 });
+
+describe('getSubjects', () => {
+  it('returns sorted unique subjects across all books', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      subjects: ['Fiction', 'History'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      subjects: ['Fiction', 'Science'],
+    });
+    const subjects = await bookStore.getSubjects(OWNER);
+    expect(subjects).toEqual(['Fiction', 'History', 'Science']);
+  });
+
+  it('returns empty array when no books have subjects', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, subjects: [] });
+    const subjects = await bookStore.getSubjects(OWNER);
+    expect(subjects).toEqual([]);
+  });
+
+  it('only returns subjects belonging to the given owner', async () => {
+    const OTHER_ID = 'usr_other00000000000000000';
+    await prisma.user.create({ data: { id: OTHER_ID, username: 'bob' } });
+    const otherOwner = { userId: OTHER_ID, username: 'bob' };
+    const otherDir = path.join(booksRoot, 'bob');
+    fs.mkdirSync(otherDir, { recursive: true });
+    const bobBook = path.join(otherDir, 'staged-b2.epub');
+    fs.writeFileSync(bobBook, 'x');
+    await bookStore.addBook(OWNER, 'a1', stage('a1'), {
+      ...FAKE_META,
+      subjects: ['AliceOnly'],
+    });
+    await bookStore.addBook(otherOwner, 'b2', bobBook, {
+      ...FAKE_META,
+      subjects: ['BobOnly'],
+    });
+    const subjects = await bookStore.getSubjects(OWNER);
+    expect(subjects).toEqual(['AliceOnly']);
+    expect(subjects).not.toContain('BobOnly');
+  });
+});
