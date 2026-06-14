@@ -9,6 +9,7 @@ export { ProportionalChapterSlider } from './proportional-chapter-slider';
 export { RegenChaptersButton } from './regen-chapters-button';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
+export { SubjectChips } from './subject-chips';
 export { Switch } from './switch';
 export { TextArea } from './text-area';
 export { TextInput } from './text-input';
