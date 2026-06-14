@@ -100,7 +100,9 @@ function standaloneStatusWhere(
   status: 'not-started' | 'in-progress' | 'completed',
   progressMap: Map<string, number>
 ): Prisma.BookWhereInput {
-  const allStartedIds = [...progressMap.keys()];
+  const allStartedIds = [...progressMap.entries()]
+    .filter(([, pct]) => pct > 0)
+    .map(([id]) => id);
   const inProgressIds = [...progressMap.entries()]
     .filter(([, pct]) => pct > 0 && pct < 1)
     .map(([id]) => id);
@@ -774,7 +776,7 @@ export class BookStore {
     }
 
     // Apply status filter to standalone WHERE
-    if (filters?.status && progressMap) {
+    if (includeStandalones && filters?.status && progressMap) {
       const statusFilter = standaloneStatusWhere(filters.status, progressMap);
       bookWhere = { ...bookWhere, ...statusFilter };
     }
@@ -782,7 +784,6 @@ export class BookStore {
     // For series status filter, pre-compute matching series IDs
     let matchingSeriesIds: string[] | null = null;
     if (includeSeries && filters?.status && progressMap) {
-      const pm = progressMap;
       const allSeriesWithBooks = await this.prisma.series.findMany({
         where: { userId: owner.userId },
         select: { id: true, books: { select: { id: true } } },
@@ -792,7 +793,7 @@ export class BookStore {
           (s) =>
             computeSeriesStatus(
               s.books.map((b) => b.id),
-              pm
+              progressMap!
             ) === filters.status
         )
         .map((s) => s.id);
