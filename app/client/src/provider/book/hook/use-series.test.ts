@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSeries } from './use-series';
@@ -24,13 +24,12 @@ describe('useSeries', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const { apiFetch } = await import('~/lib/api-fetch');
-    vi.mocked(apiFetch).mockImplementation(() => {
-      console.log('apiFetch called');
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(makeMeta()),
-      } as any);
-    });
+    vi.mocked(apiFetch).mockResolvedValue(
+      new Response(JSON.stringify(makeMeta()), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
   });
 
   afterEach(() => {
@@ -65,7 +64,7 @@ describe('useSeries', () => {
 
   it('returns error state when fetch fails', async () => {
     const { apiFetch } = await import('~/lib/api-fetch');
-    vi.mocked(apiFetch).mockResolvedValue({ ok: false } as any);
+    vi.mocked(apiFetch).mockResolvedValue(new Response('', { status: 404 }));
 
     const { result } = renderHook(() => useSeries('Dune'));
 

@@ -2321,4 +2321,12 @@ describe('GET /api/series/:name', () => {
       .set(...bearer(token));
     expect(res.status).toBe(400);
   });
+
+  it('returns 403 when non-admin passes ?user= parameter', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/series/Dune?user=alice')
+      .set(...bearer(token));
+    expect(res.status).toBe(403);
+  });
 });

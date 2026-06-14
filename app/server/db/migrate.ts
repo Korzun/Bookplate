@@ -589,7 +589,7 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     for (const { id: seriesId } of allSeries) {
       const books = await prisma.$queryRaw<
         Array<{ subjects: string; author: string; publisher: string; page_count: number }>
-      >`SELECT subjects, author, publisher, page_count FROM books WHERE series_id = ${seriesId}`;
+      >`SELECT subjects, author, publisher, page_count FROM books WHERE series_id = ${seriesId} ORDER BY added_at ASC, id ASC`;
 
       const bookCount = books.length;
       const totalPages = books.reduce((sum, b) => sum + b.page_count, 0);
@@ -598,7 +598,8 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       for (const book of books) {
         let parsedSubjects: string[];
         try {
-          parsedSubjects = JSON.parse(book.subjects) as string[];
+          const parsed: unknown = JSON.parse(book.subjects);
+          parsedSubjects = Array.isArray(parsed) ? (parsed as string[]) : [];
         } catch {
           parsedSubjects = [];
         }

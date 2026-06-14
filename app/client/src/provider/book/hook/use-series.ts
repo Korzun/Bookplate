@@ -20,13 +20,11 @@ export type UseSeries =
 
 export const useSeries = (seriesName: string): UseSeries => {
   const [data, setData] = useState<SeriesMeta | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
   const withTargetUser = useWithTargetUser();
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(undefined);
     setData(undefined);
     void apiFetch(withTargetUser(`/api/series/${encodeURIComponent(seriesName)}`))
@@ -37,9 +35,6 @@ export const useSeries = (seriesName: string): UseSeries => {
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;

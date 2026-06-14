@@ -79,7 +79,7 @@ Queries `series` by `(userId, name)`. `subjects` is JSON-parsed from the stored 
 
 ### New API route
 
-```
+```http
 GET /api/series/:name
 ```
 

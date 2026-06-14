@@ -670,9 +670,16 @@ export class BookStore {
       },
     });
     if (!row) return null;
+    let subjects: string[];
+    try {
+      const parsed: unknown = JSON.parse(row.subjects);
+      subjects = Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      subjects = [];
+    }
     return {
       name: row.name,
-      subjects: JSON.parse(row.subjects) as string[],
+      subjects,
       bookCount: row.bookCount,
       author: row.author,
       publisher: row.publisher,
@@ -997,6 +1004,7 @@ export class BookStore {
     const books = await client.book.findMany({
       where: { seriesId },
       select: { subjects: true, author: true, publisher: true, pageCount: true },
+      orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
     });
 
     const bookCount = books.length;
@@ -1006,7 +1014,8 @@ export class BookStore {
     for (const book of books) {
       let parsedSubjects: string[];
       try {
-        parsedSubjects = JSON.parse(book.subjects) as string[];
+        const parsed: unknown = JSON.parse(book.subjects);
+        parsedSubjects = Array.isArray(parsed) ? (parsed as string[]) : [];
       } catch {
         parsedSubjects = [];
       }
