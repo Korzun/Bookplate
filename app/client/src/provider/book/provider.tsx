@@ -40,6 +40,7 @@ export const BookProvider = ({ children }: BookProviderProps) => {
   const setBookListFilter = useCallback((filter: BookListFilter) => {
     setBookListFilterRaw(filter);
     setBookListFetched(false);
+    setBookListLoading(false);
     setBookListError(undefined);
     setBookListRaw({});
     setBookListItemsRaw(() => []);

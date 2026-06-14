@@ -43,6 +43,9 @@ function requireUserId(req: Request, res: Response): string | null {
   return userId;
 }
 
+const VALID_TYPES = new Set(['standalone', 'series']);
+const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
+
 export function createUiRouter(
   bookStore: BookStore,
   userStore: UserStore,
@@ -400,9 +403,6 @@ export function createUiRouter(
     if (!owner) return;
 
     const { cursor, take, type, status } = req.query;
-
-    const VALID_TYPES = new Set(['standalone', 'series']);
-    const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
 
     if (type !== undefined && (typeof type !== 'string' || !VALID_TYPES.has(type))) {
       res.status(400).json({ error: 'Invalid type. Must be "standalone" or "series".' });
