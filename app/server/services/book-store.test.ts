@@ -2434,13 +2434,17 @@ describe('series aggregate metadata', () => {
 
     await bookStore.reimportBook(OWNER, 'b1', mockImporter);
 
-    const oldSeries = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Old Series' } });
+    const oldSeries = await prisma.series.findFirst({
+      where: { userId: OWNER.userId, name: 'Old Series' },
+    });
     expect(oldSeries).not.toBeNull();
     expect(oldSeries!.bookCount).toBe(1);
     expect(JSON.parse(oldSeries!.subjects)).toEqual(['Fantasy', 'Magic']);
     expect(oldSeries!.totalPages).toBe(150);
 
-    const newSeries = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'New Series' } });
+    const newSeries = await prisma.series.findFirst({
+      where: { userId: OWNER.userId, name: 'New Series' },
+    });
     expect(newSeries).not.toBeNull();
     expect(newSeries!.bookCount).toBe(1);
     expect(JSON.parse(newSeries!.subjects)).toEqual(['Horror']);
