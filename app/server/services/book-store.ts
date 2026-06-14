@@ -83,19 +83,6 @@ export interface ScanImporter {
 
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
 
-function computeSeriesStatus(
-  bookIds: string[],
-  progressMap: Map<string, number>
-): 'not-started' | 'in-progress' | 'completed' {
-  if (bookIds.length === 0) return 'not-started';
-  const progressValues = bookIds.map((id) => progressMap.get(id) ?? 0);
-  const anyStarted = progressValues.some((p) => p > 0);
-  if (!anyStarted) return 'not-started';
-  const allCompleted = progressValues.every((p) => p >= 1);
-  if (allCompleted) return 'completed';
-  return 'in-progress';
-}
-
 function standaloneStatusWhere(
   status: 'not-started' | 'in-progress' | 'completed',
   progressMap: Map<string, number>
@@ -726,6 +713,57 @@ export class BookStore {
     return rest;
   }
 
+  private async seriesIdsForStatus(
+    userId: string,
+    status: 'not-started' | 'in-progress' | 'completed'
+  ): Promise<string[]> {
+    // Compute series status via a single GROUP BY + HAVING aggregate query.
+    // LEFT JOIN books so empty series count as not-started (COUNT(b.id) = 0).
+    // LEFT JOIN progress on (document, user_id) so unread books have NULL percentage.
+    if (status === 'not-started') {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT s.id
+        FROM series s
+        LEFT JOIN books b ON b.series_id = s.id
+        LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+        WHERE s.user_id = ${userId}
+        GROUP BY s.id
+        HAVING COALESCE(SUM(CASE WHEN p.percentage > 0 THEN 1 ELSE 0 END), 0) = 0
+      `;
+      return rows.map((r) => r.id);
+    }
+    if (status === 'in-progress') {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT s.id
+        FROM series s
+        LEFT JOIN books b ON b.series_id = s.id
+        LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+        WHERE s.user_id = ${userId}
+        GROUP BY s.id
+        HAVING
+          SUM(CASE WHEN p.percentage > 0 THEN 1 ELSE 0 END) > 0
+          AND NOT (
+            COUNT(b.id) > 0
+            AND COUNT(b.id) = SUM(CASE WHEN p.percentage >= 1 THEN 1 ELSE 0 END)
+          )
+      `;
+      return rows.map((r) => r.id);
+    }
+    // completed: series is non-empty and every member book has percentage >= 1
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id
+      FROM series s
+      LEFT JOIN books b ON b.series_id = s.id
+      LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+      WHERE s.user_id = ${userId}
+      GROUP BY s.id
+      HAVING
+        COUNT(b.id) > 0
+        AND COUNT(b.id) = SUM(CASE WHEN p.percentage >= 1 THEN 1 ELSE 0 END)
+    `;
+    return rows.map((r) => r.id);
+  }
+
   async listBooksPage(
     owner: Owner,
     cursor: PageCursor | null,
@@ -735,18 +773,19 @@ export class BookStore {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
 
-    // Pre-fetch progress when status filter is active
+    const includeStandalones = !filters?.type || filters.type === 'standalone';
+    const includeSeries = !filters?.type || filters.type === 'series';
+
+    // Pre-fetch progress only when status filter applies to standalone books.
+    // Series status is computed at the DB level by seriesIdsForStatus().
     let progressMap: Map<string, number> | null = null;
-    if (filters?.status) {
+    if (filters?.status && includeStandalones) {
       const progresses = await this.prisma.progress.findMany({
         where: { userId: owner.userId },
         select: { document: true, percentage: true },
       });
       progressMap = new Map(progresses.map((p) => [p.document, p.percentage]));
     }
-
-    const includeStandalones = !filters?.type || filters.type === 'standalone';
-    const includeSeries = !filters?.type || filters.type === 'series';
 
     // Build where conditions that resume cleanly after the cursor.
     // Series names are unique per user so their sort key alone is sufficient.
@@ -779,22 +818,10 @@ export class BookStore {
       bookWhere = { ...bookWhere, ...statusFilter };
     }
 
-    // For series status filter, pre-compute matching series IDs
+    // For series status filter, compute matching series IDs at the DB level
     let matchingSeriesIds: string[] | null = null;
-    if (includeSeries && filters?.status && progressMap) {
-      const allSeriesWithBooks = await this.prisma.series.findMany({
-        where: { userId: owner.userId },
-        select: { id: true, books: { select: { id: true } } },
-      });
-      matchingSeriesIds = allSeriesWithBooks
-        .filter(
-          (s) =>
-            computeSeriesStatus(
-              s.books.map((b) => b.id),
-              progressMap!
-            ) === filters.status
-        )
-        .map((s) => s.id);
+    if (includeSeries && filters?.status) {
+      matchingSeriesIds = await this.seriesIdsForStatus(owner.userId, filters.status);
     }
 
     const finalSeriesWhere: Prisma.SeriesWhereInput =
