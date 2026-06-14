@@ -100,9 +100,7 @@ function standaloneStatusWhere(
   status: 'not-started' | 'in-progress' | 'completed',
   progressMap: Map<string, number>
 ): Prisma.BookWhereInput {
-  const allStartedIds = [...progressMap.entries()]
-    .filter(([, pct]) => pct > 0)
-    .map(([id]) => id);
+  const allStartedIds = [...progressMap.entries()].filter(([, pct]) => pct > 0).map(([id]) => id);
   const inProgressIds = [...progressMap.entries()]
     .filter(([, pct]) => pct > 0 && pct < 1)
     .map(([id]) => id);

@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 
-import { BookProvider } from '../provider';
 import { Context } from '../context';
+import { BookProvider } from '../provider';
 import type { Book, BookList } from '../type';
 
 import { useBookList } from './use-book-list';
@@ -176,12 +176,10 @@ describe('useBookList', () => {
   });
 
   it('re-fetches with new filter params when bookListFilter changes', async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
-      });
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    });
     vi.stubGlobal('fetch', mockFetch);
 
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -190,10 +188,9 @@ describe('useBookList', () => {
       </LibraryTargetProvider>
     );
 
-    const { result } = renderHook(
-      () => ({ list: useBookList(), filter: useBookListFilter() }),
-      { wrapper }
-    );
+    const { result } = renderHook(() => ({ list: useBookList(), filter: useBookListFilter() }), {
+      wrapper,
+    });
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?take=20', {});

@@ -13,7 +13,6 @@ export const useFetchNextPage = (): FetchNextPage => {
   const {
     bookListLoading,
     nextCursor,
-    bookList,
     completeBookIds,
     bookListFilter,
     setBookList,
@@ -72,7 +71,6 @@ export const useFetchNextPage = (): FetchNextPage => {
     withTargetUser,
     bookListLoading,
     nextCursor,
-    bookList,
     completeBookIds,
     bookListFilter,
     setBookList,
