@@ -601,7 +601,9 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
           if (!seenSubjects.has(key)) seenSubjects.set(key, s);
         }
       }
-      const subjects = JSON.stringify([...seenSubjects.values()].sort((a, b) => a.localeCompare(b)));
+      const subjects = JSON.stringify(
+        [...seenSubjects.values()].sort((a, b) => a.localeCompare(b))
+      );
 
       const seenAuthors = new Map<string, string>();
       for (const book of books) {

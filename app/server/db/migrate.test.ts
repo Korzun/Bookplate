@@ -244,10 +244,15 @@ describe('data_v13_series_meta backfill', () => {
 
     await runMigrations(prisma, booksDir);
 
-    const series = await prisma.$queryRaw<Array<{
-      book_count: number; author: string; publisher: string;
-      total_pages: number; subjects: string;
-    }>>`SELECT book_count, author, publisher, total_pages, subjects FROM series WHERE id = 's1'`;
+    const series = await prisma.$queryRaw<
+      Array<{
+        book_count: number;
+        author: string;
+        publisher: string;
+        total_pages: number;
+        subjects: string;
+      }>
+    >`SELECT book_count, author, publisher, total_pages, subjects FROM series WHERE id = 's1'`;
 
     expect(series[0].book_count).toBe(2);
     expect(series[0].author).toBe('Frank Herbert'); // first-seen casing
