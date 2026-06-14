@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { PrismaClient, Prisma } from '@prisma/client';
-import { Book, BookSummary, EpubMeta, Owner, PageCursor, PagedBookListResponse } from '../types';
+import { PrismaClient, Prisma, Series } from '@prisma/client';
+import { Book, BookSummary, EpubMeta, Owner, PageCursor, PagedBookListResponse, BookListFilters } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
@@ -74,6 +74,41 @@ export interface ScanImporter {
 }
 
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
+
+function computeSeriesStatus(
+  bookIds: string[],
+  progressMap: Map<string, number>
+): 'not-started' | 'in-progress' | 'completed' {
+  if (bookIds.length === 0) return 'not-started';
+  const progressValues = bookIds.map((id) => progressMap.get(id) ?? 0);
+  const anyStarted = progressValues.some((p) => p > 0);
+  if (!anyStarted) return 'not-started';
+  const allCompleted = progressValues.every((p) => p >= 1);
+  if (allCompleted) return 'completed';
+  return 'in-progress';
+}
+
+function standaloneStatusWhere(
+  status: 'not-started' | 'in-progress' | 'completed',
+  progressMap: Map<string, number>
+): Prisma.BookWhereInput {
+  const allStartedIds = [...progressMap.keys()];
+  const inProgressIds = [...progressMap.entries()]
+    .filter(([, pct]) => pct > 0 && pct < 1)
+    .map(([id]) => id);
+  const completedIds = [...progressMap.entries()]
+    .filter(([, pct]) => pct >= 1)
+    .map(([id]) => id);
+
+  switch (status) {
+    case 'not-started':
+      return allStartedIds.length > 0 ? { id: { notIn: allStartedIds } } : {};
+    case 'in-progress':
+      return { id: { in: inProgressIds } };
+    case 'completed':
+      return { id: { in: completedIds } };
+  }
+}
 
 export class BookStore {
   constructor(
@@ -688,10 +723,24 @@ export class BookStore {
   async listBooksPage(
     owner: Owner,
     cursor: PageCursor | null,
-    take: number
+    take: number,
+    filters?: BookListFilters
   ): Promise<PagedBookListResponse> {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
+
+    // Pre-fetch progress when status filter is active
+    let progressMap: Map<string, number> | null = null;
+    if (filters?.status) {
+      const progresses = await this.prisma.progress.findMany({
+        where: { userId: owner.userId },
+        select: { document: true, percentage: true },
+      });
+      progressMap = new Map(progresses.map((p) => [p.document, p.percentage]));
+    }
+
+    const includeStandalones = !filters?.type || filters.type === 'standalone';
+    const includeSeries = !filters?.type || filters.type === 'series';
 
     // Build where conditions that resume cleanly after the cursor.
     // Series names are unique per user so their sort key alone is sufficient.
@@ -718,21 +767,49 @@ export class BookStore {
       };
     }
 
+    // Apply status filter to standalone WHERE
+    if (filters?.status && progressMap) {
+      const statusFilter = standaloneStatusWhere(filters.status, progressMap);
+      bookWhere = { ...bookWhere, ...statusFilter };
+    }
+
+    // For series status filter, pre-compute matching series IDs
+    let matchingSeriesIds: string[] | null = null;
+    if (includeSeries && filters?.status && progressMap) {
+      const pm = progressMap;
+      const allSeriesWithBooks = await this.prisma.series.findMany({
+        where: { userId: owner.userId },
+        select: { id: true, books: { select: { id: true } } },
+      });
+      matchingSeriesIds = allSeriesWithBooks
+        .filter((s) => computeSeriesStatus(s.books.map((b) => b.id), pm) === filters.status)
+        .map((s) => s.id);
+    }
+
+    const finalSeriesWhere: Prisma.SeriesWhereInput =
+      matchingSeriesIds !== null
+        ? { ...seriesWhere, id: { in: matchingSeriesIds } }
+        : seriesWhere;
+
     // Note: standalone books are sorted by `title`, not `fileAs || title`. This matches the
     // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
     // (listBooks) sorts by fileAs || title, so the two orderings intentionally differ.
     const [seriesRows, standaloneRows] = await Promise.all([
-      this.prisma.series.findMany({
-        where: seriesWhere,
-        orderBy: { sortKey: 'asc' },
-        take: fetchLimit,
-      }),
-      this.prisma.book.findMany({
-        where: bookWhere,
-        orderBy: [{ title: 'asc' }, { id: 'asc' }],
-        take: fetchLimit,
-        select: BOOK_SELECT,
-      }),
+      includeSeries
+        ? this.prisma.series.findMany({
+            where: finalSeriesWhere,
+            orderBy: { sortKey: 'asc' },
+            take: fetchLimit,
+          })
+        : Promise.resolve([] as Series[]),
+      includeStandalones
+        ? this.prisma.book.findMany({
+            where: bookWhere,
+            orderBy: [{ title: 'asc' }, { id: 'asc' }],
+            take: fetchLimit,
+            select: BOOK_SELECT,
+          })
+        : Promise.resolve([] as Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>[]),
     ]);
 
     // Merge-sort up to take+1 display units to detect overflow.
