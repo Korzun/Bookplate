@@ -63,16 +63,22 @@ export const LibraryPage = () => {
     );
   }
 
+  const isFilterActive = bookListFilter.type !== undefined || bookListFilter.status !== undefined;
+
   return (
     <Page>
+      <FilterBar filter={bookListFilter} onChange={setBookListFilter} />
       {bookListItems.length === 0 ? (
         <div className={style.emptyState}>
-          <div className={style.emptyStateTitle}>Your library is empty</div>
-          <div className={style.emptyStateSubtitle}>No books have been added yet</div>
+          <div className={style.emptyStateTitle}>
+            {isFilterActive ? 'No books match these filters' : 'Your library is empty'}
+          </div>
+          <div className={style.emptyStateSubtitle}>
+            {isFilterActive ? 'Try adjusting or clearing the filters above' : 'No books have been added yet'}
+          </div>
         </div>
       ) : (
         <div className={style.root}>
-          <FilterBar filter={bookListFilter} onChange={setBookListFilter} />
           {bookListItems.map((item) =>
             item.type === 'series' ? (
               <SeriesRow key={item.seriesName} seriesName={item.seriesName} />
