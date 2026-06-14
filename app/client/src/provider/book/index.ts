@@ -2,6 +2,7 @@ export {
   useBook,
   useBookLineage,
   useBookList,
+  useBookListFilter,
   useBookListItems,
   useDeleteBook,
   useFetchBook,
@@ -19,5 +20,5 @@ export {
   useUploadQueue,
 } from './hook';
 export { BookProvider } from './provider';
-export type { BookList, Book, DisplayUnit, Identifier, Series, UploadResult } from './type';
+export type { BookList, Book, BookListFilter, DisplayUnit, Identifier, Series, UploadResult } from './type';
 export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';
