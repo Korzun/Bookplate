@@ -60,6 +60,8 @@ function makeWrapper(initialBooks: Book[] = [], clearCompleteBookIds = vi.fn()) 
           nextCursor: null,
           setBookListItems: () => {},
           setNextCursor: () => {},
+          bookListFilter: {},
+          setBookListFilter: () => {},
         }}
       >
         {children}

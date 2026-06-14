@@ -12,6 +12,7 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
   return (
     <div className={style.root}>
       <select
+        aria-label="Filter by book type"
         className={style.select}
         value={filter.type ?? ''}
         onChange={(e) =>
@@ -26,6 +27,7 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
         <option value="series">Series</option>
       </select>
       <select
+        aria-label="Filter by reading status"
         className={style.select}
         value={filter.status ?? ''}
         onChange={(e) =>

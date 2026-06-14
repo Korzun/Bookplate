@@ -39,6 +39,8 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
           nextCursor: null,
           setBookListItems: () => {},
           setNextCursor: () => {},
+          bookListFilter: {},
+          setBookListFilter: () => {},
         }}
       >
         {children}

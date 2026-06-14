@@ -66,6 +66,8 @@ function makeWrapper(mockSetBookComplete: () => void) {
           nextCursor: null,
           setBookListItems: () => {},
           setNextCursor: () => {},
+          bookListFilter: {},
+          setBookListFilter: () => {},
         }}
       >
         {children}
