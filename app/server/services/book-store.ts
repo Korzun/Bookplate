@@ -186,44 +186,50 @@ export class BookStore {
     const authorSort = (meta.authorSort || '').trim();
     const publishDate = (meta.publishDate || '').trim();
 
-    let seriesId: string | null = null;
-    const seriesName = meta.series.trim();
-    if (seriesName) {
-      const s = await this.prisma.series.upsert({
-        where: { userId_name: { userId: owner.userId, name: seriesName } },
-        create: { id: randomUUID(), userId: owner.userId, name: seriesName, sortKey: seriesName },
-        update: {},
-        select: { id: true },
-      });
-      seriesId = s.id;
-    }
+    await this.prisma.$transaction(async (tx) => {
+      let seriesId: string | null = null;
+      const seriesName = meta.series.trim();
+      if (seriesName) {
+        const s = await tx.series.upsert({
+          where: { userId_name: { userId: owner.userId, name: seriesName } },
+          create: { id: randomUUID(), userId: owner.userId, name: seriesName, sortKey: seriesName },
+          update: {},
+          select: { id: true },
+        });
+        seriesId = s.id;
+      }
 
-    await this.prisma.book.create({
-      data: {
-        userId: owner.userId,
-        id,
-        title,
-        titleSort,
-        authorSort,
-        publishDate,
-        author: meta.author,
-        description: meta.description,
-        publisher: meta.publisher,
-        series: meta.series,
-        seriesIndex: meta.seriesIndex,
-        identifiers: JSON.stringify(meta.identifiers),
-        subjects: JSON.stringify(meta.subjects),
-        coverData: meta.coverData as unknown as Prisma.Bytes | null,
-        coverMime: meta.coverMime,
-        size: stat.size,
-        mtime: stat.mtimeMs,
-        addedAt: Date.now(),
-        chapterCount: meta.chapterCount,
-        chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
-        chapterNames: JSON.stringify(meta.chapterNames),
-        pageCount: meta.pageCount,
-        seriesId,
-      },
+      await tx.book.create({
+        data: {
+          userId: owner.userId,
+          id,
+          title,
+          titleSort,
+          authorSort,
+          publishDate,
+          author: meta.author,
+          description: meta.description,
+          publisher: meta.publisher,
+          series: meta.series,
+          seriesIndex: meta.seriesIndex,
+          identifiers: JSON.stringify(meta.identifiers),
+          subjects: JSON.stringify(meta.subjects),
+          coverData: meta.coverData as unknown as Prisma.Bytes | null,
+          coverMime: meta.coverMime,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+          addedAt: Date.now(),
+          chapterCount: meta.chapterCount,
+          chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
+          chapterNames: JSON.stringify(meta.chapterNames),
+          pageCount: meta.pageCount,
+          seriesId,
+        },
+      });
+
+      if (seriesId) {
+        await this.recomputeSeriesMeta(tx, seriesId);
+      }
     });
   }
 
@@ -927,6 +933,51 @@ export class BookStore {
       : null;
 
     return { items, books, nextCursor };
+  }
+
+  private async recomputeSeriesMeta(
+    client: Pick<PrismaClient, 'book' | 'series'>,
+    seriesId: string
+  ): Promise<void> {
+    const books = await client.book.findMany({
+      where: { seriesId },
+      select: { subjects: true, author: true, publisher: true, pageCount: true },
+    });
+
+    const bookCount = books.length;
+    const totalPages = books.reduce((sum, b) => sum + b.pageCount, 0);
+
+    const seenSubjects = new Map<string, string>();
+    for (const book of books) {
+      for (const s of JSON.parse(book.subjects) as string[]) {
+        const key = s.toLowerCase();
+        if (!seenSubjects.has(key)) seenSubjects.set(key, s);
+      }
+    }
+    const subjects = [...seenSubjects.values()].sort((a, b) => a.localeCompare(b));
+
+    const seenAuthors = new Map<string, string>();
+    for (const book of books) {
+      if (book.author) {
+        const key = book.author.toLowerCase();
+        if (!seenAuthors.has(key)) seenAuthors.set(key, book.author);
+      }
+    }
+    const author = [...seenAuthors.values()].join(', ');
+
+    const seenPublishers = new Map<string, string>();
+    for (const book of books) {
+      if (book.publisher) {
+        const key = book.publisher.toLowerCase();
+        if (!seenPublishers.has(key)) seenPublishers.set(key, book.publisher);
+      }
+    }
+    const publisher = [...seenPublishers.values()].join(', ');
+
+    await client.series.update({
+      where: { id: seriesId },
+      data: { subjects: JSON.stringify(subjects), bookCount, author, publisher, totalPages },
+    });
   }
 
   private prismaBookToBook(

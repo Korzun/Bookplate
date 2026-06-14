@@ -2295,3 +2295,82 @@ describe('listBooksPage with filters', () => {
     expect(withEmptyFilters.items).toEqual(withoutFilters.items);
   });
 });
+
+describe('series aggregate metadata', () => {
+  it('sets bookCount, author, publisher, totalPages, subjects after addBook', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      subjects: ['Science Fiction', 'Space Opera'],
+      author: 'Frank Herbert',
+      publisher: 'Chilton Books',
+      pageCount: 412,
+    });
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
+    expect(series).not.toBeNull();
+    expect(series!.bookCount).toBe(1);
+    expect(series!.author).toBe('Frank Herbert');
+    expect(series!.publisher).toBe('Chilton Books');
+    expect(series!.totalPages).toBe(412);
+    expect(JSON.parse(series!.subjects)).toEqual(['Science Fiction', 'Space Opera']);
+  });
+
+  it('deduplicates subjects case-insensitively across books and sorts them', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      subjects: ['Science Fiction', 'Epic'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 2,
+      subjects: ['science fiction', 'Adventure'],
+    });
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
+    // 'science fiction' deduped with 'Science Fiction' (first-seen wins); sorted alphabetically
+    expect(JSON.parse(series!.subjects)).toEqual(['Adventure', 'Epic', 'Science Fiction']);
+    expect(series!.bookCount).toBe(2);
+  });
+
+  it('deduplicates authors and publishers case-insensitively, joins with ", "', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Shared',
+      author: 'Alice Writer',
+      publisher: 'Big Press',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'Shared',
+      seriesIndex: 2,
+      author: 'alice writer',
+      publisher: 'Small Press',
+    });
+
+    const series = await prisma.series.findFirst({
+      where: { userId: OWNER.userId, name: 'Shared' },
+    });
+    expect(series!.author).toBe('Alice Writer'); // case-insensitive dedup, first wins
+    expect(series!.publisher).toBe('Big Press, Small Press');
+  });
+
+  it('accumulates totalPages across books', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'S',
+      pageCount: 100,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'S',
+      seriesIndex: 2,
+      pageCount: 200,
+    });
+
+    const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'S' } });
+    expect(series!.totalPages).toBe(300);
+  });
+});
