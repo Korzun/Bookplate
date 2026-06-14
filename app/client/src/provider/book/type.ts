@@ -32,6 +32,11 @@ export type DisplayUnit =
   | { type: 'standalone'; bookId: string }
   | { type: 'series'; seriesName: string };
 
+export type BookListFilter = {
+  type?: 'standalone' | 'series';
+  status?: 'not-started' | 'in-progress' | 'completed';
+};
+
 export type BookSummary = Omit<
   Book,
   'description' | 'identifiers' | 'subjects' | 'addedAt' | 'chapterSpineMap' | 'chapterNames'
