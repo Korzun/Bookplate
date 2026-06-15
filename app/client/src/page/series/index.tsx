@@ -87,13 +87,6 @@ export const SeriesPage = () => {
           </div>
         </div>
       </Card>
-      <Card title="Books">
-        <div className={style.bookList}>
-          {seriesBookList.map((book) => (
-            <BookRow key={book.id} asCard={false} bookId={book.id} showAuthor={false} />
-          ))}
-        </div>
-      </Card>
       {series.subjects.length > 0 && (
         <Card title="Subjects">
           <div className={style.subjects}>
@@ -103,6 +96,13 @@ export const SeriesPage = () => {
           </div>
         </Card>
       )}
+      <Card title="Books">
+        <div className={style.bookList}>
+          {seriesBookList.map((book) => (
+            <BookRow key={book.id} asCard={false} bookId={book.id} showAuthor={false} />
+          ))}
+        </div>
+      </Card>
     </Page>
   );
 };
