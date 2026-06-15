@@ -121,7 +121,6 @@ export const BookEditForm = ({ original, id }: Props) => {
         (publishDate ?? '') !== (original.publishDate ?? '') ? (publishDate ?? '') : undefined,
       publisher:
         publisher && publisher.trim() !== original.publisher ? publisher.trim() : undefined,
-      // isSeries: isSeries !== original.isSeries ? isSeries : undefined,
       series: series && series.trim() !== original.series ? series.trim() : undefined,
       seriesIndex:
         seriesIndex && seriesIndex.toString() !== originalSeriesIndex ? seriesIndex : undefined,
@@ -144,18 +143,18 @@ export const BookEditForm = ({ original, id }: Props) => {
       <Card>
         <div className={styles.cardContainer}>
           <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
+          <TextInput
+            value={titleSort}
+            label="Title Sort"
+            name="titleSort"
+            onChange={handleTitleSortChange}
+          />
           <TextInput value={author} label="Author" name="author" onChange={handleAuthorChange} />
           <TextInput
             value={authorSort}
             label="Author Sort"
             name="authorSort"
             onChange={handleAuthorSortChange}
-          />
-          <TextInput
-            value={titleSort}
-            label="Title Sort"
-            name="titleSort"
-            onChange={handleTitleSortChange}
           />
           <TextInput
             value={publisher}
