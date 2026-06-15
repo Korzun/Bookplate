@@ -6,6 +6,7 @@ export { ChevronCircleIcon } from './chevron-circle';
 export { ChevronIcon } from './chevron';
 export { CircleXIcon } from './circle-x';
 export { ClockIcon } from './clock';
+export { KeyIcon } from './key';
 export { ListCheckIcon } from './list-check';
 export { RowRemoveIcon } from './row-remove';
 export { SpinnerIcon } from './spinner';
