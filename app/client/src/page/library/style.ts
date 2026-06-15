@@ -38,4 +38,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     padding: 0,
   },
+  spinner: {
+    ...theme.recipe.spinner,
+    height: '2rem',
+    width: '2rem',
+    color: theme.color.text.muted,
+  },
 }));

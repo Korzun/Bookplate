@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { Page, BookRow, FilterBar, SeriesRow } from '~/component';
+import { SpinnerIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import {
   useBookList,
@@ -70,14 +71,20 @@ export const LibraryPage = () => {
       <FilterBar filter={bookListFilter} onChange={setBookListFilter} />
       {bookListItems.length === 0 ? (
         <div className={style.emptyState}>
-          <div className={style.emptyStateTitle}>
-            {isFilterActive ? 'No books match these filters' : 'Your library is empty'}
-          </div>
-          <div className={style.emptyStateSubtitle}>
-            {isFilterActive
-              ? 'Try adjusting or clearing the filters above'
-              : 'No books have been added yet'}
-          </div>
+          {bookListLoading ? (
+            <SpinnerIcon role="status" aria-label="Loading" className={style.spinner} />
+          ) : (
+            <>
+              <div className={style.emptyStateTitle}>
+                {isFilterActive ? 'No books match these filters' : 'Your library is empty'}
+              </div>
+              <div className={style.emptyStateSubtitle}>
+                {isFilterActive
+                  ? 'Try adjusting or clearing the filters above'
+                  : 'No books have been added yet'}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className={style.root}>
