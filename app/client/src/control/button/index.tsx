@@ -5,18 +5,23 @@ import { IconProps, SpinnerIcon } from '~/icon';
 
 import { ButtonType, ButtonTypeValue, useStyle } from './style';
 
-type ButtonProps = React.PropsWithChildren<{
-  danger?: boolean;
-  disabled?: boolean;
-  loading?: boolean;
-  onClick?: () => void;
-  prefix?: ComponentType<IconProps>;
-  suffix?: ComponentType<IconProps>;
-  success?: boolean;
-  tabIndex?: number;
-  title?: string;
-  type?: ButtonTypeValue;
-}>;
+type ButtonVariant =
+  | { danger?: false; success?: false }
+  | { danger: true; success?: never }
+  | { success: true; danger?: never };
+
+type ButtonProps = React.PropsWithChildren<
+  {
+    disabled?: boolean;
+    loading?: boolean;
+    onClick?: () => void;
+    prefix?: ComponentType<IconProps>;
+    suffix?: ComponentType<IconProps>;
+    tabIndex?: number;
+    title?: string;
+    type?: ButtonTypeValue;
+  } & ButtonVariant
+>;
 export const Button = ({
   children,
   danger = false,
@@ -60,6 +65,10 @@ export const Button = ({
     [onClick]
   );
 
+  const loadingIcon = loading ? <SpinnerIcon className={styles.spinner} /> : null;
+  const prefixIcon = !loading && Prefix ? <Prefix className={styles.buttonIcon} /> : null;
+  const suffixIcon = !loading && Suffix ? <Suffix className={styles.buttonIcon} /> : null;
+
   return (
     <div
       role="button"
@@ -69,10 +78,10 @@ export const Button = ({
       onKeyDown={handleKeyDown}
       title={title}
     >
-      {loading && <SpinnerIcon className={styles.spinner} />}
-      {Prefix && <Prefix className={styles.buttonIcon} />}
+      {loadingIcon}
+      {prefixIcon}
       {children}
-      {Suffix && <Suffix className={styles.buttonIcon} />}
+      {suffixIcon}
     </div>
   );
 };
