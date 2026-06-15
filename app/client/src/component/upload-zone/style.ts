@@ -3,6 +3,7 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 export const useStyle = createUseStyles((theme: Theme) => {
   const dropZoneBase = {
     borderRadius: theme.radius.md,
+    border: `1.5px dashed ${theme.color.brand.outline}`,
     padding: theme.space.xxxxxl,
     textAlign: 'center' as const,
     cursor: 'pointer',

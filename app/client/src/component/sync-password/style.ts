@@ -5,7 +5,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    border: `1.5px dashed ${theme.color.border.default}`,
     borderRadius: theme.radius.md,
     padding: `${theme.space.xl} ${theme.space.xxl}`,
     backgroundColor: theme.color.bg.input,
