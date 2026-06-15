@@ -6,6 +6,7 @@ import { ChevronCircleIcon } from '~/icon';
 import { useStyle } from './style';
 
 export type Props = PropsWithChildren<{
+  allowOverflow?: boolean;
   className?: string;
   defaultCollapsed?: boolean;
   headerAction?: ReactNode | ReactElement[];
@@ -17,6 +18,7 @@ export type Props = PropsWithChildren<{
   title?: string | ReactNode;
 }>;
 export const Card = ({
+  allowOverflow = false,
   children,
   className,
   defaultCollapsed = true,
@@ -60,6 +62,7 @@ export const Card = ({
     <div
       className={cx(style.root, style[size], className, {
         [style.clickable]: onClick !== undefined,
+        [style.allowOverflow]: allowOverflow,
       })}
       onClick={onClick}
       onKeyDown={handleKeyDown}

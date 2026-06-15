@@ -215,7 +215,7 @@ export const BookEditForm = ({ original, id }: Props) => {
         )}
       </Card>
 
-      <Card title="Subjects">
+      <Card title="Subjects" allowOverflow>
         <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
       </Card>
 

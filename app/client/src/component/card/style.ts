@@ -4,6 +4,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
     ...theme.recipe.card.shell,
     '&$small': { borderRadius: '9px' },
+    '&$allowOverflow': { overflow: 'visible' },
   },
   header: {
     ...theme.recipe.card.header,
@@ -60,4 +61,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   danger: {},
   small: {},
   large: {},
+  allowOverflow: {},
 }));
