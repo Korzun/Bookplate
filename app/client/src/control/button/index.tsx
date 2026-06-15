@@ -6,9 +6,8 @@ import { IconProps, SpinnerIcon } from '~/icon';
 import { ButtonType, ButtonTypeValue, useStyle } from './style';
 
 type ButtonVariant =
-  | { danger?: false; success?: false }
-  | { danger: true; success?: never }
-  | { success: true; danger?: never };
+  | { danger?: boolean; success?: false | undefined }
+  | { success?: boolean; danger?: false | undefined };
 
 type ButtonProps = React.PropsWithChildren<
   {
