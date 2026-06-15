@@ -343,6 +343,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
 
+  buttonIcon: {
+    height: '1em',
+    width: '1em',
+    flexShrink: 0,
+  },
   danger: {},
   disabled: { opacity: 0.5 },
   loading: {},
