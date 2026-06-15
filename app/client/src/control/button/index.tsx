@@ -10,6 +10,7 @@ type ButtonProps = React.PropsWithChildren<{
   disabled?: boolean;
   loading?: boolean;
   onClick?: () => void;
+  success?: boolean;
   tabIndex?: number;
   title?: string;
   type?: ButtonTypeValue;
@@ -20,6 +21,7 @@ export const Button = ({
   disabled = false,
   loading = false,
   onClick = () => {},
+  success = false,
   tabIndex,
   title,
   type = ButtonType.Default as ButtonTypeValue,
@@ -30,7 +32,8 @@ export const Button = ({
     styles[type],
     { [styles.danger]: danger },
     { [styles.loading]: loading },
-    { [styles.disabled]: disabled }
+    { [styles.disabled]: disabled },
+    { [styles.success]: success }
   );
 
   const handleClick = useCallback(

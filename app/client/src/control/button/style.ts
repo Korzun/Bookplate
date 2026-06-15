@@ -125,6 +125,25 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       },
       '&$disabled': { cursor: 'not-allowed', filter: 'saturate(0)' },
     },
+    '&$success': {
+      color: theme.color.success,
+      borderColor: '#bbf7d0',
+      backgroundColor: '#f0fdf4',
+      boxShadow: 'none',
+      cursor: 'default',
+      '&:hover': {
+        color: theme.color.success,
+        borderColor: '#bbf7d0',
+        outlineColor: 'transparent',
+      },
+      '&:focus': {
+        color: theme.color.success,
+        borderColor: '#bbf7d0',
+        outlineColor: 'transparent',
+        boxShadow: 'none',
+      },
+      '&:active': { color: theme.color.success, borderColor: '#bbf7d0' },
+    },
   },
 
   [ButtonType.Dashed]: {
@@ -327,6 +346,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   danger: {},
   disabled: { opacity: 0.5 },
   loading: {},
+  success: {},
   spinner: {
     ...theme.recipe.spinner,
   },
