@@ -21,17 +21,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.md,
     letterSpacing: '0.03em',
   },
-  copiedBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.space.xs,
-    padding: `4px 10px`,
-    border: `1px solid #bbf7d0`,
-    borderRadius: theme.radius.md,
-    backgroundColor: '#f0fdf4',
-    color: theme.color.success,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    whiteSpace: 'nowrap',
-  },
 }));

@@ -58,20 +58,20 @@ export const SyncPassword = () => {
           <div className={styles.pill}>
             <KeyIcon className={styles.pillIcon} width={14} height={14} />
             <span className={styles.password}>{loadingFetch ? '…' : (displayPassword ?? '—')}</span>
-            {copied ? (
-              <div className={styles.copiedBadge}>
-                <CheckIcon width={12} height={12} />
-                Copied!
-              </div>
-            ) : (
-              <Button
-                type="default"
-                disabled={!displayPassword || loadingFetch}
-                onClick={handleCopy}
-              >
-                Copy
-              </Button>
-            )}
+            <Button
+              type="default"
+              success={copied}
+              disabled={!copied && (!displayPassword || loadingFetch)}
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <>
+                  <CheckIcon width={12} height={12} /> Copied!
+                </>
+              ) : (
+                'Copy'
+              )}
+            </Button>
           </div>
         )}
       </Card>
