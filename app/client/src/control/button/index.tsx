@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useCallback } from 'react';
+import { ReactNode, useCallback } from 'react';
 
 import { SpinnerIcon } from '~/icon';
 
@@ -10,6 +10,8 @@ type ButtonProps = React.PropsWithChildren<{
   disabled?: boolean;
   loading?: boolean;
   onClick?: () => void;
+  prefix?: ReactNode;
+  suffix?: ReactNode;
   success?: boolean;
   tabIndex?: number;
   title?: string;
@@ -21,6 +23,8 @@ export const Button = ({
   disabled = false,
   loading = false,
   onClick = () => {},
+  prefix,
+  suffix,
   success = false,
   tabIndex,
   title,
@@ -66,7 +70,9 @@ export const Button = ({
       title={title}
     >
       {loading && <SpinnerIcon className={styles.spinner} />}
+      {prefix}
       {children}
+      {suffix}
     </div>
   );
 };

@@ -61,16 +61,11 @@ export const SyncPassword = () => {
             <Button
               type="default"
               success={copied}
+              prefix={copied ? <CheckIcon width={12} height={12} /> : undefined}
               disabled={!copied && (!displayPassword || loadingFetch)}
               onClick={handleCopy}
             >
-              {copied ? (
-                <>
-                  <CheckIcon width={12} height={12} /> Copied!
-                </>
-              ) : (
-                'Copy'
-              )}
+              {copied ? 'Copied!' : 'Copy'}
             </Button>
           </div>
         )}
