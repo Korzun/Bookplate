@@ -74,8 +74,8 @@ export const SyncPassword = () => {
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       >
-        This will create a new sync password. Your KoReader devices and any OPDS clients will stop
-        syncing until you update them with the new password.
+        This will create a <strong>new random sync password</strong>. All of your KoReader devices
+        and OPDS clients will stop syncing until you update them with the new password.
       </ConfirmModal>
     </Fragment>
   );
