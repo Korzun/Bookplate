@@ -10,6 +10,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&$danger': { color: theme.color.danger.default },
     '&$collapsed': { borderBottomStyle: 'none' },
   },
+  headerAction: {
+    display: 'flex',
+  },
   title: {
     fontWeight: theme.fontWeight.semibold,
     fontSize: theme.fontSize.md,
@@ -26,6 +29,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       padding: '1px',
     },
     '&$large': { padding: theme.space.xl },
+  },
+  titleGroup: {
+    display: 'flex',
+    alignItems: 'baseline',
   },
   titleWrapper: {
     display: 'flex',

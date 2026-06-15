@@ -76,24 +76,32 @@ export const Card = ({
           tabIndex={isCollapsible ? 0 : undefined}
           aria-expanded={isCollapsible ? isExpanded : undefined}
         >
-          {title &&
-            (isCollapsible ? (
-              <div className={style.titleWrapper}>
-                <ChevronCircleIcon
-                  className={cx(
-                    style.chevron,
-                    isExpanded ? style.chevronExpanded : style.chevronCollapsed
-                  )}
-                />
-                <div className={style.title}>{title}</div>
-              </div>
-            ) : (
-              <div className={style.title}>{title}</div>
-            ))}
-          {subTitle && <div className={style.subTitle}>{subTitle}</div>}
+          {(title || subTitle) && (
+            <div className={style.titleGroup}>
+              {title &&
+                (isCollapsible ? (
+                  <div className={style.titleWrapper}>
+                    <ChevronCircleIcon
+                      className={cx(
+                        style.chevron,
+                        isExpanded ? style.chevronExpanded : style.chevronCollapsed
+                      )}
+                    />
+                    <div className={style.title}>{title}</div>
+                  </div>
+                ) : (
+                  <div className={style.title}>{title}</div>
+                ))}
+              {subTitle && <div className={style.subTitle}>{subTitle}</div>}
+            </div>
+          )}
           <div className={style.spacer} />
           {headerAction && (
-            <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <div
+              className={style.headerAction}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               {headerAction}
             </div>
           )}

@@ -359,7 +359,7 @@ function buildTheme(): Theme {
       },
       header: {
         display: 'flex',
-        alignItems: 'baseline',
+        alignItems: 'center',
         justifyContent: 'space-between',
         padding: `${space.md} ${space.xl}`,
         backgroundColor: color.bg.cardHeader,
