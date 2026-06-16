@@ -5,9 +5,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     gap: theme.space.md,
   },
-  select: {
-    ...theme.recipe.input,
-    cursor: 'pointer',
-    fontSize: theme.fontSize.sm,
-  },
 }));

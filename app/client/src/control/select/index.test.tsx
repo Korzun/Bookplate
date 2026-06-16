@@ -277,4 +277,75 @@ describe('Select', () => {
       expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
     });
   });
+
+  describe('searchable={false}', () => {
+    it('opens dropdown without showing a search input', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'Search' })).not.toBeInTheDocument();
+    });
+
+    it('calls onChange when an option is clicked', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+          onChange={onChange}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      await user.click(screen.getByRole('option', { name: 'Horror' }));
+      expect(onChange).toHaveBeenCalledWith('Horror');
+    });
+
+    it('navigates with ArrowDown and selects with Enter', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+          onChange={onChange}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      await user.keyboard('{ArrowDown}'); // highlight=1 (Horror)
+      await user.keyboard('{Enter}');
+      expect(onChange).toHaveBeenCalledWith('Horror');
+    });
+
+    it('closes on Escape', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
 });

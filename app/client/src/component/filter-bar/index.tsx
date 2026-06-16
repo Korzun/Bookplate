@@ -4,6 +4,17 @@ import type { BookListFilter } from '~/provider/book';
 
 import { useStyle } from './style';
 
+const TYPE_OPTIONS = [
+  { label: 'Standalone', value: 'standalone' },
+  { label: 'Series', value: 'series' },
+];
+
+const STATUS_OPTIONS = [
+  { label: 'Not Started', value: 'not-started' },
+  { label: 'In Progress', value: 'in-progress' },
+  { label: 'Completed', value: 'completed' },
+];
+
 interface FilterBarProps {
   filter: BookListFilter;
   onChange: (filter: BookListFilter) => void;
@@ -15,38 +26,28 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
   if (subjectsError) console.error('Failed to load subjects:', subjectsError);
   return (
     <div className={style.root}>
-      <select
-        aria-label="Filter by book type"
-        className={style.select}
-        value={filter.type ?? ''}
-        onChange={(e) =>
-          onChange({
-            ...filter,
-            type: e.target.value === '' ? undefined : (e.target.value as BookListFilter['type']),
-          })
+      <Select
+        layout="inline"
+        name="type"
+        options={TYPE_OPTIONS}
+        placeholder="All Types"
+        searchable={false}
+        value={filter.type}
+        onChange={(value) =>
+          onChange({ ...filter, type: value as BookListFilter['type'] | undefined })
         }
-      >
-        <option value="">All Types</option>
-        <option value="standalone">Standalone</option>
-        <option value="series">Series</option>
-      </select>
-      <select
-        aria-label="Filter by reading status"
-        className={style.select}
-        value={filter.status ?? ''}
-        onChange={(e) =>
-          onChange({
-            ...filter,
-            status:
-              e.target.value === '' ? undefined : (e.target.value as BookListFilter['status']),
-          })
+      />
+      <Select
+        layout="inline"
+        name="status"
+        options={STATUS_OPTIONS}
+        placeholder="All Statuses"
+        searchable={false}
+        value={filter.status}
+        onChange={(value) =>
+          onChange({ ...filter, status: value as BookListFilter['status'] | undefined })
         }
-      >
-        <option value="">All Statuses</option>
-        <option value="not-started">Not Started</option>
-        <option value="in-progress">In Progress</option>
-        <option value="completed">Completed</option>
-      </select>
+      />
       <Select
         layout="inline"
         name="subject"
