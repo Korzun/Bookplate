@@ -139,4 +139,54 @@ describe('Select', () => {
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     });
   });
+
+  describe('keyboard navigation', () => {
+    it('opens on ArrowDown from the trigger', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} placeholder="Pick…" />
+      );
+      screen.getByRole('button', { name: 'Pick…' }).focus();
+      await user.keyboard('{ArrowDown}');
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    it('selects the first option on Enter immediately after opening', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+      );
+      screen.getByRole('button', { name: 'Pick…' }).focus();
+      await user.keyboard('{ArrowDown}'); // open; highlight=0 (Fantasy)
+      await user.keyboard('{Enter}');
+      expect(onChange).toHaveBeenCalledWith('Fantasy');
+    });
+
+    it('moves highlight down with ArrowDown and selects on Enter', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+      );
+      screen.getByRole('button', { name: 'Pick…' }).focus();
+      await user.keyboard('{ArrowDown}'); // open; highlight=0
+      await user.keyboard('{ArrowDown}'); // highlight=1 (Horror)
+      await user.keyboard('{Enter}');
+      expect(onChange).toHaveBeenCalledWith('Horror');
+    });
+
+    it('closes on Escape without calling onChange', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+      );
+      screen.getByRole('button', { name: 'Pick…' }).focus();
+      await user.keyboard('{ArrowDown}');
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  });
 });
