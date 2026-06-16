@@ -15,10 +15,9 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
   const styles = useStyle();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Derive the object URL from `value` as memoised data — no intermediate state needed.
+  // useMemo instead of useEffect+setState avoids react-hooks/set-state-in-effect
   const thumbnailUrl = useMemo(() => (value ? URL.createObjectURL(value) : undefined), [value]);
 
-  // Revoke the URL when it changes or the component unmounts.
   useEffect(() => {
     return () => {
       if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
