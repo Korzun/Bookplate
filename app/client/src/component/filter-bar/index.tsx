@@ -1,3 +1,5 @@
+import { Select } from '~/control';
+import { useLibrarySubjects } from '~/provider/book';
 import type { BookListFilter } from '~/provider/book';
 
 import { useStyle } from './style';
@@ -9,6 +11,7 @@ interface FilterBarProps {
 
 export function FilterBar({ filter, onChange }: FilterBarProps) {
   const style = useStyle();
+  const [subjects, subjectsLoading] = useLibrarySubjects();
   return (
     <div className={style.root}>
       <select
@@ -43,6 +46,15 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
         <option value="in-progress">In Progress</option>
         <option value="completed">Completed</option>
       </select>
+      <Select
+        layout="inline"
+        name="subject"
+        options={subjects}
+        loading={subjectsLoading}
+        placeholder="All Subjects"
+        value={filter.subject}
+        onChange={(value) => onChange({ ...filter, subject: value })}
+      />
     </div>
   );
 }
