@@ -2,7 +2,7 @@ import { applyTransparency } from '~/utils';
 
 // ─── Primitive palettes ───
 const gray = {
-  50: '#FAFAFA',
+  50: '#FCFCFC',
   100: '#EEEEEE',
   150: '#e5e7eb',
   200: '#DDDDDD',
