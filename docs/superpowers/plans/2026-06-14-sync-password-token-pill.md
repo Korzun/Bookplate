@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Add `KeyIcon`
+## Task 1: Add `KeyIcon`
 
 **Files:**
 - Create: `app/client/src/icon/key.tsx`
@@ -145,7 +145,7 @@ git commit -m "feat: add KeyIcon (Tabler outline key)"
 
 ---
 
-### Task 2: Restyle the password display area
+## Task 2: Restyle the password display area
 
 **Files:**
 - Modify: `app/client/src/component/sync-password/style.ts`

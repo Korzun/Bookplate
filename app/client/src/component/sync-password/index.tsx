@@ -62,7 +62,7 @@ export const SyncPassword = () => {
               type="default"
               success={copied}
               prefix={copied ? CheckIcon : undefined}
-              disabled={!copied && (!displayPassword || loadingFetch)}
+              disabled={regenerating || (!copied && (!displayPassword || loadingFetch))}
               onClick={handleCopy}
             >
               {copied ? 'Copied!' : 'Copy'}
