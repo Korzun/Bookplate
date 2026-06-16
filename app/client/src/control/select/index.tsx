@@ -186,10 +186,18 @@ export const Select = ({
               <span
                 className={style.clearButton}
                 role="button"
+                tabIndex={0}
                 aria-label="Clear"
                 onClick={(e) => {
                   e.stopPropagation();
                   clear();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    clear();
+                  }
                 }}
               >
                 ✕

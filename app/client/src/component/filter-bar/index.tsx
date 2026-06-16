@@ -11,7 +11,8 @@ interface FilterBarProps {
 
 export function FilterBar({ filter, onChange }: FilterBarProps) {
   const style = useStyle();
-  const [subjects, subjectsLoading] = useLibrarySubjects();
+  const [subjects, subjectsLoading, subjectsError] = useLibrarySubjects();
+  if (subjectsError) console.error('Failed to load subjects:', subjectsError);
   return (
     <div className={style.root}>
       <select
