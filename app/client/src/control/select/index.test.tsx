@@ -106,7 +106,7 @@ describe('Select', () => {
         />
       );
       await user.click(screen.getByRole('button', { name: 'Pick…' }));
-      await user.click(screen.getAllByRole('option')[2]); // Science Fiction
+      await user.click(screen.getByRole('option', { name: 'Science Fiction' }));
       expect(onChange).toHaveBeenCalledWith('Science Fiction');
     });
 
@@ -237,9 +237,7 @@ describe('Select', () => {
       renderWithProviders(
         <Select name="genre" options={[]} value={undefined} loading placeholder="Pick…" />
       );
-      // tabIndex is -1 when loading, but we can still fire a click on the element
-      const trigger = screen.getByText('Loading…').closest('div[role="button"]') as HTMLElement;
-      await user.click(trigger);
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     });
   });
