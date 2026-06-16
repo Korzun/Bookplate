@@ -16,6 +16,7 @@ export type SelectProps = {
   onChange?: (value: string | undefined) => void;
   options: SelectOption[];
   placeholder?: string;
+  searchable?: boolean;
   value: string | undefined;
 };
 
@@ -45,6 +46,7 @@ export const Select = ({
   onChange = () => {},
   options,
   placeholder = 'Select…',
+  searchable = true,
   value,
 }: SelectProps) => {
   const style = useStyle();
@@ -86,10 +88,10 @@ export const Select = ({
   }, [onChange]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && searchable) {
       inputRef.current?.focus();
     }
-  }, [isOpen]);
+  }, [isOpen, searchable]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
@@ -109,6 +111,34 @@ export const Select = ({
       }
     },
     [open]
+  );
+
+  const handleOpenTriggerKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex((i) =>
+          filteredOptions.length === 0 ? 0 : (i + 1) % filteredOptions.length
+        );
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex((i) =>
+          filteredOptions.length === 0
+            ? 0
+            : (i - 1 + filteredOptions.length) % filteredOptions.length
+        );
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const opt = filteredOptions[highlightedIndex];
+        if (opt) select(opt.value);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'Tab') {
+        close();
+      }
+    },
+    [filteredOptions, highlightedIndex, select, close]
   );
 
   const handleInputKeyDown = useCallback(
@@ -147,7 +177,7 @@ export const Select = ({
         </label>
       )}
       <div className={style.triggerWrapper}>
-        {isOpen ? (
+        {isOpen && searchable ? (
           <div className={style.trigger}>
             <input
               ref={inputRef}
@@ -171,12 +201,13 @@ export const Select = ({
             className={cx(style.trigger, {
               [style.loading]: loading,
               [style.disabled]: disabled,
+              [style.open]: isOpen,
             })}
             role="button"
             tabIndex={disabled || loading ? -1 : 0}
             aria-label={selectedLabel ?? placeholder}
-            onClick={open}
-            onKeyDown={handleTriggerKeyDown}
+            onClick={isOpen ? undefined : open}
+            onKeyDown={isOpen ? handleOpenTriggerKeyDown : handleTriggerKeyDown}
           >
             {loading && <SpinnerIcon className={style.spinner} />}
             <span className={cx(style.triggerText, { [style.placeholder]: !selectedLabel })}>
