@@ -97,7 +97,13 @@ describe('Select', () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
       renderWithProviders(
-        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
       );
       await user.click(screen.getByRole('button', { name: 'Pick…' }));
       await user.click(screen.getAllByRole('option')[2]); // Science Fiction
@@ -112,7 +118,13 @@ describe('Select', () => {
         { label: 'Fantasy', value: 'fantasy' },
       ];
       renderWithProviders(
-        <Select name="genre" options={objOptions} value={undefined} placeholder="Pick…" onChange={onChange} />
+        <Select
+          name="genre"
+          options={objOptions}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
       );
       await user.click(screen.getByRole('button', { name: 'Pick…' }));
       await user.click(screen.getAllByRole('option')[0]);
@@ -122,7 +134,13 @@ describe('Select', () => {
     it('closes after selecting an option', async () => {
       const user = userEvent.setup();
       renderWithProviders(
-        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={vi.fn()} />
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={vi.fn()}
+        />
       );
       await user.click(screen.getByRole('button', { name: 'Pick…' }));
       await user.click(screen.getAllByRole('option')[0]);
@@ -155,7 +173,13 @@ describe('Select', () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
       renderWithProviders(
-        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
       );
       screen.getByRole('button', { name: 'Pick…' }).focus();
       await user.keyboard('{ArrowDown}'); // open; highlight=0 (Fantasy)
@@ -167,7 +191,13 @@ describe('Select', () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
       renderWithProviders(
-        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
       );
       screen.getByRole('button', { name: 'Pick…' }).focus();
       await user.keyboard('{ArrowDown}'); // open; highlight=0
@@ -180,13 +210,53 @@ describe('Select', () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
       renderWithProviders(
-        <Select name="genre" options={options} value={undefined} placeholder="Pick…" onChange={onChange} />
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
       );
       screen.getByRole('button', { name: 'Pick…' }).focus();
       await user.keyboard('{ArrowDown}');
       await user.keyboard('{Escape}');
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
       expect(onChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('loading state', () => {
+    it('shows Loading… text when loading', () => {
+      renderWithProviders(<Select name="genre" options={[]} value={undefined} loading />);
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+    });
+
+    it('does not open when loading', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select name="genre" options={[]} value={undefined} loading placeholder="Pick…" />
+      );
+      // tabIndex is -1 when loading, but we can still fire a click on the element
+      const trigger = screen.getByText('Loading…').closest('div[role="button"]') as HTMLElement;
+      await user.click(trigger);
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('disabled state', () => {
+    it('does not open when disabled', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} disabled placeholder="Pick…" />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('hides clear button when disabled even with a value', () => {
+      renderWithProviders(<Select name="genre" options={options} value="Fantasy" disabled />);
+      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
     });
   });
 });
