@@ -10,7 +10,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     width: '32px',
     height: '32px',
     flexShrink: 0,
-    borderRadius: '4px',
+    borderRadius: theme.radius.sm,
     overflow: 'hidden',
     border: `1px solid ${theme.color.border.default}`,
     background: theme.color.border.light,
