@@ -2294,6 +2294,63 @@ describe('listBooksPage with filters', () => {
     const withEmptyFilters = await bookStore.listBooksPage(OWNER, null, 20, {});
     expect(withEmptyFilters.items).toEqual(withoutFilters.items);
   });
+
+  it('subject filter returns only standalone books with that subject', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Fantasy'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Beta',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Science Fiction'],
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Fantasy' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('subject filter does not match partial subject names', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Science'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Beta',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Science Fiction'],
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Science' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('subject filter returns series whose subject roll-up contains the subject', async () => {
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+      subjects: ['Science Fiction'],
+    });
+    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), {
+      ...FAKE_META,
+      title: 'Fellowship 1',
+      series: 'Fellowship',
+      seriesIndex: 1,
+      subjects: ['Fantasy'],
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Science Fiction' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
 });
 
 describe('series aggregate metadata', () => {

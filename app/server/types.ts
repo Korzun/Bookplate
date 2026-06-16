@@ -86,6 +86,7 @@ export type PagedBookListResponse = {
 export type BookListFilters = {
   type?: 'standalone' | 'series';
   status?: 'not-started' | 'in-progress' | 'completed';
+  subject?: string;
 };
 
 /** Opaque base64-encoded JSON cursor stored in the client and echoed back on subsequent requests. */

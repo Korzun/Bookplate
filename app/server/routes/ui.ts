@@ -402,7 +402,7 @@ export function createUiRouter(
     const owner = await resolveOwner(req, res);
     if (!owner) return;
 
-    const { cursor, take, type, status } = req.query;
+    const { cursor, take, type, status, subject } = req.query;
 
     if (type !== undefined && (typeof type !== 'string' || !VALID_TYPES.has(type))) {
       res.status(400).json({ error: 'Invalid type. Must be "standalone" or "series".' });
@@ -415,11 +415,14 @@ export function createUiRouter(
       return;
     }
 
+    const subjectValue = typeof subject === 'string' && subject ? subject : undefined;
+
     const filters: BookListFilters | undefined =
-      type !== undefined || status !== undefined
+      type !== undefined || status !== undefined || subjectValue !== undefined
         ? {
             type: type as BookListFilters['type'],
             status: status as BookListFilters['status'],
+            subject: subjectValue,
           }
         : undefined;
 

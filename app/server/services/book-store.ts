@@ -861,7 +861,7 @@ export class BookStore {
     // share a title; `id` is the stable secondary key.
     // When the last page ended on a series at sort key K, standalones at exactly
     // K still need to be shown (series sorts before same-key standalone).
-    const seriesWhere: Prisma.SeriesWhereInput = cursor
+    let seriesWhere: Prisma.SeriesWhereInput = cursor
       ? { userId: owner.userId, sortKey: { gt: cursor.k } }
       : { userId: owner.userId };
 
@@ -884,6 +884,18 @@ export class BookStore {
     if (includeStandalones && filters?.status && progressMap) {
       const statusFilter = standaloneStatusWhere(filters.status, progressMap);
       bookWhere = { ...bookWhere, ...statusFilter };
+    }
+
+    // Apply subject filter — subjects are stored as JSON arrays so we match the
+    // quoted element value (e.g. '"Fantasy"') to avoid substring false-positives.
+    if (filters?.subject) {
+      const jsonSubject = `"${filters.subject}"`;
+      if (includeStandalones) {
+        bookWhere = { ...bookWhere, subjects: { contains: jsonSubject } };
+      }
+      if (includeSeries) {
+        seriesWhere = { ...seriesWhere, subjects: { contains: jsonSubject } };
+      }
     }
 
     // For series status filter, compute matching series IDs at the DB level
