@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
+import { CoverImagePicker } from '~/component/cover-image-picker';
 import {
   Button,
   FieldList,
@@ -36,9 +37,6 @@ export const BookEditForm = ({ original, id }: Props) => {
   const [librarySubjects] = useLibrarySubjects();
 
   const [cover, setCover] = useState<File | undefined>(undefined);
-  const handleCoverChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setCover(event.target.files?.[0] ?? undefined);
-  }, []);
 
   const [title, setTitle] = useState<string | undefined>(original.title);
   const handleTitleChange = useCallback((newTitle: string | undefined) => {
@@ -178,9 +176,7 @@ export const BookEditForm = ({ original, id }: Props) => {
         </div>
       </Card>
 
-      <Card title="Cover Image">
-        <input type="file" accept="image/*" onChange={handleCoverChange} />
-      </Card>
+      <CoverImagePicker value={cover} onChange={setCover} />
 
       <Card title="Description">
         <TextArea
