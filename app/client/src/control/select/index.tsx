@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChevronIcon, SpinnerIcon } from '~/icon';
 
@@ -54,9 +54,10 @@ export const Select = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const normalisedOptions = options.map(normalise);
-  const filteredOptions = normalisedOptions.filter((o) =>
-    o.label.toLowerCase().includes(query.toLowerCase())
+  const normalisedOptions = useMemo(() => options.map(normalise), [options]);
+  const filteredOptions = useMemo(
+    () => normalisedOptions.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
+    [normalisedOptions, query]
   );
   const selectedLabel = normalisedOptions.find((o) => o.value === value)?.label;
 
