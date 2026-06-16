@@ -889,7 +889,7 @@ export class BookStore {
     // Apply subject filter — subjects are stored as JSON arrays so we match the
     // quoted element value (e.g. '"Fantasy"') to avoid substring false-positives.
     if (filters?.subject) {
-      const jsonSubject = `"${filters.subject}"`;
+      const jsonSubject = JSON.stringify(filters.subject);
       if (includeStandalones) {
         bookWhere = { ...bookWhere, subjects: { contains: jsonSubject } };
       }

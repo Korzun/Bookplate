@@ -2333,6 +2333,25 @@ describe('listBooksPage with filters', () => {
     expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
+  it('subject filter handles subjects containing quote characters', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['He said "Hi"'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Beta',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Fantasy'],
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'He said "Hi"' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
   it('subject filter returns series whose subject roll-up contains the subject', async () => {
     await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,

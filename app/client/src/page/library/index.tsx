@@ -67,7 +67,7 @@ export const LibraryPage = () => {
   const isFilterActive =
     bookListFilter.type !== undefined ||
     bookListFilter.status !== undefined ||
-    bookListFilter.subject !== undefined;
+    !!bookListFilter.subject;
 
   return (
     <Page>
