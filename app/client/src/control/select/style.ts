@@ -49,10 +49,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&:focus, &:focus-within': { borderColor: theme.color.border.focus },
     '&$loading': {
       cursor: 'default',
-      borderColor: '#e6e6e6',
+      borderColor: theme.color.border.light,
       color: theme.color.text.muted,
-      '&:hover': { borderColor: '#e6e6e6' },
-      '&:focus, &:focus-within': { borderColor: '#e6e6e6' },
+      '&:hover': { borderColor: theme.color.border.light },
+      '&:focus, &:focus-within': { borderColor: theme.color.border.light },
     },
     '&$disabled': {
       cursor: 'not-allowed',

@@ -206,6 +206,26 @@ describe('Select', () => {
       expect(onChange).toHaveBeenCalledWith('Horror');
     });
 
+    it('moves highlight up with ArrowUp and selects on Enter', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          onChange={onChange}
+        />
+      );
+      screen.getByRole('button', { name: 'Pick…' }).focus();
+      await user.keyboard('{ArrowDown}'); // open; highlight=0 (Fantasy)
+      await user.keyboard('{ArrowDown}'); // highlight=1 (Horror)
+      await user.keyboard('{ArrowUp}'); // highlight=0 (Fantasy)
+      await user.keyboard('{Enter}');
+      expect(onChange).toHaveBeenCalledWith('Fantasy');
+    });
+
     it('closes on Escape without calling onChange', async () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
