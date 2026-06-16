@@ -26,6 +26,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
         marginTop: theme.space.xs,
         marginLeft: theme.space.md,
       },
+      '& $triggerWrapper': { flexGrow: 1 },
     },
     '&$inline': {
       display: 'inline-flex',
@@ -55,7 +56,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '&$disabled': {
       cursor: 'not-allowed',
-      opacity: 0.5,
       '&:hover': { borderColor: theme.color.border.default },
       '&:focus, &:focus-within': { borderColor: theme.color.border.default },
     },
@@ -104,7 +104,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     left: 0,
     right: 0,
     marginTop: theme.space.xxs,
-    zIndex: theme.zIndex.stack.hi,
+    zIndex: theme.zIndex.sticky,
     border: `1px solid ${theme.color.border.strong}`,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.bg.card,
@@ -115,7 +115,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     listStyle: 'none',
     margin: 0,
     padding: `${theme.space.xs} 0`,
-    maxHeight: '200px',
+    maxHeight: '12.5rem',
     overflowY: 'auto',
   },
   option: {
@@ -136,13 +136,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   matchHighlight: {
     backgroundColor: theme.color.blue[100],
-    borderRadius: '2px',
+    borderRadius: theme.radius.sm,
     padding: '0 1px',
   },
   spinner: { ...theme.recipe.spinner },
   // Empty modifier classes — referenced as $name in compound selectors above
   loading: {},
-  disabled: {},
+  disabled: { opacity: 0.5 },
   open: {},
   placeholder: {},
   highlighted: {},
