@@ -15,24 +15,15 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
   const styles = useStyle();
   const inputRef = useRef<HTMLInputElement>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | undefined>(undefined);
-  const urlRef = useRef<string | undefined>();
 
-  // Create and cleanup object URLs
   useEffect(() => {
     if (!value) {
-      urlRef.current = undefined;
+      setThumbnailUrl(undefined);
       return;
     }
     const url = URL.createObjectURL(value);
-    urlRef.current = url;
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [value]);
-
-  // Separate effect for state updates triggered by ref changes
-  useEffect(() => {
-    setThumbnailUrl(urlRef.current);
+    setThumbnailUrl(url);
+    return () => URL.revokeObjectURL(url);
   }, [value]);
 
   const handleInputChange = useCallback(
