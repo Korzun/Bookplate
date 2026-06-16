@@ -56,7 +56,7 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
       <div className={styles.row}>
         <div className={styles.thumbSlot}>
           {thumbnailUrl ? (
-            <img className={styles.thumb} src={thumbnailUrl} alt="Cover image thumbnail" />
+            <img className={styles.thumb} src={thumbnailUrl} alt="" />
           ) : (
             <div className={styles.placeholderIcon}>
               <UploadIcon />

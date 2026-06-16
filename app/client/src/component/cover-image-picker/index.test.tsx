@@ -68,7 +68,7 @@ describe('CoverImagePicker — selected (file provided)', () => {
 
   it('renders a thumbnail img with the object URL', () => {
     renderWithProviders(<CoverImagePicker value={FILE} onChange={vi.fn()} />);
-    const img = screen.getByRole('img');
+    const img = document.querySelector('img');
     expect(img).toHaveAttribute('src', 'blob:mock-url');
   });
 
