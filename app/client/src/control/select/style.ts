@@ -84,6 +84,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   clearButton: {
     display: 'flex',
     alignItems: 'center',
+    fontSize: '0.80rem',
+    lineHeight: 1,
     color: theme.color.text.faint,
     cursor: 'pointer',
     flexShrink: 0,

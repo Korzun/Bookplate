@@ -254,6 +254,21 @@ describe('useFetchBookList', () => {
     expect(fetch).toHaveBeenCalledWith('/api/books?status=in-progress&take=20', {});
   });
 
+  it('appends subject filter param to URL when bookListFilter.subject is set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ bookListFilter: { subject: 'Fantasy' } }),
+    });
+    await act(() => result.current());
+    expect(fetch).toHaveBeenCalledWith('/api/books?subject=Fantasy&take=20', {});
+  });
+
   it('omits filter params when bookListFilter is empty', async () => {
     vi.stubGlobal(
       'fetch',
