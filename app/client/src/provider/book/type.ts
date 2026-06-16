@@ -35,6 +35,7 @@ export type DisplayUnit =
 export type BookListFilter = {
   type?: 'standalone' | 'series';
   status?: 'not-started' | 'in-progress' | 'completed';
+  subject?: string;
 };
 
 export type BookSummary = Omit<

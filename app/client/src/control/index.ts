@@ -9,6 +9,7 @@ export { ProportionalChapterSlider } from './proportional-chapter-slider';
 export { RegenChaptersButton } from './regen-chapters-button';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
+export { Select } from './select';
 export { SubjectChips } from './subject-chips';
 export { Switch } from './switch';
 export { TextArea } from './text-area';
@@ -16,3 +17,4 @@ export { TextInput } from './text-input';
 export { UnlinkBookLineageButton } from './unlink-book-lineage-button';
 
 export type { ColumnDescriptor, FieldRow } from './field-list';
+export type { SelectOption, SelectProps } from './select';
