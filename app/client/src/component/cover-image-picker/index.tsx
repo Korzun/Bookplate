@@ -32,7 +32,10 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
   );
 
   const handleChoose = useCallback(() => {
-    inputRef.current?.click();
+    if (inputRef.current) {
+      inputRef.current.value = '';
+      inputRef.current.click();
+    }
   }, []);
 
   const handleClear = useCallback(() => {
