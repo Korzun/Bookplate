@@ -4,7 +4,7 @@ import { useBookList, useLibrarySubjects } from '~/provider/book';
 import type { BookListFilter } from '~/provider/book';
 
 export type Suggestion = {
-  type: 'status' | 'author' | 'series' | 'subject';
+  type: 'status' | 'author' | 'series' | 'book' | 'subject';
   label: string;
   value: string;
   additive: boolean;
@@ -98,6 +98,14 @@ export function useSearchSuggestions(
       const g = buildGroup('series', 'Series', seriesList, query, false, new Set());
       if (g) groups.push(g);
     }
+
+    // Books — title match, navigates on select, cap at 5
+    const bookCandidates = bookList
+      .filter((b) => matchInfo(b.title, query) !== null)
+      .slice(0, 5)
+      .map((b) => ({ label: b.title, value: b.id }));
+    const bookGroup = buildGroup('book', 'Book', bookCandidates, query, false, new Set());
+    if (bookGroup) groups.push(bookGroup);
 
     // Subject (additive) — exclude already-active subjects
     const activeSubjects = new Set(filter.subjects ?? []);

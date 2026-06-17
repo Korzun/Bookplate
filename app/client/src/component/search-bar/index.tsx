@@ -93,6 +93,7 @@ const TYPE_DROPDOWN_CLASS: Record<Suggestion['type'], string> = {
   status: 'dropdownItemTypeStatus',
   author: 'dropdownItemTypeAuthor',
   series: 'dropdownItemTypeSeries',
+  book: 'dropdownItemTypeBook',
   subject: 'dropdownItemTypeSubject',
 };
 
@@ -137,6 +138,12 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
     (suggestion: Suggestion) => {
       if (suggestion.type === 'series') {
         navigate(path.series(suggestion.value));
+        setInputValue('');
+        close();
+        return;
+      }
+      if (suggestion.type === 'book') {
+        navigate(path.book(suggestion.value));
         setInputValue('');
         close();
         return;
