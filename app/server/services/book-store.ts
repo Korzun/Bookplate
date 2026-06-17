@@ -841,8 +841,8 @@ export class BookStore {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
 
-    const includeStandalones = !filters?.type || filters.type === 'standalone';
-    const includeSeries = !filters?.type || filters.type === 'series';
+    const includeStandalones = filters?.seriesName === undefined;
+    const includeSeries = true;
 
     // Pre-fetch progress only when status filter applies to standalone books.
     // Series status is computed at the DB level by seriesIdsForStatus().
@@ -886,16 +886,40 @@ export class BookStore {
       bookWhere = { ...bookWhere, ...statusFilter };
     }
 
-    // Apply subject filter — subjects are stored as JSON arrays so we match the
+    // Apply subjects filter — subjects are stored as JSON arrays so we match the
     // quoted element value (e.g. '"Fantasy"') to avoid substring false-positives.
-    if (filters?.subject) {
-      const jsonSubject = JSON.stringify(filters.subject);
+    // Multiple subjects are ANDed together (book must have all of them).
+    if (filters?.subjects?.length) {
+      for (const subject of filters.subjects) {
+        const jsonSubject = JSON.stringify(subject);
+        if (includeStandalones) {
+          bookWhere = { ...bookWhere, subjects: { contains: jsonSubject } };
+        }
+        if (includeSeries) {
+          seriesWhere = { ...seriesWhere, subjects: { contains: jsonSubject } };
+        }
+      }
+    }
+
+    // query: case-insensitive contains on book title and series name
+    if (filters?.query) {
       if (includeStandalones) {
-        bookWhere = { ...bookWhere, subjects: { contains: jsonSubject } };
+        bookWhere = { ...bookWhere, title: { contains: filters.query } };
       }
-      if (includeSeries) {
-        seriesWhere = { ...seriesWhere, subjects: { contains: jsonSubject } };
+      seriesWhere = { ...seriesWhere, name: { contains: filters.query } };
+    }
+
+    // author: case-insensitive contains on book author; series has own author field
+    if (filters?.author) {
+      if (includeStandalones) {
+        bookWhere = { ...bookWhere, author: { contains: filters.author } };
       }
+      seriesWhere = { ...seriesWhere, author: { contains: filters.author } };
+    }
+
+    // seriesName: exact match — only the named series, no standalones
+    if (filters?.seriesName) {
+      seriesWhere = { ...seriesWhere, name: { equals: filters.seriesName } };
     }
 
     // For series status filter, compute matching series IDs at the DB level
