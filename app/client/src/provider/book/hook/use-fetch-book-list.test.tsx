@@ -224,7 +224,7 @@ describe('useFetchBookList', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('appends type filter param to URL when bookListFilter.type is set', async () => {
+  it('appends query filter param to URL when bookListFilter.query is set', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -233,10 +233,10 @@ describe('useFetchBookList', () => {
       })
     );
     const { result } = renderHook(() => useFetchBookList(), {
-      wrapper: makeWrapper({ bookListFilter: { type: 'series' } }),
+      wrapper: makeWrapper({ bookListFilter: { query: 'test' } }),
     });
     await act(() => result.current());
-    expect(fetch).toHaveBeenCalledWith('/api/books?type=series&take=20', {});
+    expect(fetch).toHaveBeenCalledWith('/api/books?query=test&take=20', {});
   });
 
   it('appends status filter param to URL when bookListFilter.status is set', async () => {
@@ -254,7 +254,7 @@ describe('useFetchBookList', () => {
     expect(fetch).toHaveBeenCalledWith('/api/books?status=in-progress&take=20', {});
   });
 
-  it('appends subject filter param to URL when bookListFilter.subject is set', async () => {
+  it('appends subjects filter params to URL when bookListFilter.subjects is set', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -263,10 +263,10 @@ describe('useFetchBookList', () => {
       })
     );
     const { result } = renderHook(() => useFetchBookList(), {
-      wrapper: makeWrapper({ bookListFilter: { subject: 'Fantasy' } }),
+      wrapper: makeWrapper({ bookListFilter: { subjects: ['Fantasy', 'Adventure'] } }),
     });
     await act(() => result.current());
-    expect(fetch).toHaveBeenCalledWith('/api/books?subject=Fantasy&take=20', {});
+    expect(fetch).toHaveBeenCalledWith('/api/books?subjects=Fantasy&subjects=Adventure&take=20', {});
   });
 
   it('omits filter params when bookListFilter is empty', async () => {

@@ -35,9 +35,13 @@ export const useFetchNextPage = (): FetchNextPage => {
     try {
       const params = new URLSearchParams();
       params.append('cursor', nextCursor);
-      if (bookListFilter.type) params.append('type', bookListFilter.type);
+      if (bookListFilter.query) params.append('query', bookListFilter.query);
+      if (bookListFilter.author) params.append('author', bookListFilter.author);
+      if (bookListFilter.seriesName) params.append('seriesName', bookListFilter.seriesName);
       if (bookListFilter.status) params.append('status', bookListFilter.status);
-      if (bookListFilter.subject) params.append('subject', bookListFilter.subject);
+      for (const subject of bookListFilter.subjects ?? []) {
+        params.append('subjects', subject);
+      }
       params.append('take', '20');
       const url = withTargetUser(`/api/books?${params.toString()}`);
       const response = await apiFetch(url);

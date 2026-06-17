@@ -195,9 +195,9 @@ describe('useBookList', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?take=20', {});
 
-    act(() => result.current.filter[1]({ type: 'series' }));
+    act(() => result.current.filter[1]({ query: 'test' }));
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
-    expect(mockFetch).toHaveBeenLastCalledWith('/api/books?type=series&take=20', {});
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/books?query=test&take=20', {});
   });
 });

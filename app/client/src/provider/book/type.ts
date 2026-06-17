@@ -33,9 +33,11 @@ export type DisplayUnit =
   | { type: 'series'; seriesName: string };
 
 export type BookListFilter = {
-  type?: 'standalone' | 'series';
+  query?: string;
+  author?: string;
+  seriesName?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
-  subject?: string;
+  subjects?: string[];
 };
 
 export type BookSummary = Omit<
