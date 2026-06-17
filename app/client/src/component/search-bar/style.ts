@@ -6,10 +6,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     border: `1px solid ${theme.color.border.default}`,
     borderRadius: theme.radius.lg,
     position: 'relative',
-    '&$focused': {
-      borderColor: theme.color.border.focus,
-      boxShadow: `0 0 0 2px ${theme.color.brand.outline}`,
-    },
+    '&:hover': { borderColor: theme.color.border.hover },
+    '&$focused': { borderColor: theme.color.border.focus },
   },
   focused: {},
   chipsRow: {
