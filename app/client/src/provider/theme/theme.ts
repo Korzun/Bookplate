@@ -86,6 +86,12 @@ export interface Theme {
       loadingActive: string;
     };
     overlay: { backdrop: string };
+    chip: {
+      status:  { text: string; bg: string; border: string };
+      author:  { text: string; bg: string; border: string };
+      series:  { text: string; bg: string; border: string };
+      subject: { text: string; bg: string; border: string };
+    };
   };
   space: {
     xxxs: string;
@@ -205,6 +211,12 @@ function buildTheme(): Theme {
       loadingActive: red[600],
     },
     overlay: { backdrop: applyTransparency('#000', 0.7) },
+    chip: {
+      status:  { text: '#6d3fc0', bg: 'rgba(109,63,192,0.08)', border: 'rgba(109,63,192,0.22)' },
+      author:  { text: '#1a7a52', bg: 'rgba(26,122,82,0.08)',  border: 'rgba(26,122,82,0.22)'  },
+      series:  { text: '#1a5fa8', bg: 'rgba(26,95,168,0.08)',  border: 'rgba(26,95,168,0.22)'  },
+      subject: { text: '#8a5e00', bg: 'rgba(138,94,0,0.08)',   border: 'rgba(138,94,0,0.22)'   },
+    },
   };
 
   const space: Theme['space'] = {
