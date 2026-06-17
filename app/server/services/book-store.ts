@@ -117,6 +117,63 @@ export class BookStore {
     return path.join(this.booksRoot, '.staging');
   }
 
+  async listAuthors(
+    owner: Owner,
+    { take, cursor }: { take: number; cursor?: string }
+  ): Promise<{ items: string[]; nextCursor: string | null }> {
+    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
+    const rows = await this.prisma.book.groupBy({
+      by: ['author'],
+      where: { userId: owner.userId, author: { gt: minValue } },
+      orderBy: { author: 'asc' },
+      take: take + 1,
+    });
+    const hasMore = rows.length > take;
+    const items = rows.slice(0, take).map((r) => r.author);
+    return {
+      items,
+      nextCursor: hasMore ? Buffer.from(items[items.length - 1]).toString('base64') : null,
+    };
+  }
+
+  async listSeriesNames(
+    owner: Owner,
+    { take, cursor }: { take: number; cursor?: string }
+  ): Promise<{ items: string[]; nextCursor: string | null }> {
+    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
+    const rows = await this.prisma.series.findMany({
+      where: { userId: owner.userId, name: { gt: minValue } },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+      take: take + 1,
+    });
+    const hasMore = rows.length > take;
+    const items = rows.slice(0, take).map((r) => r.name);
+    return {
+      items,
+      nextCursor: hasMore ? Buffer.from(items[items.length - 1]).toString('base64') : null,
+    };
+  }
+
+  async listBookTitles(
+    owner: Owner,
+    { take, cursor }: { take: number; cursor?: string }
+  ): Promise<{ items: { id: string; title: string }[]; nextCursor: string | null }> {
+    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId, title: { gt: minValue } },
+      select: { id: true, title: true },
+      orderBy: { title: 'asc' },
+      take: take + 1,
+    });
+    const hasMore = rows.length > take;
+    const items = rows.slice(0, take);
+    return {
+      items,
+      nextCursor: hasMore ? Buffer.from(items[items.length - 1].title).toString('base64') : null,
+    };
+  }
+
   async getSubjects(owner: Owner): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
       SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
