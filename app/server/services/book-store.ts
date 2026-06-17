@@ -330,6 +330,23 @@ export class BookStore {
     return rows.map((r) => this.prismaBookToBook(owner, r));
   }
 
+  async listBooksBySubject(owner: Owner, subject: string): Promise<Book[]> {
+    const matched = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT DISTINCT b.id
+      FROM books b, json_each(b.subjects) je
+      WHERE b.user_id = ${owner.userId}
+        AND je.type = 'text'
+        AND trim(CAST(je.value AS TEXT)) = ${subject}
+    `;
+    if (matched.length === 0) return [];
+    const ids = matched.map((r) => r.id);
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId, id: { in: ids } },
+      select: BOOK_SELECT,
+    });
+    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
+  }
+
   async getBookById(owner: Owner, id: string): Promise<Book | null> {
     const row = await this.prisma.book.findUnique({
       where: { userId_id: { userId: owner.userId, id } },

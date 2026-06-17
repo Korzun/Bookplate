@@ -3136,3 +3136,51 @@ describe('listBooksBySeries', () => {
     expect(books.map((b) => b.title)).toEqual(['Alice Book']);
   });
 });
+
+describe('listBooksBySubject', () => {
+  it('returns empty array when no books have the subject', async () => {
+    const books = await bookStore.listBooksBySubject(OWNER, 'Fantasy');
+    expect(books).toEqual([]);
+  });
+
+  it('returns only books tagged with the given subject', async () => {
+    await bookStore.addBook(OWNER, 'f1', stage('f1'), {
+      ...FAKE_META,
+      title: 'A Fantasy Book',
+      subjects: ['Fantasy', 'Adventure'],
+    });
+    await bookStore.addBook(OWNER, 'f2', stage('f2'), {
+      ...FAKE_META,
+      title: 'A Sci-Fi Book',
+      subjects: ['Science Fiction'],
+    });
+    await bookStore.addBook(OWNER, 'f3', stage('f3'), {
+      ...FAKE_META,
+      title: 'Another Fantasy',
+      subjects: ['Fantasy'],
+    });
+    const books = await bookStore.listBooksBySubject(OWNER, 'Fantasy');
+    expect(books.map((b) => b.title).sort()).toEqual(['A Fantasy Book', 'Another Fantasy']);
+  });
+
+  it('is scoped to owner', async () => {
+    const alice: Owner = OWNER;
+    const bob: Owner = { userId: 'usr_test000000000000001', username: 'bob' };
+    await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
+    fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
+
+    await bookStore.addBook(alice, 'f4', stage('f4'), {
+      ...FAKE_META,
+      title: 'Alice Fantasy',
+      subjects: ['Fantasy'],
+    });
+    await bookStore.addBook(bob, 'f5', stage('f5'), {
+      ...FAKE_META,
+      title: 'Bob Fantasy',
+      subjects: ['Fantasy'],
+    });
+    const books = await bookStore.listBooksBySubject(alice, 'Fantasy');
+    expect(books.map((b) => b.title)).toContain('Alice Fantasy');
+    expect(books.map((b) => b.title)).not.toContain('Bob Fantasy');
+  });
+});
