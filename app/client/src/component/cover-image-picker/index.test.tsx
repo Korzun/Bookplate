@@ -101,3 +101,12 @@ describe('CoverImagePicker — file input', () => {
     expect(onChange).toHaveBeenCalledWith(file);
   });
 });
+
+describe('CoverImagePicker — lifecycle', () => {
+  it('revokes the object URL on unmount', () => {
+    vi.mocked(URL.revokeObjectURL).mockClear();
+    const { unmount } = renderWithProviders(<CoverImagePicker value={FILE} onChange={vi.fn()} />);
+    unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+  });
+});
