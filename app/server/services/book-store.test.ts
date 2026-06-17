@@ -3026,3 +3026,113 @@ describe('listBooksByAuthor', () => {
     expect(books.map((b) => b.title)).toEqual(['Alice Copy']);
   });
 });
+
+describe('listSeries', () => {
+  it('returns empty array when no series exist', async () => {
+    const series = await bookStore.listSeries(OWNER);
+    expect(series).toEqual([]);
+  });
+
+  it('returns series sorted by name', async () => {
+    const alice: Owner = OWNER;
+    const bob: Owner = { userId: 'usr_test000000000000001', username: 'bob' };
+    await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
+    fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
+
+    await bookStore.addBook(alice, 'd1', stage('d1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(alice, 'd2', stage('d2'), {
+      ...FAKE_META,
+      series: 'Foundation',
+      seriesIndex: 1,
+    });
+    const series = await bookStore.listSeries(alice);
+    expect(series.map((s) => s.name)).toEqual(['Dune', 'Foundation']);
+    expect(series[0].bookCount).toBe(1);
+  });
+
+  it('is scoped to owner', async () => {
+    const alice: Owner = OWNER;
+    const bob: Owner = { userId: 'usr_test000000000000001', username: 'bob' };
+    await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
+    fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
+
+    await bookStore.addBook(alice, 'd3', stage('d3'), {
+      ...FAKE_META,
+      series: 'Alice Series',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(bob, 'd4', stage('d4'), {
+      ...FAKE_META,
+      series: 'Bob Series',
+      seriesIndex: 1,
+    });
+    const series = await bookStore.listSeries(alice);
+    expect(series.map((s) => s.name)).toContain('Alice Series');
+    expect(series.map((s) => s.name)).not.toContain('Bob Series');
+  });
+});
+
+describe('listBooksBySeries', () => {
+  it('returns empty array for unknown seriesId', async () => {
+    const books = await bookStore.listBooksBySeries(OWNER, 'nonexistent-uuid');
+    expect(books).toEqual([]);
+  });
+
+  it('returns books sorted by seriesIndex then title', async () => {
+    const alice: Owner = OWNER;
+    await bookStore.addBook(alice, 'e1', stage('e1'), {
+      ...FAKE_META,
+      series: 'The Expanse',
+      seriesIndex: 1,
+      title: 'Leviathan Wakes',
+    });
+    await bookStore.addBook(alice, 'e2', stage('e2'), {
+      ...FAKE_META,
+      series: 'The Expanse',
+      seriesIndex: 3,
+      title: "Abaddon's Gate",
+    });
+    await bookStore.addBook(alice, 'e3', stage('e3'), {
+      ...FAKE_META,
+      series: 'The Expanse',
+      seriesIndex: 2,
+      title: "Caliban's War",
+    });
+    const allSeries = await bookStore.listSeries(alice);
+    const expanse = allSeries.find((s) => s.name === 'The Expanse')!;
+    const books = await bookStore.listBooksBySeries(alice, expanse.id);
+    expect(books.map((b) => b.title)).toEqual([
+      'Leviathan Wakes',
+      "Caliban's War",
+      "Abaddon's Gate",
+    ]);
+  });
+
+  it('is scoped to owner', async () => {
+    const alice: Owner = OWNER;
+    const bob: Owner = { userId: 'usr_test000000000000001', username: 'bob' };
+    await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
+    fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
+
+    await bookStore.addBook(alice, 'e4', stage('e4'), {
+      ...FAKE_META,
+      series: 'Shared Series',
+      seriesIndex: 1,
+      title: 'Alice Book',
+    });
+    await bookStore.addBook(bob, 'e5', stage('e5'), {
+      ...FAKE_META,
+      series: 'Shared Series',
+      seriesIndex: 1,
+      title: 'Bob Book',
+    });
+    const aliceSeries = await bookStore.listSeries(alice);
+    const s = aliceSeries.find((s) => s.name === 'Shared Series')!;
+    const books = await bookStore.listBooksBySeries(alice, s.id);
+    expect(books.map((b) => b.title)).toEqual(['Alice Book']);
+  });
+});

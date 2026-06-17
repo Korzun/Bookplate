@@ -312,6 +312,24 @@ export class BookStore {
     return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
   }
 
+  async listSeries(owner: Owner): Promise<{ id: string; name: string; bookCount: number }[]> {
+    const rows = await this.prisma.series.findMany({
+      where: { userId: owner.userId },
+      select: { id: true, name: true, bookCount: true },
+      orderBy: { sortKey: 'asc' },
+    });
+    return rows;
+  }
+
+  async listBooksBySeries(owner: Owner, seriesId: string): Promise<Book[]> {
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId, seriesId },
+      select: BOOK_SELECT,
+      orderBy: [{ seriesIndex: 'asc' }, { title: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((r) => this.prismaBookToBook(owner, r));
+  }
+
   async getBookById(owner: Owner, id: string): Promise<Book | null> {
     const row = await this.prisma.book.findUnique({
       where: { userId_id: { userId: owner.userId, id } },
