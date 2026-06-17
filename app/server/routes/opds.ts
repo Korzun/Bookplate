@@ -274,5 +274,74 @@ export function createOpdsRouter(
     );
   });
 
+  router.get('/status', auth, (req: Request, res: Response) => {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      navigationFeed({
+        id: 'urn:hass-odps:status',
+        title: 'By Reading Status',
+        selfHref: `${baseUrl}/opds/status`,
+        baseUrl,
+        now,
+        entries: [
+          navEntry(
+            'urn:hass-odps:status:not-started',
+            'Not Started',
+            'Books not yet started',
+            `${baseUrl}/opds/status/not-started`,
+            'acquisition',
+            now
+          ),
+          navEntry(
+            'urn:hass-odps:status:in-progress',
+            'In Progress',
+            'Books currently being read',
+            `${baseUrl}/opds/status/in-progress`,
+            'acquisition',
+            now
+          ),
+          navEntry(
+            'urn:hass-odps:status:completed',
+            'Completed',
+            'Books finished reading',
+            `${baseUrl}/opds/status/completed`,
+            'acquisition',
+            now
+          ),
+        ],
+      })
+    );
+  });
+
+  const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as const);
+
+  router.get('/status/:status', auth, async (req: Request, res: Response) => {
+    const status = req.params.status;
+    if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
+      res.status(400).send('Invalid status');
+      return;
+    }
+    const owner = req.opdsOwner!;
+    const books = await bookStore.listBooksByStatus(
+      owner,
+      status as 'not-started' | 'in-progress' | 'completed'
+    );
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      acquisitionFeed({
+        id: `urn:hass-odps:status:${status}`,
+        title: status,
+        selfHref: `${baseUrl}/opds/status/${status}`,
+        baseUrl,
+        now,
+        entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+      })
+    );
+  });
+
   return router;
 }
