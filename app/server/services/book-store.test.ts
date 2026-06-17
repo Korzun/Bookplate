@@ -2096,40 +2096,6 @@ describe('getSubjects', () => {
 });
 
 describe('listBooksPage with filters', () => {
-  it('type=standalone excludes series rows', async () => {
-    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), {
-      ...FAKE_META,
-      title: 'Alpha',
-      series: '',
-      seriesIndex: 0,
-    });
-    await bookStore.addBook(OWNER, 'sr1', stage('sr1'), {
-      ...FAKE_META,
-      title: 'Beta 1',
-      series: 'Beta',
-      seriesIndex: 1,
-    });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { type: 'standalone' });
-    expect(result.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
-  });
-
-  it('type=series excludes standalone rows', async () => {
-    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), {
-      ...FAKE_META,
-      title: 'Alpha',
-      series: '',
-      seriesIndex: 0,
-    });
-    await bookStore.addBook(OWNER, 'sr1', stage('sr1'), {
-      ...FAKE_META,
-      title: 'Beta 1',
-      series: 'Beta',
-      seriesIndex: 1,
-    });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { type: 'series' });
-    expect(result.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
-  });
-
   it('status=not-started returns standalone books with no progress', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
@@ -2261,7 +2227,7 @@ describe('listBooksPage with filters', () => {
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
-  it('type + status combined: series + completed', async () => {
+  it('seriesName + status combined: shows only the named series when completed', async () => {
     await bookStore.addBook(OWNER, 'sa1', stage('sa1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2277,7 +2243,7 @@ describe('listBooksPage with filters', () => {
     await insertProgress('sa1', 1.0);
     await insertProgress('s1b1', 1.0);
     const result = await bookStore.listBooksPage(OWNER, null, 20, {
-      type: 'series',
+      seriesName: 'Dune',
       status: 'completed',
     });
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
@@ -2295,7 +2261,7 @@ describe('listBooksPage with filters', () => {
     expect(withEmptyFilters.items).toEqual(withoutFilters.items);
   });
 
-  it('subject filter returns only standalone books with that subject', async () => {
+  it('subjects filter returns only standalone books with that subject', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2310,11 +2276,11 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Science Fiction'],
     });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Fantasy' });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subjects: ['Fantasy'] });
     expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
-  it('subject filter does not match partial subject names', async () => {
+  it('subjects filter does not match partial subject names', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2329,11 +2295,11 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Science Fiction'],
     });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Science' });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subjects: ['Science'] });
     expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
-  it('subject filter handles subjects containing quote characters', async () => {
+  it('subjects filter handles subjects containing quote characters', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2348,11 +2314,11 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 0,
       subjects: ['Fantasy'],
     });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'He said "Hi"' });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { subjects: ['He said "Hi"'] });
     expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 
-  it('subject filter returns series whose subject roll-up contains the subject', async () => {
+  it('subjects filter returns series whose subject roll-up contains the subject', async () => {
     await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
@@ -2367,7 +2333,9 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 1,
       subjects: ['Fantasy'],
     });
-    const result = await bookStore.listBooksPage(OWNER, null, 20, { subject: 'Science Fiction' });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, {
+      subjects: ['Science Fiction'],
+    });
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 });
@@ -2562,5 +2530,106 @@ describe('series aggregate metadata', () => {
 
     const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
     expect(series).toBeNull();
+  });
+});
+
+describe('BookStore.listBooksPage() — search filters', () => {
+  it('filters standalones by query (title contains)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      series: '',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'A Memory Called Empire',
+      series: '',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'fifth' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('filters series by query (name contains)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Foundation 1',
+      series: 'Foundation',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'dune' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('filters standalones by author (contains, case-insensitive)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Book A',
+      author: 'N.K. Jemisin',
+      series: '',
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Book B',
+      author: 'Arkady Martine',
+      series: '',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { author: 'jemisin' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('filters series by author field', async () => {
+    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      author: 'Frank Herbert',
+    });
+    await bookStore.addBook(OWNER, 's2', stage('s2'), {
+      ...FAKE_META,
+      title: 'Foundation 1',
+      series: 'Foundation',
+      author: 'Isaac Asimov',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { author: 'Herbert' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('filters by seriesName: shows only the named series (no standalones)', async () => {
+    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+    });
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Standalone',
+      series: '',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { seriesName: 'Dune' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('filters standalones by multiple subjects (AND)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Book A',
+      series: '',
+      subjects: ['Fantasy', 'Fiction'],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Book B',
+      series: '',
+      subjects: ['Fantasy'],
+    });
+    // Only b1 has both subjects
+    const result = await bookStore.listBooksPage(OWNER, null, 20, {
+      subjects: ['Fantasy', 'Fiction'],
+    });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
   });
 });
