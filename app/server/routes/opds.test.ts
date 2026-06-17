@@ -453,8 +453,16 @@ describe('GET /opds/authors/:author', () => {
 
 describe('GET /opds/series', () => {
   it('returns a navigation feed with one entry per series', async () => {
-    await bookStore.addBook(alice, 'sr1', stage('sr1'), { ...FAKE_META, series: 'Dune', seriesIndex: 1 });
-    await bookStore.addBook(alice, 'sr2', stage('sr2'), { ...FAKE_META, series: 'Foundation', seriesIndex: 1 });
+    await bookStore.addBook(alice, 'sr1', stage('sr1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(alice, 'sr2', stage('sr2'), {
+      ...FAKE_META,
+      series: 'Foundation',
+      seriesIndex: 1,
+    });
     const res = await request(app).get('/opds/series').set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/atom\+xml/);
@@ -470,9 +478,24 @@ describe('GET /opds/series', () => {
 
 describe('GET /opds/series/:seriesId', () => {
   it('returns an acquisition feed with books for the series ordered by seriesIndex', async () => {
-    await bookStore.addBook(alice, 'sr3', stage('sr3'), { ...FAKE_META, series: 'The Expanse', seriesIndex: 2, title: "Caliban's War" });
-    await bookStore.addBook(alice, 'sr4', stage('sr4'), { ...FAKE_META, series: 'The Expanse', seriesIndex: 1, title: 'Leviathan Wakes' });
-    await bookStore.addBook(alice, 'sr5', stage('sr5'), { ...FAKE_META, series: 'Other', seriesIndex: 1, title: 'Other Book' });
+    await bookStore.addBook(alice, 'sr3', stage('sr3'), {
+      ...FAKE_META,
+      series: 'The Expanse',
+      seriesIndex: 2,
+      title: "Caliban's War",
+    });
+    await bookStore.addBook(alice, 'sr4', stage('sr4'), {
+      ...FAKE_META,
+      series: 'The Expanse',
+      seriesIndex: 1,
+      title: 'Leviathan Wakes',
+    });
+    await bookStore.addBook(alice, 'sr5', stage('sr5'), {
+      ...FAKE_META,
+      series: 'Other',
+      seriesIndex: 1,
+      title: 'Other Book',
+    });
     const seriesList = await bookStore.listSeries(alice);
     const expanse = seriesList.find((s) => s.name === 'The Expanse')!;
     const res = await request(app)
@@ -497,8 +520,18 @@ describe('GET /opds/series/:seriesId', () => {
   });
 
   it("does not expose other users' books", async () => {
-    await bookStore.addBook(alice, 'sr6', stage('sr6'), { ...FAKE_META, series: 'Shared Series', seriesIndex: 1, title: 'Alice Book' });
-    await bookStore.addBook(bob, 'sr7', stage('sr7'), { ...FAKE_META, series: 'Shared Series', seriesIndex: 1, title: 'Bob Book' });
+    await bookStore.addBook(alice, 'sr6', stage('sr6'), {
+      ...FAKE_META,
+      series: 'Shared Series',
+      seriesIndex: 1,
+      title: 'Alice Book',
+    });
+    await bookStore.addBook(bob, 'sr7', stage('sr7'), {
+      ...FAKE_META,
+      series: 'Shared Series',
+      seriesIndex: 1,
+      title: 'Bob Book',
+    });
     const aliceSeries = await bookStore.listSeries(alice);
     const shared = aliceSeries.find((s) => s.name === 'Shared Series')!;
     const res = await request(app)
