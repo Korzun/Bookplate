@@ -2626,7 +2626,13 @@ describe('BookStore.listBooksPage() — search filters', () => {
       series: '',
       subjects: ['Fantasy'],
     });
-    // Only b1 has both subjects
+    await bookStore.addBook(OWNER, 'b3', stage('b3'), {
+      ...FAKE_META,
+      title: 'Book C',
+      series: '',
+      subjects: ['Fiction'],
+    });
+    // Only b1 has both subjects; b2 (Fantasy only) and b3 (Fiction only) must be excluded
     const result = await bookStore.listBooksPage(OWNER, null, 20, {
       subjects: ['Fantasy', 'Fiction'],
     });
