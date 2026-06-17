@@ -899,12 +899,27 @@ export class BookStore {
       seriesWhere = { ...seriesWhere, AND: subjectClauses };
     }
 
-    // query: case-insensitive contains on book title and series name
+    // query: case-insensitive contains on book title and series name/member titles.
+    // Title is composed via AND to avoid overwriting the pagination cursor predicate
+    // (title: { gte: cursor.k }) that may already be set on bookWhere.
     if (filters?.query) {
       if (includeStandalones) {
-        bookWhere = { ...bookWhere, title: { contains: filters.query } };
+        const existingAnd = bookWhere.AND;
+        bookWhere = {
+          ...bookWhere,
+          AND: [
+            ...(Array.isArray(existingAnd) ? existingAnd : existingAnd ? [existingAnd] : []),
+            { title: { contains: filters.query } },
+          ],
+        };
       }
-      seriesWhere = { ...seriesWhere, name: { contains: filters.query } };
+      seriesWhere = {
+        ...seriesWhere,
+        OR: [
+          { name: { contains: filters.query } },
+          { books: { some: { title: { contains: filters.query } } } },
+        ],
+      };
     }
 
     // author: case-insensitive contains on book author; series has own author field
