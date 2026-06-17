@@ -65,9 +65,11 @@ export const LibraryPage = () => {
   }
 
   const isFilterActive =
-    bookListFilter.type !== undefined ||
+    bookListFilter.query !== undefined ||
+    bookListFilter.author !== undefined ||
+    bookListFilter.seriesName !== undefined ||
     bookListFilter.status !== undefined ||
-    !!bookListFilter.subject;
+    (bookListFilter.subjects ?? []).length > 0;
 
   return (
     <Page>

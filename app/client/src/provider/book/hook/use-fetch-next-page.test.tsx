@@ -203,11 +203,11 @@ describe('useFetchNextPage', () => {
       })
     );
     const { result } = renderHook(() => useFetchNextPage(), {
-      wrapper: makeWrapper({ nextCursor: cursor, bookListFilter: { type: 'series' } }),
+      wrapper: makeWrapper({ nextCursor: cursor, bookListFilter: { seriesName: 'My Series' } }),
     });
     await act(() => result.current());
     expect(fetch).toHaveBeenCalledWith(
-      `/api/books?cursor=${encodeURIComponent(cursor)}&type=series&take=20`,
+      `/api/books?cursor=${encodeURIComponent(cursor)}&seriesName=My+Series&take=20`,
       {}
     );
   });

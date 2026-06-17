@@ -34,9 +34,13 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListError(undefined);
     try {
       const params = new URLSearchParams();
-      if (bookListFilter.type) params.append('type', bookListFilter.type);
+      if (bookListFilter.query) params.append('query', bookListFilter.query);
+      if (bookListFilter.author) params.append('author', bookListFilter.author);
+      if (bookListFilter.seriesName) params.append('seriesName', bookListFilter.seriesName);
       if (bookListFilter.status) params.append('status', bookListFilter.status);
-      if (bookListFilter.subject) params.append('subject', bookListFilter.subject);
+      for (const subject of bookListFilter.subjects ?? []) {
+        params.append('subjects', subject);
+      }
       params.append('take', '20');
       const response = await apiFetch(withTargetUser(`/api/books?${params.toString()}`));
       if (!response.ok) throw new Error('Failed to fetch books');
