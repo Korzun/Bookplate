@@ -182,5 +182,51 @@ export function createOpdsRouter(
     );
   });
 
+  router.get('/series', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const seriesList = await bookStore.listSeries(owner);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      navigationFeed({
+        id: 'urn:hass-odps:series',
+        title: 'By Series',
+        selfHref: `${baseUrl}/opds/series`,
+        baseUrl,
+        now,
+        entries: seriesList.map((s) =>
+          navEntry(
+            `urn:hass-odps:series:${s.id}`,
+            s.name,
+            `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
+            `${baseUrl}/opds/series/${s.id}`,
+            'acquisition',
+            now
+          )
+        ),
+      })
+    );
+  });
+
+  router.get('/series/:seriesId', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const seriesId = req.params.seriesId;
+    const books = await bookStore.listBooksBySeries(owner, seriesId);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      acquisitionFeed({
+        id: `urn:hass-odps:series:${seriesId}`,
+        title: 'Series',
+        selfHref: `${baseUrl}/opds/series/${seriesId}`,
+        baseUrl,
+        now,
+        entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+      })
+    );
+  });
+
   return router;
 }

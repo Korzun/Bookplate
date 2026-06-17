@@ -450,3 +450,61 @@ describe('GET /opds/authors/:author', () => {
     expect(res.text).not.toContain('Bob Book');
   });
 });
+
+describe('GET /opds/series', () => {
+  it('returns a navigation feed with one entry per series', async () => {
+    await bookStore.addBook(alice, 'sr1', stage('sr1'), { ...FAKE_META, series: 'Dune', seriesIndex: 1 });
+    await bookStore.addBook(alice, 'sr2', stage('sr2'), { ...FAKE_META, series: 'Foundation', seriesIndex: 1 });
+    const res = await request(app).get('/opds/series').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/atom\+xml/);
+    expect(res.text).toContain('Dune');
+    expect(res.text).toContain('Foundation');
+  });
+
+  it('returns 401 without credentials', async () => {
+    const res = await request(app).get('/opds/series');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /opds/series/:seriesId', () => {
+  it('returns an acquisition feed with books for the series ordered by seriesIndex', async () => {
+    await bookStore.addBook(alice, 'sr3', stage('sr3'), { ...FAKE_META, series: 'The Expanse', seriesIndex: 2, title: "Caliban's War" });
+    await bookStore.addBook(alice, 'sr4', stage('sr4'), { ...FAKE_META, series: 'The Expanse', seriesIndex: 1, title: 'Leviathan Wakes' });
+    await bookStore.addBook(alice, 'sr5', stage('sr5'), { ...FAKE_META, series: 'Other', seriesIndex: 1, title: 'Other Book' });
+    const seriesList = await bookStore.listSeries(alice);
+    const expanse = seriesList.find((s) => s.name === 'The Expanse')!;
+    const res = await request(app)
+      .get(`/opds/series/${expanse.id}`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Leviathan Wakes');
+    expect(res.text).toContain("Caliban's War");
+    expect(res.text).not.toContain('Other Book');
+    // Verify order: Leviathan Wakes (index 1) appears before Caliban's War (index 2)
+    expect(res.text.indexOf('Leviathan Wakes')).toBeLessThan(res.text.indexOf("Caliban's War"));
+    expect(res.text).toContain('opds-spec.org/acquisition"');
+  });
+
+  it('returns empty acquisition feed for unknown seriesId', async () => {
+    const res = await request(app)
+      .get('/opds/series/00000000-0000-0000-0000-000000000000')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<feed');
+    expect(res.text).not.toContain('<entry>');
+  });
+
+  it("does not expose other users' books", async () => {
+    await bookStore.addBook(alice, 'sr6', stage('sr6'), { ...FAKE_META, series: 'Shared Series', seriesIndex: 1, title: 'Alice Book' });
+    await bookStore.addBook(bob, 'sr7', stage('sr7'), { ...FAKE_META, series: 'Shared Series', seriesIndex: 1, title: 'Bob Book' });
+    const aliceSeries = await bookStore.listSeries(alice);
+    const shared = aliceSeries.find((s) => s.name === 'Shared Series')!;
+    const res = await request(app)
+      .get(`/opds/series/${shared.id}`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.text).toContain('Alice Book');
+    expect(res.text).not.toContain('Bob Book');
+  });
+});
