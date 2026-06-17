@@ -82,7 +82,7 @@ export function useSearchSuggestions(
         }
       }
       const g = buildGroup('author', 'Author', authors, query, false, new Set());
-      if (g) groups.push(g);
+      if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
     }
 
     // Series (exclusive) — deduplicate by value
@@ -96,7 +96,7 @@ export function useSearchSuggestions(
         }
       }
       const g = buildGroup('series', 'Series', seriesList, query, false, new Set());
-      if (g) groups.push(g);
+      if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
     }
 
     // Books — title match, navigates on select, cap at 5
