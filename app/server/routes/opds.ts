@@ -219,7 +219,7 @@ export function createOpdsRouter(
     res.send(
       acquisitionFeed({
         id: `urn:hass-odps:series:${seriesId}`,
-        title: 'Series',
+        title: books.length > 0 ? books[0].series : 'Series',
         selfHref: `${baseUrl}/opds/series/${seriesId}`,
         baseUrl,
         now,
