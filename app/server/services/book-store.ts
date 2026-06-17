@@ -275,24 +275,41 @@ export class BookStore {
     return path.join(this.getUserDir(owner), id + '.epub');
   }
 
-  async listBooks(owner: Owner): Promise<Book[]> {
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId },
-      select: BOOK_SELECT,
-    });
-    // Replicate: ORDER BY CASE WHEN title_sort != '' THEN title_sort ELSE title END, title, id
-    rows.sort((a, b) => {
+  private sortByTitle<T extends { titleSort: string; title: string; id: string }>(rows: T[]): T[] {
+    return [...rows].sort((a, b) => {
       const aKey = a.titleSort !== '' ? a.titleSort : a.title;
       const bKey = b.titleSort !== '' ? b.titleSort : b.title;
       if (aKey < bKey) return -1;
       if (aKey > bKey) return 1;
       if (a.title < b.title) return -1;
       if (a.title > b.title) return 1;
-      if (a.id < b.id) return -1;
-      if (a.id > b.id) return 1;
-      return 0;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
-    return rows.map((r) => this.prismaBookToBook(owner, r));
+  }
+
+  async listBooks(owner: Owner): Promise<Book[]> {
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId },
+      select: BOOK_SELECT,
+    });
+    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
+  }
+
+  async getAuthors(owner: Owner): Promise<string[]> {
+    const rows = await this.prisma.book.groupBy({
+      by: ['author'],
+      where: { userId: owner.userId, author: { not: '' } },
+      orderBy: { author: 'asc' },
+    });
+    return rows.map((r) => r.author);
+  }
+
+  async listBooksByAuthor(owner: Owner, author: string): Promise<Book[]> {
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId, author },
+      select: BOOK_SELECT,
+    });
+    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
   }
 
   async getBookById(owner: Owner, id: string): Promise<Book | null> {
