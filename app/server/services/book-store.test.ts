@@ -2095,6 +2095,167 @@ describe('getSubjects', () => {
   });
 });
 
+describe('getSearchSuggestions', () => {
+  it('returns matching authors', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      author: 'N.K. Jemisin',
+      series: '',
+      seriesIndex: 0,
+      subjects: [],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Piranesi',
+      author: 'Susanna Clarke',
+      series: '',
+      seriesIndex: 0,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'jemi', filter: {} });
+    const authors = result.groups.find((g) => g.type === 'author');
+    expect(authors?.items).toEqual([{ label: 'N.K. Jemisin', value: 'N.K. Jemisin' }]);
+  });
+
+  it('returns matching series', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      author: 'N.K. Jemisin',
+      series: 'Broken Earth',
+      seriesIndex: 1,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'broken', filter: {} });
+    const series = result.groups.find((g) => g.type === 'series');
+    expect(series?.items).toEqual([{ label: 'Broken Earth', value: 'Broken Earth' }]);
+  });
+
+  it('returns matching book titles', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      author: 'N.K. Jemisin',
+      series: '',
+      seriesIndex: 0,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'fifth', filter: {} });
+    const books = result.groups.find((g) => g.type === 'book');
+    expect(books?.items).toEqual([{ label: 'The Fifth Season', value: 'b1' }]);
+  });
+
+  it('returns matching subjects', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Foo',
+      author: 'Author',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Fantasy', 'Science Fiction'],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'fan', filter: {} });
+    const subjects = result.groups.find((g) => g.type === 'subject');
+    expect(subjects?.items).toEqual([{ label: 'Fantasy', value: 'Fantasy' }]);
+  });
+
+  it('excludes active subject chips from subject group', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Foo',
+      author: 'Author',
+      series: '',
+      seriesIndex: 0,
+      subjects: ['Fantasy', 'Fantastic Voyage'],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, {
+      q: 'fan',
+      filter: { activeSubjects: ['Fantasy'] },
+    });
+    const subjects = result.groups.find((g) => g.type === 'subject');
+    expect(subjects?.items.map((i) => i.value)).toEqual(['Fantastic Voyage']);
+  });
+
+  it('omits author group when filter.author is set', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Foo',
+      author: 'N.K. Jemisin',
+      series: '',
+      seriesIndex: 0,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, {
+      q: 'jemi',
+      filter: { author: 'N.K. Jemisin' },
+    });
+    expect(result.groups.find((g) => g.type === 'author')).toBeUndefined();
+  });
+
+  it('omits series group when filter.seriesName is set', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Foo',
+      author: 'Author',
+      series: 'Broken Earth',
+      seriesIndex: 1,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, {
+      q: 'broken',
+      filter: { seriesName: 'Broken Earth' },
+    });
+    expect(result.groups.find((g) => g.type === 'series')).toBeUndefined();
+  });
+
+  it('constrains series to active author filter', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      author: 'N.K. Jemisin',
+      series: 'Broken Earth',
+      seriesIndex: 1,
+      subjects: [],
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Piranesi',
+      author: 'Susanna Clarke',
+      series: 'Broken Earth Fake',
+      seriesIndex: 1,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, {
+      q: 'broken',
+      filter: { author: 'N.K. Jemisin' },
+    });
+    const series = result.groups.find((g) => g.type === 'series');
+    expect(series?.items.map((i) => i.value)).toEqual(['Broken Earth']);
+  });
+
+  it('caps each group at 5 items', async () => {
+    for (let i = 0; i < 7; i++) {
+      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+        ...FAKE_META,
+        title: `Alpha Book ${i}`,
+        author: `Author${i}`,
+        series: '',
+        seriesIndex: 0,
+        subjects: [],
+      });
+    }
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'alpha', filter: {} });
+    const books = result.groups.find((g) => g.type === 'book');
+    expect(books?.items.length).toBeLessThanOrEqual(5);
+  });
+
+  it('returns empty groups for query that matches nothing', async () => {
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'zzznomatch', filter: {} });
+    expect(result.groups).toEqual([]);
+  });
+});
+
 describe('listBooksPage with filters', () => {
   it('status=not-started returns standalone books with no progress', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {

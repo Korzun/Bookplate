@@ -10,6 +10,7 @@ import {
   PageCursor,
   PagedBookListResponse,
   BookListFilters,
+  SearchSuggestionsResponse,
 } from '../types';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
@@ -213,6 +214,97 @@ export class BookStore {
       ORDER BY value
     `;
     return rows.map((r) => r.value);
+  }
+
+  async getSearchSuggestions(
+    owner: Owner,
+    {
+      q,
+      filter,
+    }: {
+      q: string;
+      filter: { author?: string; seriesName?: string; activeSubjects?: string[] };
+    }
+  ): Promise<SearchSuggestionsResponse> {
+    const groups: SearchSuggestionsResponse['groups'] = [];
+
+    if (!filter.author) {
+      const rows = await this.prisma.book.groupBy({
+        by: ['author'],
+        where: {
+          userId: owner.userId,
+          author: { contains: q },
+          ...(filter.seriesName ? { series: filter.seriesName } : {}),
+        },
+        orderBy: { author: 'asc' },
+        take: 5,
+      });
+      if (rows.length > 0)
+        groups.push({
+          type: 'author',
+          items: rows.map((r) => ({ label: r.author, value: r.author })),
+        });
+    }
+
+    if (!filter.seriesName) {
+      const rows = await this.prisma.series.findMany({
+        where: {
+          userId: owner.userId,
+          name: { contains: q },
+          ...(filter.author ? { books: { some: { author: filter.author } } } : {}),
+        },
+        select: { name: true },
+        orderBy: { name: 'asc' },
+        take: 5,
+      });
+      if (rows.length > 0)
+        groups.push({
+          type: 'series',
+          items: rows.map((r) => ({ label: r.name, value: r.name })),
+        });
+    }
+
+    const [bookRows, subjectRows] = await Promise.all([
+      this.prisma.book.findMany({
+        where: {
+          userId: owner.userId,
+          title: { contains: q },
+          ...(filter.author ? { author: filter.author } : {}),
+          ...(filter.seriesName ? { series: filter.seriesName } : {}),
+        },
+        select: { id: true, title: true },
+        orderBy: { title: 'asc' },
+        take: 5,
+      }),
+      this.prisma.$queryRaw<Array<{ value: string }>>`
+        SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
+        FROM books, json_each(books.subjects)
+        WHERE user_id = ${owner.userId}
+          AND LOWER(trim(CAST(json_each.value AS TEXT))) LIKE LOWER(${'%' + q + '%'})
+          ${filter.author ? Prisma.sql`AND author = ${filter.author}` : Prisma.empty}
+          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
+          AND json_each.type = 'text'
+          AND trim(CAST(json_each.value AS TEXT)) <> ''
+        ORDER BY value
+        LIMIT 5
+      `,
+    ]);
+
+    if (bookRows.length > 0)
+      groups.push({
+        type: 'book',
+        items: bookRows.map((r) => ({ label: r.title, value: r.id })),
+      });
+
+    const activeSubjectSet = new Set(filter.activeSubjects ?? []);
+    const filteredSubjects = subjectRows.filter((r) => !activeSubjectSet.has(r.value));
+    if (filteredSubjects.length > 0)
+      groups.push({
+        type: 'subject',
+        items: filteredSubjects.map((r) => ({ label: r.value, value: r.value })),
+      });
+
+    return { groups };
   }
 
   getUserDir(owner: Owner): string {

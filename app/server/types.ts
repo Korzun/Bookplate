@@ -91,6 +91,13 @@ export type BookListFilters = {
   subjects?: string[];
 };
 
+export type SearchSuggestionsResponse = {
+  groups: Array<{
+    type: 'author' | 'series' | 'book' | 'subject';
+    items: Array<{ label: string; value: string }>;
+  }>;
+};
+
 /** Opaque base64-encoded JSON cursor stored in the client and echoed back on subsequent requests. */
 export type PageCursor = {
   k: string; // sort key of the last display unit on the page
