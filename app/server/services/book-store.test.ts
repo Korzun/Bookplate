@@ -2561,7 +2561,11 @@ describe('BookStore.listBooksPage() — search filters', () => {
       series: 'Foundation',
     });
     const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'dune' });
-    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+    // "Dune 1" sorts after the "Dune" series sortKey alphabetically ("dune" < "dune 1")
+    expect(result.items).toEqual([
+      { type: 'series', seriesName: 'Dune' },
+      { type: 'standalone', bookId: 'b1' },
+    ]);
   });
 
   it('filters series by member book title (not just series name)', async () => {
@@ -2571,7 +2575,31 @@ describe('BookStore.listBooksPage() — search filters', () => {
       series: 'Broken Earth',
     });
     const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'Fifth Season' });
-    expect(result.items).toEqual([{ type: 'series', seriesName: 'Broken Earth' }]);
+    // Series sorts before book ("broken earth" < "the fifth season")
+    expect(result.items).toEqual([
+      { type: 'series', seriesName: 'Broken Earth' },
+      { type: 'standalone', bookId: 's1' },
+    ]);
+  });
+
+  it('includes series member books as individual results when their title matches query', async () => {
+    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+      ...FAKE_META,
+      title: "Abaddon's Gate",
+      series: 'The Expanse',
+    });
+    await bookStore.addBook(OWNER, 's2', stage('s2'), {
+      ...FAKE_META,
+      title: 'Leviathan Wakes',
+      series: 'The Expanse',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'gate' });
+    // "Abaddon's Gate" sorts before "The Expanse" series ("abaddon" < "the expanse")
+    // "Leviathan Wakes" does not match "gate" so it is absent
+    expect(result.items).toEqual([
+      { type: 'standalone', bookId: 's1' },
+      { type: 'series', seriesName: 'The Expanse' },
+    ]);
   });
 
   it('filters standalones by author (contains, case-insensitive)', async () => {

@@ -865,17 +865,26 @@ export class BookStore {
       ? { userId: owner.userId, sortKey: { gt: cursor.k } }
       : { userId: owner.userId };
 
+    // When a title query is active without a specific series filter, include series
+    // member books so that e.g. searching "gate" also returns "Abaddon's Gate" as a
+    // book row alongside the "The Expanse" series row.
+    const queryExpandsToSeriesBooks = !!filters?.query && filters?.seriesName === undefined;
+
     let bookWhere: Prisma.BookWhereInput;
     if (!cursor) {
-      bookWhere = { userId: owner.userId, seriesId: null };
+      bookWhere = queryExpandsToSeriesBooks
+        ? { userId: owner.userId }
+        : { userId: owner.userId, seriesId: null };
     } else if (cursor.t === 's') {
       // Last item was a series at K; standalones at K come next
-      bookWhere = { userId: owner.userId, seriesId: null, title: { gte: cursor.k } };
+      bookWhere = queryExpandsToSeriesBooks
+        ? { userId: owner.userId, title: { gte: cursor.k } }
+        : { userId: owner.userId, seriesId: null, title: { gte: cursor.k } };
     } else {
       // Last item was a standalone at (K, id); resume with compound filter
       bookWhere = {
         userId: owner.userId,
-        seriesId: null,
+        ...(queryExpandsToSeriesBooks ? {} : { seriesId: null }),
         OR: [{ title: { gt: cursor.k } }, { title: { equals: cursor.k }, id: { gt: cursor.id } }],
       };
     }
