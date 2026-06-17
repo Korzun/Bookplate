@@ -118,97 +118,11 @@ export class BookStore {
     return path.join(this.booksRoot, '.staging');
   }
 
-  async listAuthors(
-    owner: Owner,
-    { take, cursor, seriesName }: { take: number; cursor?: string; seriesName?: string }
-  ): Promise<{ items: string[]; nextCursor: string | null }> {
-    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
-    const rows = await this.prisma.book.groupBy({
-      by: ['author'],
-      where: {
-        userId: owner.userId,
-        author: { gt: minValue },
-        ...(seriesName ? { series: seriesName } : {}),
-      },
-      orderBy: { author: 'asc' },
-      take: take + 1,
-    });
-    const hasMore = rows.length > take;
-    const items = rows.slice(0, take).map((r) => r.author);
-    return {
-      items,
-      nextCursor: hasMore ? Buffer.from(items[items.length - 1]).toString('base64') : null,
-    };
-  }
-
-  async listSeriesNames(
-    owner: Owner,
-    { take, cursor, author }: { take: number; cursor?: string; author?: string }
-  ): Promise<{ items: string[]; nextCursor: string | null }> {
-    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
-    const rows = await this.prisma.series.findMany({
-      where: {
-        userId: owner.userId,
-        name: { gt: minValue },
-        ...(author ? { books: { some: { author } } } : {}),
-      },
-      select: { name: true },
-      orderBy: { name: 'asc' },
-      take: take + 1,
-    });
-    const hasMore = rows.length > take;
-    const items = rows.slice(0, take).map((r) => r.name);
-    return {
-      items,
-      nextCursor: hasMore ? Buffer.from(items[items.length - 1]).toString('base64') : null,
-    };
-  }
-
-  async listBookTitles(
-    owner: Owner,
-    {
-      take,
-      cursor,
-      author,
-      seriesName,
-    }: { take: number; cursor?: string; author?: string; seriesName?: string }
-  ): Promise<{ items: { id: string; title: string }[]; nextCursor: string | null }> {
-    const minValue = cursor ? Buffer.from(cursor, 'base64').toString('utf-8') : '';
-    const rows = await this.prisma.book.findMany({
-      where: {
-        userId: owner.userId,
-        title: { gt: minValue },
-        ...(author ? { author } : {}),
-        ...(seriesName ? { series: seriesName } : {}),
-      },
-      select: { id: true, title: true },
-      orderBy: { title: 'asc' },
-      take: take + 1,
-    });
-    const hasMore = rows.length > take;
-    const items = rows.slice(0, take);
-    return {
-      items,
-      nextCursor: hasMore ? Buffer.from(items[items.length - 1].title).toString('base64') : null,
-    };
-  }
-
-  async getSubjects(
-    owner: Owner,
-    filters?: { author?: string; seriesName?: string }
-  ): Promise<string[]> {
-    const authorClause = filters?.author
-      ? Prisma.sql`AND author = ${filters.author}`
-      : Prisma.empty;
-    const seriesClause = filters?.seriesName
-      ? Prisma.sql`AND series = ${filters.seriesName}`
-      : Prisma.empty;
+  async getSubjects(owner: Owner): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
       SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
       FROM books, json_each(books.subjects)
       WHERE user_id = ${owner.userId}
-        ${authorClause}
-        ${seriesClause}
         AND json_each.type = 'text'
         AND trim(CAST(json_each.value AS TEXT)) <> ''
       ORDER BY value
