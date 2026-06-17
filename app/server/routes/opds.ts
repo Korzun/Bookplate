@@ -165,7 +165,7 @@ export function createOpdsRouter(
 
   router.get('/authors/:author', auth, async (req: Request, res: Response) => {
     const owner = req.opdsOwner!;
-    const author = decodeURIComponent(req.params.author);
+    const author = req.params.author;
     const books = await bookStore.listBooksByAuthor(owner, author);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const now = new Date().toISOString();
