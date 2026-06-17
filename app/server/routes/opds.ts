@@ -136,5 +136,51 @@ export function createOpdsRouter(
     res.send(cover.data);
   });
 
+  router.get('/authors', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const authors = await bookStore.getAuthors(owner);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      navigationFeed({
+        id: 'urn:hass-odps:authors',
+        title: 'By Author',
+        selfHref: `${baseUrl}/opds/authors`,
+        baseUrl,
+        now,
+        entries: authors.map((author) =>
+          navEntry(
+            `urn:hass-odps:author:${author}`,
+            author,
+            `Books by ${author}`,
+            `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
+            'acquisition',
+            now
+          )
+        ),
+      })
+    );
+  });
+
+  router.get('/authors/:author', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const author = decodeURIComponent(req.params.author);
+    const books = await bookStore.listBooksByAuthor(owner, author);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      acquisitionFeed({
+        id: `urn:hass-odps:author:${author}`,
+        title: author,
+        selfHref: `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
+        baseUrl,
+        now,
+        entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+      })
+    );
+  });
+
   return router;
 }
