@@ -16,18 +16,18 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.space.sm,
-    padding: `${theme.space.md} ${theme.space.xxl} ${theme.space.sm}`,
+    padding: theme.space.md,
   },
   divider: {
     height: '1px',
     background: theme.color.border.strong,
-    margin: `0 ${theme.space.xxl}`,
+    margin: `0 ${theme.space.md}`,
   },
   inputRow: {
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    padding: `${theme.space.md} ${theme.space.xxl}`,
+    padding: theme.space.md,
   },
   searchIcon: {
     color: theme.color.text.faint,
