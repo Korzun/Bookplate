@@ -27,7 +27,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    padding: `${theme.space.sm} ${theme.space.xl}`,
+    padding: theme.space.md,
   },
   searchIcon: {
     color: theme.color.text.faint,
