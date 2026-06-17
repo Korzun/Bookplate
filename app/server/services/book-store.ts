@@ -888,17 +888,15 @@ export class BookStore {
 
     // Apply subjects filter — subjects are stored as JSON arrays so we match the
     // quoted element value (e.g. '"Fantasy"') to avoid substring false-positives.
-    // Multiple subjects are ANDed together (book must have all of them).
+    // Multiple subjects are ANDed together (book/series must have ALL of them).
     if (filters?.subjects?.length) {
-      for (const subject of filters.subjects) {
-        const jsonSubject = JSON.stringify(subject);
-        if (includeStandalones) {
-          bookWhere = { ...bookWhere, subjects: { contains: jsonSubject } };
-        }
-        if (includeSeries) {
-          seriesWhere = { ...seriesWhere, subjects: { contains: jsonSubject } };
-        }
+      const subjectClauses = filters.subjects.map((subject) => ({
+        subjects: { contains: JSON.stringify(subject) },
+      }));
+      if (includeStandalones) {
+        bookWhere = { ...bookWhere, AND: subjectClauses };
       }
+      seriesWhere = { ...seriesWhere, AND: subjectClauses };
     }
 
     // query: case-insensitive contains on book title and series name
