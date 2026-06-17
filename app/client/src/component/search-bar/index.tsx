@@ -209,7 +209,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
         </>
       )}
       <div className={style.inputRow}>
-        <SearchIcon aria-hidden className={style.searchIcon} height={18} width={18} />
+        <SearchIcon aria-hidden={true} className={style.searchIcon} height={18} width={18} />
         <input
           ref={inputRef}
           className={style.input}
