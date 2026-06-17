@@ -340,6 +340,7 @@ export class BookStore {
     const titleSort = (meta.titleSort || '').trim();
     const authorSort = (meta.authorSort || '').trim();
     const publishDate = (meta.publishDate || '').trim();
+    const author = (meta.author || '').trim();
 
     await this.prisma.$transaction(async (tx) => {
       let seriesId: string | null = null;
@@ -362,7 +363,7 @@ export class BookStore {
           titleSort,
           authorSort,
           publishDate,
-          author: meta.author,
+          author,
           description: meta.description,
           publisher: meta.publisher,
           series: meta.series,
@@ -583,6 +584,7 @@ export class BookStore {
       // Resolve new seriesId
       let newSeriesId: string | null = null;
       const newSeriesName = meta.series.trim();
+      const author = (meta.author || '').trim();
       if (newSeriesName) {
         const s = await tx.series.upsert({
           where: { userId_name: { userId: owner.userId, name: newSeriesName } },
@@ -614,7 +616,7 @@ export class BookStore {
             titleSort: (meta.titleSort || '').trim(),
             authorSort: (meta.authorSort || '').trim(),
             publishDate: (meta.publishDate || '').trim(),
-            author: meta.author,
+            author,
             description: meta.description,
             publisher: meta.publisher,
             series: meta.series,
@@ -676,7 +678,7 @@ export class BookStore {
             titleSort: (meta.titleSort || '').trim(),
             authorSort: (meta.authorSort || '').trim(),
             publishDate: (meta.publishDate || '').trim(),
-            author: meta.author,
+            author,
             description: meta.description,
             publisher: meta.publisher,
             series: meta.series,

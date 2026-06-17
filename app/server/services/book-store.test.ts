@@ -2961,8 +2961,9 @@ describe('getAuthors', () => {
 
   it('excludes books with empty author', async () => {
     await bookStore.addBook(OWNER, 'b4', stage('b4'), { ...FAKE_META, author: '' });
+    await bookStore.addBook(OWNER, 'b4b', stage('b4b'), { ...FAKE_META, author: 'Real Author' });
     const authors = await bookStore.getAuthors(OWNER);
-    expect(authors).toEqual([]);
+    expect(authors).toEqual(['Real Author']);
   });
 
   it('is scoped to owner', async () => {
