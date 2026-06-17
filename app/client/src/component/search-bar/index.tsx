@@ -1,9 +1,11 @@
 import cx from 'classnames';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Button } from '~/control';
 import { SearchIcon, XIcon } from '~/icon';
 import type { BookListFilter } from '~/provider/book';
+import { path } from '~/router';
 
 import { useStyle } from './style';
 import type { Suggestion, SuggestionGroup } from './use-search-suggestions';
@@ -101,6 +103,7 @@ interface SearchBarProps {
 
 export function SearchBar({ filter, onChange }: SearchBarProps) {
   const style = useStyle();
+  const navigate = useNavigate();
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -132,11 +135,17 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
 
   const selectSuggestion = useCallback(
     (suggestion: Suggestion) => {
+      if (suggestion.type === 'series') {
+        navigate(path.series(suggestion.value));
+        setInputValue('');
+        close();
+        return;
+      }
       onChange(applySelection(filter, suggestion));
       setInputValue('');
       close();
     },
-    [filter, onChange, close]
+    [filter, navigate, onChange, close]
   );
 
   const clearAll = useCallback(() => {
