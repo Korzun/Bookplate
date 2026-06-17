@@ -66,6 +66,8 @@ type SuggestionGroup = {
 
 Groups with zero matching items are omitted from the returned array. Groups are only included when `inputValue` is non-empty.
 
+Each `Suggestion` also carries an `additive: boolean` flag — `true` for Subject, `false` for all exclusive types. The `SearchBar` renders a `＋` badge at the trailing edge of Subject suggestion items in the dropdown. Exclusive suggestion items have no badge. This is the primary affordance distinguishing additive from exclusive: Subject rows visually invite stacking, exclusive rows do not. Once an exclusive chip is active its entire group is omitted from suggestions, which enforces the constraint and removes ambiguity.
+
 ---
 
 ## Chip Design
