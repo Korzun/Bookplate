@@ -4,19 +4,12 @@ import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 
-type SubjectFilters = { author?: string; seriesName?: string };
 type Result = { url: string; subjects: string[] } | { url: string; error: string };
 
-export const useLibrarySubjects = (
-  filters?: SubjectFilters
-): [string[], boolean, string | undefined] => {
+export const useLibrarySubjects = (): [string[], boolean, string | undefined] => {
   const [result, setResult] = useState<Result | null>(null);
   const withTargetUser = useWithTargetUser();
-  const params = new URLSearchParams();
-  if (filters?.author) params.set('author', filters.author);
-  if (filters?.seriesName) params.set('seriesName', filters.seriesName);
-  const paramStr = params.toString();
-  const url = withTargetUser(`/api/subjects${paramStr ? `?${paramStr}` : ''}`);
+  const url = withTargetUser('/api/subjects');
 
   useEffect(() => {
     let cancelled = false;

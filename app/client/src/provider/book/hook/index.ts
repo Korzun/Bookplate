@@ -1,7 +1,3 @@
-export { useAllAuthors } from './use-all-authors';
-export { useAllBookTitles } from './use-all-book-titles';
-export type { BookTitleEntry } from './use-all-book-titles';
-export { useAllSeriesNames } from './use-all-series-names';
 export { useBook } from './use-book';
 export { useBookLineage } from './use-book-lineage';
 export { useBookList } from './use-book-list';

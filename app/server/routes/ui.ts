@@ -501,44 +501,8 @@ export function createUiRouter(
   router.get('/api/subjects', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const { author, seriesName } = req.query;
-    const subjects = await bookStore.getSubjects(owner, {
-      author: typeof author === 'string' ? author : undefined,
-      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
-    });
+    const subjects = await bookStore.getSubjects(owner);
     res.json({ subjects });
-  });
-
-  router.get('/api/authors', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { take: takeParam, cursor, seriesName } = req.query;
-    const take =
-      typeof takeParam === 'string'
-        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
-        : 500;
-    const result = await bookStore.listAuthors(owner, {
-      take,
-      cursor: typeof cursor === 'string' ? cursor : undefined,
-      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
-    });
-    res.json(result);
-  });
-
-  router.get('/api/series-names', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { take: takeParam, cursor, author } = req.query;
-    const take =
-      typeof takeParam === 'string'
-        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
-        : 500;
-    const result = await bookStore.listSeriesNames(owner, {
-      take,
-      cursor: typeof cursor === 'string' ? cursor : undefined,
-      author: typeof author === 'string' ? author : undefined,
-    });
-    res.json(result);
   });
 
   router.post(
@@ -603,23 +567,6 @@ export function createUiRouter(
       res.json({ uploaded });
     }
   );
-
-  router.get('/api/books/titles', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { take: takeParam, cursor, author, seriesName } = req.query;
-    const take =
-      typeof takeParam === 'string'
-        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
-        : 500;
-    const result = await bookStore.listBookTitles(owner, {
-      take,
-      cursor: typeof cursor === 'string' ? cursor : undefined,
-      author: typeof author === 'string' ? author : undefined,
-      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
-    });
-    res.json(result);
-  });
 
   router.get('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);

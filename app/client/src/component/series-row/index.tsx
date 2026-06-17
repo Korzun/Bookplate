@@ -42,7 +42,7 @@ export function SeriesRow({ seriesName }: SeriesRowProps) {
   if (bookList[0]?.author) {
     meta.push(bookList[0]?.author);
   }
-  meta.push(`${bookList.length} book${bookList.length !== 1 ? 's' : ''}`);
+  meta.push(`${bookList.length} book series`);
   if (seriesProgressPercent !== undefined) {
     if (seriesProgressPercent < 1) {
       meta.push(`${(seriesProgressPercent * 100).toFixed(0)}%`);
