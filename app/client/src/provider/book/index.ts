@@ -1,4 +1,7 @@
 export {
+  useAllAuthors,
+  useAllBookTitles,
+  useAllSeriesNames,
   useBook,
   useBookLineage,
   useBookList,
@@ -30,5 +33,5 @@ export type {
   Series,
   UploadResult,
 } from './type';
-export type { SeriesMeta } from './hook';
+export type { BookTitleEntry, SeriesMeta } from './hook';
 export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';

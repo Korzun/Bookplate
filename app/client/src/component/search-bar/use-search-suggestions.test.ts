@@ -5,15 +5,16 @@ import type { BookListFilter } from '~/provider/book';
 
 import { useSearchSuggestions } from './use-search-suggestions';
 
-// Mock book context and subjects hook
+// Mock dedicated search data hooks
 vi.mock('~/provider/book', () => ({
-  useBookList: () => [
+  useAllAuthors: () => [['N.K. Jemisin', 'Susanna Clarke'], false, undefined],
+  useAllSeriesNames: () => [['Broken Earth'], false, undefined],
+  useAllBookTitles: () => [
     [
-      { id: 'b1', title: 'The Fifth Season', author: 'N.K. Jemisin', series: 'Broken Earth' },
-      { id: 'b2', title: 'Piranesi', author: 'Susanna Clarke', series: '' },
-      { id: 'b3', title: 'The Obelisk Gate', author: 'N.K. Jemisin', series: 'Broken Earth' },
+      { id: 'b1', title: 'The Fifth Season' },
+      { id: 'b2', title: 'Piranesi' },
+      { id: 'b3', title: 'The Obelisk Gate' },
     ],
-    false,
     false,
     undefined,
   ],

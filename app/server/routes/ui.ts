@@ -474,6 +474,36 @@ export function createUiRouter(
     res.json({ subjects });
   });
 
+  router.get('/api/authors', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const { take: takeParam, cursor } = req.query;
+    const take =
+      typeof takeParam === 'string'
+        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
+        : 500;
+    const result = await bookStore.listAuthors(owner, {
+      take,
+      cursor: typeof cursor === 'string' ? cursor : undefined,
+    });
+    res.json(result);
+  });
+
+  router.get('/api/series-names', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const { take: takeParam, cursor } = req.query;
+    const take =
+      typeof takeParam === 'string'
+        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
+        : 500;
+    const result = await bookStore.listSeriesNames(owner, {
+      take,
+      cursor: typeof cursor === 'string' ? cursor : undefined,
+    });
+    res.json(result);
+  });
+
   router.post(
     '/api/books/upload',
     requireAuth,
@@ -536,6 +566,21 @@ export function createUiRouter(
       res.json({ uploaded });
     }
   );
+
+  router.get('/api/books/titles', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const { take: takeParam, cursor } = req.query;
+    const take =
+      typeof takeParam === 'string'
+        ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
+        : 500;
+    const result = await bookStore.listBookTitles(owner, {
+      take,
+      cursor: typeof cursor === 'string' ? cursor : undefined,
+    });
+    res.json(result);
+  });
 
   router.get('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);

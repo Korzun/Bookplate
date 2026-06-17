@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
 
-import { useBookList, useLibrarySubjects } from '~/provider/book';
+import {
+  useAllAuthors,
+  useAllBookTitles,
+  useAllSeriesNames,
+  useLibrarySubjects,
+} from '~/provider/book';
 import type { BookListFilter } from '~/provider/book';
 
 export type Suggestion = {
@@ -56,7 +61,9 @@ export function useSearchSuggestions(
   inputValue: string,
   filter: BookListFilter
 ): SuggestionGroup[] {
-  const [bookList] = useBookList();
+  const [authors] = useAllAuthors();
+  const [seriesNames] = useAllSeriesNames();
+  const [bookTitles] = useAllBookTitles();
   const [subjects] = useLibrarySubjects();
 
   return useMemo(() => {
@@ -71,41 +78,24 @@ export function useSearchSuggestions(
       if (g) groups.push(g);
     }
 
-    // Author (exclusive) — deduplicate by value
+    // Author (exclusive)
     if (!filter.author) {
-      const seen = new Set<string>();
-      const authors: { label: string; value: string }[] = [];
-      for (const book of bookList) {
-        if (book.author && !seen.has(book.author)) {
-          seen.add(book.author);
-          authors.push({ label: book.author, value: book.author });
-        }
-      }
-      const g = buildGroup('author', 'Author', authors, query, false, new Set());
+      const authorCandidates = authors.map((a) => ({ label: a, value: a }));
+      const g = buildGroup('author', 'Author', authorCandidates, query, false, new Set());
       if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
     }
 
-    // Series (exclusive) — deduplicate by value
+    // Series (exclusive) — navigates on select
     if (!filter.seriesName) {
-      const seen = new Set<string>();
-      const seriesList: { label: string; value: string }[] = [];
-      for (const book of bookList) {
-        if (book.series && !seen.has(book.series)) {
-          seen.add(book.series);
-          seriesList.push({ label: book.series, value: book.series });
-        }
-      }
-      const g = buildGroup('series', 'Series', seriesList, query, false, new Set());
+      const seriesCandidates = seriesNames.map((s) => ({ label: s, value: s }));
+      const g = buildGroup('series', 'Series', seriesCandidates, query, false, new Set());
       if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
     }
 
-    // Books — title match, navigates on select, cap at 5
-    const bookCandidates = bookList
-      .filter((b) => matchInfo(b.title, query) !== null)
-      .slice(0, 5)
-      .map((b) => ({ label: b.title, value: b.id }));
+    // Books — title match, navigates on select
+    const bookCandidates = bookTitles.map((b) => ({ label: b.title, value: b.id }));
     const bookGroup = buildGroup('book', 'Book', bookCandidates, query, false, new Set());
-    if (bookGroup) groups.push(bookGroup);
+    if (bookGroup) groups.push({ ...bookGroup, items: bookGroup.items.slice(0, 5) });
 
     // Subject (additive) — exclude already-active subjects
     const activeSubjects = new Set(filter.subjects ?? []);
@@ -114,5 +104,5 @@ export function useSearchSuggestions(
     if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
 
     return groups;
-  }, [inputValue, filter, bookList, subjects]);
+  }, [inputValue, filter, authors, seriesNames, bookTitles, subjects]);
 }
