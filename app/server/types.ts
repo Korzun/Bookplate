@@ -84,9 +84,11 @@ export type PagedBookListResponse = {
 };
 
 export type BookListFilters = {
-  type?: 'standalone' | 'series';
+  query?: string;
+  author?: string;
+  seriesName?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
-  subject?: string;
+  subjects?: string[];
 };
 
 /** Opaque base64-encoded JSON cursor stored in the client and echoed back on subsequent requests. */
