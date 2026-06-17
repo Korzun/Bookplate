@@ -457,6 +457,56 @@ describe('GET /api/books (paginated)', () => {
   });
 });
 
+describe('GET /api/books — search params', () => {
+  it('accepts query param and returns matching books', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), { ...FAKE_META, title: 'The Fifth Season', series: '' });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), { ...FAKE_META, title: 'Piranesi', series: '' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&query=fifth')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('accepts author param and returns matching books', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), { ...FAKE_META, title: 'Book A', author: 'N.K. Jemisin', series: '' });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), { ...FAKE_META, title: 'Book B', author: 'Arkady Martine', series: '' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&author=Jemisin')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+
+  it('accepts seriesName param and returns only that series', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), { ...FAKE_META, title: 'Dune 1', series: 'Dune' });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), { ...FAKE_META, title: 'Standalone', series: '' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&seriesName=Dune')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('accepts multiple subjects params (AND filter)', async () => {
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), {
+      ...FAKE_META, title: 'Book A', series: '', subjects: ['Fantasy', 'Fiction'],
+    });
+    await bookStore.addBook(aliceOwner, 'b2', stage('b2'), {
+      ...FAKE_META, title: 'Book B', series: '', subjects: ['Fantasy'],
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&subjects=Fantasy&subjects=Fiction')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+  });
+});
+
 describe('POST /api/books/upload', () => {
   it('rejects .pdf files with 400 and "Supported: epub"', async () => {
     const token = await loginAlice();
@@ -2129,7 +2179,7 @@ describe('GET /api/subjects', () => {
 });
 
 describe('GET /api/books (filtered)', () => {
-  it('type=standalone excludes series', async () => {
+  it('seriesName filter returns only that series', async () => {
     await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2144,31 +2194,31 @@ describe('GET /api/books (filtered)', () => {
     });
     const token = await loginAlice();
     const res = await request(app)
-      .get('/api/books?take=20&type=standalone')
-      .set(...bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
-  });
-
-  it('type=series excludes standalones', async () => {
-    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
-      ...FAKE_META,
-      title: 'Alpha',
-      series: '',
-      seriesIndex: 0,
-    });
-    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), {
-      ...FAKE_META,
-      title: 'Beta 1',
-      series: 'Beta',
-      seriesIndex: 1,
-    });
-    const token = await loginAlice();
-    const res = await request(app)
-      .get('/api/books?take=20&type=series')
+      .get('/api/books?take=20&seriesName=Beta')
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
+  });
+
+  it('query filter returns matching standalones', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), {
+      ...FAKE_META,
+      title: 'Beta 1',
+      series: 'Beta',
+      seriesIndex: 1,
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&query=Alpha')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
   });
 
   it('status=not-started returns books with no progress', async () => {
@@ -2193,7 +2243,7 @@ describe('GET /api/books (filtered)', () => {
     expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'b2' }]);
   });
 
-  it('combined type=series&status=completed', async () => {
+  it('combined seriesName&status=completed returns matching completed series', async () => {
     await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
       ...FAKE_META,
       title: 'Alpha',
@@ -2210,18 +2260,25 @@ describe('GET /api/books (filtered)', () => {
     await seedProgress(aliceId, 'sr1', 1.0);
     const token = await loginAlice();
     const res = await request(app)
-      .get('/api/books?take=20&type=series&status=completed')
+      .get('/api/books?take=20&seriesName=Beta&status=completed')
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Beta' }]);
   });
 
-  it('returns 400 for invalid type value', async () => {
+  it('unknown params are silently ignored (returns all books)', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
     const token = await loginAlice();
     const res = await request(app)
       .get('/api/books?take=20&type=invalid')
       .set(...bearer(token));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
   });
 
   it('returns 400 for invalid status value', async () => {
@@ -2247,7 +2304,7 @@ describe('GET /api/books (filtered)', () => {
     });
     const token = await loginAlice();
     const res = await request(app)
-      .get('/api/books?type=standalone')
+      .get('/api/books?query=Alpha')
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
