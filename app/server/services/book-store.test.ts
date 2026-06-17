@@ -2564,6 +2564,16 @@ describe('BookStore.listBooksPage() — search filters', () => {
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
+  it('filters series by member book title (not just series name)', async () => {
+    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      series: 'Broken Earth',
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { query: 'Fifth Season' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Broken Earth' }]);
+  });
+
   it('filters standalones by author (contains, case-insensitive)', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
