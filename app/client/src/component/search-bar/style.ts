@@ -36,10 +36,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   clearButton: {
     '&&': {
       borderRadius: '50%',
-      padding: theme.space.md,
+      padding: theme.space.xxxs,
       color: theme.color.gray[900],
       flexShrink: 0,
-      marginRight: `-${theme.space.xs}`,
+      marginRight: `-${theme.space.xxs}`,
       '&:hover': {
         backgroundColor: theme.color.danger.light,
         color: theme.color.gray[900],
@@ -168,6 +168,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dropdownItemTypeSeries: {
     color: theme.color.chip.series.text,
     background: theme.color.chip.series.bg,
+  },
+  dropdownItemTypeBook: {
+    color: '#0e6b7d',
+    background: 'rgba(14, 107, 125, 0.08)',
   },
   dropdownItemTypeSubject: {
     color: theme.color.chip.subject.text,
