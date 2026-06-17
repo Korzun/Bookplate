@@ -470,14 +470,18 @@ export function createUiRouter(
   router.get('/api/subjects', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const subjects = await bookStore.getSubjects(owner);
+    const { author, seriesName } = req.query;
+    const subjects = await bookStore.getSubjects(owner, {
+      author: typeof author === 'string' ? author : undefined,
+      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
+    });
     res.json({ subjects });
   });
 
   router.get('/api/authors', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const { take: takeParam, cursor } = req.query;
+    const { take: takeParam, cursor, seriesName } = req.query;
     const take =
       typeof takeParam === 'string'
         ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
@@ -485,6 +489,7 @@ export function createUiRouter(
     const result = await bookStore.listAuthors(owner, {
       take,
       cursor: typeof cursor === 'string' ? cursor : undefined,
+      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
     });
     res.json(result);
   });
@@ -492,7 +497,7 @@ export function createUiRouter(
   router.get('/api/series-names', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const { take: takeParam, cursor } = req.query;
+    const { take: takeParam, cursor, author } = req.query;
     const take =
       typeof takeParam === 'string'
         ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
@@ -500,6 +505,7 @@ export function createUiRouter(
     const result = await bookStore.listSeriesNames(owner, {
       take,
       cursor: typeof cursor === 'string' ? cursor : undefined,
+      author: typeof author === 'string' ? author : undefined,
     });
     res.json(result);
   });
@@ -570,7 +576,7 @@ export function createUiRouter(
   router.get('/api/books/titles', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const { take: takeParam, cursor } = req.query;
+    const { take: takeParam, cursor, author, seriesName } = req.query;
     const take =
       typeof takeParam === 'string'
         ? Math.min(Math.max(parseInt(takeParam, 10) || 500, 1), 1000)
@@ -578,6 +584,8 @@ export function createUiRouter(
     const result = await bookStore.listBookTitles(owner, {
       take,
       cursor: typeof cursor === 'string' ? cursor : undefined,
+      author: typeof author === 'string' ? author : undefined,
+      seriesName: typeof seriesName === 'string' ? seriesName : undefined,
     });
     res.json(result);
   });

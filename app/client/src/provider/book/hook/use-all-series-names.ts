@@ -2,13 +2,19 @@ import { useEffect, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { useWithTargetUser } from '../../library-target';
+import type { BookListFilter } from '../type';
 
 type Result = { baseUrl: string; items: string[] } | { baseUrl: string; error: string };
 
-export const useAllSeriesNames = (): [string[], boolean, string | undefined] => {
+export const useAllSeriesNames = (
+  filter?: BookListFilter
+): [string[], boolean, string | undefined] => {
   const [result, setResult] = useState<Result | null>(null);
   const withTargetUser = useWithTargetUser();
-  const baseUrl = withTargetUser('/api/series-names');
+  const params = new URLSearchParams();
+  if (filter?.author) params.set('author', filter.author);
+  const paramStr = params.toString();
+  const baseUrl = withTargetUser(`/api/series-names${paramStr ? `?${paramStr}` : ''}`);
 
   useEffect(() => {
     let cancelled = false;

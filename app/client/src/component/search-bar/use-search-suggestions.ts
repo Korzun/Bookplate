@@ -61,10 +61,10 @@ export function useSearchSuggestions(
   inputValue: string,
   filter: BookListFilter
 ): SuggestionGroup[] {
-  const [authors] = useAllAuthors();
-  const [seriesNames] = useAllSeriesNames();
-  const [bookTitles] = useAllBookTitles();
-  const [subjects] = useLibrarySubjects();
+  const [authors] = useAllAuthors(filter);
+  const [seriesNames] = useAllSeriesNames(filter);
+  const [bookTitles] = useAllBookTitles(filter);
+  const [subjects] = useLibrarySubjects({ author: filter.author, seriesName: filter.seriesName });
 
   return useMemo(() => {
     const query = inputValue.trim();
