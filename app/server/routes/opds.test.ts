@@ -393,8 +393,16 @@ describe('GET /opds/authors', () => {
 
 describe('GET /opds/authors/:author', () => {
   it('returns an acquisition feed with books by the author', async () => {
-    await bookStore.addBook(alice, 'au4', stage('au4'), { ...FAKE_META, author: 'Ursula Le Guin', title: 'The Left Hand of Darkness' });
-    await bookStore.addBook(alice, 'au5', stage('au5'), { ...FAKE_META, author: 'Other', title: 'Other Book' });
+    await bookStore.addBook(alice, 'au4', stage('au4'), {
+      ...FAKE_META,
+      author: 'Ursula Le Guin',
+      title: 'The Left Hand of Darkness',
+    });
+    await bookStore.addBook(alice, 'au5', stage('au5'), {
+      ...FAKE_META,
+      author: 'Other',
+      title: 'Other Book',
+    });
     const res = await request(app)
       .get('/opds/authors/Ursula%20Le%20Guin')
       .set(basicAuth('alice', 'secret'));
@@ -405,16 +413,18 @@ describe('GET /opds/authors/:author', () => {
   });
 
   it('returns empty acquisition feed for unknown author', async () => {
-    const res = await request(app)
-      .get('/opds/authors/Nobody')
-      .set(basicAuth('alice', 'secret'));
+    const res = await request(app).get('/opds/authors/Nobody').set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<feed');
     expect(res.text).not.toContain('<entry>');
   });
 
   it('escapes special characters in author names', async () => {
-    await bookStore.addBook(alice, 'au6', stage('au6'), { ...FAKE_META, author: 'Author & Co', title: 'Special Book' });
+    await bookStore.addBook(alice, 'au6', stage('au6'), {
+      ...FAKE_META,
+      author: 'Author & Co',
+      title: 'Special Book',
+    });
     const res = await request(app)
       .get('/opds/authors/Author%20%26%20Co')
       .set(basicAuth('alice', 'secret'));
@@ -422,9 +432,17 @@ describe('GET /opds/authors/:author', () => {
     expect(res.text).toContain('Special Book');
   });
 
-  it('does not expose other users\' books', async () => {
-    await bookStore.addBook(alice, 'au7', stage('au7'), { ...FAKE_META, author: 'Shared Author', title: 'Alice Book' });
-    await bookStore.addBook(bob, 'au8', stage('au8'), { ...FAKE_META, author: 'Shared Author', title: 'Bob Book' });
+  it("does not expose other users' books", async () => {
+    await bookStore.addBook(alice, 'au7', stage('au7'), {
+      ...FAKE_META,
+      author: 'Shared Author',
+      title: 'Alice Book',
+    });
+    await bookStore.addBook(bob, 'au8', stage('au8'), {
+      ...FAKE_META,
+      author: 'Shared Author',
+      title: 'Bob Book',
+    });
     const res = await request(app)
       .get('/opds/authors/Shared%20Author')
       .set(basicAuth('alice', 'secret'));
