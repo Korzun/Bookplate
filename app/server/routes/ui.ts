@@ -11,7 +11,14 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from '../services/book-store';
-import { AppConfig, BookListFilters, EpubMeta, Owner, PageCursor } from '../types';
+import {
+  AppConfig,
+  BookListFilters,
+  EpubMeta,
+  Owner,
+  PageCursor,
+  SearchSuggestionsResponse,
+} from '../types';
 import { UserStore } from '../services/user-store';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -465,6 +472,30 @@ export function createUiRouter(
         return rest;
       })
     );
+  });
+
+  router.get('/api/search/suggestions', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const { q, author, seriesName, subjects } = req.query;
+    if (!q || typeof q !== 'string' || !q.trim()) {
+      res.json({ groups: [] } satisfies SearchSuggestionsResponse);
+      return;
+    }
+    const activeSubjects: string[] = Array.isArray(subjects)
+      ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
+      : typeof subjects === 'string' && subjects
+        ? [subjects]
+        : [];
+    const result = await bookStore.getSearchSuggestions(owner, {
+      q: q.trim(),
+      filter: {
+        author: typeof author === 'string' && author ? author : undefined,
+        seriesName: typeof seriesName === 'string' && seriesName ? seriesName : undefined,
+        activeSubjects,
+      },
+    });
+    res.json(result);
   });
 
   router.get('/api/subjects', requireAuth, async (req: Request, res: Response) => {
