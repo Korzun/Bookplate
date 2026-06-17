@@ -3,6 +3,7 @@ import { IconProps, defaultFilledIconProps } from './props';
 // https://tabler.io/icons?icon=alert-octagon
 export const AlertOctagonIcon = (props: IconProps) => {
   const {
+    'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
     fill,
@@ -13,6 +14,7 @@ export const AlertOctagonIcon = (props: IconProps) => {
 
   return (
     <svg
+      aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       className={className}
       fill={fill}

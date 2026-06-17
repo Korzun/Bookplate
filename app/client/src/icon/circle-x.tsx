@@ -3,6 +3,7 @@ import { IconProps, defaultFilledIconProps } from './props';
 // https://tabler.io/icons?icon=circle-x
 export const CircleXIcon = (props: IconProps) => {
   const {
+    'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
     fill,
@@ -12,6 +13,7 @@ export const CircleXIcon = (props: IconProps) => {
   } = { ...defaultFilledIconProps, ...props };
   return (
     <svg
+      aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       className={className}
       fill={fill}

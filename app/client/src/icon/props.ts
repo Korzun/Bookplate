@@ -1,4 +1,5 @@
 export type IconProps = {
+  'aria-hidden'?: boolean | 'true' | 'false';
   'aria-label'?: string;
   className?: string;
   fill?: string;

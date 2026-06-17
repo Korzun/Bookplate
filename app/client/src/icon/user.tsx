@@ -3,6 +3,7 @@ import { IconProps, defaultStrokeIconProps } from './props';
 // https://tabler.io/icons?icon=user
 export const UserIcon = (props: IconProps) => {
   const {
+    'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
     fill,
@@ -18,6 +19,7 @@ export const UserIcon = (props: IconProps) => {
 
   return (
     <svg
+      aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       className={className}
       fill={fill}

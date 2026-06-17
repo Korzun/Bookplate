@@ -3,6 +3,7 @@ import { IconProps, defaultStrokeIconProps } from './props';
 // https://tabler.io/icons?icon=circle-chevron-right
 export const ChevronCircleIcon = (props: IconProps) => {
   const {
+    'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
     fill,
@@ -17,6 +18,7 @@ export const ChevronCircleIcon = (props: IconProps) => {
   };
   return (
     <svg
+      aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       className={className}
       fill={fill}

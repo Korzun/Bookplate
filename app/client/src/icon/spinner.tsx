@@ -2,6 +2,7 @@ import { IconProps, defaultStrokeIconProps } from './props';
 
 export const SpinnerIcon = (props: IconProps) => {
   const {
+    'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
     height,
@@ -16,6 +17,7 @@ export const SpinnerIcon = (props: IconProps) => {
 
   return (
     <svg
+      aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       className={className}
       fill="none"
