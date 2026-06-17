@@ -60,7 +60,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: theme.space.xs,
     padding: `${theme.space.xs} ${theme.space.md} ${theme.space.xs} ${theme.space.sm}`,
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.md,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     whiteSpace: 'nowrap',
