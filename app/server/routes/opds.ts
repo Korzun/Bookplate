@@ -228,5 +228,51 @@ export function createOpdsRouter(
     );
   });
 
+  router.get('/subjects', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const subjects = await bookStore.getSubjects(owner);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      navigationFeed({
+        id: 'urn:hass-odps:subjects',
+        title: 'By Subject',
+        selfHref: `${baseUrl}/opds/subjects`,
+        baseUrl,
+        now,
+        entries: subjects.map((subject) =>
+          navEntry(
+            `urn:hass-odps:subject:${subject}`,
+            subject,
+            `Books tagged with ${subject}`,
+            `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
+            'acquisition',
+            now
+          )
+        ),
+      })
+    );
+  });
+
+  router.get('/subjects/:subject', auth, async (req: Request, res: Response) => {
+    const owner = req.opdsOwner!;
+    const subject = req.params.subject;
+    const books = await bookStore.listBooksBySubject(owner, subject);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+    res.send(
+      acquisitionFeed({
+        id: `urn:hass-odps:subject:${subject}`,
+        title: subject,
+        selfHref: `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
+        baseUrl,
+        now,
+        entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+      })
+    );
+  });
+
   return router;
 }
