@@ -43,7 +43,6 @@ function requireUserId(req: Request, res: Response): string | null {
   return userId;
 }
 
-const VALID_TYPES = new Set(['standalone', 'series']);
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
 
 export function createUiRouter(
@@ -402,12 +401,8 @@ export function createUiRouter(
     const owner = await resolveOwner(req, res);
     if (!owner) return;
 
-    const { cursor, take, type, status, subject } = req.query;
+    const { cursor, take, status, query, author, seriesName, subjects } = req.query;
 
-    if (type !== undefined && (typeof type !== 'string' || !VALID_TYPES.has(type))) {
-      res.status(400).json({ error: 'Invalid type. Must be "standalone" or "series".' });
-      return;
-    }
     if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
       res.status(400).json({
         error: 'Invalid status. Must be "not-started", "in-progress", or "completed".',
@@ -415,14 +410,27 @@ export function createUiRouter(
       return;
     }
 
-    const subjectValue = typeof subject === 'string' && subject ? subject : undefined;
+    const queryValue = typeof query === 'string' && query ? query : undefined;
+    const authorValue = typeof author === 'string' && author ? author : undefined;
+    const seriesNameValue = typeof seriesName === 'string' && seriesName ? seriesName : undefined;
+    const subjectsValue: string[] = Array.isArray(subjects)
+      ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
+      : typeof subjects === 'string' && subjects
+      ? [subjects]
+      : [];
 
     const filters: BookListFilters | undefined =
-      type !== undefined || status !== undefined || subjectValue !== undefined
+      status !== undefined ||
+      queryValue !== undefined ||
+      authorValue !== undefined ||
+      seriesNameValue !== undefined ||
+      subjectsValue.length > 0
         ? {
-            type: type as BookListFilters['type'],
             status: status as BookListFilters['status'],
-            subject: subjectValue,
+            query: queryValue,
+            author: authorValue,
+            seriesName: seriesNameValue,
+            subjects: subjectsValue.length > 0 ? subjectsValue : undefined,
           }
         : undefined;
 
