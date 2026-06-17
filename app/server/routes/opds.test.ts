@@ -626,3 +626,91 @@ describe('GET /opds/subjects/:subject', () => {
     expect(res.text).not.toContain('Bob Fantasy');
   });
 });
+
+describe('GET /opds/status', () => {
+  it('returns a navigation feed with exactly 3 entries', async () => {
+    const res = await request(app).get('/opds/status').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/atom\+xml/);
+    expect(res.text).toContain('not-started');
+    expect(res.text).toContain('in-progress');
+    expect(res.text).toContain('completed');
+    const entryCount = (res.text.match(/<entry>/g) ?? []).length;
+    expect(entryCount).toBe(3);
+  });
+
+  it('returns 401 without credentials', async () => {
+    const res = await request(app).get('/opds/status');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /opds/status/:status', () => {
+  async function setProgress(userId: string, bookId: string, percentage: number): Promise<void> {
+    await prisma.progress.upsert({
+      where: { userId_document: { userId, document: bookId } },
+      create: {
+        userId,
+        document: bookId,
+        progress: String(percentage),
+        percentage,
+        device: 'test',
+        deviceId: 'test-device',
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+      update: { percentage },
+    });
+  }
+
+  it('not-started returns books without any progress', async () => {
+    await bookStore.addBook(alice, 'st1', stage('st1'), { ...FAKE_META, title: 'Unread Book' });
+    await bookStore.addBook(alice, 'st2', stage('st2'), { ...FAKE_META, title: 'Started Book' });
+    await setProgress(alice.userId, 'st2', 0.5);
+    const res = await request(app)
+      .get('/opds/status/not-started')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Unread Book');
+    expect(res.text).not.toContain('Started Book');
+  });
+
+  it('in-progress returns only partially read books', async () => {
+    await bookStore.addBook(alice, 'st3', stage('st3'), { ...FAKE_META, title: 'Reading Now' });
+    await bookStore.addBook(alice, 'st4', stage('st4'), { ...FAKE_META, title: 'Not Started' });
+    await setProgress(alice.userId, 'st3', 0.4);
+    const res = await request(app)
+      .get('/opds/status/in-progress')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Reading Now');
+    expect(res.text).not.toContain('Not Started');
+  });
+
+  it('completed returns only fully read books', async () => {
+    await bookStore.addBook(alice, 'st5', stage('st5'), { ...FAKE_META, title: 'Finished' });
+    await bookStore.addBook(alice, 'st6', stage('st6'), { ...FAKE_META, title: 'Unfinished' });
+    await setProgress(alice.userId, 'st5', 1.0);
+    await setProgress(alice.userId, 'st6', 0.8);
+    const res = await request(app).get('/opds/status/completed').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Finished');
+    expect(res.text).not.toContain('Unfinished');
+  });
+
+  it('returns 400 for invalid status slug', async () => {
+    const res = await request(app)
+      .get('/opds/status/invalid-slug')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(400);
+  });
+
+  it("does not expose other users' books", async () => {
+    await bookStore.addBook(alice, 'st7', stage('st7'), { ...FAKE_META, title: 'Alice Book' });
+    await bookStore.addBook(bob, 'st8', stage('st8'), { ...FAKE_META, title: 'Bob Book' });
+    await setProgress(alice.userId, 'st7', 1.0);
+    await setProgress(bob.userId, 'st8', 1.0);
+    const res = await request(app).get('/opds/status/completed').set(basicAuth('alice', 'secret'));
+    expect(res.text).toContain('Alice Book');
+    expect(res.text).not.toContain('Bob Book');
+  });
+});
