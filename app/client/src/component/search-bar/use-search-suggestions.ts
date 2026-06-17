@@ -111,7 +111,7 @@ export function useSearchSuggestions(
     const activeSubjects = new Set(filter.subjects ?? []);
     const subjectCandidates = (subjects ?? []).map((s) => ({ label: s, value: s }));
     const g = buildGroup('subject', 'Subject', subjectCandidates, query, true, activeSubjects);
-    if (g) groups.push(g);
+    if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
 
     return groups;
   }, [inputValue, filter, bookList, subjects]);
