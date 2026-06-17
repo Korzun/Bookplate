@@ -32,9 +32,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   searchIcon: {
     color: theme.color.text.faint,
     flexShrink: 0,
-    fontSize: theme.fontSize.lg,
-    lineHeight: 1,
-    userSelect: 'none',
   },
   input: {
     flex: 1,

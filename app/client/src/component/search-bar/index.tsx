@@ -1,6 +1,7 @@
 import cx from 'classnames';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { SearchIcon } from '~/icon';
 import type { BookListFilter } from '~/provider/book';
 
 import { useStyle } from './style';
@@ -208,9 +209,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
         </>
       )}
       <div className={style.inputRow}>
-        <span className={style.searchIcon} aria-hidden>
-          ⌕
-        </span>
+        <SearchIcon aria-hidden className={style.searchIcon} height={18} width={18} />
         <input
           ref={inputRef}
           className={style.input}

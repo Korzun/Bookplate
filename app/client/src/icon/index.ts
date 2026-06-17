@@ -9,6 +9,7 @@ export { ClockIcon } from './clock';
 export { KeyIcon } from './key';
 export { ListCheckIcon } from './list-check';
 export { RowRemoveIcon } from './row-remove';
+export { SearchIcon } from './search';
 export { SpinnerIcon } from './spinner';
 export { UploadIcon } from './upload';
 export { UserIcon } from './user';
