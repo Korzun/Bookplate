@@ -1,12 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import {
-  useAllAuthors,
-  useAllBookTitles,
-  useAllSeriesNames,
-  useLibrarySubjects,
-} from '~/provider/book';
+import { apiFetch } from '~/lib/api-fetch';
 import type { BookListFilter } from '~/provider/book';
+import { useWithTargetUser } from '~/provider/library-target';
 
 export type Suggestion = {
   type: 'status' | 'author' | 'series' | 'book' | 'subject';
@@ -23,11 +19,25 @@ export type SuggestionGroup = {
   items: Suggestion[];
 };
 
+type ServerItem = { label: string; value: string };
+type ServerGroup = {
+  type: 'author' | 'series' | 'book' | 'subject';
+  items: ServerItem[];
+};
+
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'Not Started', value: 'not-started' },
   { label: 'In Progress', value: 'in-progress' },
   { label: 'Completed', value: 'completed' },
 ];
+
+const GROUP_LABEL: Record<Suggestion['type'], string> = {
+  status: 'Status',
+  author: 'Author',
+  series: 'Series',
+  book: 'Book',
+  subject: 'Subject',
+};
 
 function matchInfo(
   text: string,
@@ -38,71 +48,111 @@ function matchInfo(
   return { matchStart: idx, matchLength: query.length };
 }
 
-function buildGroup(
-  type: Suggestion['type'],
-  label: string,
-  candidates: { label: string; value: string }[],
-  query: string,
-  additive: boolean,
-  exclude: Set<string>
-): SuggestionGroup | null {
-  const items: Suggestion[] = [];
-  for (const c of candidates) {
-    if (exclude.has(c.value)) continue;
-    const info = matchInfo(c.label, query);
-    if (!info) continue;
-    items.push({ type, label: c.label, value: c.value, additive, ...info });
-  }
-  if (items.length === 0) return null;
-  return { type, label, items };
-}
-
 export function useSearchSuggestions(
   inputValue: string,
   filter: BookListFilter
-): SuggestionGroup[] {
-  const [authors] = useAllAuthors(filter);
-  const [seriesNames] = useAllSeriesNames(filter);
-  const [bookTitles] = useAllBookTitles(filter);
-  const [subjects] = useLibrarySubjects({ author: filter.author, seriesName: filter.seriesName });
+): { groups: SuggestionGroup[]; loading: boolean } {
+  const withTargetUser = useWithTargetUser();
+  const [groups, setGroups] = useState<SuggestionGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  return useMemo(() => {
+  // Destructure filter fields as primitive deps so the effect does not re-fire
+  // when the caller passes a new object literal with identical values.
+  const { status, author, seriesName, subjects } = filter;
+  // subjects is a string[] — serialize it so the dep compares by value rather
+  // than reference. The effect reconstructs the array from this key.
+  const subjectsKey = subjects?.join('\0') ?? '';
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
     const query = inputValue.trim();
-    if (!query) return [];
-
-    const groups: SuggestionGroup[] = [];
-
-    // Status (exclusive)
-    if (!filter.status) {
-      const g = buildGroup('status', 'Status', STATUS_OPTIONS, query, false, new Set());
-      if (g) groups.push(g);
+    if (!query) {
+      // Abort any in-flight request. Groups and loading are short-circuited at
+      // the return site when query is empty, avoiding setState in an effect body
+      // (react-hooks/set-state-in-effect).
+      abortRef.current?.abort();
+      return;
     }
 
-    // Author (exclusive)
-    if (!filter.author) {
-      const authorCandidates = authors.map((a) => ({ label: a, value: a }));
-      const g = buildGroup('author', 'Author', authorCandidates, query, false, new Set());
-      if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
-    }
+    debounceRef.current = setTimeout(() => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    // Series (exclusive) — navigates on select
-    if (!filter.seriesName) {
-      const seriesCandidates = seriesNames.map((s) => ({ label: s, value: s }));
-      const g = buildGroup('series', 'Series', seriesCandidates, query, false, new Set());
-      if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
-    }
+      // Reconstruct subjects array from the serialized key so no array
+      // reference is needed in the dep list.
+      const subjectsArray = subjectsKey ? subjectsKey.split('\0') : [];
 
-    // Books — title match, navigates on select
-    const bookCandidates = bookTitles.map((b) => ({ label: b.title, value: b.id }));
-    const bookGroup = buildGroup('book', 'Book', bookCandidates, query, false, new Set());
-    if (bookGroup) groups.push({ ...bookGroup, items: bookGroup.items.slice(0, 5) });
+      const params = new URLSearchParams({ q: query });
+      if (author) params.set('author', author);
+      if (seriesName) params.set('seriesName', seriesName);
+      for (const s of subjectsArray) params.append('subjects', s);
+      const url = withTargetUser(`/api/search/suggestions?${params.toString()}`);
 
-    // Subject (additive) — exclude already-active subjects
-    const activeSubjects = new Set(filter.subjects ?? []);
-    const subjectCandidates = (subjects ?? []).map((s) => ({ label: s, value: s }));
-    const g = buildGroup('subject', 'Subject', subjectCandidates, query, true, activeSubjects);
-    if (g) groups.push({ ...g, items: g.items.slice(0, 5) });
+      setLoading(true);
+      apiFetch(url, { signal: controller.signal })
+        .then(async (res) => {
+          if (!res.ok) throw new Error('Suggestion fetch failed');
+          return res.json() as Promise<{ groups: ServerGroup[] }>;
+        })
+        .then(({ groups: serverGroups }) => {
+          if (controller.signal.aborted) return;
 
-    return groups;
-  }, [inputValue, filter, authors, seriesNames, bookTitles, subjects]);
+          const result: SuggestionGroup[] = [];
+
+          if (!status) {
+            const items: Suggestion[] = [];
+            for (const opt of STATUS_OPTIONS) {
+              const info = matchInfo(opt.label, query);
+              if (info) {
+                items.push({
+                  type: 'status',
+                  label: opt.label,
+                  value: opt.value,
+                  additive: false,
+                  ...info,
+                });
+              }
+            }
+            if (items.length > 0) result.push({ type: 'status', label: GROUP_LABEL.status, items });
+          }
+
+          for (const g of serverGroups) {
+            const additive = g.type === 'subject';
+            const items: Suggestion[] = [];
+            for (const item of g.items) {
+              const info = matchInfo(item.label, query);
+              if (!info) continue;
+              items.push({ type: g.type, label: item.label, value: item.value, additive, ...info });
+            }
+            if (items.length > 0) {
+              result.push({ type: g.type, label: GROUP_LABEL[g.type], items });
+            }
+          }
+
+          setGroups(result);
+          setLoading(false);
+        })
+        .catch((_err: unknown) => {
+          if (controller.signal.aborted) return;
+          setGroups([]);
+          setLoading(false);
+        });
+    }, 200);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [inputValue, status, author, seriesName, subjectsKey, withTargetUser]);
+
+  // When input is empty, short-circuit to idle state — avoids calling setState
+  // inside the effect body (react-hooks/set-state-in-effect).
+  const query = inputValue.trim();
+  return {
+    groups: query ? groups : [],
+    loading: query ? loading : false,
+  };
 }
