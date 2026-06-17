@@ -72,12 +72,25 @@ Groups with zero matching items are omitted from the returned array. Groups are 
 
 Each chip type has a distinct color and a small uppercase type label:
 
-| Type | Color | Label |
-|------|-------|-------|
-| Status | Purple (`#b89eff`) | STATUS |
-| Author | Green (`#6dd4a0`) | AUTHOR |
-| Series | Blue (`#7aadec`) | SERIES |
-| Subject | Amber (`#e8b870`) | SUBJECT |
+| Type | Semantic token | Label |
+|------|---------------|-------|
+| Status | `theme.color.chip.status` | STATUS |
+| Author | `theme.color.chip.author` | AUTHOR |
+| Series | `theme.color.chip.series` | SERIES |
+| Subject | `theme.color.chip.subject` | SUBJECT |
+
+Chip colors live in the theme, not hardcoded in the component. A new `color.chip` section is added to `Theme` in `theme.ts`:
+
+```ts
+chip: {
+  status:  { text: string; bg: string; border: string };
+  author:  { text: string; bg: string; border: string };
+  series:  { text: string; bg: string; border: string };
+  subject: { text: string; bg: string; border: string };
+};
+```
+
+`SearchBar`'s `style.ts` references `theme.color.chip.status.text` etc. The primitive color values (purple, green, amber) are defined inline within `buildTheme()` — no new top-level palette exports needed unless a future component reuses them.
 
 Chips for exclusive types (Status, Author, Series) — only one chip at a time. Selecting a new one replaces the existing one. Subject chips — multiple allowed, ANDed together.
 
@@ -205,6 +218,7 @@ Empty state copy changes:
 - `app/client/src/provider/book/type.ts` — `BookListFilter` type
 - `app/client/src/provider/book/hook/use-fetch-book-list.ts` — new query params
 - `app/client/src/provider/book/hook/use-book-list-filter.ts` — no change needed (generic)
+- `app/client/src/provider/theme/theme.ts` — add `color.chip` section to `Theme` interface and `buildTheme()`
 - `app/client/src/page/library/index.tsx` — swap `FilterBar` → `SearchBar`, update empty-state copy, remove `isFilterActive` logic
 - `app/client/src/component/index.ts` — remove `FilterBar` export, add `SearchBar` export
 - `app/server/types.ts` — `BookListFilters` type
