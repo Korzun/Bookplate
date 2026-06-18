@@ -59,5 +59,5 @@ export const useBookListFilter = (): [BookListFilter, (filter: BookListFilter) =
     [setBookListFilter, setSearchParams]
   );
 
-  return [bookListFilter, setFilter];
+  return [filterFromSearchParams(searchParams), setFilter];
 };
