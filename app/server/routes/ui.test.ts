@@ -2342,6 +2342,63 @@ describe('GET /api/books (filtered)', () => {
     expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
     expect(res.body).toHaveProperty('nextCursor');
   });
+
+  it('entryType=series returns only series rows', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&entryType=series')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('entryType=standalone returns only standalone rows', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(aliceOwner, 'sr1', stage('sr1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&entryType=standalone')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
+  });
+
+  it('invalid entryType value is silently ignored and returns all books', async () => {
+    await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books?take=20&entryType=invalid')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([{ type: 'standalone', bookId: 'sa1' }]);
+  });
 });
 
 describe('GET /api/series/:name', () => {
