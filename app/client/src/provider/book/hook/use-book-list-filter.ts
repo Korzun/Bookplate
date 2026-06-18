@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef } from 'react';
+import { useCallback, useContext, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { Context } from '../context';
@@ -45,21 +45,12 @@ export const useBookListFilter = (): [BookListFilter, (filter: BookListFilter) =
   const { bookListFilter, setBookListFilter } = useContext(Context);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // On mount: if the URL contains filter params (e.g. navigating from a subject
-  // tag on the book/series page), initialize context from those params.
-  // Uses refs so the effect only runs once and doesn't create stale closures.
-  const initialSearchParams = useRef(searchParams);
-  const initialContextFilter = useRef(bookListFilter);
-
   useEffect(() => {
-    const urlFilter = filterFromSearchParams(initialSearchParams.current);
-    if (Object.keys(urlFilter).length === 0) return;
-    if (filtersEqual(urlFilter, initialContextFilter.current)) return;
+    const urlFilter = filterFromSearchParams(searchParams);
+    if (filtersEqual(urlFilter, bookListFilter)) return;
     setBookListFilter(urlFilter);
-  }, [setBookListFilter]);
+  }, [searchParams, bookListFilter, setBookListFilter]);
 
-  // Write both context and URL; use replace so search-bar edits don't
-  // accumulate history entries.
   const setFilter = useCallback(
     (newFilter: BookListFilter) => {
       setBookListFilter(newFilter);
