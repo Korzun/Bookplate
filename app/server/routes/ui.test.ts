@@ -56,7 +56,7 @@ const config: AppConfig = {
   dataDir: '/tmp',
   port: 3000,
   maxConcurrentUploads: 3,
-  thumbnailWidths: [60, 170],
+  thumbnailWidths: [86, 160],
 };
 
 const mockThumbnailQueue = {
