@@ -60,15 +60,14 @@ export const SeriesPage = () => {
       ),
     });
   }
-  metadata.push({ title: 'books', value: series.bookCount });
   if (series.totalPages > 0) {
     metadata.push({ title: 'pages', value: series.totalPages });
   }
-  if (series.totalSize > 0) {
-    metadata.push({ title: 'size', value: formatSize(series.totalSize) });
-  }
   if (series.publisher) {
     metadata.push({ title: 'publisher', value: series.publisher });
+  }
+  if (series.totalSize > 0) {
+    metadata.push({ title: 'size', value: formatSize(series.totalSize) });
   }
 
   return (
