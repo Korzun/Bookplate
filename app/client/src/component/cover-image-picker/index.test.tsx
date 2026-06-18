@@ -19,14 +19,14 @@ Object.defineProperty(URL, 'revokeObjectURL', {
 const FILE = new File(['x'.repeat(1_048_576)], 'cover.jpg', { type: 'image/jpeg' }); // 1 MB
 
 describe('CoverImagePicker — idle (no file selected)', () => {
-  it('renders "No new image selected"', () => {
+  it('renders "No new cover selected"', () => {
     renderWithProviders(<CoverImagePicker value={undefined} onChange={vi.fn()} />);
-    expect(screen.getByText('No new image selected')).toBeInTheDocument();
+    expect(screen.getByText('No new cover selected')).toBeInTheDocument();
   });
 
-  it('renders "Choose image…" button', () => {
+  it('renders "Choose cover…" button', () => {
     renderWithProviders(<CoverImagePicker value={undefined} onChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Choose image…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose cover…' })).toBeInTheDocument();
   });
 
   it('does not render a "Clear" button', () => {
@@ -34,11 +34,11 @@ describe('CoverImagePicker — idle (no file selected)', () => {
     expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
   });
 
-  it('clicking "Choose image…" triggers the hidden file input', async () => {
+  it('clicking "Choose cover…" triggers the hidden file input', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     renderWithProviders(<CoverImagePicker value={undefined} onChange={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Choose image…' }));
+    await user.click(screen.getByRole('button', { name: 'Choose cover…' }));
     expect(clickSpy).toHaveBeenCalledTimes(1);
     clickSpy.mockRestore();
   });
@@ -55,10 +55,10 @@ describe('CoverImagePicker — selected (file provided)', () => {
     expect(screen.getByText('1.0 MB')).toBeInTheDocument();
   });
 
-  it('renders "Change image…" button instead of "Choose image…"', () => {
+  it('renders "Change cover…" button instead of "Choose cover…"', () => {
     renderWithProviders(<CoverImagePicker value={FILE} onChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Change image…' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Choose image…' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change cover…' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose cover…' })).not.toBeInTheDocument();
   });
 
   it('renders "Clear" button', () => {
@@ -80,11 +80,11 @@ describe('CoverImagePicker — selected (file provided)', () => {
     expect(onChange).toHaveBeenCalledWith(undefined);
   });
 
-  it('clicking "Change image…" triggers the hidden file input', async () => {
+  it('clicking "Change cover…" triggers the hidden file input', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     renderWithProviders(<CoverImagePicker value={FILE} onChange={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Change image…' }));
+    await user.click(screen.getByRole('button', { name: 'Change cover…' }));
     expect(clickSpy).toHaveBeenCalledTimes(1);
     clickSpy.mockRestore();
   });
