@@ -88,6 +88,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     breakBefore: 'always',
     breakAfter: 'always',
     breakInside: 'avoid',
+    '&:hover': { color: theme.color.brand.default },
   },
   description: {
     color: '#585863', // book-description-specific shade
