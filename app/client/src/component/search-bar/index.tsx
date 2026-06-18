@@ -228,7 +228,11 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
         </>
       )}
       <div className={style.inputRow}>
-        <SearchIcon aria-hidden={true} className={style.searchIcon} height={18} width={18} />
+        {suggestionsLoading ? (
+          <div className={style.searchSpinner} role="status" aria-label="Searching" />
+        ) : (
+          <SearchIcon aria-hidden={true} className={style.searchIcon} height={18} width={18} />
+        )}
         <input
           ref={inputRef}
           className={style.input}
@@ -260,14 +264,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
           />
         )}
       </div>
-      {isOpen && suggestionsLoading && (
-        <div className={style.dropdown}>
-          <div className={style.dropdownLoading}>
-            <div className={style.dropdownSpinner} role="status" aria-label="Searching" />
-          </div>
-        </div>
-      )}
-      {isOpen && !suggestionsLoading && flatSuggestions.length > 0 && (
+      {isOpen && flatSuggestions.length > 0 && (
         <div className={style.dropdown} role="listbox">
           {groups.map((group) => (
             <div key={group.type} className={style.dropdownGroup}>
