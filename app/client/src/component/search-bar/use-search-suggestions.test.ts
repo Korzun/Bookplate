@@ -41,9 +41,13 @@ describe('useSearchSuggestions', () => {
     vi.useRealTimers();
   });
 
-  it('returns empty groups and loading=false when inputValue is empty', () => {
+  it('returns Type and Status quick-pick groups when inputValue is empty and no filter is active', () => {
     const { result } = renderHook(() => useSearchSuggestions('', emptyFilter));
-    expect(result.current.groups).toEqual([]);
+    expect(result.current.groups).toHaveLength(2);
+    expect(result.current.groups[0].type).toBe('entryType');
+    expect(result.current.groups[0].items).toHaveLength(2);
+    expect(result.current.groups[1].type).toBe('status');
+    expect(result.current.groups[1].items).toHaveLength(3);
     expect(result.current.loading).toBe(false);
     expect(vi.mocked(apiFetch)).not.toHaveBeenCalled();
   });
@@ -112,6 +116,40 @@ describe('useSearchSuggestions', () => {
     });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.groups.find((g) => g.type === 'status')).toBeUndefined();
+  });
+
+  it('omits Type group when entryType filter is already set', () => {
+    const { result } = renderHook(() => useSearchSuggestions('', { entryType: 'series' }));
+    expect(result.current.groups).toHaveLength(1);
+    expect(result.current.groups[0].type).toBe('status');
+  });
+
+  it('omits both Type and Status groups when both are already set', () => {
+    const { result } = renderHook(() =>
+      useSearchSuggestions('', { entryType: 'series', status: 'completed' })
+    );
+    expect(result.current.groups).toHaveLength(0);
+  });
+
+  it('empty-state Type group items have correct labels, values, additive=false, matchStart=0, matchLength=0', () => {
+    const { result } = renderHook(() => useSearchSuggestions('', emptyFilter));
+    const typeGroup = result.current.groups.find((g) => g.type === 'entryType');
+    expect(typeGroup?.items[0]).toMatchObject({
+      type: 'entryType',
+      label: 'Series',
+      value: 'series',
+      additive: false,
+      matchStart: 0,
+      matchLength: 0,
+    });
+    expect(typeGroup?.items[1]).toMatchObject({
+      type: 'entryType',
+      label: 'Single books',
+      value: 'standalone',
+      additive: false,
+      matchStart: 0,
+      matchLength: 0,
+    });
   });
 
   it('maps server author group and computes matchStart/matchLength', async () => {
@@ -187,7 +225,7 @@ describe('useSearchSuggestions', () => {
     expect(authorGroup?.items[0].matchLength).toBe(6);
   });
 
-  it('resets groups to [] when inputValue becomes empty', async () => {
+  it('returns empty-state quick-pick groups when inputValue becomes empty', async () => {
     vi.mocked(apiFetch).mockResolvedValue(
       makeResponse([
         {
@@ -206,7 +244,8 @@ describe('useSearchSuggestions', () => {
     await waitFor(() => expect(result.current.groups.length).toBeGreaterThan(0));
 
     rerender({ input: '' });
-    expect(result.current.groups).toEqual([]);
+    expect(result.current.groups).toHaveLength(2); // Type + Status
+    expect(result.current.groups[0].type).toBe('entryType');
     expect(result.current.loading).toBe(false);
   });
 });

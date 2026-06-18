@@ -5,7 +5,7 @@ import type { BookListFilter } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 
 export type Suggestion = {
-  type: 'status' | 'author' | 'series' | 'book' | 'subject';
+  type: 'entryType' | 'status' | 'author' | 'series' | 'book' | 'subject';
   label: string;
   value: string;
   additive: boolean;
@@ -25,6 +25,11 @@ type ServerGroup = {
   items: ServerItem[];
 };
 
+const TYPE_OPTIONS: { label: string; value: 'series' | 'standalone' }[] = [
+  { label: 'Series', value: 'series' },
+  { label: 'Single books', value: 'standalone' },
+];
+
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'Not Started', value: 'not-started' },
   { label: 'In Progress', value: 'in-progress' },
@@ -32,6 +37,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
 ];
 
 const GROUP_LABEL: Record<Suggestion['type'], string> = {
+  entryType: 'Type',
   status: 'Status',
   author: 'Author',
   series: 'Series',
@@ -60,7 +66,7 @@ export function useSearchSuggestions(
 
   // Destructure filter fields as primitive deps so the effect does not re-fire
   // when the caller passes a new object literal with identical values.
-  const { status, author, seriesName, subjects } = filter;
+  const { status, author, seriesName, subjects, entryType } = filter;
   // subjects is a string[] — serialize it so the dep compares by value rather
   // than reference. The effect reconstructs the array from this key.
   const subjectsKey = subjects?.join('\0') ?? '';
@@ -150,11 +156,42 @@ export function useSearchSuggestions(
     };
   }, [inputValue, status, author, seriesName, subjectsKey, withTargetUser]);
 
-  // When input is empty, short-circuit to idle state — avoids calling setState
-  // inside the effect body (react-hooks/set-state-in-effect).
+  // When input is empty, return static quick-pick groups (Type and/or Status)
+  // so the dropdown shows useful options on focus. Both are omitted when the
+  // corresponding filter is already active.
   const query = inputValue.trim();
-  return {
-    groups: query ? groups : [],
-    loading: query ? loading : false,
-  };
+  if (!query) {
+    const emptyGroups: SuggestionGroup[] = [];
+    if (!entryType) {
+      emptyGroups.push({
+        type: 'entryType',
+        label: GROUP_LABEL.entryType,
+        items: TYPE_OPTIONS.map((opt) => ({
+          type: 'entryType' as const,
+          label: opt.label,
+          value: opt.value,
+          additive: false,
+          matchStart: 0,
+          matchLength: 0,
+        })),
+      });
+    }
+    if (!status) {
+      emptyGroups.push({
+        type: 'status',
+        label: GROUP_LABEL.status,
+        items: STATUS_OPTIONS.map((opt) => ({
+          type: 'status' as const,
+          label: opt.label,
+          value: opt.value,
+          additive: false,
+          matchStart: 0,
+          matchLength: 0,
+        })),
+      });
+    }
+    return { groups: emptyGroups, loading: false };
+  }
+
+  return { groups, loading };
 }
