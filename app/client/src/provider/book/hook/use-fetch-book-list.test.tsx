@@ -286,4 +286,19 @@ describe('useFetchBookList', () => {
     await act(() => result.current());
     expect(fetch).toHaveBeenCalledWith('/api/books?take=20', {});
   });
+
+  it('appends entryType filter param to URL when bookListFilter.entryType is set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeResponse([])),
+      })
+    );
+    const { result } = renderHook(() => useFetchBookList(), {
+      wrapper: makeWrapper({ bookListFilter: { entryType: 'series' } }),
+    });
+    await act(() => result.current());
+    expect(fetch).toHaveBeenCalledWith('/api/books?entryType=series&take=20', {});
+  });
 });

@@ -41,6 +41,7 @@ export const useFetchBookList = (): FetchBookList => {
       for (const subject of bookListFilter.subjects ?? []) {
         params.append('subjects', subject);
       }
+      if (bookListFilter.entryType) params.append('entryType', bookListFilter.entryType);
       params.append('take', '20');
       const response = await apiFetch(withTargetUser(`/api/books?${params.toString()}`));
       if (!response.ok) throw new Error('Failed to fetch books');
