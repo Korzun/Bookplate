@@ -981,8 +981,8 @@ export class BookStore {
     // Fetch take+1 from each source so we can detect whether another page exists
     const fetchLimit = take + 1;
 
-    const includeStandalones = filters?.seriesName === undefined;
-    const includeSeries = true;
+    const includeStandalones = filters?.seriesName === undefined && filters?.entryType !== 'series';
+    const includeSeries = filters?.entryType !== 'standalone';
 
     // Pre-fetch progress only when status filter applies to standalone books.
     // Series status is computed at the DB level by seriesIdsForStatus().

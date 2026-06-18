@@ -89,6 +89,7 @@ export type BookListFilters = {
   seriesName?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
+  entryType?: 'series' | 'standalone';
 };
 
 export type SearchSuggestionsResponse = {

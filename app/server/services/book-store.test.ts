@@ -2535,6 +2535,67 @@ describe('listBooksPage with filters', () => {
     });
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
+
+  it('entryType=series returns only series display units', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { entryType: 'series' });
+    expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+    expect(result.books).toHaveLength(1);
+    expect(result.books[0].id).toBe('b2');
+  });
+
+  it('entryType=standalone returns only standalone display units', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { entryType: 'standalone' });
+    expect(result.items).toEqual([{ type: 'standalone', bookId: 'b1' }]);
+    expect(result.books).toHaveLength(1);
+    expect(result.books[0].id).toBe('b1');
+  });
+
+  it('no entryType filter returns both series and standalone display units', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+      seriesIndex: 0,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    const result = await bookStore.listBooksPage(OWNER, null, 20, {});
+    expect(result.items).toHaveLength(2);
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        { type: 'series', seriesName: 'Dune' },
+        { type: 'standalone', bookId: 'b1' },
+      ])
+    );
+  });
 });
 
 describe('series aggregate metadata', () => {
