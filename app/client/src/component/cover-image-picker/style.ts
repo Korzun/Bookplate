@@ -10,7 +10,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     width: '32px',
     height: '32px',
     flexShrink: 0,
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.md,
     overflow: 'hidden',
     border: `1px solid ${theme.color.border.default}`,
     background: theme.color.border.light,
@@ -35,7 +35,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.color.text.primary,
-    flexGrow: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -43,16 +42,19 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   noFile: {
     fontSize: theme.fontSize.sm,
     color: theme.color.text.faint,
-    flexGrow: 1,
   },
   size: {
     fontSize: theme.fontSize.xs,
     color: theme.color.text.faint,
     whiteSpace: 'nowrap',
   },
-  actions: {
+  thumbDetails: {
     display: 'flex',
-    gap: theme.space.sm,
-    marginTop: theme.space.xs,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: theme.space.xxs,
+    flexGrow: 1,
+    position: 'relative',
+    top: '-1px',
   },
 }));

@@ -43,7 +43,7 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
     if (inputRef.current) inputRef.current.value = '';
   }, [onChange]);
 
-  const sizeLabel = value ? `${(value.size / 1_048_576).toFixed(1)} MB` : '—';
+  const sizeLabel = value ? `${(value.size / 1_048_576).toFixed(1)} MB` : null;
 
   return (
     <Card title="Cover Image">
@@ -64,19 +64,19 @@ export const CoverImagePicker = ({ value, onChange }: Props) => {
             </div>
           )}
         </div>
-        {value ? (
-          <div className={styles.filename}>{value.name}</div>
-        ) : (
-          <div className={styles.noFile}>No image selected</div>
-        )}
-        <div className={styles.size}>{sizeLabel}</div>
-      </div>
-      <div className={styles.actions}>
+        <div className={styles.thumbDetails}>
+          {value ? (
+            <div className={styles.filename}>{value.name}</div>
+          ) : (
+            <div className={styles.noFile}>No new image selected</div>
+          )}
+          <div className={styles.size}>{sizeLabel}</div>
+        </div>
         <Button radius="card" onClick={handleChoose}>
-          {value ? 'Change…' : 'Choose image…'}
+          {value ? 'Change' : 'Choose'} image…
         </Button>
         {value && (
-          <Button radius="card" onClick={handleClear}>
+          <Button danger radius="card" onClick={handleClear}>
             Clear
           </Button>
         )}
