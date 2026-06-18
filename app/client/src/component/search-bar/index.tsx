@@ -56,6 +56,8 @@ function applySelection(filter: BookListFilter, suggestion: Suggestion): BookLis
       return { ...filter, seriesName: suggestion.value };
     case 'subject':
       return { ...filter, subjects: [...(filter.subjects ?? []), suggestion.value] };
+    case 'book':
+      return filter;
   }
 }
 
