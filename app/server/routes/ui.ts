@@ -408,7 +408,7 @@ export function createUiRouter(
     const owner = await resolveOwner(req, res);
     if (!owner) return;
 
-    const { cursor, take, status, query, author, seriesName, subjects } = req.query;
+    const { cursor, take, status, query, author, seriesName, subjects, entryType } = req.query;
 
     if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
       res.status(400).json({
@@ -416,6 +416,9 @@ export function createUiRouter(
       });
       return;
     }
+
+    const entryTypeValue =
+      entryType === 'series' || entryType === 'standalone' ? entryType : undefined;
 
     const queryValue = typeof query === 'string' && query ? query : undefined;
     const authorValue = typeof author === 'string' && author ? author : undefined;
@@ -431,13 +434,15 @@ export function createUiRouter(
       queryValue !== undefined ||
       authorValue !== undefined ||
       seriesNameValue !== undefined ||
-      subjectsValue.length > 0
+      subjectsValue.length > 0 ||
+      entryTypeValue !== undefined
         ? {
             status: status as BookListFilters['status'],
             query: queryValue,
             author: authorValue,
             seriesName: seriesNameValue,
             subjects: subjectsValue.length > 0 ? subjectsValue : undefined,
+            entryType: entryTypeValue,
           }
         : undefined;
 
