@@ -6,7 +6,6 @@ export const useStyle = createUseStyles((theme: Theme) => {
     border: `1.5px dashed ${theme.color.brand.outline}`,
     padding: theme.space.xxxxxl,
     textAlign: 'center' as const,
-    cursor: 'pointer',
     transition: `background 0.15s`, // drop-zone-specific quick transition; not on theme scale
   };
 
