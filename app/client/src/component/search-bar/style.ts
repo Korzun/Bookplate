@@ -115,19 +115,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     from: { transform: 'rotate(0deg)' },
     to: { transform: 'rotate(360deg)' },
   },
-  dropdownLoading: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: `${theme.space.xxl} 0`,
-  },
-  dropdownSpinner: {
-    width: 16,
-    height: 16,
+  searchSpinner: {
+    width: 18,
+    height: 18,
     border: `2px solid ${theme.color.border.default}`,
     borderTopColor: theme.color.text.faint,
     borderRadius: '50%',
     animation: '$spin 0.6s linear infinite',
+    flexShrink: 0,
   },
   dropdown: {
     position: 'absolute',
