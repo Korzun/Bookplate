@@ -9,7 +9,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.space.xs,
-    padding: theme.space.xs,
+    padding: theme.space.md,
+    fontSize: theme.fontSize.sm,
     backgroundColor: theme.color.bg.input,
     border: `1px solid ${theme.color.border.default}`,
     borderRadius: theme.radius.md,
@@ -26,7 +27,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     padding: `${theme.space.xxs} ${theme.space.sm}`,
     backgroundColor: theme.color.brand.light,
     borderRadius: theme.radius.sm,
-    fontSize: theme.fontSize.sm,
+    fontSize: 'inherit',
     color: theme.color.text.primary,
     lineHeight: theme.lineHeight.tight,
   },
@@ -38,10 +39,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     padding: 0,
     cursor: 'pointer',
     color: theme.color.text.muted,
-    fontSize: theme.fontSize.md,
     lineHeight: 1,
     '&:hover': {
       color: theme.color.danger.default,
+    },
+    '& > svg': {
+      height: theme.fontSize.sm,
+      width: theme.fontSize.sm,
     },
   },
   input: {
@@ -53,7 +57,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.primary,
     flexGrow: 1,
     minWidth: '8rem',
-    padding: `${theme.space.xxs} ${theme.space.xs}`,
+    // padding: `0 ${theme.space.xs}`,
   },
   dropdown: {
     position: 'absolute',
