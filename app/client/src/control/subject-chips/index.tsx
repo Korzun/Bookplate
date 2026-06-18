@@ -1,6 +1,8 @@
 import cx from 'classnames';
 import { useState } from 'react';
 
+import { XIcon } from '~/icon';
+
 import { useStyle } from './style';
 
 type Props = {
@@ -65,7 +67,7 @@ export const SubjectChips = ({ value, suggestions, onChange }: Props) => {
               aria-label={`Remove ${subject}`}
               onClick={() => removeSubject(subject)}
             >
-              ×
+              <XIcon />
             </button>
           </span>
         ))}
