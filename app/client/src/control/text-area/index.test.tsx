@@ -44,3 +44,30 @@ it('does not set height on the textarea when autoResize is false', () => {
   const el = screen.getByRole('textbox') as HTMLTextAreaElement;
   expect(el.style.height).toBe('');
 });
+
+it('does not show counter when maxLength is not provided', () => {
+  renderWithProviders(<TextArea name="desc" value={'a'.repeat(95)} />);
+  expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument();
+});
+
+it('does not show counter when remaining characters exceed threshold', () => {
+  renderWithProviders(<TextArea name="desc" value={'a'.repeat(40)} maxLength={500} />);
+  expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument();
+});
+
+it('shows counter when remaining characters are within 10% threshold', () => {
+  renderWithProviders(<TextArea name="desc" value={'a'.repeat(460)} maxLength={500} />);
+  expect(screen.getByText('460/500')).toBeInTheDocument();
+});
+
+it('shows counter within 50-char window even when > 10% remains (50-char floor)', () => {
+  // maxLength=200: 10% = 20, threshold = max(20, 50) = 50; remaining = 45 → shows
+  renderWithProviders(<TextArea name="desc" value={'a'.repeat(155)} maxLength={200} />);
+  expect(screen.getByText('155/200')).toBeInTheDocument();
+});
+
+it('does not show counter when remaining characters exceed threshold', () => {
+  // maxLength=1000: threshold = max(100, 50) = 100; remaining = 150 → hidden
+  renderWithProviders(<TextArea name="desc" value={'a'.repeat(850)} maxLength={1000} />);
+  expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument();
+});

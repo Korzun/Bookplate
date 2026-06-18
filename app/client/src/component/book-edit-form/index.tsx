@@ -184,6 +184,7 @@ export const BookEditForm = ({ original, id }: Props) => {
           name="description"
           layout="vertical"
           onChange={handleDescriptionChange}
+          maxLength={3000}
           autoResize
         />
       </Card>
