@@ -16,7 +16,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
         minWidth: '6rem',
         textAlign: 'right',
       },
-      '& $input': { flexGrow: 1 },
+      '& $textareaWrapper': { flexGrow: 1 },
     },
     '&$vertical': {
       display: 'flex',
@@ -27,7 +27,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
         marginTop: theme.space.xs,
         marginLeft: theme.space.md,
       },
-      '& $input': { flexGrow: 1 },
+      '& $textareaWrapper': { flexGrow: 1 },
     },
     '&$inline': {
       display: 'inline-flex',
@@ -53,8 +53,23 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       borderRadius: theme.radius.md,
     },
     '&$autoResize': {
-      overflowY: 'hidden'
+      overflowY: 'hidden',
     },
+  },
+  textareaWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  counter: {
+    alignSelf: 'flex-end',
+    fontSize: theme.fontSize.xxs,
+    color: theme.color.text.faint,
+    padding: `${theme.space.xxs} ${theme.space.sm}`,
+    lineHeight: theme.lineHeight.tight,
+    userSelect: 'none',
+  },
+  counterDanger: {
+    color: theme.color.danger.default,
   },
   danger: {},
   horizontal: {},

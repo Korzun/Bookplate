@@ -7,6 +7,7 @@ export type TextAreaProps = {
   autoResize?: boolean;
   label?: string;
   layout?: 'horizontal' | 'vertical' | 'inline';
+  maxLength?: number;
   name: string;
   onChange?: (newValue: string | undefined) => void;
   onValidChange?: (fieldName: string, newValid: boolean) => void;
@@ -20,6 +21,7 @@ export const TextArea = ({
   autoResize = false,
   label,
   layout = 'horizontal',
+  maxLength,
   name,
   onChange = () => {},
   onValidChange = () => {},
@@ -67,20 +69,33 @@ export const TextArea = ({
     el.style.height = `${el.scrollHeight}px`;
   }, [autoResize, internalValue]);
 
+  const currentLength = (internalValue ?? '').length;
+  const remaining = maxLength !== undefined ? maxLength - currentLength : undefined;
+  const showCounter =
+    remaining !== undefined && remaining <= Math.max(Math.floor((maxLength ?? 0) * 0.1), 50);
+
   return (
     <div className={cx(style.root, style[layout])}>
       {label && (
         <label className={cx(style.label, { [`${style.danger}`]: !isValid })}>{label}</label>
       )}
-      <textarea
-        className={cx(style.input, style[variant], {[style.autoResize]: autoResize})}
-        name={name}
-        onChange={handleValueChange}
-        placeholder={placeholder}
-        ref={ref}
-        style={{ minHeight: autoResize ? '7rem' : '10rem' }}
-        value={internalValue}
-      />
+      <div className={style.textareaWrapper}>
+        <textarea
+          className={cx(style.input, style[variant], { [style.autoResize]: autoResize })}
+          maxLength={maxLength}
+          name={name}
+          onChange={handleValueChange}
+          placeholder={placeholder}
+          ref={ref}
+          style={{ minHeight: autoResize ? '7rem' : '10rem' }}
+          value={internalValue}
+        />
+        {showCounter && (
+          <span className={cx(style.counter, remaining === 0 && style.counterDanger)}>
+            {currentLength}/{maxLength}
+          </span>
+        )}
+      </div>
     </div>
   );
 };
