@@ -112,6 +112,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     background: theme.color.chip.subject.bg,
     borderColor: theme.color.chip.subject.border,
   },
+  chipEntryType: {
+    color: '#c0415e',
+    background: 'rgba(192, 65, 94, 0.08)',
+    borderColor: 'rgba(192, 65, 94, 0.22)',
+  },
   '@keyframes spin': {
     from: { transform: 'rotate(0deg)' },
     to: { transform: 'rotate(360deg)' },
@@ -188,6 +193,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dropdownItemTypeSubject: {
     color: theme.color.chip.subject.text,
     background: theme.color.chip.subject.bg,
+  },
+  dropdownItemTypeEntryType: {
+    color: '#c0415e',
+    background: 'rgba(192, 65, 94, 0.08)',
   },
   dropdownItemText: { flex: 1, minWidth: 0 },
   dropdownItemMatch: { fontWeight: theme.fontWeight.bold },

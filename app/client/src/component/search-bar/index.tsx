@@ -18,6 +18,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 type ChipDef =
+  | { kind: 'entryType'; value: 'Series' | 'Single books' }
   | { kind: 'status'; value: string }
   | { kind: 'author'; value: string }
   | { kind: 'series'; value: string }
@@ -25,6 +26,11 @@ type ChipDef =
 
 function filterToChips(filter: BookListFilter): ChipDef[] {
   const chips: ChipDef[] = [];
+  if (filter.entryType)
+    chips.push({
+      kind: 'entryType',
+      value: filter.entryType === 'series' ? 'Series' : 'Single books',
+    });
   if (filter.status)
     chips.push({ kind: 'status', value: STATUS_LABELS[filter.status] ?? filter.status });
   if (filter.author) chips.push({ kind: 'author', value: filter.author });
@@ -35,6 +41,8 @@ function filterToChips(filter: BookListFilter): ChipDef[] {
 
 function removeChip(filter: BookListFilter, chip: ChipDef): BookListFilter {
   switch (chip.kind) {
+    case 'entryType':
+      return { ...filter, entryType: undefined };
     case 'status':
       return { ...filter, status: undefined };
     case 'author':
@@ -48,6 +56,8 @@ function removeChip(filter: BookListFilter, chip: ChipDef): BookListFilter {
 
 function applySelection(filter: BookListFilter, suggestion: Suggestion): BookListFilter {
   switch (suggestion.type) {
+    case 'entryType':
+      return { ...filter, entryType: suggestion.value as 'series' | 'standalone' };
     case 'status':
       return { ...filter, status: suggestion.value as BookListFilter['status'] };
     case 'author':
@@ -78,6 +88,7 @@ function renderHighlighted(
 }
 
 const TYPE_CHIP_CLASS: Record<ChipDef['kind'], string> = {
+  entryType: 'chipEntryType',
   status: 'chipStatus',
   author: 'chipAuthor',
   series: 'chipSeries',
@@ -85,6 +96,7 @@ const TYPE_CHIP_CLASS: Record<ChipDef['kind'], string> = {
 };
 
 const TYPE_CHIP_LABEL: Record<ChipDef['kind'], string> = {
+  entryType: 'Type',
   status: 'Status',
   author: 'Author',
   series: 'Series',
@@ -92,6 +104,7 @@ const TYPE_CHIP_LABEL: Record<ChipDef['kind'], string> = {
 };
 
 const TYPE_DROPDOWN_CLASS: Record<Suggestion['type'], string> = {
+  entryType: 'dropdownItemTypeEntryType',
   status: 'dropdownItemTypeStatus',
   author: 'dropdownItemTypeAuthor',
   series: 'dropdownItemTypeSeries',
@@ -249,7 +262,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
           placeholder={
             chips.length > 0
               ? 'Search titles…'
-              : 'Search by title, author, series, subject, or status…'
+              : 'Search by title, author, series, subject, status, or type…'
           }
           value={inputValue}
           onChange={(e) => {
