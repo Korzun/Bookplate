@@ -42,6 +42,7 @@ export const useFetchNextPage = (): FetchNextPage => {
       for (const subject of bookListFilter.subjects ?? []) {
         params.append('subjects', subject);
       }
+      if (bookListFilter.entryType) params.append('entryType', bookListFilter.entryType);
       params.append('take', '20');
       const url = withTargetUser(`/api/books?${params.toString()}`);
       const response = await apiFetch(url);

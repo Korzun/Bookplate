@@ -17,6 +17,8 @@ function filterFromSearchParams(params: URLSearchParams): BookListFilter {
     filter.status = status;
   const subjects = params.getAll('subjects');
   if (subjects.length > 0) filter.subjects = subjects;
+  const entryType = params.get('entryType');
+  if (entryType === 'series' || entryType === 'standalone') filter.entryType = entryType;
   return filter;
 }
 
@@ -27,6 +29,7 @@ export function filterToSearchParams(filter: BookListFilter): URLSearchParams {
   if (filter.seriesName) params.set('seriesName', filter.seriesName);
   if (filter.status) params.set('status', filter.status);
   for (const s of filter.subjects ?? []) params.append('subjects', s);
+  if (filter.entryType) params.set('entryType', filter.entryType);
   return params;
 }
 
@@ -36,6 +39,7 @@ function filtersEqual(a: BookListFilter, b: BookListFilter): boolean {
     a.author === b.author &&
     a.seriesName === b.seriesName &&
     a.status === b.status &&
+    a.entryType === b.entryType &&
     JSON.stringify([...(a.subjects ?? [])].sort()) ===
       JSON.stringify([...(b.subjects ?? [])].sort())
   );

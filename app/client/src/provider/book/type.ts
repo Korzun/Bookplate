@@ -38,6 +38,7 @@ export type BookListFilter = {
   seriesName?: string;
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
+  entryType?: 'series' | 'standalone';
 };
 
 export type BookSummary = Omit<
