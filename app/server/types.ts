@@ -94,7 +94,7 @@ export type BookListFilters = {
 export type SearchSuggestionsResponse = {
   groups: Array<{
     type: 'author' | 'series' | 'book' | 'subject';
-    items: Array<{ label: string; value: string }>;
+    items: Array<{ label: string; value: string; matchStart: number; matchLength: number }>;
   }>;
 };
 
