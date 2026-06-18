@@ -73,7 +73,7 @@ export const TextArea = ({
         <label className={cx(style.label, { [`${style.danger}`]: !isValid })}>{label}</label>
       )}
       <textarea
-        className={cx(style.input, style[variant])}
+        className={cx(style.input, style[variant], {[style.autoResize]: autoResize})}
         name={name}
         onChange={handleValueChange}
         placeholder={placeholder}
