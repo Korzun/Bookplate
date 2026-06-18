@@ -115,6 +115,16 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
 
   const { groups, loading: suggestionsLoading } = useSearchSuggestions(inputValue, filter);
   const flatSuggestions: Suggestion[] = groups.flatMap((g: SuggestionGroup) => g.items);
+  const [showSpinner, setShowSpinner] = useState(false);
+
+  useEffect(() => {
+    if (!suggestionsLoading) return;
+    const timer = setTimeout(() => setShowSpinner(true), 150);
+    return () => {
+      clearTimeout(timer);
+      setShowSpinner(false);
+    };
+  }, [suggestionsLoading]);
 
   const chips = filterToChips(filter);
   const hasAnyActive = chips.length > 0 || !!filter.query;
@@ -228,7 +238,7 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
         </>
       )}
       <div className={style.inputRow}>
-        {suggestionsLoading ? (
+        {showSpinner ? (
           <div className={style.searchSpinner} role="status" aria-label="Searching" />
         ) : (
           <SearchIcon aria-hidden={true} className={style.searchIcon} height={18} width={18} />
