@@ -32,7 +32,22 @@ Generate thumbnails at **2× the CSS pixel dimensions** for retina-crisp renderi
 | `app/client/src/component/book-row/index.tsx` | Request `?width=86` (was 60) |
 | `app/client/src/component/cover-stack/index.tsx` | `thumbnailWidth={160}` (was 170) |
 | `app/client/src/page/book/index.tsx` | Request `?width=160` (was 170) |
+| `app/server/services/thumbnail-queue.ts` | Add logging (see below) |
 | `app/server/routes/ui.test.ts` | Update fixture `thumbnailWidths: [60, 170]` → `[86, 160]` |
+
+## Logging Changes (`thumbnail-queue.ts`)
+
+**Successful generation** — `processJob()` logs after `saveThumbnail` succeeds:
+```
+Generated 86px thumbnail for book <bookId>
+```
+
+**Width-change detection** — `start()` uses the count returned by `pruneThumbnails` (already returns `number`). `reconcile()` is changed to return `{ bookCount: number }` (unique books with missing thumbnails) instead of logging internally. `start()` emits a single combined log when a width change is detected:
+```
+Thumbnail widths changed — regenerating covers for 42 book(s) (pruned 84 stale thumbnails)
+```
+
+`reconcile()` no longer logs on its own — the `/scan` route already logs its own summary after calling `reconcile()`, so that path is covered.
 
 ## Migration
 
