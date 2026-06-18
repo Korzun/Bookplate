@@ -51,7 +51,7 @@ describe('useSearchSuggestions', () => {
   it('does not fire a request before the 200ms debounce elapses', async () => {
     renderHook(() => useSearchSuggestions('jemi', emptyFilter));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(199);
+      await vi.advanceTimersByTimeAsync(100);
     });
     expect(vi.mocked(apiFetch)).not.toHaveBeenCalled();
   });

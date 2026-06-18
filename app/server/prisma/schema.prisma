@@ -50,6 +50,7 @@ model Series {
   author     String @default("")
   publisher  String @default("")
   totalPages Int    @default(0) @map("total_pages")
+  totalSize  Int    @default(0) @map("total_size")
   user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   books      Book[]
 

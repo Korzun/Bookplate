@@ -18,6 +18,7 @@ const makeMeta = () => ({
   author: 'Frank Herbert',
   publisher: 'Chilton',
   totalPages: 668,
+  totalSize: 2097152,
 });
 
 describe('useSeries', () => {
@@ -60,6 +61,7 @@ describe('useSeries', () => {
     expect(data?.author).toBe('Frank Herbert');
     expect(data?.publisher).toBe('Chilton');
     expect(data?.totalPages).toBe(668);
+    expect(data?.totalSize).toBe(2097152);
   });
 
   it('returns error state when fetch fails', async () => {

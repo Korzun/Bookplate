@@ -1,0 +1,1 @@
+ALTER TABLE "series" ADD COLUMN "total_size" INTEGER NOT NULL DEFAULT 0;

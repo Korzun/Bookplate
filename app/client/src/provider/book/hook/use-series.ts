@@ -10,6 +10,7 @@ export type SeriesMeta = {
   author: string;
   publisher: string;
   totalPages: number;
+  totalSize: number;
 };
 
 export type UseSeries =

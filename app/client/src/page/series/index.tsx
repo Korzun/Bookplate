@@ -14,6 +14,7 @@ import { useIsAdmin } from '~/provider/auth';
 import { useSeries, useSeriesBookList } from '~/provider/book';
 import { useMySeriesProgress } from '~/provider/progress';
 import { path } from '~/router';
+import { formatSize } from '~/utils';
 
 import { useStyle } from './style';
 
@@ -62,6 +63,9 @@ export const SeriesPage = () => {
   metadata.push({ title: 'books', value: series.bookCount });
   if (series.totalPages > 0) {
     metadata.push({ title: 'pages', value: series.totalPages });
+  }
+  if (series.totalSize > 0) {
+    metadata.push({ title: 'size', value: formatSize(series.totalSize) });
   }
   if (series.publisher) {
     metadata.push({ title: 'publisher', value: series.publisher });

@@ -749,6 +749,7 @@ export class BookStore {
     author: string;
     publisher: string;
     totalPages: number;
+    totalSize: number;
   } | null> {
     const row = await this.prisma.series.findUnique({
       where: { userId_name: { userId: owner.userId, name } },
@@ -759,6 +760,7 @@ export class BookStore {
         author: true,
         publisher: true,
         totalPages: true,
+        totalSize: true,
       },
     });
     if (!row) return null;
@@ -776,6 +778,7 @@ export class BookStore {
       author: row.author,
       publisher: row.publisher,
       totalPages: row.totalPages,
+      totalSize: row.totalSize,
     };
   }
 
@@ -1153,12 +1156,13 @@ export class BookStore {
   ): Promise<void> {
     const books = await client.book.findMany({
       where: { seriesId },
-      select: { subjects: true, author: true, publisher: true, pageCount: true },
+      select: { subjects: true, author: true, publisher: true, pageCount: true, size: true },
       orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
     });
 
     const bookCount = books.length;
     const totalPages = books.reduce((sum, b) => sum + b.pageCount, 0);
+    const totalSize = books.reduce((sum, b) => sum + b.size, 0);
 
     const seenSubjects = new Map<string, string>();
     for (const book of books) {
@@ -1196,7 +1200,14 @@ export class BookStore {
 
     await client.series.update({
       where: { id: seriesId },
-      data: { subjects: JSON.stringify(subjects), bookCount, author, publisher, totalPages },
+      data: {
+        subjects: JSON.stringify(subjects),
+        bookCount,
+        author,
+        publisher,
+        totalPages,
+        totalSize,
+      },
     });
   }
 
