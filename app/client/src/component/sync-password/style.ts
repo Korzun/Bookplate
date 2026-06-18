@@ -5,9 +5,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    borderRadius: theme.radius.md,
-    padding: `${theme.space.xl} ${theme.space.xxl}`,
-    backgroundColor: theme.color.bg.input,
   },
   pillIcon: {
     flexShrink: 0,
