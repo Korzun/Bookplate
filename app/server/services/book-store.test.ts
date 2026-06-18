@@ -2115,7 +2115,9 @@ describe('getSearchSuggestions', () => {
     });
     const result = await bookStore.getSearchSuggestions(OWNER, { q: 'jemi', filter: {} });
     const authors = result.groups.find((g) => g.type === 'author');
-    expect(authors?.items).toEqual([{ label: 'N.K. Jemisin', value: 'N.K. Jemisin' }]);
+    expect(authors?.items).toEqual([
+      { label: 'N.K. Jemisin', value: 'N.K. Jemisin', matchStart: 5, matchLength: 4 },
+    ]);
   });
 
   it('returns matching series', async () => {
@@ -2129,7 +2131,9 @@ describe('getSearchSuggestions', () => {
     });
     const result = await bookStore.getSearchSuggestions(OWNER, { q: 'broken', filter: {} });
     const series = result.groups.find((g) => g.type === 'series');
-    expect(series?.items).toEqual([{ label: 'Broken Earth', value: 'Broken Earth' }]);
+    expect(series?.items).toEqual([
+      { label: 'Broken Earth', value: 'Broken Earth', matchStart: 0, matchLength: 6 },
+    ]);
   });
 
   it('returns matching book titles', async () => {
@@ -2143,7 +2147,9 @@ describe('getSearchSuggestions', () => {
     });
     const result = await bookStore.getSearchSuggestions(OWNER, { q: 'fifth', filter: {} });
     const books = result.groups.find((g) => g.type === 'book');
-    expect(books?.items).toEqual([{ label: 'The Fifth Season', value: 'b1' }]);
+    expect(books?.items).toEqual([
+      { label: 'The Fifth Season', value: 'b1', matchStart: 4, matchLength: 5 },
+    ]);
   });
 
   it('returns matching subjects', async () => {
@@ -2157,7 +2163,9 @@ describe('getSearchSuggestions', () => {
     });
     const result = await bookStore.getSearchSuggestions(OWNER, { q: 'fan', filter: {} });
     const subjects = result.groups.find((g) => g.type === 'subject');
-    expect(subjects?.items).toEqual([{ label: 'Fantasy', value: 'Fantasy' }]);
+    expect(subjects?.items).toEqual([
+      { label: 'Fantasy', value: 'Fantasy', matchStart: 0, matchLength: 3 },
+    ]);
   });
 
   it('excludes active subject chips from subject group', async () => {
@@ -2253,6 +2261,34 @@ describe('getSearchSuggestions', () => {
   it('returns empty groups for query that matches nothing', async () => {
     const result = await bookStore.getSearchSuggestions(OWNER, { q: 'zzznomatch', filter: {} });
     expect(result.groups).toEqual([]);
+  });
+
+  it('returns author matching initials abbreviation (NK J → N.K. Jemisin)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'The Fifth Season',
+      author: 'N.K. Jemisin',
+      series: '',
+      seriesIndex: 0,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'NK J', filter: {} });
+    const authors = result.groups.find((g) => g.type === 'author');
+    expect(authors?.items.map((i) => i.value)).toContain('N.K. Jemisin');
+  });
+
+  it('returns series matching single-char omission typo (Texcalaan → Teixcalaan)', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'A Memory Called Empire',
+      author: 'Arkady Martine',
+      series: 'Teixcalaan',
+      seriesIndex: 1,
+      subjects: [],
+    });
+    const result = await bookStore.getSearchSuggestions(OWNER, { q: 'Texcalaan', filter: {} });
+    const series = result.groups.find((g) => g.type === 'series');
+    expect(series?.items.map((i) => i.value)).toContain('Teixcalaan');
   });
 });
 

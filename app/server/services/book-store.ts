@@ -15,6 +15,7 @@ import {
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
+import { normalizeForSearch, toSubsequenceLike, computeMatchWindow, scoreAndRank } from '../utils/fuzzy-search';
 
 const log = logger('BookStore');
 
@@ -140,82 +141,121 @@ export class BookStore {
       filter: { author?: string; seriesName?: string; activeSubjects?: string[] };
     }
   ): Promise<SearchSuggestionsResponse> {
+    const normalizedQ = normalizeForSearch(q);
+    const likePat = toSubsequenceLike(normalizedQ);
     const groups: SearchSuggestionsResponse['groups'] = [];
 
     if (!filter.author) {
-      const rows = await this.prisma.book.groupBy({
-        by: ['author'],
-        where: {
-          userId: owner.userId,
-          author: { contains: q },
-          ...(filter.seriesName ? { series: filter.seriesName } : {}),
-        },
-        orderBy: { author: 'asc' },
-        take: 5,
-      });
-      if (rows.length > 0)
+      const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
+        SELECT DISTINCT author AS value
+        FROM books
+        WHERE user_id = ${owner.userId}
+          AND author LIKE ${likePat}
+          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
+        ORDER BY author
+        LIMIT 30
+      `;
+      const ranked = scoreAndRank(
+        rows.map((r) => ({ label: r.value, value: r.value })),
+        normalizedQ
+      );
+      if (ranked.length > 0)
         groups.push({
           type: 'author',
-          items: rows.map((r) => ({ label: r.author, value: r.author })),
+          items: ranked.map(({ label, value }) => ({
+            label,
+            value,
+            ...computeMatchWindow(q, label),
+          })),
         });
     }
 
     if (!filter.seriesName) {
-      const rows = await this.prisma.series.findMany({
-        where: {
-          userId: owner.userId,
-          name: { contains: q },
-          ...(filter.author ? { books: { some: { author: filter.author } } } : {}),
-        },
-        select: { name: true },
-        orderBy: { name: 'asc' },
-        take: 5,
-      });
-      if (rows.length > 0)
+      const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
+        SELECT s.name AS value
+        FROM series s
+        WHERE s.user_id = ${owner.userId}
+          AND s.name LIKE ${likePat}
+          ${
+            filter.author
+              ? Prisma.sql`AND EXISTS (
+                  SELECT 1 FROM books b
+                  WHERE b.series_id = s.id AND b.author = ${filter.author}
+                )`
+              : Prisma.empty
+          }
+        ORDER BY s.name
+        LIMIT 30
+      `;
+      const ranked = scoreAndRank(
+        rows.map((r) => ({ label: r.value, value: r.value })),
+        normalizedQ
+      );
+      if (ranked.length > 0)
         groups.push({
           type: 'series',
-          items: rows.map((r) => ({ label: r.name, value: r.name })),
+          items: ranked.map(({ label, value }) => ({
+            label,
+            value,
+            ...computeMatchWindow(q, label),
+          })),
         });
     }
 
     const [bookRows, subjectRows] = await Promise.all([
-      this.prisma.book.findMany({
-        where: {
-          userId: owner.userId,
-          title: { contains: q },
-          ...(filter.author ? { author: filter.author } : {}),
-          ...(filter.seriesName ? { series: filter.seriesName } : {}),
-        },
-        select: { id: true, title: true },
-        orderBy: { title: 'asc' },
-        take: 5,
-      }),
+      this.prisma.$queryRaw<Array<{ id: string; title: string }>>`
+        SELECT id, title
+        FROM books
+        WHERE user_id = ${owner.userId}
+          AND title LIKE ${likePat}
+          ${filter.author ? Prisma.sql`AND author = ${filter.author}` : Prisma.empty}
+          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
+        ORDER BY title
+        LIMIT 30
+      `,
       this.prisma.$queryRaw<Array<{ value: string }>>`
         SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
         FROM books, json_each(books.subjects)
         WHERE user_id = ${owner.userId}
-          AND LOWER(trim(CAST(json_each.value AS TEXT))) LIKE LOWER(${'%' + q + '%'})
+          AND LOWER(trim(CAST(json_each.value AS TEXT))) LIKE LOWER(${likePat})
           ${filter.author ? Prisma.sql`AND author = ${filter.author}` : Prisma.empty}
           ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
           AND json_each.type = 'text'
           AND trim(CAST(json_each.value AS TEXT)) <> ''
         ORDER BY value
-        LIMIT 5
+        LIMIT 30
       `,
     ]);
 
-    if (bookRows.length > 0)
+    const rankedBooks = scoreAndRank(
+      bookRows.map((r) => ({ label: r.title, value: r.id })),
+      normalizedQ
+    );
+    if (rankedBooks.length > 0)
       groups.push({
         type: 'book',
-        items: bookRows.map((r) => ({ label: r.title, value: r.id })),
+        items: rankedBooks.map(({ label, value }) => ({
+          label,
+          value,
+          ...computeMatchWindow(q, label),
+        })),
       });
 
     const activeSubjectSet = new Set(filter.activeSubjects ?? []);
-    const filteredSubjects = subjectRows.filter((r) => !activeSubjectSet.has(r.value));
-    if (filteredSubjects.length > 0)
+    const rankedSubjects = scoreAndRank(
+      subjectRows
+        .filter((r) => !activeSubjectSet.has(r.value))
+        .map((r) => ({ label: r.value, value: r.value })),
+      normalizedQ
+    );
+    if (rankedSubjects.length > 0)
       groups.push({
         type: 'subject',
-        items: filteredSubjects.map((r) => ({ label: r.value, value: r.value })),
+        items: rankedSubjects.map(({ label, value }) => ({
+          label,
+          value,
+          ...computeMatchWindow(q, label),
+        })),
       });
 
     return { groups };

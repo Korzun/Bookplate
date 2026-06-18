@@ -524,6 +524,7 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
         "author" TEXT NOT NULL DEFAULT '',
         "publisher" TEXT NOT NULL DEFAULT '',
         "total_pages" INTEGER NOT NULL DEFAULT 0,
+        "total_size" INTEGER NOT NULL DEFAULT 0,
         CONSTRAINT "series_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       )
     `);
@@ -643,5 +644,17 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     if (allSeries.length > 0) {
       log.info(`Data migration (series meta): backfilled ${allSeries.length} series`);
     }
+  });
+
+  // Data migration: add total_size column to series table for existing installs.
+  // Fresh installs get total_size via the CREATE TABLE in data_v12_series_table.
+  // The Prisma DDL migration (20260618140232_add_series_total_size) is a no-op
+  // because the series table is created by a data migration, not a DDL migration.
+  await runDataMigration(prisma, 'data_v14_series_total_size', async () => {
+    const seriesCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(series)`;
+    if (!seriesCols.some((c) => c.name === 'total_size')) {
+      await prisma.$executeRaw`ALTER TABLE series ADD COLUMN total_size INTEGER NOT NULL DEFAULT 0`;
+    }
+    log.info('Data migration (series total_size): column present');
   });
 }
