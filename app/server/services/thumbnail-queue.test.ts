@@ -131,6 +131,19 @@ describe('reconcile', () => {
     // bk4/60 should be untouched (was pre-existing)
     expect(mockResize).toHaveBeenCalledTimes(3);
   });
+
+  it('returns the number of unique books with missing thumbnails', async () => {
+    await bookStore.addBook(OWNER, 'bk_rc1', stage('bk_rc1'), FAKE_META);
+    await bookStore.addBook(OWNER, 'bk_rc2', stage('bk_rc2'), FAKE_META);
+    // bk_rc1 already has an 86px thumbnail
+    await bookStore.saveThumbnail(OWNER.userId, 'bk_rc1', 86, Buffer.from('x'), 'image/jpeg');
+
+    const queue = new ThumbnailQueue(bookStore, [86, 160], mockResize);
+    const { bookCount } = await queue.reconcile();
+
+    // bk_rc1 needs only 160px, bk_rc2 needs both — 2 unique books
+    expect(bookCount).toBe(2);
+  });
 });
 
 describe('start (prune + reconcile)', () => {

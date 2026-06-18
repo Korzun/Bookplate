@@ -15,7 +15,12 @@ import {
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
-import { normalizeForSearch, toSubsequenceLike, computeMatchWindow, scoreAndRank } from '../utils/fuzzy-search';
+import {
+  normalizeForSearch,
+  toSubsequenceLike,
+  computeMatchWindow,
+  scoreAndRank,
+} from '../utils/fuzzy-search';
 
 const log = logger('BookStore');
 

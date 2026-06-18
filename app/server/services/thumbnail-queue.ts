@@ -30,8 +30,13 @@ export class ThumbnailQueue {
 
   async start(): Promise<void> {
     if (this.running) return;
-    await this.bookStore.pruneThumbnails(this.widths);
-    await this.reconcile();
+    const pruned = await this.bookStore.pruneThumbnails(this.widths);
+    const { bookCount } = await this.reconcile();
+    if (pruned > 0) {
+      log.info(
+        `Thumbnail widths changed — regenerating covers for ${bookCount} book(s) (pruned ${pruned} stale thumbnail(s))`
+      );
+    }
     this.running = true;
     void this.processLoop();
   }
@@ -46,14 +51,12 @@ export class ThumbnailQueue {
     }
   }
 
-  async reconcile(): Promise<void> {
+  async reconcile(): Promise<{ bookCount: number }> {
     const missing = await this.bookStore.getMissingThumbnailPairs(this.widths);
     for (const pair of missing) {
       this.queue.push(pair);
     }
-    if (missing.length > 0) {
-      log.info(`Queued ${missing.length} missing thumbnail(s)`);
-    }
+    return { bookCount: new Set(missing.map((p) => p.bookId)).size };
   }
 
   async drainForTest(): Promise<void> {
@@ -96,6 +99,7 @@ export class ThumbnailQueue {
     try {
       const resized = await this.resize(cover.data, job.width);
       await this.bookStore.saveThumbnail(job.userId, job.bookId, job.width, resized, 'image/jpeg');
+      log.info(`Generated ${job.width}px thumbnail for book ${job.bookId}`);
     } catch (err: unknown) {
       log.warn(
         `Failed to generate ${job.width}px thumbnail for book ${job.bookId}: ${
