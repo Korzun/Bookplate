@@ -52,6 +52,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       borderStyle: 'none',
       borderRadius: theme.radius.md,
     },
+    '&$autoResize': {
+      overflowY: 'hidden'
+    },
   },
   danger: {},
   horizontal: {},
@@ -59,4 +62,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   inline: {},
   outlined: {},
   borderless: {},
+  autoResize: {},
 }));
