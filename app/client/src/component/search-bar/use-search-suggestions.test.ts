@@ -116,7 +116,12 @@ describe('useSearchSuggestions', () => {
 
   it('maps server author group and computes matchStart/matchLength', async () => {
     vi.mocked(apiFetch).mockResolvedValue(
-      makeResponse([{ type: 'author', items: [{ label: 'N.K. Jemisin', value: 'N.K. Jemisin' }] }])
+      makeResponse([
+        {
+          type: 'author',
+          items: [{ label: 'N.K. Jemisin', value: 'N.K. Jemisin', matchStart: 5, matchLength: 4 }],
+        },
+      ])
     );
     const { result } = renderHook(() => useSearchSuggestions('jemi', emptyFilter));
     await act(async () => {
@@ -124,14 +129,19 @@ describe('useSearchSuggestions', () => {
     });
     await waitFor(() => expect(result.current.loading).toBe(false));
     const authorGroup = result.current.groups.find((g) => g.type === 'author');
-    expect(authorGroup?.items[0].matchStart).toBe(5); // 'jemi' in 'n.k. jemisin' at index 5
+    expect(authorGroup?.items[0].matchStart).toBe(5); // provided by server
     expect(authorGroup?.items[0].matchLength).toBe(4);
     expect(authorGroup?.items[0].additive).toBe(false);
   });
 
   it('marks subject items as additive=true', async () => {
     vi.mocked(apiFetch).mockResolvedValue(
-      makeResponse([{ type: 'subject', items: [{ label: 'Fantasy', value: 'Fantasy' }] }])
+      makeResponse([
+        {
+          type: 'subject',
+          items: [{ label: 'Fantasy', value: 'Fantasy', matchStart: 0, matchLength: 3 }],
+        },
+      ])
     );
     const { result } = renderHook(() => useSearchSuggestions('fan', emptyFilter));
     await act(async () => {
@@ -157,9 +167,34 @@ describe('useSearchSuggestions', () => {
     expect(url).toContain('subjects=Fantasy');
   });
 
+  it('passes through server match positions without filtering by substring', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      makeResponse([
+        {
+          type: 'author',
+          items: [{ label: 'N.K. Jemisin', value: 'N.K. Jemisin', matchStart: 0, matchLength: 6 }],
+        },
+      ])
+    );
+    const { result } = renderHook(() => useSearchSuggestions('nk j', emptyFilter));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const authorGroup = result.current.groups.find((g) => g.type === 'author');
+    expect(authorGroup?.items).toHaveLength(1);
+    expect(authorGroup?.items[0].matchStart).toBe(0);
+    expect(authorGroup?.items[0].matchLength).toBe(6);
+  });
+
   it('resets groups to [] when inputValue becomes empty', async () => {
     vi.mocked(apiFetch).mockResolvedValue(
-      makeResponse([{ type: 'author', items: [{ label: 'N.K. Jemisin', value: 'N.K. Jemisin' }] }])
+      makeResponse([
+        {
+          type: 'author',
+          items: [{ label: 'N.K. Jemisin', value: 'N.K. Jemisin', matchStart: 5, matchLength: 4 }],
+        },
+      ])
     );
     const { result, rerender } = renderHook(
       ({ input }: { input: string }) => useSearchSuggestions(input, emptyFilter),

@@ -19,7 +19,7 @@ export type SuggestionGroup = {
   items: Suggestion[];
 };
 
-type ServerItem = { label: string; value: string };
+type ServerItem = { label: string; value: string; matchStart: number; matchLength: number };
 type ServerGroup = {
   type: 'author' | 'series' | 'book' | 'subject';
   items: ServerItem[];
@@ -122,12 +122,14 @@ export function useSearchSuggestions(
 
           for (const g of serverGroups) {
             const additive = g.type === 'subject';
-            const items: Suggestion[] = [];
-            for (const item of g.items) {
-              const info = matchInfo(item.label, query);
-              if (!info) continue;
-              items.push({ type: g.type, label: item.label, value: item.value, additive, ...info });
-            }
+            const items: Suggestion[] = g.items.map((item) => ({
+              type: g.type,
+              label: item.label,
+              value: item.value,
+              additive,
+              matchStart: item.matchStart,
+              matchLength: item.matchLength,
+            }));
             if (items.length > 0) {
               result.push({ type: g.type, label: GROUP_LABEL[g.type], items });
             }
