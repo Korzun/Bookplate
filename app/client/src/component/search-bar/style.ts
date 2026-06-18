@@ -6,6 +6,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     border: `1px solid ${theme.color.border.default}`,
     borderRadius: theme.radius.lg,
     position: 'relative',
+    boxShadow: theme.shadow.cardStack,
     '&:hover': { borderColor: theme.color.border.hover },
     '&$focused': { borderColor: theme.color.border.focus },
   },
