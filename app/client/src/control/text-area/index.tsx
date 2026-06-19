@@ -91,7 +91,12 @@ export const TextArea = ({
           value={internalValue}
         />
         {showCounter && (
-          <span className={cx(style.counter, remaining !== undefined && remaining <= 0 && style.counterDanger)}>
+          <span
+            className={cx(
+              style.counter,
+              remaining !== undefined && remaining <= 0 && style.counterDanger
+            )}
+          >
             {currentLength}/{maxLength}
           </span>
         )}
