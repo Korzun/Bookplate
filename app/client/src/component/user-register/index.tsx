@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
-import { Button, TextInput } from '~/control';
+import { Button, PasswordResultModal, TextInput } from '~/control';
 import { useToast } from '~/provider/toast';
 import { useRegisterUser } from '~/provider/user';
 
@@ -12,49 +12,49 @@ export const UserRegister = () => {
   const [registerUser, loading] = useRegisterUser();
   const showToast = useToast();
   const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
+  const [result, setResult] = useState<{ username: string; password: string } | null>(null);
 
   const handleRegisterUser = useCallback(async () => {
-    const ok = await registerUser(username, password);
-    if (ok) {
-      showToast('User registered', 'success');
-    } else {
+    const newPassword = await registerUser(username);
+    if (newPassword === null) {
       showToast('Registration failed', 'error');
+    } else {
+      setResult({ username, password: newPassword });
+      setUsername('');
     }
-  }, [registerUser, username, password, showToast]);
+  }, [registerUser, username, showToast]);
 
   const handleUsernameChange = useCallback((newValue: string | undefined) => {
     setUsername(newValue ?? '');
   }, []);
 
-  const handlePasswordChange = useCallback((newValue: string | undefined) => {
-    setPassword(newValue ?? '');
+  const handleDone = useCallback(() => {
+    setResult(null);
   }, []);
 
   return (
-    <Card title="Register new User">
-      <div className={styles.inputContainer}>
-        <TextInput
-          name="username"
-          value={username}
-          onChange={handleUsernameChange}
-          layout="horizontal"
-          label="Username"
-          autoComplete="off"
-        />
-        <TextInput
-          name="password"
-          password
-          value={password}
-          onChange={handlePasswordChange}
-          layout="horizontal"
-          label="Password"
-          autoComplete="off"
-        />
-      </div>
-      <Button type="primary" loading={loading} onClick={handleRegisterUser}>
-        {loading ? 'Registering…' : 'Register'}
-      </Button>
-    </Card>
+    <Fragment>
+      <Card title="Register new User">
+        <div className={styles.inputContainer}>
+          <TextInput
+            name="username"
+            value={username}
+            onChange={handleUsernameChange}
+            layout="horizontal"
+            label="Username"
+            autoComplete="off"
+          />
+        </div>
+        <Button type="primary" loading={loading} onClick={handleRegisterUser}>
+          {loading ? 'Registering…' : 'Register'}
+        </Button>
+      </Card>
+      <PasswordResultModal
+        isOpen={result !== null}
+        username={result?.username ?? ''}
+        password={result?.password ?? null}
+        onDone={handleDone}
+      />
+    </Fragment>
   );
 };

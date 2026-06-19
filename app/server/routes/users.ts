@@ -92,14 +92,9 @@ export function createUsersRouter(
   });
 
   router.post('/', async (req: Request, res: Response) => {
-    const { username, password } = req.body as { username?: string; password?: string };
-    if (
-      typeof username !== 'string' ||
-      typeof password !== 'string' ||
-      !username.trim() ||
-      !password.trim()
-    ) {
-      res.status(400).json({ error: 'Username and password are required' });
+    const { username } = req.body as { username?: string };
+    if (typeof username !== 'string' || !username.trim()) {
+      res.status(400).json({ error: 'Username is required' });
       return;
     }
     const trimmedUsername = username.trim();
@@ -116,16 +111,17 @@ export function createUsersRouter(
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
+    fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
+    const password = UserStore.generateLoginPassword();
     const passwordHash = await UserStore.hashLoginPassword(password);
-    const created = await userStore.createUser(trimmedUsername, passwordHash);
+    const created = await userStore.createUser(trimmedUsername, passwordHash, undefined, true);
     if (!created) {
       log.warn(`Registration failed — duplicate username "${trimmedUsername}"`);
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
-    fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
     log.info(`User "${trimmedUsername}" registered by admin`);
-    res.status(201).json({ username: trimmedUsername });
+    res.status(201).json({ username: trimmedUsername, password });
   });
 
   return router;

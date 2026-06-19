@@ -5,37 +5,37 @@ import { Context } from '../context';
 
 import { removeUserByUsername } from './util';
 
-export type RegisterUser = (username: string, password: string) => Promise<boolean>;
+export type RegisterUser = (username: string) => Promise<string | null>;
 export type UseRegisterUser =
-  | [RegisterUser, false, false, false, undefined] // Initial
-  | [RegisterUser, true, false, false, undefined] // Registering
-  | [RegisterUser, false, true, false, undefined] // Registered successfully
-  | [RegisterUser, false, false, true, undefined] // Unspecified error
-  | [RegisterUser, false, false, true, string]; // Specified error
+  | [RegisterUser, false, false, undefined] // Initial/ready
+  | [RegisterUser, true, false, undefined] // Registering
+  | [RegisterUser, false, true, undefined] // Unspecified error
+  | [RegisterUser, false, true, string]; // Specified error
 export const useRegisterUser = (): UseRegisterUser => {
   const { userList, setUserList } = useContext(Context);
   const [loading, setLoading] = useState<boolean>(false);
-  const [okay, setOkay] = useState<boolean>(false);
   const [error, setError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const registerUser = useCallback(
-    async (username: string, password: string): Promise<boolean> => {
-      setOkay(false);
-
-      if (!username.trim() || !password) {
+    async (username: string): Promise<string | null> => {
+      const normalizedUsername = username.trim();
+      if (!normalizedUsername) {
         setError(true);
-        setErrorMessage('Username and password are required');
-        return false;
+        setErrorMessage('Username is required');
+        return null;
       }
 
-      if (userList[username] !== undefined) {
+      if (userList[normalizedUsername] !== undefined) {
         setError(true);
         setErrorMessage('Username already taken');
-        return false;
+        return null;
       }
 
-      setUserList((prev) => ({ ...prev, [username]: { username, progressCount: 0 } }));
+      setUserList((prev) => ({
+        ...prev,
+        [normalizedUsername]: { username: normalizedUsername, progressCount: 0 },
+      }));
 
       try {
         setLoading(true);
@@ -45,20 +45,20 @@ export const useRegisterUser = (): UseRegisterUser => {
         const response = await apiFetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ username: normalizedUsername }),
         });
         if (response.status !== 201) throw new Error('Registration failed');
-        setOkay(true);
-        return true;
+        const data = (await response.json()) as { password: string };
+        return data.password;
       } catch (err) {
         setError(true);
-        setUserList((prev) => removeUserByUsername(username, prev));
+        setUserList((prev) => removeUserByUsername(normalizedUsername, prev));
         if (err instanceof Error) {
           setErrorMessage(err.message);
         } else {
           setErrorMessage('Registration failed');
         }
-        return false;
+        return null;
       } finally {
         setLoading(false);
       }
@@ -67,7 +67,7 @@ export const useRegisterUser = (): UseRegisterUser => {
   );
 
   return useMemo(
-    () => [registerUser, loading, okay, error, errorMessage] as UseRegisterUser,
-    [registerUser, loading, okay, error, errorMessage]
+    () => [registerUser, loading, error, errorMessage] as UseRegisterUser,
+    [registerUser, loading, error, errorMessage]
   );
 };

@@ -52,7 +52,8 @@ export class UserStore {
   async createUser(
     username: string,
     passwordHash: string | null,
-    syncPassword?: string
+    syncPassword?: string,
+    mustChangePassword?: boolean
   ): Promise<boolean> {
     try {
       await this.prisma.user.create({
@@ -61,6 +62,7 @@ export class UserStore {
           username,
           passwordHash,
           syncPassword: syncPassword ?? UserStore.generateSyncPassword(),
+          mustChangePassword: mustChangePassword ?? false,
         },
       });
       return true;

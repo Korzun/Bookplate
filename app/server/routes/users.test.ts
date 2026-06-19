@@ -243,7 +243,7 @@ describe('DELETE /api/users/:username', () => {
 
 describe('POST /api/users', () => {
   it('returns 401 without a token', async () => {
-    const res = await request(app).post('/api/users').send({ username: 'bob', password: 'pass' });
+    const res = await request(app).post('/api/users').send({ username: 'bob' });
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Unauthorized' });
   });
@@ -251,27 +251,37 @@ describe('POST /api/users', () => {
   it("creates the user's library folder on disk", async () => {
     await request(app)
       .post('/api/users')
-      .send({ username: 'bob', password: 'secret' })
+      .send({ username: 'bob' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(fs.existsSync(path.join(booksRoot, 'bob'))).toBe(true);
   });
 
-  it('creates a user and returns 201', async () => {
+  it('creates a user with a generated password and returns 201', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bob', password: 'secret' })
+      .send({ username: 'bob' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(201);
     expect(res.body.username).toBe('bob');
+    expect(typeof res.body.password).toBe('string');
+    expect(res.body.password).toHaveLength(16);
     expect(await userStore.userExists('bob')).toBe(true);
-    expect(await userStore.validateUser('bob', 'secret')).toBeTruthy();
+    expect(await userStore.validateUser('bob', res.body.password)).toBeTruthy();
+  });
+
+  it('sets mustChangePassword on the newly created user', async () => {
+    await request(app)
+      .post('/api/users')
+      .send({ username: 'bob' })
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(await userStore.getMustChangePassword('bob')).toBe(true);
   });
 
   it('returns 409 for duplicate username', async () => {
     await userStore.createUser('bob', null);
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bob', password: 'other' })
+      .send({ username: 'bob' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('Username already exists');
@@ -280,43 +290,25 @@ describe('POST /api/users', () => {
   it('returns 400 when username is missing', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ password: 'pass' })
+      .send({})
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Username and password are required');
-  });
-
-  it('returns 400 when password is missing', async () => {
-    const res = await request(app)
-      .post('/api/users')
-      .send({ username: 'bob' })
-      .set('Authorization', `Bearer ${adminToken()}`);
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Username and password are required');
+    expect(res.body.error).toBe('Username is required');
   });
 
   it('returns 400 when username is blank', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: '   ', password: 'pass' })
+      .send({ username: '   ' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Username and password are required');
-  });
-
-  it('returns 400 when password is blank', async () => {
-    const res = await request(app)
-      .post('/api/users')
-      .send({ username: 'bob', password: '   ' })
-      .set('Authorization', `Bearer ${adminToken()}`);
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Username and password are required');
+    expect(res.body.error).toBe('Username is required');
   });
 
   it('returns 409 when username matches admin', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'admin', password: 'anything' })
+      .send({ username: 'admin' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(409);
   });
@@ -324,7 +316,7 @@ describe('POST /api/users', () => {
   it('rejects usernames with invalid characters', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bad/name', password: 'secret123' })
+      .send({ username: 'bad/name' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/letters, numbers/i);
@@ -333,7 +325,7 @@ describe('POST /api/users', () => {
   it('rejects usernames starting with a dot', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: '.staging', password: 'secret123' })
+      .send({ username: '.staging' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
   });
@@ -341,7 +333,7 @@ describe('POST /api/users', () => {
   it('accepts a valid username with dot and dash', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'jane.doe-2', password: 'secret123' })
+      .send({ username: 'jane.doe-2' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(201);
   });
@@ -449,7 +441,7 @@ describe('RBAC — regular user is forbidden from all /api/users routes', () => 
   it('POST /api/users returns 403 for regular user', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bob', password: 'pass' })
+      .send({ username: 'bob' })
       .set('Authorization', `Bearer ${userToken()}`);
     expect(res.status).toBe(403);
   });
