@@ -1,3 +1,38 @@
+## 1.2.3
+
+- feat: add surrogate NanoID primary key to users table
+- feat: self-service password change, sync/login split, and admin password reset
+- refactor: replace per-component toast state with ToastProvider + useToast
+- feat: switch web UI auth from sessions to JWTs with rotating refresh tokens
+- fix: reset bootstrapped ref on cleanup to unblock loading in StrictMode
+- fix: authenticated cover image loading via useAuthorizedSrc hook
+- fix: decode HTML entities in chapter titles from nav/NCX
+- feat: Add LoadingPage, improve UI nitpicks
+- Per-user libraries
+- feat: improve alignment and function of buttons on book page
+- feat: progress history — record sync dwell events per book
+- feat: infinite-scroll library pagination with Series index
+- feat: rename fileAs to titleSort, add authorSort and publishDate to book metadata
+- feat: subject chip typeahead in book edit form
+- feat: add type and status filters to Library page
+- feat: series aggregate metadata (subjects, bookCount, author, publisher, totalPages)
+- feat: redesign SyncPassword display as token pill
+- fix: allow SubjectChips dropdown to escape Card overflow clipping
+- feat: show loading spinner in LibraryPage during initial load
+- feat: add Select combobox control with subject filter
+- feat: add radius prop to Button; lighten card backgrounds
+- feat: replace native selects in filter-bar with custom Select
+- fix: clear-button height and subject filter param
+- fix: wire subject filter end-to-end through server and pagination
+- feat: CoverImagePicker — polished cover image upload with thumbnail preview
+- feat: replace FilterBar with type-ahead SearchBar
+- fix: search bar QA fixes
+- Search, filters, series metadata, and cover thumbnail improvements
+- feat: expand OPDS catalog with Author, Series, Subject, and Status browse feeds
+- fix: correct default thumbnail width and add run-tests skill
+- fix: rename JWT settings key from jwtSecret to jwt_secret
+- fix: silence React Router future flag, JSS, and act warnings in client tests
+
 ## 1.3.0
 
 - feat: switch Web UI authentication from server-side sessions to JWTs with rotating refresh tokens. All users are logged out once by this upgrade and must sign in again. OPDS and KOSync authentication are unchanged.
