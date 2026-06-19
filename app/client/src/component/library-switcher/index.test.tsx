@@ -29,7 +29,7 @@ function renderAsUser(ui: ReactNode) {
   vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
 
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <LibraryTargetProvider>{ui}</LibraryTargetProvider>
       </ThemeProvider>
@@ -50,7 +50,7 @@ function renderAsAdmin(ui: ReactNode) {
   ]);
 
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <LibraryTargetProvider>{ui}</LibraryTargetProvider>
       </ThemeProvider>

@@ -42,4 +42,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   checked: {},
   disabled: {},
+  danger: {},
 }));

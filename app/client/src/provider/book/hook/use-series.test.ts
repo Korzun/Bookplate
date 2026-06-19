@@ -37,7 +37,9 @@ describe('useSeries', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts in loading state', () => {
+  it('starts in loading state', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockReturnValue(new Promise(() => {})); // never settles — no state update after test
     const { result } = renderHook(() => useSeries('Dune'));
     const [data, loading, error] = result.current;
     expect(data).toBeUndefined();

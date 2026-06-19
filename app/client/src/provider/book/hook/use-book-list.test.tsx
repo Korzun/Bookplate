@@ -184,7 +184,7 @@ describe('useBookList', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <LibraryTargetProvider>
           <BookProvider>{children}</BookProvider>
         </LibraryTargetProvider>
@@ -198,9 +198,13 @@ describe('useBookList', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?take=20', {});
 
-    act(() => result.current.filter[1]({ query: 'test' }));
+    await act(async () => {
+      result.current.filter[1]({ query: 'test' });
+    });
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('/api/books?query=test&take=20', {})
+    );
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?query=test&take=20', {});
   });
 });

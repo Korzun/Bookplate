@@ -143,6 +143,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   spinner: { ...theme.recipe.spinner },
   // Empty modifier classes — referenced as $name in compound selectors above
+  danger: {},
   loading: {},
   disabled: { opacity: 0.5 },
   open: {},
