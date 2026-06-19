@@ -15,6 +15,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   headerAction: {
     display: 'flex',
+    gap: theme.space.sm,
   },
   title: {
     fontWeight: theme.fontWeight.semibold,
