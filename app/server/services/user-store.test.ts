@@ -8,6 +8,8 @@ import { UserStore } from './user-store';
 import { runMigrations } from '../db/migrate';
 import { WORDLIST } from './wordlist';
 
+jest.mock('../logger');
+
 let prisma: PrismaClient;
 let store: UserStore;
 let dbPath: string;
