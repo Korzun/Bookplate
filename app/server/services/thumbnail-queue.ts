@@ -8,7 +8,11 @@ const INTER_JOB_DELAY_MS = 200;
 type ResizeFn = (buffer: Buffer, width: number) => Promise<Buffer>;
 
 const defaultResize: ResizeFn = (buffer, width) =>
-  sharp(buffer).resize({ width, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+  sharp(buffer)
+    .resize({ width, withoutEnlargement: true })
+    .sharpen()
+    .jpeg({ quality: 90 })
+    .toBuffer();
 
 interface Job {
   userId: string;

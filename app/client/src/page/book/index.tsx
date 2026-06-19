@@ -132,8 +132,8 @@ export const BookPage = () => {
                 className={styles.coverImg}
                 src={coverSrc}
                 alt={book.title}
-                width={80}
-                height={128}
+                width={160}
+                height={240}
               />
             ) : (
               <div className={styles.coverPlaceholder} />

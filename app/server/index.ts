@@ -54,6 +54,15 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  const regenRow = await prisma.setting.findUnique({ where: { key: 'regenerate_covers' } });
+  if (!regenRow) {
+    await prisma.setting.create({ data: { key: 'regenerate_covers', value: 'false' } });
+  } else if (regenRow.value === 'true') {
+    await prisma.setting.update({ where: { key: 'regenerate_covers' }, data: { value: 'false' } });
+    const deleted = await bookStore.pruneThumbnails([]);
+    log.info(`regenerate_covers: deleted ${deleted} thumbnail(s), queuing regeneration`);
+  }
+
   await thumbnailQueue.start();
 
   const shutdown = async (): Promise<void> => {
