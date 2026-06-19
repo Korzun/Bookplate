@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
 
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const JWT_SECRET_KEY = 'jwtSecret';
+const JWT_SECRET_KEY = 'jwt_secret';
 
 export type RefreshIdentity = { username: string; userId: string | null };
 
