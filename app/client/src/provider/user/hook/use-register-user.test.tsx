@@ -51,7 +51,9 @@ describe('useRegisterUser', () => {
   it('sends POST request to /api/users with only username', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve({ password: 'abc123' }) })
+      vi
+        .fn()
+        .mockResolvedValue({ status: 201, json: () => Promise.resolve({ password: 'abc123' }) })
     );
     const { result } = renderHook(() => useRegisterUser(), { wrapper: makeWrapper() });
     await act(() => result.current[0]('alice'));

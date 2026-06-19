@@ -111,6 +111,7 @@ export function createUsersRouter(
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
+    fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
     const password = UserStore.generateLoginPassword();
     const passwordHash = await UserStore.hashLoginPassword(password);
     const created = await userStore.createUser(trimmedUsername, passwordHash, undefined, true);
@@ -119,7 +120,6 @@ export function createUsersRouter(
       res.status(409).json({ error: 'Username already exists' });
       return;
     }
-    fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
     log.info(`User "${trimmedUsername}" registered by admin`);
     res.status(201).json({ username: trimmedUsername, password });
   });

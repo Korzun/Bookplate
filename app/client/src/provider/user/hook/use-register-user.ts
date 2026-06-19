@@ -19,19 +19,23 @@ export const useRegisterUser = (): UseRegisterUser => {
 
   const registerUser = useCallback(
     async (username: string): Promise<string | null> => {
-      if (!username.trim()) {
+      const normalizedUsername = username.trim();
+      if (!normalizedUsername) {
         setError(true);
         setErrorMessage('Username is required');
         return null;
       }
 
-      if (userList[username] !== undefined) {
+      if (userList[normalizedUsername] !== undefined) {
         setError(true);
         setErrorMessage('Username already taken');
         return null;
       }
 
-      setUserList((prev) => ({ ...prev, [username]: { username, progressCount: 0 } }));
+      setUserList((prev) => ({
+        ...prev,
+        [normalizedUsername]: { username: normalizedUsername, progressCount: 0 },
+      }));
 
       try {
         setLoading(true);
@@ -41,14 +45,14 @@ export const useRegisterUser = (): UseRegisterUser => {
         const response = await apiFetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
+          body: JSON.stringify({ username: normalizedUsername }),
         });
         if (response.status !== 201) throw new Error('Registration failed');
         const data = (await response.json()) as { password: string };
         return data.password;
       } catch (err) {
         setError(true);
-        setUserList((prev) => removeUserByUsername(username, prev));
+        setUserList((prev) => removeUserByUsername(normalizedUsername, prev));
         if (err instanceof Error) {
           setErrorMessage(err.message);
         } else {
