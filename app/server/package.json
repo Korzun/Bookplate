@@ -23,7 +23,7 @@
     "fast-xml-parser": "^5.7.1",
     "jsonwebtoken": "^9.0.3",
     "mime-types": "^2.1.35",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "nanoid": "^3.3.8",
     "sharp": "^0.34.5"
   },
