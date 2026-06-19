@@ -147,6 +147,7 @@ export class BookStore {
     }
   ): Promise<SearchSuggestionsResponse> {
     const normalizedQ = normalizeForSearch(q);
+    if (!normalizedQ) return { groups: [] };
     const likePat = toSubsequenceLike(normalizedQ);
     const groups: SearchSuggestionsResponse['groups'] = [];
 
@@ -1008,7 +1009,10 @@ export class BookStore {
     // When a title query is active without a specific series filter, include series
     // member books so that e.g. searching "gate" also returns "Abaddon's Gate" as a
     // book row alongside the "The Expanse" series row.
-    const queryExpandsToSeriesBooks = !!filters?.query && filters?.seriesName === undefined;
+    const queryExpandsToSeriesBooks =
+      !!filters?.query &&
+      filters?.seriesName === undefined &&
+      filters?.entryType !== 'standalone';
 
     let bookWhere: Prisma.BookWhereInput;
     if (!cursor) {

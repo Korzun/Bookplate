@@ -20,7 +20,7 @@ export function loadConfig(): AppConfig {
     username: 'admin',
     password: 'changeme',
     max_concurrent_uploads: 3,
-    thumbnail_widths: [88, 160],
+    thumbnail_widths: [86, 160],
   };
 
   if (fs.existsSync(optionsPath)) {

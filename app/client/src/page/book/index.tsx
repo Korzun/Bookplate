@@ -149,7 +149,18 @@ export const BookPage = () => {
                 )}
               </div>
               {book.author.length > 0 && (
-                <div className={styles.author} onClick={handleAuthorNavigate}>
+                <div
+                  className={styles.author}
+                  onClick={handleAuthorNavigate}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleAuthorNavigate();
+                    }
+                  }}
+                >
                   {book.author}
                 </div>
               )}

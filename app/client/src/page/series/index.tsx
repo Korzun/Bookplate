@@ -81,6 +81,14 @@ export const SeriesPage = () => {
               <div
                 className={style.author}
                 onClick={() => navigate(path.library({ author: series.author }))}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(path.library({ author: series.author }));
+                  }
+                }}
               >
                 {series.author}
               </div>
