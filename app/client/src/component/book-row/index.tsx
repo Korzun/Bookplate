@@ -35,7 +35,7 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
 
   const coverSrc = useAuthorizedSrc(
     book?.hasCover
-      ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=86`)
+      ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=88`)
       : null
   );
 

@@ -75,7 +75,7 @@ export const SeriesPage = () => {
       <Card>
         <div className={style.cardContainer}>
           <div className={style.hero}>
-            <CoverStack seriesName={name!} layerWidth={80} layerHeight={128} />
+            <CoverStack seriesName={name!} layerWidth={80} layerHeight={120} />
             <div>
               <h1 className={style.title}>{name}</h1>
               <div

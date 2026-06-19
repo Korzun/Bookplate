@@ -27,7 +27,7 @@ export function CoverStack({ seriesName, layerWidth, layerHeight }: CoverStackPr
               sequence={seq}
               width={layerWidth}
               height={layerHeight}
-              thumbnailWidth={160}
+              thumbnailWidth={layerWidth * 2}
             />
           );
         })}

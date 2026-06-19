@@ -41,12 +41,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   coverPlaceholder: {
     width: 80,
-    height: 118,
+    height: 120,
     background: theme.color.border.default,
     borderRadius: theme.radius.md,
     flexShrink: 0,
   },
   coverImg: {
+    width: 80,
+    height: 120,
     flexShrink: 0,
     borderRadius: theme.radius.md,
     display: 'block',
