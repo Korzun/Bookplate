@@ -1743,13 +1743,24 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(Buffer.from(cover!.data)).toEqual(coverBytes);
   });
 
-  it('enqueues thumbnails after metadata update', async () => {
+  it('does not enqueue thumbnails when no cover is uploaded', async () => {
     const token = await loginAlice();
     (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
     await request(app)
       .patch(`/api/books/${bookId}/metadata`)
       .field('title', 'Updated')
       .set(...bearer(token));
+    expect(mockThumbnailQueue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enqueues thumbnails when a new cover is uploaded', async () => {
+    const token = await loginAlice();
+    (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
+    const coverBytes = Buffer.from('fake-png-cover');
+    await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .set(...bearer(token))
+      .attach('cover', coverBytes, { filename: 'cover.png', contentType: 'image/png' });
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 });

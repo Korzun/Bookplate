@@ -814,7 +814,9 @@ export function createUiRouter(
         res.status(500).json({ error: 'Failed to re-import book after update' });
         return;
       }
-      thumbnailQueue.enqueue(owner.userId, updated.id);
+      if (req.file) {
+        thumbnailQueue.enqueue(owner.userId, updated.id);
+      }
 
       log.info(`Book metadata updated: "${updated.filename}"`);
       const {
