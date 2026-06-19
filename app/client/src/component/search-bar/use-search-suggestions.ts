@@ -73,6 +73,7 @@ export function useSearchSuggestions(
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
 
     const query = inputValue.trim();
     if (!query) {
@@ -153,6 +154,7 @@ export function useSearchSuggestions(
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      abortRef.current?.abort();
     };
   }, [inputValue, status, author, seriesName, subjectsKey, withTargetUser]);
 

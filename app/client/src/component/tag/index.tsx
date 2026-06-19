@@ -18,7 +18,10 @@ export const Tag = ({ children, onClick }: TagProps) => {
       onKeyDown={
         onClick !== undefined
           ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') onClick();
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
             }
           : undefined
       }
