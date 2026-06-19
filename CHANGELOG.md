@@ -1,3 +1,8 @@
+## 1.2.4
+
+- feat: generate password server-side on user creation, require change on first login
+- chore(deps): bump the npm_and_yarn group across 1 directory with 4 updates
+
 ## 1.2.3
 
 - feat: add surrogate NanoID primary key to users table
