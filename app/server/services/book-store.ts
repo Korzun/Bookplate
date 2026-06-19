@@ -1010,9 +1010,7 @@ export class BookStore {
     // member books so that e.g. searching "gate" also returns "Abaddon's Gate" as a
     // book row alongside the "The Expanse" series row.
     const queryExpandsToSeriesBooks =
-      !!filters?.query &&
-      filters?.seriesName === undefined &&
-      filters?.entryType !== 'standalone';
+      !!filters?.query && filters?.seriesName === undefined && filters?.entryType !== 'standalone';
 
     let bookWhere: Prisma.BookWhereInput;
     if (!cursor) {
