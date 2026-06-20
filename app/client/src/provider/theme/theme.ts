@@ -292,6 +292,7 @@ function buildTheme(): Theme {
       borderWidth: '1px',
       borderRadius: radius.md,
       padding: space.md,
+      '-webkit-appearance': 'none',
       '&:hover': { borderColor: color.border.hover },
       '&:focus': { borderColor: color.border.focus },
       '&$danger': { borderColor: color.border.danger },
@@ -337,6 +338,12 @@ function buildTheme(): Theme {
         '&::backdrop': {
           backgroundColor: color.overlay.backdrop,
           backdropFilter: 'blur(2px) saturate(0%)',
+        },
+        [breakpoint.mobile]: {
+          marginTop: `calc(${space.xxxxxl} + env(safe-area-inset-top))`,
+          marginBottom: `calc(${space.xxxxxl} + env(safe-area-inset-bottom))`,
+          maxHeight: `calc(100dvh - ${space.xxxxxl} * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom))`,
+          overflowY: 'auto',
         },
       },
       header: {

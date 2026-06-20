@@ -45,6 +45,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: '0.80rem', // button-specific size; not on the global fontSize scale
     userSelect: 'none',
     '-webkit-user-select': 'none',
+    '-webkit-tap-highlight-color': 'transparent',
+    touchAction: 'manipulation',
     transitionProperty: 'color, background-color',
     transitionDuration: '0.1s',
     transitionTimingFunction: 'ease-in',

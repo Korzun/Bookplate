@@ -44,6 +44,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       top: 'auto',
       bottom: 0,
       left: 0,
+      paddingBottom: 'env(safe-area-inset-bottom)',
     },
   },
   navigationItemContainer: {

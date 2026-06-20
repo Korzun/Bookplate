@@ -60,6 +60,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     lineHeight: theme.lineHeight.body,
     fontFamily: theme.fontFamily.body,
     '&::placeholder': { color: theme.color.text.faint },
+    [theme.breakpoint.mobile]: { fontSize: '1rem' },
   },
   chip: {
     display: 'inline-flex',

@@ -80,6 +80,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minWidth: 0,
     padding: 0,
     '&::placeholder': { color: theme.color.text.faint },
+    [theme.breakpoint.mobile]: { fontSize: '1rem' },
   },
   clearButton: {
     display: 'flex',

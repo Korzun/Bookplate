@@ -16,7 +16,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     [theme.breakpoint.mobile]: {
       margin: 0,
-      paddingBottom: '110px',
+      paddingBottom: 'calc(110px + env(safe-area-inset-bottom))',
     },
   },
   [PageType.minimal]: {},
