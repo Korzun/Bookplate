@@ -1,3 +1,7 @@
+## 1.2.5
+
+- feat: mobile browser compatibility
+
 ## 1.2.4
 
 - feat: generate password server-side on user creation, require change on first login
