@@ -258,6 +258,8 @@ export function SearchBar({ filter, onChange }: SearchBarProps) {
         )}
         <input
           ref={inputRef}
+          type="search"
+          autoComplete="off"
           className={style.input}
           placeholder={
             chips.length > 0
