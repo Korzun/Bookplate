@@ -38,6 +38,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexGrow: 1,
     marginLeft: theme.space.sm,
   },
+  charNumber: { color: theme.color.brand.default },
+  charSymbol: { color: theme.color.danger.default },
   copyButton: {
     flexGrow: 0,
   },

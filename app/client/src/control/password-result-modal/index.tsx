@@ -4,6 +4,23 @@ import { Button } from '../button';
 
 import { useStyle } from './style';
 
+function renderPassword(password: string, numberClass: string, symbolClass: string) {
+  return [...password].map((char, i) => {
+    if (/\d/.test(char))
+      return (
+        <span key={i} className={numberClass}>
+          {char}
+        </span>
+      );
+    if (/[a-zA-Z]/.test(char)) return char;
+    return (
+      <span key={i} className={symbolClass}>
+        {char}
+      </span>
+    );
+  });
+}
+
 type PasswordResultModalProps = {
   isOpen?: boolean;
   username: string;
@@ -58,7 +75,9 @@ export function PasswordResultModal({
             This password will only be shown once. Make sure to copy it before closing this dialog.
           </p>
           <div className={styles.inset}>
-            <span className={styles.password}>{password ?? '—'}</span>
+            <span className={styles.password}>
+              {password ? renderPassword(password, styles.charNumber, styles.charSymbol) : '—'}
+            </span>
             <Button
               type="default"
               disabled={!password}
