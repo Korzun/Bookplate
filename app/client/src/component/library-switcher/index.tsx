@@ -6,6 +6,7 @@ import { useUserList } from '~/provider/user';
 const AdminLibrarySwitcher = () => {
   const [targetUsername, setTargetUsername] = useLibraryTarget();
   const [userList, loading] = useUserList();
+  const noUsers = !loading && userList.length === 0;
 
   return (
     <Select
@@ -13,8 +14,9 @@ const AdminLibrarySwitcher = () => {
       value={targetUsername}
       onChange={setTargetUsername}
       options={userList.map((user) => user.username)}
-      placeholder="Select library…"
+      placeholder={noUsers ? 'No users registered' : 'Select library…'}
       loading={loading}
+      disabled={noUsers}
     />
   );
 };
