@@ -105,7 +105,9 @@ export const LibraryPage = () => {
           ) : (
             <>
               <div className={style.emptyStateTitle}>
-                {isSearchActive ? 'No books match your search' : 'Your library is empty'}
+                {isSearchActive
+                  ? 'No books match your search'
+                  : `${isAdmin && targetUsername ? 'This' : 'Your'} library is empty`}
               </div>
               <div className={style.emptyStateSubtitle}>
                 {isSearchActive
