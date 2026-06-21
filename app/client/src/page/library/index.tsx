@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Page, BookRow, SearchBar, SeriesRow } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
@@ -11,6 +12,8 @@ import {
   useFetchNextPage,
 } from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
+import { useUserList } from '~/provider/user';
+import { path } from '~/router';
 
 import { useStyle } from './style';
 
@@ -18,6 +21,7 @@ export const LibraryPage = () => {
   const style = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetUsername] = useLibraryTarget();
+  const [userList, userListLoading] = useUserList();
   const [bookListFilter, setBookListFilter] = useBookListFilter();
 
   const [, bookListLoading, hasError, bookListError] = useBookList();
@@ -42,14 +46,30 @@ export const LibraryPage = () => {
   }, [fetchNextPage, hasError, bookListLoading, nextCursor]);
 
   if (isAdmin && !targetUsername) {
+    const noUsers = !userListLoading && userList.length === 0;
     return (
       <Page>
         <LibrarySwitcher />
         <div className={style.emptyState}>
-          <div className={style.emptyStateTitle}>Select a library</div>
-          <div className={style.emptyStateSubtitle}>
-            Choose a user above to view and manage their books
-          </div>
+          {noUsers ? (
+            <>
+              <div className={style.emptyStateTitle}>No users registered</div>
+              <div className={style.emptyStateSubtitle}>
+                Go to the{' '}
+                <Link className={style.link} to={path.userList()}>
+                  Users
+                </Link>{' '}
+                page to register the first user
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={style.emptyStateTitle}>Select a library</div>
+              <div className={style.emptyStateSubtitle}>
+                Choose a user above to view and manage their books
+              </div>
+            </>
+          )}
         </div>
       </Page>
     );

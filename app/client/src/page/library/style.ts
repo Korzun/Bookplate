@@ -38,6 +38,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     padding: 0,
   },
+  link: {
+    color: theme.color.brand.default,
+    textDecoration: 'none',
+    '&:hover': { textDecoration: 'underline' },
+  },
   spinner: {
     ...theme.recipe.spinner,
     height: '2rem',
