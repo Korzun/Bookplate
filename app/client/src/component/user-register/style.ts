@@ -5,6 +5,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.md,
-    marginBottom: theme.space.xxl,
   },
 }));

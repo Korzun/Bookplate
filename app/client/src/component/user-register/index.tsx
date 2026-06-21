@@ -44,10 +44,10 @@ export const UserRegister = () => {
             label="Username"
             autoComplete="off"
           />
+          <Button type="primary" radius="card" loading={loading} onClick={handleRegisterUser}>
+            {loading ? 'Registering…' : 'Register'}
+          </Button>
         </div>
-        <Button type="primary" loading={loading} onClick={handleRegisterUser}>
-          {loading ? 'Registering…' : 'Register'}
-        </Button>
       </Card>
       <PasswordResultModal
         isOpen={result !== null}
