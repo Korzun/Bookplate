@@ -38,7 +38,11 @@ describe('ResetPasswordButton', () => {
     const resetButtons = screen.getAllByRole('button', { name: 'Reset password', hidden: true });
     await user.click(resetButtons[resetButtons.length - 1]);
 
-    await waitFor(() => expect(screen.getByText('k4tWc9pLxQ2mAbCd')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText((_, el) => el?.textContent === 'k4tWc9pLxQ2mAbCd')
+      ).toBeInTheDocument()
+    );
     expect(fetch).toHaveBeenCalledWith('/api/users/alice/reset-password', { method: 'POST' });
   });
 
