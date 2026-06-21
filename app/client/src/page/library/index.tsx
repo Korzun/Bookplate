@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { Page, BookRow, SearchBar, SeriesRow } from '~/component';
+import { LibrarySwitcher } from '~/component/library-switcher';
 import { SpinnerIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import {
@@ -43,10 +44,11 @@ export const LibraryPage = () => {
   if (isAdmin && !targetUsername) {
     return (
       <Page>
+        <LibrarySwitcher />
         <div className={style.emptyState}>
           <div className={style.emptyStateTitle}>Select a library</div>
           <div className={style.emptyStateSubtitle}>
-            Choose a user from the library selector in the header to view and manage their books
+            Choose a user above to view and manage their books
           </div>
         </div>
       </Page>
@@ -56,6 +58,7 @@ export const LibraryPage = () => {
   if (!bookListLoading && hasError && bookListItems.length === 0) {
     return (
       <Page>
+        <LibrarySwitcher />
         <div className={style.emptyState}>
           <div className={style.emptyStateTitle}>Failed to load library</div>
           <div className={style.emptyStateSubtitle}>{bookListError}</div>
@@ -73,6 +76,7 @@ export const LibraryPage = () => {
 
   return (
     <Page>
+      <LibrarySwitcher />
       <SearchBar filter={bookListFilter} onChange={setBookListFilter} />
       {bookListItems.length === 0 ? (
         <div className={style.emptyState}>
