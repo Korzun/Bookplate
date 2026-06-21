@@ -37,6 +37,7 @@ export function PasswordResultModal({
   const styles = useStyle();
   const modalRef = useRef<HTMLDialogElement>(null);
   const [copied, setCopied] = useState(false);
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     const modalElement = modalRef.current;
@@ -48,6 +49,17 @@ export function PasswordResultModal({
     } else {
       modalElement.close();
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const interval = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => {
+      clearInterval(interval);
+      setCountdown(5);
+    };
   }, [isOpen]);
 
   const handleCopy = useCallback(async () => {
@@ -91,8 +103,8 @@ export function PasswordResultModal({
           </div>
         </div>
         <div className={styles.footer}>
-          <Button onClick={handleDone} type="primary" radius="modal">
-            Done
+          <Button onClick={handleDone} type="primary" radius="modal" disabled={countdown > 0}>
+            {countdown > 0 ? `Done (${countdown})` : 'Done'}
           </Button>
         </div>
       </div>
