@@ -19,16 +19,27 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     paddingBottom: theme.space.xxxxl,
     color: theme.color.text.secondary,
   },
-  row: {
+  inset: {
     display: 'flex',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.space.md,
-    marginTop: theme.space.md,
+    marginTop: theme.space.xxxl,
+    marginLeft: '-1px',
+    marginRight: '-1px',
+    border: `1px solid ${theme.color.border.default}`,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.bg.input,
+    padding: theme.space.md,
   },
   password: {
-    fontFamily: 'monospace',
+    fontFamily: theme.fontFamily.mono,
     fontSize: '1.1em',
-    flex: 1,
+    wordBreak: 'break-all',
+    flexGrow: 1,
+    marginLeft: theme.space.sm,
+  },
+  copyButton: {
+    flexGrow: 0,
   },
   footer: {
     ...theme.recipe.modal.footer,

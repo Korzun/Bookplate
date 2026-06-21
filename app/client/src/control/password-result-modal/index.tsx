@@ -57,14 +57,15 @@ export function PasswordResultModal({
           <p>
             This password will only be shown once. Make sure to copy it before closing this dialog.
           </p>
-          <div className={styles.row}>
+          <div className={styles.inset}>
             <span className={styles.password}>{password ?? '—'}</span>
             <Button
               type="default"
               disabled={!password}
               onClick={handleCopy}
-              radius="modal"
+              radius="inset"
               success={copied}
+              className={styles.copyButton}
             >
               {copied ? 'Copied!' : 'Copy'}
             </Button>

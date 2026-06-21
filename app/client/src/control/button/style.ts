@@ -17,10 +17,11 @@ export enum ButtonType {
   Dashed = 'dashed',
 }
 
-export type ButtonRadiusValue = 'background' | 'card' | 'modal';
+export type ButtonRadiusValue = 'background' | 'card' | 'inset' | 'modal';
 export enum ButtonRadius {
   Background = 'background',
   Card = 'card',
+  Inset = 'inset',
   Modal = 'modal',
 }
 
@@ -58,6 +59,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   [ButtonRadius.Card]: {
     borderRadius: theme.radius.md,
+  },
+  [ButtonRadius.Inset]: {
+    borderRadius: theme.radius.sm,
   },
   [ButtonRadius.Modal]: {
     borderRadius: theme.radius.md,
