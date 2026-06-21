@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -18,7 +18,7 @@ describe('PasswordResultModal', () => {
       <PasswordResultModal isOpen username="alice" password="k4tWc9pLxQ2mAbCd" />
     );
     expect(screen.getByText(/alice/)).toBeInTheDocument();
-    expect(screen.getByText('k4tWc9pLxQ2mAbCd')).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === 'k4tWc9pLxQ2mAbCd')).toBeInTheDocument();
   });
 
   it('copies the password to the clipboard', async () => {
@@ -35,14 +35,18 @@ describe('PasswordResultModal', () => {
   });
 
   it('calls onDone when the Done button is clicked', async () => {
-    const user = userEvent.setup();
+    vi.useFakeTimers();
     const onDone = vi.fn();
     renderWithProviders(
       <PasswordResultModal isOpen username="alice" password="k4tWc9pLxQ2mAbCd" onDone={onDone} />
     );
 
-    await user.click(screen.getByRole('button', { name: 'Done', hidden: true }));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done', hidden: true }));
 
     expect(onDone).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });

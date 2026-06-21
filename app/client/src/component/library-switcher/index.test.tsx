@@ -60,13 +60,13 @@ function renderAsAdmin(ui: ReactNode) {
 
 it('renders nothing for non-admin users', () => {
   renderAsUser(<LibrarySwitcher />);
-  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Select library…' })).not.toBeInTheDocument();
   expect(vi.mocked(useUserList)).not.toHaveBeenCalled();
 });
 
 it('lists users and selects a target library', async () => {
   renderAsAdmin(<LibrarySwitcher />);
-  const select = await screen.findByRole('combobox');
-  await userEvent.selectOptions(select, 'alice');
+  await userEvent.click(await screen.findByRole('button', { name: 'Select library…' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'alice' }));
   expect(localStorage.getItem('library-target-user')).toBe('alice');
 });
