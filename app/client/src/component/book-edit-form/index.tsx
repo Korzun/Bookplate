@@ -146,6 +146,8 @@ export const BookEditForm = ({ original, id }: Props) => {
             label="Title Sort"
             name="titleSort"
             onChange={handleTitleSortChange}
+            onValidChange={handleIsValidChange}
+            validate={(v) => !v || !/^(the |a |an )/i.test(v)}
           />
           <TextInput value={author} label="Author" name="author" onChange={handleAuthorChange} />
           <TextInput
@@ -153,6 +155,8 @@ export const BookEditForm = ({ original, id }: Props) => {
             label="Author Sort"
             name="authorSort"
             onChange={handleAuthorSortChange}
+            onValidChange={handleIsValidChange}
+            validate={(v) => !v || !v.includes(' ') || v.includes(',')}
           />
           <TextInput
             value={publisher}
