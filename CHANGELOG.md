@@ -1,3 +1,11 @@
+## 1.2.7
+
+- feat: validate author sort and title sort format in book edit
+- fix: error loading book after adding to new series via metadata edit
+- Visual nitpicks: settings icon, skip user list for non-admins
+- feat: series name field uses searchable select with create support
+- feat: add configurable library name
+
 ## 1.2.6
 
 - Admin user library selector
