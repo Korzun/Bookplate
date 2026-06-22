@@ -199,6 +199,7 @@ export const BookEditForm = ({ original, id }: Props) => {
       <Card
         title="Series"
         headerAction={<Switch name="isSeries" checked={isSeries} onChange={handleIsSeriesChange} />}
+        allowOverflow
       >
         {isSeries && (
           <div className={styles.cardContainer}>
