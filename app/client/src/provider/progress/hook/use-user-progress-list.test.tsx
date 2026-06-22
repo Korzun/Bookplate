@@ -81,7 +81,8 @@ describe('useUserProgressList', () => {
   it('triggers a fetch on mount when data is absent', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve([{ document: 'book-1', percentage: 75 }]),
+      json: () =>
+        Promise.resolve({ items: [{ document: 'book-1', percentage: 75 }], nextCursor: null }),
     });
     vi.stubGlobal('fetch', mockFetch);
 
@@ -110,7 +111,7 @@ describe('useUserProgressList', () => {
     });
 
     await waitFor(() => expect(result.current[1]).toBe(true));
-    resolveFetch({ ok: true, json: () => Promise.resolve([]) });
+    resolveFetch({ ok: true, json: () => Promise.resolve({ items: [], nextCursor: null }) });
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
 
@@ -145,7 +146,11 @@ describe('useUserProgressList', () => {
         const username = decodeURIComponent((url as string).split('/')[3]);
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve([{ document: `book-${username}`, percentage: 50 }]),
+          json: () =>
+            Promise.resolve({
+              items: [{ document: `book-${username}`, percentage: 50 }],
+              nextCursor: null,
+            }),
         });
       })
     );
@@ -176,10 +181,13 @@ describe('useUserProgressList', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve([
-            { document: 'book-1', percentage: 0.5 },
-            { document: 'book-1', percentage: 0.9 },
-          ]),
+          Promise.resolve({
+            items: [
+              { document: 'book-1', percentage: 0.5 },
+              { document: 'book-1', percentage: 0.9 },
+            ],
+            nextCursor: null,
+          }),
       })
     );
     const { result } = renderHook(() => useUserProgressList('alice'), {

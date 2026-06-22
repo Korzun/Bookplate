@@ -86,7 +86,10 @@ describe('useFetchUserProgressList', () => {
   it('fetches /api/users/:username/progress', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], nextCursor: null }),
+      })
     );
     const { result } = renderHook(() => useFetchUserProgressList(), {
       wrapper: makeWrapper({ isAdmin: true }),
@@ -98,7 +101,10 @@ describe('useFetchUserProgressList', () => {
   it('URL-encodes the username in the endpoint', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], nextCursor: null }),
+      })
     );
     const { result } = renderHook(() => useFetchUserProgressList(), {
       wrapper: makeWrapper({ isAdmin: true }),
@@ -113,10 +119,13 @@ describe('useFetchUserProgressList', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve([
-            { document: 'book-1', percentage: 30, device: 'kindle', timestamp: 1000 },
-            { document: 'book-2', percentage: 90 },
-          ]),
+          Promise.resolve({
+            items: [
+              { document: 'book-1', percentage: 30, device: 'kindle', timestamp: 1000 },
+              { document: 'book-2', percentage: 90 },
+            ],
+            nextCursor: null,
+          }),
       })
     );
     const setProgressForUsername = vi.fn();
@@ -133,7 +142,10 @@ describe('useFetchUserProgressList', () => {
   it('calls setLoadingForUsername true then false around the fetch', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], nextCursor: null }),
+      })
     );
     const calls: [string, boolean][] = [];
     const setLoadingForUsername = vi.fn((u: string, l: boolean) => calls.push([u, l]));
@@ -165,5 +177,33 @@ describe('useFetchUserProgressList', () => {
     });
     await result.current('alice');
     expect(setErrorForUsername).toHaveBeenCalledWith('alice', 'Connection refused');
+  });
+
+  it('follows nextCursor across pages and merges into one dict', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'a', percentage: 10 }], nextCursor: 'c1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'b', percentage: 20 }], nextCursor: null }),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+    const setProgressForUsername = vi.fn();
+    const { result } = renderHook(() => useFetchUserProgressList(), {
+      wrapper: makeWrapper({ isAdmin: true, setProgressForUsername }),
+    });
+    await result.current('bob');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/users/bob/progress?cursor=c1');
+    expect(setProgressForUsername).toHaveBeenCalledTimes(1);
+    expect(setProgressForUsername).toHaveBeenCalledWith('bob', {
+      a: { document: 'a', percentage: 10 },
+      b: { document: 'b', percentage: 20 },
+    });
   });
 });
