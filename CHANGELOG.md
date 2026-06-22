@@ -1,3 +1,7 @@
+## 1.2.6
+
+- Admin user library selector
+
 ## 1.2.5
 
 - feat: mobile browser compatibility
