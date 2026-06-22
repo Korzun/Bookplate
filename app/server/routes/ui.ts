@@ -27,6 +27,7 @@ import { logger } from '../logger';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { writeMetadata, EpubChanges } from '../services/epub-writer';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
+import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 
 const log = logger('UI');
@@ -252,33 +253,32 @@ export function createUiRouter(
 
   router.get('/api/my/progress', requireAuth, async (req: Request, res: Response) => {
     if (req.user!.isAdmin) {
-      res.json([]);
+      res.json({ items: [], nextCursor: null });
       return;
     }
     const userId = requireUserId(req, res);
     if (!userId) return;
     const owner: Owner = { userId, username: req.user!.username };
-    const progressList = await userStore.getUserProgress(userId);
-    const items = await Promise.all(
-      progressList.map(async (p) => {
-        const spineIndex = parseCfiSpineIndex(p.progress);
-        const book = await bookStore.getBookById(owner, p.document);
-        const currentChapter =
-          spineIndex !== null && book && book.chapterSpineMap.length > 0
-            ? (spineIndexToChapter(spineIndex, book.chapterSpineMap) ?? undefined)
-            : undefined;
-        const currentChapterName =
-          currentChapter !== undefined && book && book.chapterNames.length > 0
-            ? book.chapterNames[currentChapter - 1] || undefined
-            : undefined;
-        return {
-          ...p,
-          ...(currentChapter !== undefined ? { currentChapter } : {}),
-          ...(currentChapterName !== undefined ? { currentChapterName } : {}),
-        };
-      })
+    const cursor = decodeProgressCursor(req.query.cursor);
+    const take = parseProgressTake(req.query.take);
+    const page = await userStore.getUserProgressPage(userId, cursor, take);
+    const spineMaps = await bookStore.getChapterSpineMaps(
+      owner,
+      page.items.map((p) => p.document)
     );
-    res.json(items);
+    const items = page.items.map((p) => {
+      const spineMap = spineMaps.get(p.document);
+      const spineIndex = parseCfiSpineIndex(p.progress);
+      const currentChapter =
+        spineIndex !== null && spineMap && spineMap.length > 0
+          ? (spineIndexToChapter(spineIndex, spineMap) ?? undefined)
+          : undefined;
+      return {
+        ...p,
+        ...(currentChapter !== undefined ? { currentChapter } : {}),
+      };
+    });
+    res.json({ items, nextCursor: page.nextCursor });
   });
 
   router.delete('/api/my/progress/:document', requireAuth, async (req: Request, res: Response) => {

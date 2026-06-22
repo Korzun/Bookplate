@@ -379,6 +379,31 @@ export class BookStore {
     return row ? this.prismaBookToBook(owner, row) : null;
   }
 
+  /**
+   * Batched chapter-spine-map lookup for the given book ids in one query.
+   * Returns a map of id → parsed spine indices; ids without a matching book
+   * (e.g. progress whose book was deleted) are absent from the map.
+   */
+  async getChapterSpineMaps(owner: Owner, ids: string[]): Promise<Map<string, number[]>> {
+    const map = new Map<string, number[]>();
+    if (ids.length === 0) return map;
+    const rows = await this.prisma.book.findMany({
+      where: { userId: owner.userId, id: { in: ids } },
+      select: { id: true, chapterSpineMap: true },
+    });
+    for (const row of rows) {
+      let parsed: number[];
+      try {
+        const json: unknown = JSON.parse(row.chapterSpineMap);
+        parsed = Array.isArray(json) ? (json as number[]) : [];
+      } catch {
+        parsed = [];
+      }
+      map.set(row.id, parsed);
+    }
+    return map;
+  }
+
   async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
     const existing = await this.prisma.book.findUnique({
       where: { userId_id: { userId: owner.userId, id } },

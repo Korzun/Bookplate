@@ -3304,3 +3304,21 @@ describe('listBooksByStatus', () => {
     expect(books.map((b) => b.id)).not.toContain('g9');
   });
 });
+
+describe('BookStore.getChapterSpineMaps', () => {
+  it('returns parsed spine maps keyed by id and omits missing books', async () => {
+    await bookStore.addBook(OWNER, 'has-map', stage('has-map'), {
+      ...FAKE_META,
+      chapterCount: 3,
+      chapterSpineMap: [1, 2, 3],
+    });
+    const map = await bookStore.getChapterSpineMaps(OWNER, ['has-map', 'missing']);
+    expect(map.get('has-map')).toEqual([1, 2, 3]);
+    expect(map.has('missing')).toBe(false);
+  });
+
+  it('returns an empty map for an empty id list (no query)', async () => {
+    const map = await bookStore.getChapterSpineMaps(OWNER, []);
+    expect(map.size).toBe(0);
+  });
+});

@@ -1242,13 +1242,13 @@ describe('GET /api/my/progress', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns [] for admin', async () => {
+  it('returns an empty page for admin', async () => {
     const token = await loginAdmin();
     const res = await request(app)
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual({ items: [], nextCursor: null });
   });
 
   it('returns 401 when the token has no userId (non-admin)', async () => {
@@ -1277,9 +1277,10 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].document).toBe('doc1');
-    expect(res.body[0].percentage).toBeCloseTo(0.72);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].document).toBe('doc1');
+    expect(res.body.items[0].percentage).toBeCloseTo(0.72);
+    expect(res.body.nextCursor).toBeNull();
   });
 
   it('exposes device, device_id, timestamp, and progress CFI', async () => {
@@ -1295,11 +1296,11 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].device).toBe('Kobo');
-    expect(res.body[0].device_id).toBe('d1');
-    expect(typeof res.body[0].timestamp).toBe('number');
-    expect(res.body[0].progress).toBe('/p[1]');
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].device).toBe('Kobo');
+    expect(res.body.items[0].device_id).toBe('d1');
+    expect(typeof res.body.items[0].timestamp).toBe('number');
+    expect(res.body.items[0].progress).toBe('/p[1]');
   });
 
   it("does not return another user's progress", async () => {
@@ -1317,17 +1318,15 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(0);
+    expect(res.body.items).toHaveLength(0);
   });
 
   it('includes currentChapter when a matching book has chapter data and CFI is valid', async () => {
-    // spine: cover(0) ch1(1) ch2(2) ch3(3); nav: ch1→1, ch2→2, ch3→3
     await bookStore.addBook(aliceOwner, 'doc-with-chapters', stage('doc-with-chapters'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
     });
-    // EPUB_CFI(/6/6...) → N=6 → spineIndex=(6-2)/2=2 → chapter 2 (ch2 is at spineIndex 2)
     await userStore.saveProgress(aliceId, {
       document: 'doc-with-chapters',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
@@ -1340,17 +1339,16 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body[0].currentChapter).toBe(2);
+    expect(res.body.items[0].currentChapter).toBe(2);
   });
 
-  it('includes currentChapterName when the book has chapterNames and CFI resolves to a chapter', async () => {
+  it('never includes currentChapterName (field removed)', async () => {
     await bookStore.addBook(aliceOwner, 'doc-with-names', stage('doc-with-names'), {
       ...FAKE_META,
       chapterCount: 3,
       chapterSpineMap: [1, 2, 3],
       chapterNames: ['Chapter 1', 'Chapter 2', 'Chapter 3'],
     });
-    // EPUB_CFI(/6/6...) → spineIndex=2 → chapter 2 → chapterNames[1] = 'Chapter 2'
     await userStore.saveProgress(aliceId, {
       document: 'doc-with-names',
       progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
@@ -1363,30 +1361,8 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body[0].currentChapterName).toBe('Chapter 2');
-  });
-
-  it('omits currentChapterName when the book has no chapterNames', async () => {
-    await bookStore.addBook(aliceOwner, 'doc-no-names', stage('doc-no-names'), {
-      ...FAKE_META,
-      chapterCount: 3,
-      chapterSpineMap: [1, 2, 3],
-      chapterNames: [],
-    });
-    // Same CFI as above — resolves to chapter 2, but chapterNames is empty
-    await userStore.saveProgress(aliceId, {
-      document: 'doc-no-names',
-      progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
-      percentage: 0.5,
-      device: 'Kobo',
-      device_id: 'd1',
-    });
-    const token = await loginAlice();
-    const res = await request(app)
-      .get('/api/my/progress')
-      .set(...bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body[0].currentChapterName).toBeUndefined();
+    expect(res.body.items[0].currentChapter).toBe(2);
+    expect(res.body.items[0]).not.toHaveProperty('currentChapterName');
   });
 
   it('omits currentChapter when the book is not in the DB', async () => {
@@ -1402,7 +1378,7 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body[0].currentChapter).toBeUndefined();
+    expect(res.body.items[0].currentChapter).toBeUndefined();
   });
 
   it('omits currentChapter when the CFI is not in KoReader EPUB_CFI format', async () => {
@@ -1423,7 +1399,7 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body[0].currentChapter).toBeUndefined();
+    expect(res.body.items[0].currentChapter).toBeUndefined();
   });
 
   it('does not expose chapterSpineMap on progress records', async () => {
@@ -1443,7 +1419,7 @@ describe('GET /api/my/progress', () => {
     const res = await request(app)
       .get('/api/my/progress')
       .set(...bearer(token));
-    expect(res.body[0].chapterSpineMap).toBeUndefined();
+    expect(res.body.items[0].chapterSpineMap).toBeUndefined();
   });
 
   it('returns only the current-id entry after a reimport changes the book id', async () => {
@@ -1464,8 +1440,40 @@ describe('GET /api/my/progress', () => {
       .get('/api/my/progress')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].document).toBe('lin-new');
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].document).toBe('lin-new');
+  });
+
+  it('paginates with take and advances via nextCursor', async () => {
+    for (const [doc, ts] of [
+      ['a', 100],
+      ['b', 200],
+      ['c', 300],
+    ] as const) {
+      await userStore.saveProgress(aliceId, {
+        document: doc,
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      await prisma.progress.update({
+        where: { userId_document: { userId: aliceId, document: doc } },
+        data: { timestamp: ts },
+      });
+    }
+    const token = await loginAlice();
+    const page1 = await request(app)
+      .get('/api/my/progress?take=2')
+      .set(...bearer(token));
+    expect(page1.body.items.map((i: { document: string }) => i.document)).toEqual(['c', 'b']);
+    expect(page1.body.nextCursor).not.toBeNull();
+
+    const page2 = await request(app)
+      .get(`/api/my/progress?take=2&cursor=${encodeURIComponent(page1.body.nextCursor as string)}`)
+      .set(...bearer(token));
+    expect(page2.body.items.map((i: { document: string }) => i.document)).toEqual(['a']);
+    expect(page2.body.nextCursor).toBeNull();
   });
 });
 
