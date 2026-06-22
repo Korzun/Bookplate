@@ -14,7 +14,10 @@ function makeApp(ms: number, handler: (req: Request, res: Response) => void): ex
 describe('requestTimeout', () => {
   it('responds 503 when the handler exceeds the limit', async () => {
     const app = makeApp(30, (_req, res) => {
-      setTimeout(() => res.json({ ok: true }), 300);
+      const t = setTimeout(() => res.json({ ok: true }), 300);
+      // Cancel the slow write once the 503 closes the connection, so it can't
+      // fire against an already-finished response (keeps test output pristine).
+      res.on('close', () => clearTimeout(t));
     });
     const res = await request(app).get('/slow');
     expect(res.status).toBe(503);
