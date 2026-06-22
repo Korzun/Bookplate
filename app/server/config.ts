@@ -6,6 +6,7 @@ import { logger } from './logger';
 const log = logger('Config');
 
 interface Options {
+  library_name: string;
   username: string;
   password: string;
   max_concurrent_uploads: number;
@@ -17,6 +18,7 @@ export function loadConfig(): AppConfig {
   const optionsPath = path.join(dataDir, 'options.json');
 
   let options: Options = {
+    library_name: 'HASS-ODPS',
     username: 'admin',
     password: 'changeme',
     max_concurrent_uploads: 3,
@@ -27,6 +29,7 @@ export function loadConfig(): AppConfig {
     try {
       const parsed = JSON.parse(fs.readFileSync(optionsPath, 'utf-8')) as Partial<Options>;
       options = {
+        library_name: parsed.library_name ?? options.library_name,
         username: parsed.username ?? options.username,
         password: parsed.password ?? options.password,
         max_concurrent_uploads: parsed.max_concurrent_uploads ?? options.max_concurrent_uploads,
@@ -40,6 +43,7 @@ export function loadConfig(): AppConfig {
   }
 
   return {
+    libraryName: process.env.LIBRARY_NAME ?? options.library_name,
     username: process.env.ADMIN_USER ?? options.username,
     password: process.env.ADMIN_PASS ?? options.password,
     booksDir: process.env.BOOKS_DIR ?? '/media/books',

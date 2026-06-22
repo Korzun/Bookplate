@@ -10,10 +10,11 @@ const log = logger('OPDS');
 export function createOpdsRouter(
   bookStore: BookStore,
   userStore: UserStore,
-  thumbnailWidths: number[]
+  thumbnailWidths: number[],
+  libraryName: string = 'HASS-ODPS'
 ): Router {
   const router = Router();
-  const auth = opdsAuth(userStore);
+  const auth = opdsAuth(userStore, libraryName);
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
 
   router.get('/', auth, (req: Request, res: Response) => {
@@ -24,7 +25,7 @@ export function createOpdsRouter(
     res.send(
       navigationFeed({
         id: 'urn:hass-odps:root',
-        title: 'HASS-ODPS Library',
+        title: /library$/i.test(libraryName) ? libraryName : `${libraryName} Library`,
         selfHref: `${baseUrl}/opds/`,
         baseUrl,
         now,

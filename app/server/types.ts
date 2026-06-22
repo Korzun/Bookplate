@@ -107,6 +107,7 @@ export type PageCursor = {
 };
 
 export interface AppConfig {
+  libraryName: string;
   username: string;
   password: string;
   booksDir: string;

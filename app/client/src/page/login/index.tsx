@@ -4,6 +4,7 @@ import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { BooksIcon } from '~/icon';
 import { extractAccessToken, setToken } from '~/lib/token';
+import { useLibraryName } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -11,6 +12,7 @@ import { useStyle } from './style';
 export const LoginPage = () => {
   const styles = useStyle();
   const showToast = useToast();
+  const libraryName = useLibraryName();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [username, setUsername] = useState<string | undefined>();
@@ -63,7 +65,7 @@ export const LoginPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <h1 className={styles.title}>
-          <BooksIcon /> HASS-ODPS
+          <BooksIcon /> {libraryName}
         </h1>
         <Card className={styles.card}>
           <div className={styles.inputContainer}>

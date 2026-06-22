@@ -155,6 +155,10 @@ export function createUiRouter(
 
   router.get('/login', serveSpa);
 
+  router.get('/api/public-config', (_req: Request, res: Response) => {
+    res.json({ libraryName: config.libraryName });
+  });
+
   router.use(passwordChangeGate(jwtSecret));
 
   router.post('/api/login', async (req: Request, res: Response) => {
@@ -240,7 +244,10 @@ export function createUiRouter(
   });
 
   router.get('/api/config', requireAuth, (_req: Request, res: Response) => {
-    res.json({ maxConcurrentUploads: config.maxConcurrentUploads });
+    res.json({
+      libraryName: config.libraryName,
+      maxConcurrentUploads: config.maxConcurrentUploads,
+    });
   });
 
   router.get('/api/my/progress', requireAuth, async (req: Request, res: Response) => {
