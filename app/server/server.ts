@@ -10,6 +10,7 @@ import { createOpdsRouter } from './routes/opds';
 import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
 import { createUiRouter } from './routes/ui';
+import { requestTimeout } from './middleware/timeout';
 import { logger } from './logger';
 
 const log = logger('Server');
@@ -27,6 +28,9 @@ export function createServer(
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));
   server.use(cookieParser());
+
+  // Respond with a clean 503 before Cloudflare's ~100s proxy timeout (524).
+  server.use(requestTimeout(90_000));
 
   server.use(
     '/opds',
