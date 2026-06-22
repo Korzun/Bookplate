@@ -11,6 +11,7 @@ import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
 import { createUiRouter } from './routes/ui';
 import { requestTimeout } from './middleware/timeout';
+import { ScanJobStore } from './services/scan-job-store';
 import { logger } from './logger';
 
 const log = logger('Server');
@@ -41,9 +42,18 @@ export function createServer(
     '/api/users',
     createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
   );
+  const scanJobStore = new ScanJobStore();
   server.use(
     '/',
-    createUiRouter(bookStore, userStore, config, thumbnailQueue, tokenStore, jwtSecret)
+    createUiRouter(
+      bookStore,
+      userStore,
+      config,
+      thumbnailQueue,
+      tokenStore,
+      jwtSecret,
+      scanJobStore
+    )
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {
