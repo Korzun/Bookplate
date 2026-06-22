@@ -7,6 +7,7 @@ import { TokenStore } from '../services/token-store';
 import { adminAuth } from '../middleware/auth';
 import { logger } from '../logger';
 import { isValidUsername } from '../utils/username';
+import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 
 const log = logger('Users');
 
@@ -35,9 +36,11 @@ export function createUsersRouter(
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    const progress = await userStore.getUserProgress(userId);
-    log.debug(`Progress fetched for "${username}" (${progress.length} records)`);
-    res.json(progress);
+    const cursor = decodeProgressCursor(req.query.cursor);
+    const take = parseProgressTake(req.query.take);
+    const page = await userStore.getUserProgressPage(userId, cursor, take);
+    log.debug(`Progress fetched for "${username}" (${page.items.length} records)`);
+    res.json({ items: page.items, nextCursor: page.nextCursor });
   });
 
   router.delete('/:username/progress/:document', async (req: Request, res: Response) => {
