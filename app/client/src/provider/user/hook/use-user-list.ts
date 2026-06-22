@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
+import { Context as AuthContext } from '../../auth/context';
 import { Context } from '../context';
 import type { User } from '../type';
 
@@ -14,6 +15,7 @@ export type UseUserList =
   | [User[], false, true, string];
 
 export const useUserList = (): UseUserList => {
+  const { isAdmin } = useContext(AuthContext);
   const { userList, loading, error, setUserList, setLoading, setError } = useContext(Context);
 
   const getUserList = useCallback(async () => {
@@ -21,6 +23,7 @@ export const useUserList = (): UseUserList => {
     setError(undefined);
     try {
       const response = await apiFetch('/api/users');
+      if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const users = await (response.json() as Promise<User[]>);
       setUserList(() =>
         users.reduce(
@@ -36,14 +39,14 @@ export const useUserList = (): UseUserList => {
   }, [setUserList, setLoading, setError]);
 
   useEffect(() => {
-    if (!loading && error === undefined && Object.keys(userList).length === 0) {
+    if (isAdmin && !loading && error === undefined && Object.keys(userList).length === 0) {
       void getUserList();
     }
     // loading, error, and userList are intentionally excluded: this effect is meant to fire once on
     // mount. getUserList is stable so deps never change. Adding the others would cause a re-fetch
     // loop when the server legitimately returns zero users.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getUserList]);
+  }, [getUserList, isAdmin]);
 
   return useMemo(
     () =>

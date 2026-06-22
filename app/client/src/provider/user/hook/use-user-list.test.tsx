@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { Context as AuthContext } from '../../auth/context';
 import { Context } from '../context';
 import type { User, UserList } from '../type';
 
@@ -11,7 +12,8 @@ import { useUserList } from '.';
 function makeWrapper(
   initialUsers: User[] = [],
   initialLoading = false,
-  initialError: string | undefined = undefined
+  initialError: string | undefined = undefined,
+  isAdmin = true
 ) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [userList, setUserListRaw] = useState<UserList>(
@@ -24,9 +26,19 @@ function makeWrapper(
       []
     );
     return (
-      <Context.Provider value={{ userList, loading, error, setUserList, setLoading, setError }}>
-        {children}
-      </Context.Provider>
+      <AuthContext.Provider
+        value={{
+          username: isAdmin ? 'admin' : 'user',
+          userId: undefined,
+          isAdmin,
+          mustChangePassword: false,
+          loading: false,
+        }}
+      >
+        <Context.Provider value={{ userList, loading, error, setUserList, setLoading, setError }}>
+          {children}
+        </Context.Provider>
+      </AuthContext.Provider>
     );
   };
 }
@@ -60,11 +72,19 @@ describe('useUserList', () => {
     ]);
   });
 
-  it('fetches user list on mount', async () => {
+  it('fetches user list on mount when admin', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
     vi.stubGlobal('fetch', mockFetch);
     renderHook(() => useUserList(), { wrapper: makeWrapper() });
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/users', {}));
+  });
+
+  it('does not fetch when user is not admin', async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+    renderHook(() => useUserList(), { wrapper: makeWrapper([], false, undefined, false) });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('does not fetch when the user list is already populated', async () => {
@@ -91,5 +111,15 @@ describe('useUserList', () => {
     renderHook(() => useUserList(), { wrapper: makeWrapper([], false, 'Previous error') });
     await new Promise((r) => setTimeout(r, 50));
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('sets error state when the server returns a non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 403, json: () => Promise.resolve({}) })
+    );
+    const { result } = renderHook(() => useUserList(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current[2]).toBe(true));
+    expect(result.current[3]).toMatch(/403/);
   });
 });
