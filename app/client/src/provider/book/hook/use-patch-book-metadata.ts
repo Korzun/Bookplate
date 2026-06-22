@@ -89,7 +89,15 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         setLoading(false);
       }
     },
-    [withTargetUser, loading, setBookList, setBookListFetched, setBookListItems, setNextCursor, renameProgressKey]
+    [
+      withTargetUser,
+      loading,
+      setBookList,
+      setBookListFetched,
+      setBookListItems,
+      setNextCursor,
+      renameProgressKey,
+    ]
   );
 
   return useMemo(

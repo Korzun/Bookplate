@@ -35,7 +35,9 @@ type WrapperOptions = {
   initialBooks?: Book[];
   initialProgress?: ProgressList;
   setBookListFetched?: (fetched: boolean) => void;
-  setBookListItems?: (updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]) => void;
+  setBookListItems?: (
+    updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]
+  ) => void;
   setNextCursor?: (cursor: string | null) => void;
 };
 
