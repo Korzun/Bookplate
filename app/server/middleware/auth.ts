@@ -14,12 +14,13 @@ const log = logger('Auth');
  * so we hash it with MD5 before comparing against the stored key.
  */
 export function opdsAuth(userStore: UserStore, realm: string = 'HASS-ODPS') {
+  const safeRealm = realm.replace(/[\r\n"\\]/g, '');
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const header = req.headers.authorization;
       if (!header?.startsWith('Basic ')) {
         log.warn('OPDS auth failed — missing or malformed Authorization header');
-        res.set('WWW-Authenticate', `Basic realm="${realm}"`);
+        res.set('WWW-Authenticate', `Basic realm="${safeRealm}"`);
         res.status(401).send();
         return;
       }
@@ -30,7 +31,7 @@ export function opdsAuth(userStore: UserStore, realm: string = 'HASS-ODPS') {
       const userId = await userStore.authenticate(username, UserStore.hashSyncPassword(password));
       if (!userId) {
         log.warn(`OPDS auth failed for user "${username}"`);
-        res.set('WWW-Authenticate', `Basic realm="${realm}"`);
+        res.set('WWW-Authenticate', `Basic realm="${safeRealm}"`);
         res.status(401).send();
         return;
       }

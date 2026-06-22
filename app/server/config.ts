@@ -43,7 +43,7 @@ export function loadConfig(): AppConfig {
   }
 
   return {
-    libraryName: process.env.LIBRARY_NAME ?? options.library_name,
+    libraryName: (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'HASS-ODPS',
     username: process.env.ADMIN_USER ?? options.username,
     password: process.env.ADMIN_PASS ?? options.password,
     booksDir: process.env.BOOKS_DIR ?? '/media/books',
