@@ -63,17 +63,18 @@ export function bookEntry(b: Book, baseUrl: string, smallestThumbnailWidth: numb
           type="application/epub+zip"
           title="${b.filename}"/>`,
   ];
+  const version = String(b.mtime.getTime());
   if (b.hasCover) {
     parts.push(
       xml`    <link rel="http://opds-spec.org/image"
-          href="${baseUrl}/opds/books/${b.id}/cover"
+          href="${baseUrl}/opds/books/${b.id}/cover?v=${version}"
           type="image/jpeg"/>`
     );
   }
   if (b.hasCover && smallestThumbnailWidth !== null) {
     parts.push(
       xml`    <link rel="http://opds-spec.org/image/thumbnail"
-          href="${baseUrl}/opds/books/${b.id}/cover?width=${String(smallestThumbnailWidth)}"
+          href="${baseUrl}/opds/books/${b.id}/cover?width=${String(smallestThumbnailWidth)}&amp;v=${version}"
           type="image/jpeg"/>`
     );
   }

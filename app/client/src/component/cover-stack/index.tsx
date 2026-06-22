@@ -28,6 +28,7 @@ export function CoverStack({ seriesName, layerWidth, layerHeight }: CoverStackPr
               width={layerWidth}
               height={layerHeight}
               thumbnailWidth={layerWidth * 2}
+              version={book?.mtime}
             />
           );
         })}

@@ -11,6 +11,7 @@ import {
   type Metadata,
 } from '~/component';
 import { Button, DeleteBookButton, RegenChaptersButton, SetProgressModal } from '~/control';
+import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
 import { useBook } from '~/provider/book';
@@ -97,9 +98,7 @@ export const BookPage = () => {
   }, [book]);
 
   const coverSrc = useAuthorizedSrc(
-    book?.hasCover
-      ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=160`)
-      : null
+    book?.hasCover ? withTargetUser(coverUrl(book.id, { width: 160, version: book.mtime })) : null
   );
 
   if (loading) {

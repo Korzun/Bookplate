@@ -15,6 +15,8 @@ export type Book = {
   identifiers: Identifier[];
   hasCover: boolean;
   size: number;
+  /** ISO timestamp of the source file's last modification; changes when the cover changes. */
+  mtime?: string;
   addedAt?: string;
   chapterCount: number;
   chapterSpineMap?: number[];

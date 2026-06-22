@@ -178,6 +178,8 @@ describe('GET /opds/books', () => {
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('rel="http://opds-spec.org/image"');
     expect(res.text).toContain('/opds/books/bookcover/cover');
+    // The cover href carries a cache-busting version token so e-readers can cache it.
+    expect(res.text).toMatch(/\/opds\/books\/bookcover\/cover\?v=\d+/);
   });
 
   it('does not include cover link when hasCover is false', async () => {
@@ -302,6 +304,20 @@ describe('GET /opds/books/:id/cover', () => {
       .set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(Buffer.from(res.body).toString()).toBe('fallback-cover');
+  });
+
+  it('sets an immutable cache header and ETag when a version token is present', async () => {
+    await bookStore.addBook(alice, 'opdscache', stage('opdscache'), {
+      ...FAKE_META,
+      coverData: Buffer.from('opds-cacheable'),
+      coverMime: 'image/jpeg',
+    });
+    const res = await request(app)
+      .get('/opds/books/opdscache/cover?v=999')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    expect(res.headers['etag']).toBeTruthy();
   });
 });
 

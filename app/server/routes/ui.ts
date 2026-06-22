@@ -696,9 +696,16 @@ export function createUiRouter(
       return;
     }
 
+    // A cache-busting `v` token (the book's mtime) means the URL changes whenever the
+    // cover changes, so the response is safe to cache immutably; without it we fall back
+    // to revalidate-every-time so a stale cover is never served under a reused URL.
+    const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
     res.set('Content-Type', mime);
     res.set('ETag', etag);
-    res.set('Cache-Control', 'private, max-age=0, must-revalidate');
+    res.set(
+      'Cache-Control',
+      versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
+    );
     res.send(data);
   });
 

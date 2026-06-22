@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Router, Request, Response } from 'express';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
@@ -116,25 +117,53 @@ export function createOpdsRouter(
     const { width } = req.query;
     const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
+    let data: Buffer;
+    let mime: string;
+
     if (!isNaN(parsedWidth) && parsedWidth > 0) {
       const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
       if (thumbnail) {
-        res.set('Content-Type', thumbnail.mime);
-        res.send(thumbnail.data);
+        data = thumbnail.data;
+        mime = thumbnail.mime;
+      } else {
+        log.warn(
+          `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
+        );
+        const cover = await bookStore.getCover(owner.userId, req.params.id);
+        if (!cover) {
+          res.status(404).send('Not found');
+          return;
+        }
+        data = cover.data;
+        mime = cover.mime;
+      }
+    } else {
+      const cover = await bookStore.getCover(owner.userId, req.params.id);
+      if (!cover) {
+        res.status(404).send('Not found');
         return;
       }
-      log.warn(
-        `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
-      );
+      data = cover.data;
+      mime = cover.mime;
     }
 
-    const cover = await bookStore.getCover(owner.userId, req.params.id);
-    if (!cover) {
-      res.status(404).send('Not found');
+    const etag = `"${createHash('md5').update(data).digest('hex')}"`;
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
       return;
     }
-    res.set('Content-Type', cover.mime);
-    res.send(cover.data);
+
+    // The feed appends a `v` token (the book's mtime) to cover hrefs, so a versioned URL
+    // changes whenever the cover does and can be cached immutably; bare requests fall back
+    // to revalidate-every-time.
+    const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
+    res.set('Content-Type', mime);
+    res.set('ETag', etag);
+    res.set(
+      'Cache-Control',
+      versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
+    );
+    res.send(data);
   });
 
   router.get('/authors', auth, async (req: Request, res: Response) => {

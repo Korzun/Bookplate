@@ -2,6 +2,7 @@ import cx from 'classnames';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useBook } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
@@ -34,9 +35,7 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
   }, [book, navigate]);
 
   const coverSrc = useAuthorizedSrc(
-    book?.hasCover
-      ? withTargetUser(`/api/books/${encodeURIComponent(book.id)}/cover?width=88`)
-      : null
+    book?.hasCover ? withTargetUser(coverUrl(book.id, { width: 88, version: book.mtime })) : null
   );
 
   if (loading) {

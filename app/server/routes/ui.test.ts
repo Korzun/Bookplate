@@ -1041,6 +1041,58 @@ describe('GET /api/books/:id/cover', () => {
     expect(res.status).toBe(200);
     expect(Buffer.from(res.body).toString()).toBe('full-size-cover');
   });
+
+  it('serves an immutable cache header when a version token is present', async () => {
+    await bookStore.addBook(aliceOwner, 'cacheBook', stage('cacheBook'), {
+      ...FAKE_META,
+      coverData: Buffer.from('cacheable-cover'),
+      coverMime: 'image/jpeg',
+    });
+
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/cacheBook/cover?v=12345')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    expect(res.headers['etag']).toBeTruthy();
+  });
+
+  it('revalidates every time when no version token is present', async () => {
+    await bookStore.addBook(aliceOwner, 'noVerBook', stage('noVerBook'), {
+      ...FAKE_META,
+      coverData: Buffer.from('revalidate-cover'),
+      coverMime: 'image/jpeg',
+    });
+
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/noVerBook/cover')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=0, must-revalidate');
+  });
+
+  it('returns 304 when the ETag matches If-None-Match', async () => {
+    await bookStore.addBook(aliceOwner, 'etagBook', stage('etagBook'), {
+      ...FAKE_META,
+      coverData: Buffer.from('etag-cover'),
+      coverMime: 'image/jpeg',
+    });
+
+    const token = await loginAlice();
+    const first = await request(app)
+      .get('/api/books/etagBook/cover')
+      .set(...bearer(token));
+    const etag = first.headers['etag'];
+    expect(etag).toBeTruthy();
+
+    const second = await request(app)
+      .get('/api/books/etagBook/cover')
+      .set(...bearer(token))
+      .set('If-None-Match', etag);
+    expect(second.status).toBe(304);
+  });
 });
 
 describe('DELETE /api/books/:id', () => {
