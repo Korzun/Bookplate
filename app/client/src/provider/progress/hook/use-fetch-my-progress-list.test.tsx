@@ -99,7 +99,10 @@ describe('useFetchMyProgressList', () => {
   it('fetches /api/my/progress', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], nextCursor: null }),
+      })
     );
     const { result } = renderHook(() => useFetchMyProgressList(), {
       wrapper: makeWrapper({ auth: { username: 'alice' } }),
@@ -114,10 +117,13 @@ describe('useFetchMyProgressList', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve([
-            { document: 'book-1', percentage: 50 },
-            { document: 'book-2', percentage: 75 },
-          ]),
+          Promise.resolve({
+            items: [
+              { document: 'book-1', percentage: 50 },
+              { document: 'book-2', percentage: 75 },
+            ],
+            nextCursor: null,
+          }),
       })
     );
     const setProgressForUsername = vi.fn();
@@ -134,7 +140,10 @@ describe('useFetchMyProgressList', () => {
   it('calls setLoadingForUsername true then false around the fetch', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ items: [], nextCursor: null }),
+      })
     );
     const calls: [string, boolean][] = [];
     const setLoadingForUsername = vi.fn((u: string, l: boolean) => calls.push([u, l]));
@@ -166,5 +175,33 @@ describe('useFetchMyProgressList', () => {
     });
     await result.current();
     expect(setErrorForUsername).toHaveBeenCalledWith('alice', 'Timeout');
+  });
+
+  it('follows nextCursor across pages and merges into one dict', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'a', percentage: 10 }], nextCursor: 'c1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'b', percentage: 20 }], nextCursor: null }),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+    const setProgressForUsername = vi.fn();
+    const { result } = renderHook(() => useFetchMyProgressList(), {
+      wrapper: makeWrapper({ auth: { username: 'alice' }, setProgressForUsername }),
+    });
+    await result.current();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/my/progress?cursor=c1');
+    expect(setProgressForUsername).toHaveBeenCalledTimes(1);
+    expect(setProgressForUsername).toHaveBeenCalledWith('alice', {
+      a: { document: 'a', percentage: 10 },
+      b: { document: 'b', percentage: 20 },
+    });
   });
 });

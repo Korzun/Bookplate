@@ -20,13 +20,19 @@ export const useFetchMyProgressList = (): FetchMyProgressList => {
     setLoadingForUsername(username, true);
     setErrorForUsername(username, undefined);
     try {
-      const response = await apiFetch('/api/my/progress');
-      if (!response.ok) throw new Error('Failed to fetch progress');
-      const data = await (response.json() as Promise<Progress[]>);
-      setProgressForUsername(
-        username,
-        data.reduce((acc, p) => ({ ...acc, [p.document]: p }), {} as UserProgressList)
-      );
+      const merged: UserProgressList = {};
+      let cursor: string | null = null;
+      do {
+        const url: string = cursor
+          ? `/api/my/progress?cursor=${encodeURIComponent(cursor)}`
+          : '/api/my/progress';
+        const response = await apiFetch(url);
+        if (!response.ok) throw new Error('Failed to fetch progress');
+        const data = (await response.json()) as { items: Progress[]; nextCursor: string | null };
+        for (const p of data.items) merged[p.document] = p;
+        cursor = data.nextCursor;
+      } while (cursor !== null);
+      setProgressForUsername(username, merged);
     } catch (err) {
       setErrorForUsername(username, err instanceof Error ? err.message : 'Unknown error');
     } finally {
