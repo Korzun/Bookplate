@@ -29,6 +29,7 @@ import { writeMetadata, EpubChanges } from '../services/epub-writer';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { ScanJobStore } from '../services/scan-job-store';
 
 const log = logger('UI');
 
@@ -59,7 +60,8 @@ export function createUiRouter(
   config: AppConfig,
   thumbnailQueue: ThumbnailQueue,
   tokenStore: TokenStore,
-  jwtSecret: Buffer
+  jwtSecret: Buffer,
+  scanJobStore: ScanJobStore
 ): Router {
   const router = Router();
 
@@ -729,10 +731,32 @@ export function createUiRouter(
   router.post('/api/books/scan', requireAuth, async (req: Request, res: Response) => {
     const owner = await resolveOwner(req, res);
     if (!owner) return;
-    const result = await bookStore.scan(owner);
-    await thumbnailQueue.reconcile();
-    log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
-    res.json(result);
+    if (scanJobStore.isRunning(owner.userId)) {
+      res.status(409).json(scanJobStore.get(owner.userId));
+      return;
+    }
+    const job = scanJobStore.start(owner.userId);
+    res.status(202).json(job);
+    // Run the scan in the background; the client polls /api/books/scan/status.
+    void (async () => {
+      try {
+        const result = await bookStore.scan(owner);
+        await thumbnailQueue.reconcile();
+        log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
+        scanJobStore.complete(owner.userId, result);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(`Scan failed for "${owner.username}": ${message}`);
+        scanJobStore.fail(owner.userId, message);
+      }
+    })();
+  });
+
+  router.get('/api/books/scan/status', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const job = scanJobStore.get(owner.userId);
+    res.json(job ?? { status: 'idle' });
   });
 
   router.patch(

@@ -19,6 +19,7 @@ import { AppConfig, EpubMeta, Owner } from '../types';
 jest.mock('../logger');
 jest.setTimeout(30000);
 import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { ScanJobStore } from '../services/scan-job-store';
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a
 // minimal placeholder before the suite runs so the file exists in CI.
@@ -46,6 +47,7 @@ let aliceId: string;
 // alice (her own library, no ?user= needed). Admin sessions must target a
 // library with ?user=<username>.
 let aliceOwner: Owner;
+let scanJobStore: ScanJobStore;
 
 const jwtSecret = crypto.randomBytes(32);
 
@@ -193,6 +195,7 @@ beforeEach(async () => {
   tokenStore = new TokenStore(prisma);
   aliceOwner = { userId: aliceId, username: 'alice' };
 
+  scanJobStore = new ScanJobStore();
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
@@ -205,7 +208,8 @@ beforeEach(async () => {
       { ...config, booksDir },
       mockThumbnailQueue,
       tokenStore,
-      jwtSecret
+      jwtSecret,
+      scanJobStore
     )
   );
   (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
@@ -1065,23 +1069,40 @@ describe('DELETE /api/books/:id', () => {
   });
 });
 
+async function waitForScan(token: string): Promise<{
+  status: string;
+  result?: { imported: string[]; removed: string[] };
+  error?: string;
+}> {
+  for (let i = 0; i < 100; i++) {
+    const res = await request(app)
+      .get('/api/books/scan/status')
+      .set(...bearer(token));
+    if (res.body.status !== 'running') return res.body;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('scan did not finish in time');
+}
+
 describe('POST /api/books/scan', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/scan');
     expect(res.status).toBe(401);
   });
 
-  it('returns { imported: [], removed: [] } when nothing to scan', async () => {
+  it('returns 202 with a running job and completes with empty result', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ imported: [], removed: [] });
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('running');
+    const final = await waitForScan(token);
+    expect(final.status).toBe('completed');
+    expect(final.result).toEqual({ imported: [], removed: [] });
   });
 
   it('imports an epub file found on disk but not in DB', async () => {
-    // Write a real EPUB into alice's library folder without going through upload.
     const epubBuf = makeEpub({ title: 'Found Book', author: 'Found Author' });
     fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
     fs.writeFileSync(path.join(booksDir, 'alice', 'found.epub'), epubBuf);
@@ -1090,11 +1111,12 @@ describe('POST /api/books/scan', () => {
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body.imported).toContain('found.epub');
-    expect(res.body.removed).toEqual([]);
+    expect(res.status).toBe(202);
+    const final = await waitForScan(token);
+    expect(final.status).toBe('completed');
+    expect(final.result!.imported).toContain('found.epub');
+    expect(final.result!.removed).toEqual([]);
 
-    // Verify it's now in the library
     const listRes = await request(app)
       .get('/api/books')
       .set(...bearer(token));
@@ -1103,7 +1125,6 @@ describe('POST /api/books/scan', () => {
   });
 
   it('reports removed for a DB entry whose file is gone', async () => {
-    // Add a book to the DB then remove the file so the scan reports it removed
     await bookStore.addBook(aliceOwner, 'stale001', stage('stale001'), {
       ...FAKE_META,
       title: 'Stale Book',
@@ -1114,9 +1135,10 @@ describe('POST /api/books/scan', () => {
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body.removed).toContain('stale001.epub');
-    expect(res.body.imported).toEqual([]);
+    expect(res.status).toBe(202);
+    const final = await waitForScan(token);
+    expect(final.result!.removed).toContain('stale001.epub');
+    expect(final.result!.imported).toEqual([]);
   });
 
   it('calls thumbnailQueue.reconcile after scan', async () => {
@@ -1124,7 +1146,43 @@ describe('POST /api/books/scan', () => {
     await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
+    await waitForScan(token);
     expect(mockThumbnailQueue.reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 409 with the current job when a scan is already running', async () => {
+    const token = await loginAlice();
+    scanJobStore.start(aliceId); // simulate an in-flight scan
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
+    expect(res.status).toBe(409);
+    expect(res.body.status).toBe('running');
+  });
+});
+
+describe('GET /api/books/scan/status', () => {
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/books/scan/status');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns idle when no scan has run for the user', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/scan/status')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'idle' });
+  });
+
+  it('reflects a running job', async () => {
+    const token = await loginAlice();
+    scanJobStore.start(aliceId);
+    const res = await request(app)
+      .get('/api/books/scan/status')
+      .set(...bearer(token));
+    expect(res.body.status).toBe('running');
   });
 });
 
@@ -1164,7 +1222,7 @@ describe('POST /api/books/scan (admin needs ?user=)', () => {
     const res = await request(app)
       .post('/api/books/scan?user=alice')
       .set(...bearer(token));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
   });
 
   it('admin without ?user= gets 400', async () => {
@@ -1175,12 +1233,12 @@ describe('POST /api/books/scan (admin needs ?user=)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('regular user scans their own library (200)', async () => {
+  it('regular user scans their own library (202)', async () => {
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/scan')
       .set(...bearer(token));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
   });
 });
 
