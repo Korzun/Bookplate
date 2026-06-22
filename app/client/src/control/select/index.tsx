@@ -7,7 +7,10 @@ import { useStyle } from './style';
 
 export type SelectOption = string | { label: string; value: string };
 
+type InternalOption = { label: string; value: string; _isCreate?: boolean };
+
 export type SelectProps = {
+  allowCreate?: boolean;
   disabled?: boolean;
   label?: string;
   layout?: 'horizontal' | 'vertical' | 'inline';
@@ -20,7 +23,7 @@ export type SelectProps = {
   value: string | undefined;
 };
 
-function normalise(option: SelectOption): { label: string; value: string } {
+function normalise(option: SelectOption): InternalOption {
   return typeof option === 'string' ? { label: option, value: option } : option;
 }
 
@@ -38,6 +41,7 @@ function highlight(text: string, query: string, className: string): React.ReactN
 }
 
 export const Select = ({
+  allowCreate = false,
   disabled = false,
   label,
   layout = 'horizontal',
@@ -57,11 +61,27 @@ export const Select = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const normalisedOptions = useMemo(() => options.map(normalise), [options]);
-  const filteredOptions = useMemo(
+  const filteredOptions = useMemo<InternalOption[]>(
     () => normalisedOptions.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
     [normalisedOptions, query]
   );
-  const selectedLabel = normalisedOptions.find((o) => o.value === value)?.label;
+
+  const createEntry = useMemo<InternalOption | null>(() => {
+    if (!allowCreate || !query.trim()) return null;
+    const trimmed = query.trim();
+    const exactMatch = normalisedOptions.some(
+      (o) => o.label.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (exactMatch) return null;
+    return { label: trimmed, value: trimmed, _isCreate: true };
+  }, [allowCreate, query, normalisedOptions]);
+
+  const visibleOptions = useMemo<InternalOption[]>(
+    () => (createEntry ? [...filteredOptions, createEntry] : filteredOptions),
+    [filteredOptions, createEntry]
+  );
+
+  const selectedLabel = normalisedOptions.find((o) => o.value === value)?.label ?? value;
 
   const open = useCallback(() => {
     if (disabled || loading) return;
@@ -118,18 +138,16 @@ export const Select = ({
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          filteredOptions.length === 0 ? 0 : (i + 1) % filteredOptions.length
+          visibleOptions.length === 0 ? 0 : (i + 1) % visibleOptions.length
         );
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          filteredOptions.length === 0
-            ? 0
-            : (i - 1 + filteredOptions.length) % filteredOptions.length
+          visibleOptions.length === 0 ? 0 : (i - 1 + visibleOptions.length) % visibleOptions.length
         );
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        const opt = filteredOptions[highlightedIndex];
+        const opt = visibleOptions[highlightedIndex];
         if (opt) select(opt.value);
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -138,7 +156,7 @@ export const Select = ({
         close();
       }
     },
-    [filteredOptions, highlightedIndex, select, close]
+    [visibleOptions, highlightedIndex, select, close]
   );
 
   const handleInputKeyDown = useCallback(
@@ -146,18 +164,16 @@ export const Select = ({
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          filteredOptions.length === 0 ? 0 : (i + 1) % filteredOptions.length
+          visibleOptions.length === 0 ? 0 : (i + 1) % visibleOptions.length
         );
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setHighlightedIndex((i) =>
-          filteredOptions.length === 0
-            ? 0
-            : (i - 1 + filteredOptions.length) % filteredOptions.length
+          visibleOptions.length === 0 ? 0 : (i - 1 + visibleOptions.length) % visibleOptions.length
         );
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const opt = filteredOptions[highlightedIndex];
+        const opt = visibleOptions[highlightedIndex];
         if (opt) select(opt.value);
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -166,7 +182,7 @@ export const Select = ({
         close();
       }
     },
-    [filteredOptions, highlightedIndex, select, close]
+    [visibleOptions, highlightedIndex, select, close]
   );
 
   return (
@@ -242,7 +258,7 @@ export const Select = ({
         {isOpen && (
           <div className={style.dropdown}>
             <ul className={style.optionList} role="listbox">
-              {filteredOptions.length === 0 ? (
+              {visibleOptions.length === 0 ? (
                 <li
                   className={cx(style.option, style.emptyOption)}
                   role="option"
@@ -251,19 +267,26 @@ export const Select = ({
                   No results
                 </li>
               ) : (
-                filteredOptions.map((opt, index) => (
+                visibleOptions.map((opt, index) => (
                   <li
-                    key={opt.value}
+                    key={opt._isCreate ? `__create__${opt.value}` : opt.value}
                     className={cx(style.option, {
                       [style.highlighted]: index === highlightedIndex,
-                      [style.selected]: opt.value === value,
+                      [style.selected]: !opt._isCreate && opt.value === value,
+                      [style.createOption]: opt._isCreate,
                     })}
                     role="option"
-                    aria-selected={opt.value === value}
+                    aria-selected={!opt._isCreate && opt.value === value}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => select(opt.value)}
                   >
-                    {highlight(opt.label, query, style.matchHighlight)}
+                    {opt._isCreate ? (
+                      <>
+                        Add: <strong>{opt.label}</strong>
+                      </>
+                    ) : (
+                      highlight(opt.label, query, style.matchHighlight)
+                    )}
                   </li>
                 ))
               )}

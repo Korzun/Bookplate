@@ -142,6 +142,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     borderRadius: theme.radius.sm,
     padding: '0 1px',
   },
+  createOption: {
+    color: theme.color.brand.default,
+    fontStyle: 'italic',
+  },
   spinner: { ...theme.recipe.spinner },
   // Empty modifier classes — referenced as $name in compound selectors above
   danger: {},
