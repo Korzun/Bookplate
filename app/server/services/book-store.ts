@@ -1020,12 +1020,7 @@ export class BookStore {
         LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
         WHERE s.user_id = ${userId}
         GROUP BY s.id
-        HAVING
-          SUM(CASE WHEN p.percentage > 0 THEN 1 ELSE 0 END) > 0
-          AND NOT (
-            COUNT(b.id) > 0
-            AND COUNT(b.id) = SUM(CASE WHEN p.percentage >= 1 THEN 1 ELSE 0 END)
-          )
+        HAVING SUM(CASE WHEN p.percentage > 0 AND p.percentage < 1 THEN 1 ELSE 0 END) > 0
       `;
       return rows.map((r) => r.id);
     }

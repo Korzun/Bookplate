@@ -2398,7 +2398,7 @@ describe('listBooksPage with filters', () => {
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
   });
 
-  it('status=in-progress returns series with 2 completed + 1 unread', async () => {
+  it('status=in-progress returns series with a book actively being read', async () => {
     await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
@@ -2418,10 +2418,29 @@ describe('listBooksPage with filters', () => {
       seriesIndex: 3,
     });
     await insertProgress('s1b1', 1.0);
-    await insertProgress('s1b2', 1.0);
+    await insertProgress('s1b2', 0.4);
     // s1b3 has no progress
     const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'in-progress' });
     expect(result.items).toEqual([{ type: 'series', seriesName: 'Dune' }]);
+  });
+
+  it('status=in-progress excludes series with only completed and unread books', async () => {
+    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+      ...FAKE_META,
+      title: 'Dune 1',
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), {
+      ...FAKE_META,
+      title: 'Dune 2',
+      series: 'Dune',
+      seriesIndex: 2,
+    });
+    await insertProgress('s1b1', 1.0);
+    // s1b2 has no progress — finished book 1 but haven't started book 2
+    const result = await bookStore.listBooksPage(OWNER, null, 20, { status: 'in-progress' });
+    expect(result.items).toEqual([]);
   });
 
   it('seriesName + status combined: shows only the named series when completed', async () => {
