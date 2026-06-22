@@ -1,7 +1,7 @@
 import cx from 'classnames';
 import { Link, useLocation } from 'react-router-dom';
 
-import { BookIcon, UploadIcon, UserIcon, UsersIcon } from '~/icon';
+import { BookIcon, SettingsIcon, UploadIcon, UsersIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { path } from '~/router';
 
@@ -63,8 +63,8 @@ export const Header = () => {
             })}
             to={path.user()}
           >
-            <UserIcon height={14} width={14} />
-            Profile
+            <SettingsIcon height={14} width={14} />
+            Settings
           </Link>
         </div>
       </nav>

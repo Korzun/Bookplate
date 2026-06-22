@@ -25,8 +25,8 @@ export const UserPage = () => {
   return (
     <Page>
       <SyncPassword />
-      <MyProgress />
       <UserChangePassword />
+      <MyProgress />
       <Button loading={loggingOut} onClick={handleLogout} danger>
         Log out
       </Button>
