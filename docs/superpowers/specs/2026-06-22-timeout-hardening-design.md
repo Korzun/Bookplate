@@ -22,8 +22,8 @@ scoped together, but each can be implemented and reviewed on its own.
 
 1. **Request timeout middleware** — send a clean 503 before Cloudflare's 100s
    fires.
-2. **Progress endpoint** — remove the N+1 query and add transparent cursor
-   pagination.
+2. **Progress endpoints** — remove the N+1 query on `/api/my/progress` and add
+   transparent cursor pagination to both it and the admin progress route.
 3. **Async library scan** — make scanning a background job the client polls,
    so a slow scan can't block a request past the timeout.
 
@@ -48,7 +48,7 @@ No new file, no new dependency. ~10 lines.
 
 ---
 
-## 2. Progress endpoint: N+1 fix + transparent pagination
+## 2. Progress endpoints: N+1 fix + transparent pagination
 
 ### Problem
 
@@ -57,51 +57,35 @@ issues one `getBookById` (a `findUnique`) **per row** to enrich each with
 `currentChapter` / `currentChapterName`. That is an N+1 query, and the whole
 result set is returned in a single unbounded response.
 
-### Decisions
+`GET /api/users/:username/progress` (admin) returns the full unbounded array
+too, with no enrichment.
 
-- **Drop** `currentChapter` and `currentChapterName` from the response. This
-  removes the need to read `chapterSpineMap` / `chapterNames` per book, which
-  was the only reason the route fetched full `Book` objects.
-- The response now carries `title` so the client needs no follow-up book fetch.
-  There is no Prisma relation between `Progress.document` and `Book.id`
-  (`document` is a plain string), so titles come from one `findMany` per page
-  — not a per-row query.
-- `title` is **nullable**: a progress record can outlive its book (deleted, or
-  re-imported under a new id), in which case `title` is `null`.
+### What the consumers actually use (verified)
 
-### Server — route change
+- `MyProgressRow` and `UserProgressRow` resolve the book **title themselves**
+  via `useBook(bookId)` → `book.title`. They never read `title` off the
+  progress object — so the response does **not** need a `title` field.
+- `currentChapterName` has **zero** consumers in the client. Drop it.
+- `currentChapter` has exactly **one** consumer:
+  `page/book/index.tsx` → `initialChapter={progress?.currentChapter ?? 0}`,
+  which pre-selects the chapter in the Set Progress modal. It must be kept.
 
-`GET /api/my/progress` gains optional query params `?cursor=<base64>&take=<n>`
-(default `take` = 50). For each page:
+### Decisions (Option A — batch server-side)
 
-1. Fetch a page of progress rows via the new `UserStore.getUserProgressPage`.
-2. Collect the page's `document` ids and run one inline
-   `prisma.book.findMany({ where: { userId, id: { in: ids } }, select: { id: true, title: true } })`.
-3. Map each progress row to a `ProgressItem`, looking up its title (or `null`
-   if the book is gone).
-
-Response shape changes from `Progress[]` to:
-
-```ts
-{ items: ProgressItem[]; nextCursor: string | null }
-```
-
-where
-
-```ts
-type ProgressItem = {
-  document: string;
-  percentage: number;
-  title: string | null;
-  device?: string;     // admin route only, unchanged
-  timestamp?: number;  // admin route only, unchanged
-};
-```
-
-No new `BookStore` method — the `findMany` is inline in the route, since it is
-a narrow two-column projection used only here.
+- **Keep** `currentChapter` in the `/api/my/progress` response. Replace the N
+  per-row `findUnique` calls with **one** `findMany` per page selecting only
+  `{ id, chapterSpineMap }` for that page's document ids, then compute
+  `currentChapter` exactly as today. This removes the N+1 while preserving
+  behaviour and requiring no client logic change beyond the pagination loop.
+- **Drop** `currentChapterName` (no consumer).
+- Do **not** add a `title` field (no consumer; rows use `useBook`).
+- Apply the same transparent cursor pagination to the admin route. It needs no
+  book lookup at all — it returns the raw progress rows (which already carry
+  `device` / `timestamp`), now in pages.
 
 ### Server — `UserStore.getUserProgressPage(userId, cursor, take)`
+
+Shared by both routes.
 
 - Orders by `[timestamp DESC, document ASC]`.
 - Fetches `take + 1` rows to detect whether a next page exists.
@@ -110,6 +94,28 @@ a narrow two-column projection used only here.
 - Uses the existing `@@id([userId, document])` composite for stable Prisma
   cursor positioning.
 
+### Server — `GET /api/my/progress`
+
+Gains optional query params `?cursor=<base64>&take=<n>` (default `take` = 50).
+For each page:
+
+1. Fetch a page of progress rows via `getUserProgressPage`.
+2. Collect the page's `document` ids and run one inline
+   `prisma.book.findMany({ where: { userId, id: { in: ids } }, select: { id: true, chapterSpineMap: true } })`.
+3. Map each row, computing `currentChapter` from its CFI + the book's
+   `chapterSpineMap` as today (omitted when the book is gone or has no map).
+
+Response shape changes from `Progress[]` to `{ items, nextCursor: string | null }`.
+Per-item fields are unchanged from today **except** `currentChapterName` is
+removed. The inline `findMany` is a narrow projection used only here, so no new
+`BookStore` method is added.
+
+### Server — `GET /api/users/:username/progress`
+
+Gains the same `?cursor=&take=` params, paginates via `getUserProgressPage`,
+and returns `{ items, nextCursor }`. No book lookup; `device` / `timestamp`
+are preserved.
+
 ### Server — types
 
 Add `ProgressPageCursor` (`{ timestamp: number; document: string }`) to
@@ -117,17 +123,19 @@ Add `ProgressPageCursor` (`{ timestamp: number; document: string }`) to
 
 ### Client — `Progress` type
 
-In `app/client/src/provider/progress/type.ts`: remove `currentChapter` and
-`currentChapterName`; add `title: string | null`.
+In `app/client/src/provider/progress/type.ts`: remove `currentChapterName`.
+`currentChapter` stays. No `title` added.
 
-### Client — `useFetchMyProgressList`
+### Client — `useFetchMyProgressList` and `useFetchUserProgressList`
+
+Both restructure identically:
 
 - Loop: fetch page 1, then follow `nextCursor` until it is `null`, collecting
   items across pages.
 - Call `setProgressForUsername` **once** at the end with the fully merged dict
   — no partial-state flicker mid-fetch.
 - Loading and error handling are unchanged from the caller's perspective; the
-  pagination is invisible above this hook.
+  pagination is invisible above these hooks.
 
 ---
 
@@ -198,7 +206,9 @@ threaded into `createServer` → `createUiRouter` alongside the existing stores.
   503 and that a fast handler clears the timer (no late 503, no double-send).
 - **Progress pagination:** `UserStore.getUserProgressPage` — first page,
   middle page via cursor, last page (`nextCursor: null`), empty set. Route
-  test: title present, `title: null` for a missing book, multi-page assembly.
+  tests: `/api/my/progress` computes `currentChapter` and no longer emits
+  `currentChapterName`; one book `findMany` per page (not per row); multi-page
+  assembly. Admin route paginates and preserves `device` / `timestamp`.
 - **Async scan:** `ScanJobStore` lifecycle (start → running, complete, fail,
   isRunning). Route tests: `202` on fresh start, `409` while running,
   status endpoint for idle/running/completed/failed.
@@ -207,12 +217,14 @@ threaded into `createServer` → `createUiRouter` alongside the existing stores.
 
 ## Files touched
 
-- `app/server/server.ts` — timeout middleware
+- `app/server/server.ts` — timeout middleware; wire `ScanJobStore`
+- `app/server/index.ts` — instantiate `ScanJobStore`
 - `app/server/types.ts` — `ProgressPageCursor`
 - `app/server/services/user-store.ts` — `getUserProgressPage`
 - `app/server/services/scan-job-store.ts` — **new**
-- `app/server/routes/ui.ts` — progress route, scan routes
-- `app/server/server.ts` / `app/server/index.ts` — wire `ScanJobStore`
-- `app/client/src/provider/progress/type.ts` — `Progress` type
+- `app/server/routes/ui.ts` — `/api/my/progress` pagination + batched lookup, scan routes
+- `app/server/routes/users.ts` — admin progress route pagination
+- `app/client/src/provider/progress/type.ts` — drop `currentChapterName`
 - `app/client/src/provider/progress/hook/use-fetch-my-progress-list.ts` — paging loop
+- `app/client/src/provider/progress/hook/use-fetch-user-progress-list.ts` — paging loop
 - `app/client/src/provider/book/hook/use-scan-library.ts` — polling
