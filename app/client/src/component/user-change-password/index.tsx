@@ -50,7 +50,7 @@ export const UserChangePassword = () => {
   );
 
   return (
-    <Card isCollapsible defaultCollapsed title="Change password">
+    <Card title="Change password">
       <div className={styles.inputContainer}>
         <TextInput
           name="current-password"
