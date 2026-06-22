@@ -160,6 +160,34 @@ describe('useScanLibrary', () => {
     expect(postCalls()).toHaveLength(1);
   });
 
+  it('treats idle status mid-poll as terminal: resolves to null and clears loading', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ status: 'idle' })) // mount status check
+      .mockResolvedValueOnce(accepted({ jobId: 'j1', status: 'running', startedAt: 1 })) // POST
+      .mockResolvedValueOnce(ok({ status: 'idle' })); // poll: job vanished after server restart
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper() });
+    await vi.advanceTimersByTimeAsync(0); // resolve mount status
+
+    let scanPromise!: Promise<unknown>;
+    act(() => {
+      scanPromise = result.current[0]();
+    });
+    await vi.advanceTimersByTimeAsync(0); // POST resolves
+    await vi.advanceTimersByTimeAsync(2000); // first poll fires → returns idle
+
+    let resolved: unknown;
+    await act(async () => {
+      resolved = await scanPromise;
+    });
+
+    expect(resolved).toBeNull(); // resolves (no hang)
+    expect(result.current[2]).toBe(false); // loading cleared
+    expect(result.current[3]).toBe(false); // no error set
+  });
+
   it('attaches to an already-running scan on mount and shows loading', async () => {
     const mockFetch = vi
       .fn()

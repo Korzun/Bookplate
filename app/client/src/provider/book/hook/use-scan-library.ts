@@ -81,7 +81,12 @@ export const useScanLibrary = (): UseScanLibrary => {
         }
         return null;
       }
-      // 'running' | 'idle' → keep polling
+      if (job.status === 'idle') {
+        // The job is gone (e.g. the server restarted mid-scan). Treat as
+        // terminal so the loop can't poll forever and leave loading stuck.
+        return null;
+      }
+      // 'running' → keep polling
     }
     return null;
   }, [withTargetUser, applyCompletion]);
