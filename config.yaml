@@ -17,10 +17,12 @@ map:
   - media:rw
   - data:rw
 options:
+  library_name: HASS-ODPS
   username: admin
   password: changeme
   max_concurrent_uploads: 3
 schema:
+  library_name: str
   username: str
   password: str
   max_concurrent_uploads: int

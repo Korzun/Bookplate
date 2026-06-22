@@ -25,7 +25,10 @@ export function createServer(
   server.use(express.urlencoded({ extended: false }));
   server.use(cookieParser());
 
-  server.use('/opds', createOpdsRouter(bookStore, userStore, config.thumbnailWidths));
+  server.use(
+    '/opds',
+    createOpdsRouter(bookStore, userStore, config.thumbnailWidths, config.libraryName)
+  );
   server.use('/kosync', createKosyncRouter(userStore, bookStore));
   server.use(
     '/api/users',

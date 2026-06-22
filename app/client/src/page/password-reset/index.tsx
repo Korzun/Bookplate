@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { BooksIcon } from '~/icon';
+import { useLibraryName } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 import { useChangeMyPassword } from '~/provider/user';
 
@@ -12,6 +13,7 @@ export const PasswordResetPage = () => {
   const styles = useStyle();
   const [changeMyPassword, loading] = useChangeMyPassword();
   const showToast = useToast();
+  const libraryName = useLibraryName();
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -63,7 +65,7 @@ export const PasswordResetPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <h1 className={styles.title}>
-          <BooksIcon /> HASS-ODPS
+          <BooksIcon /> {libraryName}
         </h1>
         <Card className={styles.card}>
           <div className={styles.banner}>You must change your password before continuing.</div>

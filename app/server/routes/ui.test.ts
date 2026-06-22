@@ -50,6 +50,7 @@ let aliceOwner: Owner;
 const jwtSecret = crypto.randomBytes(32);
 
 const config: AppConfig = {
+  libraryName: 'HASS-ODPS',
   username: 'admin',
   password: 'pass',
   booksDir: '',
@@ -1777,7 +1778,7 @@ describe('GET /api/config', () => {
       .get('/api/config')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ maxConcurrentUploads: 3 });
+    expect(res.body).toEqual({ libraryName: 'HASS-ODPS', maxConcurrentUploads: 3 });
   });
 
   it('returns maxConcurrentUploads for regular user', async () => {
@@ -1786,7 +1787,7 @@ describe('GET /api/config', () => {
       .get('/api/config')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ maxConcurrentUploads: 3 });
+    expect(res.body).toEqual({ libraryName: 'HASS-ODPS', maxConcurrentUploads: 3 });
   });
 });
 

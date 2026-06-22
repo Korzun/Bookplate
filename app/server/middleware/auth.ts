@@ -13,13 +13,13 @@ const log = logger('Auth');
  * OPDS clients send the password as plaintext (just Base64-encoded per RFC 7617),
  * so we hash it with MD5 before comparing against the stored key.
  */
-export function opdsAuth(userStore: UserStore) {
+export function opdsAuth(userStore: UserStore, realm: string = 'HASS-ODPS') {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const header = req.headers.authorization;
       if (!header?.startsWith('Basic ')) {
         log.warn('OPDS auth failed — missing or malformed Authorization header');
-        res.set('WWW-Authenticate', 'Basic realm="HASS-ODPS"');
+        res.set('WWW-Authenticate', `Basic realm="${realm}"`);
         res.status(401).send();
         return;
       }
@@ -30,7 +30,7 @@ export function opdsAuth(userStore: UserStore) {
       const userId = await userStore.authenticate(username, UserStore.hashSyncPassword(password));
       if (!userId) {
         log.warn(`OPDS auth failed for user "${username}"`);
-        res.set('WWW-Authenticate', 'Basic realm="HASS-ODPS"');
+        res.set('WWW-Authenticate', `Basic realm="${realm}"`);
         res.status(401).send();
         return;
       }
