@@ -29,7 +29,7 @@ export type UsePatchBookMetadata = [
   string | undefined,
 ];
 export const usePatchBookMetadata = (): UsePatchBookMetadata => {
-  const { setBookList } = useContext(Context);
+  const { setBookList, setBookListFetched, setBookListItems, setNextCursor } = useContext(Context);
   const { renameProgressKey } = useContext(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
@@ -76,6 +76,9 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
           return next;
         });
         if (updatedBook.id !== bookId) renameProgressKey(bookId, updatedBook.id);
+        setBookListFetched(false);
+        setBookListItems(() => []);
+        setNextCursor(null);
         return updatedBook.id;
       } catch (err) {
         setError(true);
@@ -86,7 +89,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         setLoading(false);
       }
     },
-    [withTargetUser, loading, setBookList, renameProgressKey]
+    [withTargetUser, loading, setBookList, setBookListFetched, setBookListItems, setNextCursor, renameProgressKey]
   );
 
   return useMemo(

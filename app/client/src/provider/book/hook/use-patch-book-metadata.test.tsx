@@ -31,7 +31,21 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = {}) {
+type WrapperOptions = {
+  initialBooks?: Book[];
+  initialProgress?: ProgressList;
+  setBookListFetched?: (fetched: boolean) => void;
+  setBookListItems?: (updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]) => void;
+  setNextCursor?: (cursor: string | null) => void;
+};
+
+function makeWrapper({
+  initialBooks = [],
+  initialProgress = {},
+  setBookListFetched = () => {},
+  setBookListItems = () => {},
+  setNextCursor = () => {},
+}: WrapperOptions = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
       Object.fromEntries(initialBooks.map((b) => [b.id, b]))
@@ -79,7 +93,7 @@ function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = 
             errorByBookId: {},
             completeBookIds: new Set(),
             setBookList,
-            setBookListFetched: () => {},
+            setBookListFetched,
             setBookListLoading: () => {},
             setBookListError: () => {},
             setLoadingForBook: () => {},
@@ -88,8 +102,8 @@ function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = 
             clearCompleteBookIds: () => {},
             bookListItems: [],
             nextCursor: null,
-            setBookListItems: () => {},
-            setNextCursor: () => {},
+            setBookListItems,
+            setNextCursor,
             bookListFilter: {},
             setBookListFilter: () => {},
           }}
@@ -111,7 +125,7 @@ describe('usePatchBookMetadata', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     await act(() => result.current[0]('1', { title: 'New Dune' }));
     expect(fetch).toHaveBeenCalledWith(
@@ -127,7 +141,7 @@ describe('usePatchBookMetadata', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     await act(() => result.current[0]('1', { title: 'New Title', author: 'New Author' }));
     const body = (vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as FormData;
@@ -142,7 +156,7 @@ describe('usePatchBookMetadata', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     await act(() =>
       result.current[0]('1', {
@@ -165,7 +179,7 @@ describe('usePatchBookMetadata', () => {
     );
     const { result } = renderHook(
       () => ({ hook: usePatchBookMetadata(), ctx: useContext(Context) }),
-      { wrapper: makeWrapper([makeBook({ id: '1' })]) }
+      { wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }) }
     );
     await act(() => result.current.hook[0]('1', { title: 'Updated' }));
     expect(result.current.ctx.bookList['1'].title).toBe('Updated');
@@ -179,7 +193,7 @@ describe('usePatchBookMetadata', () => {
     );
     const { result } = renderHook(
       () => ({ hook: usePatchBookMetadata(), ctx: useContext(Context) }),
-      { wrapper: makeWrapper([makeBook({ id: '1' })]) }
+      { wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }) }
     );
     await act(() => result.current.hook[0]('1', { title: 'Renamed' }));
     expect(result.current.ctx.bookList['1']).toBeUndefined();
@@ -193,7 +207,7 @@ describe('usePatchBookMetadata', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     const id = await act(() => result.current[0]('1', {}));
     expect(id).toBe('2');
@@ -208,7 +222,7 @@ describe('usePatchBookMetadata', () => {
       })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     await act(() => result.current[0]('1', {}));
     expect(result.current[2]).toBe(true);
@@ -224,7 +238,7 @@ describe('usePatchBookMetadata', () => {
       })
     );
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
     await act(() => result.current[0]('1', {}));
     expect(result.current[3]).toBe('Save failed');
@@ -234,7 +248,7 @@ describe('usePatchBookMetadata', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
 
     const { result } = renderHook(() => usePatchBookMetadata(), {
-      wrapper: makeWrapper([makeBook({ id: '1' })]),
+      wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
 
     act(() => {
@@ -264,7 +278,7 @@ describe('usePatchBookMetadata', () => {
     );
     const { result } = renderHook(
       () => ({ hook: usePatchBookMetadata(), ctx: useContext(ProgressContext) }),
-      { wrapper: makeWrapper([makeBook({ id: 'old-id' })], initialProgress) }
+      { wrapper: makeWrapper({ initialBooks: [makeBook({ id: 'old-id' })], initialProgress }) }
     );
     await act(() => result.current.hook[0]('old-id', { title: 'Updated' }));
     expect(result.current.ctx.progressList['alice']['new-id']).toBeDefined();
@@ -287,9 +301,34 @@ describe('usePatchBookMetadata', () => {
     );
     const { result } = renderHook(
       () => ({ hook: usePatchBookMetadata(), ctx: useContext(ProgressContext) }),
-      { wrapper: makeWrapper([makeBook({ id: 'book-1' })], initialProgress) }
+      { wrapper: makeWrapper({ initialBooks: [makeBook({ id: 'book-1' })], initialProgress }) }
     );
     await act(() => result.current.hook[0]('book-1', { title: 'Updated' }));
     expect(result.current.ctx.progressList['alice']['book-1']).toBeDefined();
+  });
+
+  it('invalidates the book list after a successful patch so stale items are re-fetched', async () => {
+    const setBookListFetched = vi.fn();
+    const setBookListItems = vi.fn();
+    const setNextCursor = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBook({ id: 'new-id', series: 'New Series' })),
+      })
+    );
+    const { result } = renderHook(() => usePatchBookMetadata(), {
+      wrapper: makeWrapper({
+        initialBooks: [makeBook({ id: 'old-id' })],
+        setBookListFetched,
+        setBookListItems,
+        setNextCursor,
+      }),
+    });
+    await act(() => result.current[0]('old-id', { series: 'New Series' }));
+    expect(setBookListFetched).toHaveBeenCalledWith(false);
+    expect(setBookListItems).toHaveBeenCalled();
+    expect(setNextCursor).toHaveBeenCalledWith(null);
   });
 });
