@@ -138,7 +138,7 @@ describe('GET /api/users/:username/progress', () => {
       .get('/api/users/alice/progress')
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual({ items: [], nextCursor: null });
   });
 
   it('returns progress records for a user', async () => {
@@ -155,9 +155,10 @@ describe('GET /api/users/:username/progress', () => {
       .get('/api/users/alice/progress')
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].document).toBe('dune.epub');
-    expect(res.body[0].percentage).toBeCloseTo(0.42);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].document).toBe('dune.epub');
+    expect(res.body.items[0].percentage).toBeCloseTo(0.42);
+    expect(res.body.nextCursor).toBeNull();
   });
 
   it('returns only the current-id entry after a reimport changes the book id', async () => {
@@ -186,11 +187,46 @@ describe('GET /api/users/:username/progress', () => {
         .get('/api/users/alice/progress')
         .set('Authorization', `Bearer ${adminToken()}`);
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].document).toBe('lin-new');
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0].document).toBe('lin-new');
     } finally {
       fs.rmSync(booksDir, { recursive: true, force: true });
     }
+  });
+
+  it('paginates with take and advances via nextCursor', async () => {
+    await userStore.createUser('alice', 'pass');
+    const aliceId = (await userStore.getUserIdByUsername('alice'))!;
+    for (const [doc, ts] of [
+      ['a', 100],
+      ['b', 200],
+      ['c', 300],
+    ] as const) {
+      await userStore.saveProgress(aliceId, {
+        document: doc,
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      await prisma.progress.update({
+        where: { userId_document: { userId: aliceId, document: doc } },
+        data: { timestamp: ts },
+      });
+    }
+    const page1 = await request(app)
+      .get('/api/users/alice/progress?take=2')
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(page1.body.items.map((i: { document: string }) => i.document)).toEqual(['c', 'b']);
+    expect(page1.body.nextCursor).not.toBeNull();
+
+    const page2 = await request(app)
+      .get(
+        `/api/users/alice/progress?take=2&cursor=${encodeURIComponent(page1.body.nextCursor as string)}`
+      )
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(page2.body.items.map((i: { document: string }) => i.document)).toEqual(['a']);
+    expect(page2.body.nextCursor).toBeNull();
   });
 });
 
