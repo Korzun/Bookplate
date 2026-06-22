@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppConfig } from './types';
 import { BookStore } from './services/book-store';
@@ -10,6 +10,9 @@ import { createOpdsRouter } from './routes/opds';
 import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
 import { createUiRouter } from './routes/ui';
+import { logger } from './logger';
+
+const log = logger('Server');
 
 export function createServer(
   config: AppConfig,
@@ -38,6 +41,19 @@ export function createServer(
     '/',
     createUiRouter(bookStore, userStore, config, thumbnailQueue, tokenStore, jwtSecret)
   );
+
+  server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      log.warn(
+        'Malformed request body — possible Cloudflare error page received as request (rejecting with 400)'
+      );
+      if (!res.headersSent) {
+        res.status(400).json({ error: 'Invalid request body' });
+      }
+      return;
+    }
+    next(err);
+  });
 
   return server;
 }
