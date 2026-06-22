@@ -763,3 +763,76 @@ describe('UserStore.saveProgress — history', () => {
     expect(current!.percentage).toBeCloseTo(0.42);
   });
 });
+
+describe('UserStore.getUserProgressPage', () => {
+  async function seed(userId: string, document: string, timestamp: number): Promise<void> {
+    await prisma.progress.create({
+      data: {
+        userId,
+        document,
+        progress: `/p/${document}`,
+        percentage: 0.5,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp,
+      },
+    });
+  }
+
+  it('returns an empty page with null cursor when there is no progress', async () => {
+    await store.createUser('alice', 'pass');
+    const id = (await store.getUserIdByUsername('alice'))!;
+    const page = await store.getUserProgressPage(id, null, 50);
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('orders by timestamp desc, document asc and maps fields', async () => {
+    await store.createUser('alice', 'pass');
+    const id = (await store.getUserIdByUsername('alice'))!;
+    await seed(id, 'a', 100);
+    await seed(id, 'b', 200);
+    const page = await store.getUserProgressPage(id, null, 50);
+    expect(page.items.map((i) => i.document)).toEqual(['b', 'a']);
+    expect(page.items[0]).toMatchObject({
+      document: 'b',
+      progress: '/p/b',
+      device: 'Kobo',
+      device_id: 'd1',
+      timestamp: 200,
+    });
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('returns a nextCursor when more rows exist and advances past them', async () => {
+    await store.createUser('alice', 'pass');
+    const id = (await store.getUserIdByUsername('alice'))!;
+    await seed(id, 'a', 100);
+    await seed(id, 'b', 200);
+    await seed(id, 'c', 300);
+    const page1 = await store.getUserProgressPage(id, null, 2);
+    expect(page1.items.map((i) => i.document)).toEqual(['c', 'b']);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const cursor = JSON.parse(
+      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
+    ) as { timestamp: number; document: string };
+    const page2 = await store.getUserProgressPage(id, cursor, 2);
+    expect(page2.items.map((i) => i.document)).toEqual(['a']);
+    expect(page2.nextCursor).toBeNull();
+  });
+
+  it('breaks timestamp ties by document ascending', async () => {
+    await store.createUser('alice', 'pass');
+    const id = (await store.getUserIdByUsername('alice'))!;
+    await seed(id, 'y', 100);
+    await seed(id, 'x', 100);
+    const page1 = await store.getUserProgressPage(id, null, 1);
+    expect(page1.items.map((i) => i.document)).toEqual(['x']); // same ts, 'x' < 'y'
+    const cursor = JSON.parse(
+      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
+    ) as { timestamp: number; document: string };
+    const page2 = await store.getUserProgressPage(id, cursor, 1);
+    expect(page2.items.map((i) => i.document)).toEqual(['y']);
+  });
+});

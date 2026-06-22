@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import argon2 from 'argon2';
-import { Owner, Progress } from '../types';
+import { Owner, Progress, ProgressPageCursor } from '../types';
 import { generateUserId } from '../utils/id';
 import { WORDLIST } from './wordlist';
 import { logger } from '../logger';
@@ -287,6 +287,51 @@ export class UserStore {
       device_id: row.deviceId,
       timestamp: row.timestamp,
     }));
+  }
+
+  /**
+   * Keyset-paginated progress for a user, ordered by timestamp desc then
+   * document asc. Fetches take+1 rows to detect a further page; `nextCursor`
+   * is a base64-encoded { timestamp, document } of the last row, or null.
+   */
+  async getUserProgressPage(
+    userId: string,
+    cursor: ProgressPageCursor | null,
+    take: number
+  ): Promise<{ items: Progress[]; nextCursor: string | null }> {
+    const rows = await this.prisma.progress.findMany({
+      where: {
+        userId,
+        ...(cursor
+          ? {
+              OR: [
+                { timestamp: { lt: cursor.timestamp } },
+                { timestamp: cursor.timestamp, document: { gt: cursor.document } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ timestamp: 'desc' }, { document: 'asc' }],
+      take: take + 1,
+    });
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const items: Progress[] = page.map((row) => ({
+      document: row.document,
+      progress: row.progress,
+      percentage: row.percentage,
+      device: row.device,
+      device_id: row.deviceId,
+      timestamp: row.timestamp,
+    }));
+    const last = page[page.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? Buffer.from(
+            JSON.stringify({ timestamp: last.timestamp, document: last.document })
+          ).toString('base64')
+        : null;
+    return { items, nextCursor };
   }
 
   async clearProgress(userId: string, document: string): Promise<boolean> {

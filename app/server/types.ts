@@ -106,6 +106,12 @@ export type PageCursor = {
   id: string; // secondary tiebreaker: series id for series, book id for standalones
 };
 
+/** Keyset cursor for progress pagination: last (timestamp, document) on a page. */
+export type ProgressPageCursor = {
+  timestamp: number;
+  document: string;
+};
+
 export interface AppConfig {
   libraryName: string;
   username: string;
