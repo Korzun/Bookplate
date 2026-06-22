@@ -86,7 +86,11 @@ describe('useMyProgressList', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve([{ document: 'book-1', percentage: 80 }]),
+        json: () =>
+          Promise.resolve({
+            items: [{ document: 'book-1', percentage: 80 }],
+            nextCursor: null,
+          }),
       })
     );
     const { result } = renderHook(() => useMyProgressList(), {
@@ -111,7 +115,7 @@ describe('useMyProgressList', () => {
       wrapper: makeWrapper({}, { username: 'alice' }),
     });
     await waitFor(() => expect(result.current[1]).toBe(true));
-    resolveFetch({ ok: true, json: () => Promise.resolve([]) });
+    resolveFetch({ ok: true, json: () => Promise.resolve({ items: [], nextCursor: null }) });
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
 
@@ -141,10 +145,13 @@ describe('useMyProgressList', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve([
-            { document: 'book-1', percentage: 0.5 },
-            { document: 'book-1', percentage: 0.9 },
-          ]),
+          Promise.resolve({
+            items: [
+              { document: 'book-1', percentage: 0.5 },
+              { document: 'book-1', percentage: 0.9 },
+            ],
+            nextCursor: null,
+          }),
       })
     );
     const { result } = renderHook(() => useMyProgressList(), {
