@@ -1,3 +1,7 @@
+## 1.2.8
+
+- fix: series in-progress only when a book is actively being read
+
 ## 1.2.7
 
 - feat: validate author sort and title sort format in book edit
