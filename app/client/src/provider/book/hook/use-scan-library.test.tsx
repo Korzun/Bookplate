@@ -202,4 +202,64 @@ describe('useScanLibrary', () => {
     // Assert loading without awaiting the never-terminating poll; cleanup cancels it.
     expect(result.current[2]).toBe(true); // loading from mount attach
   });
+
+  it('two near-simultaneous poll triggers share one polling session', async () => {
+    const mockClear = vi.fn();
+    // Race: mount sees a running scan AND user clicks scan before POST returns.
+    // Both the mount-attach effect and scanLibrary call pollUntilDone.
+    // With the ref guard, only ONE polling loop should run and applyCompletion
+    // fires exactly once.
+    //
+    // Sequence wired up here:
+    //   1. mount GET /status → running  (triggers mount-attach pollUntilDone)
+    //   2. user POST /scan   → 202      (triggers scanLibrary pollUntilDone)
+    //   3. single poll tick  → completed
+    //
+    // The user click is simulated before the timer that drains the mount check,
+    // so loading is still false when the click fires.
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ jobId: 'j1', status: 'running', startedAt: 1 })) // mount
+      .mockResolvedValueOnce(accepted({ jobId: 'j1', status: 'running', startedAt: 1 })) // POST
+      .mockResolvedValueOnce(
+        ok({
+          jobId: 'j1',
+          status: 'completed',
+          startedAt: 1,
+          result: { imported: ['x'], removed: [] },
+        })
+      ) // one poll tick
+      .mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) }); // extra (fetchBookList)
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper(mockClear) });
+
+    // Fire scanLibrary() synchronously before the mount effect's async status fetch resolves.
+    // At this point loading=false so the call goes through.
+    let scanPromise!: Promise<unknown>;
+    act(() => {
+      scanPromise = result.current[0]();
+    });
+
+    // Drain pending microtasks: mount status and POST both resolve.
+    // pollUntilDone() is called by both paths; the second call hits the ref guard.
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Advance past poll interval → single status poll fires → completed.
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await act(async () => {
+      await scanPromise;
+    });
+
+    // Count only the /api/books/scan/status GET calls (not POST, not /api/books fetch).
+    const scanStatusCalls = mockFetch.mock.calls.filter((c) =>
+      (c[0] as string).includes('/api/books/scan/status')
+    );
+    // Without deduplication: mount check (1) + 2 independent poll loops (2) = 3.
+    // With deduplication:    mount check (1) + 1 shared poll tick (1)  = 2.
+    expect(scanStatusCalls).toHaveLength(2);
+    // applyCompletion must fire exactly once despite two callsites.
+    expect(mockClear).toHaveBeenCalledTimes(1);
+  });
 });

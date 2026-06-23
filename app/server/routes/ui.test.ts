@@ -1121,14 +1121,18 @@ describe('DELETE /api/books/:id', () => {
   });
 });
 
-async function waitForScan(token: string): Promise<{
+async function waitForScan(
+  token: string,
+  querySuffix?: string
+): Promise<{
   status: string;
   result?: { imported: string[]; removed: string[] };
   error?: string;
 }> {
+  const path = querySuffix ? `/api/books/scan/status${querySuffix}` : '/api/books/scan/status';
   for (let i = 0; i < 100; i++) {
     const res = await request(app)
-      .get('/api/books/scan/status')
+      .get(path)
       .set(...bearer(token));
     if (res.body.status !== 'running') return res.body;
     await new Promise((r) => setTimeout(r, 10));
@@ -1275,6 +1279,8 @@ describe('POST /api/books/scan (admin needs ?user=)', () => {
       .post('/api/books/scan?user=alice')
       .set(...bearer(token));
     expect(res.status).toBe(202);
+    const final = await waitForScan(token, '?user=alice');
+    expect(final.status).toMatch(/completed|failed/);
   });
 
   it('admin without ?user= gets 400', async () => {
@@ -1291,6 +1297,8 @@ describe('POST /api/books/scan (admin needs ?user=)', () => {
       .post('/api/books/scan')
       .set(...bearer(token));
     expect(res.status).toBe(202);
+    const final = await waitForScan(token);
+    expect(final.status).toMatch(/completed|failed/);
   });
 });
 
