@@ -206,4 +206,35 @@ describe('useFetchUserProgressList', () => {
       b: { document: 'b', percentage: 20 },
     });
   });
+
+  it('stops paginating when a repeated non-null nextCursor is returned', async () => {
+    // Server keeps returning the same cursor — loop must terminate.
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'a', percentage: 10 }], nextCursor: 'repeat' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({ items: [{ document: 'b', percentage: 20 }], nextCursor: 'repeat' }),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+    const setProgressForUsername = vi.fn();
+    const { result } = renderHook(() => useFetchUserProgressList(), {
+      wrapper: makeWrapper({ isAdmin: true, setProgressForUsername }),
+    });
+    await result.current('bob');
+    // Two fetches: first returns cursor 'repeat' (new → recorded); second returns 'repeat'
+    // again (seen → break). Fetch must not be called a third time.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // setProgressForUsername is still called once with partial data.
+    expect(setProgressForUsername).toHaveBeenCalledTimes(1);
+    expect(setProgressForUsername).toHaveBeenCalledWith('bob', {
+      a: { document: 'a', percentage: 10 },
+      b: { document: 'b', percentage: 20 },
+    });
+  });
 });

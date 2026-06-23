@@ -3285,4 +3285,19 @@ describe('BookStore.getChapterSpineMaps', () => {
     const map = await bookStore.getChapterSpineMaps(OWNER, []);
     expect(map.size).toBe(0);
   });
+
+  it('filters out non-number and non-finite entries from a mixed chapterSpineMap', async () => {
+    await bookStore.addBook(OWNER, 'mixed-map', stage('mixed-map'), {
+      ...FAKE_META,
+      chapterCount: 3,
+      chapterSpineMap: [1, 2, 3],
+    });
+    // Overwrite the stored JSON with garbage values directly via SQL.
+    await prisma.$executeRaw`
+      UPDATE books SET chapter_spine_map = '[1,"bad",null,2,3,true]'
+      WHERE user_id = ${OWNER.userId} AND id = 'mixed-map'
+    `;
+    const map = await bookStore.getChapterSpineMaps(OWNER, ['mixed-map']);
+    expect(map.get('mixed-map')).toEqual([1, 2, 3]);
+  });
 });

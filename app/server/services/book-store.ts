@@ -388,7 +388,9 @@ export class BookStore {
       let parsed: number[];
       try {
         const json: unknown = JSON.parse(row.chapterSpineMap);
-        parsed = Array.isArray(json) ? (json as number[]) : [];
+        parsed = Array.isArray(json)
+          ? json.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+          : [];
       } catch {
         parsed = [];
       }

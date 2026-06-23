@@ -22,6 +22,7 @@ export const useFetchMyProgressList = (): FetchMyProgressList => {
     try {
       const merged: UserProgressList = {};
       let cursor: string | null = null;
+      const seenCursors = new Set<string>();
       do {
         const url: string = cursor
           ? `/api/my/progress?cursor=${encodeURIComponent(cursor)}`
@@ -31,6 +32,10 @@ export const useFetchMyProgressList = (): FetchMyProgressList => {
         const data = (await response.json()) as { items: Progress[]; nextCursor: string | null };
         for (const p of data.items) merged[p.document] = p;
         cursor = data.nextCursor;
+        if (cursor !== null && cursor !== '') {
+          if (seenCursors.has(cursor)) break;
+          seenCursors.add(cursor);
+        }
       } while (cursor !== null);
       setProgressForUsername(username, merged);
     } catch (err) {
