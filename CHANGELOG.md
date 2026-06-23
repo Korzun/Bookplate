@@ -1,3 +1,9 @@
+## 1.2.9
+
+- fix: prevent series Select dropdown from being clipped by card
+- Cache cover images via immutable cache-busting URLs
+- Cloudflare timeout hardening: request timeout, progress pagination, async scan
+
 ## 1.2.8
 
 - fix: series in-progress only when a book is actively being read
