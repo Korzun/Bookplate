@@ -374,6 +374,15 @@ describe('Series lifecycle — addBook', () => {
     expect(row!.sortKey).toBe('Dune');
   });
 
+  it('strips a leading article from the series sortKey', async () => {
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'The Expanse' });
+    const row = await prisma.series.findUnique({
+      where: { userId_name: { userId: OWNER.userId, name: 'The Expanse' } },
+    });
+    expect(row!.name).toBe('The Expanse');
+    expect(row!.sortKey).toBe('Expanse');
+  });
+
   it('sets seriesId on the book to point at the Series row', async () => {
     await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune' });
     const book = await prisma.book.findUnique({

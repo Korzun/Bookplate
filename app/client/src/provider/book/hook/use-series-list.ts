@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { seriesSortKey } from '~/lib/series-sort-key';
+
 import { Book } from '../type';
 
 import { useBookList } from './use-book-list';
@@ -20,7 +22,9 @@ export const useSeriesList = (): UseSeriesList => {
     for (const bookList of seriesMap.values()) {
       bookList.sort((bookA, bookB) => bookA.seriesIndex - bookB.seriesIndex);
     }
-    return [...seriesMap.entries()].sort(([seriesA], [seriesB]) => seriesA.localeCompare(seriesB));
+    return [...seriesMap.entries()].sort(([seriesA], [seriesB]) =>
+      seriesSortKey(seriesA).localeCompare(seriesSortKey(seriesB))
+    );
   }, [bookList]);
   return useMemo(
     () => [seriesList, loading, error, errorMessage],

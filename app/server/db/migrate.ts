@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { generateUserId } from '../utils/id';
 import { isValidUsername, sanitizeUsername } from '../utils/username';
+import { seriesSortKey } from '../utils/series-sort-key';
 import { logger } from '../logger';
 
 const log = logger('Migrate');
@@ -656,5 +657,24 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       await prisma.$executeRaw`ALTER TABLE series ADD COLUMN total_size INTEGER NOT NULL DEFAULT 0`;
     }
     log.info('Data migration (series total_size): column present');
+  });
+
+  // Data migration: recompute series sort_key so that series whose names start
+  // with a leading article ("the", "a", "an") sort by their second word, mirroring
+  // the Title Sort behaviour for books. Existing rows were created with
+  // sort_key = name verbatim; this backfills them to the article-stripped key.
+  await runDataMigration(prisma, 'data_v15_series_sort_key', async () => {
+    const allSeries = await prisma.$queryRaw<Array<{ id: string; name: string; sort_key: string }>>`
+      SELECT id, name, sort_key FROM series
+    `;
+    let updated = 0;
+    for (const { id, name, sort_key } of allSeries) {
+      const key = seriesSortKey(name);
+      if (key !== sort_key) {
+        await prisma.$executeRaw`UPDATE series SET sort_key = ${key} WHERE id = ${id}`;
+        updated++;
+      }
+    }
+    log.info(`Data migration (series sort_key): updated ${updated} series`);
   });
 }

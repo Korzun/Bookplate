@@ -94,6 +94,22 @@ describe('useSeriesList', () => {
     expect(result.current[0][1][0]).toBe('Foundation');
   });
 
+  it('sorts series by the second word when the name starts with an article', () => {
+    stubList([
+      [
+        makeBook({ id: '1', series: 'The Zone', seriesIndex: 1 }),
+        makeBook({ id: '2', series: 'Atlas', seriesIndex: 1 }),
+        makeBook({ id: '3', series: 'A Banner', seriesIndex: 1 }),
+      ],
+      false,
+      false,
+      undefined,
+    ]);
+    const { result } = renderHook(() => useSeriesList());
+    // Sort keys: "Atlas", "Banner", "Zone" — "The Zone" sorts as "Zone", last.
+    expect(result.current[0].map(([name]) => name)).toEqual(['Atlas', 'A Banner', 'The Zone']);
+  });
+
   it('passes through loading state', () => {
     stubList([[], true, false, undefined]);
     const { result } = renderHook(() => useSeriesList());

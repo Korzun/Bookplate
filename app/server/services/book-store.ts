@@ -15,6 +15,7 @@ import {
 import { parseEpub, partialMD5 } from './epub-parser';
 import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
+import { seriesSortKey } from '../utils/series-sort-key';
 import {
   normalizeForSearch,
   toSubsequenceLike,
@@ -434,7 +435,12 @@ export class BookStore {
       if (seriesName) {
         const s = await tx.series.upsert({
           where: { userId_name: { userId: owner.userId, name: seriesName } },
-          create: { id: randomUUID(), userId: owner.userId, name: seriesName, sortKey: seriesName },
+          create: {
+            id: randomUUID(),
+            userId: owner.userId,
+            name: seriesName,
+            sortKey: seriesSortKey(seriesName),
+          },
           update: {},
           select: { id: true },
         });
@@ -684,7 +690,7 @@ export class BookStore {
             id: randomUUID(),
             userId: owner.userId,
             name: newSeriesName,
-            sortKey: newSeriesName,
+            sortKey: seriesSortKey(newSeriesName),
           },
           update: {},
           select: { id: true },
