@@ -517,6 +517,15 @@ export function createUiRouter(
     res.json({ subjects });
   });
 
+  // Series names ordered by the server-computed sort key (articles stripped),
+  // used to populate the series autocomplete in the book edit form.
+  router.get('/api/series', requireAuth, async (req: Request, res: Response) => {
+    const owner = await resolveOwner(req, res);
+    if (!owner) return;
+    const series = await bookStore.listSeries(owner);
+    res.json({ series: series.map((s) => s.name) });
+  });
+
   router.post(
     '/api/books/upload',
     requireAuth,

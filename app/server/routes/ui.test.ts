@@ -2222,6 +2222,47 @@ describe('GET /api/subjects', () => {
   });
 });
 
+describe('GET /api/series', () => {
+  it('returns series names ordered by the server sort key (leading articles stripped)', async () => {
+    const token = await loginAlice();
+    await bookStore.addBook(aliceOwner, 'z1', stage('z1'), {
+      ...FAKE_META,
+      series: 'The Zone',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(aliceOwner, 'e1', stage('e1'), {
+      ...FAKE_META,
+      series: 'Expanse',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(aliceOwner, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'A Banner',
+      seriesIndex: 1,
+    });
+    const res = await request(app)
+      .get('/api/series')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    // Sort keys: "Banner", "Expanse", "Zone".
+    expect(res.body.series).toEqual(['A Banner', 'Expanse', 'The Zone']);
+  });
+
+  it('returns empty array when there are no series', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/series')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body.series).toEqual([]);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/series');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/books (filtered)', () => {
   it('seriesName filter returns only that series', async () => {
     await bookStore.addBook(aliceOwner, 'sa1', stage('sa1'), {

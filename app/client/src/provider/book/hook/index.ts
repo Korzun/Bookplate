@@ -14,7 +14,7 @@ export { useScanLibrary } from './use-scan-library';
 export { useSeries } from './use-series';
 export type { SeriesMeta } from './use-series';
 export { useSeriesBookList } from './use-series-book-list';
-export { useSeriesList } from './use-series-list';
+export { useSeriesNames } from './use-series-names';
 export { useStandaloneBookList } from './use-standalone-book-list';
 export { useUnlinkBookLineage } from './use-unlink-book-lineage';
 export { useUploadBookList } from './use-upload-book-list';

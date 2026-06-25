@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
@@ -15,7 +15,7 @@ import {
 } from '~/control';
 import type { FieldRow } from '~/control';
 import type { Book } from '~/provider/book';
-import { usePatchBookMetadata, useLibrarySubjects, useSeriesList } from '~/provider/book';
+import { usePatchBookMetadata, useLibrarySubjects, useSeriesNames } from '~/provider/book';
 import { path } from '~/router';
 import { areObjectArraysIdentical, areStringArraysIdentical, generateUUID } from '~/utils';
 
@@ -36,8 +36,7 @@ export const BookEditForm = ({ original, id }: Props) => {
 
   const [patchBookMetadata, saving] = usePatchBookMetadata();
   const [librarySubjects] = useLibrarySubjects();
-  const [seriesList, seriesLoading] = useSeriesList();
-  const seriesOptions = useMemo(() => seriesList.map(([name]) => name), [seriesList]);
+  const [seriesOptions, seriesLoading] = useSeriesNames();
 
   const [cover, setCover] = useState<File | undefined>(undefined);
 

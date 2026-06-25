@@ -14,7 +14,7 @@ export {
   useScanLibrary,
   useSeries,
   useSeriesBookList,
-  useSeriesList,
+  useSeriesNames,
   useStandaloneBookList,
   useUnlinkBookLineage,
   useUploadBookList,
