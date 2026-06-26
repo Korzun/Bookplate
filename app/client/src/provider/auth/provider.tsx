@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { refreshAccessToken } from '../../lib/api-fetch';
-import { TOKEN_CHANGED_EVENT, decodeClaims, getToken, isExpired } from '../../lib/token';
+import { TOKEN_CHANGED_EVENT, TOKEN_KEY, decodeClaims, getToken, isExpired } from '../../lib/token';
 
 import { Context, AuthContext } from './context';
 
@@ -22,12 +22,23 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // the react-hooks rules satisfied without any suppression.
   const [loading, setLoading] = useState(!hasValidToken(token));
 
-  // Keep state in sync with localStorage writes from lib/token (login,
-  // logout, apiFetch refreshes) — they all dispatch TOKEN_CHANGED_EVENT.
+  // Keep state in sync with localStorage writes from lib/token (login, logout,
+  // apiFetch refreshes). TOKEN_CHANGED_EVENT covers writes from this tab; the
+  // native storage event covers writes from other tabs, so a tab that didn't
+  // perform a refresh still adopts the freshly-stored token (and reacts to a
+  // logout in a sibling tab) instead of running on until its own token expires.
   useEffect(() => {
     const onChange = () => setTokenState(getToken());
+    const onStorage = (e: StorageEvent) => {
+      // key === null fires on localStorage.clear(); TOKEN_KEY on set/remove.
+      if (e.key === null || e.key === TOKEN_KEY) onChange();
+    };
     window.addEventListener(TOKEN_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(TOKEN_CHANGED_EVENT, onChange);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(TOKEN_CHANGED_EVENT, onChange);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const claims = useMemo(() => (token ? decodeClaims(token) : null), [token]);

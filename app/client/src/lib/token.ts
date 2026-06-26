@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'accessToken';
+export const TOKEN_KEY = 'accessToken';
 export const TOKEN_CHANGED_EVENT = 'hass-odps:token-changed';
 
 export type AuthClaims = {

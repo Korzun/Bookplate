@@ -126,6 +126,82 @@ describe('refreshAccessToken', () => {
   });
 });
 
+describe('refreshAccessToken — two-tab refresh race (regression)', () => {
+  // Reproduces the logout bug: two tabs (modelled as separate module instances,
+  // so each has its own single-flight state) both refresh near expiry. The
+  // server rotates the refresh token and consumes it exactly once, so a second
+  // concurrent presentation is a rejected replay (401). Without cross-tab
+  // coordination the losing tab treated that 401 as a logout — clearing the
+  // shared token (and, server-side, the refresh cookie) and logging every tab
+  // out. A browser-wide Web Lock must serialize the tabs so the second adopts
+  // the token the first stored instead of spending its rotated-out one.
+
+  type Tab = typeof import('./api-fetch');
+
+  // Minimal stand-in for the Web Locks API: serializes callbacks per lock name
+  // (jsdom provides no navigator.locks). Shared via the global navigator, so
+  // both module instances coordinate through it like real same-origin tabs.
+  const makeLockManager = () => {
+    const tails = new Map<string, Promise<unknown>>();
+    return {
+      request: <T>(name: string, callback: () => Promise<T>): Promise<T> => {
+        const prev = tails.get(name) ?? Promise.resolve();
+        const result = prev.then(
+          () => callback(),
+          () => callback()
+        );
+        tails.set(
+          name,
+          result.then(
+            () => undefined,
+            () => undefined
+          )
+        );
+        return result;
+      },
+    };
+  };
+
+  const loadTab = async (): Promise<Tab> => {
+    vi.resetModules();
+    return import('./api-fetch');
+  };
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'locks', { value: makeLockManager(), configurable: true });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'locks');
+  });
+
+  it('serializes the tabs so the second adopts the new token instead of logging out', async () => {
+    const claims = { sub: 'u1', username: 'alice', isAdmin: false, mustChangePassword: false };
+    const nearExpiry = makeJwt({ ...claims, exp: Math.floor(Date.now() / 1000) + 30 });
+    const rotated = makeJwt({ ...claims, exp: Math.floor(Date.now() / 1000) + 900 });
+    setToken(nearExpiry);
+
+    // Server consumes the rotating refresh token exactly once, mirroring
+    // tokenStore.consumeRefreshToken: the first presentation rotates to a new
+    // token; any later presentation is a rejected replay (401).
+    let consumed = false;
+    fetchMock.mockImplementation(() => {
+      if (consumed) return Promise.resolve(jsonResponse(401));
+      consumed = true;
+      return Promise.resolve(jsonResponse(200, { accessToken: rotated }));
+    });
+
+    const tabA = await loadTab();
+    const tabB = await loadTab();
+
+    const results = await Promise.all([tabA.refreshAccessToken(), tabB.refreshAccessToken()]);
+
+    expect(results).toEqual([true, true]); // neither tab considered itself logged out
+    expect(fetchMock).toHaveBeenCalledTimes(1); // the refresh token was spent only once
+    expect(getToken()).toBe(rotated); // the loser kept the fresh token, never cleared it
+  });
+});
+
 describe('ensureFreshToken', () => {
   it('returns the current token without fetching when exp is far out', async () => {
     setToken(validToken);

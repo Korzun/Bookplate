@@ -195,3 +195,79 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('username')).toHaveTextContent('none');
   });
 });
+
+describe('AuthProvider — cross-tab storage sync', () => {
+  const aliceToken = () =>
+    makeJwt({
+      sub: 'u1',
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+      exp: futureExp(),
+    });
+
+  // Simulate a write from ANOTHER tab: mutate the shared store directly and
+  // deliver the native storage event the browser fires in other tabs. We do
+  // NOT use setToken/clearToken here — those dispatch the in-tab
+  // TOKEN_CHANGED_EVENT, which would hide whether the storage listener works.
+  const dispatchStorage = (key: string | null, newValue: string | null) =>
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
+
+  it('adopts a token a sibling tab stored (cross-tab refresh) without re-refreshing', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 })); // this tab mounts logged-out
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(screen.getByTestId('username')).toHaveTextContent('none');
+
+    const sibling = aliceToken();
+    act(() => {
+      localStorage.setItem('accessToken', sibling);
+      dispatchStorage('accessToken', sibling);
+    });
+
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('alice'));
+    expect(fetchMock).toHaveBeenCalledTimes(1); // only the mount refresh; adopted, not re-fetched
+  });
+
+  it('logs out when a sibling tab clears the token', async () => {
+    // Losing the token re-arms the silent bootstrap refresh (the cookie may
+    // still be good); here it is gone too, so the refresh cleanly fails.
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    localStorage.setItem('accessToken', aliceToken());
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('alice'));
+
+    act(() => {
+      localStorage.removeItem('accessToken');
+      dispatchStorage('accessToken', null);
+    });
+
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('none'));
+  });
+
+  it('logs out on a cross-tab localStorage.clear() (storage event with key null)', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    localStorage.setItem('accessToken', aliceToken());
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('alice'));
+
+    act(() => {
+      localStorage.clear();
+      dispatchStorage(null, null);
+    });
+
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('none'));
+  });
+});
