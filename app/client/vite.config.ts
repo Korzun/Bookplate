@@ -18,6 +18,8 @@ export default defineConfig({
       '/logout': apiUrl,
     },
     watch: process.env['DOCKER'] ? { usePolling: true } : {},
+    host: true,
+    allowedHosts: ['.trycloudflare.com'],
   },
   build: {
     outDir: 'dist',
