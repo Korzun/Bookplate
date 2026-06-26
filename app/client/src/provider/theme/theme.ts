@@ -55,7 +55,16 @@ export interface Theme {
       onPrimary: string;
       onDanger: string;
     };
-    bg: { page: string; card: string; cardHeader: string; input: string; footer: string };
+    bg: {
+      page: string;
+      card: string;
+      cardHeader: string;
+      input: string;
+      footer: string;
+      glass: string;
+      glassFallback: string;
+      glassActive: string;
+    };
     border: {
       default: string;
       strong: string;
@@ -63,6 +72,8 @@ export interface Theme {
       focus: string;
       hover: string;
       danger: string;
+      glass: string;
+      glassActive: string;
     };
     success: string;
     brand: {
@@ -106,7 +117,7 @@ export interface Theme {
     xxxxl: string;
     xxxxxl: string;
   };
-  radius: { sm: string; md: string; lg: string; circle: string };
+  radius: { sm: string; md: string; lg: string; circle: string; pill: string };
   size: { metadataValue: string };
   fontSize: {
     xxs: string;
@@ -126,8 +137,10 @@ export interface Theme {
     hoverLift: string;
     dangerStack: string;
     brandStack: string;
+    glass: string;
+    glassActive: string;
   };
-  transition: { fast: string; medium: string; slide: string; slow: string };
+  transition: { fast: string; medium: string; slide: string; slow: string; spring: string };
   zIndex: {
     behind: number;
     base: number;
@@ -148,6 +161,8 @@ export interface Theme {
     focusRing: Recipe;
     label: Recipe;
     spinner: Recipe;
+    glass: Recipe;
+    glassHighlight: Recipe;
     modal: {
       dialog: Recipe;
       header: Recipe;
@@ -180,6 +195,9 @@ function buildTheme(): Theme {
       cardHeader: gray[100],
       input: '#FFFFFF',
       footer: gray[100],
+      glass: applyTransparency('#FFFFFF', 0.6),
+      glassFallback: applyTransparency('#FFFFFF', 0.92),
+      glassActive: applyTransparency('#FFFFFF', 0.55),
     },
     border: {
       default: gray[300],
@@ -188,6 +206,8 @@ function buildTheme(): Theme {
       focus: blue[700],
       hover: blue[200],
       danger: red[500],
+      glass: applyTransparency('#000', 0.08),
+      glassActive: applyTransparency('#FFFFFF', 0.7),
     },
     success: '#16a34a',
     brand: {
@@ -233,7 +253,13 @@ function buildTheme(): Theme {
     xxxxxl: '2rem',
   };
 
-  const radius: Theme['radius'] = { sm: '4px', md: '8px', lg: '16px', circle: '50%' };
+  const radius: Theme['radius'] = {
+    sm: '4px',
+    md: '8px',
+    lg: '16px',
+    circle: '50%',
+    pill: '999px',
+  };
   const size: Theme['size'] = { metadataValue: '15rem' };
   const fontSize: Theme['fontSize'] = {
     xxs: '0.6rem',
@@ -257,6 +283,8 @@ function buildTheme(): Theme {
     hoverLift: '0 2px 8px rgba(0,0,0,0.15)',
     dangerStack: `0px 2px 0px ${applyTransparency('#FF4D4F', 0.1)}`,
     brandStack: `0px 2px 0px ${applyTransparency('#1777FF', 0.2)}`,
+    glass: `0 8px 32px ${applyTransparency('#000', 0.12)}`,
+    glassActive: `0 2px 6px ${applyTransparency('#000', 0.12)}`,
   };
 
   const transition: Theme['transition'] = {
@@ -264,6 +292,7 @@ function buildTheme(): Theme {
     medium: '0.2s ease-in',
     slide: '0.2s ease-out',
     slow: '0.3s linear',
+    spring: '0.35s cubic-bezier(0.4, 0, 0.2, 1)',
   };
 
   const zIndex: Theme['zIndex'] = {
@@ -313,6 +342,25 @@ function buildTheme(): Theme {
       animation: 'theme-rotation 1s infinite linear',
       height: '1em',
       width: '1em',
+    },
+    glass: {
+      backgroundColor: color.bg.glass,
+      backdropFilter: 'blur(20px) saturate(180%)',
+      '-webkit-backdrop-filter': 'blur(20px) saturate(180%)',
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      borderColor: color.border.glass,
+      boxShadow: shadow.glass,
+      '@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))': {
+        backgroundColor: color.bg.glassFallback,
+      },
+    },
+    glassHighlight: {
+      backgroundColor: color.bg.glassActive,
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      borderColor: color.border.glassActive,
+      boxShadow: shadow.glassActive,
     },
     modal: {
       dialog: {
