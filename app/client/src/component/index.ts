@@ -7,7 +7,7 @@ export { CollapsibleSection } from './collapsible-section';
 export { Cover } from './cover';
 export { CoverStack } from './cover-stack';
 export { SearchBar } from './search-bar';
-export { Header } from './header';
+export { Nav } from './nav';
 export { LibraryScan } from './library-scan';
 export { LibrarySwitcher } from './library-switcher';
 export { MetadataList, type Metadata } from './metadata-list';

@@ -16,6 +16,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     [theme.breakpoint.mobile]: {
       margin: 0,
+      // Top spacing the old static header used to provide (now that the desktop bar
+      // is display:none on mobile); plus the notch inset, like the modal recipe.
+      paddingTop: `calc(${theme.space.xxxxxl} + env(safe-area-inset-top))`,
       paddingBottom: 'calc(110px + env(safe-area-inset-bottom))',
     },
   },
