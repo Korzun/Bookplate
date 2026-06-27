@@ -1,3 +1,9 @@
+## 1.2.10
+
+- Sort series by second word when the name starts with an article
+- Mobile navigation: iOS liquid-glass redesign + Nav component refactor
+- fix: coordinate token refresh across tabs to prevent spurious logout
+
 ## 1.2.9
 
 - fix: prevent series Select dropdown from being clipped by card
