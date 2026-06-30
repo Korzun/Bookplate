@@ -8,6 +8,7 @@ const useGlobalStyles = createUseStyles((theme: Theme) => ({
       fontFamily: theme.fontFamily.body,
       backgroundColor: theme.color.bg.page,
       color: theme.color.text.primary,
+      colorScheme: theme.colorScheme,
       minHeight: '100vh',
       '-webkit-text-size-adjust': '100%',
       '-webkit-font-smoothing': 'antialiased',
