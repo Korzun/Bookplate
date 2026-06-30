@@ -11,16 +11,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: theme.space.md,
   },
-  pillIcon: {
-    flexShrink: 0,
-    color: theme.color.text.faint,
-  },
-  label: {
-    flexShrink: 0,
-    width: '2.75rem',
-    color: theme.color.text.faint,
-    fontSize: theme.fontSize.sm,
-  },
   url: {
     flex: 1,
     minWidth: 0,
