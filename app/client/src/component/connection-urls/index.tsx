@@ -1,18 +1,16 @@
-import { type ComponentType, useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button } from '~/control';
-import { BooksIcon, CheckIcon, ClockIcon, type IconProps } from '~/icon';
+import { CheckIcon } from '~/icon';
 
 import { useStyle } from './style';
 
 interface UrlRowProps {
-  label: string;
   url: string;
-  icon: ComponentType<IconProps>;
 }
 
-const UrlRow = ({ label, url, icon: Icon }: UrlRowProps) => {
+const UrlRow = ({ url }: UrlRowProps) => {
   const styles = useStyle();
   const [copied, setCopied] = useState(false);
 
@@ -24,8 +22,6 @@ const UrlRow = ({ label, url, icon: Icon }: UrlRowProps) => {
 
   return (
     <div className={styles.pill}>
-      <Icon className={styles.pillIcon} width={14} height={14} />
-      <span className={styles.label}>{label}</span>
       <span className={styles.url}>{url}</span>
       <Button
         type="default"
@@ -47,8 +43,8 @@ export const ConnectionUrls = () => {
   return (
     <Card title="Connection URLs">
       <div className={styles.rows}>
-        <UrlRow label="Sync" url={`${base}/kosync`} icon={ClockIcon} />
-        <UrlRow label="OPDS" url={`${base}/opds`} icon={BooksIcon} />
+        <UrlRow url={`${base}/kosync`} />
+        <UrlRow url={`${base}/opds`} />
       </div>
     </Card>
   );
