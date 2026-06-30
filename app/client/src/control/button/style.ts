@@ -36,7 +36,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: '0.5em',
     justifyContent: 'center',
     alignItems: 'center',
-    color: theme.color.gray[900],
+    color: theme.color.text.primary,
     ...theme.recipe.focusRing,
     borderColor: 'transparent',
     borderStyle: 'solid',
@@ -73,7 +73,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     borderStyle: 'solid',
     borderWidth: '1px',
     boxShadow: theme.shadow.cardStack,
-    color: theme.color.gray[900],
+    color: theme.color.text.primary,
     '&:focus': {
       borderColor: '#FFF',
       outlineColor: theme.color.brand.outline,
@@ -93,7 +93,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       filter: 'saturate(0)',
       '&:hover': {
         borderColor: theme.color.border.default,
-        color: theme.color.gray[900],
+        color: theme.color.text.primary,
         outlineColor: 'transparent',
       },
     },
@@ -104,7 +104,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       boxShadow: `0px 2px 0px transparent`,
       outlineColor: 'transparent',
       '&:focus': { borderColor: '#e6e6e6', color: theme.color.text.muted },
-      '&:hover': { borderColor: theme.color.blue[300], color: theme.color.blue[300] },
+      '&:hover': { borderColor: theme.color.brand.linkHover, color: theme.color.brand.linkHover },
       '&:active': {
         borderColor: theme.color.brand.loadingActive,
         color: theme.color.brand.loadingActive,
@@ -174,7 +174,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     borderColor: theme.color.border.default,
     borderStyle: 'dashed',
     borderWidth: '1px',
-    color: theme.color.gray[900],
+    color: theme.color.text.primary,
     '&:focus': {
       borderColor: '#FFF',
       outlineColor: theme.color.brand.outline,
@@ -193,7 +193,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       filter: 'saturate(0)',
       '&:hover': {
         borderColor: theme.color.border.default,
-        color: theme.color.gray[900],
+        color: theme.color.text.primary,
         outlineColor: 'transparent',
       },
     },
@@ -203,7 +203,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       color: theme.color.text.muted,
       outlineColor: 'transparent',
       '&:focus': { borderColor: '#e6e6e6', color: theme.color.text.muted },
-      '&:hover': { borderColor: theme.color.blue[300], color: theme.color.blue[300] },
+      '&:hover': { borderColor: theme.color.brand.linkHover, color: theme.color.brand.linkHover },
       '&:active': {
         borderColor: theme.color.brand.loadingActive,
         color: theme.color.brand.loadingActive,
@@ -350,7 +350,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&$loading': {
       cursor: 'default',
       color: theme.color.text.muted,
-      '&:hover': { color: theme.color.blue[300] },
+      '&:hover': { color: theme.color.brand.linkHover },
       '&:active': { color: theme.color.brand.loadingActive },
     },
     '&$danger': {

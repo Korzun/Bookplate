@@ -19,7 +19,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     height: '10px',
     borderWidth: '2px',
     borderStyle: 'solid',
-    borderColor: theme.color.gray[500],
+    borderColor: theme.color.border.faint,
     borderRadius: theme.radius.circle,
     flexShrink: 0,
   },

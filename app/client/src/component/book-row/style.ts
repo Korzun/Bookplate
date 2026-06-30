@@ -50,7 +50,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
         color: theme.color.brand.hover,
       },
       '& $meta': {
-        color: theme.color.blue[300],
+        color: theme.color.brand.linkHover,
       },
     },
   },

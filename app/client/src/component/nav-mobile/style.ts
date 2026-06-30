@@ -114,7 +114,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       top: 0,
       left: 0,
       zIndex: 3,
-      color: theme.color.gray[900],
+      color: theme.color.text.primary,
       pointerEvents: 'none',
     },
     reveal: {
