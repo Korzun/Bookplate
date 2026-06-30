@@ -32,3 +32,15 @@ describe('defaultTheme glass tokens', () => {
     expect(lens.boxShadow).toBe(defaultTheme.shadow.glassActive);
   });
 });
+
+describe('semantic tokens replacing raw-scale refs (light)', () => {
+  it('border.faint equals gray[500]', () => {
+    expect(defaultTheme.color.border.faint).toBe(defaultTheme.color.gray[500]);
+  });
+  it('brand.linkHover equals blue[300]', () => {
+    expect(defaultTheme.color.brand.linkHover).toBe(defaultTheme.color.blue[300]);
+  });
+  it('bg.selected equals blue[100]', () => {
+    expect(defaultTheme.color.bg.selected).toBe(defaultTheme.color.blue[100]);
+  });
+});

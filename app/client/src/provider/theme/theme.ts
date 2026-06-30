@@ -64,6 +64,7 @@ export interface Theme {
       glass: string;
       glassFallback: string;
       glassActive: string;
+      selected: string;
     };
     border: {
       default: string;
@@ -74,6 +75,7 @@ export interface Theme {
       danger: string;
       glass: string;
       glassActive: string;
+      faint: string;
     };
     success: string;
     brand: {
@@ -85,6 +87,7 @@ export interface Theme {
       loading: string;
       loadingHover: string;
       loadingActive: string;
+      linkHover: string;
     };
     danger: {
       default: string;
@@ -198,6 +201,7 @@ function buildTheme(): Theme {
       glass: applyTransparency('#FFFFFF', 0.6),
       glassFallback: applyTransparency('#FFFFFF', 0.92),
       glassActive: applyTransparency('#FFFFFF', 0.55),
+      selected: blue[100],
     },
     border: {
       default: gray[300],
@@ -208,6 +212,7 @@ function buildTheme(): Theme {
       danger: red[500],
       glass: applyTransparency('#000', 0.08),
       glassActive: applyTransparency('#FFFFFF', 0.7),
+      faint: gray[500],
     },
     success: '#16a34a',
     brand: {
@@ -219,6 +224,7 @@ function buildTheme(): Theme {
       loading: '#73A6FF',
       loadingHover: blue[300],
       loadingActive: '#6893e7',
+      linkHover: blue[300],
     },
     danger: {
       default: red[500],
