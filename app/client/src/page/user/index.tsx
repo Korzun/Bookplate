@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { Page, MyProgress, UserChangePassword, SyncPassword } from '~/component';
+import { Page, MyProgress, UserChangePassword, SyncPassword, ConnectionUrls } from '~/component';
 import { Button } from '~/control';
 import { useIsAdmin, useLogout } from '~/provider/auth';
 
@@ -25,6 +25,7 @@ export const UserPage = () => {
   return (
     <Page>
       <SyncPassword />
+      <ConnectionUrls />
       <UserChangePassword />
       <MyProgress />
       <Button loading={loggingOut} onClick={handleLogout} danger>
