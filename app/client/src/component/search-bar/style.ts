@@ -36,17 +36,17 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&&': {
       borderRadius: '50%',
       padding: theme.space.xxxs,
-      color: theme.color.gray[900],
+      color: theme.color.text.primary,
       flexShrink: 0,
       marginRight: `-${theme.space.xxs}`,
       '&:hover': {
         backgroundColor: theme.color.danger.light,
-        color: theme.color.gray[900],
+        color: theme.color.text.primary,
       },
       '&:active': {
         backgroundColor: theme.color.danger.light,
         filter: 'brightness(0.92)',
-        color: theme.color.gray[900],
+        color: theme.color.text.primary,
       },
     },
   },

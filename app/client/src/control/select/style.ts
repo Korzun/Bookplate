@@ -138,7 +138,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
   matchHighlight: {
-    backgroundColor: theme.color.blue[100],
+    backgroundColor: theme.color.bg.selected,
     borderRadius: theme.radius.sm,
     padding: '0 1px',
   },

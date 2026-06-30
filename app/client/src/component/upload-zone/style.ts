@@ -16,7 +16,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
     },
     dropZoneOver: {
       ...dropZoneBase,
-      background: theme.color.blue[100],
+      background: theme.color.bg.selected,
     },
     dropText: {
       color: theme.color.brand.default,

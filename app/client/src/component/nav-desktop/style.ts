@@ -11,7 +11,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     justifyContent: 'center',
     padding: `${theme.space.xxl} ${theme.space.xxxxl}`,
     backgroundColor: theme.color.bg.page,
-    color: theme.color.gray[900],
+    color: theme.color.text.primary,
     overflow: 'hidden',
     [theme.breakpoint.mobile]: {
       display: 'none',
@@ -41,7 +41,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: theme.space.md,
-    color: theme.color.gray[900],
+    color: theme.color.text.primary,
     textDecoration: 'none',
     fontSize: '0.80rem', // nav-specific size; not on the global fontSize scale
     cursor: 'pointer',
@@ -57,11 +57,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     transitionTimingFunction: 'ease-in',
     '&:hover': {
       transitionDuration: '0s',
-      color: applyTransparency(theme.color.gray[900], 0.467), // matches old '#11111177'
+      color: applyTransparency(theme.color.text.primary, 0.467), // matches old '#11111177'
     },
     '&$active': {
-      color: theme.color.gray[900],
-      borderBottomColor: theme.color.gray[900],
+      color: theme.color.text.primary,
+      borderBottomColor: theme.color.text.primary,
     },
   },
   active: {},
