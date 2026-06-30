@@ -1,5 +1,7 @@
 import { applyTransparency } from '~/utils';
 
+export type ThemeMode = 'light' | 'dark';
+
 // ─── Primitive palettes ───
 const gray = {
   50: '#FCFCFC',
@@ -43,6 +45,7 @@ type Recipe = { [key: string]: Recipe | string | number };
 
 // ─── Theme interface ───
 export interface Theme {
+  colorScheme: ThemeMode;
   color: {
     gray: typeof gray;
     blue: typeof blue;
@@ -179,8 +182,8 @@ export interface Theme {
 }
 
 // ─── Build defaults ───
-function buildTheme(): Theme {
-  const color: Theme['color'] = {
+function buildTheme(mode: ThemeMode): Theme {
+  const lightColor: Theme['color'] = {
     gray,
     blue,
     red,
@@ -245,6 +248,73 @@ function buildTheme(): Theme {
     },
   };
 
+  const darkColor: Theme['color'] = {
+    gray,
+    blue,
+    red,
+    text: {
+      primary: '#F5F5F7',
+      secondary: '#C8CBD2',
+      muted: '#9CA1AB',
+      faint: '#6E7480',
+      onPrimary: '#FFFFFF',
+      onDanger: '#FFFFFF',
+    },
+    bg: {
+      page: '#0E0F11',
+      card: '#1A1B1E',
+      cardHeader: '#232427',
+      input: '#1A1B1E',
+      footer: '#232427',
+      glass: applyTransparency('#1C1C1E', 0.6),
+      glassFallback: applyTransparency('#1C1C1E', 0.92),
+      glassActive: applyTransparency('#2C2C2E', 0.55),
+      selected: applyTransparency(blue[500], 0.24),
+    },
+    border: {
+      default: '#3A3B40',
+      strong: '#48494F',
+      light: '#2B2C30',
+      faint: '#3A3B40',
+      focus: blue[400],
+      hover: blue[600],
+      danger: red[500],
+      glass: applyTransparency('#FFFFFF', 0.12),
+      glassActive: applyTransparency('#FFFFFF', 0.18),
+    },
+    success: '#22C55E',
+    brand: {
+      default: blue[400],
+      hover: blue[300],
+      active: blue[200],
+      light: applyTransparency(blue[500], 0.2),
+      outline: applyTransparency(blue[400], 0.45),
+      linkHover: blue[200],
+      loading: '#3E5A8A',
+      loadingHover: blue[600],
+      loadingActive: '#33507F',
+    },
+    danger: {
+      default: red[500],
+      hover: red[400],
+      active: red[700],
+      light: applyTransparency(red[500], 0.18),
+      outline: applyTransparency(red[300], 0.5),
+      loading: red[400],
+      loadingHover: red[600],
+      loadingActive: red[700],
+    },
+    overlay: { backdrop: applyTransparency('#000', 0.7) },
+    chip: {
+      status: { text: '#C9B0F2', bg: 'rgba(167,139,250,0.16)', border: 'rgba(167,139,250,0.30)' },
+      author: { text: '#7EE6B4', bg: 'rgba(52,211,153,0.16)', border: 'rgba(52,211,153,0.30)' },
+      series: { text: '#8EC3F5', bg: 'rgba(96,165,250,0.16)', border: 'rgba(96,165,250,0.30)' },
+      subject: { text: '#E8C879', bg: 'rgba(217,168,67,0.16)', border: 'rgba(217,168,67,0.30)' },
+    },
+  };
+
+  const color: Theme['color'] = mode === 'dark' ? darkColor : lightColor;
+
   const space: Theme['space'] = {
     xxxs: '0.1rem',
     xxs: '0.125rem',
@@ -283,7 +353,7 @@ function buildTheme(): Theme {
   const fontWeight: Theme['fontWeight'] = { medium: 500, semibold: 600, bold: 700, extrabold: 800 };
   const lineHeight: Theme['lineHeight'] = { tight: 1, body: 1.3 };
 
-  const shadow: Theme['shadow'] = {
+  const lightShadow: Theme['shadow'] = {
     card: '0 1px 3px rgba(0,0,0,0.07)',
     cardStack: `0px 2px 0px ${applyTransparency('#D9D9D9', 0.2)}`,
     hoverLift: '0 2px 8px rgba(0,0,0,0.15)',
@@ -292,6 +362,18 @@ function buildTheme(): Theme {
     glass: `0 8px 32px ${applyTransparency('#000', 0.12)}`,
     glassActive: `0 2px 6px ${applyTransparency('#000', 0.12)}`,
   };
+
+  const darkShadow: Theme['shadow'] = {
+    card: '0 1px 3px rgba(0,0,0,0.5)',
+    cardStack: `0px 2px 0px ${applyTransparency('#000', 0.4)}`,
+    hoverLift: '0 2px 8px rgba(0,0,0,0.6)',
+    dangerStack: `0px 2px 0px ${applyTransparency('#000', 0.4)}`,
+    brandStack: `0px 2px 0px ${applyTransparency('#000', 0.4)}`,
+    glass: `0 8px 32px ${applyTransparency('#000', 0.5)}`,
+    glassActive: `0 2px 6px ${applyTransparency('#000', 0.5)}`,
+  };
+
+  const shadow: Theme['shadow'] = mode === 'dark' ? darkShadow : lightShadow;
 
   const transition: Theme['transition'] = {
     fast: '0.1s ease-in',
@@ -446,6 +528,7 @@ function buildTheme(): Theme {
   };
 
   return {
+    colorScheme: mode,
     color,
     space,
     radius,
@@ -462,4 +545,6 @@ function buildTheme(): Theme {
   };
 }
 
-export const defaultTheme: Theme = buildTheme();
+export const lightTheme: Theme = buildTheme('light');
+export const darkTheme: Theme = buildTheme('dark');
+export const defaultTheme: Theme = lightTheme;
