@@ -57,6 +57,7 @@ export interface Theme {
       faint: string;
       onPrimary: string;
       onDanger: string;
+      description: string;
     };
     bg: {
       page: string;
@@ -68,6 +69,9 @@ export interface Theme {
       glassFallback: string;
       glassActive: string;
       selected: string;
+      hover: string;
+      success: string;
+      placeholder: string;
     };
     border: {
       default: string;
@@ -79,6 +83,9 @@ export interface Theme {
       glass: string;
       glassActive: string;
       faint: string;
+      loading: string;
+      success: string;
+      section: string;
     };
     success: string;
     brand: {
@@ -108,6 +115,8 @@ export interface Theme {
       author: { text: string; bg: string; border: string };
       series: { text: string; bg: string; border: string };
       subject: { text: string; bg: string; border: string };
+      book: { text: string; bg: string; border: string };
+      entryType: { text: string; bg: string; border: string };
     };
   };
   space: {
@@ -194,6 +203,7 @@ function buildTheme(mode: ThemeMode): Theme {
       faint: gray[500],
       onPrimary: '#FFFFFF',
       onDanger: '#FFFFFF',
+      description: '#585863',
     },
     bg: {
       page: '#FFFFFF',
@@ -205,6 +215,9 @@ function buildTheme(mode: ThemeMode): Theme {
       glassFallback: applyTransparency('#FFFFFF', 0.92),
       glassActive: applyTransparency('#FFFFFF', 0.55),
       selected: blue[100],
+      hover: '#f0f0f0',
+      success: '#f0fdf4',
+      placeholder: '#d1d5db',
     },
     border: {
       default: gray[300],
@@ -216,6 +229,9 @@ function buildTheme(mode: ThemeMode): Theme {
       glass: applyTransparency('#000', 0.08),
       glassActive: applyTransparency('#FFFFFF', 0.7),
       faint: gray[500],
+      loading: '#e6e6e6',
+      success: '#bbf7d0',
+      section: '#E6E6E9',
     },
     success: '#16a34a',
     brand: {
@@ -245,6 +261,12 @@ function buildTheme(mode: ThemeMode): Theme {
       author: { text: '#1a7a52', bg: 'rgba(26,122,82,0.08)', border: 'rgba(26,122,82,0.22)' },
       series: { text: '#1a5fa8', bg: 'rgba(26,95,168,0.08)', border: 'rgba(26,95,168,0.22)' },
       subject: { text: '#8a5e00', bg: 'rgba(138,94,0,0.08)', border: 'rgba(138,94,0,0.22)' },
+      book: { text: '#0e6b7d', bg: 'rgba(14, 107, 125, 0.08)', border: 'rgba(14, 107, 125, 0.22)' },
+      entryType: {
+        text: '#c0415e',
+        bg: 'rgba(192, 65, 94, 0.08)',
+        border: 'rgba(192, 65, 94, 0.22)',
+      },
     },
   };
 
@@ -259,6 +281,7 @@ function buildTheme(mode: ThemeMode): Theme {
       faint: '#6E7480',
       onPrimary: '#FFFFFF',
       onDanger: '#FFFFFF',
+      description: '#A8ADB6',
     },
     bg: {
       page: '#0E0F11',
@@ -270,6 +293,9 @@ function buildTheme(mode: ThemeMode): Theme {
       glassFallback: applyTransparency('#1C1C1E', 0.92),
       glassActive: applyTransparency('#2C2C2E', 0.55),
       selected: applyTransparency(blue[500], 0.24),
+      hover: applyTransparency('#FFFFFF', 0.08),
+      success: applyTransparency('#22C55E', 0.14),
+      placeholder: '#2A2B2F',
     },
     border: {
       default: '#3A3B40',
@@ -281,6 +307,9 @@ function buildTheme(mode: ThemeMode): Theme {
       danger: red[500],
       glass: applyTransparency('#FFFFFF', 0.12),
       glassActive: applyTransparency('#FFFFFF', 0.18),
+      loading: '#34353A',
+      success: applyTransparency('#22C55E', 0.4),
+      section: '#2B2C30',
     },
     success: '#22C55E',
     brand: {
@@ -310,6 +339,12 @@ function buildTheme(mode: ThemeMode): Theme {
       author: { text: '#7EE6B4', bg: 'rgba(52,211,153,0.16)', border: 'rgba(52,211,153,0.30)' },
       series: { text: '#8EC3F5', bg: 'rgba(96,165,250,0.16)', border: 'rgba(96,165,250,0.30)' },
       subject: { text: '#E8C879', bg: 'rgba(217,168,67,0.16)', border: 'rgba(217,168,67,0.30)' },
+      book: { text: '#7FD0DE', bg: 'rgba(45, 170, 190, 0.18)', border: 'rgba(45, 170, 190, 0.32)' },
+      entryType: {
+        text: '#E89BAC',
+        bg: 'rgba(192, 65, 94, 0.18)',
+        border: 'rgba(192, 65, 94, 0.32)',
+      },
     },
   };
 

@@ -40,7 +40,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '& > div': {
       borderTopStyle: 'solid',
       borderTopWidth: '1px',
-      borderTopColor: '#E6E6E9', // book-page-specific section divider shade
+      borderTopColor: theme.color.border.section,
       paddingTop: theme.space.xl,
     },
     '& > div:first-child': {

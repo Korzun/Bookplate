@@ -2,8 +2,6 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 import { applyTransparency } from '~/utils';
 
 // A small handful of literals stay un-tokenized in this file by design:
-//   '#e6e6e6' — loading-state border (one shade lighter than gray.200), button-only
-//   '#f0f0f0' — text-button hover background, button-only
 //   '#FFF'    — focus-ring border on colored backgrounds (intentional white-on-color)
 //   '0.5em'   — gap that scales with the button's own font-size, not the rem scale
 //   '0.80rem' — button-specific font-size, off the global fontSize scale
@@ -99,11 +97,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '&$loading': {
       cursor: 'default',
-      borderColor: '#e6e6e6',
+      borderColor: theme.color.border.loading,
       color: theme.color.text.muted,
       boxShadow: `0px 2px 0px transparent`,
       outlineColor: 'transparent',
-      '&:focus': { borderColor: '#e6e6e6', color: theme.color.text.muted },
+      '&:focus': { borderColor: theme.color.border.loading, color: theme.color.text.muted },
       '&:hover': { borderColor: theme.color.brand.linkHover, color: theme.color.brand.linkHover },
       '&:active': {
         borderColor: theme.color.brand.loadingActive,
@@ -150,22 +148,22 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '&$success': {
       color: theme.color.success,
-      borderColor: '#bbf7d0',
-      backgroundColor: '#f0fdf4',
+      borderColor: theme.color.border.success,
+      backgroundColor: theme.color.bg.success,
       boxShadow: 'none',
       cursor: 'default',
       '&:hover': {
         color: theme.color.success,
-        borderColor: '#bbf7d0',
+        borderColor: theme.color.border.success,
         outlineColor: 'transparent',
       },
       '&:focus': {
         color: theme.color.success,
-        borderColor: '#bbf7d0',
+        borderColor: theme.color.border.success,
         outlineColor: 'transparent',
         boxShadow: 'none',
       },
-      '&:active': { color: theme.color.success, borderColor: '#bbf7d0' },
+      '&:active': { color: theme.color.success, borderColor: theme.color.border.success },
     },
   },
 
@@ -199,10 +197,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '&$loading': {
       cursor: 'default',
-      borderColor: '#e6e6e6',
+      borderColor: theme.color.border.loading,
       color: theme.color.text.muted,
       outlineColor: 'transparent',
-      '&:focus': { borderColor: '#e6e6e6', color: theme.color.text.muted },
+      '&:focus': { borderColor: theme.color.border.loading, color: theme.color.text.muted },
       '&:hover': { borderColor: theme.color.brand.linkHover, color: theme.color.brand.linkHover },
       '&:active': {
         borderColor: theme.color.brand.loadingActive,
@@ -311,7 +309,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
 
   [ButtonType.Text]: {
     cursor: 'pointer',
-    '&:hover': { backgroundColor: '#f0f0f0' },
+    '&:hover': { backgroundColor: theme.color.bg.hover },
     '&:active': { backgroundColor: theme.color.border.default },
     '&$disabled': {
       cursor: 'not-allowed',
@@ -321,7 +319,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&$loading': {
       cursor: 'default',
       color: theme.color.text.muted,
-      '&:hover': { backgroundColor: '#f0f0f0' },
+      '&:hover': { backgroundColor: theme.color.bg.hover },
     },
     '&$danger': {
       color: theme.color.danger.default,

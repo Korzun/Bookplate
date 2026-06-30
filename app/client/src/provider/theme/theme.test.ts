@@ -45,6 +45,81 @@ describe('semantic tokens replacing raw-scale refs (light)', () => {
   });
 });
 
+describe('new semantic tokens — light values are byte-identical to replaced literals', () => {
+  it('bg.hover light equals #f0f0f0', () => {
+    expect(lightTheme.color.bg.hover).toBe('#f0f0f0');
+  });
+  it('bg.success light equals #f0fdf4', () => {
+    expect(lightTheme.color.bg.success).toBe('#f0fdf4');
+  });
+  it('bg.placeholder light equals #d1d5db', () => {
+    expect(lightTheme.color.bg.placeholder).toBe('#d1d5db');
+  });
+  it('border.loading light equals #e6e6e6', () => {
+    expect(lightTheme.color.border.loading).toBe('#e6e6e6');
+  });
+  it('border.success light equals #bbf7d0', () => {
+    expect(lightTheme.color.border.success).toBe('#bbf7d0');
+  });
+  it('border.section light equals #E6E6E9', () => {
+    expect(lightTheme.color.border.section).toBe('#E6E6E9');
+  });
+  it('text.description light equals #585863', () => {
+    expect(lightTheme.color.text.description).toBe('#585863');
+  });
+  it('chip.book light values match replaced literals', () => {
+    expect(lightTheme.color.chip.book.text).toBe('#0e6b7d');
+    expect(lightTheme.color.chip.book.bg).toBe('rgba(14, 107, 125, 0.08)');
+    expect(lightTheme.color.chip.book.border).toBe('rgba(14, 107, 125, 0.22)');
+  });
+  it('chip.entryType light values match replaced literals', () => {
+    expect(lightTheme.color.chip.entryType.text).toBe('#c0415e');
+    expect(lightTheme.color.chip.entryType.bg).toBe('rgba(192, 65, 94, 0.08)');
+    expect(lightTheme.color.chip.entryType.border).toBe('rgba(192, 65, 94, 0.22)');
+  });
+});
+
+describe('new semantic tokens — dark values exist and differ from light', () => {
+  it('bg.hover dark differs from light', () => {
+    expect(darkTheme.color.bg.hover).toBeDefined();
+    expect(darkTheme.color.bg.hover).not.toBe(lightTheme.color.bg.hover);
+  });
+  it('bg.success dark differs from light', () => {
+    expect(darkTheme.color.bg.success).toBeDefined();
+    expect(darkTheme.color.bg.success).not.toBe(lightTheme.color.bg.success);
+  });
+  it('bg.placeholder dark differs from light', () => {
+    expect(darkTheme.color.bg.placeholder).toBeDefined();
+    expect(darkTheme.color.bg.placeholder).not.toBe(lightTheme.color.bg.placeholder);
+  });
+  it('border.loading dark differs from light', () => {
+    expect(darkTheme.color.border.loading).toBeDefined();
+    expect(darkTheme.color.border.loading).not.toBe(lightTheme.color.border.loading);
+  });
+  it('border.success dark differs from light', () => {
+    expect(darkTheme.color.border.success).toBeDefined();
+    expect(darkTheme.color.border.success).not.toBe(lightTheme.color.border.success);
+  });
+  it('border.section dark differs from light', () => {
+    expect(darkTheme.color.border.section).toBeDefined();
+    expect(darkTheme.color.border.section).not.toBe(lightTheme.color.border.section);
+  });
+  it('text.description dark differs from light', () => {
+    expect(darkTheme.color.text.description).toBeDefined();
+    expect(darkTheme.color.text.description).not.toBe(lightTheme.color.text.description);
+  });
+  it('chip.book dark differs from light', () => {
+    expect(darkTheme.color.chip.book.text).not.toBe(lightTheme.color.chip.book.text);
+    expect(darkTheme.color.chip.book.bg).not.toBe(lightTheme.color.chip.book.bg);
+    expect(darkTheme.color.chip.book.border).not.toBe(lightTheme.color.chip.book.border);
+  });
+  it('chip.entryType dark differs from light', () => {
+    expect(darkTheme.color.chip.entryType.text).not.toBe(lightTheme.color.chip.entryType.text);
+    expect(darkTheme.color.chip.entryType.bg).not.toBe(lightTheme.color.chip.entryType.bg);
+    expect(darkTheme.color.chip.entryType.border).not.toBe(lightTheme.color.chip.entryType.border);
+  });
+});
+
 // Relative luminance of a #rrggbb hex, 0 (black) – 1 (white).
 const luminance = (hex: string): number => {
   const n = parseInt(hex.replace('#', ''), 16);

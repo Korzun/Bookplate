@@ -24,7 +24,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '& > div': {
       borderTopStyle: 'solid',
       borderTopWidth: '1px',
-      borderTopColor: '#E6E6E9', // book-page-specific section divider shade
+      borderTopColor: theme.color.border.section,
       paddingTop: theme.space.xl,
     },
     '& > div:first-child': {
@@ -93,7 +93,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&:hover': { color: theme.color.brand.default },
   },
   description: {
-    color: '#585863', // book-description-specific shade
+    color: theme.color.text.description,
     lineHeight: theme.lineHeight.body,
     whiteSpace: 'pre-wrap',
     '& > p': {

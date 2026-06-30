@@ -20,7 +20,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   coverPlaceholder: {
     width: 44,
     height: 66,
-    background: '#e0e0e0', // single-component placeholder shade
+    background: theme.color.bg.placeholder,
     borderRadius: 2, // placeholder-specific tiny radius
   },
   info: {

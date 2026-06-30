@@ -115,9 +115,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     borderColor: theme.color.chip.subject.border,
   },
   chipEntryType: {
-    color: '#c0415e',
-    background: 'rgba(192, 65, 94, 0.08)',
-    borderColor: 'rgba(192, 65, 94, 0.22)',
+    color: theme.color.chip.entryType.text,
+    background: theme.color.chip.entryType.bg,
+    borderColor: theme.color.chip.entryType.border,
   },
   '@keyframes spin': {
     from: { transform: 'rotate(0deg)' },
@@ -189,16 +189,16 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     background: theme.color.chip.series.bg,
   },
   dropdownItemTypeBook: {
-    color: '#0e6b7d',
-    background: 'rgba(14, 107, 125, 0.08)',
+    color: theme.color.chip.book.text,
+    background: theme.color.chip.book.bg,
   },
   dropdownItemTypeSubject: {
     color: theme.color.chip.subject.text,
     background: theme.color.chip.subject.bg,
   },
   dropdownItemTypeEntryType: {
-    color: '#c0415e',
-    background: 'rgba(192, 65, 94, 0.08)',
+    color: theme.color.chip.entryType.text,
+    background: theme.color.chip.entryType.bg,
   },
   dropdownItemText: { flex: 1, minWidth: 0 },
   dropdownItemMatch: { fontWeight: theme.fontWeight.bold },

@@ -42,6 +42,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'block',
   },
   ghost: {
-    background: '#d1d5db', // single-component placeholder shade
+    background: theme.color.bg.placeholder,
   },
 }));
