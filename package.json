@@ -3,12 +3,11 @@
   "version": "1.2.10",
   "private": true,
   "workspaces": [
-    "vendor/epubcheck-ts",
     "app/server",
     "app/client"
   ],
   "scripts": {
-    "build": "npm run build -w epubcheck-ts && npm run build -w app/server && npm run build -w app/client",
+    "build": "npm run build -w app/server && npm run build -w app/client",
     "start": "node app/server/dist/index.js",
     "dev": "npm run dev -w app/server",
     "dev:client": "npm run dev -w app/client",

@@ -1,5 +1,5 @@
-import { validateEpub } from 'epubcheck-ts';
-import type { Report, Message, Severity } from 'epubcheck-ts';
+import { validateEpub } from '@korzun/epubcheck-ts';
+import type { Report, Message, Severity } from '@korzun/epubcheck-ts';
 
 export interface ValidationMessage {
   id: string;
