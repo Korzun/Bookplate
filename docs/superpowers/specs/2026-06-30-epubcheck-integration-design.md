@@ -4,6 +4,15 @@
 **Branch:** `add-epubcheck`
 **Status:** Approved (design)
 
+> **Update (2026-07-02):** `epubcheck-ts` has since been published as the public,
+> dual-format package **`@korzun/epubcheck-ts`**. The final implementation consumes
+> it as a normal npm registry dependency (`app/server` depends on
+> `@korzun/epubcheck-ts@^0.1.0-beta.1`); the git-submodule / npm-workspace approach
+> described below (Architecture §1, the dual-format Prerequisite, and the Docker/CI
+> submodule wiring) was implemented first and then replaced. Everything else in this
+> spec — the validator adapter, the two enforcement points, and the error handling —
+> is unchanged. See commit `1bc8d0a`.
+
 ## Goal
 
 Validate EPUB files with [`epubcheck-ts`](https://github.com/Korzun/epubcheck-ts)
