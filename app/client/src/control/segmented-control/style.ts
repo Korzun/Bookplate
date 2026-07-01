@@ -6,7 +6,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   // inline by the component.
   root: {
     position: 'relative',
-    display: 'inline-grid',
+    display: 'grid',
     gridAutoFlow: 'column',
     gridAutoColumns: '1fr',
     padding: theme.space.xxs,
