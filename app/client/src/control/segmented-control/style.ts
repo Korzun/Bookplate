@@ -1,10 +1,10 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => {
-  // The lens fills the track edge-to-edge (no padding gap), so its corners sit directly
-  // against the track's 1px border. Matching the track's inner radius (outer radius minus
-  // the border) makes the two corners coincide — one rounded edge, no nested "double" radii.
-  const innerRadius = `calc(${theme.radius.md} - 1px)`;
+  // The track has no border of its own, so the lens (which does) is the only outlined edge.
+  // The lens fills the track edge-to-edge (no padding gap) and shares the track's radius, so
+  // at the ends the tile's rounded corner sits exactly on the track's — one edge, no double radii.
+  const innerRadius = theme.radius.md;
 
   return {
     // Equal-width columns: every segment is `1fr`, so the lens has a constant width
@@ -17,9 +17,6 @@ export const useStyle = createUseStyles((theme: Theme) => {
       gridAutoColumns: '1fr',
       padding: 0,
       backgroundColor: theme.color.bg.cardHeader,
-      borderStyle: 'solid',
-      borderWidth: '1px',
-      borderColor: theme.color.border.strong,
       borderRadius: theme.radius.md,
       userSelect: 'none',
       '-webkit-user-select': 'none',
@@ -27,9 +24,9 @@ export const useStyle = createUseStyles((theme: Theme) => {
     },
     // The active highlight fills the full track height and one column, sliding one own-width
     // per step. Raised button-like tile: `input` surface, a hairline border, and the flat
-    // `cardStack` stack-shadow (no blurred drop shadow). The recessed `cardHeader` track makes
-    // the lighter tile read clearly; with no gap the tile border sits flush against the track
-    // border — one crisp edge, not a separated concentric arc.
+    // `cardStack` stack-shadow (no blurred drop shadow). The recessed borderless `cardHeader`
+    // track makes the lighter tile read clearly, and the tile's border is the control's only
+    // outlined edge — no track border to double against.
     lens: {
       position: 'absolute',
       boxSizing: 'border-box',
