@@ -1,0 +1,3 @@
+[submodule "vendor/epubcheck-ts"]
+	path = vendor/epubcheck-ts
+	url = https://github.com/Korzun/epubcheck-ts.git
