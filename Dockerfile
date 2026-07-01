@@ -9,6 +9,7 @@ WORKDIR /hass-odps
 COPY package*.json ./
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
+COPY vendor/epubcheck-ts/package*.json ./vendor/epubcheck-ts/
 RUN rm package-lock.json && npm install
 
 # Backend source
@@ -17,6 +18,9 @@ COPY app/server/ ./app/server/
 # Client source
 COPY app/client/index.html app/client/vite.config.ts app/client/tsconfig.json ./app/client/
 COPY app/client/src/ ./app/client/src/
+
+# Vendor
+COPY vendor/epubcheck-ts/ ./vendor/epubcheck-ts/
 
 # Build everything
 RUN npm run build
@@ -39,6 +43,7 @@ COPY package*.json ./
 COPY package.json ./app/package.json
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
+COPY vendor/epubcheck-ts/package*.json ./vendor/epubcheck-ts/
 # ARGON2=1 skips node-gyp-build's install-time prebuild load-test for argon2:
 # that test dlopen()s the resolved prebuild to verify it works, which fails
 # when cross-compiling (an arm64 .node file can't be loaded by the amd64
@@ -70,6 +75,7 @@ COPY --from=builder /hass-odps/app/server/prisma ./app/server/prisma
 # platform-specific binary when using the adapter-better-sqlite3 approach).
 COPY --from=builder /hass-odps/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /hass-odps/app/client/dist ./app/client/dist
+COPY --from=builder /hass-odps/vendor/epubcheck-ts ./vendor/epubcheck-ts
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
