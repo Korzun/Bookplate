@@ -16,7 +16,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       gridAutoFlow: 'column',
       gridAutoColumns: '1fr',
       padding: 0,
-      backgroundColor: theme.color.bg.card,
+      backgroundColor: theme.color.bg.cardHeader,
       borderStyle: 'solid',
       borderWidth: '1px',
       borderColor: theme.color.border.strong,
@@ -26,17 +26,22 @@ export const useStyle = createUseStyles((theme: Theme) => {
       '&$disabled': { opacity: 0.5, cursor: 'not-allowed' },
     },
     // The active highlight fills the full track height and one column, sliding one own-width
-    // per step. Raised button-like tile: `input` surface + the flat `cardStack` stack-shadow
-    // (no blurred drop shadow). It carries no border of its own — flush against the track,
-    // a border would stack against the track's and read as a double line.
+    // per step. Raised button-like tile: `input` surface, a hairline border, and the flat
+    // `cardStack` stack-shadow (no blurred drop shadow). The recessed `cardHeader` track makes
+    // the lighter tile read clearly; with no gap the tile border sits flush against the track
+    // border — one crisp edge, not a separated concentric arc.
     lens: {
       position: 'absolute',
+      boxSizing: 'border-box',
       zIndex: 0,
       top: 0,
       bottom: 0,
       left: 0,
       width: `calc(100% / var(--seg-count))`,
       backgroundColor: theme.color.bg.input,
+      borderStyle: 'solid',
+      borderWidth: '1px',
+      borderColor: theme.color.border.default,
       boxShadow: theme.shadow.cardStack,
       borderRadius: innerRadius,
       transform: 'translateX(calc(var(--seg-index) * 100%))',
