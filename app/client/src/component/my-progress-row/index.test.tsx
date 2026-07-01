@@ -169,4 +169,26 @@ describe('MyProgressRow', () => {
     await user.click(screen.getByText('Link'));
     expect(screen.getByText('link-progress-modal')).toBeInTheDocument();
   });
+
+  it('shows the orphan hint icon when the progress is unresolved', () => {
+    vi.mocked(useBook).mockReturnValue([
+      undefined,
+      false,
+      false,
+      undefined,
+    ] as unknown as ReturnType<typeof useBook>);
+    vi.mocked(useMyProgress).mockReturnValue([
+      { document: 'orphan-id', percentage: 0.5, device: 'Kobo', timestamp: 1000 },
+      false,
+      false,
+      undefined,
+    ]);
+    renderWithProviders(<MyProgressRow bookId="orphan-id" />);
+    expect(screen.getByLabelText('Unlinked progress')).toBeInTheDocument();
+  });
+
+  it('does not show the orphan hint icon for a resolved book', () => {
+    renderWithProviders(<MyProgressRow bookId="book-1" />);
+    expect(screen.queryByLabelText('Unlinked progress')).not.toBeInTheDocument();
+  });
 });

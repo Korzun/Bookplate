@@ -19,9 +19,10 @@ const EMPTY: Book[] = [];
 
 /**
  * Fetches the given user's library directly, scoped to the row user rather than
- * the library switcher target. The Users page that renders this modal is
- * admin-gated, and the server rejects ?user= from non-admins, so the scope is
- * only appended when the session is admin.
+ * the library switcher target. This modal is reachable both from the admin
+ * Users page and from a user's own progress view; the server rejects ?user=
+ * from non-admins, so the scope is only appended when the session is admin
+ * (non-admins fetch their own library from the bare endpoint).
  */
 export const useUserBookList = (username: string, enabled: boolean): UseUserBookList => {
   const [isAdmin] = useIsAdmin();

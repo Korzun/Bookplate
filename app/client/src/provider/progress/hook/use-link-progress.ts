@@ -33,9 +33,10 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
       setError(false);
       setErrorMessage(undefined);
       try {
-        // This flow is admin-only (the Users page is admin-gated). The server
-        // rejects ?user= from non-admins, so scope the URL to the row user only
-        // when the session is admin; otherwise leave it bare.
+        // Reached both from the admin Users page (admin session, scoped to the
+        // row user via ?user=) and from a user's own progress view (non-admin,
+        // acting on their own library). The server rejects ?user= from
+        // non-admins, so only append the scope for admin sessions.
         const url = `/api/books/${encodeURIComponent(bookId)}/link`;
         const scopedUrl = isAdmin ? `${url}?user=${encodeURIComponent(username)}` : url;
         const response = await apiFetch(scopedUrl, {
