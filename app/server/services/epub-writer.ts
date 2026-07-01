@@ -18,7 +18,7 @@ export interface EpubChanges {
   coverMime?: string;
 }
 
-export function writeMetadata(filePath: string, changes: EpubChanges): void {
+export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
   // Some EPUB authoring tools set the ZIP general-purpose bit 3 (data descriptor
   // flag) on every entry. adm-zip preserves this flag when rewriting but does not
   // emit the corresponding data descriptors, making the resulting file unreadable.
@@ -216,5 +216,5 @@ export function writeMetadata(filePath: string, changes: EpubChanges): void {
   });
   const newOpfXml = '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(opf) as string);
   zip.updateFile(opfRelPath, Buffer.from(newOpfXml, 'utf8'));
-  zip.writeZip(filePath);
+  return zip.toBuffer();
 }
