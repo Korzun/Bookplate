@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { apiFetch } from '~/lib/api-fetch';
 import { useIsAdmin } from '~/provider/auth';
 import type { Book } from '~/provider/book';
 
@@ -41,7 +42,7 @@ export const useUserBookList = (username: string, enabled: boolean): UseUserBook
       if (cancelled) return;
       setState({ status: 'loading' });
       try {
-        const response = await fetch(url);
+        const response = await apiFetch(url);
         if (!response.ok) throw new Error('Failed to load books');
         const bookListArray = (await response.json()) as Book[];
         if (cancelled) return;
