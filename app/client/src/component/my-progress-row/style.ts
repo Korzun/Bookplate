@@ -19,8 +19,24 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
   },
   book: {
-    fontSize: theme.fontSize.md,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.sm,
     flexGrow: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.md,
+  },
+  bookUnresolved: {
+    color: theme.color.text.muted,
+  },
+  orphanIcon: {
+    flexShrink: 0,
+    color: theme.color.danger.default,
+  },
+  title: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   metadata: {
     fontSize: theme.fontSize.md,

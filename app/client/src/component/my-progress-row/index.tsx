@@ -1,7 +1,9 @@
+import cx from 'classnames';
 import { Fragment, useCallback, useState } from 'react';
 
-import { Button, ConfirmModal } from '~/control';
+import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { AlertOctagonIcon } from '~/icon';
+import { useUsername } from '~/provider/auth';
 import { useBook } from '~/provider/book';
 import { useDeleteMyProgress, useMyProgress } from '~/provider/progress';
 import { useToast } from '~/provider/toast';
@@ -18,17 +20,19 @@ interface MyProgressRowProps {
 export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
   const styles = useStyle();
 
-  const [book] = useBook(bookId);
+  const [username] = useUsername();
+  const [book, bookLoading] = useBook(bookId);
   const [progress, progressLoading, progressError] = useMyProgress(bookId);
   const [deleteMyProgress, deleting] = useDeleteMyProgress();
   const showToast = useToast();
 
-  const [showModal, setShowModal] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
-  const handleClear = useCallback(() => setShowModal(true), []);
-  const handleCancel = useCallback(() => setShowModal(false), []);
-  const handleConfirm = useCallback(async () => {
-    setShowModal(false);
+  const handleClear = useCallback(() => setShowClearModal(true), []);
+  const handleCancelClear = useCallback(() => setShowClearModal(false), []);
+  const handleConfirmClear = useCallback(async () => {
+    setShowClearModal(false);
     const ok = await deleteMyProgress(bookId);
     if (ok) {
       showToast('Progress cleared', 'success');
@@ -47,7 +51,8 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
     return null;
   }
 
-  const bookTitle = book?.title ?? progress.document;
+  const bookTitle = book ? book.titleSort || book.title : progress.document;
+  const isUnresolved = book === undefined && !bookLoading;
 
   const metadataList: string[] = [];
   if (progress.device) metadataList.push(progress.device);
@@ -59,17 +64,32 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
         <div className={styles.progress}>
           <ProgressIndicator value={progress.percentage} size={14} />
         </div>
-        <div className={styles.book}>{bookTitle}</div>
+        <div className={cx(styles.book, { [styles.bookUnresolved]: isUnresolved })}>
+          {isUnresolved && (
+            <AlertOctagonIcon
+              width={14}
+              height={14}
+              className={styles.orphanIcon}
+              aria-label="Unlinked progress"
+            />
+          )}
+          <span className={styles.title}>{bookTitle}</span>
+        </div>
         <div className={styles.metadata}>{metadataList.join(' · ')}</div>
+        {isUnresolved && (
+          <Button type="link" onClick={() => setShowLinkModal(true)}>
+            Link
+          </Button>
+        )}
         <Button type="link" danger onClick={handleClear} loading={deleting}>
           Clear
         </Button>
       </div>
-      {showModal && (
+      {showClearModal && (
         <ConfirmModal
           isOpen
-          onCancel={handleCancel}
-          onConfirm={handleConfirm}
+          onCancel={handleCancelClear}
+          onConfirm={handleConfirmClear}
           icon={AlertOctagonIcon}
           danger
           title="Clear reading progress?"
@@ -78,6 +98,14 @@ export const MyProgressRow = ({ bookId }: MyProgressRowProps) => {
         >
           This will remove your synced reading progress for <strong>{bookTitle}</strong>.
         </ConfirmModal>
+      )}
+      {showLinkModal && username !== undefined && (
+        <LinkProgressModal
+          isOpen
+          documentId={bookId}
+          username={username}
+          onClose={() => setShowLinkModal(false)}
+        />
       )}
     </Fragment>
   );
