@@ -61,12 +61,17 @@ export function createServer(
       log.warn(
         'Malformed request body — possible Cloudflare error page received as request (rejecting with 400)'
       );
-      if (!res.headersSent) {
-        res.status(400).json({ error: 'Invalid request body' });
-      }
+      res.status(400).json({ error: 'Invalid request body' });
       return;
     }
-    next(err);
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    log.error(
+      `Unhandled route error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+    );
+    res.status(500).json({ error: 'Internal server error' });
   });
 
   return server;

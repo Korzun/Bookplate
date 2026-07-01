@@ -4,6 +4,7 @@ import { UserStore } from '../services/user-store';
 import { BookStore } from '../services/book-store';
 import { kosyncAuth } from '../middleware/auth';
 import { logger } from '../logger';
+import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('KOSync');
 
@@ -16,38 +17,42 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
   });
 
   // Save progress: PUT /kosync/syncs/progress
-  router.put('/syncs/progress', kosyncAuth(userStore), async (req: Request, res: Response) => {
-    const { document, progress, percentage, device, device_id } = req.body as {
-      document?: string;
-      progress?: string;
-      percentage?: number;
-      device?: string;
-      device_id?: string;
-    };
-    if (!document || !progress || percentage === undefined || !device || !device_id) {
-      res.status(400).json({ message: 'Missing required fields' });
-      return;
-    }
-    const currentId = await bookStore.resolveBookId(req.kosyncUserId!, document);
-    const saved = await userStore.saveProgress(req.kosyncUserId!, {
-      document: currentId,
-      progress,
-      percentage,
-      device,
-      device_id,
-    });
-    log.info(
-      `Progress saved for "${req.kosyncUser}" — "${document}" at ${(percentage * 100).toFixed(1)}%`
-    );
-    // Return ORIGINAL document (KOSync spec compliance)
-    res.status(200).json({ document, timestamp: saved.timestamp });
-  });
+  router.put(
+    '/syncs/progress',
+    kosyncAuth(userStore),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { document, progress, percentage, device, device_id } = req.body as {
+        document?: string;
+        progress?: string;
+        percentage?: number;
+        device?: string;
+        device_id?: string;
+      };
+      if (!document || !progress || percentage === undefined || !device || !device_id) {
+        res.status(400).json({ message: 'Missing required fields' });
+        return;
+      }
+      const currentId = await bookStore.resolveBookId(req.kosyncUserId!, document);
+      const saved = await userStore.saveProgress(req.kosyncUserId!, {
+        document: currentId,
+        progress,
+        percentage,
+        device,
+        device_id,
+      });
+      log.info(
+        `Progress saved for "${req.kosyncUser}" — "${document}" at ${(percentage * 100).toFixed(1)}%`
+      );
+      // Return ORIGINAL document (KOSync spec compliance)
+      res.status(200).json({ document, timestamp: saved.timestamp });
+    })
+  );
 
   // Get progress: GET /kosync/syncs/progress/:document
   router.get(
     '/syncs/progress/:document',
     kosyncAuth(userStore),
-    async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
       const currentId = await bookStore.resolveBookId(req.kosyncUserId!, req.params.document);
       const p = await userStore.getProgress(req.kosyncUserId!, currentId);
       if (!p) {
@@ -57,7 +62,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
       }
       log.debug(`Progress retrieved for "${req.kosyncUser}" — "${req.params.document}"`);
       res.status(200).json(p);
-    }
+    })
   );
 
   return router;

@@ -14,6 +14,13 @@ import packageJson from '../../package.json';
 const version: string = packageJson.version;
 
 const log = logger('Server');
+
+process.on('unhandledRejection', (reason) => {
+  log.error(
+    `Unhandled promise rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`
+  );
+});
+
 const config = loadConfig();
 
 fs.mkdirSync(config.booksDir, { recursive: true });

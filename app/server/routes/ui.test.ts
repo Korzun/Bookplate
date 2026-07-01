@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import request from 'supertest';
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
@@ -233,6 +233,12 @@ beforeEach(async () => {
       scanJobStore
     )
   );
+  // Terminal error middleware mirrors server.ts so unexpected throws → 500
+  app.use((_err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
   (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
   (mockThumbnailQueue.reconcile as jest.Mock).mockClear();
 });
@@ -739,6 +745,18 @@ describe('POST /api/books/upload', () => {
       .readdirSync(booksDir)
       .filter((f) => f.endsWith('.epub') && !f.startsWith('staged-'));
     expect(onDisk).toHaveLength(0);
+  });
+
+  it('returns 500 (not a crash) when assertValidEpub throws an unexpected non-validation error', async () => {
+    const epubBuf = makeEpub({ title: 'Boom Book', author: 'A' });
+    mockAssertValid.mockRejectedValueOnce(new Error('boom'));
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epubBuf, 'boom.epub');
+
+    expect(res.status).toBe(500);
   });
 });
 

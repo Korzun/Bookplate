@@ -31,6 +31,7 @@ import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { ScanJobStore } from '../services/scan-job-store';
+import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('UI');
 
@@ -165,87 +166,96 @@ export function createUiRouter(
 
   router.use(passwordChangeGate(jwtSecret));
 
-  router.post('/api/login', async (req: Request, res: Response) => {
-    const { username, password } = req.body as { username?: string; password?: string };
-    if (typeof username !== 'string' || typeof password !== 'string') {
+  router.post(
+    '/api/login',
+    asyncHandler(async (req: Request, res: Response) => {
+      const { username, password } = req.body as { username?: string; password?: string };
+      if (typeof username !== 'string' || typeof password !== 'string') {
+        res.sendStatus(401);
+        return;
+      }
+      if (username === config.username && password === config.password) {
+        log.info(`Admin "${username}" logged in`);
+        await tokenStore.deleteExpired();
+        await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
+        return;
+      }
+      if ((await userStore.userExists(username)) && !(await userStore.userHasPassword(username))) {
+        log.warn(`Login failed for "${username}" — password not set`);
+        res.sendStatus(403);
+        return;
+      }
+      const userId = await userStore.validateUser(username, password);
+      if (userId) {
+        log.info(`User "${username}" logged in`);
+        await tokenStore.deleteExpired();
+        await issueTokens(res, {
+          userId,
+          username,
+          isAdmin: false,
+          mustChangePassword: await userStore.getMustChangePassword(username),
+        });
+        return;
+      }
+      log.warn(`Login failed for username "${username ?? ''}"`);
       res.sendStatus(401);
-      return;
-    }
-    if (username === config.username && password === config.password) {
-      log.info(`Admin "${username}" logged in`);
-      await tokenStore.deleteExpired();
-      await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
-      return;
-    }
-    if ((await userStore.userExists(username)) && !(await userStore.userHasPassword(username))) {
-      log.warn(`Login failed for "${username}" — password not set`);
-      res.sendStatus(403);
-      return;
-    }
-    const userId = await userStore.validateUser(username, password);
-    if (userId) {
-      log.info(`User "${username}" logged in`);
-      await tokenStore.deleteExpired();
+    })
+  );
+
+  router.post(
+    '/api/auth/refresh',
+    asyncHandler(async (req: Request, res: Response) => {
+      const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+      const reject = (): void => {
+        clearRefreshCookie(res);
+        res.status(401).json({ error: 'Unauthorized' });
+      };
+      if (typeof raw !== 'string' || !raw) {
+        reject();
+        return;
+      }
+      const identity = await tokenStore.consumeRefreshToken(raw);
+      if (!identity) {
+        log.warn('Refresh rejected — unknown, reused, or expired refresh token');
+        reject();
+        return;
+      }
+      if (identity.username === config.username) {
+        await issueTokens(res, {
+          username: identity.username,
+          isAdmin: true,
+          mustChangePassword: false,
+        });
+        return;
+      }
+      // Rebuild claims from current state so renames/deletes and admin actions propagate.
+      const userId = await userStore.getUserIdByUsername(identity.username);
+      if (!userId) {
+        log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
+        reject();
+        return;
+      }
       await issueTokens(res, {
         userId,
-        username,
-        isAdmin: false,
-        mustChangePassword: await userStore.getMustChangePassword(username),
-      });
-      return;
-    }
-    log.warn(`Login failed for username "${username ?? ''}"`);
-    res.sendStatus(401);
-  });
-
-  router.post('/api/auth/refresh', async (req: Request, res: Response) => {
-    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
-    const reject = (): void => {
-      clearRefreshCookie(res);
-      res.status(401).json({ error: 'Unauthorized' });
-    };
-    if (typeof raw !== 'string' || !raw) {
-      reject();
-      return;
-    }
-    const identity = await tokenStore.consumeRefreshToken(raw);
-    if (!identity) {
-      log.warn('Refresh rejected — unknown, reused, or expired refresh token');
-      reject();
-      return;
-    }
-    if (identity.username === config.username) {
-      await issueTokens(res, {
         username: identity.username,
-        isAdmin: true,
-        mustChangePassword: false,
+        isAdmin: false,
+        mustChangePassword: await userStore.getMustChangePassword(identity.username),
       });
-      return;
-    }
-    // Rebuild claims from current state so renames/deletes and admin actions propagate.
-    const userId = await userStore.getUserIdByUsername(identity.username);
-    if (!userId) {
-      log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
-      reject();
-      return;
-    }
-    await issueTokens(res, {
-      userId,
-      username: identity.username,
-      isAdmin: false,
-      mustChangePassword: await userStore.getMustChangePassword(identity.username),
-    });
-  });
+    })
+  );
 
-  router.post('/api/auth/logout', async (req: Request, res: Response) => {
-    const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
-    if (typeof raw === 'string' && raw) {
-      await tokenStore.revokeRefreshToken(raw);
-    }
-    log.info('User logged out');
-    clearRefreshCookie(res);
-    res.status(204).send();
-  });
+  router.post(
+    '/api/auth/logout',
+    asyncHandler(async (req: Request, res: Response) => {
+      const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
+      if (typeof raw === 'string' && raw) {
+        await tokenStore.revokeRefreshToken(raw);
+      }
+      log.info('User logged out');
+      clearRefreshCookie(res);
+      res.status(204).send();
+    })
+  );
 
   router.get('/api/config', requireAuth, (_req: Request, res: Response) => {
     res.json({
@@ -254,148 +264,172 @@ export function createUiRouter(
     });
   });
 
-  router.get('/api/my/progress', requireAuth, async (req: Request, res: Response) => {
-    if (req.user!.isAdmin) {
-      res.json({ items: [], nextCursor: null });
-      return;
-    }
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const owner: Owner = { userId, username: req.user!.username };
-    const cursor = decodeProgressCursor(req.query.cursor);
-    const take = parseProgressTake(req.query.take);
-    const page = await userStore.getUserProgressPage(userId, cursor, take);
-    const spineMaps = await bookStore.getChapterSpineMaps(
-      owner,
-      page.items.map((p) => p.document)
-    );
-    const items = page.items.map((p) => {
-      const spineMap = spineMaps.get(p.document);
-      const spineIndex = parseCfiSpineIndex(p.progress);
-      const currentChapter =
-        spineIndex !== null && spineMap && spineMap.length > 0
-          ? (spineIndexToChapter(spineIndex, spineMap) ?? undefined)
-          : undefined;
-      return {
-        ...p,
-        ...(currentChapter !== undefined ? { currentChapter } : {}),
+  router.get(
+    '/api/my/progress',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (req.user!.isAdmin) {
+        res.json({ items: [], nextCursor: null });
+        return;
+      }
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      const owner: Owner = { userId, username: req.user!.username };
+      const cursor = decodeProgressCursor(req.query.cursor);
+      const take = parseProgressTake(req.query.take);
+      const page = await userStore.getUserProgressPage(userId, cursor, take);
+      const spineMaps = await bookStore.getChapterSpineMaps(
+        owner,
+        page.items.map((p) => p.document)
+      );
+      const items = page.items.map((p) => {
+        const spineMap = spineMaps.get(p.document);
+        const spineIndex = parseCfiSpineIndex(p.progress);
+        const currentChapter =
+          spineIndex !== null && spineMap && spineMap.length > 0
+            ? (spineIndexToChapter(spineIndex, spineMap) ?? undefined)
+            : undefined;
+        return {
+          ...p,
+          ...(currentChapter !== undefined ? { currentChapter } : {}),
+        };
+      });
+      res.json({ items, nextCursor: page.nextCursor });
+    })
+  );
+
+  router.delete(
+    '/api/my/progress/:document',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (req.user!.isAdmin) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      const cleared = await userStore.clearProgress(userId, req.params.document);
+      if (!cleared) {
+        res.status(404).json({ error: 'Progress record not found' });
+        return;
+      }
+      res.status(204).send();
+    })
+  );
+
+  router.put(
+    '/api/my/progress/:document',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (req.user!.isAdmin) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      const owner: Owner = { userId, username: req.user!.username };
+      const { currentChapter, percentage, device, device_id } = req.body as Record<string, unknown>;
+      if (
+        typeof currentChapter !== 'number' ||
+        !Number.isInteger(currentChapter) ||
+        currentChapter < 1 ||
+        typeof percentage !== 'number' ||
+        percentage <= 0 ||
+        percentage > 1
+      ) {
+        res.status(400).json({ error: 'Invalid body' });
+        return;
+      }
+      // Synthesise a minimal EPUB CFI so currentChapter persists through GET /api/my/progress
+      const book = await bookStore.getBookById(owner, req.params.document);
+      let progress = '';
+      if (
+        book &&
+        book.chapterSpineMap.length > 0 &&
+        currentChapter <= book.chapterSpineMap.length
+      ) {
+        const spineIndex = book.chapterSpineMap[currentChapter - 1];
+        progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
+      }
+      await userStore.saveProgress(userId, {
+        document: req.params.document,
+        progress,
+        percentage,
+        device: typeof device === 'string' && device ? device : 'Web',
+        device_id: typeof device_id === 'string' ? device_id : '',
+      });
+      res.status(200).json({});
+    })
+  );
+
+  router.patch(
+    '/api/my/password',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (req.user!.isAdmin) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword?: string;
+        newPassword?: string;
       };
-    });
-    res.json({ items, nextCursor: page.nextCursor });
-  });
+      if (
+        typeof currentPassword !== 'string' ||
+        !currentPassword ||
+        typeof newPassword !== 'string' ||
+        !newPassword
+      ) {
+        res.status(400).json({ error: 'Current and new password are required' });
+        return;
+      }
+      const valid = await userStore.validateUser(req.user!.username, currentPassword);
+      if (!valid) {
+        res.status(401).json({ error: 'Current password is incorrect' });
+        return;
+      }
+      const newHash = await UserStore.hashLoginPassword(newPassword);
+      const changed = await userStore.changePassword(req.user!.username, newHash);
+      if (!changed) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      log.info(`User "${req.user!.username}" changed their password`);
+      // Revoke all outstanding refresh tokens, then hand back a fresh pair so
+      // the client immediately holds claims with mustChangePassword: false.
+      await tokenStore.revokeAllForUsername(req.user!.username);
+      await issueTokens(res, {
+        userId,
+        username: req.user!.username,
+        isAdmin: false,
+        mustChangePassword: false,
+      });
+    })
+  );
 
-  router.delete('/api/my/progress/:document', requireAuth, async (req: Request, res: Response) => {
-    if (req.user!.isAdmin) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const cleared = await userStore.clearProgress(userId, req.params.document);
-    if (!cleared) {
-      res.status(404).json({ error: 'Progress record not found' });
-      return;
-    }
-    res.status(204).send();
-  });
-
-  router.put('/api/my/progress/:document', requireAuth, async (req: Request, res: Response) => {
-    if (req.user!.isAdmin) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const owner: Owner = { userId, username: req.user!.username };
-    const { currentChapter, percentage, device, device_id } = req.body as Record<string, unknown>;
-    if (
-      typeof currentChapter !== 'number' ||
-      !Number.isInteger(currentChapter) ||
-      currentChapter < 1 ||
-      typeof percentage !== 'number' ||
-      percentage <= 0 ||
-      percentage > 1
-    ) {
-      res.status(400).json({ error: 'Invalid body' });
-      return;
-    }
-    // Synthesise a minimal EPUB CFI so currentChapter persists through GET /api/my/progress
-    const book = await bookStore.getBookById(owner, req.params.document);
-    let progress = '';
-    if (book && book.chapterSpineMap.length > 0 && currentChapter <= book.chapterSpineMap.length) {
-      const spineIndex = book.chapterSpineMap[currentChapter - 1];
-      progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
-    }
-    await userStore.saveProgress(userId, {
-      document: req.params.document,
-      progress,
-      percentage,
-      device: typeof device === 'string' && device ? device : 'Web',
-      device_id: typeof device_id === 'string' ? device_id : '',
-    });
-    res.status(200).json({});
-  });
-
-  router.patch('/api/my/password', requireAuth, async (req: Request, res: Response) => {
-    if (req.user!.isAdmin) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-    const { currentPassword, newPassword } = req.body as {
-      currentPassword?: string;
-      newPassword?: string;
-    };
-    if (
-      typeof currentPassword !== 'string' ||
-      !currentPassword ||
-      typeof newPassword !== 'string' ||
-      !newPassword
-    ) {
-      res.status(400).json({ error: 'Current and new password are required' });
-      return;
-    }
-    const valid = await userStore.validateUser(req.user!.username, currentPassword);
-    if (!valid) {
-      res.status(401).json({ error: 'Current password is incorrect' });
-      return;
-    }
-    const newHash = await UserStore.hashLoginPassword(newPassword);
-    const changed = await userStore.changePassword(req.user!.username, newHash);
-    if (!changed) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    log.info(`User "${req.user!.username}" changed their password`);
-    // Revoke all outstanding refresh tokens, then hand back a fresh pair so
-    // the client immediately holds claims with mustChangePassword: false.
-    await tokenStore.revokeAllForUsername(req.user!.username);
-    await issueTokens(res, {
-      userId,
-      username: req.user!.username,
-      isAdmin: false,
-      mustChangePassword: false,
-    });
-  });
-
-  router.get('/api/my/sync-password', requireAuth, async (req: Request, res: Response) => {
-    if (req.user!.isAdmin) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-    const syncPassword = await userStore.getSyncPassword(req.user!.username);
-    if (syncPassword === null) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    res.json({ syncPassword });
-  });
+  router.get(
+    '/api/my/sync-password',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (req.user!.isAdmin) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const syncPassword = await userStore.getSyncPassword(req.user!.username);
+      if (syncPassword === null) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      res.json({ syncPassword });
+    })
+  );
 
   router.post(
     '/api/my/sync-password/regenerate',
     requireAuth,
-    async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
       if (req.user!.isAdmin) {
         res.status(403).json({ error: 'Forbidden' });
         return;
@@ -408,132 +442,148 @@ export function createUiRouter(
       }
       log.info(`User "${req.user!.username}" regenerated sync password`);
       res.json({ syncPassword: newPassword });
-    }
+    })
   );
 
   // ── Static assets (no auth required) ──────────────────
   router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
 
-  router.get('/api/books', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
+  router.get(
+    '/api/books',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
 
-    const { cursor, take, status, query, author, seriesName, subjects, entryType } = req.query;
+      const { cursor, take, status, query, author, seriesName, subjects, entryType } = req.query;
 
-    if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
-      res.status(400).json({
-        error: 'Invalid status. Must be "not-started", "in-progress", or "completed".',
-      });
-      return;
-    }
-
-    const entryTypeValue =
-      entryType === 'series' || entryType === 'standalone' ? entryType : undefined;
-
-    const queryValue = typeof query === 'string' && query ? query : undefined;
-    const authorValue = typeof author === 'string' && author ? author : undefined;
-    const seriesNameValue = typeof seriesName === 'string' && seriesName ? seriesName : undefined;
-    const subjectsValue: string[] = Array.isArray(subjects)
-      ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
-      : typeof subjects === 'string' && subjects
-        ? [subjects]
-        : [];
-
-    const filters: BookListFilters | undefined =
-      status !== undefined ||
-      queryValue !== undefined ||
-      authorValue !== undefined ||
-      seriesNameValue !== undefined ||
-      subjectsValue.length > 0 ||
-      entryTypeValue !== undefined
-        ? {
-            status: status as BookListFilters['status'],
-            query: queryValue,
-            author: authorValue,
-            seriesName: seriesNameValue,
-            subjects: subjectsValue.length > 0 ? subjectsValue : undefined,
-            entryType: entryTypeValue,
-          }
-        : undefined;
-
-    if (cursor !== undefined || take !== undefined || filters !== undefined) {
-      let pageCursor: PageCursor | null = null;
-      if (typeof cursor === 'string' && cursor) {
-        try {
-          pageCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as PageCursor;
-        } catch {
-          pageCursor = null;
-        }
+      if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
+        res.status(400).json({
+          error: 'Invalid status. Must be "not-started", "in-progress", or "completed".',
+        });
+        return;
       }
-      const pageSize =
-        typeof take === 'string' ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100) : 20;
-      const result = await bookStore.listBooksPage(owner, pageCursor, pageSize, filters);
+
+      const entryTypeValue =
+        entryType === 'series' || entryType === 'standalone' ? entryType : undefined;
+
+      const queryValue = typeof query === 'string' && query ? query : undefined;
+      const authorValue = typeof author === 'string' && author ? author : undefined;
+      const seriesNameValue = typeof seriesName === 'string' && seriesName ? seriesName : undefined;
+      const subjectsValue: string[] = Array.isArray(subjects)
+        ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
+        : typeof subjects === 'string' && subjects
+          ? [subjects]
+          : [];
+
+      const filters: BookListFilters | undefined =
+        status !== undefined ||
+        queryValue !== undefined ||
+        authorValue !== undefined ||
+        seriesNameValue !== undefined ||
+        subjectsValue.length > 0 ||
+        entryTypeValue !== undefined
+          ? {
+              status: status as BookListFilters['status'],
+              query: queryValue,
+              author: authorValue,
+              seriesName: seriesNameValue,
+              subjects: subjectsValue.length > 0 ? subjectsValue : undefined,
+              entryType: entryTypeValue,
+            }
+          : undefined;
+
+      if (cursor !== undefined || take !== undefined || filters !== undefined) {
+        let pageCursor: PageCursor | null = null;
+        if (typeof cursor === 'string' && cursor) {
+          try {
+            pageCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as PageCursor;
+          } catch {
+            pageCursor = null;
+          }
+        }
+        const pageSize =
+          typeof take === 'string' ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100) : 20;
+        const result = await bookStore.listBooksPage(owner, pageCursor, pageSize, filters);
+        res.json(result);
+        return;
+      }
+
+      res.json(
+        (await bookStore.listBooks(owner)).map((b) => {
+          const {
+            path: _path,
+            description: _description,
+            identifiers: _identifiers,
+            subjects: _subjects,
+            addedAt: _addedAt,
+            chapterSpineMap: _chapterSpineMap,
+            chapterNames: _chapterNames,
+            ...rest
+          } = b;
+          return rest;
+        })
+      );
+    })
+  );
+
+  router.get(
+    '/api/search/suggestions',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const { q, author, seriesName, subjects } = req.query;
+      if (!q || typeof q !== 'string' || !q.trim()) {
+        res.json({ groups: [] } satisfies SearchSuggestionsResponse);
+        return;
+      }
+      const activeSubjects: string[] = Array.isArray(subjects)
+        ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
+        : typeof subjects === 'string' && subjects
+          ? [subjects]
+          : [];
+      const result = await bookStore.getSearchSuggestions(owner, {
+        q: q.trim(),
+        filter: {
+          author: typeof author === 'string' && author ? author : undefined,
+          seriesName: typeof seriesName === 'string' && seriesName ? seriesName : undefined,
+          activeSubjects,
+        },
+      });
       res.json(result);
-      return;
-    }
+    })
+  );
 
-    res.json(
-      (await bookStore.listBooks(owner)).map((b) => {
-        const {
-          path: _path,
-          description: _description,
-          identifiers: _identifiers,
-          subjects: _subjects,
-          addedAt: _addedAt,
-          chapterSpineMap: _chapterSpineMap,
-          chapterNames: _chapterNames,
-          ...rest
-        } = b;
-        return rest;
-      })
-    );
-  });
-
-  router.get('/api/search/suggestions', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { q, author, seriesName, subjects } = req.query;
-    if (!q || typeof q !== 'string' || !q.trim()) {
-      res.json({ groups: [] } satisfies SearchSuggestionsResponse);
-      return;
-    }
-    const activeSubjects: string[] = Array.isArray(subjects)
-      ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
-      : typeof subjects === 'string' && subjects
-        ? [subjects]
-        : [];
-    const result = await bookStore.getSearchSuggestions(owner, {
-      q: q.trim(),
-      filter: {
-        author: typeof author === 'string' && author ? author : undefined,
-        seriesName: typeof seriesName === 'string' && seriesName ? seriesName : undefined,
-        activeSubjects,
-      },
-    });
-    res.json(result);
-  });
-
-  router.get('/api/subjects', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const subjects = await bookStore.getSubjects(owner);
-    res.json({ subjects });
-  });
+  router.get(
+    '/api/subjects',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const subjects = await bookStore.getSubjects(owner);
+      res.json({ subjects });
+    })
+  );
 
   // Series names ordered by the server-computed sort key (articles stripped),
   // used to populate the series autocomplete in the book edit form.
-  router.get('/api/series', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const series = await bookStore.listSeries(owner);
-    res.json({ series: series.map((s) => s.name) });
-  });
+  router.get(
+    '/api/series',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const series = await bookStore.listSeries(owner);
+      res.json({ series: series.map((s) => s.name) });
+    })
+  );
 
   router.post(
     '/api/books/upload',
     requireAuth,
     upload.array('files'),
-    async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const files = req.files as Express.Multer.File[] | undefined;
@@ -606,68 +656,80 @@ export function createUiRouter(
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);
       res.json({ uploaded });
-    }
+    })
   );
 
-  router.get('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const book = await bookStore.getBookById(owner, req.params.id);
-    if (!book) {
-      res.status(404).json({ error: 'Book not found' });
-      return;
-    }
-    const { path: _path, ...rest } = book;
-    res.json(rest);
-  });
-
-  router.get('/api/books/:id/lineage', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const lineage = await bookStore.getBookLineage(owner, req.params.id);
-    if (!lineage) {
-      res.status(404).json({ error: 'Book not found' });
-      return;
-    }
-    res.json(lineage);
-  });
-
-  router.post('/api/books/:id/link', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { documentId } = req.body as { documentId?: unknown };
-    if (typeof documentId !== 'string' || !documentId.trim()) {
-      res.status(400).json({ error: 'documentId is required' });
-      return;
-    }
-    try {
-      const result = await bookStore.linkDocument(owner, req.params.id, documentId.trim());
-      if (result === null) {
+  router.get(
+    '/api/books/:id',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
       }
-      res.status(204).send();
-    } catch (err) {
-      if (err instanceof SelfLinkError) {
-        res.status(400).json({ error: err.message });
+      const { path: _path, ...rest } = book;
+      res.json(rest);
+    })
+  );
+
+  router.get(
+    '/api/books/:id/lineage',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const lineage = await bookStore.getBookLineage(owner, req.params.id);
+      if (!lineage) {
+        res.status(404).json({ error: 'Book not found' });
         return;
       }
-      if (err instanceof DocumentAlreadyLinkedError) {
-        res.status(409).json({ error: err.message });
+      res.json(lineage);
+    })
+  );
+
+  router.post(
+    '/api/books/:id/link',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const { documentId } = req.body as { documentId?: unknown };
+      if (typeof documentId !== 'string' || !documentId.trim()) {
+        res.status(400).json({ error: 'documentId is required' });
         return;
       }
-      if (err instanceof DocumentIsBookError) {
-        res.status(409).json({ error: err.message });
-        return;
+      try {
+        const result = await bookStore.linkDocument(owner, req.params.id, documentId.trim());
+        if (result === null) {
+          res.status(404).json({ error: 'Book not found' });
+          return;
+        }
+        res.status(204).send();
+      } catch (err) {
+        if (err instanceof SelfLinkError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        if (err instanceof DocumentAlreadyLinkedError) {
+          res.status(409).json({ error: err.message });
+          return;
+        }
+        if (err instanceof DocumentIsBookError) {
+          res.status(409).json({ error: err.message });
+          return;
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    })
+  );
 
   router.delete(
     '/api/books/:id/link/:documentId',
     requireAuth,
-    async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const result = await bookStore.unlinkDocument(owner, req.params.id, req.params.documentId);
@@ -680,27 +742,39 @@ export function createUiRouter(
         return;
       }
       res.status(204).send();
-    }
+    })
   );
 
-  router.get('/api/books/:id/cover', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const { width } = req.query;
-    const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
+  router.get(
+    '/api/books/:id/cover',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const { width } = req.query;
+      const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
-    let data: Buffer;
-    let mime: string;
+      let data: Buffer;
+      let mime: string;
 
-    if (!isNaN(parsedWidth) && parsedWidth > 0) {
-      const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
-      if (thumbnail) {
-        data = thumbnail.data;
-        mime = thumbnail.mime;
+      if (!isNaN(parsedWidth) && parsedWidth > 0) {
+        const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
+        if (thumbnail) {
+          data = thumbnail.data;
+          mime = thumbnail.mime;
+        } else {
+          log.warn(
+            `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
+          );
+          const cover = await bookStore.getCover(owner.userId, req.params.id);
+          if (!cover) {
+            res.status(404).send('Not found');
+            return;
+          }
+          data = cover.data;
+          mime = cover.mime;
+        }
       } else {
-        log.warn(
-          `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
-        );
         const cover = await bookStore.getCover(owner.userId, req.params.id);
         if (!cover) {
           res.status(404).send('Not found');
@@ -709,95 +783,103 @@ export function createUiRouter(
         data = cover.data;
         mime = cover.mime;
       }
-    } else {
-      const cover = await bookStore.getCover(owner.userId, req.params.id);
-      if (!cover) {
-        res.status(404).send('Not found');
+
+      const etag = `"${createHash('md5').update(data).digest('hex')}"`;
+      if (req.headers['if-none-match'] === etag) {
+        res.status(304).end();
         return;
       }
-      data = cover.data;
-      mime = cover.mime;
-    }
 
-    const etag = `"${createHash('md5').update(data).digest('hex')}"`;
-    if (req.headers['if-none-match'] === etag) {
-      res.status(304).end();
-      return;
-    }
+      // A cache-busting `v` token (the book's mtime) means the URL changes whenever the
+      // cover changes, so the response is safe to cache immutably; without it we fall back
+      // to revalidate-every-time so a stale cover is never served under a reused URL.
+      const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
+      res.set('Content-Type', mime);
+      res.set('ETag', etag);
+      res.set(
+        'Cache-Control',
+        versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
+      );
+      res.send(data);
+    })
+  );
 
-    // A cache-busting `v` token (the book's mtime) means the URL changes whenever the
-    // cover changes, so the response is safe to cache immutably; without it we fall back
-    // to revalidate-every-time so a stale cover is never served under a reused URL.
-    const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
-    res.set('Content-Type', mime);
-    res.set('ETag', etag);
-    res.set(
-      'Cache-Control',
-      versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
-    );
-    res.send(data);
-  });
-
-  router.get('/api/series/:name', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const series = await bookStore.getSeriesByName(owner, req.params.name);
-    if (!series) {
-      res.status(404).json({ error: 'Series not found' });
-      return;
-    }
-    res.json(series);
-  });
-
-  router.delete('/api/books/:id', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const deleted = await bookStore.deleteBook(owner, req.params.id);
-    if (!deleted) {
-      log.warn(`Delete attempted for unknown book ID: ${req.params.id}`);
-      res.status(404).json({ error: 'Book not found' });
-      return;
-    }
-    log.info(`Book deleted: "${deleted.filename}"`);
-    res.status(204).send();
-  });
-
-  router.post('/api/books/scan', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    if (scanJobStore.isRunning(owner.userId)) {
-      res.status(409).json(scanJobStore.get(owner.userId));
-      return;
-    }
-    const job = scanJobStore.start(owner.userId);
-    res.status(202).json(job);
-    // Run the scan in the background; the client polls /api/books/scan/status.
-    void (async () => {
-      try {
-        const result = await bookStore.scan(owner);
-        await thumbnailQueue.reconcile();
-        log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
-        scanJobStore.complete(owner.userId, result);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        log.error(`Scan failed for "${owner.username}": ${message}`);
-        scanJobStore.fail(owner.userId, message);
+  router.get(
+    '/api/series/:name',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const series = await bookStore.getSeriesByName(owner, req.params.name);
+      if (!series) {
+        res.status(404).json({ error: 'Series not found' });
+        return;
       }
-    })();
-  });
+      res.json(series);
+    })
+  );
 
-  router.get('/api/books/scan/status', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const job = scanJobStore.get(owner.userId);
-    res.json(job ?? { status: 'idle' });
-  });
+  router.delete(
+    '/api/books/:id',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const deleted = await bookStore.deleteBook(owner, req.params.id);
+      if (!deleted) {
+        log.warn(`Delete attempted for unknown book ID: ${req.params.id}`);
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      log.info(`Book deleted: "${deleted.filename}"`);
+      res.status(204).send();
+    })
+  );
+
+  router.post(
+    '/api/books/scan',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      if (scanJobStore.isRunning(owner.userId)) {
+        res.status(409).json(scanJobStore.get(owner.userId));
+        return;
+      }
+      const job = scanJobStore.start(owner.userId);
+      res.status(202).json(job);
+      // Run the scan in the background; the client polls /api/books/scan/status.
+      void (async () => {
+        try {
+          const result = await bookStore.scan(owner);
+          await thumbnailQueue.reconcile();
+          log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
+          scanJobStore.complete(owner.userId, result);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          log.error(`Scan failed for "${owner.username}": ${message}`);
+          scanJobStore.fail(owner.userId, message);
+        }
+      })();
+    })
+  );
+
+  router.get(
+    '/api/books/scan/status',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const job = scanJobStore.get(owner.userId);
+      res.json(job ?? { status: 'idle' });
+    })
+  );
 
   router.patch(
     '/api/books/:id/metadata',
     requireAuth,
     coverUpload.single('cover'),
-    async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const book = await bookStore.getBookById(owner, req.params.id);
@@ -922,37 +1004,41 @@ export function createUiRouter(
         ...rest
       } = updated;
       res.json(rest);
-    }
+    })
   );
 
-  router.post('/api/books/:id/regen-chapters', requireAuth, async (req: Request, res: Response) => {
-    const owner = await resolveOwner(req, res);
-    if (!owner) return;
-    const book = await bookStore.getBookById(owner, req.params.id);
-    if (!book) {
-      res.status(404).json({ error: 'Book not found' });
-      return;
-    }
-
-    let updated: Awaited<ReturnType<typeof bookStore.reimportBook>>;
-    try {
-      updated = await bookStore.reimportBook(owner, req.params.id);
-    } catch (err) {
-      if (err instanceof BookHashCollisionError) {
-        res.status(409).json({ error: 'Book fingerprint collision during re-import' });
+  router.post(
+    '/api/books/:id/regen-chapters',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
         return;
       }
-      throw err;
-    }
-    if (!updated) {
-      res.status(500).json({ error: 'Failed to re-import book' });
-      return;
-    }
 
-    log.info(`Book chapters regenerated: "${updated.filename}"`);
-    const { path: _path, ...rest } = updated;
-    res.json(rest);
-  });
+      let updated: Awaited<ReturnType<typeof bookStore.reimportBook>>;
+      try {
+        updated = await bookStore.reimportBook(owner, req.params.id);
+      } catch (err) {
+        if (err instanceof BookHashCollisionError) {
+          res.status(409).json({ error: 'Book fingerprint collision during re-import' });
+          return;
+        }
+        throw err;
+      }
+      if (!updated) {
+        res.status(500).json({ error: 'Failed to re-import book' });
+        return;
+      }
+
+      log.info(`Book chapters regenerated: "${updated.filename}"`);
+      const { path: _path, ...rest } = updated;
+      res.json(rest);
+    })
+  );
 
   // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
   router.get('*', serveSpa);
