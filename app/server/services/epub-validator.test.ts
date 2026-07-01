@@ -1,8 +1,8 @@
-import type { Report } from 'epubcheck-ts';
-import { validateEpub } from 'epubcheck-ts';
+import type { Report } from '@korzun/epubcheck-ts';
+import { validateEpub } from '@korzun/epubcheck-ts';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 
-jest.mock('epubcheck-ts', () => ({ validateEpub: jest.fn() }));
+jest.mock('@korzun/epubcheck-ts', () => ({ validateEpub: jest.fn() }));
 
 const mockValidate = validateEpub as jest.MockedFunction<typeof validateEpub>;
 
