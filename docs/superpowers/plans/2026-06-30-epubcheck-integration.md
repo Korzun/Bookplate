@@ -19,7 +19,9 @@
 
 ## Prerequisite Gate (Task 1)
 
-Pin the submodule to an `epubcheck-ts` commit that ships the **dual-format (ESM + CJS)** build (the `exports` map has a `require` condition and `dist/index.cjs` + `dist/index.d.ts` exist). The CommonJS server and ts-jest cannot consume an ESM-only build. If that commit does not yet exist upstream, stop and land the dual-format change in `epubcheck-ts` first; every later task depends on its built `dist/` (types at compile time, CJS entry at runtime).
+Pin the submodule to an `epubcheck-ts` commit that ships the **dual-format (ESM + CJS)** build (the `exports` map has a `require` condition and `dist/index.cjs` + `dist/index.d.ts` exist). The CommonJS server and ts-jest cannot consume an ESM-only build. Every later task depends on its built `dist/` (types at compile time, CJS entry at runtime).
+
+**Gate satisfied:** upstream `main` commit `e34013b0180d1b0b624f1462c4f59215bc46b080` ("build: emit dual ESM + CJS output for require() compatibility (#14)") ships the dual-format build. Task 1 pins to this SHA.
 
 ---
 
@@ -39,7 +41,7 @@ Pin the submodule to an `epubcheck-ts` commit that ships the **dual-format (ESM 
 
 ```bash
 git submodule add https://github.com/Korzun/epubcheck-ts.git vendor/epubcheck-ts
-git -C vendor/epubcheck-ts checkout <DUAL_FORMAT_COMMIT_SHA>
+git -C vendor/epubcheck-ts checkout e34013b0180d1b0b624f1462c4f59215bc46b080
 git add .gitmodules vendor/epubcheck-ts
 ```
 
@@ -380,8 +382,8 @@ git commit -m "feat(server): reject invalid EPUBs on upload"
 - Test: `app/server/services/epub-writer.test.ts` (add one test; existing tests must stay green)
 
 **Interfaces:**
-- Produces: `function buildUpdatedEpub(srcPath: string, changes: EpubChanges): Buffer` — same rewrite logic as `writeMetadata`, returning the new archive bytes instead of writing them.
-- Preserves: `function writeMetadata(filePath: string, changes: EpubChanges): void` (thin wrapper) so existing callers/tests are unaffected.
+- Produces: `function buildUpdatedEpub(srcPath: string, changes: EpubChanges): Buffer` — the former `writeMetadata` rewrite logic, returning the new archive bytes instead of writing them.
+- Removes: `writeMetadata`. After Task 5 it would have no production caller, so it is deleted (not kept as a wrapper) and its existing tests are migrated to `buildUpdatedEpub`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -413,9 +415,9 @@ it('buildUpdatedEpub returns a Buffer with the applied changes, without writing 
 Run: `npm test -w app/server -- epub-writer.test.ts -t "buildUpdatedEpub"`
 Expected: FAIL — `buildUpdatedEpub` is not exported.
 
-- [ ] **Step 3: Refactor `epub-writer.ts`**
+- [ ] **Step 3: Refactor `epub-writer.ts` — rename and return a Buffer**
 
-Rename the exported function to `buildUpdatedEpub`, change its final line, and add a thin `writeMetadata` wrapper. At line 21 change the signature:
+Rename the exported function and change its final line. At line 21 change the signature:
 
 ```ts
 export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
@@ -427,24 +429,51 @@ Replace the final `zip.writeZip(filePath);` (line ~219) with:
   return zip.toBuffer();
 ```
 
-Immediately after the closing brace of `buildUpdatedEpub`, add (keep the `fs` import — add `import * as fs from 'fs';` at the top of the file if not already present):
+Do **not** add a `writeMetadata` wrapper — the function is being removed. (No `fs` import is needed in `epub-writer.ts`.)
 
-```ts
-export function writeMetadata(filePath: string, changes: EpubChanges): void {
-  fs.writeFileSync(filePath, buildUpdatedEpub(filePath, changes));
-}
-```
+- [ ] **Step 4: Migrate the existing `writeMetadata` tests to `buildUpdatedEpub`**
 
-- [ ] **Step 4: Run the writer suite to verify all pass**
+`epub-writer.test.ts` already imports `fs`, `path`, `parseEpub`, and `makeEpub`. Change the import on line 6 from `writeMetadata` to `buildUpdatedEpub`, then apply these two mechanical substitutions across the whole file (the `describe('writeMetadata', ...)` block, lines ~200-364):
+
+1. **Write-and-assert calls** — every `writeMetadata(f, CHANGES)` that mutates a file the test then re-reads becomes a build-then-write:
+
+   Before:
+   ```ts
+   writeMetadata(f, { title: 'New Title' });
+   ```
+   After:
+   ```ts
+   fs.writeFileSync(f, buildUpdatedEpub(f, { title: 'New Title' }));
+   ```
+
+2. **Throw-expectation calls** — every `expect(() => writeMetadata(ARGS)).toThrow()` becomes a call to `buildUpdatedEpub` directly (it throws while reading/rebuilding the source, before any write):
+
+   Before:
+   ```ts
+   expect(() => writeMetadata('/nonexistent/path.epub', { title: 'x' })).toThrow();
+   ```
+   After:
+   ```ts
+   expect(() => buildUpdatedEpub('/nonexistent/path.epub', { title: 'x' })).toThrow();
+   ```
+
+Apply substitution 1 to the write-and-assert cases (lines ~203, 209, 215, 222, 229, 236, 243, 249, 255, 261, 267, 273, 281, 287, 293, 299, 306, 315, 322, 330, 364) and substitution 2 to the throw cases (lines ~338, 343). Optionally rename `describe('writeMetadata', ...)` to `describe('buildUpdatedEpub', ...)`. All assertions stay identical.
+
+- [ ] **Step 5: Verify no `writeMetadata` references remain**
+
+Run: `grep -rn "writeMetadata" app/server`
+Expected: no output (the symbol is fully removed).
+
+- [ ] **Step 6: Run the writer suite to verify all pass**
 
 Run: `npm test -w app/server -- epub-writer.test.ts`
-Expected: PASS — the new test passes and all existing `writeMetadata` tests still pass (behavior unchanged).
+Expected: PASS — the new `buildUpdatedEpub` test and all migrated tests pass (behavior unchanged).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add app/server/services/epub-writer.ts app/server/services/epub-writer.test.ts
-git commit -m "refactor(server): extract buildUpdatedEpub returning a Buffer"
+git commit -m "refactor(server): replace writeMetadata with buildUpdatedEpub returning a Buffer"
 ```
 
 ---
@@ -677,7 +706,7 @@ git commit -m "build: wire epubcheck-ts submodule into Docker and CI"
 - Testing (validator unit + integration, upload-invalid, edit-invalid + original-unchanged, happy paths preserved) → Tasks 2, 3, 5. ✓
 - Error-code table (400 upload / 422 edit / 500 build failure) → Tasks 3, 5. ✓
 
-**Placeholder scan:** No `TBD`/`TODO`/"handle edge cases". The one intentionally parameterized value is `<DUAL_FORMAT_COMMIT_SHA>` (the pinned upstream commit) and the test-helper/auth notes that say to mirror the file's existing helpers — these are real instructions, not deferred work.
+**Placeholder scan:** No `TBD`/`TODO`/"handle edge cases". The pinned upstream commit is filled in (`e34013b…`). The test-helper/auth notes that say to mirror the file's existing helpers are real instructions, not deferred work.
 
 **Type consistency:** `assertValidEpub(bytes: Buffer): Promise<Report>`, `EpubValidationError(messages, counts)`, and `buildUpdatedEpub(filePath, changes): Buffer` are used identically in every task that references them. The route mock in Tasks 3/5 mirrors the real `EpubValidationError` shape (`messages`, `counts`). `formatMessages` field names (`id`, `severity`, `message`, `location`) match `ValidationMessage`.
 
