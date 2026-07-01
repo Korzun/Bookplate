@@ -20,14 +20,20 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&$disabled': { opacity: 0.5, cursor: 'not-allowed' },
   },
   // The active highlight. Width = inner track / count; slides one own-width per step.
+  // Styled as a raised button-like tile (input surface + hairline border + the flat
+  // `cardStack` stack-shadow) to match the app's other controls — no blurred drop shadow.
   lens: {
-    ...theme.recipe.glassHighlight,
     position: 'absolute',
     zIndex: 0,
     top: theme.space.xxs,
     bottom: theme.space.xxs,
     left: theme.space.xxs,
     width: `calc((100% - 2 * ${theme.space.xxs}) / var(--seg-count))`,
+    backgroundColor: theme.color.bg.input,
+    borderStyle: 'solid',
+    borderWidth: '1px',
+    borderColor: theme.color.border.default,
+    boxShadow: theme.shadow.cardStack,
     borderRadius: theme.radius.sm,
     transform: 'translateX(calc(var(--seg-index) * 100%))',
     transition: `transform ${theme.transition.spring}`,
