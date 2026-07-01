@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import AdmZip from 'adm-zip';
-import { writeMetadata } from './epub-writer';
+import { buildUpdatedEpub } from './epub-writer';
 import { parseEpub } from './epub-parser';
 
 function makeEpub(
@@ -197,80 +197,95 @@ function toFile(buf: Buffer, name = 'test.epub'): string {
   return p;
 }
 
-describe('writeMetadata', () => {
+it('buildUpdatedEpub returns a Buffer with the applied changes, without writing to disk', () => {
+  const src = path.join(os.tmpdir(), `epub-build-${Date.now()}.epub`);
+  fs.writeFileSync(src, makeEpub({ title: 'Before', author: 'A' }));
+  const before = fs.readFileSync(src);
+
+  const out = buildUpdatedEpub(src, { title: 'After' });
+
+  expect(Buffer.isBuffer(out)).toBe(true);
+  expect(fs.readFileSync(src).equals(before)).toBe(true); // src untouched
+
+  const roundTrip = path.join(os.tmpdir(), `epub-build-out-${Date.now()}.epub`);
+  fs.writeFileSync(roundTrip, out);
+  expect(parseEpub(roundTrip).title).toBe('After');
+});
+
+describe('buildUpdatedEpub', () => {
   it('updates title', () => {
     const f = toFile(makeEpub({ title: 'Old Title' }));
-    writeMetadata(f, { title: 'New Title' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { title: 'New Title' }));
     expect(parseEpub(f).title).toBe('New Title');
   });
 
   it('updates author', () => {
     const f = toFile(makeEpub({ author: 'Old Author' }));
-    writeMetadata(f, { author: 'New Author' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { author: 'New Author' }));
     expect(parseEpub(f).author).toBe('New Author');
   });
 
   it('updates authorSort independently of author', () => {
     const f = toFile(makeEpub({ author: 'John Doe', authorSort: 'Doe, John' }));
-    writeMetadata(f, { authorSort: 'Doe, J.' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { authorSort: 'Doe, J.' }));
     expect(parseEpub(f).authorSort).toBe('Doe, J.');
     expect(parseEpub(f).author).toBe('John Doe');
   });
 
   it('updates author without affecting authorSort', () => {
     const f = toFile(makeEpub({ author: 'John Doe', authorSort: 'Doe, John' }));
-    writeMetadata(f, { author: 'Jane Doe' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { author: 'Jane Doe' }));
     expect(parseEpub(f).author).toBe('Jane Doe');
     expect(parseEpub(f).authorSort).toBe('Doe, John');
   });
 
   it('updates titleSort independently of title', () => {
     const f = toFile(makeEpub({ title: 'The Foundation', titleSort: 'Foundation, The' }));
-    writeMetadata(f, { titleSort: 'Foundation' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { titleSort: 'Foundation' }));
     expect(parseEpub(f).titleSort).toBe('Foundation');
     expect(parseEpub(f).title).toBe('The Foundation');
   });
 
   it('updates title without affecting titleSort', () => {
     const f = toFile(makeEpub({ title: 'Old Title', titleSort: 'Title, Old' }));
-    writeMetadata(f, { title: 'New Title' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { title: 'New Title' }));
     expect(parseEpub(f).title).toBe('New Title');
     expect(parseEpub(f).titleSort).toBe('Title, Old');
   });
 
   it('adds publishDate to an epub with no dc:date', () => {
     const f = toFile(makeEpub({ title: 'No Date' }));
-    writeMetadata(f, { publishDate: '2001-01-16' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { publishDate: '2001-01-16' }));
     expect(parseEpub(f).publishDate).toBe('2001-01-16');
   });
 
   it('updates an existing publishDate', () => {
     const f = toFile(makeEpub({ title: 'Dated', publishDate: '2000-01-01' }));
-    writeMetadata(f, { publishDate: '2001-01-16' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { publishDate: '2001-01-16' }));
     expect(parseEpub(f).publishDate).toBe('2001-01-16');
   });
 
   it('removes publishDate when empty string is given', () => {
     const f = toFile(makeEpub({ title: 'Dated', publishDate: '2000-01-01' }));
-    writeMetadata(f, { publishDate: '' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { publishDate: '' }));
     expect(parseEpub(f).publishDate).toBe('');
   });
 
   it('updates description', () => {
     const f = toFile(makeEpub({ description: 'Old' }));
-    writeMetadata(f, { description: 'New desc' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { description: 'New desc' }));
     expect(parseEpub(f).description).toBe('New desc');
   });
 
   it('updates publisher', () => {
     const f = toFile(makeEpub({ publisher: 'Old Pub' }));
-    writeMetadata(f, { publisher: 'New Pub' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { publisher: 'New Pub' }));
     expect(parseEpub(f).publisher).toBe('New Pub');
   });
 
   it('updates series name and index', () => {
     const f = toFile(makeEpub({ series: 'Old Series', seriesIndex: 1 }));
-    writeMetadata(f, { series: 'New Series', seriesIndex: 3 });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { series: 'New Series', seriesIndex: 3 }));
     const meta = parseEpub(f);
     expect(meta.series).toBe('New Series');
     expect(meta.seriesIndex).toBe(3);
@@ -278,32 +293,32 @@ describe('writeMetadata', () => {
 
   it('clears series when empty string is given', () => {
     const f = toFile(makeEpub({ series: 'Some Series', seriesIndex: 1 }));
-    writeMetadata(f, { series: '' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { series: '' }));
     expect(parseEpub(f).series).toBe('');
   });
 
   it('updates subjects', () => {
     const f = toFile(makeEpub({ subjects: ['Fiction'] }));
-    writeMetadata(f, { subjects: ['Science', 'History'] });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { subjects: ['Science', 'History'] }));
     expect(parseEpub(f).subjects).toEqual(['Science', 'History']);
   });
 
   it('clears subjects when empty array given', () => {
     const f = toFile(makeEpub({ subjects: ['Fiction'] }));
-    writeMetadata(f, { subjects: [] });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { subjects: [] }));
     expect(parseEpub(f).subjects).toEqual([]);
   });
 
   it('updates identifiers', () => {
     const f = toFile(makeEpub({ identifiers: [{ scheme: 'ISBN', value: '978-old' }] }));
-    writeMetadata(f, { identifiers: [{ scheme: 'ISBN', value: '978-new' }] });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { identifiers: [{ scheme: 'ISBN', value: '978-new' }] }));
     expect(parseEpub(f).identifiers).toEqual([{ scheme: 'ISBN', value: '978-new' }]);
   });
 
   it('adds cover to an epub with no cover', () => {
     const f = toFile(makeEpub({ title: 'No Cover' }));
     const coverBytes = Buffer.from('fake-png');
-    writeMetadata(f, { coverData: coverBytes, coverMime: 'image/png' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { coverData: coverBytes, coverMime: 'image/png' }));
     const meta = parseEpub(f);
     expect(meta.coverData).toEqual(coverBytes);
     expect(meta.coverMime).toBe('image/png');
@@ -312,14 +327,14 @@ describe('writeMetadata', () => {
   it('replaces an existing cover', () => {
     const f = toFile(makeEpub({ coverData: Buffer.from('old-cover'), coverMime: 'image/jpeg' }));
     const newCover = Buffer.from('new-cover');
-    writeMetadata(f, { coverData: newCover, coverMime: 'image/jpeg' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { coverData: newCover, coverMime: 'image/jpeg' }));
     expect(parseEpub(f).coverData).toEqual(newCover);
   });
 
   it('handles compound MIME types like image/svg+xml without creating bad extension', () => {
     const f = toFile(makeEpub({ title: 'SVG Book' }));
     const svgBytes = Buffer.from('<svg/>');
-    writeMetadata(f, { coverData: svgBytes, coverMime: 'image/svg+xml' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { coverData: svgBytes, coverMime: 'image/svg+xml' }));
     const meta = parseEpub(f);
     expect(meta.coverData).toEqual(svgBytes);
     expect(meta.coverMime).toBe('image/svg+xml');
@@ -327,7 +342,7 @@ describe('writeMetadata', () => {
 
   it('does not modify unspecified fields', () => {
     const f = toFile(makeEpub({ title: 'Keep', author: 'Keep Author', publisher: 'Keep Pub' }));
-    writeMetadata(f, { description: 'Only this changed' });
+    fs.writeFileSync(f, buildUpdatedEpub(f, { description: 'Only this changed' }));
     const meta = parseEpub(f);
     expect(meta.title).toBe('Keep');
     expect(meta.author).toBe('Keep Author');
@@ -335,12 +350,12 @@ describe('writeMetadata', () => {
   });
 
   it('throws for a non-existent file', () => {
-    expect(() => writeMetadata('/nonexistent/path.epub', { title: 'x' })).toThrow();
+    expect(() => buildUpdatedEpub('/nonexistent/path.epub', { title: 'x' })).toThrow();
   });
 
   it('throws for a non-EPUB file (no container.xml)', () => {
     const f = toFile(Buffer.from('not a zip'), 'bad.epub');
-    expect(() => writeMetadata(f, { title: 'x' })).toThrow();
+    expect(() => buildUpdatedEpub(f, { title: 'x' })).toThrow();
   });
 
   describe('EPUBs whose ZIP entries use data descriptors (bit 3 set)', () => {
@@ -361,7 +376,7 @@ describe('writeMetadata', () => {
 
       expect(parseEpub(f).series).toBe('');
 
-      writeMetadata(f, { series: 'Test Series', seriesIndex: 2 });
+      fs.writeFileSync(f, buildUpdatedEpub(f, { series: 'Test Series', seriesIndex: 2 }));
 
       const after = parseEpub(f);
       expect(after.series).toBe('Test Series');
