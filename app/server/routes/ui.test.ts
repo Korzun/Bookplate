@@ -735,7 +735,9 @@ describe('POST /api/books/upload', () => {
     expect(res.body.error).toMatch(/validation/i);
     expect(res.body.validation.messages[0].id).toBe('RSC-005');
 
-    const onDisk = fs.readdirSync(booksDir).filter((f) => f.endsWith('.epub') && !f.startsWith('staged-'));
+    const onDisk = fs
+      .readdirSync(booksDir)
+      .filter((f) => f.endsWith('.epub') && !f.startsWith('staged-'));
     expect(onDisk).toHaveLength(0);
   });
 });
@@ -1835,7 +1837,7 @@ describe('PATCH /api/books/:id/metadata', () => {
   let bookId: string;
 
   beforeEach(async () => {
-    // Write a real EPUB to booksDir so writeMetadata can read it
+    // Write a real EPUB to booksDir so buildUpdatedEpub can read it
     const zip = new AdmZip();
     zip.addFile(
       'META-INF/container.xml',
@@ -1935,6 +1937,33 @@ describe('PATCH /api/books/:id/metadata', () => {
       .set(...bearer(token))
       .attach('cover', coverBytes, { filename: 'cover.png', contentType: 'image/png' });
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an edit that produces an invalid EPUB with 422 and leaves the original file intact', async () => {
+    const book = await bookStore.getBookById(aliceOwner, bookId);
+    const storedPath = book!.path;
+    const before = fs.readFileSync(storedPath);
+
+    mockAssertValid.mockRejectedValueOnce(
+      new EpubValidationError([{ id: 'OPF-030', severity: 'ERROR', message: 'bad identifier' }], {
+        FATAL: 0,
+        ERROR: 1,
+        WARNING: 0,
+        INFO: 0,
+        USAGE: 0,
+      })
+    );
+
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'Broken Title')
+      .set(...bearer(token));
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('Edited EPUB failed validation');
+    expect(res.body.validation.messages[0].id).toBe('OPF-030');
+    expect(fs.readFileSync(storedPath).equals(before)).toBe(true);
   });
 });
 

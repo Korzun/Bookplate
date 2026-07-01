@@ -311,7 +311,10 @@ describe('buildUpdatedEpub', () => {
 
   it('updates identifiers', () => {
     const f = toFile(makeEpub({ identifiers: [{ scheme: 'ISBN', value: '978-old' }] }));
-    fs.writeFileSync(f, buildUpdatedEpub(f, { identifiers: [{ scheme: 'ISBN', value: '978-new' }] }));
+    fs.writeFileSync(
+      f,
+      buildUpdatedEpub(f, { identifiers: [{ scheme: 'ISBN', value: '978-new' }] })
+    );
     expect(parseEpub(f).identifiers).toEqual([{ scheme: 'ISBN', value: '978-new' }]);
   });
 

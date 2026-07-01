@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import {
   BookStore,
   BookHashCollisionError,
@@ -25,7 +25,7 @@ import { signAccessToken, AuthUser } from '../services/jwt';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
 import { logger } from '../logger';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
-import { writeMetadata, EpubChanges } from '../services/epub-writer';
+import { buildUpdatedEpub, EpubChanges } from '../services/epub-writer';
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
@@ -852,9 +852,40 @@ export function createUiRouter(
         changes.coverMime = req.file.mimetype;
       }
 
+      let updatedBytes: Buffer;
       try {
-        writeMetadata(book.path, changes);
+        updatedBytes = buildUpdatedEpub(book.path, changes);
       } catch (err: unknown) {
+        res.status(500).json({
+          error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        return;
+      }
+
+      try {
+        await assertValidEpub(updatedBytes);
+      } catch (err: unknown) {
+        if (err instanceof EpubValidationError) {
+          res.status(422).json({
+            error: 'Edited EPUB failed validation',
+            validation: { messages: err.messages, counts: err.counts },
+          });
+          return;
+        }
+        throw err;
+      }
+
+      // Atomic replace: write to a temp file in the same directory, then rename.
+      const tmpPath = path.join(path.dirname(book.path), `.tmp-${randomUUID()}.epub`);
+      try {
+        fs.writeFileSync(tmpPath, updatedBytes);
+        fs.renameSync(tmpPath, book.path);
+      } catch (err: unknown) {
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {
+          /* temp file may not exist */
+        }
         res.status(500).json({
           error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
         });

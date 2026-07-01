@@ -20,7 +20,10 @@ describe('assertValidEpub', () => {
   beforeEach(() => mockValidate.mockReset());
 
   it('returns the report when valid', async () => {
-    const r = report({ valid: true, counts: { FATAL: 0, ERROR: 0, WARNING: 2, INFO: 0, USAGE: 0 } });
+    const r = report({
+      valid: true,
+      counts: { FATAL: 0, ERROR: 0, WARNING: 2, INFO: 0, USAGE: 0 },
+    });
     mockValidate.mockResolvedValue(r);
     await expect(assertValidEpub(Buffer.from('x'))).resolves.toBe(r);
   });
