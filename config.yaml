@@ -18,11 +18,13 @@ map:
   - data:rw
 options:
   library_name: HASS-ODPS
+  library_dir: books
   username: admin
   password: changeme
   max_concurrent_uploads: 3
 schema:
   library_name: str
+  library_dir: str
   username: str
   password: str
   max_concurrent_uploads: int

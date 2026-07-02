@@ -5,8 +5,27 @@ import { logger } from './logger';
 
 const log = logger('Config');
 
+const MEDIA_ROOT = '/media';
+
+export function resolveBooksDir(libraryDir: string): string {
+  const fallback = path.join(MEDIA_ROOT, 'books');
+  const cleaned = libraryDir.trim().replace(/^\/+/, '');
+  if (cleaned === '') {
+    log.warn(`Empty library_dir, using ${fallback}`);
+    return fallback;
+  }
+  const resolved = path.resolve(MEDIA_ROOT, cleaned);
+  const rel = path.relative(MEDIA_ROOT, resolved);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    log.warn(`library_dir "${libraryDir}" escapes ${MEDIA_ROOT}, using ${fallback}`);
+    return fallback;
+  }
+  return resolved;
+}
+
 interface Options {
   library_name: string;
+  library_dir: string;
   username: string;
   password: string;
   max_concurrent_uploads: number;
@@ -19,6 +38,7 @@ export function loadConfig(): AppConfig {
 
   let options: Options = {
     library_name: 'HASS-ODPS',
+    library_dir: 'books',
     username: 'admin',
     password: 'changeme',
     max_concurrent_uploads: 3,
@@ -30,6 +50,7 @@ export function loadConfig(): AppConfig {
       const parsed = JSON.parse(fs.readFileSync(optionsPath, 'utf-8')) as Partial<Options>;
       options = {
         library_name: parsed.library_name ?? options.library_name,
+        library_dir: parsed.library_dir ?? options.library_dir,
         username: parsed.username ?? options.username,
         password: parsed.password ?? options.password,
         max_concurrent_uploads: parsed.max_concurrent_uploads ?? options.max_concurrent_uploads,
@@ -46,7 +67,7 @@ export function loadConfig(): AppConfig {
     libraryName: (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'HASS-ODPS',
     username: process.env.ADMIN_USER ?? options.username,
     password: process.env.ADMIN_PASS ?? options.password,
-    booksDir: process.env.BOOKS_DIR ?? '/media/books',
+    booksDir: process.env.BOOKS_DIR ?? resolveBooksDir(options.library_dir),
     dataDir,
     port: parseInt(process.env.PORT ?? '3000', 10),
     maxConcurrentUploads: options.max_concurrent_uploads,
