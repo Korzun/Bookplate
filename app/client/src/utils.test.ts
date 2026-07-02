@@ -18,11 +18,10 @@ describe('copyToClipboard', () => {
   });
 
   it('falls back to execCommand when navigator.clipboard is unavailable (HTTP)', async () => {
-    // @ts-expect-error simulating a non-secure (HTTP) context
-    navigator.clipboard = undefined;
+    // simulate a non-secure (HTTP) context where navigator.clipboard is undefined
+    Object.assign(navigator, { clipboard: undefined });
     const execCommand = vi.fn().mockReturnValue(true);
-    // @ts-expect-error execCommand is not typed on the jsdom document
-    document.execCommand = execCommand;
+    Object.assign(document, { execCommand });
 
     await expect(copyToClipboard('secret')).resolves.toBe(true);
     expect(execCommand).toHaveBeenCalledWith('copy');
@@ -33,8 +32,7 @@ describe('copyToClipboard', () => {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     });
     const execCommand = vi.fn().mockReturnValue(true);
-    // @ts-expect-error execCommand is not typed on the jsdom document
-    document.execCommand = execCommand;
+    Object.assign(document, { execCommand });
 
     await expect(copyToClipboard('secret')).resolves.toBe(true);
     expect(execCommand).toHaveBeenCalledWith('copy');
