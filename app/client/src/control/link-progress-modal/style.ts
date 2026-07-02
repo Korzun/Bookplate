@@ -24,6 +24,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     width: '100%',
     boxSizing: 'border-box',
     fontSize: theme.fontSize.md,
+    // Keep font-size at the 16px floor on mobile so focusing it doesn't zoom iOS.
+    [theme.breakpoint.mobile]: { fontSize: '1rem' },
   },
   bookList: {
     listStyle: 'none',
