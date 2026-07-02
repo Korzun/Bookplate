@@ -50,6 +50,11 @@ describe('loadConfig booksDir resolution', () => {
     expect(loadConfig().booksDir).toBe('/media/books');
   });
 
+  it('keeps a directory name that merely begins with ".."', () => {
+    writeOptions({ library_dir: '..books' });
+    expect(loadConfig().booksDir).toBe('/media/..books');
+  });
+
   it('lets BOOKS_DIR env var override library_dir', () => {
     process.env.BOOKS_DIR = '/media/override';
     writeOptions({ library_dir: 'library/fiction' });
