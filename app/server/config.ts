@@ -16,7 +16,7 @@ export function resolveBooksDir(libraryDir: string): string {
   }
   const resolved = path.resolve(MEDIA_ROOT, cleaned);
   const rel = path.relative(MEDIA_ROOT, resolved);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+  if (rel === '' || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
     log.warn(`library_dir "${libraryDir}" escapes ${MEDIA_ROOT}, using ${fallback}`);
     return fallback;
   }
