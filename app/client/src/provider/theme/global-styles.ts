@@ -20,6 +20,15 @@ const useGlobalStyles = createUseStyles((theme: Theme) => ({
     'a, button': {
       '-webkit-tap-highlight-color': 'transparent',
     },
+    // iOS Safari auto-zooms when a form control with a font-size below 16px is
+    // focused. Enforce a 16px floor on mobile so focusing an input never zooms.
+    // Controls that set their own class-level font-size out-specify this rule and
+    // handle the mobile breakpoint themselves (see select, search-bar, etc.).
+    [theme.breakpoint.mobile]: {
+      'input, textarea, select': {
+        fontSize: '16px',
+      },
+    },
     '@keyframes theme-rotation': {
       '0%': { transform: 'rotate(0deg)' },
       '100%': { transform: 'rotate(360deg)' },

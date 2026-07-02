@@ -62,6 +62,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexGrow: 1,
     minWidth: '8rem',
     // padding: `0 ${theme.space.xs}`,
+    // Keep font-size at the 16px floor on mobile so focusing it doesn't zoom iOS.
+    [theme.breakpoint.mobile]: { fontSize: '1rem' },
   },
   dropdown: {
     position: 'absolute',
