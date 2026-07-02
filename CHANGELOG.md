@@ -1,3 +1,7 @@
+## 1.2.11
+
+- feat: configurable library directory
+
 ## 1.2.10
 
 - Sort series by second word when the name starts with an article
