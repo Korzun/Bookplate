@@ -1,5 +1,5 @@
 FROM node:24-alpine
-WORKDIR /hass-odps
+WORKDIR /bookplate
 
 COPY package*.json ./
 COPY app/server/package*.json ./app/server/

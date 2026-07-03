@@ -37,7 +37,7 @@ export function loadConfig(): AppConfig {
   const optionsPath = path.join(dataDir, 'options.json');
 
   let options: Options = {
-    library_name: 'HASS-ODPS',
+    library_name: 'Bookplate',
     library_dir: 'books',
     username: 'admin',
     password: 'changeme',
@@ -64,7 +64,7 @@ export function loadConfig(): AppConfig {
   }
 
   return {
-    libraryName: (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'HASS-ODPS',
+    libraryName: (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'Bookplate',
     username: process.env.ADMIN_USER ?? options.username,
     password: process.env.ADMIN_PASS ?? options.password,
     booksDir: process.env.BOOKS_DIR ?? resolveBooksDir(options.library_dir),

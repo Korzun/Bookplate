@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/typescript-node
 {
-  "name": "HASS-ODPS",
+  "name": "Bookplate",
   "build": { "dockerfile": "Dockerfile" },
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.

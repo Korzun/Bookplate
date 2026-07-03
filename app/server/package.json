@@ -1,5 +1,5 @@
 {
-  "name": "hass-odps-server",
+  "name": "bookplate-server",
   "private": true,
   "scripts": {
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",

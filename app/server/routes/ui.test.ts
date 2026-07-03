@@ -73,7 +73,7 @@ let scanJobStore: ScanJobStore;
 const jwtSecret = crypto.randomBytes(32);
 
 const config: AppConfig = {
-  libraryName: 'HASS-ODPS',
+  libraryName: 'Bookplate',
   username: 'admin',
   password: 'pass',
   booksDir: '',
@@ -201,7 +201,7 @@ async function loginAlice(): Promise<string> {
 const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${token}`];
 
 beforeEach(async () => {
-  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hass-odps-ui-'));
+  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -1997,7 +1997,7 @@ describe('GET /api/config', () => {
       .get('/api/config')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ libraryName: 'HASS-ODPS', maxConcurrentUploads: 3 });
+    expect(res.body).toEqual({ libraryName: 'Bookplate', maxConcurrentUploads: 3 });
   });
 
   it('returns maxConcurrentUploads for regular user', async () => {
@@ -2006,7 +2006,7 @@ describe('GET /api/config', () => {
       .get('/api/config')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ libraryName: 'HASS-ODPS', maxConcurrentUploads: 3 });
+    expect(res.body).toEqual({ libraryName: 'Bookplate', maxConcurrentUploads: 3 });
   });
 });
 

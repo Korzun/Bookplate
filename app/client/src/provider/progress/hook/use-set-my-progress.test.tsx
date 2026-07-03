@@ -77,7 +77,7 @@ describe('useSetMyProgress', () => {
   });
 
   it('sends PUT to /api/my/progress/:bookId with JSON body', async () => {
-    localStorage.setItem('hass-odps-device-id', 'test-device-id');
+    localStorage.setItem('bookplate-device-id', 'test-device-id');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const { result } = renderHook(() => useSetMyProgress('book-1'), {
       wrapper: makeWrapper({}, 'alice'),
@@ -101,7 +101,7 @@ describe('useSetMyProgress', () => {
       wrapper: makeWrapper({}, 'alice'),
     });
     await act(() => result.current[0]({ currentChapter: 1, percentage: 0.1 }));
-    const storedId = localStorage.getItem('hass-odps-device-id');
+    const storedId = localStorage.getItem('bookplate-device-id');
     expect(storedId).toBeTruthy();
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(body.device_id).toBe(storedId);

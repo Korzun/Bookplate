@@ -5,5 +5,5 @@ export interface ConfigContext {
 }
 
 export const Context = createContext<ConfigContext>({
-  libraryName: 'HASS-ODPS',
+  libraryName: 'Bookplate',
 });

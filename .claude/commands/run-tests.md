@@ -2,7 +2,7 @@
 description: How to run tests and lint for this project
 ---
 
-# HASS-ODPS: Running Tests and Lint
+# Bookplate: Running Tests and Lint
 
 ## Tests
 

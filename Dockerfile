@@ -3,7 +3,7 @@
 # (Node.js 24 / V8 uses ARMv8.3-A instructions that QEMU on GitHub Actions
 # cannot emulate, causing SIGILL / exit 132 on any npm invocation.)
 FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
-WORKDIR /hass-odps
+WORKDIR /bookplate
 
 # Install all workspace deps
 COPY package*.json ./
@@ -33,7 +33,7 @@ RUN npm run build
 # Docker's TARGETARCH uses "amd64"; npm/Node use "x64" – we translate below.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS prod-deps
 ARG TARGETARCH
-WORKDIR /hass-odps
+WORKDIR /bookplate
 
 COPY package*.json ./
 COPY package.json ./app/package.json
@@ -55,21 +55,21 @@ RUN NPMARCH=$([ "${TARGETARCH}" = "amd64" ] && echo "x64" || echo "${TARGETARCH}
 # QEMU is never asked to execute Node.js – only COPY and chmod, which Docker
 # handles natively.
 FROM node:24-alpine
-WORKDIR /hass-odps
+WORKDIR /bookplate
 
 COPY package.json ./
 COPY package.json ./app/package.json
 COPY app/server/package.json ./app/server/
 COPY app/client/package.json ./app/client/
 
-COPY --from=prod-deps /hass-odps/node_modules ./node_modules
+COPY --from=prod-deps /bookplate/node_modules ./node_modules
 
-COPY --from=builder /hass-odps/app/server/dist ./app/server/dist
-COPY --from=builder /hass-odps/app/server/prisma ./app/server/prisma
+COPY --from=builder /bookplate/app/server/dist ./app/server/dist
+COPY --from=builder /bookplate/app/server/prisma ./app/server/prisma
 # .prisma/client/ contains the generated Prisma JS client (pure JS, no
 # platform-specific binary when using the adapter-better-sqlite3 approach).
-COPY --from=builder /hass-odps/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /hass-odps/app/client/dist ./app/client/dist
+COPY --from=builder /bookplate/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /bookplate/app/client/dist ./app/client/dist
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

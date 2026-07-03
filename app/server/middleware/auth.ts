@@ -13,7 +13,7 @@ const log = logger('Auth');
  * OPDS clients send the password as plaintext (just Base64-encoded per RFC 7617),
  * so we hash it with MD5 before comparing against the stored key.
  */
-export function opdsAuth(userStore: UserStore, realm: string = 'HASS-ODPS') {
+export function opdsAuth(userStore: UserStore, realm: string = 'Bookplate') {
   const safeRealm = realm.replace(/[\r\n"\\]/g, '');
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

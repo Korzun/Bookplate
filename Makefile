@@ -1,4 +1,4 @@
-IMAGE   := hass-odps:dev
+IMAGE   := bookplate:dev
 PORT    := 3000
 BOOKS   := $(HOME)/Books
 
@@ -8,7 +8,7 @@ build:
 	docker build -t $(IMAGE) .
 
 run: build
-	docker run -d --name hass-odps \
+	docker run -d --name bookplate \
 		-p $(PORT):3000 \
 		-e ADMIN_USER=admin \
 		-e ADMIN_PASS=changeme \
@@ -18,13 +18,13 @@ run: build
 	@echo "Running at http://localhost:$(PORT)"
 
 stop:
-	docker stop hass-odps && docker rm hass-odps
+	docker stop bookplate && docker rm bookplate
 
 logs:
-	docker logs -f hass-odps
+	docker logs -f bookplate
 
 shell:
-	docker exec -it hass-odps sh
+	docker exec -it bookplate sh
 
 clean:
 	docker rmi $(IMAGE) 2>/dev/null || true

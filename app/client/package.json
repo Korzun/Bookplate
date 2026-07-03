@@ -1,5 +1,5 @@
 {
-  "name": "hass-odps-client",
+  "name": "bookplate-client",
   "private": true,
   "type": "module",
   "scripts": {

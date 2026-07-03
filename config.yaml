@@ -1,8 +1,8 @@
-name: "HASS-ODPS Book Server"
+name: "Bookplate"
 description: "OPDS 1.2 book catalog, KOSync progress sync, and web library manager for KoReader"
 version: "1.2.11"
-slug: "hass-odps"
-image: "ghcr.io/korzun/hass-odps-{arch}"
+slug: "bookplate"
+image: "ghcr.io/korzun/bookplate-{arch}"
 init: false
 arch:
   - aarch64
@@ -17,7 +17,7 @@ map:
   - media:rw
   - data:rw
 options:
-  library_name: HASS-ODPS
+  library_name: Bookplate
   library_dir: books
   username: admin
   password: changeme

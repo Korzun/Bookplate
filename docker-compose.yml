@@ -1,4 +1,4 @@
-name: hass-odps-dev
+name: bookplate-dev
 
 services:
   server:
@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
-      - ./app/server:/hass-odps/app/server
+      - ./app/server:/bookplate/app/server
       - ${BOOKS:-./dev-books}:/media/books
       - ./dev-data:/data
     environment:
