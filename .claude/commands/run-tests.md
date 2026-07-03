@@ -9,7 +9,7 @@ description: How to run tests and lint for this project
 Run from the server workspace:
 
 ```bash
-cd /Users/korzun/Code/HASS-ODPS/app/server && npm test
+cd /Users/korzun/Code/Bookplate/app/server && npm test
 ```
 
 ## Lint
@@ -17,7 +17,7 @@ cd /Users/korzun/Code/HASS-ODPS/app/server && npm test
 **Always run from the repo root.** The project has two separate npm workspaces (`app/client` and `app/server`), each with its own ESLint and Prettier config. Running from inside one workspace silently skips the other.
 
 ```bash
-cd /Users/korzun/Code/HASS-ODPS && npm run lint
+cd /Users/korzun/Code/Bookplate && npm run lint
 ```
 
 **Never** run `npm run lint` from `app/server` or `app/client` alone when changes span both — it will pass even if the other workspace has errors.
@@ -27,8 +27,8 @@ cd /Users/korzun/Code/HASS-ODPS && npm run lint
 Run both:
 
 ```bash
-cd /Users/korzun/Code/HASS-ODPS/app/server && npm test
-cd /Users/korzun/Code/HASS-ODPS && npm run lint
+cd /Users/korzun/Code/Bookplate/app/server && npm test
+cd /Users/korzun/Code/Bookplate && npm run lint
 ```
 
 ## Why this matters
