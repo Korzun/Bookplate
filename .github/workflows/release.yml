@@ -66,10 +66,10 @@ jobs:
         with:
           ref: main
       - name: Build image
-        run: docker build -t hass-odps:smoke .
+        run: docker build -t bookplate:smoke .
       - name: Run and verify startup
         run: |
-          docker run -d --name smoke-test -p 3000:3000 hass-odps:smoke
+          docker run -d --name smoke-test -p 3000:3000 bookplate:smoke
           for i in $(seq 1 15); do
             if curl -sf http://localhost:3000/login -o /dev/null; then
               echo "Server ready after ${i}s"

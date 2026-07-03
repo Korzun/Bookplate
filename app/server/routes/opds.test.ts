@@ -55,7 +55,7 @@ function basicAuth(username: string, password: string) {
 }
 
 beforeEach(async () => {
-  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hass-odps-opds-'));
+  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-opds-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`

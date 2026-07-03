@@ -7,7 +7,7 @@ import {
   setToken,
 } from './token';
 
-const REFRESH_LOCK = 'hass-odps:auth-refresh';
+const REFRESH_LOCK = 'bookplate:auth-refresh';
 
 let refreshInFlight: Promise<boolean> | null = null;
 

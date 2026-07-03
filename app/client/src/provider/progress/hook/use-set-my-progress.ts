@@ -6,7 +6,7 @@ import { generateUUID } from '../../../utils';
 import { Context } from '../context';
 import type { Progress } from '../type';
 
-const DEVICE_ID_KEY = 'hass-odps-device-id';
+const DEVICE_ID_KEY = 'bookplate-device-id';
 
 function getOrCreateDeviceId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY);

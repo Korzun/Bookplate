@@ -54,7 +54,7 @@ export function bookEntry(b: Book, baseUrl: string, smallestThumbnailWidth: numb
   const parts: string[] = [
     xml`  <entry>
     <title>${b.title}</title>
-    <id>urn:hass-odps:book:${b.id}</id>
+    <id>urn:bookplate:book:${b.id}</id>
     <updated>${b.mtime.toISOString()}</updated>
     <author><name>${b.author}</name></author>
     <summary>${b.description}</summary>

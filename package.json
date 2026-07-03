@@ -1,5 +1,5 @@
 {
-  "name": "hass-odps",
+  "name": "bookplate",
   "version": "1.2.11",
   "private": true,
   "workspaces": [

@@ -13,7 +13,7 @@ export function createOpdsRouter(
   bookStore: BookStore,
   userStore: UserStore,
   thumbnailWidths: number[],
-  libraryName: string = 'HASS-ODPS'
+  libraryName: string = 'Bookplate'
 ): Router {
   const router = Router();
   const auth = opdsAuth(userStore, libraryName);
@@ -26,14 +26,14 @@ export function createOpdsRouter(
     res.set('Content-Type', 'application/atom+xml;charset=utf-8');
     res.send(
       navigationFeed({
-        id: 'urn:hass-odps:root',
+        id: 'urn:bookplate:root',
         title: /library$/i.test(libraryName) ? libraryName : `${libraryName} Library`,
         selfHref: `${baseUrl}/opds/`,
         baseUrl,
         now,
         entries: [
           navEntry(
-            'urn:hass-odps:books',
+            'urn:bookplate:books',
             'By Book Title',
             'Browse all books in the library',
             `${baseUrl}/opds/books`,
@@ -41,7 +41,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:authors',
+            'urn:bookplate:authors',
             'By Author',
             'Browse books by author',
             `${baseUrl}/opds/authors`,
@@ -49,7 +49,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:series',
+            'urn:bookplate:series',
             'By Series',
             'Browse books by series',
             `${baseUrl}/opds/series`,
@@ -57,7 +57,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:subjects',
+            'urn:bookplate:subjects',
             'By Subject',
             'Browse books by subject',
             `${baseUrl}/opds/subjects`,
@@ -65,7 +65,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:status',
+            'urn:bookplate:status',
             'By Status',
             'Browse books by reading status',
             `${baseUrl}/opds/status`,
@@ -89,7 +89,7 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
-          id: 'urn:hass-odps:books',
+          id: 'urn:bookplate:books',
           title: 'By Book Title',
           selfHref: `${baseUrl}/opds/books`,
           baseUrl,
@@ -190,14 +190,14 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         navigationFeed({
-          id: 'urn:hass-odps:authors',
+          id: 'urn:bookplate:authors',
           title: 'By Author',
           selfHref: `${baseUrl}/opds/authors`,
           baseUrl,
           now,
           entries: authors.map((author) =>
             navEntry(
-              `urn:hass-odps:author:${author}`,
+              `urn:bookplate:author:${author}`,
               author,
               `Books by ${author}`,
               `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
@@ -222,7 +222,7 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
-          id: `urn:hass-odps:author:${author}`,
+          id: `urn:bookplate:author:${author}`,
           title: author,
           selfHref: `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
           baseUrl,
@@ -244,14 +244,14 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         navigationFeed({
-          id: 'urn:hass-odps:series',
+          id: 'urn:bookplate:series',
           title: 'By Series',
           selfHref: `${baseUrl}/opds/series`,
           baseUrl,
           now,
           entries: seriesList.map((s) =>
             navEntry(
-              `urn:hass-odps:series:${s.id}`,
+              `urn:bookplate:series:${s.id}`,
               s.name,
               `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
               `${baseUrl}/opds/series/${s.id}`,
@@ -276,7 +276,7 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
-          id: `urn:hass-odps:series:${seriesId}`,
+          id: `urn:bookplate:series:${seriesId}`,
           title: books.length > 0 ? books[0].series : 'Series',
           selfHref: `${baseUrl}/opds/series/${seriesId}`,
           baseUrl,
@@ -298,14 +298,14 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         navigationFeed({
-          id: 'urn:hass-odps:subjects',
+          id: 'urn:bookplate:subjects',
           title: 'By Subject',
           selfHref: `${baseUrl}/opds/subjects`,
           baseUrl,
           now,
           entries: subjects.map((subject) =>
             navEntry(
-              `urn:hass-odps:subject:${subject}`,
+              `urn:bookplate:subject:${subject}`,
               subject,
               `Books tagged with ${subject}`,
               `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
@@ -330,7 +330,7 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
-          id: `urn:hass-odps:subject:${subject}`,
+          id: `urn:bookplate:subject:${subject}`,
           title: subject,
           selfHref: `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
           baseUrl,
@@ -347,14 +347,14 @@ export function createOpdsRouter(
     res.set('Content-Type', 'application/atom+xml;charset=utf-8');
     res.send(
       navigationFeed({
-        id: 'urn:hass-odps:status',
+        id: 'urn:bookplate:status',
         title: 'By Reading Status',
         selfHref: `${baseUrl}/opds/status`,
         baseUrl,
         now,
         entries: [
           navEntry(
-            'urn:hass-odps:status:not-started',
+            'urn:bookplate:status:not-started',
             'Not Started',
             'Books not yet started',
             `${baseUrl}/opds/status/not-started`,
@@ -362,7 +362,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:status:in-progress',
+            'urn:bookplate:status:in-progress',
             'In Progress',
             'Books currently being read',
             `${baseUrl}/opds/status/in-progress`,
@@ -370,7 +370,7 @@ export function createOpdsRouter(
             now
           ),
           navEntry(
-            'urn:hass-odps:status:completed',
+            'urn:bookplate:status:completed',
             'Completed',
             'Books finished reading',
             `${baseUrl}/opds/status/completed`,
@@ -403,7 +403,7 @@ export function createOpdsRouter(
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
-          id: `urn:hass-odps:status:${status}`,
+          id: `urn:bookplate:status:${status}`,
           title: status,
           selfHref: `${baseUrl}/opds/status/${status}`,
           baseUrl,

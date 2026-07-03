@@ -20,7 +20,7 @@ let aliceId: string;
 let bobId: string;
 
 beforeEach(async () => {
-  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hass-odps-ts-'));
+  booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ts-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`

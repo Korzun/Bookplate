@@ -83,7 +83,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   server.listen(config.port, () => {
     log.info(
-      `HASS-ODPS v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
+      `Bookplate v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
     );
     log.info(`Web UI:  http://localhost:${config.port}/`);
     log.info(`OPDS:    http://localhost:${config.port}/opds/`);

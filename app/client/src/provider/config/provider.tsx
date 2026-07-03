@@ -4,7 +4,7 @@ import { Context } from './context';
 
 export type ConfigProviderProps = { children: ReactNode };
 export const ConfigProvider = ({ children }: ConfigProviderProps) => {
-  const [libraryName, setLibraryName] = useState('HASS-ODPS');
+  const [libraryName, setLibraryName] = useState('Bookplate');
 
   useEffect(() => {
     void fetch('/api/public-config')

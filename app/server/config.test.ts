@@ -13,7 +13,7 @@ function writeOptions(options: Record<string, unknown>): void {
 }
 
 beforeEach(() => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'odps-config-'));
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-config-'));
   process.env = { ...originalEnv };
   process.env.DATA_DIR = dataDir;
   delete process.env.BOOKS_DIR;
