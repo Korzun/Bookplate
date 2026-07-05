@@ -32,3 +32,4 @@ export type {
 } from './type';
 export type { SeriesMeta } from './hook';
 export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';
+export type { Severity, ValidationMessage, ValidationFailure } from '~/lib/severity';

@@ -3,6 +3,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState }
 import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
+import type { ValidationFailure } from '~/lib/severity';
 import { Context } from '../context';
 
 import { useFetchBookList } from './use-fetch-book-list';
@@ -15,6 +16,7 @@ export type UploadItem = {
   status: UploadItemStatus;
   bytesUploaded: number;
   errorMessage?: string;
+  validation?: ValidationFailure;
 };
 
 export type UseUploadQueue = {
@@ -109,15 +111,22 @@ export const useUploadQueue = (): UseUploadQueue => {
           void fetchBookListRef.current();
         } else {
           let errorMessage: string | undefined;
+          let validation: ValidationFailure | undefined;
           try {
-            const data = JSON.parse(xhr.responseText) as { error?: string };
+            const data = JSON.parse(xhr.responseText) as {
+              error?: string;
+              validation?: ValidationFailure;
+            };
             errorMessage = data.error;
+            validation = data.validation;
           } catch {
             // no structured error
           }
           setItems((prev) =>
             prev.map((i) =>
-              i.id === item.id ? { ...i, status: 'error' as const, errorMessage } : i
+              i.id === item.id
+                ? { ...i, status: 'error' as const, errorMessage, validation }
+                : i
             )
           );
         }
