@@ -1,5 +1,5 @@
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { UploadItem as UploadItemType } from '~/provider/book';
 import { renderWithProviders } from '~/test-utils';
@@ -15,6 +15,11 @@ function makeItem(overrides: Partial<UploadItemType>): UploadItemType {
     ...overrides,
   };
 }
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+});
 
 describe('UploadItem', () => {
   it('shows filename', () => {
@@ -51,5 +56,49 @@ describe('UploadItem', () => {
   it('error: shows fallback text when no errorMessage', () => {
     renderWithProviders(<UploadItem item={makeItem({ status: 'error' })} />);
     expect(screen.getByText('Upload failed')).toBeTruthy();
+  });
+
+  it('validation error: shows severity counts and a View details button', () => {
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          status: 'error',
+          validation: {
+            counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
+            messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+          },
+        })}
+      />
+    );
+    expect(screen.getByText('1 Fatal')).toBeTruthy();
+    expect(screen.getByText('1 Error')).toBeTruthy();
+    expect(screen.getByText('2 Warning')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'View details' })).toBeTruthy();
+  });
+
+  it('non-validation error: shows the plain message and no View details button', () => {
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({ status: 'error', errorMessage: 'Failed to parse EPUB: boom' })}
+      />
+    );
+    expect(screen.getByText('Failed to parse EPUB: boom')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'View details' })).toBeNull();
+  });
+
+  it('opens the details modal when View details is clicked', () => {
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          status: 'error',
+          validation: {
+            counts: { FATAL: 1, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+            messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+          },
+        })}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'View details' }));
+    expect(screen.getByText('unreadable')).toBeTruthy();
   });
 });

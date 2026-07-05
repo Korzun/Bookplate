@@ -22,6 +22,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.sm,
     flexGrow: 1,
   },
+  detailsRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
 
   icon: {
     lineHeight: 0, // icon-specific alignment override
