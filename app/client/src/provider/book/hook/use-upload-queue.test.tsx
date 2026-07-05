@@ -290,4 +290,50 @@ describe('useUploadQueue', () => {
 
     expect(xhrInstances[0].abort).toHaveBeenCalledTimes(1);
   });
+
+  it('attaches the validation payload from a failed upload response', async () => {
+    const validation = {
+      counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
+      messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+    };
+    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('bad.epub'));
+    });
+
+    xhrInstances[0].status = 400;
+    xhrInstances[0].responseText = JSON.stringify({ error: 'EPUB failed validation', validation });
+    act(() => {
+      xhrInstances[0].onload?.(new Event('load'));
+    });
+
+    expect(result.current.items[0].status).toBe('error');
+    expect(result.current.items[0].validation).toEqual(validation);
+  });
+
+  it('leaves validation undefined for a non-validation error', async () => {
+    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('dup.epub'));
+    });
+
+    xhrInstances[0].status = 409;
+    xhrInstances[0].responseText = JSON.stringify({ error: 'A book with the same fingerprint…' });
+    act(() => {
+      xhrInstances[0].onload?.(new Event('load'));
+    });
+
+    expect(result.current.items[0].status).toBe('error');
+    expect(result.current.items[0].validation).toBeUndefined();
+  });
 });
