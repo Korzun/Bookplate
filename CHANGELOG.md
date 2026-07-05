@@ -1,5 +1,124 @@
 ## 0.1.0
 
+- feat: user login and role-based access control
+- feat: show reading progress in library view for regular users
+- fix: correct partial MD5 first offset to match KOReader (0, not 256)
+- feat: allow admins to clear synced progress per book
+- feat: hide Clear button when book has no synced progress
+- feat: show book title in admin user progress records
+- feat: book detail page with full metadata (publisher, identifiers, subjects, series)
+- fix: decode numeric HTML entities in EPUB metadata
+- fix: prevent trim errors on numeric XML text content
+- feat: align series view with book detail view
+- feat: admin EPUB metadata editing with History API routing
+- feat: React + Vite frontend migration
+- Fix release workflow, CI type errors, and ESLint dep warnings
+- fix(ci): include package-lock.json files in release version bump commit
+- fix(server): replace hardcoded SPA routes with catch-all to fix browser refresh on deep links
+- fix(server): backfill chapter data for pre-migration books to restore Set Progress button
+- chore(ci): bump GitHub Actions to latest major versions
+- refactor: rename app/ to server/ and restructure as npm workspaces
+- chore(deps): bump the npm_and_yarn group across 2 directories with 4 updates
+- fix(release): update workflow for app/ workspace layout
+- fix: replace crypto.randomUUID with secure-context-safe polyfill
+- fix(docker): resolve missing rollup arm64-musl dep and add multi-arch CI gate
+- Fix/rollup arm64 musl optional dep
+- fix(docker): resolve package.json not found on container startup
+- fix(server): correct client dist path for compiled output
+- ci: cancel in-progress runs when new commits are pushed to a PR
+- ci: gate release on lint, tests, and Docker smoke test
+- fix: use npm install in client dev Dockerfile
+- chore: align docker-compose service names with folder names
+- fix: resolve TypeScript ESLint tsconfigRootDir ambiguity in monorepo
+- feat: Update the Series 100% progress text to "Complete"
+- fix: improve epub chapter count accuracy with leaf-only TOC and title deny list
+- chore: upgrade supertest v6 → v7
+- feat: migrate data layer to Prisma ORM with Migrate baseline
+- feat: login page updates
+- refactor: extract calculateSeriesProgressPercent and fix useMySeriesProgress
+- fix: disable moby in docker-outside-of-docker devcontainer feature
+- feat: show series name inline with the book title on the book page
+- chore: generate HA-compatible CHANGELOG.md on release
+- feat: Add "Not Started" and "Completed" detents to set progress slider
+- feat: add Regen Chapters admin button on book page
+- fix: EPUB corruption when writing metadata to files with ZIP data descriptors
+- feat: expose device, device_id, timestamp, and progress CFI in sync progress API
+- feat: add beta release channel for RC releases
+- chore: update Docker actions to Node 24 compatible versions
+- chore: devcontainer improvements for Zed + Claude Code
+- chore: complete Prisma migration — services and data migration tracking
+- Feat: Track book ID lineage to keep KOSync progress in sync across edits and reimports
+- feat: beta channel follows stable releases
+- chore: ignore Claude worktree directory
+- feat: admin book ID lineage card
+- fix: add concurrency guard to Release workflow
+- chore: add CodeRabbit configuration
+- fix: preserve progress cache and fix regen-chapters 404 when book id changes
+- feat: delete synced reading progress
+- chore(deps): bump react-router from 6.30.3 to 6.30.4 in the npm_and_yarn group across 1 directory
+- feat: add fontFamily tokens to Theme
+- feat: book lineage link/unlink for orphaned progress
+- feat: add surrogate NanoID primary key to users table
+- feat: self-service password change, sync/login split, and admin password reset
+- refactor: replace per-component toast state with ToastProvider + useToast
+- feat: switch web UI auth from sessions to JWTs with rotating refresh tokens
+- fix: reset bootstrapped ref on cleanup to unblock loading in StrictMode
+- fix: authenticated cover image loading via useAuthorizedSrc hook
+- fix: decode HTML entities in chapter titles from nav/NCX
+- feat: Add LoadingPage, improve UI nitpicks
+- Per-user libraries
+- feat: improve alignment and function of buttons on book page
+- feat: progress history — record sync dwell events per book
+- feat: infinite-scroll library pagination with Series index
+- feat: rename fileAs to titleSort, add authorSort and publishDate to book metadata
+- feat: subject chip typeahead in book edit form
+- feat: add type and status filters to Library page
+- feat: series aggregate metadata (subjects, bookCount, author, publisher, totalPages)
+- feat: redesign SyncPassword display as token pill
+- fix: allow SubjectChips dropdown to escape Card overflow clipping
+- feat: show loading spinner in LibraryPage during initial load
+- feat: add Select combobox control with subject filter
+- feat: add radius prop to Button; lighten card backgrounds
+- feat: replace native selects in filter-bar with custom Select
+- fix: clear-button height and subject filter param
+- fix: wire subject filter end-to-end through server and pagination
+- feat: CoverImagePicker — polished cover image upload with thumbnail preview
+- feat: replace FilterBar with type-ahead SearchBar
+- fix: search bar QA fixes
+- Search, filters, series metadata, and cover thumbnail improvements
+- feat: expand OPDS catalog with Author, Series, Subject, and Status browse feeds
+- fix: correct default thumbnail width and add run-tests skill
+- fix: rename JWT settings key from jwtSecret to jwt_secret
+- fix: silence React Router future flag, JSS, and act warnings in client tests
+- feat: generate password server-side on user creation, require change on first login
+- chore(deps): bump the npm_and_yarn group across 1 directory with 4 updates
+- feat: mobile browser compatibility
+- Admin user library selector
+- feat: validate author sort and title sort format in book edit
+- fix: error loading book after adding to new series via metadata edit
+- Visual nitpicks: settings icon, skip user list for non-admins
+- feat: series name field uses searchable select with create support
+- feat: add configurable library name
+- fix: series in-progress only when a book is actively being read
+- fix: prevent series Select dropdown from being clipped by card
+- Cache cover images via immutable cache-busting URLs
+- Cloudflare timeout hardening: request timeout, progress pagination, async scan
+- Sort series by second word when the name starts with an article
+- Mobile navigation: iOS liquid-glass redesign + Nav component refactor
+- fix: coordinate token refresh across tabs to prevent spurious logout
+- Show sync and OPDS connection URLs on settings page
+- Dark mode: Light/Dark/Auto theme
+- Let users link their own orphaned synced progress
+- Validate EPUBs with @korzun/epubcheck-ts on upload and edit
+- build(deps): bump esbuild from 0.27.7 to 0.28.1 in the npm_and_yarn group across 1 directory
+- fix(clipboard): support copy buttons in HTTP (non-secure) context
+- fix(theme): scope appearance setting per user so logout resets to Auto
+- feat: configurable library directory
+- fix: prevent iOS auto-zoom on input focus
+- chore: rename project from HASS-ODPS to Bookplate
+
+## 0.1.0
+
 - Rebranded from HASS-ODPS to Bookplate, starting a fresh version line.
   The add-on slug and image changed, so this installs as a new add-on;
   prior 1.2.x history lives in the old repository.
