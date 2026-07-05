@@ -47,12 +47,7 @@ export function ValidationDetailModal({
   }, []);
 
   return (
-    <dialog
-      ref={modalRef}
-      className={styles.root}
-      closedby="none"
-      onClick={handleClickBackground}
-    >
+    <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>

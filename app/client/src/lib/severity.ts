@@ -17,13 +17,7 @@ export interface SeverityCount {
   count: number;
 }
 
-export const SEVERITY_ORDER: readonly Severity[] = [
-  'FATAL',
-  'ERROR',
-  'WARNING',
-  'INFO',
-  'USAGE',
-];
+export const SEVERITY_ORDER: readonly Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
   FATAL: 'Fatal',

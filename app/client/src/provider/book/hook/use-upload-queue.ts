@@ -1,9 +1,9 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import type { ValidationFailure } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
-import type { ValidationFailure } from '~/lib/severity';
 import { Context } from '../context';
 
 import { useFetchBookList } from './use-fetch-book-list';
@@ -124,9 +124,7 @@ export const useUploadQueue = (): UseUploadQueue => {
           }
           setItems((prev) =>
             prev.map((i) =>
-              i.id === item.id
-                ? { ...i, status: 'error' as const, errorMessage, validation }
-                : i
+              i.id === item.id ? { ...i, status: 'error' as const, errorMessage, validation } : i
             )
           );
         }
