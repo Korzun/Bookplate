@@ -11,7 +11,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     borderTopLeftRadius: theme.radius.lg,
     borderTopRightRadius: theme.radius.lg,
     '&$danger': { color: theme.color.danger.default },
-    '&$collapsed': { borderBottomStyle: 'none' },
+    '&$collapsed': {
+      borderBottomStyle: 'none',
+      borderBottomLeftRadius: theme.radius.lg,
+      borderBottomRightRadius: theme.radius.lg,
+    },
   },
   headerAction: {
     display: 'flex',
