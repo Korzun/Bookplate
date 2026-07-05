@@ -44,4 +44,35 @@ describe('ValidationDetailModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('calls onClose when the backdrop (dialog) is clicked', () => {
+    const onClose = vi.fn();
+    renderWithProviders(
+      <ValidationDetailModal
+        isOpen
+        filename="dune.epub"
+        counts={counts}
+        messages={messages}
+        onClose={onClose}
+      />
+    );
+    const dialogElement = screen.getByRole('dialog', { hidden: true });
+    fireEvent.click(dialogElement);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not call onClose when inner content is clicked', () => {
+    const onClose = vi.fn();
+    renderWithProviders(
+      <ValidationDetailModal
+        isOpen
+        filename="dune.epub"
+        counts={counts}
+        messages={messages}
+        onClose={onClose}
+      />
+    );
+    fireEvent.click(screen.getByText('dune.epub'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
