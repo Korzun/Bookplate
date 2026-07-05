@@ -76,7 +76,7 @@ The add-on serves three things on port **3000**, all on the same host/origin:
 | ----------- | --------- | ----------------------------------------------------- |
 | **Web UI**  | `/`       | Uploading books, editing metadata, managing users.    |
 | **OPDS**    | `/opds`   | Browsing/downloading the catalog from a reader.        |
-| **KOSync**  | `/kosync` | Syncing reading progress from KOReader.                |
+| **KOSync**  | `/sync`   | Syncing reading progress from KOReader.                |
 
 The exact URLs for your instance (LAN address, reverse proxy, or Cloudflare
 tunnel) are shown on each user's **settings page** in the web UI — just copy them
@@ -123,7 +123,7 @@ then add:
 
 In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync server**:
 
-- **Server address:** `http://<your-host>:3000/kosync`
+- **Server address:** `http://<your-host>:3000/sync`
 - Then **Login** with your reader account username and **sync password** (found
   on your settings page in the web UI).
 

@@ -32,7 +32,7 @@ beforeEach(async () => {
   bookStore = new BookStore(booksDir, prisma);
   app = express();
   app.use(express.json());
-  app.use('/kosync', createKosyncRouter(userStore, bookStore));
+  app.use('/sync', createKosyncRouter(userStore, bookStore));
 });
 
 afterEach(async () => {
@@ -54,47 +54,47 @@ function authHeaders(username: string, syncPassword: string) {
   };
 }
 
-describe('POST /kosync/users/create', () => {
+describe('POST /sync/users/create', () => {
   it('returns 404 — self-registration is disabled', async () => {
     const res = await request(app)
-      .post('/kosync/users/create')
+      .post('/sync/users/create')
       .send({ username: 'newuser', password: 'abc123' });
     expect(res.status).toBe(404);
   });
 });
 
-describe('GET /kosync/users/auth', () => {
+describe('GET /sync/users/auth', () => {
   beforeEach(async () => {
     await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('returns 200 with correct credentials', async () => {
-    const res = await request(app).get('/kosync/users/auth').set(authHeaders('alice', 'secret'));
+    const res = await request(app).get('/sync/users/auth').set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ authorized: 'OK' });
   });
 
   it('returns 401 with wrong password', async () => {
     const res = await request(app)
-      .get('/kosync/users/auth')
+      .get('/sync/users/auth')
       .set({ 'x-auth-user': 'alice', 'x-auth-key': 'badsecret' });
     expect(res.status).toBe(401);
   });
 
   it('returns 401 with missing headers', async () => {
-    const res = await request(app).get('/kosync/users/auth');
+    const res = await request(app).get('/sync/users/auth');
     expect(res.status).toBe(401);
   });
 });
 
-describe('PUT /kosync/syncs/progress', () => {
+describe('PUT /sync/syncs/progress', () => {
   beforeEach(async () => {
     await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('saves progress and returns document + timestamp', async () => {
     const res = await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', 'secret'))
       .send({
         document: 'docHash123',
@@ -110,18 +110,18 @@ describe('PUT /kosync/syncs/progress', () => {
 
   it('returns 400 when required fields are missing', async () => {
     const res = await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', 'secret'))
       .send({ document: 'docHash123' });
     expect(res.status).toBe(400);
   });
 });
 
-describe('GET /kosync/syncs/progress/:document', () => {
+describe('GET /sync/syncs/progress/:document', () => {
   beforeEach(async () => {
     await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
     await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send({
         document: 'docHash123',
@@ -134,7 +134,7 @@ describe('GET /kosync/syncs/progress/:document', () => {
 
   it('returns saved progress', async () => {
     const res = await request(app)
-      .get('/kosync/syncs/progress/docHash123')
+      .get('/sync/syncs/progress/docHash123')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.body.progress).toBe('/body/DocFragment[5]');
@@ -143,7 +143,7 @@ describe('GET /kosync/syncs/progress/:document', () => {
 
   it('returns 404 for unknown document', async () => {
     const res = await request(app)
-      .get('/kosync/syncs/progress/unknown')
+      .get('/sync/syncs/progress/unknown')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(404);
   });
@@ -161,7 +161,7 @@ describe('KOSync lineage resolution', () => {
   });
 
   it('PUT with old ID stores progress under current ID', async () => {
-    await request(app).put('/kosync/syncs/progress').set(authHeaders('alice', 'secret')).send({
+    await request(app).put('/sync/syncs/progress').set(authHeaders('alice', 'secret')).send({
       document: 'old-doc-id',
       progress: '/body/DocFragment[3]',
       percentage: 0.3,
@@ -171,7 +171,7 @@ describe('KOSync lineage resolution', () => {
 
     // Fetch with the *current* ID — should find the saved progress
     const res = await request(app)
-      .get('/kosync/syncs/progress/current-doc-id')
+      .get('/sync/syncs/progress/current-doc-id')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.body.percentage).toBeCloseTo(0.3);
@@ -179,7 +179,7 @@ describe('KOSync lineage resolution', () => {
 
   it('PUT with old ID returns original document in response', async () => {
     const res = await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', 'secret'))
       .send({
         document: 'old-doc-id',
@@ -201,14 +201,14 @@ describe('KOSync lineage resolution', () => {
     `;
 
     const res = await request(app)
-      .get('/kosync/syncs/progress/old-doc-id')
+      .get('/sync/syncs/progress/old-doc-id')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.body.percentage).toBeCloseTo(0.7);
   });
 
   it('PUT and GET with current ID are unaffected', async () => {
-    await request(app).put('/kosync/syncs/progress').set(authHeaders('alice', 'secret')).send({
+    await request(app).put('/sync/syncs/progress').set(authHeaders('alice', 'secret')).send({
       document: 'current-doc-id',
       progress: '/body/DocFragment[5]',
       percentage: 0.5,
@@ -217,21 +217,21 @@ describe('KOSync lineage resolution', () => {
     });
 
     const res = await request(app)
-      .get('/kosync/syncs/progress/current-doc-id')
+      .get('/sync/syncs/progress/current-doc-id')
       .set(authHeaders('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.body.percentage).toBeCloseTo(0.5);
   });
 });
 
-describe('PUT /kosync/syncs/progress — history', () => {
+describe('PUT /sync/syncs/progress — history', () => {
   beforeEach(async () => {
     await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('creates a history row on first sync', async () => {
     await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send({
         document: 'docHash123',
@@ -257,11 +257,11 @@ describe('PUT /kosync/syncs/progress — history', () => {
       device_id: 'dev-1',
     };
     const r1 = await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send(body);
     const r2 = await request(app)
-      .put('/kosync/syncs/progress')
+      .put('/sync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
       .send(body);
     expect(r1.status).toBe(200);

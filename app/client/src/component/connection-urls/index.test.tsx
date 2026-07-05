@@ -7,7 +7,7 @@ import { renderWithProviders } from '~/test-utils';
 import { ConnectionUrls } from './index';
 
 const origin = window.location.origin;
-const syncUrl = `${origin}/kosync`;
+const syncUrl = `${origin}/sync`;
 const opdsUrl = `${origin}/opds`;
 
 beforeAll(() => {

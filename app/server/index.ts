@@ -87,7 +87,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     );
     log.info(`Web UI:  http://localhost:${config.port}/`);
     log.info(`OPDS:    http://localhost:${config.port}/opds/`);
-    log.info(`KOSync:  http://localhost:${config.port}/kosync/`);
+    log.info(`KOSync:  http://localhost:${config.port}/sync/`);
   });
 })().catch((err) => {
   console.error('Fatal startup error:', err);
