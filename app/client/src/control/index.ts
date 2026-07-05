@@ -10,6 +10,7 @@ export { RegenChaptersButton } from './regen-chapters-button';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
 export { Select } from './select';
+export { SeverityCounts } from './severity-counts';
 export { SegmentedControl } from './segmented-control';
 export { SubjectChips } from './subject-chips';
 export { Switch } from './switch';
