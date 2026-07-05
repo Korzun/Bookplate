@@ -58,6 +58,7 @@ export function ValidationDetailModal({
             <SeverityCounts counts={counts} />
           </div>
           <ul className={styles.messageList}>
+            {/* messages only ever contains blocking (FATAL/ERROR) items, so the danger-colored label is always correct */}
             {messages.map((m, i) => (
               <li key={`${m.id}-${i}`} className={styles.message}>
                 <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>
