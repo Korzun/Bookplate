@@ -1,5 +1,7 @@
 import cx from 'classnames';
+import { Fragment, useState } from 'react';
 
+import { Button, SeverityCounts, ValidationDetailModal } from '~/control';
 import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
 import type { UploadItem as UploadItemType } from '~/provider/book';
 
@@ -13,7 +15,8 @@ interface Props {
 
 export const UploadItem = ({ item }: Props) => {
   const styles = useStyle();
-  const { file, status, bytesUploaded, errorMessage } = item;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const { file, status, bytesUploaded, errorMessage, validation } = item;
 
   const totalMB = (file.size / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
@@ -46,24 +49,46 @@ export const UploadItem = ({ item }: Props) => {
   })();
 
   return (
-    <Card title={file.name}>
-      <div className={styles.content}>
-        <div className={styles.labelContainer}>
-          <div className={cx(styles.icon, styles[status])}>{icon}</div>
-          <div className={cx(styles.leftLabel, styles[status])}>{status}</div>
-          <div className={cx(styles.rightLabel, { [styles.error]: status === 'error' })}>
-            {rightLabel}
+    <Fragment>
+      <Card title={file.name}>
+        <div className={styles.content}>
+          <div className={styles.labelContainer}>
+            <div className={cx(styles.icon, styles[status])}>{icon}</div>
+            <div className={cx(styles.leftLabel, styles[status])}>{status}</div>
+            {validation ? (
+              <SeverityCounts counts={validation.counts} />
+            ) : (
+              <div className={cx(styles.rightLabel, { [styles.error]: status === 'error' })}>
+                {rightLabel}
+              </div>
+            )}
           </div>
-        </div>
-        <div className={styles.progressRow}>
-          <div className={styles.barTrack}>
-            <div
-              className={cx(styles.barFill, styles[status])}
-              style={{ width: `${progressPercent}%` }}
-            />
+          <div className={styles.progressRow}>
+            <div className={styles.barTrack}>
+              <div
+                className={cx(styles.barFill, styles[status])}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
           </div>
+          {validation && (
+            <div className={styles.detailsRow}>
+              <Button type="text" onClick={() => setDetailsOpen(true)}>
+                View details
+              </Button>
+            </div>
+          )}
         </div>
-      </div>
-    </Card>
+      </Card>
+      {validation && detailsOpen && (
+        <ValidationDetailModal
+          isOpen
+          filename={file.name}
+          counts={validation.counts}
+          messages={validation.messages}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
+    </Fragment>
   );
 };
