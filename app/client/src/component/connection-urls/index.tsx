@@ -43,7 +43,7 @@ export const ConnectionUrls = () => {
   return (
     <Card title="Connection URLs">
       <div className={styles.rows}>
-        <UrlRow url={`${base}/kosync`} />
+        <UrlRow url={`${base}/sync`} />
         <UrlRow url={`${base}/opds`} />
       </div>
     </Card>

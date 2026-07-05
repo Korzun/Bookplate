@@ -37,7 +37,7 @@ export function createServer(
     '/opds',
     createOpdsRouter(bookStore, userStore, config.thumbnailWidths, config.libraryName)
   );
-  server.use('/kosync', createKosyncRouter(userStore, bookStore));
+  server.use('/sync', createKosyncRouter(userStore, bookStore));
   server.use(
     '/api/users',
     createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)

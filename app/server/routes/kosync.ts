@@ -11,12 +11,12 @@ const log = logger('KOSync');
 export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): Router {
   const router = Router();
 
-  // Auth check: GET /kosync/users/auth
+  // Auth check: GET /sync/users/auth
   router.get('/users/auth', kosyncAuth(userStore), (_req: Request, res: Response) => {
     res.status(200).json({ authorized: 'OK' });
   });
 
-  // Save progress: PUT /kosync/syncs/progress
+  // Save progress: PUT /sync/syncs/progress
   router.put(
     '/syncs/progress',
     kosyncAuth(userStore),
@@ -48,7 +48,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
     })
   );
 
-  // Get progress: GET /kosync/syncs/progress/:document
+  // Get progress: GET /sync/syncs/progress/:document
   router.get(
     '/syncs/progress/:document',
     kosyncAuth(userStore),
