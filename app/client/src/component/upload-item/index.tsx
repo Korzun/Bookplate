@@ -56,7 +56,16 @@ export const UploadItem = ({ item }: Props) => {
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
             <div className={cx(styles.leftLabel, styles[status])}>{status}</div>
             {validation ? (
-              <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
+              <div className={cx(styles.rightLabel, styles.validationLabel)}>
+                <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
+                <Button
+                  type="link"
+                  className={styles.detailsLink}
+                  onClick={() => setDetailsOpen(true)}
+                >
+                  View details
+                </Button>
+              </div>
             ) : (
               <div className={cx(styles.rightLabel, { [styles.error]: status === 'error' })}>
                 {rightLabel}
@@ -71,13 +80,6 @@ export const UploadItem = ({ item }: Props) => {
               />
             </div>
           </div>
-          {validation && (
-            <div className={styles.detailsRow}>
-              <Button type="text" onClick={() => setDetailsOpen(true)}>
-                View details
-              </Button>
-            </div>
-          )}
         </div>
       </Card>
       {validation && detailsOpen && (

@@ -22,9 +22,18 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.sm,
     flexGrow: 1,
   },
-  detailsRow: {
+  validationLabel: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: theme.space.sm,
+  },
+  detailsLink: {
+    // Double the class specificity so this wins over Button's base `.root`
+    // font-size (0.80rem) without !important, matching the xs text alongside it.
+    '&&': {
+      fontSize: 'inherit',
+    },
   },
 
   icon: {
