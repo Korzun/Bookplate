@@ -295,6 +295,7 @@ describe('useUploadQueue', () => {
     const validation = {
       counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
       messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+      threshold: 'ERROR',
     };
     const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
 

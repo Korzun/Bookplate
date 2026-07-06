@@ -56,7 +56,7 @@ export const UploadItem = ({ item }: Props) => {
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
             <div className={cx(styles.leftLabel, styles[status])}>{status}</div>
             {validation ? (
-              <SeverityCounts counts={validation.counts} />
+              <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
             ) : (
               <div className={cx(styles.rightLabel, { [styles.error]: status === 'error' })}>
                 {rightLabel}
@@ -86,6 +86,7 @@ export const UploadItem = ({ item }: Props) => {
           filename={file.name}
           counts={validation.counts}
           messages={validation.messages}
+          threshold={validation.threshold}
           onClose={() => setDetailsOpen(false)}
         />
       )}
