@@ -57,6 +57,7 @@ Add-on options (set in the **Configuration** tab):
 | `username`               | string | `admin`     | Admin account username.                                            |
 | `password`               | string | `changeme`  | Admin account password. **Change this before starting.**          |
 | `max_concurrent_uploads` | int    | `3`         | Maximum number of simultaneous uploads processed by the server.   |
+| `validation_threshold`   | list   | `Error`     | Strictness of EPUB upload validation. `Fatal` rejects only unreadable files; `Error` (default) also rejects structural errors; `Warning` and `Info` reject progressively more. |
 
 Example:
 
