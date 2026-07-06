@@ -197,6 +197,22 @@ function toFile(buf: Buffer, name = 'test.epub'): string {
   return p;
 }
 
+/**
+ * Reads the name and compression method of the FIRST physical entry in a ZIP
+ * buffer by decoding the local file header at offset 0. The OCF spec requires
+ * an EPUB's first entry to be an uncompressed (STORED, method 0) `mimetype`
+ * file; epubcheck rejects violations as PKG-005/PKG-006.
+ */
+function firstZipEntry(buf: Buffer): { name: string; method: number } {
+  if (buf.readUInt32LE(0) !== 0x04034b50) {
+    throw new Error('buffer does not begin with a local file header');
+  }
+  const method = buf.readUInt16LE(8);
+  const nameLen = buf.readUInt16LE(26);
+  const name = buf.subarray(30, 30 + nameLen).toString('utf8');
+  return { name, method };
+}
+
 it('buildUpdatedEpub returns a Buffer with the applied changes, without writing to disk', () => {
   const src = path.join(os.tmpdir(), `epub-build-${Date.now()}.epub`);
   fs.writeFileSync(src, makeEpub({ title: 'Before', author: 'A' }));
@@ -359,6 +375,40 @@ describe('buildUpdatedEpub', () => {
   it('throws for a non-EPUB file (no container.xml)', () => {
     const f = toFile(Buffer.from('not a zip'), 'bad.epub');
     expect(() => buildUpdatedEpub(f, { title: 'x' })).toThrow();
+  });
+
+  // OCF requires the mimetype entry to be first and stored (uncompressed).
+  // adm-zip's rewrite compressed and reordered it, so every edited EPUB failed
+  // epubcheck (PKG-005 "must not be compressed" + PKG-006 "not the first file"),
+  // which the metadata route rejected with 422 — breaking all editing.
+  describe('OCF mimetype compliance', () => {
+    it('writes mimetype as the first entry, stored (uncompressed)', () => {
+      const f = toFile(makeEpub({ title: 'Original' }));
+      const out = buildUpdatedEpub(f, { title: 'Edited' });
+      const first = firstZipEntry(out);
+      expect(first.name).toBe('mimetype');
+      expect(first.method).toBe(0);
+    });
+
+    it('mimetype content is application/epub+zip', () => {
+      const f = toFile(makeEpub({ title: 'Original' }));
+      const out = buildUpdatedEpub(f, { title: 'Edited' });
+      const mimetype = new AdmZip(out).getEntry('mimetype')?.getData().toString('utf8');
+      expect(mimetype).toBe('application/epub+zip');
+    });
+
+    it('repositions and stores a mimetype that the source had compressed and out of order', () => {
+      // Reproduces the real-world layout: a mimetype that exists but is
+      // deflated and not the first entry.
+      const base = new AdmZip(makeEpub({ title: 'Has Mimetype' }));
+      base.addFile('mimetype', Buffer.from('application/epub+zip'));
+      const f = toFile(base.toBuffer(), 'has-mimetype.epub');
+
+      const out = buildUpdatedEpub(f, { title: 'Edited' });
+      const first = firstZipEntry(out);
+      expect(first.name).toBe('mimetype');
+      expect(first.method).toBe(0);
+    });
   });
 
   describe('EPUBs whose ZIP entries use data descriptors (bit 3 set)', () => {
