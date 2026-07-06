@@ -1,6 +1,10 @@
-import AdmZip from 'adm-zip';
+import { unzipSync, zipSync, strToU8, Zippable } from 'fflate';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
+import * as fs from 'fs';
 import * as path from 'path';
+
+const MIMETYPE_PATH = 'mimetype';
+const EPUB_MIMETYPE = 'application/epub+zip';
 
 export interface EpubChanges {
   title?: string;
@@ -19,47 +23,43 @@ export interface EpubChanges {
 }
 
 export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
-  // Some EPUB authoring tools set the ZIP general-purpose bit 3 (data descriptor
-  // flag) on every entry. adm-zip preserves this flag when rewriting but does not
-  // emit the corresponding data descriptors, making the resulting file unreadable.
-  // Rebuilding the zip from decompressed entry data produces a clean archive.
-  const srcZip = new AdmZip(filePath);
-  const zip = new AdmZip();
-  for (const entry of srcZip.getEntries()) {
-    zip.addFile(
-      entry.entryName,
-      entry.isDirectory ? Buffer.alloc(0) : entry.getData(),
-      entry.comment
-    );
-  }
+  // Read every entry into memory. Rebuilding the archive from decompressed data
+  // (rather than editing in place) sidesteps source quirks like ZIP general-
+  // purpose bit 3 (data descriptors) that some EPUB authoring tools set, which
+  // can otherwise leave the rewritten file unreadable.
+  const files = unzipSync(fs.readFileSync(filePath));
 
   // Step 1: resolve OPF path from container.xml
-  const containerEntry = zip.getEntry('META-INF/container.xml');
-  if (!containerEntry) throw new Error('Missing META-INF/container.xml');
+  const containerData = files['META-INF/container.xml'];
+  if (!containerData) throw new Error('Missing META-INF/container.xml');
 
   const containerParser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     parseTagValue: false,
   });
-  const containerXml = containerParser.parse(containerEntry.getData().toString('utf8'));
+  const containerXml = containerParser.parse(Buffer.from(containerData).toString('utf8'));
   const rootfiles = containerXml?.container?.rootfiles?.rootfile;
   const rootfileArr = Array.isArray(rootfiles) ? rootfiles : [rootfiles];
   const opfRelPath: string = rootfileArr[0]?.['@_full-path'];
   if (!opfRelPath) throw new Error('Cannot find OPF rootfile path in container.xml');
 
   // Step 2: parse OPF
-  const opfEntry = zip.getEntry(opfRelPath);
-  if (!opfEntry) throw new Error(`Cannot find OPF file: ${opfRelPath}`);
+  const opfData = files[opfRelPath];
+  if (!opfData) throw new Error(`Cannot find OPF file: ${opfRelPath}`);
 
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     parseTagValue: false,
+    // Drop the source's `<?xml …?>` declaration so the builder doesn't re-emit it;
+    // we prepend exactly one below. Keeping it produced a duplicate declaration
+    // that epubcheck rejects (RSC-005 "declaration must be at the start").
+    ignoreDeclaration: true,
     isArray: (name) =>
       ['item', 'meta', 'dc:title', 'dc:creator', 'dc:identifier', 'dc:subject'].includes(name),
   });
-  const opf = parser.parse(opfEntry.getData().toString('utf8')) as Record<string, unknown>;
+  const opf = parser.parse(Buffer.from(opfData).toString('utf8')) as Record<string, unknown>;
   const pkg = (opf?.package ?? opf) as Record<string, unknown>;
   if (!pkg.metadata) pkg.metadata = {};
   const metadata = pkg.metadata as Record<string, unknown>;
@@ -179,11 +179,8 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
     const coverFilename = `cover-edit.${ext}`;
     const coverEntryPath = opfDir === '.' ? coverFilename : `${opfDir}/${coverFilename}`;
 
-    if (zip.getEntry(coverEntryPath)) {
-      zip.updateFile(coverEntryPath, changes.coverData);
-    } else {
-      zip.addFile(coverEntryPath, changes.coverData);
-    }
+    // Assignment both adds a new entry and replaces an existing one.
+    files[coverEntryPath] = Uint8Array.from(changes.coverData);
 
     const existingItem = manifestItems.find((i) => i['@_id'] === 'cover-edit');
     if (existingItem) {
@@ -215,6 +212,16 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
     format: false,
   });
   const newOpfXml = '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(opf) as string);
-  zip.updateFile(opfRelPath, Buffer.from(newOpfXml, 'utf8'));
-  return zip.toBuffer();
+  files[opfRelPath] = strToU8(newOpfXml);
+
+  // The OCF spec requires the `mimetype` entry to be first and stored
+  // (uncompressed); epubcheck rejects violations with PKG-005/PKG-006. Emit it
+  // first with compression disabled, then the remaining entries in place.
+  const mimetype = files[MIMETYPE_PATH] ?? strToU8(EPUB_MIMETYPE);
+  const out: Zippable = { [MIMETYPE_PATH]: [mimetype, { level: 0 }] };
+  for (const [name, data] of Object.entries(files)) {
+    if (name === MIMETYPE_PATH) continue;
+    out[name] = data;
+  }
+  return Buffer.from(zipSync(out));
 }
