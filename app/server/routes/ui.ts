@@ -625,7 +625,7 @@ export function createUiRouter(
           if (err instanceof EpubValidationError) {
             res.status(400).json({
               error: 'EPUB failed validation',
-              validation: { messages: err.messages, counts: err.counts },
+              validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
             });
             return;
           }
@@ -989,7 +989,7 @@ export function createUiRouter(
           );
           res.status(422).json({
             error: 'Edited EPUB failed validation',
-            validation: { messages: err.messages, counts: err.counts },
+            validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
           });
           return;
         }
