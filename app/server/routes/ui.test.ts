@@ -724,13 +724,17 @@ describe('POST /api/books/upload', () => {
   it('rejects an EPUB that fails validation with 400 and does not store it', async () => {
     const epubBuf = makeEpub({ title: 'Bad Book', author: 'A' });
     mockAssertValid.mockRejectedValueOnce(
-      new EpubValidationError([{ id: 'RSC-005', severity: 'ERROR', message: 'parse error' }], {
-        FATAL: 0,
-        ERROR: 1,
-        WARNING: 0,
-        INFO: 0,
-        USAGE: 0,
-      })
+      new EpubValidationError(
+        [{ id: 'RSC-005', severity: 'ERROR', message: 'parse error' }],
+        {
+          FATAL: 0,
+          ERROR: 1,
+          WARNING: 0,
+          INFO: 0,
+          USAGE: 0,
+        },
+        'ERROR'
+      )
     );
     const token = await loginAlice();
     const res = await request(app)
@@ -1964,13 +1968,17 @@ describe('PATCH /api/books/:id/metadata', () => {
     const before = fs.readFileSync(storedPath);
 
     mockAssertValid.mockRejectedValueOnce(
-      new EpubValidationError([{ id: 'OPF-030', severity: 'ERROR', message: 'bad identifier' }], {
-        FATAL: 0,
-        ERROR: 1,
-        WARNING: 0,
-        INFO: 0,
-        USAGE: 0,
-      })
+      new EpubValidationError(
+        [{ id: 'OPF-030', severity: 'ERROR', message: 'bad identifier' }],
+        {
+          FATAL: 0,
+          ERROR: 1,
+          WARNING: 0,
+          INFO: 0,
+          USAGE: 0,
+        },
+        'ERROR'
+      )
     );
 
     const token = await loginAlice();

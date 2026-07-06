@@ -31,15 +31,38 @@ export function formatMessages(messages: Message[]): ValidationMessage[] {
   }));
 }
 
+// Severity order, most severe first — used to render the blocking summary.
+const SEVERITY_ORDER: Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
+
+// Summarize the blocking messages by severity, e.g. "1 fatal, 2 error".
+// Derived from the blocking set (not the full report counts) so the summary
+// always matches what actually crossed the threshold.
+function summarizeBlocking(messages: ValidationMessage[]): string {
+  const counts: Partial<Record<Severity, number>> = {};
+  for (const m of messages) {
+    counts[m.severity] = (counts[m.severity] ?? 0) + 1;
+  }
+  const parts = SEVERITY_ORDER.filter((s) => counts[s]).map(
+    (s) => `${counts[s]} ${s.toLowerCase()}`
+  );
+  return parts.join(', ') || `${messages.length} issue(s)`;
+}
+
 export class EpubValidationError extends Error {
   readonly messages: ValidationMessage[];
   readonly counts: Record<Severity, number>;
+  readonly threshold: ValidationThreshold;
 
-  constructor(messages: ValidationMessage[], counts: Record<Severity, number>) {
-    super(`EPUB failed validation: ${counts.FATAL} fatal, ${counts.ERROR} error(s)`);
+  constructor(
+    messages: ValidationMessage[],
+    counts: Record<Severity, number>,
+    threshold: ValidationThreshold
+  ) {
+    super(`EPUB failed validation (threshold ${threshold}): ${summarizeBlocking(messages)}`);
     this.name = 'EpubValidationError';
     this.messages = messages;
     this.counts = counts;
+    this.threshold = threshold;
   }
 }
 
@@ -51,7 +74,7 @@ export async function assertValidEpub(
   if (!report.valid) {
     const floor = thresholdRank(threshold);
     const blocking = formatMessages(report.messages.filter((m) => RANK[m.severity] >= floor));
-    throw new EpubValidationError(blocking, report.counts);
+    throw new EpubValidationError(blocking, report.counts, threshold);
   }
   return report;
 }

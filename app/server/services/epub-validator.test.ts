@@ -51,6 +51,29 @@ describe('assertValidEpub', () => {
     expect(err).toBeInstanceOf(EpubValidationError);
     expect(err.messages.map((m: { id: string }) => m.id)).toEqual(['PKG-003', 'RSC-005']);
     expect(err.counts).toEqual(r.counts);
+    expect(err.threshold).toBe('ERROR');
+    expect(err.message).toBe('EPUB failed validation (threshold ERROR): 1 fatal, 1 error');
+  });
+
+  it('summarizes the blocking messages in the error message, keyed to the threshold', async () => {
+    // A rejection driven purely by warnings must not read "0 fatal, 0 error(s)".
+    const r = report({
+      valid: false,
+      counts: { FATAL: 0, ERROR: 0, WARNING: 3, INFO: 2, USAGE: 0 },
+      messages: [
+        { id: 'PKG-001', severity: 'WARNING', message: 'a' },
+        { id: 'PKG-002', severity: 'WARNING', message: 'b' },
+        { id: 'PKG-003', severity: 'WARNING', message: 'c' },
+        { id: 'ACC-001', severity: 'INFO', message: 'd' },
+        { id: 'ACC-002', severity: 'INFO', message: 'e' },
+      ] as Report['messages'],
+    });
+    mockValidate.mockResolvedValue(r);
+
+    const err = await assertValidEpub(Buffer.from('x'), 'WARNING').catch((e) => e);
+    expect(err.threshold).toBe('WARNING');
+    // INFO is below the WARNING floor, so it is not part of the blocking summary.
+    expect(err.message).toBe('EPUB failed validation (threshold WARNING): 3 warning');
   });
 
   it('under WARNING, also reports WARNING messages', async () => {
