@@ -1,5 +1,6 @@
 export { AlertOctagonIcon } from './alert-octagon';
 export { BookIcon } from './book';
+export { BookplateIcon } from './bookplate';
 export { BooksIcon } from './books';
 export { CheckIcon } from './check';
 export { ChevronCircleIcon } from './chevron-circle';

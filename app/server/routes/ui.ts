@@ -446,7 +446,10 @@ export function createUiRouter(
   );
 
   // ── Static assets (no auth required) ──────────────────
-  router.use('/assets', express.static(path.join(__dirname, '../../../client/dist/assets')));
+  // Serves the built client's hashed bundles (/assets/*) plus root brand files
+  // (favicon.ico, favicon.svg, apple-touch-icon, site.webmanifest, /png/*).
+  // `index: false` so "/" falls through to the SPA catch-all below.
+  router.use(express.static(path.join(__dirname, '../../../client/dist'), { index: false }));
 
   router.get(
     '/api/books',
