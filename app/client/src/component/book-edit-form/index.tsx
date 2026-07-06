@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
@@ -16,6 +16,7 @@ import {
 import type { FieldRow } from '~/control';
 import type { Book } from '~/provider/book';
 import { usePatchBookMetadata, useLibrarySubjects, useSeriesNames } from '~/provider/book';
+import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { areObjectArraysIdentical, areStringArraysIdentical, generateUUID } from '~/utils';
 
@@ -34,9 +35,19 @@ export const BookEditForm = ({ original, id }: Props) => {
     setIsEditValid((previous) => ({ ...previous, [fieldName]: newValid }));
   }, []);
 
-  const [patchBookMetadata, saving] = usePatchBookMetadata();
+  const [patchBookMetadata, saving, saveError, saveErrorMessage] = usePatchBookMetadata();
   const [librarySubjects] = useLibrarySubjects();
   const [seriesOptions, seriesLoading] = useSeriesNames();
+
+  const showToast = useToast();
+  // Surface save failures the same way the page surfaces load failures. Without
+  // this the 4xx/5xx body was discarded and handleSave navigated away anyway,
+  // so a failed edit looked like a silent no-op.
+  useEffect(() => {
+    if (saveError) {
+      showToast(saveErrorMessage ?? 'Failed to save changes.', 'error');
+    }
+  }, [saveError, saveErrorMessage, showToast]);
 
   const [cover, setCover] = useState<File | undefined>(undefined);
 
@@ -133,7 +144,10 @@ export const BookEditForm = ({ original, id }: Props) => {
         ? newIdentifiers
         : undefined,
     });
-    navigate(path.book(newId ?? id));
+    // A failed save returns undefined (the effect above shows why); stay on the
+    // form so the user can retry rather than navigating away as if it worked.
+    if (newId === undefined) return;
+    navigate(path.book(newId));
   }
 
   return (
