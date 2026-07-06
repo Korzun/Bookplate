@@ -10,7 +10,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   logo: {
     color: theme.color.text.primary,
-    width: '176px',
     height: 'auto',
     maxWidth: '60vw',
   },
