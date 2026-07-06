@@ -1,5 +1,5 @@
 import { validateEpub } from '@korzun/epubcheck-ts';
-import type { Report, Message, Severity } from '@korzun/epubcheck-ts';
+import type { Report, Message, Severity, ValidationThreshold } from '@korzun/epubcheck-ts';
 
 export interface ValidationMessage {
   id: string;
@@ -8,7 +8,19 @@ export interface ValidationMessage {
   location?: string;
 }
 
-const BLOCKING: ReadonlySet<Severity> = new Set<Severity>(['FATAL', 'ERROR']);
+const RANK: Record<Severity, number> = {
+  USAGE: 1,
+  INFO: 2,
+  WARNING: 3,
+  ERROR: 4,
+  FATAL: 5,
+};
+
+// Rank floor for the presentation filter only — the library owns the
+// accept/reject decision via report.valid.
+function thresholdRank(threshold: ValidationThreshold): number {
+  return threshold === 'NONE' ? Infinity : RANK[threshold];
+}
 
 export function formatMessages(messages: Message[]): ValidationMessage[] {
   return messages.map((m) => ({
@@ -31,10 +43,14 @@ export class EpubValidationError extends Error {
   }
 }
 
-export async function assertValidEpub(bytes: Buffer): Promise<Report> {
-  const report = await validateEpub(bytes);
+export async function assertValidEpub(
+  bytes: Buffer,
+  threshold: ValidationThreshold,
+): Promise<Report> {
+  const report = await validateEpub(bytes, { threshold });
   if (!report.valid) {
-    const blocking = formatMessages(report.messages.filter((m) => BLOCKING.has(m.severity)));
+    const floor = thresholdRank(threshold);
+    const blocking = formatMessages(report.messages.filter((m) => RANK[m.severity] >= floor));
     throw new EpubValidationError(blocking, report.counts);
   }
   return report;
