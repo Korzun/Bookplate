@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
-import { BooksIcon } from '~/icon';
+import { BookplateIcon } from '~/icon';
 import { extractAccessToken, setToken } from '~/lib/token';
 import { useLibraryName } from '~/provider/config';
 import { useToast } from '~/provider/toast';
@@ -65,7 +65,7 @@ export const LoginPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <h1 className={styles.title}>
-          <BooksIcon /> {libraryName}
+          <BookplateIcon /> {libraryName}
         </h1>
         <Card className={styles.card}>
           <div className={styles.inputContainer}>

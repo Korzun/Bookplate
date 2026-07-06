@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="brand/png/readme-hero-1200x520.png" alt="Bookplate" width="640" />
+</p>
+
 # Bookplate
 
 [![GitHub Release][release-shield]][releases]
