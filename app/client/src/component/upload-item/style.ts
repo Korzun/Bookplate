@@ -28,6 +28,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     justifyContent: 'flex-end',
     gap: theme.space.sm,
   },
+  separator: {
+    color: theme.color.text.faint,
+    userSelect: 'none',
+  },
   detailsLink: {
     // Double the class specificity so this wins over Button's base `.root`
     // font-size (0.80rem) without !important, matching the xs text alongside it.

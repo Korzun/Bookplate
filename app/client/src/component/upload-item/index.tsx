@@ -58,12 +58,15 @@ export const UploadItem = ({ item }: Props) => {
             {validation ? (
               <div className={cx(styles.rightLabel, styles.validationLabel)}>
                 <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
+                <span className={styles.separator} aria-hidden="true">
+                  |
+                </span>
                 <Button
                   type="link"
                   className={styles.detailsLink}
                   onClick={() => setDetailsOpen(true)}
                 >
-                  View details
+                  Details
                 </Button>
               </div>
             ) : (
