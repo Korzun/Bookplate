@@ -17,6 +17,7 @@ beforeEach(() => {
   process.env = { ...originalEnv };
   process.env.DATA_DIR = dataDir;
   delete process.env.BOOKS_DIR;
+  delete process.env.VALIDATION_THRESHOLD;
 });
 
 afterEach(() => {
@@ -59,5 +60,41 @@ describe('loadConfig booksDir resolution', () => {
     process.env.BOOKS_DIR = '/media/override';
     writeOptions({ library_dir: 'library/fiction' });
     expect(loadConfig().booksDir).toBe('/media/override');
+  });
+});
+
+describe('loadConfig validation threshold', () => {
+  it('defaults to ERROR when the option is unset', () => {
+    writeOptions({ library_name: 'X' });
+    expect(loadConfig().validationThreshold).toBe('ERROR');
+  });
+
+  it('maps each picker label to the library value', () => {
+    const cases = [
+      ['Fatal', 'FATAL'],
+      ['Error', 'ERROR'],
+      ['Warning', 'WARNING'],
+      ['Info', 'INFO'],
+    ] as const;
+    for (const [label, expected] of cases) {
+      writeOptions({ validation_threshold: label });
+      expect(loadConfig().validationThreshold).toBe(expected);
+    }
+  });
+
+  it('parses the label case-insensitively', () => {
+    writeOptions({ validation_threshold: 'wArNiNg' });
+    expect(loadConfig().validationThreshold).toBe('WARNING');
+  });
+
+  it('falls back to ERROR for an unrecognized value', () => {
+    writeOptions({ validation_threshold: 'bogus' });
+    expect(loadConfig().validationThreshold).toBe('ERROR');
+  });
+
+  it('lets VALIDATION_THRESHOLD env var override the option', () => {
+    process.env.VALIDATION_THRESHOLD = 'Info';
+    writeOptions({ validation_threshold: 'Warning' });
+    expect(loadConfig().validationThreshold).toBe('INFO');
   });
 });
