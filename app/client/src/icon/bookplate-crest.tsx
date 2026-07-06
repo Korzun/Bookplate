@@ -42,12 +42,15 @@ export const BookplateCrestIcon = (props: CrestProps) => {
           strokeWidth="9"
           strokeLinejoin="miter"
         />
+        {/* Inner rule dropped a further half-step so it reads a touch darker /
+            more recessed than the outer frame (compounds with frameOpacity). */}
         <path
           d="M190 106 L322 106 L348 132 L348 380 L322 406 L190 406 L164 380 L164 132 Z"
           fill="none"
           stroke="currentColor"
           strokeWidth="3.5"
           strokeLinejoin="miter"
+          opacity={0.5}
         />
         <path d="M157 92 L164 99 L157 106 L150 99 Z" fill="currentColor" />
         <path d="M355 92 L362 99 L355 106 L348 99 Z" fill="currentColor" />

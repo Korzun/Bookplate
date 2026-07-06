@@ -12,6 +12,11 @@ const DEFAULT_LIBRARY_NAME = 'bookplate';
 // because the crest inherits currentColor.
 const FRAME_OPACITY = 0.4;
 
+// Rendered edge of the crest. Large enough that the fine BOOKPLATE wordmark
+// clears sub-pixel rendering (smaller sizes shimmer). Shrinks via max-width on
+// narrow viewports.
+const LOGO_SIZE = 224;
+
 /**
  * The centered Bookplate crest lockup shared by the login and loading screens:
  * the ornate crest with a recessed frame, plus the library name below it unless
@@ -26,8 +31,8 @@ export const BrandLockup = () => {
     <div className={styles.root}>
       <BookplateCrestIcon
         className={styles.logo}
-        width={176}
-        height={176}
+        width={LOGO_SIZE}
+        height={LOGO_SIZE}
         frameOpacity={FRAME_OPACITY}
         {...(showTitle ? { 'aria-hidden': true } : { role: 'img', 'aria-label': 'Bookplate' })}
       />
