@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig } from './types';
 import { logger } from './logger';
+import { ValidationThreshold } from '@korzun/epubcheck-ts';
 
 const log = logger('Config');
 
@@ -30,6 +31,23 @@ interface Options {
   password: string;
   max_concurrent_uploads: number;
   thumbnail_widths: number[];
+  validation_threshold: string;
+}
+
+function parseThreshold(raw: string): ValidationThreshold {
+  switch (raw.trim().toLowerCase()) {
+    case 'fatal':
+      return ValidationThreshold.FATAL;
+    case 'error':
+      return ValidationThreshold.ERROR;
+    case 'warning':
+      return ValidationThreshold.WARNING;
+    case 'info':
+      return ValidationThreshold.INFO;
+    default:
+      log.warn(`Unknown validation_threshold "${raw}", using Error`);
+      return ValidationThreshold.ERROR;
+  }
 }
 
 export function loadConfig(): AppConfig {
@@ -43,6 +61,7 @@ export function loadConfig(): AppConfig {
     password: 'changeme',
     max_concurrent_uploads: 3,
     thumbnail_widths: [88, 160],
+    validation_threshold: 'Error',
   };
 
   if (fs.existsSync(optionsPath)) {
@@ -57,6 +76,7 @@ export function loadConfig(): AppConfig {
         thumbnail_widths: Array.isArray(parsed.thumbnail_widths)
           ? parsed.thumbnail_widths
           : options.thumbnail_widths,
+        validation_threshold: parsed.validation_threshold ?? options.validation_threshold,
       };
     } catch {
       log.warn(`Could not parse ${optionsPath}, using defaults`);
@@ -72,5 +92,8 @@ export function loadConfig(): AppConfig {
     port: parseInt(process.env.PORT ?? '3000', 10),
     maxConcurrentUploads: options.max_concurrent_uploads,
     thumbnailWidths: options.thumbnail_widths,
+    validationThreshold: parseThreshold(
+      process.env.VALIDATION_THRESHOLD ?? options.validation_threshold,
+    ),
   };
 }

@@ -81,6 +81,7 @@ const config: AppConfig = {
   port: 3000,
   maxConcurrentUploads: 3,
   thumbnailWidths: [86, 160],
+  validationThreshold: 'ERROR',
 };
 
 const mockThumbnailQueue = {

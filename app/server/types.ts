@@ -1,3 +1,5 @@
+import type { ValidationThreshold } from '@korzun/epubcheck-ts';
+
 export interface Book {
   id: string; // 32-char partial MD5 (KoReader binary algorithm) — matches KOSync progress.document
   /**
@@ -121,4 +123,5 @@ export interface AppConfig {
   port: number;
   maxConcurrentUploads: number;
   thumbnailWidths: number[];
+  validationThreshold: ValidationThreshold;
 }
