@@ -28,24 +28,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       minWidth: 'auto',
     },
   },
-  brand: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: theme.space.lg,
-    margin: `0 0 ${theme.space.xxxxl}`,
-  },
-  logo: {
-    color: theme.color.text.primary,
-    width: '176px',
-    height: 'auto',
-    maxWidth: '60vw',
-  },
-  title: {
-    margin: 0,
-    fontSize: theme.fontSize.xl,
-    color: theme.color.text.primary,
-    fontWeight: theme.fontWeight.semibold,
-    textAlign: 'center',
-  },
 }));

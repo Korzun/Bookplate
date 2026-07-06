@@ -1,15 +1,23 @@
 import { IconProps } from './props';
 
-const defaultProps = { className: '', height: 24, width: 24 };
+type CrestProps = IconProps & {
+  // Opacity of the decorative octagon frame (0-1). The B monogram, divider, and
+  // wordmark always render at full strength; dropping the frame back produces the
+  // embossed "recessed frame, luminous monogram" look. Defaults to 1 (uniform).
+  frameOpacity?: number;
+};
+
+const defaultProps = { className: '', height: 24, width: 24, frameOpacity: 1 };
 
 // Bookplate ornate crest — octagon cartouche + serif `B` monogram, divider,
 // and BOOKPLATE wordmark (all vector outlines). Source of truth:
 // brand/svg/bookplate-crest.svg. Uses currentColor; intended for large sizes (>=128px).
-export const BookplateCrestIcon = (props: IconProps) => {
+export const BookplateCrestIcon = (props: CrestProps) => {
   const {
     'aria-hidden': ariaHidden,
     'aria-label': ariaLabel,
     className,
+    frameOpacity,
     height,
     role,
     width,
@@ -26,24 +34,26 @@ export const BookplateCrestIcon = (props: IconProps) => {
       width={width}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M186 92 L326 92 L362 128 L362 384 L326 420 L186 420 L150 384 L150 128 Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="9"
-        strokeLinejoin="miter"
-      />
-      <path
-        d="M190 106 L322 106 L348 132 L348 380 L322 406 L190 406 L164 380 L164 132 Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3.5"
-        strokeLinejoin="miter"
-      />
-      <path d="M157 92 L164 99 L157 106 L150 99 Z" fill="currentColor" />
-      <path d="M355 92 L362 99 L355 106 L348 99 Z" fill="currentColor" />
-      <path d="M355 406 L362 413 L355 420 L348 413 Z" fill="currentColor" />
-      <path d="M157 406 L164 413 L157 420 L150 413 Z" fill="currentColor" />
+      <g opacity={frameOpacity}>
+        <path
+          d="M186 92 L326 92 L362 128 L362 384 L326 420 L186 420 L150 384 L150 128 Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="9"
+          strokeLinejoin="miter"
+        />
+        <path
+          d="M190 106 L322 106 L348 132 L348 380 L322 406 L190 406 L164 380 L164 132 Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3.5"
+          strokeLinejoin="miter"
+        />
+        <path d="M157 92 L164 99 L157 106 L150 99 Z" fill="currentColor" />
+        <path d="M355 92 L362 99 L355 106 L348 99 Z" fill="currentColor" />
+        <path d="M355 406 L362 413 L355 420 L348 413 Z" fill="currentColor" />
+        <path d="M157 406 L164 413 L157 420 L150 413 Z" fill="currentColor" />
+      </g>
       <path
         d="M12.73 -3.91 L12.73 1.00 C24.69 0.20 29.78 0.00 34.30 0.00 L40.77 0.00 C55.86 1.00 56.05 1.00 58.41 1.00 C72.70 1.00 85.64 -2.52 94.47 -9.00 C106.03 -17.28 112.89 -30.50 112.89 -44.50 C112.89 -54.56 108.97 -62.66 101.72 -67.98 C94.08 -73.50 87.41 -75.28 72.31 -76.47 C81.92 -78.44 86.42 -80.22 91.92 -83.95 C101.33 -90.47 106.22 -98.95 106.22 -109.20 C106.22 -126.56 94.08 -136.00 71.33 -136.00 C69.58 -136.00 69.58 -136.00 53.70 -135.59 C39.39 -135.41 39.39 -135.41 36.06 -135.41 C30.77 -135.41 21.75 -135.59 5.09 -136.00 L5.09 -130.11 L12.14 -129.53 C21.36 -128.73 21.94 -127.75 22.14 -111.78 L22.14 -18.27 C22.14 -10.78 20.77 -6.64 17.83 -5.45 Z M40.77 -70.94 C48.41 -71.12 49.78 -71.12 53.70 -71.12 C80.36 -71.12 92.70 -61.56 92.70 -40.64 C92.70 -19.42 79.17 -7.22 55.86 -7.22 C49.97 -7.22 45.66 -7.62 40.77 -8.80 Z M40.77 -126.56 C45.86 -127.75 49.78 -128.16 56.05 -128.16 C77.80 -128.16 86.81 -121.22 86.81 -104.56 C86.81 -87.11 75.06 -78.00 52.72 -78.00 C49.19 -78.00 46.64 -78.00 40.77 -78.39 Z M120.00 0.00"
         fill="currentColor"

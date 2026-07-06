@@ -13,16 +13,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       padding: `0 ${theme.space.xxl}`,
     },
   },
-  title: {
-    margin: `0 0 ${theme.space.xxxxl}`,
-    fontSize: theme.fontSize.xl,
-    color: theme.color.text.primary,
-    fontWeight: theme.fontWeight.semibold,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.space.md,
-    justifyContent: 'center',
-  },
   spinner: {
     ...theme.recipe.spinner,
     height: '2rem',
