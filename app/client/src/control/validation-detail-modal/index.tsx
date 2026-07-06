@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-import { SEVERITY_LABEL } from '~/lib/severity';
-import type { Severity, ValidationMessage } from '~/lib/severity';
+import { SEVERITY_LABEL, THRESHOLD_LABEL } from '~/lib/severity';
+import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
 import { Button } from '../button';
 import { SeverityCounts } from '../severity-counts';
@@ -13,6 +13,7 @@ interface Props {
   filename: string;
   counts: Record<Severity, number>;
   messages: ValidationMessage[];
+  threshold: ValidationThreshold;
   onClose?: () => void;
 }
 
@@ -21,6 +22,7 @@ export function ValidationDetailModal({
   filename,
   counts,
   messages,
+  threshold,
   onClose = () => {},
 }: Props) {
   const styles = useStyle();
@@ -52,13 +54,15 @@ export function ValidationDetailModal({
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>
           <p className={styles.intro}>
-            This EPUB can't be added until the blocking problems below are fixed.
+            These issues reached the {THRESHOLD_LABEL[threshold]} rejection threshold and must be
+            fixed before this EPUB can be added.
           </p>
           <div className={styles.counts}>
-            <SeverityCounts counts={counts} />
+            <SeverityCounts counts={counts} threshold={threshold} />
           </div>
           <ul className={styles.messageList}>
-            {/* messages only ever contains blocking (FATAL/ERROR) items, so the danger-colored label is always correct */}
+            {/* messages contains every issue at or above the configured threshold — the reasons
+                this book was rejected — so the danger-colored label is always correct */}
             {messages.map((m, i) => (
               <li key={`${m.id}-${i}`} className={styles.message}>
                 <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>

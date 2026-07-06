@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { isBlocking, orderSeverityCounts, SEVERITY_LABEL } from './severity';
+import {
+  isBlockingAtThreshold,
+  orderSeverityCounts,
+  SEVERITY_LABEL,
+  THRESHOLD_LABEL,
+} from './severity';
 
 describe('orderSeverityCounts', () => {
   it('returns only non-zero severities in canonical order', () => {
@@ -17,16 +22,23 @@ describe('orderSeverityCounts', () => {
   });
 });
 
-describe('isBlocking', () => {
-  it('treats FATAL and ERROR as blocking', () => {
-    expect(isBlocking('FATAL')).toBe(true);
-    expect(isBlocking('ERROR')).toBe(true);
+describe('isBlockingAtThreshold', () => {
+  it('treats a severity at or above the threshold as blocking', () => {
+    expect(isBlockingAtThreshold('FATAL', 'ERROR')).toBe(true);
+    expect(isBlockingAtThreshold('ERROR', 'ERROR')).toBe(true);
+    expect(isBlockingAtThreshold('WARNING', 'WARNING')).toBe(true);
+    expect(isBlockingAtThreshold('FATAL', 'WARNING')).toBe(true);
   });
 
-  it('treats WARNING, INFO and USAGE as non-blocking', () => {
-    expect(isBlocking('WARNING')).toBe(false);
-    expect(isBlocking('INFO')).toBe(false);
-    expect(isBlocking('USAGE')).toBe(false);
+  it('treats a severity below the threshold as non-blocking', () => {
+    expect(isBlockingAtThreshold('WARNING', 'ERROR')).toBe(false);
+    expect(isBlockingAtThreshold('INFO', 'WARNING')).toBe(false);
+    expect(isBlockingAtThreshold('USAGE', 'FATAL')).toBe(false);
+  });
+
+  it('treats nothing as blocking when the threshold is NONE', () => {
+    expect(isBlockingAtThreshold('FATAL', 'NONE')).toBe(false);
+    expect(isBlockingAtThreshold('USAGE', 'NONE')).toBe(false);
   });
 });
 
@@ -34,5 +46,13 @@ describe('SEVERITY_LABEL', () => {
   it('maps each severity to a title-cased label', () => {
     expect(SEVERITY_LABEL.FATAL).toBe('Fatal');
     expect(SEVERITY_LABEL.USAGE).toBe('Usage');
+  });
+});
+
+describe('THRESHOLD_LABEL', () => {
+  it('labels every threshold, including NONE', () => {
+    expect(THRESHOLD_LABEL.ERROR).toBe('Error');
+    expect(THRESHOLD_LABEL.WARNING).toBe('Warning');
+    expect(THRESHOLD_LABEL.NONE).toBe('None');
   });
 });

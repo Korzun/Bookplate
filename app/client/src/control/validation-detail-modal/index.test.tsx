@@ -20,7 +20,13 @@ const messages: ValidationMessage[] = [
 describe('ValidationDetailModal', () => {
   it('renders each blocking message with id, message and location', () => {
     renderWithProviders(
-      <ValidationDetailModal isOpen filename="dune.epub" counts={counts} messages={messages} />
+      <ValidationDetailModal
+        isOpen
+        filename="dune.epub"
+        counts={counts}
+        messages={messages}
+        threshold="ERROR"
+      />
     );
     expect(screen.getByText('dune.epub')).toBeTruthy();
     expect(screen.getByText('PKG-003')).toBeTruthy();
@@ -28,6 +34,19 @@ describe('ValidationDetailModal', () => {
     expect(screen.getByText('RSC-005')).toBeTruthy();
     expect(screen.getByText('parse error')).toBeTruthy();
     expect(screen.getByText('at OEBPS/ch1.xhtml')).toBeTruthy();
+  });
+
+  it('names the active rejection threshold', () => {
+    renderWithProviders(
+      <ValidationDetailModal
+        isOpen
+        filename="dune.epub"
+        counts={counts}
+        messages={messages}
+        threshold="WARNING"
+      />
+    );
+    expect(screen.getByText(/reached the Warning rejection threshold/i)).toBeTruthy();
   });
 
   it('calls onClose when the Close button is clicked', () => {
@@ -38,6 +57,7 @@ describe('ValidationDetailModal', () => {
         filename="dune.epub"
         counts={counts}
         messages={messages}
+        threshold="ERROR"
         onClose={onClose}
       />
     );
@@ -53,6 +73,7 @@ describe('ValidationDetailModal', () => {
         filename="dune.epub"
         counts={counts}
         messages={messages}
+        threshold="ERROR"
         onClose={onClose}
       />
     );
@@ -69,6 +90,7 @@ describe('ValidationDetailModal', () => {
         filename="dune.epub"
         counts={counts}
         messages={messages}
+        threshold="ERROR"
         onClose={onClose}
       />
     );

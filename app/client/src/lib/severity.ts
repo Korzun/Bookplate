@@ -1,5 +1,9 @@
 export type Severity = 'FATAL' | 'ERROR' | 'WARNING' | 'INFO' | 'USAGE';
 
+// The admin-configured level at or above which a validation issue rejects the
+// book; 'NONE' accepts everything. Mirrors the server's ValidationThreshold.
+export type ValidationThreshold = Severity | 'NONE';
+
 export interface ValidationMessage {
   id: string;
   severity: Severity;
@@ -10,6 +14,7 @@ export interface ValidationMessage {
 export interface ValidationFailure {
   messages: ValidationMessage[];
   counts: Record<Severity, number>;
+  threshold: ValidationThreshold;
 }
 
 export interface SeverityCount {
@@ -19,6 +24,16 @@ export interface SeverityCount {
 
 export const SEVERITY_ORDER: readonly Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
 
+// Severity ranking, least to most severe. Mirrors the server's RANK map so the
+// client agrees on which severities crossed the configured threshold.
+export const RANK: Record<Severity, number> = {
+  USAGE: 1,
+  INFO: 2,
+  WARNING: 3,
+  ERROR: 4,
+  FATAL: 5,
+};
+
 export const SEVERITY_LABEL: Record<Severity, string> = {
   FATAL: 'Fatal',
   ERROR: 'Error',
@@ -27,10 +42,15 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   USAGE: 'Usage',
 };
 
-const BLOCKING: ReadonlySet<Severity> = new Set<Severity>(['FATAL', 'ERROR']);
+export const THRESHOLD_LABEL: Record<ValidationThreshold, string> = {
+  ...SEVERITY_LABEL,
+  NONE: 'None',
+};
 
-export function isBlocking(severity: Severity): boolean {
-  return BLOCKING.has(severity);
+// A severity is blocking when it meets or exceeds the configured threshold.
+// With threshold 'NONE', nothing blocks.
+export function isBlockingAtThreshold(severity: Severity, threshold: ValidationThreshold): boolean {
+  return threshold !== 'NONE' && RANK[severity] >= RANK[threshold];
 }
 
 export function orderSeverityCounts(counts: Record<Severity, number>): SeverityCount[] {
