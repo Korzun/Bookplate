@@ -21,14 +21,17 @@ jest.mock('../services/epub-validator', () => {
   class EpubValidationError extends Error {
     messages: { id: string; severity: string; message: string }[];
     counts: Record<string, number>;
+    threshold: string;
     constructor(
       messages: { id: string; severity: string; message: string }[],
-      counts: Record<string, number>
+      counts: Record<string, number>,
+      threshold: string
     ) {
       super('EPUB failed validation');
       this.name = 'EpubValidationError';
       this.messages = messages;
       this.counts = counts;
+      this.threshold = threshold;
     }
   }
   return {
@@ -745,6 +748,7 @@ describe('POST /api/books/upload', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/validation/i);
     expect(res.body.validation.messages[0].id).toBe('RSC-005');
+    expect(res.body.validation.threshold).toBe('ERROR');
 
     const onDisk = fs
       .readdirSync(booksDir)
@@ -1990,6 +1994,7 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(res.status).toBe(422);
     expect(res.body.error).toBe('Edited EPUB failed validation');
     expect(res.body.validation.messages[0].id).toBe('OPF-030');
+    expect(res.body.validation.threshold).toBe('ERROR');
     expect(fs.readFileSync(storedPath).equals(before)).toBe(true);
   });
 });
