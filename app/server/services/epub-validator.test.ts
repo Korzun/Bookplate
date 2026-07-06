@@ -10,6 +10,7 @@ function report(partial: Partial<Report>): Report {
   return {
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+    threshold: 'ERROR',
     fatal: false,
     valid: true,
     ...partial,
