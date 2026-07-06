@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
-import { BookplateIcon } from '~/icon';
+import { BookplateCrestIcon } from '~/icon';
 import { extractAccessToken, setToken } from '~/lib/token';
 import { useLibraryName } from '~/provider/config';
 import { useToast } from '~/provider/toast';
@@ -13,6 +13,9 @@ export const LoginPage = () => {
   const styles = useStyle();
   const showToast = useToast();
   const libraryName = useLibraryName();
+  // The crest already carries the "BOOKPLATE" wordmark, so when the library name
+  // is the default we let the logo speak for itself and hide the redundant title.
+  const showTitle = (libraryName ?? '').trim().toLowerCase() !== 'bookplate';
 
   const [loading, setLoading] = useState<boolean>(false);
   const [username, setUsername] = useState<string | undefined>();
@@ -64,9 +67,15 @@ export const LoginPage = () => {
   return (
     <Page type="minimal">
       <div className={styles.root}>
-        <h1 className={styles.title}>
-          <BookplateIcon /> {libraryName}
-        </h1>
+        <div className={styles.brand}>
+          <BookplateCrestIcon
+            className={styles.logo}
+            width={176}
+            height={176}
+            {...(showTitle ? { 'aria-hidden': true } : { role: 'img', 'aria-label': 'Bookplate' })}
+          />
+          {showTitle && <h1 className={styles.title}>{libraryName}</h1>}
+        </div>
         <Card className={styles.card}>
           <div className={styles.inputContainer}>
             <TextInput
