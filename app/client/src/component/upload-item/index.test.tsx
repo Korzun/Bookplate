@@ -58,7 +58,7 @@ describe('UploadItem', () => {
     expect(screen.getByText('Upload failed')).toBeTruthy();
   });
 
-  it('validation error: shows severity counts and a View details button', () => {
+  it('validation error: shows severity counts and a Details button', () => {
     renderWithProviders(
       <UploadItem
         item={makeItem({
@@ -74,20 +74,20 @@ describe('UploadItem', () => {
     expect(screen.getByText('1 Fatal')).toBeTruthy();
     expect(screen.getByText('1 Error')).toBeTruthy();
     expect(screen.getByText('2 Warning')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'View details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Details' })).toBeTruthy();
   });
 
-  it('non-validation error: shows the plain message and no View details button', () => {
+  it('non-validation error: shows the plain message and no Details button', () => {
     renderWithProviders(
       <UploadItem
         item={makeItem({ status: 'error', errorMessage: 'Failed to parse EPUB: boom' })}
       />
     );
     expect(screen.getByText('Failed to parse EPUB: boom')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'View details' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
   });
 
-  it('opens the details modal when View details is clicked', () => {
+  it('opens the details modal when Details is clicked', () => {
     renderWithProviders(
       <UploadItem
         item={makeItem({
@@ -100,7 +100,7 @@ describe('UploadItem', () => {
         })}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'View details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(screen.getByText('unreadable')).toBeTruthy();
   });
 });
