@@ -883,10 +883,23 @@ export function createUiRouter(
     requireAuth,
     coverUpload.single('cover'),
     asyncHandler(async (req: Request, res: Response) => {
+      log.info(
+        `Metadata edit requested: book=${req.params.id} ` +
+          `target=${typeof req.query.user === 'string' ? req.query.user : (req.user?.username ?? 'unknown')} ` +
+          `contentType=${req.headers['content-type'] ?? 'none'} ` +
+          `hasCover=${req.file ? 'yes' : 'no'} ` +
+          `fields=[${Object.keys((req.body ?? {}) as Record<string, unknown>).join(',')}]`
+      );
       const owner = await resolveOwner(req, res);
-      if (!owner) return;
+      if (!owner) {
+        log.warn(`Metadata edit rejected: could not resolve owner for book=${req.params.id}`);
+        return;
+      }
       const book = await bookStore.getBookById(owner, req.params.id);
       if (!book) {
+        log.warn(
+          `Metadata edit rejected: book=${req.params.id} not found for user=${owner.username}`
+        );
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -900,6 +913,9 @@ export function createUiRouter(
       if (body.publishDate !== undefined) {
         const publishDate = body.publishDate.trim();
         if (publishDate !== '' && !ISO_8601_RE.test(publishDate)) {
+          log.warn(
+            `Metadata edit rejected: invalid publishDate "${publishDate}" for book=${book.id}`
+          );
           res.status(400).json({ error: 'publishDate must be a valid ISO 8601 date string' });
           return;
         }
@@ -911,6 +927,9 @@ export function createUiRouter(
       if (body.seriesIndex !== undefined) {
         const n = parseFloat(body.seriesIndex);
         if (Number.isNaN(n)) {
+          log.warn(
+            `Metadata edit rejected: invalid seriesIndex "${body.seriesIndex}" for book=${book.id}`
+          );
           res.status(400).json({ error: 'seriesIndex must be a number' });
           return;
         }
@@ -920,6 +939,7 @@ export function createUiRouter(
         try {
           changes.identifiers = JSON.parse(body.identifiers) as { scheme: string; value: string }[];
         } catch {
+          log.warn(`Metadata edit rejected: invalid identifiers JSON for book=${book.id}`);
           res.status(400).json({ error: 'Invalid identifiers JSON' });
           return;
         }
@@ -928,6 +948,7 @@ export function createUiRouter(
         try {
           changes.subjects = JSON.parse(body.subjects) as string[];
         } catch {
+          log.warn(`Metadata edit rejected: invalid subjects JSON for book=${book.id}`);
           res.status(400).json({ error: 'Invalid subjects JSON' });
           return;
         }
@@ -937,10 +958,17 @@ export function createUiRouter(
         changes.coverMime = req.file.mimetype;
       }
 
+      log.info(
+        `Metadata edit applying changes for book=${book.id}: [${Object.keys(changes).join(',')}]`
+      );
+
       let updatedBytes: Buffer;
       try {
         updatedBytes = buildUpdatedEpub(book.path, changes);
       } catch (err: unknown) {
+        log.error(
+          `Metadata edit failed building EPUB for book=${book.id}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+        );
         res.status(500).json({
           error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
         });
@@ -951,6 +979,14 @@ export function createUiRouter(
         await assertValidEpub(updatedBytes, config.validationThreshold);
       } catch (err: unknown) {
         if (err instanceof EpubValidationError) {
+          log.warn(
+            `Metadata edit rejected: edited EPUB failed validation for book=${book.id}: ` +
+              err.messages
+                .map(
+                  (m) => `${m.severity} ${m.id} ${m.message}${m.location ? ` @ ${m.location}` : ''}`
+                )
+                .join('; ')
+          );
           res.status(422).json({
             error: 'Edited EPUB failed validation',
             validation: { messages: err.messages, counts: err.counts },
@@ -971,6 +1007,9 @@ export function createUiRouter(
         } catch {
           /* temp file may not exist */
         }
+        log.error(
+          `Metadata edit failed writing EPUB for book=${book.id} at ${book.path}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+        );
         res.status(500).json({
           error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
         });
@@ -982,6 +1021,9 @@ export function createUiRouter(
         updated = await bookStore.reimportBook(owner, req.params.id);
       } catch (err) {
         if (err instanceof BookHashCollisionError) {
+          log.warn(
+            `Metadata edit rejected: edited book=${book.id} now collides with another book's fingerprint`
+          );
           res.status(409).json({
             error:
               'The edited book now has the same fingerprint as another book in your library. ' +
@@ -992,6 +1034,7 @@ export function createUiRouter(
         throw err;
       }
       if (!updated) {
+        log.error(`Metadata edit failed: re-import returned no book for book=${book.id}`);
         res.status(500).json({ error: 'Failed to re-import book after update' });
         return;
       }

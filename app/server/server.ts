@@ -11,6 +11,7 @@ import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
 import { createUiRouter } from './routes/ui';
 import { requestTimeout } from './middleware/timeout';
+import { requestLog } from './middleware/request-log';
 import { ScanJobStore } from './services/scan-job-store';
 import { logger } from './logger';
 
@@ -28,6 +29,9 @@ export function createServer(
 
   // Respond with a clean 503 before Cloudflare's ~100s proxy timeout (524).
   server.use(requestTimeout(90_000));
+
+  // Log method/path/status/duration for every request as it finishes.
+  server.use(requestLog());
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));
