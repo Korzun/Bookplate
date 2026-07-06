@@ -93,7 +93,7 @@ export function loadConfig(): AppConfig {
     maxConcurrentUploads: options.max_concurrent_uploads,
     thumbnailWidths: options.thumbnail_widths,
     validationThreshold: parseThreshold(
-      process.env.VALIDATION_THRESHOLD ?? options.validation_threshold,
+      process.env.VALIDATION_THRESHOLD ?? options.validation_threshold
     ),
   };
 }

@@ -612,7 +612,7 @@ export function createUiRouter(
           return;
         }
         try {
-          await assertValidEpub(fs.readFileSync(savedPath));
+          await assertValidEpub(fs.readFileSync(savedPath), config.validationThreshold);
         } catch (err: unknown) {
           try {
             fs.unlinkSync(savedPath);
@@ -945,7 +945,7 @@ export function createUiRouter(
       }
 
       try {
-        await assertValidEpub(updatedBytes);
+        await assertValidEpub(updatedBytes, config.validationThreshold);
       } catch (err: unknown) {
         if (err instanceof EpubValidationError) {
           res.status(422).json({

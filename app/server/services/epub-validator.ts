@@ -45,7 +45,7 @@ export class EpubValidationError extends Error {
 
 export async function assertValidEpub(
   bytes: Buffer,
-  threshold: ValidationThreshold,
+  threshold: ValidationThreshold
 ): Promise<Report> {
   const report = await validateEpub(bytes, { threshold });
   if (!report.valid) {
