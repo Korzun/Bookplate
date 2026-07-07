@@ -17,6 +17,11 @@ COPY app/server/ ./app/server/
 # Client source
 COPY app/client/index.html app/client/vite.config.ts app/client/tsconfig.json ./app/client/
 COPY app/client/src/ ./app/client/src/
+# Static assets (favicons, apple-touch-icon, site.webmanifest, png/*) that Vite
+# copies verbatim into dist/. Without this the build silently omits them and the
+# server's SPA catch-all returns index.html for /site.webmanifest, /favicon.ico,
+# etc. — breaking manifest/icon loading.
+COPY app/client/public/ ./app/client/public/
 
 # Build everything
 RUN npm run build
