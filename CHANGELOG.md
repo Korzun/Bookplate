@@ -1,3 +1,13 @@
+## 0.2.0
+
+- fix: series card overflows boundaries when collapsed
+- Add Bookplate logo and brand assets
+- Configurable book-validation threshold
+- chore: bump actions/checkout to v7.0.0
+- fix: repair silent book-metadata editing
+- Display book validation errors on upload
+- Flatten mobile background (remove noise) and fix the Safari toolbar band
+
 ## 0.1.0
 
 - feat: user login and role-based access control
