@@ -6,8 +6,24 @@ import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
 
-function removeProgressById(documentId: string, progressList: UserProgressList): UserProgressList {
-  return Object.fromEntries(Object.entries(progressList).filter(([key]) => key !== documentId));
+/**
+ * Mirror the server's linkDocument merge: the orphan progress migrates onto the
+ * book, but if the book already has a strictly newer record the server keeps it
+ * and drops the orphan. Missing timestamps sort oldest so the orphan wins on a
+ * tie, matching the server's `>=` comparison.
+ */
+function mergeLinkedProgress(
+  progressList: UserProgressList,
+  documentId: string,
+  bookId: string
+): UserProgressList {
+  const orphan = progressList[documentId];
+  const { [documentId]: _removed, ...rest } = progressList;
+  if (!orphan) return rest;
+  const target = rest[bookId];
+  const orphanWins = !target || (orphan.timestamp ?? 0) >= (target.timestamp ?? 0);
+  if (!orphanWins) return rest;
+  return { ...rest, [bookId]: { ...orphan, document: bookId } };
 }
 
 export type LinkProgress = (documentId: string) => Promise<void>;
@@ -48,9 +64,12 @@ export const useLinkProgress = (bookId: string, username: string): UseLinkProgre
           const body = (await response.json()) as { error?: string };
           throw new Error(body.error ?? 'Failed to link progress');
         }
+        // The server migrated the orphan progress onto the linked book (its
+        // `document` becomes bookId), so re-key the cached entry rather than
+        // dropping it — otherwise the row vanishes from the Progress list.
         const userProgress = progressList[username];
         if (userProgress) {
-          setProgressForUsername(username, removeProgressById(documentId, userProgress));
+          setProgressForUsername(username, mergeLinkedProgress(userProgress, documentId, bookId));
         }
       } catch (err) {
         setError(true);
