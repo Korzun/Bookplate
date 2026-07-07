@@ -19,18 +19,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       // Top spacing the old static header used to provide (now that the desktop bar
       // is display:none on mobile); plus the notch inset, like the modal recipe.
       paddingTop: `calc(${theme.space.xxxxxl} + env(safe-area-inset-top))`,
-      paddingBottom: 'calc(110px + env(safe-area-inset-bottom))',
+      // Clears the floating mobile nav (~96px) plus slack (~48px) so the last row can
+      // always be scrolled above both the nav and Safari's expanded URL bar. Tune the
+      // constant against the measured nav height during on-device verification.
+      paddingBottom: 'calc(144px + env(safe-area-inset-bottom))',
     },
   },
   [PageType.minimal]: {},
-  noise: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    opacity: 0.2,
-    pointerEvents: 'none',
-    zIndex: theme.zIndex.behind,
-  },
 }));

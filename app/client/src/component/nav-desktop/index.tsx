@@ -16,18 +16,6 @@ export const NavDesktop = ({ items }: NavDesktopProps) => {
 
   return (
     <header className={styles.root}>
-      <svg className={styles.noise} aria-hidden="true">
-        <filter id="nav-desktop-noise">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.75"
-            numOctaves="4"
-            stitchTiles="stitch"
-          />
-          <feColorMatrix type="saturate" values="0" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#nav-desktop-noise)" />
-      </svg>
       <nav className={styles.items}>
         {items.map(({ to, label, Icon, active }) => (
           <Link

@@ -17,16 +17,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       display: 'none',
     },
   },
-  noise: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    pointerEvents: 'none',
-    zIndex: theme.zIndex.behind,
-    opacity: 0.2,
-  },
   items: {
     position: 'relative',
     zIndex: theme.zIndex.header,

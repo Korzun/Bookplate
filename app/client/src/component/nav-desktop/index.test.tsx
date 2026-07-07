@@ -30,4 +30,9 @@ describe('NavDesktop', () => {
     expect(linkFor('Upload')).not.toHaveAttribute('aria-current');
     expect(linkFor('Settings')).not.toHaveAttribute('aria-current');
   });
+
+  it('renders no background noise overlay', () => {
+    const { container } = renderWithProviders(<NavDesktop items={items} />);
+    expect(container.querySelector('#nav-desktop-noise')).toBeNull();
+  });
 });
