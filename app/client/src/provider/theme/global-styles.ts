@@ -4,12 +4,18 @@ import type { Theme } from './theme';
 
 const useGlobalStyles = createUseStyles((theme: Theme) => ({
   '@global': {
+    html: {
+      backgroundColor: theme.color.bg.page,
+    },
     body: {
       fontFamily: theme.fontFamily.body,
       backgroundColor: theme.color.bg.page,
       color: theme.color.text.primary,
       colorScheme: theme.colorScheme,
-      minHeight: '100vh',
+      minHeight: '100dvh',
+      fallbacks: {
+        minHeight: '100vh',
+      },
       '-webkit-text-size-adjust': '100%',
       '-webkit-font-smoothing': 'antialiased',
       '-moz-osx-font-smoothing': 'grayscale',
