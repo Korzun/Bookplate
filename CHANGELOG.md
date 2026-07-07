@@ -1,3 +1,8 @@
+## 0.2.1
+
+- fix: ship client static assets (manifest, favicons, icons) in Docker build
+- fix: keep linked progress in the Progress list after linking
+
 ## 0.2.0
 
 - fix: series card overflows boundaries when collapsed
