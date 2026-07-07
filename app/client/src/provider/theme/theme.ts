@@ -206,7 +206,7 @@ function buildTheme(mode: ThemeMode): Theme {
       description: '#585863',
     },
     bg: {
-      page: '#FFFFFF',
+      page: '#E6E6E6',
       card: gray[50],
       cardHeader: gray[100],
       input: '#FFFFFF',
@@ -284,7 +284,7 @@ function buildTheme(mode: ThemeMode): Theme {
       description: '#A8ADB6',
     },
     bg: {
-      page: '#0E0F11',
+      page: '#242527',
       card: '#1A1B1E',
       cardHeader: '#232427',
       input: '#1A1B1E',
