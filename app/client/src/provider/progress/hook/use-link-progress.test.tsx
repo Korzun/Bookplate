@@ -44,6 +44,61 @@ function makeWrapper(initialProgress: ProgressList = {}, isAdmin = false) {
   };
 }
 
+/**
+ * Wrapper backed by real provider-equivalent state (setProgressForUsername +
+ * renameProgressKey), exposing the live progress list via a getter so tests can
+ * assert on the resulting map after a link.
+ */
+function makeStatefulWrapper(initialProgress: ProgressList = {}, isAdmin = false) {
+  const state: { current: ProgressList } = { current: initialProgress };
+  const Wrapper = function Wrapper({ children }: { children: ReactNode }) {
+    const [progressList, setProgressListRaw] = useState<ProgressList>(initialProgress);
+    state.current = progressList;
+    const setProgressForUsername = useCallback((username: string, data: UserProgressList) => {
+      setProgressListRaw((prev) => ({ ...prev, [username]: data }));
+    }, []);
+    const renameProgressKey = useCallback((oldId: string, newId: string) => {
+      setProgressListRaw((prev) => {
+        const next = { ...prev };
+        for (const username of Object.keys(next)) {
+          const userProgress = next[username];
+          if (userProgress && oldId in userProgress) {
+            const { [oldId]: oldEntry, ...rest } = userProgress;
+            next[username] = { ...rest, [newId]: { ...oldEntry, document: newId } };
+          }
+        }
+        return next;
+      });
+    }, []);
+    return (
+      <AuthContext.Provider
+        value={{
+          username: isAdmin ? 'admin' : 'user',
+          userId: isAdmin ? undefined : 'u1',
+          isAdmin,
+          mustChangePassword: false,
+          loading: false,
+        }}
+      >
+        <Context.Provider
+          value={{
+            progressList,
+            loadingByUsername: {},
+            errorByUsername: {},
+            setProgressForUsername,
+            setLoadingForUsername: () => {},
+            setErrorForUsername: () => {},
+            renameProgressKey,
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </AuthContext.Provider>
+    );
+  };
+  return { Wrapper, getProgress: () => state.current };
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useLinkProgress', () => {
@@ -76,6 +131,71 @@ describe('useLinkProgress', () => {
     await waitFor(() => expect(result.current[1]).toBe(false));
 
     expect(result.current[2]).toBe(false);
+  });
+
+  it('on success: re-keys the orphan progress to the linked book instead of dropping it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204, ok: true }));
+
+    const initial: ProgressList = {
+      alice: {
+        'orphan-doc': { document: 'orphan-doc', percentage: 0.5 },
+      },
+    };
+
+    const { Wrapper, getProgress } = makeStatefulWrapper(initial);
+    const { result } = renderHook(() => useLinkProgress('book-1', 'alice'), { wrapper: Wrapper });
+
+    await act(() => result.current[0]('orphan-doc'));
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    // The migrated progress must still be present, now keyed by the linked book.
+    expect(getProgress().alice).toEqual({
+      'book-1': { document: 'book-1', percentage: 0.5 },
+    });
+  });
+
+  it('on success: keeps the target book progress when it is newer than the orphan', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204, ok: true }));
+
+    const initial: ProgressList = {
+      alice: {
+        'orphan-doc': { document: 'orphan-doc', percentage: 0.5, timestamp: 100 },
+        'book-1': { document: 'book-1', percentage: 0.9, timestamp: 200 },
+      },
+    };
+
+    const { Wrapper, getProgress } = makeStatefulWrapper(initial);
+    const { result } = renderHook(() => useLinkProgress('book-1', 'alice'), { wrapper: Wrapper });
+
+    await act(() => result.current[0]('orphan-doc'));
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    // Server keeps the newer target record; orphan is dropped.
+    expect(getProgress().alice).toEqual({
+      'book-1': { document: 'book-1', percentage: 0.9, timestamp: 200 },
+    });
+  });
+
+  it('on success: replaces the target book progress when the orphan is newer', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204, ok: true }));
+
+    const initial: ProgressList = {
+      alice: {
+        'orphan-doc': { document: 'orphan-doc', percentage: 0.5, timestamp: 300 },
+        'book-1': { document: 'book-1', percentage: 0.9, timestamp: 200 },
+      },
+    };
+
+    const { Wrapper, getProgress } = makeStatefulWrapper(initial);
+    const { result } = renderHook(() => useLinkProgress('book-1', 'alice'), { wrapper: Wrapper });
+
+    await act(() => result.current[0]('orphan-doc'));
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    // Orphan is newer, so it migrates onto the book and wins.
+    expect(getProgress().alice).toEqual({
+      'book-1': { document: 'book-1', percentage: 0.5, timestamp: 300 },
+    });
   });
 
   it('on error: sets error state and message', async () => {

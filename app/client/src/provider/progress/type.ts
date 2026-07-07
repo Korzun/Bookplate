@@ -4,7 +4,7 @@ export type UserProgressList = Record<string, Progress>;
 export type Progress = {
   document: string;
   percentage: number;
-  device?: string; // present on GET /api/users/:username/progress (admin), absent on GET /api/my/progress
-  timestamp?: number; // present on GET /api/users/:username/progress (admin), absent on GET /api/my/progress
+  device?: string; // returned by GET /api/my/progress and GET /api/users/:username/progress (admin)
+  timestamp?: number; // returned by GET /api/my/progress and GET /api/users/:username/progress (admin)
   currentChapter?: number;
 };
