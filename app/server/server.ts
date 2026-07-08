@@ -5,10 +5,13 @@ import { BookStore } from './services/book-store';
 import { UserStore } from './services/user-store';
 import { TokenStore } from './services/token-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
+import { DeviceStore } from './services/device-store';
+import { EditionStore } from './services/edition-store';
 import { jwtAuth } from './middleware/auth';
 import { createOpdsRouter } from './routes/opds';
 import { createKosyncRouter } from './routes/kosync';
 import { createUsersRouter } from './routes/users';
+import { createDevicesRouter } from './routes/devices';
 import { createUiRouter } from './routes/ui';
 import { requestTimeout } from './middleware/timeout';
 import { requestLog } from './middleware/request-log';
@@ -23,7 +26,9 @@ export function createServer(
   bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue,
   tokenStore: TokenStore,
-  jwtSecret: Buffer
+  jwtSecret: Buffer,
+  deviceStore: DeviceStore,
+  editionStore: EditionStore
 ): express.Express {
   const server = express();
 
@@ -39,13 +44,22 @@ export function createServer(
 
   server.use(
     '/opds',
-    createOpdsRouter(bookStore, userStore, config.thumbnailWidths, config.libraryName)
+    createOpdsRouter(
+      bookStore,
+      userStore,
+      config.thumbnailWidths,
+      config.libraryName,
+      deviceStore,
+      editionStore,
+      config.validationThreshold
+    )
   );
   server.use('/sync', createKosyncRouter(userStore, bookStore));
   server.use(
     '/api/users',
     createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
   );
+  server.use('/api/devices', createDevicesRouter(deviceStore, editionStore, jwtAuth(jwtSecret)));
   const scanJobStore = new ScanJobStore();
   server.use(
     '/',
