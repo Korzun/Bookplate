@@ -271,3 +271,49 @@ describe('data_v13_series_meta backfill', () => {
     // No error = idempotent
   });
 });
+
+describe('devices and device_editions tables', () => {
+  let tmpDir: string;
+  let booksDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-devices-'));
+    booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+    await runMigrations(prisma, booksDir);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the devices and device_editions tables', async () => {
+    await prisma.device.create({
+      data: { id: 'd1', name: 'Kindle', slug: 'kindle', coverFit: 'contain' },
+    });
+    const devices = await prisma.device.findMany();
+    expect(devices).toHaveLength(1);
+    expect(devices[0].bwCover).toBe(false);
+
+    await prisma.deviceEdition.create({
+      data: {
+        userId: 'u1',
+        originalBookId: 'b1',
+        deviceId: 'd1',
+        editionId: 'e1',
+        settingsHash: 'h1',
+      },
+    });
+    const editions = await prisma.deviceEdition.findMany();
+    expect(editions).toHaveLength(1);
+  });
+
+  it('rejects an invalid cover_fit value', async () => {
+    await expect(
+      prisma.device.create({ data: { id: 'd2', name: 'Bad', slug: 'bad', coverFit: 'nonsense' } })
+    ).rejects.toThrow();
+  });
+});

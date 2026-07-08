@@ -145,3 +145,31 @@ model ProgressHistory {
   @@index([userId, document, progress, deviceId, endTimestamp])
   @@map("progress_history")
 }
+
+model Device {
+  id          String  @id
+  name        String
+  slug        String  @unique
+  coverWidth  Int?    @map("cover_width")
+  coverHeight Int?    @map("cover_height")
+  coverFit    String  @default("contain") @map("cover_fit")
+  bwCover     Boolean @default(false) @map("bw_cover")
+  simplify    Boolean @default(false)
+  createdAt   Float   @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("created_at")
+  updatedAt   Float   @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("updated_at")
+
+  @@map("devices")
+}
+
+model DeviceEdition {
+  userId         String @map("user_id")
+  originalBookId String @map("original_book_id")
+  deviceId       String @map("device_id")
+  editionId      String @map("edition_id")
+  settingsHash   String @map("settings_hash")
+  createdAt      Float  @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("created_at")
+
+  @@id([userId, originalBookId, deviceId])
+  @@index([userId, editionId])
+  @@map("device_editions")
+}
