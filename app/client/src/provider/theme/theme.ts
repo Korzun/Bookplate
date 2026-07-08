@@ -206,7 +206,7 @@ function buildTheme(mode: ThemeMode): Theme {
       description: '#585863',
     },
     bg: {
-      page: '#E6E6E6',
+      page: '#F6F6F9',
       card: gray[50],
       cardHeader: gray[100],
       input: '#FFFFFF',
