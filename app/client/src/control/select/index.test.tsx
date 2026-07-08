@@ -348,4 +348,35 @@ describe('Select', () => {
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     });
   });
+
+  describe('option descriptions', () => {
+    const describedOptions = [
+      { label: 'Contain', value: 'contain', description: 'Fit inside the size.' },
+      { label: 'Cover', value: 'cover', description: 'Fill and crop.' },
+    ];
+
+    it('renders each option description when the dropdown is open', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select
+          name="fit"
+          options={describedOptions}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.getByText('Fit inside the size.')).toBeInTheDocument();
+      expect(screen.getByText('Fill and crop.')).toBeInTheDocument();
+    });
+
+    it('does not show any description in the closed trigger', () => {
+      renderWithProviders(
+        <Select name="fit" options={describedOptions} value="contain" searchable={false} />
+      );
+      expect(screen.getByRole('button', { name: 'Contain' })).toBeInTheDocument();
+      expect(screen.queryByText('Fit inside the size.')).not.toBeInTheDocument();
+    });
+  });
 });
