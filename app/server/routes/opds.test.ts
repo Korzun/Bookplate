@@ -8,8 +8,11 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
+import { DeviceStore } from '../services/device-store';
+import { EditionStore } from '../services/edition-store';
 import { createOpdsRouter } from './opds';
 import { EpubMeta, Owner } from '../types';
+import { ValidationThreshold } from '@korzun/epubcheck-ts';
 
 jest.mock('../logger');
 
@@ -230,6 +233,59 @@ describe('GET /opds/books/:id/download', () => {
   });
 });
 
+describe('GET /opds/books/:id/devices/:slug/download', () => {
+  it('serves a generated edition for a device download link', async () => {
+    const bookId = 'devicedl1';
+    await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
+
+    const deviceStore = new DeviceStore(prisma);
+    const device = await deviceStore.create({
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
+    });
+    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
+    const editionStore = new EditionStore(editionsRoot, prisma, {
+      buildEdition: async () => Buffer.from('EDITION'),
+      assertValidEpub: async () => ({}) as never,
+      partialMD5: () => 'edhash',
+    });
+    const app2 = express();
+    app2.use(
+      '/opds',
+      createOpdsRouter(
+        bookStore,
+        userStore,
+        [60, 170],
+        'Bookplate',
+        deviceStore,
+        editionStore,
+        ValidationThreshold.ERROR
+      )
+    );
+
+    const res = await request(app2)
+      .get(`/opds/books/${bookId}/devices/${device.slug}/download`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/epub+zip');
+    expect(res.text).toBe('EDITION');
+  });
+
+  it('404s for an unknown device slug', async () => {
+    const bookId = 'devicedl2';
+    await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
+    // app built without device/edition stores
+    const res = await request(app)
+      .get(`/opds/books/${bookId}/devices/nope/download`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('GET /opds/books/:id/cover', () => {
   it('returns 404 when book does not exist', async () => {
     const res = await request(app)
@@ -383,6 +439,38 @@ describe('OPDS feed thumbnail link', () => {
     await bookStore.addBook(alice, 'opds5', stage('opds5'), FAKE_META);
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).not.toContain('opds-spec.org/image/thumbnail');
+  });
+
+  it('lists a per-device acquisition link on each book entry', async () => {
+    const bookId = 'opds-device1';
+    await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
+    const deviceStore = new DeviceStore(prisma);
+    await deviceStore.create({
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
+    });
+    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma);
+    const app2 = express();
+    app2.use(
+      '/opds',
+      createOpdsRouter(
+        bookStore,
+        userStore,
+        [60, 170],
+        'Bookplate',
+        deviceStore,
+        editionStore,
+        ValidationThreshold.ERROR
+      )
+    );
+
+    const res = await request(app2).get('/opds/books').set(basicAuth('alice', 'secret'));
+    expect(res.text).toContain(`/opds/books/${bookId}/devices/kindle/download`);
+    expect(res.text).toContain('Download for Kindle');
   });
 });
 

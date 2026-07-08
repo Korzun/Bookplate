@@ -1,4 +1,4 @@
-import { Book } from '../types';
+import { Book, Device } from '../types';
 
 function escapeXml(s: string): string {
   return s
@@ -50,7 +50,12 @@ export function navEntry(
   </entry>`;
 }
 
-export function bookEntry(b: Book, baseUrl: string, smallestThumbnailWidth: number | null): string {
+export function bookEntry(
+  b: Book,
+  baseUrl: string,
+  smallestThumbnailWidth: number | null,
+  devices: Device[] = []
+): string {
   const parts: string[] = [
     xml`  <entry>
     <title>${b.title}</title>
@@ -63,6 +68,14 @@ export function bookEntry(b: Book, baseUrl: string, smallestThumbnailWidth: numb
           type="application/epub+zip"
           title="${b.filename}"/>`,
   ];
+  for (const d of devices) {
+    parts.push(
+      xml`    <link rel="http://opds-spec.org/acquisition"
+          href="${baseUrl}/opds/books/${b.id}/devices/${d.slug}/download"
+          type="application/epub+zip"
+          title="Download for ${d.name}"/>`
+    );
+  }
   const version = String(b.mtime.getTime());
   if (b.hasCover) {
     parts.push(
