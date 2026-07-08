@@ -21,6 +21,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     gap: theme.space.sm,
   },
+  footer: {
+    ...theme.recipe.card.footer,
+    // Round the bottom corners so the footer still looks right when a card
+    // opts into `allowOverflow` (which drops the shell's clipping).
+    borderBottomLeftRadius: theme.radius.lg,
+    borderBottomRightRadius: theme.radius.lg,
+  },
   title: {
     fontWeight: theme.fontWeight.semibold,
     fontSize: theme.fontSize.md,

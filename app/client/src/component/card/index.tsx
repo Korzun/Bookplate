@@ -9,6 +9,7 @@ export type Props = PropsWithChildren<{
   allowOverflow?: boolean;
   className?: string;
   defaultCollapsed?: boolean;
+  footer?: ReactNode;
   headerAction?: ReactNode | ReactElement[];
   isCollapsible?: boolean;
   onClick?: () => void;
@@ -22,6 +23,7 @@ export const Card = ({
   children,
   className,
   defaultCollapsed = true,
+  footer,
   headerAction,
   isCollapsible = false,
   onClick,
@@ -111,6 +113,15 @@ export const Card = ({
         </div>
       )}
       {visibleChildren && <div className={cx(style.content, style[size])}>{visibleChildren}</div>}
+      {footer && (!isCollapsible || isExpanded) && (
+        <div
+          className={style.footer}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {footer}
+        </div>
+      )}
     </div>
   );
 };
