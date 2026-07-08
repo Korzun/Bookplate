@@ -53,4 +53,35 @@ describe('Switch', () => {
     );
     expect(screen.getByText('Dark mode')).toBeInTheDocument();
   });
+
+  it('renders a description and links it via aria-describedby', () => {
+    renderWithProviders(
+      <Switch
+        name="simplify"
+        checked={false}
+        label="Simplify"
+        description="Helper text explaining the toggle"
+        onChange={vi.fn()}
+      />
+    );
+    const description = screen.getByText('Helper text explaining the toggle');
+    expect(description).toBeInTheDocument();
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-describedby', description.id);
+  });
+
+  it('does not toggle when the description is clicked', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Switch
+        name="simplify"
+        checked={false}
+        label="Simplify"
+        description="Helper text explaining the toggle"
+        onChange={onChange}
+      />
+    );
+    await user.click(screen.getByText('Helper text explaining the toggle'));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

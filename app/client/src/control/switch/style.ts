@@ -3,11 +3,25 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
     display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.space.md,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: theme.space.xs,
     cursor: 'pointer',
     userSelect: 'none',
     '-webkit-user-select': 'none',
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.md,
+  },
+  description: {
+    // Indent under the label (past the 28px track + row gap) so it reads as
+    // helper text for this toggle rather than a separate row.
+    marginLeft: `calc(28px + ${theme.space.md})`,
+    fontSize: theme.fontSize.sm,
+    color: theme.color.text.faint,
+    cursor: 'auto',
   },
   track: {
     position: 'relative',
