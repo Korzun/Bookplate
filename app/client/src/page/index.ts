@@ -1,5 +1,6 @@
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
+export { DeviceListPage } from './device-list';
 export { LibraryPage } from './library';
 export { LoadingPage } from './loading';
 export { LoginPage } from './login';

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import {
   BookEditPage,
   BookPage,
+  DeviceListPage,
   LibraryPage,
   LoginPage,
   PasswordResetPage,
@@ -36,6 +37,7 @@ export const AppRouter = () => {
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />
             <Route path={path.user()} element={<UserPage />} />
             <Route path={path.userList()} element={<UserListPage />} />
+            <Route path={path.devices()} element={<DeviceListPage />} />
             <Route path="*" element={<Navigate to={path.library()} replace />} />
           </Route>
           {/* Password reset is nav-less (minimal page). */}
