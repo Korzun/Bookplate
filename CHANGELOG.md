@@ -1,3 +1,8 @@
+## 0.3.0
+
+- Lighten light-mode page background to #F6F6F9
+- feat: per-device book editions
+
 ## 0.2.1
 
 - fix: ship client static assets (manifest, favicons, icons) in Docker build
