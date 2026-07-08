@@ -167,7 +167,7 @@ describe('bg.page flat noise-average (noise textures removed)', () => {
   it('dark bg.page is the flat charcoal average', () => {
     expect(darkTheme.color.bg.page).toBe('#242527');
   });
-  it('light bg.page is the flat off-white average', () => {
-    expect(lightTheme.color.bg.page).toBe('#E6E6E6');
+  it('light bg.page is the lightened off-white', () => {
+    expect(lightTheme.color.bg.page).toBe('#F6F6F9');
   });
 });
