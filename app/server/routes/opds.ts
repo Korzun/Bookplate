@@ -1,7 +1,10 @@
 import { createHash } from 'crypto';
 import { Router, Request, Response } from 'express';
+import { ValidationThreshold } from '@korzun/epubcheck-ts';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
+import { DeviceStore } from '../services/device-store';
+import { EditionStore } from '../services/edition-store';
 import { opdsAuth } from '../middleware/auth';
 import { logger } from '../logger';
 import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
@@ -13,7 +16,10 @@ export function createOpdsRouter(
   bookStore: BookStore,
   userStore: UserStore,
   thumbnailWidths: number[],
-  libraryName: string = 'Bookplate'
+  libraryName: string = 'Bookplate',
+  deviceStore?: DeviceStore,
+  editionStore?: EditionStore,
+  validationThreshold: ValidationThreshold = ValidationThreshold.ERROR
 ): Router {
   const router = Router();
   const auth = opdsAuth(userStore, libraryName);
@@ -86,6 +92,7 @@ export function createOpdsRouter(
       log.debug(`Books feed served (${books.length} books)`);
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const now = new Date().toISOString();
+      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
@@ -94,7 +101,7 @@ export function createOpdsRouter(
           selfHref: `${baseUrl}/opds/books`,
           baseUrl,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
         })
       );
     })
@@ -118,6 +125,44 @@ export function createOpdsRouter(
         `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
       );
       res.sendFile(book.path);
+    })
+  );
+
+  router.get(
+    '/books/:id/devices/:slug/download',
+    auth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      if (!deviceStore || !editionStore) {
+        res.status(404).send('Not found');
+        return;
+      }
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        log.warn(`Device download requested for unknown book ID: ${req.params.id}`);
+        res.status(404).send('Not found');
+        return;
+      }
+      const device = await deviceStore.getBySlug(req.params.slug);
+      if (!device) {
+        log.warn(`Device download requested for unknown device slug: ${req.params.slug}`);
+        res.status(404).send('Not found');
+        return;
+      }
+
+      const { path: filePath, filename } = await editionStore.getOrCreateEdition(
+        owner,
+        book,
+        device,
+        validationThreshold
+      );
+      log.info(`User "${owner.username}" downloaded "${filename}" for device "${device.slug}"`);
+      res.set('Content-Type', 'application/epub+zip');
+      res.set(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
+      );
+      res.sendFile(filePath);
     })
   );
 
@@ -219,6 +264,7 @@ export function createOpdsRouter(
       const books = await bookStore.listBooksByAuthor(owner, author);
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const now = new Date().toISOString();
+      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
@@ -227,7 +273,7 @@ export function createOpdsRouter(
           selfHref: `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
           baseUrl,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
         })
       );
     })
@@ -273,6 +319,7 @@ export function createOpdsRouter(
       const books = await bookStore.listBooksBySeries(owner, seriesId);
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const now = new Date().toISOString();
+      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
@@ -281,7 +328,7 @@ export function createOpdsRouter(
           selfHref: `${baseUrl}/opds/series/${seriesId}`,
           baseUrl,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
         })
       );
     })
@@ -327,6 +374,7 @@ export function createOpdsRouter(
       const books = await bookStore.listBooksBySubject(owner, subject);
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const now = new Date().toISOString();
+      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
@@ -335,7 +383,7 @@ export function createOpdsRouter(
           selfHref: `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
           baseUrl,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
         })
       );
     })
@@ -400,6 +448,7 @@ export function createOpdsRouter(
       );
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const now = new Date().toISOString();
+      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
         acquisitionFeed({
@@ -408,7 +457,7 @@ export function createOpdsRouter(
           selfHref: `${baseUrl}/opds/status/${status}`,
           baseUrl,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth)),
+          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
         })
       );
     })
