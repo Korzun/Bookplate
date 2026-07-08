@@ -5,9 +5,9 @@ import { ChevronIcon, SpinnerIcon } from '~/icon';
 
 import { useStyle } from './style';
 
-export type SelectOption = string | { label: string; value: string };
+export type SelectOption = string | { label: string; value: string; description?: string };
 
-type InternalOption = { label: string; value: string; _isCreate?: boolean };
+type InternalOption = { label: string; value: string; description?: string; _isCreate?: boolean };
 
 export type SelectProps = {
   allowCreate?: boolean;
@@ -285,7 +285,12 @@ export const Select = ({
                         Add: <strong>{opt.label}</strong>
                       </>
                     ) : (
-                      highlight(opt.label, query, style.matchHighlight)
+                      <>
+                        <div>{highlight(opt.label, query, style.matchHighlight)}</div>
+                        {opt.description && (
+                          <div className={style.optionDescription}>{opt.description}</div>
+                        )}
+                      </>
                     )}
                   </li>
                 ))

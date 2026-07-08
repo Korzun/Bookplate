@@ -137,6 +137,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       '&:hover': { backgroundColor: 'transparent' },
     },
   },
+  optionDescription: {
+    marginTop: theme.space.xxs,
+    fontSize: theme.fontSize.sm,
+    fontWeight: 400,
+    color: theme.color.text.faint,
+    whiteSpace: 'normal',
+  },
   matchHighlight: {
     backgroundColor: theme.color.bg.selected,
     borderRadius: theme.radius.sm,
