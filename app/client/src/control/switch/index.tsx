@@ -1,18 +1,27 @@
 import cx from 'classnames';
-import { useCallback } from 'react';
+import { ReactNode, useCallback } from 'react';
 
 import { useStyle } from './style';
 
 type SwitchProps = {
   checked: boolean;
+  description?: ReactNode;
   disabled?: boolean;
   label?: string;
   name: string;
   onChange: (checked: boolean) => void;
 };
 
-export const Switch = ({ checked, disabled = false, label, name, onChange }: SwitchProps) => {
+export const Switch = ({
+  checked,
+  description,
+  disabled = false,
+  label,
+  name,
+  onChange,
+}: SwitchProps) => {
   const style = useStyle();
+  const descriptionId = description ? `${name}-description` : undefined;
 
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
@@ -33,26 +42,40 @@ export const Switch = ({ checked, disabled = false, label, name, onChange }: Swi
     [checked, disabled, onChange]
   );
 
+  // The description is helper text, not a toggle target — clicking it should
+  // not flip the switch.
+  const handleDescriptionClick = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+  }, []);
+
   return (
     <div
       role="switch"
       aria-checked={checked}
       aria-label={label ?? name}
+      aria-describedby={descriptionId}
       aria-disabled={disabled}
       tabIndex={disabled ? -1 : 0}
       className={style.root}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      <div
-        className={cx(style.track, {
-          [style.checked]: checked,
-          [style.disabled]: disabled,
-        })}
-      >
-        <div className={style.thumb} />
+      <div className={style.row}>
+        <div
+          className={cx(style.track, {
+            [style.checked]: checked,
+            [style.disabled]: disabled,
+          })}
+        >
+          <div className={style.thumb} />
+        </div>
+        {label && <span className={style.label}>{label}</span>}
       </div>
-      {label && <span className={style.label}>{label}</span>}
+      {description && (
+        <div id={descriptionId} className={style.description} onClick={handleDescriptionClick}>
+          {description}
+        </div>
+      )}
     </div>
   );
 };
