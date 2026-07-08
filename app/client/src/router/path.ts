@@ -2,6 +2,7 @@ import * as pathInternal from './path-internal';
 
 export const book = (bookId: string) => pathInternal.book(encodeURIComponent(bookId));
 export const bookEdit = (bookId: string) => pathInternal.bookEdit(encodeURIComponent(bookId));
+export const devices = () => pathInternal.devices();
 export const home = () => pathInternal.home();
 export const library = (options?: { subject?: string; author?: string }) =>
   pathInternal.library(options);

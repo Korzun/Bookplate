@@ -8,6 +8,8 @@ export { CollapsibleSection } from './collapsible-section';
 export { ConnectionUrls } from './connection-urls';
 export { Cover } from './cover';
 export { CoverStack } from './cover-stack';
+export { DeviceForm } from './device-form';
+export { DeviceList } from './device-list';
 export { SearchBar } from './search-bar';
 export { Nav } from './nav';
 export { LibraryScan } from './library-scan';

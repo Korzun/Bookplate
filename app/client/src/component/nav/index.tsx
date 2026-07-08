@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 
-import { BookIcon, SettingsIcon, UploadIcon, UsersIcon } from '~/icon';
+import { BookIcon, DeviceIcon, SettingsIcon, UploadIcon, UsersIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { path } from '~/router';
 
@@ -36,6 +36,12 @@ export const Nav = () => {
             label: 'Users',
             Icon: UsersIcon,
             active: pathname === path.userList(),
+          },
+          {
+            to: path.devices(),
+            label: 'Devices',
+            Icon: DeviceIcon,
+            active: pathname === path.devices(),
           },
         ]
       : []),

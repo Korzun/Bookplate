@@ -1,5 +1,6 @@
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
+export const devices = () => '/devices';
 export const home = () => '/';
 export const library = (options?: { subject?: string; author?: string }) => {
   const params = new URLSearchParams();
