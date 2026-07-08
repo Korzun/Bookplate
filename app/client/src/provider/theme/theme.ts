@@ -186,6 +186,7 @@ export interface Theme {
     card: {
       shell: Recipe;
       header: Recipe;
+      footer: Recipe;
     };
   };
 }
@@ -558,6 +559,21 @@ function buildTheme(mode: ThemeMode): Theme {
         borderBottomColor: color.border.strong,
         userSelect: 'none',
         '-webkit-user-select': 'none',
+      },
+      footer: {
+        backgroundColor: color.bg.footer,
+        borderTopStyle: 'solid',
+        borderTopColor: color.border.strong,
+        borderTopWidth: '1px',
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'end',
+        gap: space.md,
+        paddingTop: space.xl,
+        paddingBottom: space.xl,
+        paddingLeft: space.xl,
+        paddingRight: space.xl,
       },
     },
   };

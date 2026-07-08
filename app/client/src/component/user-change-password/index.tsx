@@ -50,7 +50,25 @@ export const UserChangePassword = () => {
   );
 
   return (
-    <Card title="Change password">
+    <Card
+      title="Change password"
+      footer={
+        <Button
+          type="primary"
+          loading={loading}
+          onClick={handleChangePassword}
+          radius="card"
+          disabled={
+            !isPasswordValid ||
+            currentPassword.length === 0 ||
+            newPassword.length === 0 ||
+            confirmPassword.length === 0
+          }
+        >
+          {loading ? 'Changing…' : 'Change password'}
+        </Button>
+      }
+    >
       <div className={styles.inputContainer}>
         <TextInput
           name="current-password"
@@ -81,20 +99,6 @@ export const UserChangePassword = () => {
           validate={handleConfirmPasswordValidation}
         />
       </div>
-      <Button
-        type="primary"
-        loading={loading}
-        onClick={handleChangePassword}
-        radius="card"
-        disabled={
-          !isPasswordValid ||
-          currentPassword.length === 0 ||
-          newPassword.length === 0 ||
-          confirmPassword.length === 0
-        }
-      >
-        {loading ? 'Changing…' : 'Change password'}
-      </Button>
     </Card>
   );
 };
