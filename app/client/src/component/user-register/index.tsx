@@ -52,10 +52,16 @@ export const UserRegister = () => {
             autoComplete="off"
             onKeyDown={handleKeyDown}
           />
-          <Button type="primary" radius="card" loading={loading} onClick={handleRegisterUser}>
-            {loading ? 'Registering…' : 'Register'}
-          </Button>
         </div>
+        <Button
+          className={styles.submit}
+          type="primary"
+          radius="card"
+          loading={loading}
+          onClick={handleRegisterUser}
+        >
+          {loading ? 'Registering…' : 'Register'}
+        </Button>
       </Card>
       <PasswordResultModal
         isOpen={result !== null}
