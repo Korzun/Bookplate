@@ -125,3 +125,14 @@ export interface AppConfig {
   thumbnailWidths: number[];
   validationThreshold: ValidationThreshold;
 }
+
+export interface Device {
+  id: string;
+  name: string;
+  slug: string;
+  coverWidth: number | null;
+  coverHeight: number | null;
+  coverFit: 'contain' | 'cover' | 'fill';
+  bwCover: boolean;
+  simplify: boolean;
+}
