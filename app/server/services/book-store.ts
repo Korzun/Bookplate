@@ -96,6 +96,15 @@ export interface ScanImporter {
   partialMD5: (filePath: string) => string;
 }
 
+/**
+ * Minimal structural interface for purging cached device editions when a book
+ * is reimported or deleted. Kept separate from a concrete EditionStore class
+ * to avoid a hard dependency from BookStore onto the edition-store module.
+ */
+export interface EditionPurger {
+  purgeForBook(userId: string, originalBookId: string): Promise<void>;
+}
+
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
 
 function standaloneStatusWhere(
@@ -121,7 +130,8 @@ function standaloneStatusWhere(
 export class BookStore {
   constructor(
     private readonly booksRoot: string,
-    private readonly prisma: PrismaClient
+    private readonly prisma: PrismaClient,
+    private readonly editionStore?: EditionPurger
   ) {}
 
   getBooksRoot(): string {
@@ -485,7 +495,12 @@ export class BookStore {
     const rows = await this.prisma.$queryRaw<Array<{ current_id: string }>>`
       SELECT current_id FROM book_id_history WHERE user_id = ${userId} AND old_id = ${id}
     `;
-    return rows.length > 0 ? rows[0].current_id : id;
+    if (rows.length > 0) return rows[0].current_id;
+    const editions = await this.prisma.$queryRaw<Array<{ original_book_id: string }>>`
+      SELECT original_book_id FROM device_editions WHERE user_id = ${userId} AND edition_id = ${id} LIMIT 1
+    `;
+    if (editions.length > 0) return editions[0].original_book_id;
+    return id;
   }
 
   async getBookLineage(
@@ -635,6 +650,15 @@ export class BookStore {
         fs.unlinkSync(book.path);
       } catch {
         /* file already gone */
+      }
+    }
+    if (this.editionStore) {
+      try {
+        await this.editionStore.purgeForBook(owner.userId, id);
+      } catch (err) {
+        log.warn(
+          `deleteBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
     return book;
@@ -820,6 +844,17 @@ export class BookStore {
         await this.recomputeSeriesMeta(tx, newSeriesId);
       }
     });
+
+    if (this.editionStore) {
+      try {
+        await this.editionStore.purgeForBook(owner.userId, id);
+        if (newId !== id) await this.editionStore.purgeForBook(owner.userId, newId);
+      } catch (err) {
+        log.warn(
+          `reimportBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
 
     return this.getBookById(owner, newId);
   }

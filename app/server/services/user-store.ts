@@ -11,8 +11,21 @@ const log = logger('UserStore');
 const LOGIN_PASSWORD_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 const LOGIN_PASSWORD_LENGTH = 16;
 
+/**
+ * Minimal structural interface for purging cached device editions when a user
+ * is deleted. Kept separate from a concrete EditionStore class to avoid a
+ * hard dependency from UserStore onto the edition-store module. Mirrors
+ * BookStore's EditionPurger.
+ */
+export interface EditionUserPurger {
+  purgeForUser(userId: string): Promise<void>;
+}
+
 export class UserStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly editionStore?: EditionUserPurger
+  ) {}
 
   static generateSyncPassword(): string {
     let attempts = 0;
@@ -349,14 +362,25 @@ export class UserStore {
   }
 
   async deleteUser(username: string): Promise<boolean> {
+    let userId: string;
     try {
-      await this.prisma.user.delete({ where: { username } });
-      return true;
+      const deleted = await this.prisma.user.delete({ where: { username } });
+      userId = deleted.id;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
         return false;
       }
       throw e;
     }
+    if (this.editionStore) {
+      try {
+        await this.editionStore.purgeForUser(userId);
+      } catch (err) {
+        log.warn(
+          `deleteUser: edition-cache purge failed for "${userId}" — ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+    return true;
   }
 }

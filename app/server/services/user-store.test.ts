@@ -437,6 +437,26 @@ describe('UserStore.deleteUser', () => {
     await store.deleteUser('alice');
     expect(await store.userExists('bob')).toBe(true);
   });
+
+  it('invokes the injected edition purger with the deleted userId', async () => {
+    const purgeForUser = jest.fn().mockResolvedValue(undefined);
+    const withPurger = new UserStore(prisma, { purgeForUser });
+    await withPurger.createUser('carol', null);
+    const carolId = (await withPurger.getUserIdByUsername('carol'))!;
+
+    expect(await withPurger.deleteUser('carol')).toBe(true);
+    expect(purgeForUser).toHaveBeenCalledWith(carolId);
+  });
+
+  it('still succeeds when the injected edition purger throws', async () => {
+    const purgeForUser = jest.fn().mockRejectedValue(new Error('purge boom'));
+    const withPurger = new UserStore(prisma, { purgeForUser });
+    await withPurger.createUser('dave', null);
+
+    expect(await withPurger.deleteUser('dave')).toBe(true);
+    expect(await withPurger.userExists('dave')).toBe(false);
+    expect(purgeForUser).toHaveBeenCalled();
+  });
 });
 
 describe('UserStore.authenticate', () => {

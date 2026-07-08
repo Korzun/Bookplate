@@ -522,6 +522,19 @@ describe('deleteBook', () => {
     `;
     expect(rows).toHaveLength(0);
   });
+
+  it('purges editions for the book', async () => {
+    const purged: Array<[string, string]> = [];
+    const purger = {
+      purgeForBook: async (u: string, b: string) => {
+        purged.push([u, b]);
+      },
+    };
+    const bs = new BookStore(booksRoot, prisma, purger);
+    await bs.addBook(OWNER, 'del3', stage('del3'), FAKE_META);
+    await bs.deleteBook(OWNER, 'del3');
+    expect(purged).toContainEqual([OWNER.userId, 'del3']);
+  });
 });
 
 describe('getCover', () => {
@@ -1165,6 +1178,52 @@ describe('reimportBook', () => {
     expect(await bookStore.reimportBook(OWNER, 'doesnotexist')).toBeNull();
   });
 
+  it('purges editions for the book', async () => {
+    const purged: Array<[string, string]> = [];
+    const purger = {
+      purgeForBook: async (u: string, b: string) => {
+        purged.push([u, b]);
+      },
+    };
+    const bs = new BookStore(booksRoot, prisma, purger);
+
+    const stagedPath = path.join(booksDir, 'staged-purge.epub');
+    fs.writeFileSync(stagedPath, makeMinimalEpub('Purge'));
+    const id = partialMD5(stagedPath);
+    await bs.addBook(OWNER, id, stagedPath, FAKE_META);
+
+    const importer: ScanImporter = {
+      parseEpub: () => ({ ...FAKE_META, title: 'Purged' }),
+      partialMD5: () => id,
+    };
+    await bs.reimportBook(OWNER, id, importer);
+
+    expect(purged).toContainEqual([OWNER.userId, id]);
+  });
+
+  it('still resolves successfully when edition purge throws', async () => {
+    const purger = {
+      purgeForBook: jest.fn().mockRejectedValue(new Error('purge boom')),
+    };
+    const bs = new BookStore(booksRoot, prisma, purger);
+
+    const stagedPath = path.join(booksDir, 'staged-purge-throws.epub');
+    fs.writeFileSync(stagedPath, makeMinimalEpub('Purge Throws'));
+    const id = partialMD5(stagedPath);
+    await bs.addBook(OWNER, id, stagedPath, FAKE_META);
+
+    const importer: ScanImporter = {
+      parseEpub: () => ({ ...FAKE_META, title: 'Purged Throws' }),
+      partialMD5: () => id,
+    };
+
+    const result = await bs.reimportBook(OWNER, id, importer);
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Purged Throws');
+    expect(purger.purgeForBook).toHaveBeenCalledWith(OWNER.userId, id);
+  });
+
   it('re-reads metadata from disk and updates the DB row', async () => {
     const epubBuf = makeMinimalEpub('Original');
     const stagedPath = path.join(booksDir, 'staged-original.epub');
@@ -1649,6 +1708,23 @@ describe('book_id_history table', () => {
         VALUES (${OWNER.userId}, 'check-old', 'check-new', ${Date.now()}, 'invalid')
       `
     ).rejects.toThrow();
+  });
+
+  it('resolveBookId maps a device edition hash to the original book', async () => {
+    await prisma.device.create({
+      data: { id: 'dv', name: 'K', slug: 'k', coverFit: 'contain' },
+    });
+    await prisma.deviceEdition.create({
+      data: {
+        userId: OWNER.userId,
+        originalBookId: 'bookX',
+        deviceId: 'dv',
+        editionId: 'editionHashX',
+        settingsHash: 'h',
+      },
+    });
+    expect(await bookStore.resolveBookId(OWNER.userId, 'editionHashX')).toBe('bookX');
+    expect(await bookStore.resolveBookId(OWNER.userId, 'unknown')).toBe('unknown');
   });
 });
 
