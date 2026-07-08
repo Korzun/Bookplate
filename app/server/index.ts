@@ -5,6 +5,8 @@ import { UserStore } from './services/user-store';
 import { BookStore } from './services/book-store';
 import { TokenStore } from './services/token-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
+import { EditionStore } from './services/edition-store';
+import { DeviceStore } from './services/device-store';
 import { createServer } from './server';
 import { logger } from './logger';
 import { runMigrations } from './db/migrate';
@@ -31,13 +33,24 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const prisma = createPrismaClient(`file:${dbPath}`);
   await runMigrations(prisma, config.booksDir);
 
-  const userStore = new UserStore(prisma);
-  const bookStore = new BookStore(config.booksDir, prisma);
+  const editionStore = new EditionStore(path.join(config.dataDir, 'editions'), prisma);
+  const userStore = new UserStore(prisma, editionStore);
+  const bookStore = new BookStore(config.booksDir, prisma, editionStore);
+  const deviceStore = new DeviceStore(prisma);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
   const tokenStore = new TokenStore(prisma);
   const jwtSecret = await tokenStore.getOrCreateJwtSecret();
 
-  const server = createServer(config, userStore, bookStore, thumbnailQueue, tokenStore, jwtSecret);
+  const server = createServer(
+    config,
+    userStore,
+    bookStore,
+    thumbnailQueue,
+    tokenStore,
+    jwtSecret,
+    deviceStore,
+    editionStore
+  );
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
   // clean up stale DB entries.
