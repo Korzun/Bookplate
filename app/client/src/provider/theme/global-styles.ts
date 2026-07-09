@@ -9,6 +9,7 @@ const useGlobalStyles = createUseStyles((theme: Theme) => ({
     },
     body: {
       fontFamily: theme.fontFamily.body,
+      fontSize: '1.1rem',
       backgroundColor: theme.color.bg.page,
       color: theme.color.text.primary,
       colorScheme: theme.colorScheme,
