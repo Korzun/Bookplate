@@ -24,7 +24,7 @@ export const SyncPassword = () => {
     if (!displayPassword) return;
     const ok = await copyToClipboard(displayPassword);
     if (!ok) {
-      showToast('Failed to copy sync password', 'error');
+      showToast('Failed to copy device password', 'error');
       return;
     }
     setCopied(true);
@@ -36,9 +36,9 @@ export const SyncPassword = () => {
   const handleConfirm = useCallback(async () => {
     const ok = await regenerate();
     if (ok) {
-      showToast('Sync password regenerated', 'success');
+      showToast('Device password regenerated', 'success');
     } else {
-      showToast('Failed to regenerate sync password', 'error');
+      showToast('Failed to regenerate device password', 'error');
     }
     setShowConfirm(false);
   }, [regenerate, showToast]);
@@ -57,8 +57,8 @@ export const SyncPassword = () => {
 
   return (
     <Fragment>
-      <Card title="Sync password" headerAction={regenerateElement}>
-        {fetchError && <div>Failed to load sync password.</div>}
+      <Card title="Device password" headerAction={regenerateElement}>
+        {fetchError && <div>Failed to load device password.</div>}
         {!fetchError && (
           <div className={styles.pill}>
             <KeyIcon className={styles.pillIcon} width={14} height={14} />
@@ -79,7 +79,7 @@ export const SyncPassword = () => {
       <ConfirmModal
         isOpen={showConfirm}
         icon={AlertOctagonIcon}
-        title="Regenerate sync password?"
+        title="Regenerate device password?"
         confirmText="Regenerate"
         cancelText="Cancel"
         danger
@@ -87,7 +87,7 @@ export const SyncPassword = () => {
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       >
-        This will create a <strong>new random sync password</strong>. All of your KoReader devices
+        This will create a <strong>new random device password</strong>. All of your KoReader devices
         and OPDS clients will stop syncing until you update them with the new password.
       </ConfirmModal>
     </Fragment>
