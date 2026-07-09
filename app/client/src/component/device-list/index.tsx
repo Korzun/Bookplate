@@ -58,6 +58,7 @@ const DeviceRow = ({ device }: DeviceRowProps) => {
       >
         <MetadataList
           metadata={[
+            { title: 'Slug', value: device.slug },
             { title: 'Cover size', value: formatCoverSize(device) },
             { title: 'Cover fit', value: formatCoverFit(device.coverFit) },
             { title: 'B&W cover', value: device.bwCover ? 'Yes' : 'No' },
