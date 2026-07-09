@@ -28,7 +28,7 @@ export interface FeedParams {
   id: string;
   title: string;
   selfHref: string;
-  baseUrl: string;
+  startHref: string;
   now: string;
   entries: string[];
 }
@@ -54,8 +54,12 @@ export function bookEntry(
   b: Book,
   baseUrl: string,
   smallestThumbnailWidth: number | null,
-  devices: Device[] = []
+  device?: Device
 ): string {
+  const acquisitionHref = device
+    ? `${baseUrl}/opds/books/${b.id}/devices/${device.slug}/download`
+    : `${baseUrl}/opds/books/${b.id}/download`;
+  const acquisitionTitle = device ? `Download for ${device.name}` : b.filename;
   const parts: string[] = [
     xml`  <entry>
     <title>${b.title}</title>
@@ -64,18 +68,10 @@ export function bookEntry(
     <author><name>${b.author}</name></author>
     <summary>${b.description}</summary>
     <link rel="http://opds-spec.org/acquisition"
-          href="${baseUrl}/opds/books/${b.id}/download"
+          href="${acquisitionHref}"
           type="application/epub+zip"
-          title="${b.filename}"/>`,
+          title="${acquisitionTitle}"/>`,
   ];
-  for (const d of devices) {
-    parts.push(
-      xml`    <link rel="http://opds-spec.org/acquisition"
-          href="${baseUrl}/opds/books/${b.id}/devices/${d.slug}/download"
-          type="application/epub+zip"
-          title="Download for ${d.name}"/>`
-    );
-  }
   const version = String(b.mtime.getTime());
   if (b.hasCover) {
     parts.push(
@@ -96,14 +92,14 @@ export function bookEntry(
 }
 
 function feedWrapper(params: FeedParams, kind: 'navigation' | 'acquisition'): string {
-  const { id, title, selfHref, baseUrl, now, entries } = params;
+  const { id, title, selfHref, startHref, now, entries } = params;
   const header = xml`<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">
   <id>${id}</id>
   <title>${title}</title>
   <updated>${now}</updated>
   <link rel="self" href="${selfHref}" type="application/atom+xml;profile=opds-catalog;kind=${kind}"/>
-  <link rel="start" href="${baseUrl}/opds/" type="application/atom+xml;profile=opds-catalog;kind=navigation"/>`;
+  <link rel="start" href="${startHref}" type="application/atom+xml;profile=opds-catalog;kind=navigation"/>`;
   return header + (entries.length > 0 ? '\n' + entries.join('\n') : '') + '\n</feed>';
 }
 

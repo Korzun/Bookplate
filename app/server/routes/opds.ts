@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, RequestHandler } from 'express';
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
 import { BookStore } from '../services/book-store';
 import { UserStore } from '../services/user-store';
@@ -11,6 +11,22 @@ import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-tem
 import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('OPDS');
+
+const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as const);
+
+/** Resolves the `:slug` mount param to a Device, 404ing if it does not exist. */
+function resolveDevice(deviceStore: DeviceStore): RequestHandler {
+  return asyncHandler(async (req, res, next) => {
+    const device = await deviceStore.getBySlug(req.params.slug);
+    if (!device) {
+      log.warn(`Device catalog requested for unknown slug: ${JSON.stringify(req.params.slug)}`);
+      res.status(404).send('Not found');
+      return;
+    }
+    req.opdsDevice = device;
+    next();
+  });
+}
 
 export function createOpdsRouter(
   bookStore: BookStore,
@@ -25,87 +41,330 @@ export function createOpdsRouter(
   const auth = opdsAuth(userStore, libraryName);
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
 
-  router.get('/', auth, (req: Request, res: Response) => {
-    log.debug('Root catalog served');
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const now = new Date().toISOString();
-    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-    res.send(
-      navigationFeed({
-        id: 'urn:bookplate:root',
-        title: /library$/i.test(libraryName) ? libraryName : `${libraryName} Library`,
-        selfHref: `${baseUrl}/opds/`,
-        baseUrl,
-        now,
-        entries: [
-          navEntry(
-            'urn:bookplate:books',
-            'By Book Title',
-            'Browse all books in the library',
-            `${baseUrl}/opds/books`,
-            'acquisition',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:authors',
-            'By Author',
-            'Browse books by author',
-            `${baseUrl}/opds/authors`,
-            'navigation',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:series',
-            'By Series',
-            'Browse books by series',
-            `${baseUrl}/opds/series`,
-            'navigation',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:subjects',
-            'By Subject',
-            'Browse books by subject',
-            `${baseUrl}/opds/subjects`,
-            'navigation',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:status',
-            'By Status',
-            'Browse books by reading status',
-            `${baseUrl}/opds/status`,
-            'navigation',
-            now
-          ),
-        ],
-      })
-    );
-  });
+  // Base vs device-scoped context. `req.opdsDevice` is set only under the
+  // /opds/device/:slug mount; when absent, we serve the base catalog. Nav/self/start
+  // hrefs use `feedBase`; book acquisition + cover links always use the base `origin`.
+  function feedContext(req: Request) {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const device = req.opdsDevice;
+    const feedBase = device ? `${origin}/opds/device/${device.slug}` : `${origin}/opds`;
+    return { origin, device, feedBase };
+  }
 
-  router.get(
-    '/books',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const books = await bookStore.listBooks(owner);
-      log.debug(`Books feed served (${books.length} books)`);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+  // Browse/nav feed handlers. Mounted for the base catalog and each device catalog.
+  function mountFeeds(target: Router) {
+    target.get('/', (req: Request, res: Response) => {
+      const { feedBase, device } = feedContext(req);
+      log.debug('Root catalog served');
       const now = new Date().toISOString();
-      const devices = deviceStore ? await deviceStore.list() : [];
       res.set('Content-Type', 'application/atom+xml;charset=utf-8');
       res.send(
-        acquisitionFeed({
-          id: 'urn:bookplate:books',
-          title: 'By Book Title',
-          selfHref: `${baseUrl}/opds/books`,
-          baseUrl,
+        navigationFeed({
+          id: 'urn:bookplate:root',
+          title: device
+            ? `${libraryName} — ${device.name}`
+            : /library$/i.test(libraryName)
+              ? libraryName
+              : `${libraryName} Library`,
+          selfHref: `${feedBase}/`,
+          startHref: `${feedBase}/`,
           now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
+          entries: [
+            navEntry(
+              'urn:bookplate:books',
+              'By Book Title',
+              'Browse all books in the library',
+              `${feedBase}/books`,
+              'acquisition',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:authors',
+              'By Author',
+              'Browse books by author',
+              `${feedBase}/authors`,
+              'navigation',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:series',
+              'By Series',
+              'Browse books by series',
+              `${feedBase}/series`,
+              'navigation',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:subjects',
+              'By Subject',
+              'Browse books by subject',
+              `${feedBase}/subjects`,
+              'navigation',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:status',
+              'By Status',
+              'Browse books by reading status',
+              `${feedBase}/status`,
+              'navigation',
+              now
+            ),
+          ],
         })
       );
-    })
-  );
+    });
+
+    target.get(
+      '/books',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const books = await bookStore.listBooks(owner);
+        log.debug(`Books feed served (${books.length} books)`);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: 'urn:bookplate:books',
+            title: 'By Book Title',
+            selfHref: `${feedBase}/books`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/authors',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { feedBase } = feedContext(req);
+        const authors = await bookStore.getAuthors(owner);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          navigationFeed({
+            id: 'urn:bookplate:authors',
+            title: 'By Author',
+            selfHref: `${feedBase}/authors`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: authors.map((author) =>
+              navEntry(
+                `urn:bookplate:author:${author}`,
+                author,
+                `Books by ${author}`,
+                `${feedBase}/authors/${encodeURIComponent(author)}`,
+                'acquisition',
+                now
+              )
+            ),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/authors/:author',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const author = req.params.author;
+        const books = await bookStore.listBooksByAuthor(owner, author);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: `urn:bookplate:author:${author}`,
+            title: author,
+            selfHref: `${feedBase}/authors/${encodeURIComponent(author)}`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/series',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { feedBase } = feedContext(req);
+        const seriesList = await bookStore.listSeries(owner);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          navigationFeed({
+            id: 'urn:bookplate:series',
+            title: 'By Series',
+            selfHref: `${feedBase}/series`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: seriesList.map((s) =>
+              navEntry(
+                `urn:bookplate:series:${s.id}`,
+                s.name,
+                `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
+                `${feedBase}/series/${s.id}`,
+                'acquisition',
+                now
+              )
+            ),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/series/:seriesId',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const seriesId = req.params.seriesId;
+        const books = await bookStore.listBooksBySeries(owner, seriesId);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: `urn:bookplate:series:${seriesId}`,
+            title: books.length > 0 ? books[0].series : 'Series',
+            selfHref: `${feedBase}/series/${seriesId}`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/subjects',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { feedBase } = feedContext(req);
+        const subjects = await bookStore.getSubjects(owner);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          navigationFeed({
+            id: 'urn:bookplate:subjects',
+            title: 'By Subject',
+            selfHref: `${feedBase}/subjects`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: subjects.map((subject) =>
+              navEntry(
+                `urn:bookplate:subject:${subject}`,
+                subject,
+                `Books tagged with ${subject}`,
+                `${feedBase}/subjects/${encodeURIComponent(subject)}`,
+                'acquisition',
+                now
+              )
+            ),
+          })
+        );
+      })
+    );
+
+    target.get(
+      '/subjects/:subject',
+      asyncHandler(async (req: Request, res: Response) => {
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const subject = req.params.subject;
+        const books = await bookStore.listBooksBySubject(owner, subject);
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: `urn:bookplate:subject:${subject}`,
+            title: subject,
+            selfHref: `${feedBase}/subjects/${encodeURIComponent(subject)}`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          })
+        );
+      })
+    );
+
+    target.get('/status', (req: Request, res: Response) => {
+      const { feedBase } = feedContext(req);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        navigationFeed({
+          id: 'urn:bookplate:status',
+          title: 'By Reading Status',
+          selfHref: `${feedBase}/status`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: [
+            navEntry(
+              'urn:bookplate:status:not-started',
+              'Not Started',
+              'Books not yet started',
+              `${feedBase}/status/not-started`,
+              'acquisition',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:status:in-progress',
+              'In Progress',
+              'Books currently being read',
+              `${feedBase}/status/in-progress`,
+              'acquisition',
+              now
+            ),
+            navEntry(
+              'urn:bookplate:status:completed',
+              'Completed',
+              'Books finished reading',
+              `${feedBase}/status/completed`,
+              'acquisition',
+              now
+            ),
+          ],
+        })
+      );
+    });
+
+    target.get(
+      '/status/:status',
+      asyncHandler(async (req: Request, res: Response) => {
+        const status = req.params.status;
+        if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
+          res.status(400).send('Invalid status');
+          return;
+        }
+        const owner = req.opdsOwner!;
+        const { origin, device, feedBase } = feedContext(req);
+        const books = await bookStore.listBooksByStatus(
+          owner,
+          status as 'not-started' | 'in-progress' | 'completed'
+        );
+        const now = new Date().toISOString();
+        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+        res.send(
+          acquisitionFeed({
+            id: `urn:bookplate:status:${status}`,
+            title: status,
+            selfHref: `${feedBase}/status/${status}`,
+            startHref: `${feedBase}/`,
+            now,
+            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+          })
+        );
+      })
+    );
+  }
+
+  // --- Download & cover routes (base catalog only) ---
 
   router.get(
     '/books/:id/download',
@@ -149,7 +408,6 @@ export function createOpdsRouter(
         res.status(404).send('Not found');
         return;
       }
-
       const { path: filePath, filename } = await editionStore.getOrCreateEdition(
         owner,
         book,
@@ -224,244 +482,18 @@ export function createOpdsRouter(
     })
   );
 
-  router.get(
-    '/authors',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const authors = await bookStore.getAuthors(owner);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        navigationFeed({
-          id: 'urn:bookplate:authors',
-          title: 'By Author',
-          selfHref: `${baseUrl}/opds/authors`,
-          baseUrl,
-          now,
-          entries: authors.map((author) =>
-            navEntry(
-              `urn:bookplate:author:${author}`,
-              author,
-              `Books by ${author}`,
-              `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
-              'acquisition',
-              now
-            )
-          ),
-        })
-      );
-    })
-  );
+  // --- Device-scoped catalog (browse-only): auth first, then resolve the slug ---
+  if (deviceStore && editionStore) {
+    const deviceCatalog = Router({ mergeParams: true });
+    deviceCatalog.use(auth, resolveDevice(deviceStore));
+    mountFeeds(deviceCatalog);
+    router.use('/device/:slug', deviceCatalog);
+  }
 
-  router.get(
-    '/authors/:author',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const author = req.params.author;
-      const books = await bookStore.listBooksByAuthor(owner, author);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      const devices = deviceStore ? await deviceStore.list() : [];
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        acquisitionFeed({
-          id: `urn:bookplate:author:${author}`,
-          title: author,
-          selfHref: `${baseUrl}/opds/authors/${encodeURIComponent(author)}`,
-          baseUrl,
-          now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
-        })
-      );
-    })
-  );
-
-  router.get(
-    '/series',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const seriesList = await bookStore.listSeries(owner);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        navigationFeed({
-          id: 'urn:bookplate:series',
-          title: 'By Series',
-          selfHref: `${baseUrl}/opds/series`,
-          baseUrl,
-          now,
-          entries: seriesList.map((s) =>
-            navEntry(
-              `urn:bookplate:series:${s.id}`,
-              s.name,
-              `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
-              `${baseUrl}/opds/series/${s.id}`,
-              'acquisition',
-              now
-            )
-          ),
-        })
-      );
-    })
-  );
-
-  router.get(
-    '/series/:seriesId',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const seriesId = req.params.seriesId;
-      const books = await bookStore.listBooksBySeries(owner, seriesId);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      const devices = deviceStore ? await deviceStore.list() : [];
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        acquisitionFeed({
-          id: `urn:bookplate:series:${seriesId}`,
-          title: books.length > 0 ? books[0].series : 'Series',
-          selfHref: `${baseUrl}/opds/series/${seriesId}`,
-          baseUrl,
-          now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
-        })
-      );
-    })
-  );
-
-  router.get(
-    '/subjects',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const subjects = await bookStore.getSubjects(owner);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        navigationFeed({
-          id: 'urn:bookplate:subjects',
-          title: 'By Subject',
-          selfHref: `${baseUrl}/opds/subjects`,
-          baseUrl,
-          now,
-          entries: subjects.map((subject) =>
-            navEntry(
-              `urn:bookplate:subject:${subject}`,
-              subject,
-              `Books tagged with ${subject}`,
-              `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
-              'acquisition',
-              now
-            )
-          ),
-        })
-      );
-    })
-  );
-
-  router.get(
-    '/subjects/:subject',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = req.opdsOwner!;
-      const subject = req.params.subject;
-      const books = await bookStore.listBooksBySubject(owner, subject);
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      const devices = deviceStore ? await deviceStore.list() : [];
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        acquisitionFeed({
-          id: `urn:bookplate:subject:${subject}`,
-          title: subject,
-          selfHref: `${baseUrl}/opds/subjects/${encodeURIComponent(subject)}`,
-          baseUrl,
-          now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
-        })
-      );
-    })
-  );
-
-  router.get('/status', auth, (req: Request, res: Response) => {
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const now = new Date().toISOString();
-    res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-    res.send(
-      navigationFeed({
-        id: 'urn:bookplate:status',
-        title: 'By Reading Status',
-        selfHref: `${baseUrl}/opds/status`,
-        baseUrl,
-        now,
-        entries: [
-          navEntry(
-            'urn:bookplate:status:not-started',
-            'Not Started',
-            'Books not yet started',
-            `${baseUrl}/opds/status/not-started`,
-            'acquisition',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:status:in-progress',
-            'In Progress',
-            'Books currently being read',
-            `${baseUrl}/opds/status/in-progress`,
-            'acquisition',
-            now
-          ),
-          navEntry(
-            'urn:bookplate:status:completed',
-            'Completed',
-            'Books finished reading',
-            `${baseUrl}/opds/status/completed`,
-            'acquisition',
-            now
-          ),
-        ],
-      })
-    );
-  });
-
-  const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as const);
-
-  router.get(
-    '/status/:status',
-    auth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const status = req.params.status;
-      if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
-        res.status(400).send('Invalid status');
-        return;
-      }
-      const owner = req.opdsOwner!;
-      const books = await bookStore.listBooksByStatus(
-        owner,
-        status as 'not-started' | 'in-progress' | 'completed'
-      );
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const now = new Date().toISOString();
-      const devices = deviceStore ? await deviceStore.list() : [];
-      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-      res.send(
-        acquisitionFeed({
-          id: `urn:bookplate:status:${status}`,
-          title: status,
-          selfHref: `${baseUrl}/opds/status/${status}`,
-          baseUrl,
-          now,
-          entries: books.map((b) => bookEntry(b, baseUrl, smallestWidth, devices)),
-        })
-      );
-    })
-  );
+  // --- Base catalog (browse/nav) ---
+  const baseCatalog = Router();
+  mountFeeds(baseCatalog);
+  router.use('/', auth, baseCatalog);
 
   return router;
 }

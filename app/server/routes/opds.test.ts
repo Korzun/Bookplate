@@ -441,7 +441,7 @@ describe('OPDS feed thumbnail link', () => {
     expect(res.text).not.toContain('opds-spec.org/image/thumbnail');
   });
 
-  it('lists a per-device acquisition link on each book entry', async () => {
+  it('does not list per-device acquisition links in the base book feed', async () => {
     const bookId = 'opds-device1';
     await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
     const deviceStore = new DeviceStore(prisma);
@@ -469,8 +469,11 @@ describe('OPDS feed thumbnail link', () => {
     );
 
     const res = await request(app2).get('/opds/books').set(basicAuth('alice', 'secret'));
-    expect(res.text).toContain(`/opds/books/${bookId}/devices/kindle/download`);
-    expect(res.text).toContain('Download for Kindle');
+    // Base feed carries exactly the original download link, no device variants.
+    expect(res.text).toContain(`/opds/books/${bookId}/download`);
+    expect(res.text).not.toContain('/devices/kindle/download');
+    expect(res.text).not.toContain('Download for Kindle');
+    expect((res.text.match(/opds-spec\.org\/acquisition/g) || []).length).toBe(1);
   });
 });
 
@@ -816,5 +819,112 @@ describe('GET /opds/status/:status', () => {
     const res = await request(app).get('/opds/status/completed').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('Alice Book');
     expect(res.text).not.toContain('Bob Book');
+  });
+});
+
+describe('GET /opds/device/:slug (per-device catalog)', () => {
+  async function deviceApp() {
+    const deviceStore = new DeviceStore(prisma);
+    const device = await deviceStore.create({
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
+    });
+    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
+      buildEdition: async () => Buffer.from('EDITION'),
+      assertValidEpub: async () => ({}) as never,
+      partialMD5: () => 'edhash',
+    });
+    const a = express();
+    a.use(
+      '/opds',
+      createOpdsRouter(
+        bookStore,
+        userStore,
+        [60, 170],
+        'Bookplate',
+        deviceStore,
+        editionStore,
+        ValidationThreshold.ERROR
+      )
+    );
+    return { app: a, device };
+  }
+
+  it('404s for an unknown device slug', async () => {
+    const { app: a } = await deviceApp();
+    const res = await request(a).get('/opds/device/nope/books').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+
+  it('root nav feed links to device-scoped sub-feeds', async () => {
+    const { app: a } = await deviceApp();
+    const res = await request(a).get('/opds/device/kindle/').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('/opds/device/kindle/books');
+    expect(res.text).toContain('/opds/device/kindle/authors');
+    expect(res.text).toContain('/opds/device/kindle/series');
+  });
+
+  it('book feed carries exactly one acquisition link = the device edition', async () => {
+    const { app: a } = await deviceApp();
+    const bookId = 'devcat1';
+    await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Cat Book' });
+    const res = await request(a).get('/opds/device/kindle/books').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(`/opds/books/${bookId}/devices/kindle/download`);
+    expect(res.text).toContain('Download for Kindle');
+    // The base (non-device) download link must NOT appear in a device feed.
+    expect(res.text).not.toContain(`/opds/books/${bookId}/download"`);
+    // Exactly one acquisition link on the entry.
+    expect((res.text.match(/opds-spec\.org\/acquisition/g) || []).length).toBe(1);
+  });
+
+  it('device book feed cover links still point at the base catalog', async () => {
+    const { app: a } = await deviceApp();
+    await bookStore.addBook(alice, 'devcover', stage('devcover'), {
+      ...FAKE_META,
+      coverData: Buffer.from('cover'),
+      coverMime: 'image/jpeg',
+    });
+    const res = await request(a).get('/opds/device/kindle/books').set(basicAuth('alice', 'secret'));
+    expect(res.text).toContain('/opds/books/devcover/cover');
+    expect(res.text).not.toContain('/opds/device/kindle/books/devcover/cover');
+  });
+
+  it('requires authentication', async () => {
+    const { app: a } = await deviceApp();
+    const res = await request(a).get('/opds/device/kindle/books');
+    expect(res.status).toBe(401);
+  });
+
+  // The device sub-router is browse-only: download and cover routes live only on the
+  // base catalog. Deep paths under /opds/device/:slug fall through to a 404 rather than
+  // exposing a second download surface. These lock that guarantee against future edits.
+  it('404s for a download path under the device mount', async () => {
+    const { app: a } = await deviceApp();
+    const bookId = 'devdl404';
+    await bookStore.addBook(alice, bookId, stage(bookId), FAKE_META);
+    const res = await request(a)
+      .get(`/opds/device/kindle/books/${bookId}/download`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+
+  it('404s for a cover path under the device mount', async () => {
+    const { app: a } = await deviceApp();
+    const bookId = 'devcover404';
+    await bookStore.addBook(alice, bookId, stage(bookId), {
+      ...FAKE_META,
+      coverData: Buffer.from('cover'),
+      coverMime: 'image/jpeg',
+    });
+    const res = await request(a)
+      .get(`/opds/device/kindle/books/${bookId}/cover`)
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
   });
 });
