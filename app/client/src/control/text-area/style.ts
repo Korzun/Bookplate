@@ -40,6 +40,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   input: {
     fontFamily: theme.fontFamily.body,
+    fontSize: theme.fontSize.lg,
     outlineWidth: '2px',
     outlineStyle: 'solid',
     outlineColor: 'transparent',
