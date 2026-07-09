@@ -91,14 +91,23 @@ it('updates and deletes a device', async () => {
   expect(d.status).toBe(204);
 });
 
-it('rejects non-admin requests with 403', async () => {
+it('allows non-admins to list devices but rejects non-admin mutations with 403', async () => {
   const deviceStore = new DeviceStore(prisma);
   const nonAdminApp = express();
   nonAdminApp.use(express.json());
   nonAdminApp.use('/api/devices', createDevicesRouter(deviceStore, editionStore, asNonAdmin));
 
-  const r = await request(nonAdminApp).get('/api/devices');
-  expect(r.status).toBe(403);
+  // Listing is open to any authenticated user (needed for per-device OPDS URLs).
+  const list = await request(nonAdminApp).get('/api/devices');
+  expect(list.status).toBe(200);
+
+  // Mutations remain admin-only.
+  const create = await request(nonAdminApp).post('/api/devices').send(body);
+  expect(create.status).toBe(403);
+  const patch = await request(nonAdminApp).patch('/api/devices/any-id').send(body);
+  expect(patch.status).toBe(403);
+  const del = await request(nonAdminApp).delete('/api/devices/any-id');
+  expect(del.status).toBe(403);
 });
 
 it('purges the edition cache on PATCH and on DELETE', async () => {

@@ -1,7 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
-import { Context as AuthContext } from '../../auth/context';
 import { Context } from '../context';
 import type { Device } from '../type';
 
@@ -15,7 +14,6 @@ export type UseDeviceList =
   | [Device[], false, true, string];
 
 export const useDeviceList = (): UseDeviceList => {
-  const { isAdmin } = useContext(AuthContext);
   const { deviceList, loading, error, setDeviceList, setLoading, setError } = useContext(Context);
 
   const getDeviceList = useCallback(async () => {
@@ -39,14 +37,14 @@ export const useDeviceList = (): UseDeviceList => {
   }, [setDeviceList, setLoading, setError]);
 
   useEffect(() => {
-    if (isAdmin && !loading && error === undefined && Object.keys(deviceList).length === 0) {
+    if (!loading && error === undefined && Object.keys(deviceList).length === 0) {
       void getDeviceList();
     }
     // loading, error, and deviceList are intentionally excluded: this effect is meant to fire once
     // on mount. getDeviceList is stable so deps never change. Adding the others would cause a
     // re-fetch loop when the server legitimately returns zero devices.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getDeviceList, isAdmin]);
+  }, [getDeviceList]);
 
   return useMemo(
     () =>
