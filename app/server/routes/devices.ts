@@ -55,8 +55,10 @@ export function createDevicesRouter(
   requireAuth: RequestHandler
 ): Router {
   const router = Router();
+  // Every route requires a logged-in user. Listing devices is open to any user
+  // (regular users need the per-device OPDS catalog URLs to set up their readers);
+  // creating, editing, and deleting devices stay admin-only.
   router.use(requireAuth);
-  router.use(adminAuth);
 
   router.get(
     '/',
@@ -67,6 +69,7 @@ export function createDevicesRouter(
 
   router.post(
     '/',
+    adminAuth,
     asyncHandler(async (req: Request, res: Response) => {
       const parsed = parseBody(req.body as Record<string, unknown>);
       if ('error' in parsed) {
@@ -91,6 +94,7 @@ export function createDevicesRouter(
 
   router.patch(
     '/:id',
+    adminAuth,
     asyncHandler(async (req: Request, res: Response) => {
       const existing = await deviceStore.getById(req.params.id);
       if (!existing) {
@@ -135,6 +139,7 @@ export function createDevicesRouter(
 
   router.delete(
     '/:id',
+    adminAuth,
     asyncHandler(async (req: Request, res: Response) => {
       const existing = await deviceStore.getById(req.params.id);
       if (!existing) {
