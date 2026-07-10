@@ -8,15 +8,26 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     flexDirection: 'column',
     maxWidth: '540px',
+    // Bound the dialog to the viewport (the shared modal recipe positions it 100px from
+    // the top and 50px from the bottom) so a long message list scrolls inside the body
+    // instead of being clipped by the recipe's `overflow: hidden`.
+    maxHeight: 'calc(100dvh - 150px)',
     backgroundColor: theme.color.bg.card,
   },
   header: {
     ...theme.recipe.modal.header,
+    flexShrink: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   body: {
+    // Scroll container: absorbs the dialog's free height and scrolls its overflow so the
+    // header and footer stay pinned. minHeight: 0 lets this flex child shrink below the
+    // intrinsic height of the message list.
+    flex: '1 1 auto',
+    minHeight: 0,
+    overflowY: 'auto',
     paddingLeft: theme.space.xxl,
     paddingRight: theme.space.xxl,
     paddingBottom: theme.space.xxxxl,
@@ -63,5 +74,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   footer: {
     ...theme.recipe.modal.footer,
+    flexShrink: 0,
   },
 }));
