@@ -30,6 +30,12 @@ const COVER_FIT_OPTIONS: SelectOption[] = [
     description: 'Fill the size completely and crop the overflow, keeping the aspect ratio.',
   },
   {
+    label: 'Smart',
+    value: 'smart',
+    description:
+      'Fill the size completely and crop automatically to keep the busiest part of the cover — usually the title. Needs a width and height.',
+  },
+  {
     label: 'Fill',
     value: 'fill',
     description: 'Stretch the cover to the exact size, ignoring its aspect ratio.',
