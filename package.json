@@ -18,5 +18,10 @@
   },
   "dependencies": {
     "sharp": "^0.35.1"
+  },
+  "overrides": {
+    "smartcrop-sharp": {
+      "sharp": "^0.34.5"
+    }
   }
 }
