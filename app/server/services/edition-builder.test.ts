@@ -48,6 +48,16 @@ async function makeEpub(dir: string): Promise<string> {
   return p;
 }
 
+// Parse the first local file header of a ZIP: its name and compression method.
+// The OCF spec (and epubcheck PKG-006) requires the first entry to be
+// `mimetype`, stored uncompressed (method 0).
+function firstZipEntry(buf: Buffer): { name: string; method: number } {
+  const method = buf.readUInt16LE(8);
+  const nameLen = buf.readUInt16LE(26);
+  const name = buf.subarray(30, 30 + nameLen).toString('latin1');
+  return { name, method };
+}
+
 describe('buildEdition', () => {
   let dir: string;
   beforeEach(() => {
@@ -75,5 +85,16 @@ describe('buildEdition', () => {
     const bytes = new AdmZip(out).getEntry('OEBPS/cover.jpg')!.getData();
     const meta = await sharp(bytes).metadata();
     expect(meta.width).toBe(60);
+  });
+
+  it('writes mimetype as the first, stored entry (OCF / epubcheck PKG-006)', async () => {
+    const src = await makeEpub(dir);
+    const out = await buildEdition(src, {
+      simplify: true,
+      cover: { width: 60, height: 80, fit: 'smart', grayscale: true },
+    });
+    const first = firstZipEntry(out);
+    expect(first.name).toBe('mimetype');
+    expect(first.method).toBe(0); // stored, not deflated
   });
 });
