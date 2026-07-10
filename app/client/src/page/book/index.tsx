@@ -10,11 +10,21 @@ import {
   BookLineageCard,
   type Metadata,
 } from '~/component';
-import { Button, DeleteBookButton, RegenChaptersButton, SetProgressModal } from '~/control';
+import {
+  BackButton,
+  Button,
+  ConfirmModal,
+  DeleteBookButton,
+  PageActionsMenu,
+  RegenChaptersButton,
+  SetProgressModal,
+  type PageActionItem,
+} from '~/control';
+import { AlertOctagonIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
-import { useBook } from '~/provider/book';
+import { useBook, useDeleteBook, useRegenChapters } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 import { useMyProgress } from '~/provider/progress';
 import { path } from '~/router';
@@ -33,6 +43,16 @@ export const BookPage = () => {
   const [book, loading, error] = useBook(id!, true);
   const [progress] = useMyProgress(id!);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
+
+  const [regenChapters, regenLoading] = useRegenChapters();
+  const [deleteBook, deleting] = useDeleteBook();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    setDeleteModalOpen(false);
+    await deleteBook(id!);
+    navigate(path.home());
+  }, [deleteBook, id, navigate]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -121,8 +141,27 @@ export const BookPage = () => {
     );
   }
 
+  const actionItems: PageActionItem[] = [];
+  if (book.chapterCount > 0) {
+    actionItems.push({ label: 'Set progress', onClick: () => setProgressModalOpen(true) });
+  }
+  actionItems.push({
+    label: 'Regen chapters',
+    onClick: () => void regenChapters(book.id),
+    disabled: regenLoading,
+  });
+  actionItems.push({ label: 'Edit metadata', onClick: handleEditMetadata });
+  actionItems.push({
+    label: 'Delete book',
+    onClick: () => setDeleteModalOpen(true),
+    danger: true,
+  });
+
   return (
     <Page>
+      <div className={styles.topInset} aria-hidden="true" />
+      <BackButton to={book.series.length > 0 ? path.series(book.series) : path.library()} />
+      <PageActionsMenu items={actionItems} />
       <Card>
         <div className={styles.cardContainer}>
           <div className={styles.detail}>
@@ -208,6 +247,19 @@ export const BookPage = () => {
           onClose={() => setProgressModalOpen(false)}
         />
       )}
+      <ConfirmModal
+        icon={AlertOctagonIcon}
+        isOpen={deleteModalOpen}
+        onCancel={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        danger
+        title="Delete book permanently?"
+        confirmText="Delete"
+        loading={deleting}
+      >
+        This action will delete {book.title} and its file from this library, along with any synced
+        progress, and can not be undone.
+      </ConfirmModal>
     </Page>
   );
 };

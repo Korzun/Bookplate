@@ -35,6 +35,19 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   buttonContainer: {
     display: 'flex',
     gap: theme.space.md,
+    [theme.breakpoint.mobile]: {
+      display: 'none',
+    },
+  },
+  // Mobile-only spacer so the fixed floating back/actions buttons (46px tall at
+  // top: safe-area + space.lg) don't overlap the first card, with breathing room
+  // below them. Height is tunable on-device during verification.
+  topInset: {
+    display: 'none',
+    [theme.breakpoint.mobile]: {
+      display: 'block',
+      height: theme.space.xxxxxl,
+    },
   },
   spacer: {
     flexGrow: 1,
