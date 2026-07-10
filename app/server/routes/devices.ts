@@ -8,7 +8,7 @@ import { logger } from '../logger';
 
 const log = logger('devices-router');
 
-const FITS = new Set(['contain', 'cover', 'fill']);
+const FITS = new Set(['contain', 'cover', 'fill', 'smart']);
 
 function parseBody(raw: Record<string, unknown>): DeviceInput | { error: string } {
   const name = raw.name;
@@ -34,7 +34,7 @@ function parseBody(raw: Record<string, unknown>): DeviceInput | { error: string 
 
   const coverFit = raw.coverFit;
   if (typeof coverFit !== 'string' || !FITS.has(coverFit)) {
-    return { error: 'coverFit must be contain, cover, or fill' };
+    return { error: 'coverFit must be contain, cover, smart, or fill' };
   }
   if (typeof raw.bwCover !== 'boolean') return { error: 'bwCover must be a boolean' };
   if (typeof raw.simplify !== 'boolean') return { error: 'simplify must be a boolean' };

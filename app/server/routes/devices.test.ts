@@ -123,3 +123,19 @@ it('purges the edition cache on PATCH and on DELETE', async () => {
   await request(app).delete(`/api/devices/${c.body.id}`);
   expect(purgeSpy).toHaveBeenCalledWith(c.body.id);
 });
+
+it('accepts coverFit "smart"', async () => {
+  const r = await request(app)
+    .post('/api/devices')
+    .send({ ...body, name: 'Smart', coverFit: 'smart' });
+  expect(r.status).toBe(201);
+  expect(r.body.coverFit).toBe('smart');
+});
+
+it('rejects an unknown coverFit with the four-option message', async () => {
+  const r = await request(app)
+    .post('/api/devices')
+    .send({ ...body, name: 'Bad', coverFit: 'nope' });
+  expect(r.status).toBe(400);
+  expect(r.body.error).toBe('coverFit must be contain, cover, smart, or fill');
+});
