@@ -33,6 +33,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
+  // Mobile-only spacer so the fixed floating back button doesn't overlap the first
+  // card, with breathing room below it. Height is tunable on-device during verification.
+  topInset: {
+    display: 'none',
+    [theme.breakpoint.mobile]: {
+      display: 'block',
+      height: theme.space.xxxxxl,
+    },
+  },
   cardContainer: {
     display: 'flex',
     flexDirection: 'column',
