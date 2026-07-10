@@ -11,6 +11,7 @@ export { ClockIcon } from './clock';
 export { DeviceIcon } from './device';
 export { KeyIcon } from './key';
 export { ListCheckIcon } from './list-check';
+export { MoreIcon } from './more';
 export { RowRemoveIcon } from './row-remove';
 export { SearchIcon } from './search';
 export { SettingsIcon } from './settings';
