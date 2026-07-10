@@ -1,6 +1,8 @@
 import { Outlet } from 'react-router-dom';
 
 import { Nav } from '~/component/nav';
+import { TopFade } from '~/component/top-fade';
+import { isStandalone } from '~/lib/is-standalone';
 
 // Persistent layout for the main (nav-bearing) routes. Rendering <Nav /> here —
 // rather than inside each page's <Page> — keeps it mounted across navigations, so
@@ -9,6 +11,9 @@ import { Nav } from '~/component/nav';
 export const NavLayout = () => (
   <>
     <Nav />
+    {/* The top status-bar fade is only relevant when installed (standalone); in a
+        browser tab the OS status bar isn't drawn over the page. */}
+    {isStandalone() && <TopFade />}
     <Outlet />
   </>
 );
