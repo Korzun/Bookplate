@@ -1,6 +1,6 @@
 name: "Bookplate"
 description: "OPDS 1.2 book catalog, KOSync progress sync, and web library manager for KoReader"
-version: "0.3.0"
+version: "0.4.0"
 slug: "bookplate"
 image: "ghcr.io/korzun/bookplate-{arch}"
 init: false
