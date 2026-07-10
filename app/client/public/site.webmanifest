@@ -1,6 +1,9 @@
 {
   "name": "Bookplate",
   "short_name": "Bookplate",
+  "id": "/",
+  "start_url": "/library",
+  "scope": "/",
   "theme_color": "#1777FF",
   "background_color": "#0E0F11",
   "display": "standalone",
