@@ -23,7 +23,7 @@ export const useFetchBookList = (): FetchBookList => {
     bookListFilter,
   } = useContext(Context);
   const [isAdmin] = useIsAdmin();
-  const [targetUsername] = useLibraryTarget();
+  const [targetUsername, setTargetUsername] = useLibraryTarget();
   const withTargetUser = useWithTargetUser();
 
   return useCallback(async () => {
@@ -44,6 +44,13 @@ export const useFetchBookList = (): FetchBookList => {
       if (bookListFilter.entryType) params.append('entryType', bookListFilter.entryType);
       params.append('take', '20');
       const response = await apiFetch(withTargetUser(`/api/books?${params.toString()}`));
+      // An admin's selected user no longer exists (deleted, or a stale value in
+      // localStorage): clear the selection so the page falls back to the
+      // "Select a library" state instead of showing a load failure.
+      if (response.status === 404 && isAdmin && targetUsername) {
+        setTargetUsername(undefined);
+        return;
+      }
       if (!response.ok) throw new Error('Failed to fetch books');
       const { items, books, nextCursor } =
         await (response.json() as Promise<PagedBookListResponse>);
@@ -70,6 +77,7 @@ export const useFetchBookList = (): FetchBookList => {
   }, [
     isAdmin,
     targetUsername,
+    setTargetUsername,
     withTargetUser,
     bookListLoading,
     bookList,
