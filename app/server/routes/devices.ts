@@ -13,7 +13,7 @@ const FITS = new Set(['contain', 'cover', 'fill', 'smart']);
 function parseBody(raw: Record<string, unknown>): DeviceInput | { error: string } {
   const name = raw.name;
   if (typeof name !== 'string' || !name.trim()) return { error: 'name is required' };
-  if (name.trim().length > 10) return { error: 'name must be 10 characters or fewer' };
+  if (name.trim().length > 50) return { error: 'name must be 50 characters or fewer' };
   // A symbol-only name (e.g. "!!!") derives an empty slug, which would break the
   // unique constraint and the /devices/:slug/download URL.
   if (!generateSlug(name.trim())) {

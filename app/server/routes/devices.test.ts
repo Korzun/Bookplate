@@ -60,10 +60,10 @@ it('creates and lists devices', async () => {
   expect(l.body).toHaveLength(1);
 });
 
-it('rejects a name longer than 10 chars', async () => {
+it('rejects a name longer than 50 chars', async () => {
   const r = await request(app)
     .post('/api/devices')
-    .send({ ...body, name: 'ThisIsWayTooLong' });
+    .send({ ...body, name: 'a'.repeat(51) });
   expect(r.status).toBe(400);
 });
 

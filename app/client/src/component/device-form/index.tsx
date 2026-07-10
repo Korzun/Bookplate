@@ -10,7 +10,7 @@ import { isNumeric } from '~/utils';
 
 import { useStyle } from './style';
 
-const NAME_MAX_LENGTH = 10;
+const NAME_MAX_LENGTH = 50;
 
 // Empty (cleared to "auto") or a positive integer, matching the server's
 // `${label} must be a positive integer` validation in app/server/routes/devices.ts.
