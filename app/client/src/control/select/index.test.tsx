@@ -349,6 +349,55 @@ describe('Select', () => {
     });
   });
 
+  describe('second click closes the dropdown', () => {
+    it('closes when the trigger is clicked again (searchable={false})', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+        />
+      );
+      const trigger = screen.getByRole('button', { name: 'Pick…' });
+      await user.click(trigger);
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('closes when the chevron is clicked again (searchable)', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select name="genre" options={options} value={undefined} placeholder="Pick…" />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('reopens on a subsequent click after closing (searchable={false})', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <Select
+          name="genre"
+          options={options}
+          value={undefined}
+          placeholder="Pick…"
+          searchable={false}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Pick…' }));
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+  });
+
   describe('option descriptions', () => {
     const describedOptions = [
       { label: 'Contain', value: 'contain', description: 'Fit inside the size.' },
