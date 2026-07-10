@@ -208,7 +208,14 @@ export const Select = ({
               }}
               onKeyDown={handleInputKeyDown}
             />
-            <span className={cx(style.chevron, style.open)}>
+            <span
+              className={cx(style.chevron, style.open)}
+              role="button"
+              tabIndex={-1}
+              aria-label="Close"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={close}
+            >
               <ChevronIcon height={12} width={12} />
             </span>
           </div>
@@ -222,7 +229,7 @@ export const Select = ({
             role="button"
             tabIndex={disabled || loading ? -1 : 0}
             aria-label={selectedLabel ?? placeholder}
-            onClick={isOpen ? undefined : open}
+            onClick={isOpen ? close : open}
             onKeyDown={isOpen ? handleOpenTriggerKeyDown : handleTriggerKeyDown}
           >
             {loading && <SpinnerIcon className={style.spinner} />}
