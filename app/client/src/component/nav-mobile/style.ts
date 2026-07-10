@@ -33,7 +33,11 @@ export const useStyle = createUseStyles((theme: Theme) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingBottom: 'env(safe-area-inset-bottom)',
+      // One rule, both contexts (no iOS-unreliable display-mode query): a browser tab has
+      // no bottom safe-area inset, so env() ≈ 0 and this resolves to the fixed floor
+      // (room for the frosted shadow); in standalone the home-indicator inset dominates
+      // and the pill dips toward it while staying clear.
+      paddingBottom: `max(${theme.space.xxxl}, calc(env(safe-area-inset-bottom) - ${theme.space.xl}))`,
       [theme.breakpoint.normal]: {
         display: 'none',
       },
@@ -44,7 +48,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
     capsule: {
       ...grid,
       position: 'relative',
-      marginBottom: theme.space.xxxl,
+      marginBottom: 0,
     },
     // Frosted-glass background as its own layer behind everything. The backdrop-filter
     // MUST live here and NOT on an ancestor of the lens/links: Safari and Firefox trap
