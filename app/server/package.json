@@ -27,7 +27,9 @@
     "mime-types": "^2.1.35",
     "multer": "^2.2.0",
     "nanoid": "^3.3.8",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "smartcrop": "^2.0.5",
+    "smartcrop-sharp": "^2.0.8"
   },
   "optionalDependencies": {
     "@img/sharp-linux-arm64": "^0.34.5",
