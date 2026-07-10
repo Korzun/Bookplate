@@ -147,6 +147,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         label="Name"
         placeholder="e.g. Kobo"
         autoComplete="off"
+        maxLength={NAME_MAX_LENGTH}
         validate={(newValue) => newValue.length <= NAME_MAX_LENGTH}
         onKeyDown={handleKeyDown}
       />

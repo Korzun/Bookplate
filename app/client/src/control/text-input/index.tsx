@@ -17,6 +17,7 @@ export type TextInputProps = {
   autoComplete?: React.HTMLInputAutoCompleteAttribute | undefined;
   label?: string;
   layout?: 'horizontal' | 'vertical' | 'inline';
+  maxLength?: number;
   name: string;
   onChange?: (newValue: string | undefined) => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -33,6 +34,7 @@ export const TextInput = ({
   action,
   label,
   layout = 'horizontal',
+  maxLength,
   name,
   onChange = () => {},
   onKeyDown,
@@ -73,6 +75,14 @@ export const TextInput = ({
     setInternalValue(value);
   }
 
+  const currentLength = (internalValue ?? '').length;
+  const remaining = maxLength !== undefined ? maxLength - currentLength : undefined;
+  // Show the counter only as the field approaches its limit. Scale the threshold
+  // to the field size (10% of the max, minimum 10 chars) so a short field like a
+  // name doesn't show it constantly the way a large description field would.
+  const showCounter =
+    remaining !== undefined && remaining <= Math.max(Math.floor((maxLength ?? 0) * 0.1), 10);
+
   return (
     <div className={cx(style.root, style[layout])}>
       {label && <label className={cx(style.label, { [style.danger]: !isValid })}>{label}</label>}
@@ -84,6 +94,7 @@ export const TextInput = ({
             [style.danger]: !isValid,
             [style.isAction]: action !== undefined,
           })}
+          maxLength={maxLength}
           name={name}
           onChange={handleValueChange}
           onKeyDown={onKeyDown}
@@ -97,6 +108,16 @@ export const TextInput = ({
               <action.icon height={20} width={20} strokeWidth={2} />
             </Button>
           </div>
+        )}
+        {showCounter && (
+          <span
+            className={cx(
+              style.counter,
+              remaining !== undefined && remaining <= 0 && style.counterDanger
+            )}
+          >
+            {currentLength}/{maxLength}
+          </span>
         )}
       </div>
     </div>

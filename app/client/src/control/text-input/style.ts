@@ -58,6 +58,18 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     right: theme.space.md,
     zIndex: theme.zIndex.base,
   },
+  counter: {
+    flexShrink: 0,
+    fontSize: theme.fontSize.xxs,
+    color: theme.color.text.faint,
+    padding: `0 ${theme.space.sm}`,
+    lineHeight: theme.lineHeight.tight,
+    userSelect: 'none',
+    zIndex: theme.zIndex.base,
+  },
+  counterDanger: {
+    color: theme.color.danger.default,
+  },
   danger: {},
   horizontal: {},
   vertical: {},
