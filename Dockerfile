@@ -68,6 +68,12 @@ COPY app/server/package.json ./app/server/
 COPY app/client/package.json ./app/client/
 
 COPY --from=prod-deps /bookplate/node_modules ./node_modules
+# Some workspace deps don't hoist to the root node_modules and live under the
+# workspace instead — e.g. smartcrop-sharp, which an `overrides` entry (relaxing
+# its stale sharp peer) pins into app/server/node_modules. The server resolves
+# these at runtime from app/server/dist, so the workspace node_modules must be
+# copied too; without it the server crashes at startup with MODULE_NOT_FOUND.
+COPY --from=prod-deps /bookplate/app/server/node_modules ./app/server/node_modules
 
 COPY --from=builder /bookplate/app/server/dist ./app/server/dist
 COPY --from=builder /bookplate/app/server/prisma ./app/server/prisma
