@@ -1,10 +1,9 @@
-import { unzipSync, zipSync, strToU8, Zippable } from 'fflate';
+import { unzipSync, strToU8 } from 'fflate';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MIMETYPE_PATH = 'mimetype';
-const EPUB_MIMETYPE = 'application/epub+zip';
+import { packEpub } from './epub-zip';
 
 export interface EpubChanges {
   title?: string;
@@ -214,14 +213,5 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
   const newOpfXml = '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(opf) as string);
   files[opfRelPath] = strToU8(newOpfXml);
 
-  // The OCF spec requires the `mimetype` entry to be first and stored
-  // (uncompressed); epubcheck rejects violations with PKG-005/PKG-006. Emit it
-  // first with compression disabled, then the remaining entries in place.
-  const mimetype = files[MIMETYPE_PATH] ?? strToU8(EPUB_MIMETYPE);
-  const out: Zippable = { [MIMETYPE_PATH]: [mimetype, { level: 0 }] };
-  for (const [name, data] of Object.entries(files)) {
-    if (name === MIMETYPE_PATH) continue;
-    out[name] = data;
-  }
-  return Buffer.from(zipSync(out));
+  return packEpub(files);
 }

@@ -2,6 +2,7 @@ import AdmZip from 'adm-zip';
 import { XMLParser } from 'fast-xml-parser';
 import { simplifyContent } from './simplify';
 import { transformCover, CoverTransform } from './cover-transform';
+import { packEpub } from './epub-zip';
 
 export interface EditionBuildOptions {
   simplify: boolean;
@@ -88,5 +89,13 @@ export async function buildEdition(sourcePath: string, opts: EditionBuildOptions
     }
   }
 
-  return zip.toBuffer();
+  // Repackage via packEpub rather than adm-zip's toBuffer: the latter reorders
+  // entries (dropping `mimetype` from first position) and deflates it, which
+  // fails epubcheck (PKG-006) and makes edition-store discard the edition.
+  const files: Record<string, Uint8Array> = {};
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    files[entry.entryName] = entry.getData();
+  }
+  return packEpub(files);
 }
