@@ -6,7 +6,7 @@ export type Device = {
   slug: string;
   coverWidth: number | null;
   coverHeight: number | null;
-  coverFit: 'contain' | 'cover' | 'fill';
+  coverFit: 'contain' | 'cover' | 'fill' | 'smart';
   bwCover: boolean;
   simplify: boolean;
 };
@@ -15,7 +15,7 @@ export type DeviceInput = {
   name: string;
   coverWidth: number | null;
   coverHeight: number | null;
-  coverFit: 'contain' | 'cover' | 'fill';
+  coverFit: 'contain' | 'cover' | 'fill' | 'smart';
   bwCover: boolean;
   simplify: boolean;
 };
