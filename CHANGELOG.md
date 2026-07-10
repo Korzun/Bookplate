@@ -1,3 +1,13 @@
+## 0.4.0
+
+- feat(opds): per-device OPDS catalogs for single-link clients
+- feat(text-area): increase textarea font size to 1rem
+- feat(mobile): back button + actions menu on book/series pages
+- fix(library): clear stale target when selected user is gone
+- fix(validation-detail-modal): scroll long error lists
+- feat(select): close dropdown on second click of the select box
+- Device Smart cover fit + edition packaging fix
+
 ## 0.3.0
 
 - Lighten light-mode page background to #F6F6F9
