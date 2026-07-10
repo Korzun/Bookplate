@@ -32,7 +32,7 @@ function renderForm() {
 describe('DeviceForm', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('caps the committed name at 10 characters', async () => {
+  it('caps the committed name at 50 characters', async () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
@@ -40,15 +40,15 @@ describe('DeviceForm', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { nameInput } = renderForm();
-    // 12 characters: typing is blocked past the 10-char limit, so the committed
-    // name used for submission stays at the last valid 10-char prefix.
-    await user.type(nameInput, 'Kindle Oasis');
+    // 51 characters: typing is blocked past the 50-char limit, so the committed
+    // name used for submission stays at the last valid 50-char prefix.
+    await user.type(nameInput, 'a'.repeat(51));
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const body = JSON.parse(options.body) as { name: string };
-    expect(body.name).toBe('Kindle Oas');
+    expect(body.name).toBe('a'.repeat(50));
   });
 
   it('submits the parsed DeviceInput, with empty cover dimensions sent as null', async () => {
