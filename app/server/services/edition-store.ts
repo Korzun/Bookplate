@@ -159,6 +159,10 @@ export class EditionStore {
     await this.prisma.deviceEdition.deleteMany({ where: { userId, originalBookId } });
   }
 
+  async countForBook(userId: string, originalBookId: string): Promise<number> {
+    return this.prisma.deviceEdition.count({ where: { userId, originalBookId } });
+  }
+
   async purgeForUser(userId: string): Promise<void> {
     const rows = await this.prisma.deviceEdition.findMany({ where: { userId } });
     for (const r of rows) {

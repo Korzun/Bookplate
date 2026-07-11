@@ -103,6 +103,7 @@ export interface ScanImporter {
  */
 export interface EditionPurger {
   purgeForBook(userId: string, originalBookId: string): Promise<void>;
+  countForBook(userId: string, originalBookId: string): Promise<number>;
 }
 
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };

@@ -529,6 +529,7 @@ describe('deleteBook', () => {
       purgeForBook: async (u: string, b: string) => {
         purged.push([u, b]);
       },
+      countForBook: async () => 0,
     };
     const bs = new BookStore(booksRoot, prisma, purger);
     await bs.addBook(OWNER, 'del3', stage('del3'), FAKE_META);
@@ -1184,6 +1185,7 @@ describe('reimportBook', () => {
       purgeForBook: async (u: string, b: string) => {
         purged.push([u, b]);
       },
+      countForBook: async () => 0,
     };
     const bs = new BookStore(booksRoot, prisma, purger);
 
@@ -1204,6 +1206,7 @@ describe('reimportBook', () => {
   it('still resolves successfully when edition purge throws', async () => {
     const purger = {
       purgeForBook: jest.fn().mockRejectedValue(new Error('purge boom')),
+      countForBook: jest.fn().mockResolvedValue(0),
     };
     const bs = new BookStore(booksRoot, prisma, purger);
 

@@ -201,3 +201,20 @@ it('purgeForUser removes rows and files across devices, leaving other users inta
     true
   );
 });
+
+it("countForBook counts a book's editions for the user, ignoring other users/books", async () => {
+  const deps: EditionDeps = {
+    buildEdition: async () => Buffer.from('E'),
+    assertValidEpub: async () => report(),
+    partialMD5: () => 'h',
+  };
+  const s = store(deps);
+  const device2: Device = { ...device, id: 'devP', slug: 'phone', name: 'Phone' };
+  const otherOwner: Owner = { userId: 'u2', username: 'bob' };
+  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  await s.getOrCreateEdition(owner, book, device2, ValidationThreshold.ERROR);
+  await s.getOrCreateEdition(otherOwner, book, device, ValidationThreshold.ERROR);
+
+  expect(await s.countForBook(owner.userId, book.id)).toBe(2);
+  expect(await s.countForBook(owner.userId, 'nonexistent')).toBe(0);
+});
