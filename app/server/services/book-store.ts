@@ -388,7 +388,12 @@ export class BookStore {
       where: { userId_id: { userId: owner.userId, id } },
       select: BOOK_SELECT,
     });
-    return row ? this.prismaBookToBook(owner, row) : null;
+    if (!row) return null;
+    const book = this.prismaBookToBook(owner, row);
+    if (this.editionStore) {
+      book.deviceEditionCount = await this.editionStore.countForBook(owner.userId, id);
+    }
+    return book;
   }
 
   /**

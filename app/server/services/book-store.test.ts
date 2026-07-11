@@ -16,6 +16,7 @@ import {
 import { partialMD5 } from './epub-parser';
 import { EpubMeta, Owner, PageCursor } from '../types';
 import { runMigrations } from '../db/migrate';
+import { EditionStore } from './edition-store';
 
 jest.mock('../logger');
 
@@ -497,6 +498,34 @@ describe('getBookById', () => {
 
   it('returns null for unknown id', async () => {
     expect(await bookStore.getBookById(OWNER, 'unknown')).toBeNull();
+  });
+});
+
+describe('getBookById deviceEditionCount', () => {
+  it('includes the edition count when an edition store is present', async () => {
+    const editionStore = new EditionStore(path.join(booksRoot, 'editions'), prisma);
+    const bs = new BookStore(booksRoot, prisma, editionStore);
+    await bs.addBook(OWNER, 'cnt1', stage('cnt1'), FAKE_META);
+    await prisma.device.create({
+      data: { id: 'dvc', name: 'K', slug: 'k', coverFit: 'contain' },
+    });
+    await prisma.deviceEdition.create({
+      data: {
+        userId: OWNER.userId,
+        originalBookId: 'cnt1',
+        deviceId: 'dvc',
+        editionId: 'e1',
+        settingsHash: 'h',
+      },
+    });
+    const book = await bs.getBookById(OWNER, 'cnt1');
+    expect(book?.deviceEditionCount).toBe(1);
+  });
+
+  it('omits the count when no edition store is present', async () => {
+    await bookStore.addBook(OWNER, 'cnt2', stage('cnt2'), FAKE_META);
+    const book = await bookStore.getBookById(OWNER, 'cnt2');
+    expect(book?.deviceEditionCount).toBeUndefined();
   });
 });
 

@@ -22,6 +22,8 @@ export type Book = {
   chapterSpineMap?: number[];
   chapterNames?: string[];
   pageCount: number;
+  /** Cached device editions across all devices; present on the single-book detail fetch. */
+  deviceEditionCount?: number;
 };
 
 export type Identifier = { scheme: string; value: string };
