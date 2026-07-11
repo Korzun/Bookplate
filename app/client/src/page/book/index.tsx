@@ -13,6 +13,7 @@ import {
 import {
   BackButton,
   Button,
+  ClearEditionsButton,
   ConfirmModal,
   DeleteBookButton,
   PageActionsMenu,
@@ -20,13 +21,14 @@ import {
   SetProgressModal,
   type PageActionItem,
 } from '~/control';
-import { AlertOctagonIcon } from '~/icon';
+import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
-import { useBook, useDeleteBook, useRegenChapters } from '~/provider/book';
+import { useBook, useClearBookEditions, useDeleteBook, useRegenChapters } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 import { useMyProgress } from '~/provider/progress';
+import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { formatSize, hashString } from '~/utils';
 
@@ -47,12 +49,25 @@ export const BookPage = () => {
   const [regenChapters, regenLoading] = useRegenChapters();
   const [deleteBook, deleting] = useDeleteBook();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [clearBookEditions, clearingEditions] = useClearBookEditions();
+  const [clearEditionsModalOpen, setClearEditionsModalOpen] = useState(false);
+  const showToast = useToast();
 
   const handleDeleteConfirm = useCallback(async () => {
     setDeleteModalOpen(false);
     await deleteBook(id!);
     navigate(path.home());
   }, [deleteBook, id, navigate]);
+
+  const handleClearEditionsConfirm = useCallback(async () => {
+    setClearEditionsModalOpen(false);
+    const cleared = await clearBookEditions(id!);
+    if (cleared === undefined) {
+      showToast('Failed to clear device editions', 'error');
+      return;
+    }
+    showToast(`Cleared ${cleared} device edition${cleared === 1 ? '' : 's'}`, 'success');
+  }, [clearBookEditions, id, showToast]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -151,6 +166,12 @@ export const BookPage = () => {
     disabled: regenLoading,
   });
   actionItems.push({ label: 'Edit metadata', onClick: handleEditMetadata });
+  const deviceEditionCount = book.deviceEditionCount ?? 0;
+  actionItems.push({
+    label: `Clear device editions (${deviceEditionCount})`,
+    onClick: () => setClearEditionsModalOpen(true),
+    disabled: deviceEditionCount === 0,
+  });
   actionItems.push({
     label: 'Delete book',
     onClick: () => setDeleteModalOpen(true),
@@ -234,6 +255,7 @@ export const BookPage = () => {
         <div className={styles.spacer} />
         <RegenChaptersButton bookId={book.id} />
         <Button onClick={handleEditMetadata}>Edit metadata</Button>
+        <ClearEditionsButton bookId={book.id} />
         <DeleteBookButton bookId={book.id} />
       </div>
       {progressModalOpen && (
@@ -259,6 +281,18 @@ export const BookPage = () => {
       >
         This action will delete {book.title} and its file from this library, along with any synced
         progress, and can not be undone.
+      </ConfirmModal>
+      <ConfirmModal
+        icon={DeviceIcon}
+        isOpen={clearEditionsModalOpen}
+        onCancel={() => setClearEditionsModalOpen(false)}
+        onConfirm={handleClearEditionsConfirm}
+        title="Clear device editions?"
+        confirmText="Clear editions"
+        loading={clearingEditions}
+      >
+        All cached device editions for this book will be removed. They&apos;ll be regenerated the
+        next time each device downloads it.
       </ConfirmModal>
     </Page>
   );
