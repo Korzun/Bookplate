@@ -29,6 +29,8 @@ export interface Book {
   chapterSpineMap: number[];
   chapterNames: string[];
   pageCount: number;
+  /** Cached device editions for this book across all devices. Present only on the single-book detail fetch. */
+  deviceEditionCount?: number;
 }
 
 export interface EpubMeta {
