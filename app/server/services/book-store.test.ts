@@ -567,6 +567,57 @@ describe('deleteBook', () => {
   });
 });
 
+describe('clearDeviceEditions', () => {
+  it('returns null for an unknown book and does not purge', async () => {
+    const purger = {
+      purgeForBook: jest.fn().mockResolvedValue(undefined),
+      countForBook: jest.fn().mockResolvedValue(0),
+    };
+    const bs = new BookStore(booksRoot, prisma, purger);
+    expect(await bs.clearDeviceEditions(OWNER, 'nope')).toBeNull();
+    expect(purger.purgeForBook).not.toHaveBeenCalled();
+  });
+
+  it('purges editions and returns the count for an existing book', async () => {
+    const purger = {
+      purgeForBook: jest.fn().mockResolvedValue(undefined),
+      countForBook: jest.fn().mockResolvedValue(3),
+    };
+    const bs = new BookStore(booksRoot, prisma, purger);
+    await bs.addBook(OWNER, 'clr1', stage('clr1'), FAKE_META);
+    const cleared = await bs.clearDeviceEditions(OWNER, 'clr1');
+    expect(cleared).toBe(3);
+    expect(purger.purgeForBook).toHaveBeenCalledWith(OWNER.userId, 'clr1');
+  });
+
+  it('removes edition rows and files via a real edition store', async () => {
+    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
+    const editionStore = new EditionStore(editionsRoot, prisma);
+    const bs = new BookStore(booksRoot, prisma, editionStore);
+    await bs.addBook(OWNER, 'clr2', stage('clr2'), FAKE_META);
+    await prisma.device.create({
+      data: { id: 'dv2', name: 'K', slug: 'k', coverFit: 'contain' },
+    });
+    await prisma.deviceEdition.create({
+      data: {
+        userId: OWNER.userId,
+        originalBookId: 'clr2',
+        deviceId: 'dv2',
+        editionId: 'e',
+        settingsHash: 'h',
+      },
+    });
+    const editionFile = path.join(editionsRoot, 'dv2', OWNER.userId, 'clr2.epub');
+    fs.mkdirSync(path.dirname(editionFile), { recursive: true });
+    fs.writeFileSync(editionFile, 'X');
+
+    const cleared = await bs.clearDeviceEditions(OWNER, 'clr2');
+    expect(cleared).toBe(1);
+    expect(await prisma.deviceEdition.count({ where: { originalBookId: 'clr2' } })).toBe(0);
+    expect(fs.existsSync(editionFile)).toBe(false);
+  });
+});
+
 describe('getCover', () => {
   it('returns cover data and mime', async () => {
     await bookStore.addBook(OWNER, 'cov1', stage('cov1'), FAKE_META);
