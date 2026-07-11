@@ -668,7 +668,7 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const book = await bookStore.getBookById(owner, req.params.id, { withEditionCount: true });
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
@@ -847,6 +847,7 @@ export function createUiRouter(
       if (!owner) return;
       const cleared = await bookStore.clearDeviceEditions(owner, req.params.id);
       if (cleared === null) {
+        log.warn(`Clear editions attempted for unknown book ID: ${req.params.id}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }

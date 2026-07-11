@@ -98,8 +98,9 @@ export interface ScanImporter {
 
 /**
  * Minimal structural interface for purging cached device editions when a book
- * is reimported or deleted. Kept separate from a concrete EditionStore class
- * to avoid a hard dependency from BookStore onto the edition-store module.
+ * is reimported or deleted, and for counting them (a non-destructive read used
+ * by the UI). Kept separate from a concrete EditionStore class to avoid a hard
+ * dependency from BookStore onto the edition-store module.
  */
 export interface EditionPurger {
   purgeForBook(userId: string, originalBookId: string): Promise<void>;
@@ -383,14 +384,18 @@ export class BookStore {
     return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
   }
 
-  async getBookById(owner: Owner, id: string): Promise<Book | null> {
+  async getBookById(
+    owner: Owner,
+    id: string,
+    opts?: { withEditionCount?: boolean }
+  ): Promise<Book | null> {
     const row = await this.prisma.book.findUnique({
       where: { userId_id: { userId: owner.userId, id } },
       select: BOOK_SELECT,
     });
     if (!row) return null;
     const book = this.prismaBookToBook(owner, row);
-    if (this.editionStore) {
+    if (opts?.withEditionCount && this.editionStore) {
       book.deviceEditionCount = await this.editionStore.countForBook(owner.userId, id);
     }
     return book;
@@ -677,7 +682,7 @@ export class BookStore {
    * a bad state; editions regenerate lazily on the next device download.
    */
   async clearDeviceEditions(owner: Owner, id: string): Promise<number | null> {
-    const book = await this.getBookById(owner, id);
+    const book = await this.getBookById(owner, id, { withEditionCount: true });
     if (!book) return null;
     const cleared = book.deviceEditionCount ?? 0;
     if (this.editionStore) {
