@@ -839,6 +839,22 @@ export function createUiRouter(
     })
   );
 
+  router.delete(
+    '/api/books/:id/editions',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const cleared = await bookStore.clearDeviceEditions(owner, req.params.id);
+      if (cleared === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      log.info(`Cleared ${cleared} device edition(s) for book "${req.params.id}"`);
+      res.json({ cleared });
+    })
+  );
+
   router.post(
     '/api/books/scan',
     requireAuth,

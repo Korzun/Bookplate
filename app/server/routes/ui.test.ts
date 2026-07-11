@@ -1196,6 +1196,35 @@ describe('DELETE /api/books/:id', () => {
   });
 });
 
+describe('DELETE /api/books/:id/editions', () => {
+  it('returns 200 with a cleared count for an existing book', async () => {
+    await bookStore.addBook(aliceOwner, 'ed1', stage('ed1'), FAKE_META);
+    const [book] = await bookStore.listBooks(aliceOwner);
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete(`/api/books/${book.id}/editions`)
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ cleared: 0 });
+  });
+
+  it('returns 404 for an unknown book id', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/books/deadbeefdeadbeef/editions')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+  });
+
+  it('requires ?user= for admin sessions', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .delete('/api/books/whatever/editions')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+});
+
 async function waitForScan(
   token: string,
   querySuffix?: string
