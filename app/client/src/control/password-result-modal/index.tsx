@@ -69,6 +69,7 @@ export function PasswordResultModal({
     const ok = await copyToClipboard(password);
     if (!ok) return;
     setCopied(true);
+    setCountdown(0); // completing the copy satisfies the countdown gate
     setTimeout(() => setCopied(false), 2000);
   }, [password]);
 

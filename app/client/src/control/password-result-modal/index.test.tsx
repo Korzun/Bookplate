@@ -34,6 +34,26 @@ describe('PasswordResultModal', () => {
     expect(screen.getByRole('button', { name: 'Copied!', hidden: true })).toBeInTheDocument();
   });
 
+  it('completes the countdown immediately after a successful copy', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    renderWithProviders(
+      <PasswordResultModal isOpen username="alice" password="k4tWc9pLxQ2mAbCd" />
+    );
+
+    // Before copying, the countdown gates the Done button.
+    expect(screen.getByRole('button', { name: 'Done (5)', hidden: true })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Copy', hidden: true }));
+
+    // Copying satisfies the countdown gate without waiting the full 5s, enabling Done.
+    const done = screen.getByRole('button', { name: 'Done', hidden: true });
+    expect(done).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('calls onDone when the Done button is clicked', async () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
