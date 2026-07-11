@@ -62,13 +62,15 @@ export const Button = ({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === 'Enter' || event.key === ' ') {
+      if (!disabled && !loading && (event.key === 'Enter' || event.key === ' ')) {
         event.stopPropagation();
         onClick();
       }
     },
-    [onClick]
+    [loading, disabled, onClick]
   );
+
+  const nonInteractive = disabled || loading;
 
   const loadingIcon = loading ? <SpinnerIcon className={styles.spinner} /> : null;
   const prefixIcon = !loading && Prefix ? <Prefix className={styles.buttonIcon} /> : null;
@@ -77,7 +79,8 @@ export const Button = ({
   return (
     <div
       role="button"
-      tabIndex={tabIndex}
+      aria-disabled={nonInteractive || undefined}
+      tabIndex={nonInteractive ? -1 : tabIndex}
       className={className}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
