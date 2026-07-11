@@ -4,6 +4,7 @@ export {
   useBookList,
   useBookListFilter,
   useBookListItems,
+  useClearBookEditions,
   useDeleteBook,
   useFetchBook,
   useFetchBookList,
