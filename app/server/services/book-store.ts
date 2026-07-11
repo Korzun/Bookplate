@@ -670,6 +670,22 @@ export class BookStore {
     return book;
   }
 
+  /**
+   * Deletes all cached device editions (DB rows + on-disk files) for a book
+   * across every device. Returns the number cleared, or null when the book
+   * does not exist. A rare recovery action for when a book's editions get into
+   * a bad state; editions regenerate lazily on the next device download.
+   */
+  async clearDeviceEditions(owner: Owner, id: string): Promise<number | null> {
+    const book = await this.getBookById(owner, id);
+    if (!book) return null;
+    const cleared = book.deviceEditionCount ?? 0;
+    if (this.editionStore) {
+      await this.editionStore.purgeForBook(owner.userId, id);
+    }
+    return cleared;
+  }
+
   async reimportBook(
     owner: Owner,
     id: string,
