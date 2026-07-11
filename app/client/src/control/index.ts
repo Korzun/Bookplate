@@ -1,5 +1,6 @@
 export { BackButton } from './back-button';
 export { Button } from './button';
+export { ClearEditionsButton } from './clear-editions-button';
 export { ConfirmModal } from './confirm-modal';
 export { DeleteBookButton } from './delete-book-button';
 export { FieldList } from './field-list';
