@@ -13,13 +13,18 @@ export function BackButton({ to }: BackButtonProps) {
   const styles = useStyle();
   const navigate = useNavigate();
 
-  const handleClick = useCallback(() => navigate(to), [navigate, to]);
+  // This is a forward push (a new history entry), not a real POP, so tell the scroll
+  // manager to restore the destination's remembered position instead of jumping to top.
+  const handleClick = useCallback(
+    () => navigate(to, { state: { restoreScroll: true } }),
+    [navigate, to]
+  );
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        navigate(to);
+        navigate(to, { state: { restoreScroll: true } });
       }
     },
     [navigate, to]

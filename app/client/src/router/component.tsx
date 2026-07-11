@@ -17,11 +17,13 @@ import { NavLayout } from './nav-layout';
 import * as path from './path-internal';
 import * as pathKey from './path-key-internal';
 import { ProtectedRoute } from './protected-route';
+import { ScrollRestoration } from './scroll-restoration';
 import { UnprotectedRoute } from './unprotected-route';
 
 export const AppRouter = () => {
   return (
     <BrowserRouter>
+      <ScrollRestoration />
       <Routes>
         <Route element={<UnprotectedRoute />}>
           <Route path={path.login()} element={<LoginPage />} />
