@@ -518,7 +518,7 @@ describe('getBookById deviceEditionCount', () => {
         settingsHash: 'h',
       },
     });
-    const book = await bs.getBookById(OWNER, 'cnt1');
+    const book = await bs.getBookById(OWNER, 'cnt1', { withEditionCount: true });
     expect(book?.deviceEditionCount).toBe(1);
   });
 
