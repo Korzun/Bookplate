@@ -1,16 +1,13 @@
-import cx from 'classnames';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { MoreIcon } from '~/icon';
 
+import { ActionMenuList, type PageActionItem } from '../action-menu-list';
+import { useDismiss } from '../action-menu-list/use-dismiss';
+
 import { useStyle } from './style';
 
-export interface PageActionItem {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}
+export type { PageActionItem };
 
 interface PageActionsMenuProps {
   items: PageActionItem[];
@@ -20,33 +17,10 @@ export function PageActionsMenu({ items }: PageActionsMenuProps) {
   const styles = useStyle();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, containerRef);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handlePointerDown = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  const handleItemClick = useCallback((item: PageActionItem) => {
-    if (item.disabled) {
-      return;
-    }
+  const handleSelect = useCallback((item: PageActionItem) => {
     setOpen(false);
     item.onClick();
   }, []);
@@ -64,19 +38,8 @@ export function PageActionsMenu({ items }: PageActionsMenuProps) {
         <MoreIcon width={20} height={20} aria-hidden="true" />
       </button>
       {open && (
-        <div className={styles.popover} role="menu">
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              className={cx(styles.item, { [styles.itemDanger]: item.danger })}
-              disabled={item.disabled}
-              onClick={() => handleItemClick(item)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className={styles.popoverAnchor}>
+          <ActionMenuList items={items} surface="glass" onSelect={handleSelect} />
         </div>
       )}
     </div>

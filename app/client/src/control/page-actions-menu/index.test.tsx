@@ -75,4 +75,12 @@ describe('PageActionsMenu', () => {
     await user.click(screen.getByRole('button', { name: 'outside' }));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
+
+  it('renders a separator before danger items', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PageActionsMenu items={makeItems()} />);
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    // makeItems() = 1 regular + 1 danger → 2 menuitems + 1 separator
+    expect(screen.getByRole('menu').children).toHaveLength(3);
+  });
 });
