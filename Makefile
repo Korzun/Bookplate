@@ -30,7 +30,7 @@ clean:
 	docker rmi $(IMAGE) 2>/dev/null || true
 
 dev-clean:
-	docker compose down --rmi all 2>/dev/null || true
+	docker compose down --rmi all -v 2>/dev/null || true
 
 # Dev: live-reload via docker compose (backend on :3000, frontend on :5173)
 dev:
