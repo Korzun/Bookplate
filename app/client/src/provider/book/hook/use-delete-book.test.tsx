@@ -4,7 +4,7 @@ import { useCallback, useContext, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
-import type { Book, BookList } from '../type';
+import type { Book, BookList, DisplayUnit } from '../type';
 
 import { useDeleteBook } from './use-delete-book';
 
@@ -29,13 +29,22 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function makeWrapper(initialBooks: Book[] = [], clearCompleteBookIds = vi.fn()) {
+function makeWrapper(
+  initialBooks: Book[] = [],
+  clearCompleteBookIds = vi.fn(),
+  initialItems: DisplayUnit[] = []
+) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
       Object.fromEntries(initialBooks.map((b) => [b.id, b]))
     );
     const setBookList = useCallback(
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
+      []
+    );
+    const [bookListItems, setBookListItemsRaw] = useState<DisplayUnit[]>(initialItems);
+    const setBookListItems = useCallback(
+      (updater: (prev: DisplayUnit[]) => DisplayUnit[]) => setBookListItemsRaw(updater),
       []
     );
     return (
@@ -56,9 +65,9 @@ function makeWrapper(initialBooks: Book[] = [], clearCompleteBookIds = vi.fn()) 
           setErrorForBook: () => {},
           setBookComplete: () => {},
           clearCompleteBookIds,
-          bookListItems: [],
+          bookListItems,
           nextCursor: null,
-          setBookListItems: () => {},
+          setBookListItems,
           setNextCursor: () => {},
           bookListFilter: {},
           setBookListFilter: () => {},
@@ -188,5 +197,37 @@ describe('useDeleteBook', () => {
     await act(() => result.current[0]('2'));
 
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the deleted book from bookListItems on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+    const items: DisplayUnit[] = [
+      { type: 'standalone', bookId: '1' },
+      { type: 'standalone', bookId: '2' },
+    ];
+    const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper([makeBook({ id: '1' }), makeBook({ id: '2' })], vi.fn(), items),
+    });
+    await act(() => result.current.hook[0]('1'));
+    expect(result.current.ctx.bookListItems).toEqual([{ type: 'standalone', bookId: '2' }]);
+  });
+
+  it('restores the item in bookListItems at its original position on rollback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 500 }));
+    const items: DisplayUnit[] = [
+      { type: 'standalone', bookId: '1' },
+      { type: 'standalone', bookId: '2' },
+      { type: 'standalone', bookId: '3' },
+    ];
+    const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper(
+        [makeBook({ id: '1' }), makeBook({ id: '2' }), makeBook({ id: '3' })],
+        vi.fn(),
+        items
+      ),
+    });
+    await act(() => result.current.hook[0]('2'));
+    expect(result.current.ctx.bookListItems).toEqual(items);
+    expect(result.current.hook[2]).toBe(true);
   });
 });
