@@ -51,4 +51,27 @@ describe('PageActionsBar', () => {
     renderWithProviders(<PageActionsBar items={items} />);
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PageActionsBar items={makeItems()} />);
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('closes on an outside click', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <div>
+        <PageActionsBar items={makeItems()} />
+        <button type="button">outside</button>
+      </div>
+    );
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'outside' }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });

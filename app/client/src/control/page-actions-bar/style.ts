@@ -23,6 +23,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: '0.5em',
     color: theme.color.text.primary,
+    ...theme.recipe.focusRing,
     backgroundColor: theme.color.bg.input,
     borderColor: theme.color.border.default,
     borderStyle: 'solid',
@@ -35,9 +36,22 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     cursor: 'pointer',
     appearance: 'none',
     '-webkit-appearance': 'none',
+    transitionProperty: 'color, background-color',
+    transitionDuration: '0.1s',
+    transitionTimingFunction: 'ease-in',
+    '&:hover, &:focus, &:active': { transitionDuration: '0s' },
     '&:hover': {
       borderColor: theme.color.brand.hover,
       color: theme.color.brand.hover,
+    },
+    '&:focus': {
+      borderColor: '#FFF',
+      outlineColor: theme.color.brand.outline,
+      boxShadow: `0px 2px 0px transparent`,
+    },
+    '&:active': {
+      borderColor: theme.color.brand.active,
+      color: theme.color.brand.active,
     },
   },
   popoverAnchor: {
