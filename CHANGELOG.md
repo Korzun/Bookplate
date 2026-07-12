@@ -1,3 +1,14 @@
+## 0.5.0
+
+- fix(scroll): reset scroll on navigate and restore it on back
+- feat(button): expose disabled/loading state to assistive tech
+- feat(password-modal): let a copy satisfy the countdown gate
+- feat(editions): add Clear device editions button to the book page
+- fix: remove deleted book from library list to stop stray "Error loading book" row
+- Redesign book page actions: tiered bar + shared overflow menu
+- fix(docker): stop host node_modules from shadowing container deps
+- feat(upload): match library admin user-select behavior
+
 ## 0.4.0
 
 - feat(opds): per-device OPDS catalogs for single-link clients
