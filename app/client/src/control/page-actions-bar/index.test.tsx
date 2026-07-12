@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '~/test-utils';
 
-import { PageActionsBar } from './index';
 import { type PageActionItem } from '../action-menu-list';
+
+import { PageActionsBar } from './index';
 
 function makeItems(): PageActionItem[] {
   return [
@@ -19,7 +20,9 @@ function makeItems(): PageActionItem[] {
 describe('PageActionsBar', () => {
   it('shows primary actions inline, leading before trailing before More', () => {
     renderWithProviders(<PageActionsBar items={makeItems()} />);
-    const names = screen.getAllByRole('button').map((n) => n.getAttribute('aria-label') ?? n.textContent);
+    const names = screen
+      .getAllByRole('button')
+      .map((n) => n.getAttribute('aria-label') ?? n.textContent);
     expect(names).toEqual(['Set progress', 'Edit metadata', 'More actions']);
   });
 

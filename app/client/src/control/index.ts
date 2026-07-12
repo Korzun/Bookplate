@@ -1,8 +1,6 @@
 export { BackButton } from './back-button';
 export { Button } from './button';
-export { ClearEditionsButton } from './clear-editions-button';
 export { ConfirmModal } from './confirm-modal';
-export { DeleteBookButton } from './delete-book-button';
 export { FieldList } from './field-list';
 export { LinkProgressModal } from './link-progress-modal';
 export { NumberInput } from './number-input';
@@ -10,7 +8,6 @@ export { PageActionsBar } from './page-actions-bar';
 export { PageActionsMenu } from './page-actions-menu';
 export { PasswordResultModal } from './password-result-modal';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
-export { RegenChaptersButton } from './regen-chapters-button';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
 export { Select } from './select';
