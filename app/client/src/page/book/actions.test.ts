@@ -75,7 +75,10 @@ describe('buildBookActions', () => {
 
   it('wires each handler to the matching action', () => {
     const h = handlers();
-    const actions = buildBookActions({ chapterCount: 5, deviceEditionCount: 2, regenLoading: false }, h);
+    const actions = buildBookActions(
+      { chapterCount: 5, deviceEditionCount: 2, regenLoading: false },
+      h
+    );
     actions.find((a) => a.label === 'Set progress')?.onClick();
     actions.find((a) => a.label === 'Delete book')?.onClick();
     expect(h.onSetProgress).toHaveBeenCalledTimes(1);
