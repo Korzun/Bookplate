@@ -40,7 +40,9 @@ export function ActionMenuList({ items, surface, onSelect }: ActionMenuListProps
   return (
     <div className={cx(styles.popover, styles[surface])} role="menu">
       {regular.map(renderItem)}
-      {danger.length > 0 && regular.length > 0 && <div className={styles.separator} />}
+      {danger.length > 0 && regular.length > 0 && (
+        <div className={styles.separator} role="separator" />
+      )}
       {danger.map(renderItem)}
     </div>
   );
