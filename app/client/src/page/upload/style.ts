@@ -29,4 +29,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.color.text.faint,
   },
+  link: {
+    color: theme.color.brand.default,
+    textDecoration: 'none',
+    '&:hover': { textDecoration: 'underline' },
+  },
 }));
