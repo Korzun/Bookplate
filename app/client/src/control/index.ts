@@ -6,6 +6,7 @@ export { DeleteBookButton } from './delete-book-button';
 export { FieldList } from './field-list';
 export { LinkProgressModal } from './link-progress-modal';
 export { NumberInput } from './number-input';
+export { PageActionsBar } from './page-actions-bar';
 export { PageActionsMenu } from './page-actions-menu';
 export { PasswordResultModal } from './password-result-modal';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
