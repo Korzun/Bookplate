@@ -12,12 +12,9 @@ import {
 } from '~/component';
 import {
   BackButton,
-  Button,
-  ClearEditionsButton,
   ConfirmModal,
-  DeleteBookButton,
+  PageActionsBar,
   PageActionsMenu,
-  RegenChaptersButton,
   SetProgressModal,
   type PageActionItem,
 } from '~/control';
@@ -32,6 +29,7 @@ import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { formatSize, hashString } from '~/utils';
 
+import { buildBookActions } from './actions';
 import { useStyle } from './style';
 
 export const BookPage = () => {
@@ -156,33 +154,27 @@ export const BookPage = () => {
     );
   }
 
-  const actionItems: PageActionItem[] = [];
-  if (book.chapterCount > 0) {
-    actionItems.push({ label: 'Set progress', onClick: () => setProgressModalOpen(true) });
-  }
-  actionItems.push({
-    label: 'Regen chapters',
-    onClick: () => void regenChapters(book.id),
-    disabled: regenLoading,
-  });
-  actionItems.push({ label: 'Edit metadata', onClick: handleEditMetadata });
   const deviceEditionCount = book.deviceEditionCount ?? 0;
-  actionItems.push({
-    label: `Clear device editions (${deviceEditionCount})`,
-    onClick: () => setClearEditionsModalOpen(true),
-    disabled: deviceEditionCount === 0,
-  });
-  actionItems.push({
-    label: 'Delete book',
-    onClick: () => setDeleteModalOpen(true),
-    danger: true,
-  });
+  const actions: PageActionItem[] = buildBookActions(
+    {
+      chapterCount: book.chapterCount,
+      deviceEditionCount,
+      regenLoading,
+    },
+    {
+      onSetProgress: () => setProgressModalOpen(true),
+      onEditMetadata: handleEditMetadata,
+      onRegenChapters: () => void regenChapters(book.id),
+      onClearEditions: () => setClearEditionsModalOpen(true),
+      onDeleteBook: () => setDeleteModalOpen(true),
+    }
+  );
 
   return (
     <Page>
       <div className={styles.topInset} aria-hidden="true" />
       <BackButton to={book.series.length > 0 ? path.series(book.series) : path.library()} />
-      <PageActionsMenu items={actionItems} />
+      <PageActionsMenu items={actions} />
       <Card>
         <div className={styles.cardContainer}>
           <div className={styles.detail}>
@@ -248,16 +240,7 @@ export const BookPage = () => {
         bookId={book.id}
         addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
       />
-      <div className={styles.buttonContainer}>
-        {book.chapterCount > 0 && (
-          <Button onClick={() => setProgressModalOpen(true)}>Set progress</Button>
-        )}
-        <div className={styles.spacer} />
-        <RegenChaptersButton bookId={book.id} />
-        <Button onClick={handleEditMetadata}>Edit metadata</Button>
-        <ClearEditionsButton bookId={book.id} />
-        <DeleteBookButton bookId={book.id} />
-      </div>
+      <PageActionsBar items={actions} />
       {progressModalOpen && (
         <SetProgressModal
           isOpen
@@ -279,8 +262,9 @@ export const BookPage = () => {
         confirmText="Delete"
         loading={deleting}
       >
-        This action will delete {book.title} and its file from this library, along with any synced
-        progress, and can not be undone.
+        This action will delete <span className={styles.deleteBook}>{book.title}</span> and its file
+        from this library, along with any synced progress, and{' '}
+        <span className={styles.deleteUndone}>can not be undone</span>.
       </ConfirmModal>
       <ConfirmModal
         icon={DeviceIcon}
