@@ -7,6 +7,10 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./app/server:/bookplate/app/server
+      # Keep the image's install for app/server; the bind mount above would
+      # otherwise shadow it with the host's node_modules, hiding any dependency
+      # that isn't hoisted to the root /bookplate/node_modules (e.g. smartcrop-sharp).
+      - /bookplate/app/server/node_modules
       - ${BOOKS:-./dev-books}:/media/books
       - ./dev-data:/data
     environment:
