@@ -32,13 +32,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       paddingTop: 0,
     },
   },
-  buttonContainer: {
-    display: 'flex',
-    gap: theme.space.md,
-    [theme.breakpoint.mobile]: {
-      display: 'none',
-    },
-  },
   // Mobile-only spacer so the fixed floating back/actions buttons (46px tall at
   // top: safe-area + space.lg) don't overlap the first card, with breathing room
   // below them. Height is tunable on-device during verification.
@@ -48,9 +41,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       display: 'block',
       height: theme.space.xxxxxl,
     },
-  },
-  spacer: {
-    flexGrow: 1,
   },
   coverPlaceholder: {
     width: 80,
@@ -120,5 +110,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.space.md,
+  },
+  deleteBook: {
+    color: theme.color.danger.default,
+    fontWeight: theme.fontWeight.extrabold,
+  },
+  deleteUndone: {
+    fontWeight: theme.fontWeight.extrabold,
   },
 }));
