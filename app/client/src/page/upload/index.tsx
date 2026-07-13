@@ -50,6 +50,10 @@ export const UploadPage = () => {
 
   return (
     <Page>
+      <div className={styles.scanRow}>
+        <div className={styles.spacer} />
+        <LibraryScan disabled={uploadsInProgress} />
+      </div>
       <UploadZone addFiles={addFiles} />
       {items.length > 0 && (
         <div className={styles.queue}>
@@ -58,10 +62,6 @@ export const UploadPage = () => {
           ))}
         </div>
       )}
-      <div className={styles.scanRow}>
-        <div className={styles.spacer} />
-        <LibraryScan disabled={uploadsInProgress} />
-      </div>
     </Page>
   );
 };
