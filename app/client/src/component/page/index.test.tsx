@@ -29,9 +29,7 @@ describe('Page', () => {
 
   it('renders header actions as a desktop bar and a mobile menu trigger', () => {
     renderWithProviders(
-      <Page headerActions={[{ label: 'Edit', onClick: vi.fn(), primary: true }]}>
-        content
-      </Page>
+      <Page headerActions={[{ label: 'Edit', onClick: vi.fn(), primary: true }]}>content</Page>
     );
     // Desktop bar shows the primary action inline.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
@@ -41,9 +39,7 @@ describe('Page', () => {
 
   it('renders footer actions', () => {
     renderWithProviders(
-      <Page footerActions={[{ label: 'Save', onClick: vi.fn(), emphasis: true }]}>
-        content
-      </Page>
+      <Page footerActions={[{ label: 'Save', onClick: vi.fn(), emphasis: true }]}>content</Page>
     );
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });

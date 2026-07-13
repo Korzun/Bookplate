@@ -31,9 +31,7 @@ describe('PageFooterActions', () => {
   it('does not fire onClick for a disabled item', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
-    renderWithProviders(
-      <PageFooterActions items={[{ label: 'Save', onClick, disabled: true }]} />
-    );
+    renderWithProviders(<PageFooterActions items={[{ label: 'Save', onClick, disabled: true }]} />);
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(onClick).not.toHaveBeenCalled();
   });
