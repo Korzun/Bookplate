@@ -6,12 +6,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  scanRow: {
-    display: 'flex',
-  },
-  spacer: {
-    flexGrow: 1,
-  },
   emptyState: {
     display: 'flex',
     flexDirection: 'column',
