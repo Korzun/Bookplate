@@ -10,7 +10,6 @@ import {
   Metadata,
   Tag,
 } from '~/component';
-import { BackButton } from '~/control';
 import { useIsAdmin } from '~/provider/auth';
 import { useSeries, useSeriesBookList } from '~/provider/book';
 import { useMySeriesProgress } from '~/provider/progress';
@@ -34,9 +33,7 @@ export const SeriesPage = () => {
 
   if (loading) {
     return (
-      <Page>
-        <div className={style.topInset} aria-hidden="true" />
-        <BackButton to={path.library()} />
+      <Page back={path.library()}>
         <Card>
           <p className={style.loading}>Loading…</p>
         </Card>
@@ -46,9 +43,7 @@ export const SeriesPage = () => {
 
   if (error || !seriesBookList || seriesBookList.length === 0 || !series) {
     return (
-      <Page>
-        <div className={style.topInset} aria-hidden="true" />
-        <BackButton to={path.library()} />
+      <Page back={path.library()}>
         <Card>
           <p className={style.notFound}>Series not found.</p>
         </Card>
@@ -76,9 +71,7 @@ export const SeriesPage = () => {
   }
 
   return (
-    <Page>
-      <div className={style.topInset} aria-hidden="true" />
-      <BackButton to={path.library()} />
+    <Page back={path.library()}>
       <Card>
         <div className={style.cardContainer}>
           <div className={style.hero}>
