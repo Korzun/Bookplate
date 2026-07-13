@@ -175,6 +175,7 @@ export const BookPage = () => {
       <div className={styles.topInset} aria-hidden="true" />
       <BackButton to={book.series.length > 0 ? path.series(book.series) : path.library()} />
       <PageActionsMenu items={actions} />
+      <PageActionsBar items={actions} />
       <Card>
         <div className={styles.cardContainer}>
           <div className={styles.detail}>
@@ -240,7 +241,6 @@ export const BookPage = () => {
         bookId={book.id}
         addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
       />
-      <PageActionsBar items={actions} />
       {progressModalOpen && (
         <SetProgressModal
           isOpen
