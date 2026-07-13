@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '~/component/card';
 import { CoverImagePicker } from '~/component/cover-image-picker';
 import {
-  Button,
   FieldList,
   NumberInput,
+  PageFooterActions,
   Select,
   SubjectChips,
   Switch,
@@ -259,20 +259,22 @@ export const BookEditForm = ({ original, id }: Props) => {
         />
       </Card>
 
-      <div className={styles.buttonContainer}>
-        <div className={styles.spacer} />
-        <Button disabled={saving} onClick={() => navigate(path.book(id))}>
-          Cancel
-        </Button>
-        <Button
-          type="primary"
-          disabled={Object.values(isEditValid).some((valid) => !valid)}
-          onClick={() => void handleSave()}
-          loading={saving}
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-      </div>
+      <PageFooterActions
+        items={[
+          {
+            label: 'Cancel',
+            onClick: () => navigate(path.book(id)),
+            disabled: saving,
+          },
+          {
+            label: saving ? 'Saving…' : 'Save',
+            onClick: () => void handleSave(),
+            disabled: Object.values(isEditValid).some((valid) => !valid),
+            loading: saving,
+            emphasis: true,
+          },
+        ]}
+      />
     </>
   );
 };

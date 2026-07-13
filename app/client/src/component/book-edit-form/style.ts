@@ -12,11 +12,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  buttonContainer: {
-    display: 'flex',
-    gap: theme.space.md,
-  },
-  spacer: {
-    flexGrow: 1,
-  },
 }));
