@@ -26,4 +26,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
   [PageType.minimal]: {},
+  // Mobile-only spacer so the fixed floating back/actions buttons don't overlap the
+  // first child, with breathing room below them. Height is tunable during verification.
+  topInset: {
+    display: 'none',
+    [theme.breakpoint.mobile]: {
+      display: 'block',
+      height: theme.space.xxxxxl,
+    },
+  },
 }));
