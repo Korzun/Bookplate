@@ -3,9 +3,6 @@ import { applyTransparency } from '~/utils';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
-    position: 'sticky',
-    top: '0px',
-    zIndex: theme.zIndex.sticky,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
