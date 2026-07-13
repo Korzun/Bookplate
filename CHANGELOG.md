@@ -1,3 +1,9 @@
+## 0.6.0
+
+- feat(nav-desktop): remove sticky positioning so nav scrolls with page
+- Consistent page actions: Page-owned back / header / footer chrome
+- fix(toast): dock mobile toasts below the nav so they clear top actions
+
 ## 0.5.0
 
 - fix(scroll): reset scroll on navigate and restore it on back
