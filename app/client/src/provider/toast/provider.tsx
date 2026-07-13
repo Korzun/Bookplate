@@ -18,7 +18,7 @@ export const ToastProvider = ({ children, maxToasts = 3 }: ToastProviderProps) =
   const nextId = useRef(0);
 
   const showToast = useCallback(
-    (message: string, type: 'success' | 'error') => {
+    (message: string, type: 'success' | 'error' | 'info') => {
       const id = nextId.current++;
       dispatch({ type: 'add', id, message, toastType: type, maxToasts });
     },

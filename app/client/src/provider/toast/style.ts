@@ -44,4 +44,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   iconSuccess: { display: 'flex', color: theme.color.success },
   iconError: { display: 'flex', color: theme.color.danger.default },
+  iconInfo: { display: 'flex', color: theme.color.brand.default },
 }));
