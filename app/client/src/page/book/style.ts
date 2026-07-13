@@ -32,16 +32,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       paddingTop: 0,
     },
   },
-  // Mobile-only spacer so the fixed floating back/actions buttons (46px tall at
-  // top: safe-area + space.lg) don't overlap the first card, with breathing room
-  // below them. Height is tunable on-device during verification.
-  topInset: {
-    display: 'none',
-    [theme.breakpoint.mobile]: {
-      display: 'block',
-      height: theme.space.xxxxxl,
-    },
-  },
   coverPlaceholder: {
     width: 80,
     height: 120,
