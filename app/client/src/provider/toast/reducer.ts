@@ -1,12 +1,18 @@
 export type ToastEntry = {
   id: number;
   message: string;
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
   isDismissing: boolean;
 };
 
 export type ToastAction =
-  | { type: 'add'; id: number; message: string; toastType: 'success' | 'error'; maxToasts: number }
+  | {
+      type: 'add';
+      id: number;
+      message: string;
+      toastType: 'success' | 'error' | 'info';
+      maxToasts: number;
+    }
   | { type: 'dismiss'; id: number }
   | { type: 'remove'; id: number };
 

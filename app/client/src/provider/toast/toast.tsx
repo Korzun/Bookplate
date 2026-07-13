@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 
-import { CheckIcon, XIcon } from '~/icon';
+import { CheckIcon, InfoCircleIcon, XIcon } from '~/icon';
 
 import { useStyle } from './style';
 
 interface Props {
   id: number;
   message: string;
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
   isDismissing: boolean;
   duration: number;
   onDismiss: (id: number) => void;
@@ -25,6 +25,10 @@ export const Toast = ({
 }: Props) => {
   const styles = useStyle();
 
+  const iconClass =
+    type === 'success' ? styles.iconSuccess : type === 'error' ? styles.iconError : styles.iconInfo;
+  const Icon = type === 'success' ? CheckIcon : type === 'error' ? XIcon : InfoCircleIcon;
+
   useEffect(() => {
     if (isDismissing) return;
     const timer = setTimeout(() => onDismiss(id), duration);
@@ -39,12 +43,8 @@ export const Toast = ({
       aria-live={type === 'error' ? 'assertive' : 'polite'}
       aria-atomic="true"
     >
-      <span className={type === 'success' ? styles.iconSuccess : styles.iconError}>
-        {type === 'success' ? (
-          <CheckIcon width={16} height={16} />
-        ) : (
-          <XIcon width={16} height={16} />
-        )}
+      <span className={iconClass}>
+        <Icon width={16} height={16} />
       </span>
       {message}
     </div>

@@ -27,6 +27,9 @@ export const UploadPage = () => {
   const showToast = useToast();
 
   const handleScan = useCallback(async () => {
+    // The header action has no inline spinner (and on mobile it lives in the "⋯"
+    // menu, which closes on tap), so announce the scan start explicitly.
+    showToast('Scanning library…', 'info');
     const result = await scanLibrary();
     if (result === null) {
       showToast('Scan failed', 'error');

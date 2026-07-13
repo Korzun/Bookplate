@@ -9,6 +9,7 @@ export { ChevronIcon } from './chevron';
 export { CircleXIcon } from './circle-x';
 export { ClockIcon } from './clock';
 export { DeviceIcon } from './device';
+export { InfoCircleIcon } from './info-circle';
 export { KeyIcon } from './key';
 export { ListCheckIcon } from './list-check';
 export { MoreIcon } from './more';
