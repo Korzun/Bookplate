@@ -6,6 +6,7 @@ export { LinkProgressModal } from './link-progress-modal';
 export { NumberInput } from './number-input';
 export { PageActionsBar } from './page-actions-bar';
 export { PageActionsMenu } from './page-actions-menu';
+export { PageFooterActions } from './page-footer-actions';
 export { PasswordResultModal } from './password-result-modal';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
 export { ResetPasswordButton } from './reset-password-button';
@@ -21,5 +22,6 @@ export { UnlinkBookLineageButton } from './unlink-book-lineage-button';
 export { ValidationDetailModal } from './validation-detail-modal';
 
 export type { ColumnDescriptor, FieldRow } from './field-list';
+export type { FooterAction } from './page-footer-actions';
 export type { PageActionItem } from './page-actions-menu';
 export type { SelectOption, SelectProps } from './select';
