@@ -21,9 +21,12 @@ export function PageFooterActions({ items }: PageFooterActionsProps) {
   const leading = items.filter((item) => item.align === 'leading');
   const trailing = items.filter((item) => item.align !== 'leading');
 
-  const renderButton = (item: FooterAction) => (
+  // Key by position within the row, not by label: a label can change across
+  // renders (e.g. Save → Saving…) or repeat, and keying on it would remount the
+  // button — dropping focus and its loading state.
+  const renderButton = (item: FooterAction, key: string) => (
     <Button
-      key={item.label}
+      key={key}
       onClick={item.onClick}
       disabled={item.disabled}
       loading={item.loading}
@@ -36,9 +39,9 @@ export function PageFooterActions({ items }: PageFooterActionsProps) {
 
   return (
     <div className={styles.root}>
-      {leading.map(renderButton)}
+      {leading.map((item, i) => renderButton(item, `leading-${i}`))}
       <div className={styles.spacer} />
-      {trailing.map(renderButton)}
+      {trailing.map((item, i) => renderButton(item, `trailing-${i}`))}
     </div>
   );
 }

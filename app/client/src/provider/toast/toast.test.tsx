@@ -27,9 +27,13 @@ describe('Toast', () => {
   });
 
   it('announces info and success politely, errors assertively', () => {
-    const { unmount } = renderToast('info');
+    const info = renderToast('info');
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
-    unmount();
+    info.unmount();
+
+    const success = renderToast('success');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+    success.unmount();
 
     renderToast('error');
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'assertive');

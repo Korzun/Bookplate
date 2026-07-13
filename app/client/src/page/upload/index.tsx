@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Page, UploadItem, UploadZone } from '~/component';
@@ -26,11 +26,23 @@ export const UploadPage = () => {
   const [scanLibrary, , scanning] = useScanLibrary();
   const showToast = useToast();
 
+  // scanLibrary resolves null for both a real failure and a cancellation, and it
+  // only cancels when this page unmounts. Skip the result toast if we've unmounted
+  // so navigating away mid-scan doesn't fire a false "Scan failed" on the next page.
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
+
   const handleScan = useCallback(async () => {
     // The header action has no inline spinner (and on mobile it lives in the "⋯"
     // menu, which closes on tap), so announce the scan start explicitly.
     showToast('Scanning library…', 'info');
     const result = await scanLibrary();
+    if (!mountedRef.current) return;
     if (result === null) {
       showToast('Scan failed', 'error');
     } else {
