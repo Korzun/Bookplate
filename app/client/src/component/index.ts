@@ -12,7 +12,6 @@ export { DeviceForm } from './device-form';
 export { DeviceList } from './device-list';
 export { SearchBar } from './search-bar';
 export { Nav } from './nav';
-export { LibraryScan } from './library-scan';
 export { LibrarySwitcher } from './library-switcher';
 export { MetadataList, type Metadata } from './metadata-list';
 export { MyProgress } from './my-progress';
