@@ -134,6 +134,10 @@ export interface Theme {
   };
   radius: { sm: string; md: string; lg: string; circle: string; pill: string };
   size: { metadataValue: string };
+  // Intrinsic sizes of chrome that other elements must lay out around. These are
+  // measured, not derived (the element's real height comes from its content), so
+  // they need on-device tuning — keep the single source of truth here.
+  layout: { navHeightMobile: string };
   fontSize: {
     xxs: string;
     xs: string;
@@ -373,6 +377,10 @@ function buildTheme(mode: ThemeMode): Theme {
     pill: '999px',
   };
   const size: Theme['size'] = { metadataValue: '15rem' };
+  // The floating mobile nav capsule is ~96px tall on-device (content + padding +
+  // the min bottom floor). Tune against the measured height during on-device
+  // verification; page padding and bottom-docked toasts both clear it via this token.
+  const layout: Theme['layout'] = { navHeightMobile: '96px' };
   const fontSize: Theme['fontSize'] = {
     xxs: '0.6rem',
     xs: '0.7rem',
@@ -584,6 +592,7 @@ function buildTheme(mode: ThemeMode): Theme {
     space,
     radius,
     size,
+    layout,
     fontSize,
     fontFamily,
     fontWeight,

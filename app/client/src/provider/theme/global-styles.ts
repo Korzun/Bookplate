@@ -47,13 +47,16 @@ const useGlobalStyles = createUseStyles((theme: Theme) => ({
       from: { opacity: 1, transform: 'translateY(0)' },
       to: { opacity: 0, transform: 'translateY(0.4rem)' },
     },
-    '@keyframes theme-slide-in-down': {
-      from: { opacity: 0, transform: 'translateY(-0.4rem)' },
+    // Mobile toasts rest just above the bottom nav and sit behind it (lower
+    // z-index), so a full-height rise makes them appear to slide out from
+    // underneath the nav and settle above it; exiting reverses back under it.
+    '@keyframes theme-slide-in-up': {
+      from: { opacity: 0, transform: 'translateY(100%)' },
       to: { opacity: 1, transform: 'translateY(0)' },
     },
-    '@keyframes theme-slide-out-up': {
+    '@keyframes theme-slide-out-down': {
       from: { opacity: 1, transform: 'translateY(0)' },
-      to: { opacity: 0, transform: 'translateY(-0.4rem)' },
+      to: { opacity: 0, transform: 'translateY(100%)' },
     },
   },
 }));
