@@ -11,10 +11,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.md,
     alignItems: 'flex-end',
     [theme.breakpoint.mobile]: {
-      bottom: 'auto',
+      top: 'auto',
       right: theme.space.xxl,
       left: theme.space.xxl,
-      top: `calc(${theme.space.xxxxl} + env(safe-area-inset-top))`,
+      // Rest just above the floating bottom nav (plus the home-indicator inset).
+      // Sit one layer below the nav so toasts slide up from behind it, not over it.
+      bottom: `calc(${theme.layout.navHeightMobile} + ${theme.space.md} + env(safe-area-inset-bottom))`,
+      zIndex: theme.zIndex.sticky - 1,
       alignItems: 'stretch',
     },
   },
@@ -31,14 +34,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     boxShadow: theme.shadow.hoverLift,
     animation: `theme-slide-in ${theme.transition.slide}`,
     [theme.breakpoint.mobile]: {
-      animation: `theme-slide-in-down ${theme.transition.slide}`,
+      animation: `theme-slide-in-up ${theme.transition.slide}`,
     },
   },
   toastExiting: {
     animation: `theme-slide-out ${theme.transition.slide}`,
     animationFillMode: 'forwards' as const,
     [theme.breakpoint.mobile]: {
-      animation: `theme-slide-out-up ${theme.transition.slide}`,
+      animation: `theme-slide-out-down ${theme.transition.slide}`,
       animationFillMode: 'forwards' as const,
     },
   },

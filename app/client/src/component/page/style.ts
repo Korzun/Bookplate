@@ -19,10 +19,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       // Top spacing the old static header used to provide (now that the desktop bar
       // is display:none on mobile); plus the notch inset, like the modal recipe.
       paddingTop: `calc(${theme.space.xxxxxl} + env(safe-area-inset-top))`,
-      // Clears the floating mobile nav (~96px) plus slack (~48px) so the last row can
-      // always be scrolled above both the nav and Safari's expanded URL bar. Tune the
-      // constant against the measured nav height during on-device verification.
-      paddingBottom: 'calc(144px + env(safe-area-inset-bottom))',
+      // Clears the floating mobile nav plus slack so the last row can always be
+      // scrolled above both the nav and Safari's expanded URL bar. Nav height is the
+      // shared theme.layout token (tune there); the extra space is this page's slack.
+      paddingBottom: `calc(${theme.layout.navHeightMobile} + ${theme.space.xxxxxl} + ${theme.space.xxl} + env(safe-area-inset-bottom))`,
     },
   },
   [PageType.minimal]: {},
