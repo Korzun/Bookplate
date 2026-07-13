@@ -10,14 +10,7 @@ import {
   BookLineageCard,
   type Metadata,
 } from '~/component';
-import {
-  BackButton,
-  ConfirmModal,
-  PageActionsBar,
-  PageActionsMenu,
-  SetProgressModal,
-  type PageActionItem,
-} from '~/control';
+import { ConfirmModal, SetProgressModal, type PageActionItem } from '~/control';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
@@ -171,11 +164,10 @@ export const BookPage = () => {
   );
 
   return (
-    <Page>
-      <div className={styles.topInset} aria-hidden="true" />
-      <BackButton to={book.series.length > 0 ? path.series(book.series) : path.library()} />
-      <PageActionsMenu items={actions} />
-      <PageActionsBar items={actions} />
+    <Page
+      back={book.series.length > 0 ? path.series(book.series) : path.library()}
+      headerActions={actions}
+    >
       <Card>
         <div className={styles.cardContainer}>
           <div className={styles.detail}>
