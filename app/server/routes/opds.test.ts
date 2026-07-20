@@ -14,7 +14,7 @@ import { createOpdsRouter } from './opds';
 import { EpubMeta, Owner } from '../types';
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 const FAKE_META: EpubMeta = {
   title: 'My Book',

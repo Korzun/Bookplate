@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { runMigrations } from './migrate';
 import { createPrismaClient } from './client';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 describe('data_v11_per_user_libraries', () => {
   let tmpDir: string;

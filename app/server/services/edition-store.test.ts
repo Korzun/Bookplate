@@ -9,7 +9,7 @@ import { EpubValidationError } from './epub-validator';
 import { ValidationThreshold, Report, Severity } from '@korzun/epubcheck-ts';
 import { Book, Device, Owner } from '../types';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient, dbPath: string, root: string;
 
@@ -152,7 +152,7 @@ it('short-circuits to the original for a no-transform device', async () => {
     bwCover: false,
     simplify: false,
   };
-  const buildEditionSpy = jest.fn(async () => Buffer.from('SHOULD-NOT-BUILD'));
+  const buildEditionSpy = vi.fn(async () => Buffer.from('SHOULD-NOT-BUILD'));
   const deps: EditionDeps = {
     buildEdition: buildEditionSpy,
     assertValidEpub: async () => report(),

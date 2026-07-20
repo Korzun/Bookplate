@@ -37,7 +37,7 @@ const FAKE_META: EpubMeta = {
   pageCount: 0,
 };
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient;
 let userStore: UserStore;

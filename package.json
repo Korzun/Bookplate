@@ -22,6 +22,11 @@
   "overrides": {
     "smartcrop-sharp": {
       "sharp": "^0.34.5"
-    }
+    },
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.5",
+    "vitest": "4.1.10"
+  },
+  "devDependencies": {
+    "vite-plus": "0.2.5"
   }
 }

@@ -8,7 +8,7 @@ import { BookStore } from './book-store';
 import { ThumbnailQueue } from './thumbnail-queue';
 import { EpubMeta, Owner } from '../types';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
@@ -38,7 +38,7 @@ function stage(id: string, content: string | Buffer = 'x'): string {
   return p;
 }
 
-const mockResize = jest.fn(async (_buf: Buffer, _width: number) => Buffer.from('resized'));
+const mockResize = vi.fn(async (_buf: Buffer, _width: number) => Buffer.from('resized'));
 
 let prisma: PrismaClient;
 let booksRoot: string;

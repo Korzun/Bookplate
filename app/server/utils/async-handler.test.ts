@@ -1,3 +1,5 @@
+import type { MockedFunction } from 'vite-plus/test';
+
 import { asyncHandler } from './async-handler';
 import { Request, Response, NextFunction } from 'express';
 
@@ -6,8 +8,8 @@ describe('asyncHandler', () => {
   const res = {} as Response;
 
   it('calls the wrapped fn and does NOT call next when it resolves', async () => {
-    const next = jest.fn() as jest.MockedFunction<NextFunction>;
-    const fn = jest.fn().mockResolvedValue(undefined);
+    const next = vi.fn() as MockedFunction<NextFunction>;
+    const fn = vi.fn().mockResolvedValue(undefined);
     const handler = asyncHandler(fn);
 
     handler(req, res, next);
@@ -19,9 +21,9 @@ describe('asyncHandler', () => {
   });
 
   it('calls next(err) when the wrapped fn rejects', async () => {
-    const next = jest.fn() as jest.MockedFunction<NextFunction>;
+    const next = vi.fn() as MockedFunction<NextFunction>;
     const boom = new Error('boom');
-    const fn = jest.fn().mockRejectedValue(boom);
+    const fn = vi.fn().mockRejectedValue(boom);
     const handler = asyncHandler(fn);
 
     handler(req, res, next);

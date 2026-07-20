@@ -14,7 +14,7 @@
       "Bash(npx tsc:*)",
       "Bash(npx vitest *)",
       "Bash(npx jest *)",
-      "Bash(npx eslint *)",
+      "Bash(npx oxlint *)",
       "Bash(actionlint:*)",
       "Bash(gh api:*)",
       "Bash(curl:*)",

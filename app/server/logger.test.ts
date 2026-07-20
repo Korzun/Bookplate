@@ -1,12 +1,14 @@
+import type { MockInstance } from 'vite-plus/test';
+
 import { logger } from './logger';
 
-let stdoutSpy: jest.SpyInstance;
-let stderrSpy: jest.SpyInstance;
+let stdoutSpy: MockInstance;
+let stderrSpy: MockInstance;
 const originalLogLevel = process.env.LOG_LEVEL;
 
 beforeEach(() => {
-  stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 });
 
 afterEach(() => {
@@ -83,7 +85,7 @@ describe('logger level filtering', () => {
     process.env.LOG_LEVEL = 'verbose';
     logger('NS').info('msg');
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     logger('NS').debug('msg');
     expect(stdoutSpy).not.toHaveBeenCalled();
   });

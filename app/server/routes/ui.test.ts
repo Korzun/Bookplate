@@ -1,3 +1,5 @@
+import type { Mock, MockedFunction } from 'vite-plus/test';
+
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -16,8 +18,8 @@ import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { createUiRouter } from './ui';
 import { AppConfig, EpubMeta, Owner } from '../types';
 
-jest.mock('../logger');
-jest.mock('../services/epub-validator', () => {
+vi.mock('../logger');
+vi.mock('../services/epub-validator', () => {
   class EpubValidationError extends Error {
     messages: { id: string; severity: string; message: string }[];
     counts: Record<string, number>;
@@ -36,14 +38,14 @@ jest.mock('../services/epub-validator', () => {
   }
   return {
     EpubValidationError,
-    assertValidEpub: jest.fn().mockResolvedValue({ valid: true }),
+    assertValidEpub: vi.fn().mockResolvedValue({ valid: true }),
   };
 });
-jest.setTimeout(30000);
+vi.setConfig({ testTimeout: 30000 });
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { ScanJobStore } from '../services/scan-job-store';
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
-const mockAssertValid = assertValidEpub as jest.MockedFunction<typeof assertValidEpub>;
+const mockAssertValid = assertValidEpub as MockedFunction<typeof assertValidEpub>;
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a
 // minimal placeholder before the suite runs so the file exists in CI.
@@ -88,8 +90,8 @@ const config: AppConfig = {
 };
 
 const mockThumbnailQueue = {
-  enqueue: jest.fn(),
-  reconcile: jest.fn(),
+  enqueue: vi.fn(),
+  reconcile: vi.fn(),
 } as unknown as ThumbnailQueue;
 
 const FAKE_META: EpubMeta = {
@@ -243,8 +245,8 @@ beforeEach(async () => {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
-  (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
-  (mockThumbnailQueue.reconcile as jest.Mock).mockClear();
+  (mockThumbnailQueue.enqueue as Mock).mockClear();
+  (mockThumbnailQueue.reconcile as Mock).mockClear();
 });
 
 afterEach(async () => {
@@ -1976,7 +1978,7 @@ describe('PATCH /api/books/:id/metadata', () => {
 
   it('does not enqueue thumbnails when no cover is uploaded', async () => {
     const token = await loginAlice();
-    (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
+    (mockThumbnailQueue.enqueue as Mock).mockClear();
     await request(app)
       .patch(`/api/books/${bookId}/metadata`)
       .field('title', 'Updated')
@@ -1986,7 +1988,7 @@ describe('PATCH /api/books/:id/metadata', () => {
 
   it('enqueues thumbnails when a new cover is uploaded', async () => {
     const token = await loginAlice();
-    (mockThumbnailQueue.enqueue as jest.Mock).mockClear();
+    (mockThumbnailQueue.enqueue as Mock).mockClear();
     const coverBytes = Buffer.from('fake-png-cover');
     await request(app)
       .patch(`/api/books/${bookId}/metadata`)
