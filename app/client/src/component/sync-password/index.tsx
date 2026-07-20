@@ -45,6 +45,7 @@ export const SyncPassword = () => {
 
   const regenerateElement = [
     <Button
+      key="regenerate"
       type="link"
       danger
       loading={regenerating}

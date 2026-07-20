@@ -7,10 +7,10 @@
     "build": "npm run prisma:generate && tsc",
     "start": "node dist/index.js",
     "dev": "nodemon --watch . --ext ts,json --exec tsx index.ts",
-    "test": "vp test run",
-    "test:watch": "vp test",
-    "lint": "vp lint && vp fmt --check -c ../../.oxfmtrc.json \"**/*.ts\" && tsc --noEmit",
-    "lint:fix": "vp lint --fix && vp fmt -c ../../.oxfmtrc.json \"**/*.ts\""
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxfmt --check \"**/*.ts\" && tsc --noEmit",
+    "lint:fix": "oxlint --fix && oxfmt \"**/*.ts\""
   },
   "dependencies": {
     "@korzun/epubcheck-ts": "^0.1.0-beta.2",
@@ -47,9 +47,12 @@
     "@types/node": "^20.11.20",
     "@types/supertest": "^7.2.0",
     "nodemon": "^3.1.14",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
     "prisma": "^7.8.0",
     "supertest": "^7.2.2",
     "tsx": "^4.20.6",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

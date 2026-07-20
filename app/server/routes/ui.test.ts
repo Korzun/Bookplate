@@ -1,4 +1,4 @@
-import type { Mock, MockedFunction } from 'vite-plus/test';
+import type { Mock, MockedFunction } from 'vitest';
 
 import * as os from 'os';
 import * as path from 'path';

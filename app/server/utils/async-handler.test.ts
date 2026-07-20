@@ -1,4 +1,4 @@
-import type { MockedFunction } from 'vite-plus/test';
+import type { MockedFunction } from 'vitest';
 
 import { asyncHandler } from './async-handler';
 import { Request, Response, NextFunction } from 'express';

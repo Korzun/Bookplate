@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite-plus';
+import { defineConfig } from 'vitest/config';
 
 // The server is a Node/Express app with no Vite dev server or bundler — this
 // config exists purely to drive Vitest (replacing the previous Jest setup).

@@ -1,6 +1,6 @@
 // client/src/component/chapter-progress/index.test.tsx
 import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it } from 'vitest';
 
 import { renderWithProviders } from '~/test-utils';
 

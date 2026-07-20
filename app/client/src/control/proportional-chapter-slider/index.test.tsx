@@ -1,6 +1,6 @@
 // client/src/control/proportional-chapter-slider/index.test.tsx
 import { fireEvent } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '~/test-utils';
 
