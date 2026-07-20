@@ -16,6 +16,8 @@ export { useSeries } from './use-series';
 export type { SeriesMeta } from './use-series';
 export { useSeriesBookList } from './use-series-book-list';
 export { useSeriesNames } from './use-series-names';
+export { useFetchSeriesNextIndex } from './use-fetch-series-next-index';
+export type { FetchSeriesNextIndex } from './use-fetch-series-next-index';
 export { useStandaloneBookList } from './use-standalone-book-list';
 export { useUnlinkBookLineage } from './use-unlink-book-lineage';
 export { useUploadBookList } from './use-upload-book-list';

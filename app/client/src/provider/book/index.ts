@@ -16,6 +16,7 @@ export {
   useSeries,
   useSeriesBookList,
   useSeriesNames,
+  useFetchSeriesNextIndex,
   useStandaloneBookList,
   useUnlinkBookLineage,
   useUploadBookList,
@@ -31,6 +32,6 @@ export type {
   Series,
   UploadResult,
 } from './type';
-export type { SeriesMeta } from './hook';
+export type { SeriesMeta, FetchSeriesNextIndex } from './hook';
 export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';
 export type { Severity, ValidationMessage, ValidationFailure } from '~/lib/severity';
