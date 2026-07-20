@@ -3512,18 +3512,34 @@ describe('getSeriesNextIndex', () => {
   });
 
   it('returns highest existing index + 1', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune', seriesIndex: 1 });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, series: 'Dune', seriesIndex: 3 });
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 3,
+    });
     expect(await bookStore.getSeriesNextIndex(OWNER, 'Dune')).toBe(4);
   });
 
   it('floors a fractional highest index before adding 1', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune', seriesIndex: 2.5 });
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 2.5,
+    });
     expect(await bookStore.getSeriesNextIndex(OWNER, 'Dune')).toBe(3);
   });
 
   it('is scoped per user', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, series: 'Dune', seriesIndex: 5 });
+    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 5,
+    });
     const other = { ...OWNER, userId: `${OWNER.userId}-other` };
     expect(await bookStore.getSeriesNextIndex(other, 'Dune')).toBe(1);
   });
