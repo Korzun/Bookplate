@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('~/lib/api-fetch');
 

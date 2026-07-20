@@ -6,10 +6,7 @@ FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 WORKDIR /bookplate
 
 # Install all workspace deps
-# .npmrc carries `legacy-peer-deps=true`, required because Vite+ overrides
-# `vite` to @voidzero-dev/vite-plus-core (whose 0.2.x version does not satisfy
-# the `vite: ^8` peer ranges). Without it, npm install/ci fails with ERESOLVE.
-COPY package*.json .npmrc ./
+COPY package*.json ./
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
 RUN rm package-lock.json && npm install
@@ -43,7 +40,7 @@ FROM --platform=$BUILDPLATFORM node:24-alpine AS prod-deps
 ARG TARGETARCH
 WORKDIR /bookplate
 
-COPY package*.json .npmrc ./
+COPY package*.json ./
 COPY package.json ./app/package.json
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/

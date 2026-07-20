@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
-import { afterEach, expect, it, vi } from 'vite-plus/test';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import { makeJwt } from '~/lib/test-jwt';
 import { setToken } from '~/lib/token';

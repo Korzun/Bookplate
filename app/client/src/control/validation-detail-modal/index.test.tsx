@@ -1,5 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { ValidationMessage } from '~/lib/severity';
 import { renderWithProviders } from '~/test-utils';

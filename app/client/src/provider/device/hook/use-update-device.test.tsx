@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { Device, DeviceInput, DeviceList } from '../type';

@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { useNavigate } from 'react-router-dom';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ScrollRestoration } from './scroll-restoration';
 

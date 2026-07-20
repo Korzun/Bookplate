@@ -1,4 +1,4 @@
-import type { MockedFunction } from 'vite-plus/test';
+import type { MockedFunction } from 'vitest';
 
 import type { Report } from '@korzun/epubcheck-ts';
 import { validateEpub } from '@korzun/epubcheck-ts';
