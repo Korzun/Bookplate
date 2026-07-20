@@ -2791,3 +2791,39 @@ describe('GET /api/series/:name', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('GET /api/series/:name/next-index', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/series/Dune/next-index');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 1 for an unknown series', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/series/Unknown/next-index')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect((res.body as { nextIndex: number }).nextIndex).toBe(1);
+  });
+
+  it('returns highest index + 1 for a known series', async () => {
+    const token = await loginAlice();
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    await bookStore.addBook(aliceOwner, 'bk1', stage('bk1'), { ...FAKE_META, series: 'Dune', seriesIndex: 1 });
+    await bookStore.addBook(aliceOwner, 'bk2', stage('bk2'), { ...FAKE_META, series: 'Dune', seriesIndex: 3 });
+    const res = await request(app)
+      .get('/api/series/Dune/next-index')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect((res.body as { nextIndex: number }).nextIndex).toBe(4);
+  });
+
+  it('admin requires ?user= parameter', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .get('/api/series/Dune/next-index')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+});

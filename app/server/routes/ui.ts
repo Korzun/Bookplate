@@ -822,6 +822,17 @@ export function createUiRouter(
     })
   );
 
+  router.get(
+    '/api/series/:name/next-index',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const nextIndex = await bookStore.getSeriesNextIndex(owner, req.params.name);
+      res.json({ nextIndex });
+    })
+  );
+
   router.delete(
     '/api/books/:id',
     requireAuth,
