@@ -55,12 +55,23 @@ import { useScanLibrary } from './use-scan-library';
 const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) });
 const accepted = (body: unknown) => ({ ok: true, status: 202, json: () => Promise.resolve(body) });
 
+// Advancing fake timers flushes the promises that drive the hook's React state
+// updates (status checks, poll ticks). Wrap each advance in act() so those
+// updates happen inside React's batching instead of triggering "not wrapped in
+// act(...)" warnings.
+const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
 describe('useScanLibrary', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
-  afterEach(() => {
-    vi.runOnlyPendingTimers();
+  afterEach(async () => {
+    // Some tests intentionally leave a never-completing poll timer pending. Flush
+    // it inside act() so the resulting state update doesn't warn, then restore
+    // real timers.
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -70,7 +81,7 @@ describe('useScanLibrary', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper() });
-    await vi.advanceTimersByTimeAsync(0);
+    await advance(0);
 
     expect(mockFetch).toHaveBeenCalledWith('/api/books/scan/status', {});
     expect(result.current[2]).toBe(false); // not loading
@@ -93,14 +104,14 @@ describe('useScanLibrary', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper(mockClear) });
-    await vi.advanceTimersByTimeAsync(0); // resolve mount status
+    await advance(0); // resolve mount status
 
     let scanPromise!: Promise<unknown>;
     act(() => {
       scanPromise = result.current[0]();
     });
-    await vi.advanceTimersByTimeAsync(0); // POST resolves
-    await vi.advanceTimersByTimeAsync(2000); // first poll fires
+    await advance(0); // POST resolves
+    await advance(2000); // first poll fires
     await act(async () => {
       await scanPromise;
     });
@@ -118,7 +129,7 @@ describe('useScanLibrary', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper() });
-    await vi.advanceTimersByTimeAsync(0);
+    await advance(0);
 
     let scanPromise!: Promise<unknown>;
     act(() => {
@@ -141,7 +152,7 @@ describe('useScanLibrary', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper() });
-    await vi.advanceTimersByTimeAsync(0); // mount status
+    await advance(0); // mount status
 
     await act(async () => {
       void result.current[0]();
@@ -169,14 +180,14 @@ describe('useScanLibrary', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { result } = renderHook(() => useScanLibrary(), { wrapper: makeWrapper() });
-    await vi.advanceTimersByTimeAsync(0); // resolve mount status
+    await advance(0); // resolve mount status
 
     let scanPromise!: Promise<unknown>;
     act(() => {
       scanPromise = result.current[0]();
     });
-    await vi.advanceTimersByTimeAsync(0); // POST resolves
-    await vi.advanceTimersByTimeAsync(2000); // first poll fires → returns idle
+    await advance(0); // POST resolves
+    await advance(2000); // first poll fires → returns idle
 
     let resolved: unknown;
     await act(async () => {
@@ -243,10 +254,10 @@ describe('useScanLibrary', () => {
 
     // Drain pending microtasks: mount status and POST both resolve.
     // pollUntilDone() is called by both paths; the second call hits the ref guard.
-    await vi.advanceTimersByTimeAsync(0);
+    await advance(0);
 
     // Advance past poll interval → single status poll fires → completed.
-    await vi.advanceTimersByTimeAsync(2000);
+    await advance(2000);
 
     await act(async () => {
       await scanPromise;

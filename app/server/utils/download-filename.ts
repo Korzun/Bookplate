@@ -1,5 +1,8 @@
 const ILLEGAL_FS_CHARS = /[/\\:*?"<>|]/g;
-// Preserves \x09 (tab), \x0a (LF), \x0d (CR) so they reach WHITESPACE_RUN and collapse to a single space
+// Preserves \x09 (tab), \x0a (LF), \x0d (CR) so they reach WHITESPACE_RUN and collapse to a single space.
+// Matching control characters is the whole point here (stripping them from filenames), so the
+// no-control-regex rule is a false positive.
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 const WHITESPACE_RUN = /\s+/g;
 const LEADING_TRAILING = /^[_.]+|[_.]+$/g;
