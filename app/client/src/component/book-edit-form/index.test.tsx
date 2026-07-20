@@ -138,4 +138,27 @@ describe('series order auto-fill', () => {
     expect(mocks.fetchSeriesNextIndex).not.toHaveBeenCalled();
     expect(seriesInput().value).toBe('2');
   });
+
+  it('does not overwrite an Order typed while the next-index fetch is still in flight', async () => {
+    let resolveNext: (value: number) => void = () => {};
+    mocks.fetchSeriesNextIndex.mockImplementationOnce(
+      () =>
+        new Promise<number>((res) => {
+          resolveNext = res;
+        })
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+    );
+    await openSeriesAndPick(user, 'Dune');
+
+    // The fetch is still pending here; type an Order before it resolves.
+    await user.type(seriesInput(), '2');
+
+    resolveNext(4);
+    await waitFor(() => expect(mocks.fetchSeriesNextIndex).toHaveBeenCalledWith('Dune'));
+    expect(seriesInput().value).toBe('2');
+  });
 });
