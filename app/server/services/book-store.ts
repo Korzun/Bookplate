@@ -1016,6 +1016,15 @@ export class BookStore {
     };
   }
 
+  async getSeriesNextIndex(owner: Owner, name: string): Promise<number> {
+    const result = await this.prisma.book.aggregate({
+      where: { userId: owner.userId, series: name },
+      _max: { seriesIndex: true },
+    });
+    const max = result._max.seriesIndex;
+    return max == null ? 1 : Math.floor(max) + 1;
+  }
+
   async scan(
     owner: Owner,
     importer: ScanImporter = defaultImporter
