@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
@@ -15,7 +15,12 @@ import {
 } from '~/control';
 import type { FieldRow } from '~/control';
 import type { Book } from '~/provider/book';
-import { usePatchBookMetadata, useLibrarySubjects, useSeriesNames } from '~/provider/book';
+import {
+  usePatchBookMetadata,
+  useLibrarySubjects,
+  useSeriesNames,
+  useFetchSeriesNextIndex,
+} from '~/provider/book';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { areObjectArraysIdentical, areStringArraysIdentical, generateUUID } from '~/utils';
@@ -86,12 +91,32 @@ export const BookEditForm = ({ original, id }: Props) => {
     setIsSeries(newIsSeries);
   }, []);
 
-  const [series, setSeries] = useState<string | undefined>(original.series);
-  const handleSeriesChange = useCallback((newSeries: string | undefined) => {
-    setSeries(newSeries);
-  }, []);
+  const fetchSeriesNextIndex = useFetchSeriesNextIndex();
+  const seriesRequestRef = useRef<string | undefined>(undefined);
 
+  const [series, setSeries] = useState<string | undefined>(original.series);
   const [seriesIndex, setSeriesIndex] = useState<number | undefined>(original.seriesIndex);
+
+  const handleSeriesChange = useCallback(
+    (newSeries: string | undefined) => {
+      setSeries(newSeries);
+      const trimmed = newSeries?.trim();
+      seriesRequestRef.current = trimmed;
+      if (!trimmed) return;
+      // Only auto-fill when Order is empty (undefined or the "no value" 0).
+      if (seriesIndex !== undefined && seriesIndex !== 0) return;
+      void fetchSeriesNextIndex(trimmed)
+        .then((nextIndex) => {
+          // Ignore a stale response if the user changed the series meanwhile.
+          if (seriesRequestRef.current === trimmed) setSeriesIndex(nextIndex);
+        })
+        .catch(() => {
+          // Leave Order empty on failure.
+        });
+    },
+    [seriesIndex, fetchSeriesNextIndex]
+  );
+
   const handleSeriesIndexChange = useCallback((index: number | undefined) => {
     setSeriesIndex(index);
   }, []);
@@ -217,7 +242,7 @@ export const BookEditForm = ({ original, id }: Props) => {
         {isSeries && (
           <div className={styles.cardContainer}>
             <Select
-              value={series}
+              value={series || undefined}
               label="Name"
               name="seriesName"
               options={seriesOptions}
