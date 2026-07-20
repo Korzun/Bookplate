@@ -12,6 +12,7 @@ import { BookEditForm } from './index';
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   nextResult: { mode: 'ok' as 'ok' | 'fail', failMessage: 'Edited EPUB failed validation' },
+  fetchSeriesNextIndex: vi.fn((name: string) => Promise.resolve(name === 'Dune' ? 4 : 1)),
 }));
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -29,7 +30,8 @@ vi.mock('~/provider/book', async (importOriginal) => {
   return {
     ...actual,
     useLibrarySubjects: () => [[], false, undefined],
-    useSeriesNames: () => [[], false, undefined],
+    useSeriesNames: () => [['Dune'], false, undefined],
+    useFetchSeriesNextIndex: () => mocks.fetchSeriesNextIndex,
     usePatchBookMetadata: () => {
       const [state, setState] = useState<{ error: boolean; message?: string }>({ error: false });
       const patch = useCallback(async () => {
@@ -66,6 +68,7 @@ const original: Book = {
 afterEach(() => {
   mocks.navigate.mockClear();
   mocks.nextResult.mode = 'ok';
+  mocks.fetchSeriesNextIndex.mockClear();
 });
 
 describe('BookEditForm', () => {
@@ -90,5 +93,49 @@ describe('BookEditForm', () => {
       expect(screen.getByText('Edited EPUB failed validation')).toBeInTheDocument()
     );
     expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('series order auto-fill', () => {
+  const seriesInput = () => document.querySelector('input[name="seriesIndex"]') as HTMLInputElement;
+
+  async function openSeriesAndPick(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    await user.click(screen.getByRole('button', { name: 'Select…' }));
+    await user.type(screen.getByRole('textbox', { name: 'Search' }), name);
+    await user.keyboard('{Enter}');
+  }
+
+  it('fills empty Order with the fetched next index for an existing series', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+    );
+    await openSeriesAndPick(user, 'Dune');
+    await waitFor(() => expect(seriesInput().value).toBe('4'));
+    expect(mocks.fetchSeriesNextIndex).toHaveBeenCalledWith('Dune');
+  });
+
+  it('fills Order with 1 for a brand-new series', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+    );
+    await openSeriesAndPick(user, 'Brand New');
+    await waitFor(() => expect(seriesInput().value).toBe('1'));
+  });
+
+  it('does not overwrite an Order the user already entered', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+    );
+    await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    await user.type(seriesInput(), '2');
+    await user.click(screen.getByRole('button', { name: 'Select…' }));
+    await user.type(screen.getByRole('textbox', { name: 'Search' }), 'Dune');
+    await user.keyboard('{Enter}');
+    expect(mocks.fetchSeriesNextIndex).not.toHaveBeenCalled();
+    expect(seriesInput().value).toBe('2');
   });
 });
