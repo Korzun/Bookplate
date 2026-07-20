@@ -2810,8 +2810,16 @@ describe('GET /api/series/:name/next-index', () => {
   it('returns highest index + 1 for a known series', async () => {
     const token = await loginAlice();
     fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
-    await bookStore.addBook(aliceOwner, 'bk1', stage('bk1'), { ...FAKE_META, series: 'Dune', seriesIndex: 1 });
-    await bookStore.addBook(aliceOwner, 'bk2', stage('bk2'), { ...FAKE_META, series: 'Dune', seriesIndex: 3 });
+    await bookStore.addBook(aliceOwner, 'bk1', stage('bk1'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 1,
+    });
+    await bookStore.addBook(aliceOwner, 'bk2', stage('bk2'), {
+      ...FAKE_META,
+      series: 'Dune',
+      seriesIndex: 3,
+    });
     const res = await request(app)
       .get('/api/series/Dune/next-index')
       .set(...bearer(token));
