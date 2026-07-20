@@ -4,7 +4,7 @@ import request from 'supertest';
 import { jwtAuth, adminAuth, passwordChangeGate } from './auth';
 import { signAccessToken } from '../services/jwt';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 const secret = crypto.randomBytes(32);
 

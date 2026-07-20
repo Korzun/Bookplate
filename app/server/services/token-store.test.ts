@@ -7,7 +7,7 @@ import { runMigrations } from '../db/migrate';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from './token-store';
 import { UserStore } from './user-store';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient;
 let store: TokenStore;

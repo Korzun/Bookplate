@@ -6,7 +6,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { DeviceStore, DeviceSlugConflictError } from './device-store';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient;
 let dbPath: string;

@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { useMyProgress } from './use-my-progress';
 import type { UseMyProgressList } from './use-my-progress-list';

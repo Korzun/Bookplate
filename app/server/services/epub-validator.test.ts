@@ -1,10 +1,12 @@
+import type { MockedFunction } from 'vite-plus/test';
+
 import type { Report } from '@korzun/epubcheck-ts';
 import { validateEpub } from '@korzun/epubcheck-ts';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 
-jest.mock('@korzun/epubcheck-ts', () => ({ validateEpub: jest.fn() }));
+vi.mock('@korzun/epubcheck-ts', () => ({ validateEpub: vi.fn() }));
 
-const mockValidate = validateEpub as jest.MockedFunction<typeof validateEpub>;
+const mockValidate = validateEpub as MockedFunction<typeof validateEpub>;
 
 function report(partial: Partial<Report>): Report {
   return {

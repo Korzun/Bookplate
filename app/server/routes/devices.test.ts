@@ -10,7 +10,7 @@ import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
 import { createDevicesRouter } from './devices';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient, dbPath: string, app: express.Express, editionStore: EditionStore;
 const asAdmin: RequestHandler = (req, _res, next) => {
@@ -111,7 +111,7 @@ it('allows non-admins to list devices but rejects non-admin mutations with 403',
 });
 
 it('purges the edition cache on PATCH and on DELETE', async () => {
-  const purgeSpy = jest.spyOn(editionStore, 'purgeForDevice').mockResolvedValue(undefined);
+  const purgeSpy = vi.spyOn(editionStore, 'purgeForDevice').mockResolvedValue(undefined);
 
   const c = await request(app).post('/api/devices').send(body);
   await request(app)

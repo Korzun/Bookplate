@@ -5,7 +5,7 @@ import AdmZip from 'adm-zip';
 import sharp from 'sharp';
 import { buildEdition } from './edition-builder';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 async function cover(): Promise<Buffer> {
   return sharp({

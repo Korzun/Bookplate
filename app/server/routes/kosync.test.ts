@@ -10,7 +10,7 @@ import { UserStore } from '../services/user-store';
 import { BookStore } from '../services/book-store';
 import { createKosyncRouter } from './kosync';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient;
 let userStore: UserStore;

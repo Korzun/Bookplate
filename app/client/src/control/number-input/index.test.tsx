@@ -1,7 +1,7 @@
 // client/src/control/number-input/index.test.tsx
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { renderWithProviders } from '~/test-utils';
 

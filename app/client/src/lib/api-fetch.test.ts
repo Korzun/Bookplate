@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { apiFetch, ensureFreshToken, refreshAccessToken } from './api-fetch';
 import { makeJwt } from './test-jwt';

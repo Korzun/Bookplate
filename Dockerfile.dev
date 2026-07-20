@@ -1,7 +1,7 @@
 FROM node:24-alpine
 WORKDIR /bookplate
 
-COPY package*.json ./
+COPY package*.json .npmrc ./
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
 COPY app/server/prisma ./app/server/prisma

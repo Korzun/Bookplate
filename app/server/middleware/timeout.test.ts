@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import request from 'supertest';
 import { requestTimeout } from './timeout';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 function makeApp(ms: number, handler: (req: Request, res: Response) => void): express.Express {
   const app = express();

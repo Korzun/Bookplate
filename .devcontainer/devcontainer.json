@@ -24,10 +24,12 @@
   // Configure tool-specific properties.
   "customizations": {
     "vscode": {
-      "extensions": ["dbaeumer.vscode-eslint", "Anthropic.claude-code"],
+      "extensions": ["oxc.oxc-vscode", "Anthropic.claude-code"],
       "settings": {
+        "editor.defaultFormatter": "oxc.oxc-vscode",
+        "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-          "source.fixAll.eslint": "explicit"
+          "source.fixAll.oxc": "explicit"
         }
       }
     }

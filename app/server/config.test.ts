@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { loadConfig } from './config';
 
-jest.mock('./logger');
+vi.mock('./logger');
 
 let dataDir: string;
 const originalEnv = { ...process.env };

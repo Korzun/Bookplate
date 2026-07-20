@@ -14,12 +14,12 @@ const log = logger('Migrate');
  * Resolves the Prisma Migrate migrations directory, which lives at
  * `prisma/migrations/` relative to the server package root. Works for both
  * the compiled production layout (dist/db/migrate.js → ../../prisma/migrations)
- * and the ts-node development layout (db/migrate.ts → ../prisma/migrations).
+ * and the source development layout (db/migrate.ts → ../prisma/migrations).
  */
 function findMigrationsDir(): string | null {
   const candidates = [
     path.join(__dirname, '../../prisma/migrations'), // compiled: dist/db → server root
-    path.join(__dirname, '../prisma/migrations'), // ts-node: db → server root
+    path.join(__dirname, '../prisma/migrations'), // dev (tsx): db → server root
   ];
   return candidates.find((d) => fs.existsSync(d)) ?? null;
 }

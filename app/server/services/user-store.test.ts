@@ -8,7 +8,7 @@ import { UserStore } from './user-store';
 import { runMigrations } from '../db/migrate';
 import { WORDLIST } from './wordlist';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 let prisma: PrismaClient;
 let store: UserStore;
@@ -439,7 +439,7 @@ describe('UserStore.deleteUser', () => {
   });
 
   it('invokes the injected edition purger with the deleted userId', async () => {
-    const purgeForUser = jest.fn().mockResolvedValue(undefined);
+    const purgeForUser = vi.fn().mockResolvedValue(undefined);
     const withPurger = new UserStore(prisma, { purgeForUser });
     await withPurger.createUser('carol', null);
     const carolId = (await withPurger.getUserIdByUsername('carol'))!;
@@ -449,7 +449,7 @@ describe('UserStore.deleteUser', () => {
   });
 
   it('still succeeds when the injected edition purger throws', async () => {
-    const purgeForUser = jest.fn().mockRejectedValue(new Error('purge boom'));
+    const purgeForUser = vi.fn().mockRejectedValue(new Error('purge boom'));
     const withPurger = new UserStore(prisma, { purgeForUser });
     await withPurger.createUser('dave', null);
 
@@ -764,9 +764,9 @@ describe('UserStore.saveProgress — history', () => {
   });
 
   it('does not throw and still saves current progress when history write fails', async () => {
-    jest
-      .spyOn(prisma.progressHistory, 'findFirst')
-      .mockRejectedValueOnce(new Error('simulated DB failure'));
+    vi.spyOn(prisma.progressHistory, 'findFirst').mockRejectedValueOnce(
+      new Error('simulated DB failure')
+    );
 
     const result = await store.saveProgress(aliceId, {
       document: 'doc1',

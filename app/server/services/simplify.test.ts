@@ -1,6 +1,6 @@
 import { entityReplacements, replaceEntities, replaceQuotes, simplifyContent } from './simplify';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 const FILE = 'test.xhtml';
 

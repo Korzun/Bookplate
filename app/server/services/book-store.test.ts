@@ -18,7 +18,7 @@ import { EpubMeta, Owner, PageCursor } from '../types';
 import { runMigrations } from '../db/migrate';
 import { EditionStore } from './edition-store';
 
-jest.mock('../logger');
+vi.mock('../logger');
 
 const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
@@ -570,8 +570,8 @@ describe('deleteBook', () => {
 describe('clearDeviceEditions', () => {
   it('returns null for an unknown book and does not purge', async () => {
     const purger = {
-      purgeForBook: jest.fn().mockResolvedValue(undefined),
-      countForBook: jest.fn().mockResolvedValue(0),
+      purgeForBook: vi.fn().mockResolvedValue(undefined),
+      countForBook: vi.fn().mockResolvedValue(0),
     };
     const bs = new BookStore(booksRoot, prisma, purger);
     expect(await bs.clearDeviceEditions(OWNER, 'nope')).toBeNull();
@@ -580,8 +580,8 @@ describe('clearDeviceEditions', () => {
 
   it('purges editions and returns the count for an existing book', async () => {
     const purger = {
-      purgeForBook: jest.fn().mockResolvedValue(undefined),
-      countForBook: jest.fn().mockResolvedValue(3),
+      purgeForBook: vi.fn().mockResolvedValue(undefined),
+      countForBook: vi.fn().mockResolvedValue(3),
     };
     const bs = new BookStore(booksRoot, prisma, purger);
     await bs.addBook(OWNER, 'clr1', stage('clr1'), FAKE_META);
@@ -1285,8 +1285,8 @@ describe('reimportBook', () => {
 
   it('still resolves successfully when edition purge throws', async () => {
     const purger = {
-      purgeForBook: jest.fn().mockRejectedValue(new Error('purge boom')),
-      countForBook: jest.fn().mockResolvedValue(0),
+      purgeForBook: vi.fn().mockRejectedValue(new Error('purge boom')),
+      countForBook: vi.fn().mockResolvedValue(0),
     };
     const bs = new BookStore(booksRoot, prisma, purger);
 
