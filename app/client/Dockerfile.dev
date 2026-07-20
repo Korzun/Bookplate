@@ -1,7 +1,7 @@
 FROM node:24-alpine
 WORKDIR /app
 
-COPY package*.json vite.config.ts tsconfig.json ./
+COPY package*.json .npmrc vite.config.ts tsconfig.json ./
 RUN npm install
 
 EXPOSE 5173
