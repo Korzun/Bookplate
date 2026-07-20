@@ -107,8 +107,12 @@ export const BookEditForm = ({ original, id }: Props) => {
       if (seriesIndex !== undefined && seriesIndex !== 0) return;
       void fetchSeriesNextIndex(trimmed)
         .then((nextIndex) => {
-          // Ignore a stale response if the user changed the series meanwhile.
-          if (seriesRequestRef.current === trimmed) setSeriesIndex(nextIndex);
+          // Ignore a stale response if the user changed the series meanwhile,
+          // and never clobber an Order the user entered while the fetch was in flight.
+          if (seriesRequestRef.current !== trimmed) return;
+          setSeriesIndex((current) =>
+            current === undefined || current === 0 ? nextIndex : current
+          );
         })
         .catch(() => {
           // Leave Order empty on failure.
