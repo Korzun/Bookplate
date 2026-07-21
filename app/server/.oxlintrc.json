@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["import"],
+  "plugins": ["import", "typescript"],
   "ignorePatterns": ["dist/**", "node_modules/**"],
   "rules": {
     "no-unused-vars": [
@@ -11,6 +11,8 @@
         "caughtErrorsIgnorePattern": "^_",
         "destructuredArrayIgnorePattern": "^_"
       }
-    ]
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/ban-ts-comment": "error"
   }
 }
