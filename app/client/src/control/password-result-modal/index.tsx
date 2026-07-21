@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '~/utils';
 
 import { Button } from '../button';
-
 import { useStyle } from './style';
 
 function renderPassword(password: string, numberClass: string, symbolClass: string) {

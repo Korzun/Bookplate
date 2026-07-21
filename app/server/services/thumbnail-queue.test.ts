@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+
 import { runMigrations } from '../db/migrate';
+import { EpubMeta, Owner } from '../types';
 import { BookStore } from './book-store';
 import { ThumbnailQueue } from './thumbnail-queue';
-import { EpubMeta, Owner } from '../types';
 
 vi.mock('../logger');
 

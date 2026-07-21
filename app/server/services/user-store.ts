@@ -1,10 +1,12 @@
-import { PrismaClient, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+
+import { PrismaClient, Prisma } from '@prisma/client';
 import argon2 from 'argon2';
+
+import { logger } from '../logger';
 import { Owner, Progress, ProgressPageCursor } from '../types';
 import { generateUserId } from '../utils/id';
 import { WORDLIST } from './wordlist';
-import { logger } from '../logger';
 
 const log = logger('UserStore');
 

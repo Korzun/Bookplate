@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 
 import { Card } from '../card';
-
 import { useStyle } from './style';
 
 interface Props {

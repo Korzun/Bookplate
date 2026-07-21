@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
+
 import { Prisma, PrismaClient } from '@prisma/client';
+
 import { Device } from '../types';
 import { generateSlug } from '../utils/slug';
 

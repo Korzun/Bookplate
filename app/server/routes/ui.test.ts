@@ -1,22 +1,23 @@
-import type { Mock, MockedFunction } from 'vitest';
-
+import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
-import * as crypto from 'crypto';
-import request from 'supertest';
-import express, { NextFunction, Request, Response } from 'express';
-import cookieParser from 'cookie-parser';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { runMigrations } from '../db/migrate';
+import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
+import cookieParser from 'cookie-parser';
+import express, { NextFunction, Request, Response } from 'express';
+import request from 'supertest';
+import type { Mock, MockedFunction } from 'vitest';
+
+import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
-import { UserStore } from '../services/user-store';
-import { TokenStore } from '../services/token-store';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
-import { createUiRouter } from './ui';
+import { TokenStore } from '../services/token-store';
+import { UserStore } from '../services/user-store';
 import { AppConfig, EpubMeta, Owner } from '../types';
+import { createUiRouter } from './ui';
 
 vi.mock('../logger');
 vi.mock('../services/epub-validator', () => {
@@ -42,9 +43,9 @@ vi.mock('../services/epub-validator', () => {
   };
 });
 vi.setConfig({ testTimeout: 30000 });
-import { ThumbnailQueue } from '../services/thumbnail-queue';
-import { ScanJobStore } from '../services/scan-job-store';
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
+import { ScanJobStore } from '../services/scan-job-store';
+import { ThumbnailQueue } from '../services/thumbnail-queue';
 const mockAssertValid = assertValidEpub as MockedFunction<typeof assertValidEpub>;
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a

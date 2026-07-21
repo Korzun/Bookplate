@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '~/test-utils';
 
 import { type PageActionItem } from '../action-menu-list';
-
 import { PageActionsBar } from './index';
 
 function makeItems(): PageActionItem[] {

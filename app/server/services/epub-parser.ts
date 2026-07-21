@@ -1,8 +1,10 @@
-import * as fs from 'fs';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as path from 'path';
+
 import AdmZip from 'adm-zip';
 import { XMLParser } from 'fast-xml-parser';
+
 import { EpubMeta } from '../types';
 
 const PARTIAL_MD5_OFFSETS = [

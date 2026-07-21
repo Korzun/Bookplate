@@ -2,7 +2,6 @@ import { useContext, useEffect, useMemo } from 'react';
 
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
-
 import { useFetchUserProgressList } from './use-fetch-user-progress-list';
 
 export type UseUserProgressList =

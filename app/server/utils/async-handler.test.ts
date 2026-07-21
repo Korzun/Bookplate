@@ -1,7 +1,7 @@
+import { Request, Response, NextFunction } from 'express';
 import type { MockedFunction } from 'vitest';
 
 import { asyncHandler } from './async-handler';
-import { Request, Response, NextFunction } from 'express';
 
 describe('asyncHandler', () => {
   const req = {} as Request;

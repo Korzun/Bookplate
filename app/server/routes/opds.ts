@@ -1,14 +1,16 @@
 import { createHash } from 'crypto';
-import { Router, Request, Response, RequestHandler } from 'express';
+
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
+import { Router, Request, Response, RequestHandler } from 'express';
+
+import { logger } from '../logger';
+import { opdsAuth } from '../middleware/auth';
 import { BookStore } from '../services/book-store';
-import { UserStore } from '../services/user-store';
 import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
-import { opdsAuth } from '../middleware/auth';
-import { logger } from '../logger';
-import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
+import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
+import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
 
 const log = logger('OPDS');
 

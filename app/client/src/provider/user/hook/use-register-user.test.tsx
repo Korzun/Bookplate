@@ -3,10 +3,9 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { useRegisterUser, useUserList } from '.';
 import { Context } from '../context';
 import type { User, UserList } from '../type';
-
-import { useRegisterUser, useUserList } from '.';
 
 function makeWrapper(initialUsers: User[] = []) {
   return function Wrapper({ children }: { children: ReactNode }) {

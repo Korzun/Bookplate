@@ -4,7 +4,6 @@ import { ReactNode } from 'react';
 import { useMyProgressList } from '~/provider/progress';
 
 import { MyProgressRow } from '../my-progress-row';
-
 import { useStyle } from './style';
 
 export const MyProgressContent = () => {

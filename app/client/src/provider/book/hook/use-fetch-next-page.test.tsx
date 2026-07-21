@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { Book, BookList, BookListFilter, DisplayUnit, PagedBookListResponse } from '../type';
-
 import { useFetchNextPage } from './use-fetch-next-page';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {

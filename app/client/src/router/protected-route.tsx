@@ -2,7 +2,6 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingPage } from '../page';
 import { useMustChangePassword, useUsername } from '../provider/auth';
-
 import * as path from './path-internal';
 
 export const ProtectedRoute = () => {

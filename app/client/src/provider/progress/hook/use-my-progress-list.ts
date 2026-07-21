@@ -3,7 +3,6 @@ import { useContext, useEffect, useMemo } from 'react';
 import { useUsername } from '../../../provider/auth';
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
-
 import { useFetchMyProgressList } from './use-fetch-my-progress-list';
 
 export type UseMyProgressList =

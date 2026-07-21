@@ -1,7 +1,6 @@
 import { useSeriesBookList } from '~/provider/book';
 
 import { Cover } from '../cover';
-
 import { useStyle } from './style';
 
 interface CoverStackProps {

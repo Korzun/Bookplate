@@ -1,10 +1,11 @@
 import { Router, Request, Response, RequestHandler } from 'express';
+
+import { logger } from '../logger';
+import { adminAuth } from '../middleware/auth';
 import { DeviceStore, DeviceInput, DeviceSlugConflictError } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
-import { adminAuth } from '../middleware/auth';
 import { asyncHandler } from '../utils/async-handler';
 import { generateSlug } from '../utils/slug';
-import { logger } from '../logger';
 
 const log = logger('devices-router');
 

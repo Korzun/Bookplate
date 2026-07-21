@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import { Book } from '../type';
-
 import { useBookList } from './use-book-list';
 
 export type UseSeriesBookList =

@@ -1,5 +1,4 @@
 import type { Book } from '../book';
-
 import type { UserProgressList } from './type';
 
 export const calculateSeriesProgressPercent = (

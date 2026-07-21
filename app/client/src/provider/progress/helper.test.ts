@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Book } from '../book';
-
 import { calculateSeriesProgressPercent } from './helper';
 import type { UserProgressList } from './type';
 

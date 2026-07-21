@@ -7,7 +7,6 @@ import { path } from '~/router';
 
 import { Card } from '../card';
 import { CoverStack } from '../cover-stack';
-
 import { useStyle } from './style';
 
 type SeriesRowProps = {

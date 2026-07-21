@@ -2,7 +2,6 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-
 import { removeDeviceById } from './util';
 
 export type DeleteDevice = (id: string) => Promise<void>;

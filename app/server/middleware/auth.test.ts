@@ -1,8 +1,10 @@
 import * as crypto from 'crypto';
+
 import express from 'express';
 import request from 'supertest';
-import { jwtAuth, adminAuth, passwordChangeGate } from './auth';
+
 import { signAccessToken } from '../services/jwt';
+import { jwtAuth, adminAuth, passwordChangeGate } from './auth';
 
 vi.mock('../logger');
 

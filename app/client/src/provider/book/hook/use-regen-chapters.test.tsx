@@ -7,7 +7,6 @@ import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
-
 import { useRegenChapters } from './use-regen-chapters';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {

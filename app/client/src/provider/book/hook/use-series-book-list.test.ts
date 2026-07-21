@@ -2,7 +2,6 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Book } from '../type';
-
 import type { UseBookList } from './use-book-list';
 import { useSeriesBookList } from './use-series-book-list';
 

@@ -1,13 +1,15 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { runMigrations } from '../db/migrate';
-import request from 'supertest';
+import { PrismaClient } from '@prisma/client';
 import express from 'express';
-import { UserStore } from '../services/user-store';
+import request from 'supertest';
+
+import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
+import { UserStore } from '../services/user-store';
 import { createKosyncRouter } from './kosync';
 
 vi.mock('../logger');

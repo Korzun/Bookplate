@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom';
 import { useTheme } from '~/provider/theme';
 
 import type { NavItem } from '../nav/types';
-
 import { useStyle } from './style';
 
 export interface NavMobileProps {

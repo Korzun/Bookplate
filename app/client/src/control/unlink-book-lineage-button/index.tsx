@@ -5,7 +5,6 @@ import { useBook, useUnlinkBookLineage } from '~/provider/book';
 
 import { Button, type ButtonTypeValue, ButtonRadiusValue } from '../button';
 import { ConfirmModal } from '../confirm-modal';
-
 import { useStyle } from './style';
 
 interface UnlinkBookLineageButtonProps {

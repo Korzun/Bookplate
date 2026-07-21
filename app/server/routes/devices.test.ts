@@ -1,10 +1,12 @@
-import express, { RequestHandler } from 'express';
-import request from 'supertest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+import express, { RequestHandler } from 'express';
+import request from 'supertest';
+
 import { runMigrations } from '../db/migrate';
 import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';

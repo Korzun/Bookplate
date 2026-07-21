@@ -7,7 +7,6 @@ import { Context as AuthContext } from '~/provider/auth/context';
 
 import { Context } from '../context';
 import type { ProgressList, UserProgressList } from '../type';
-
 import { useLinkProgress } from './use-link-progress';
 
 function makeWrapper(initialProgress: ProgressList = {}, isAdmin = false) {

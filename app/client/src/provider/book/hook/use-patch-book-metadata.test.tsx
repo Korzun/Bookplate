@@ -7,7 +7,6 @@ import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
-
 import { usePatchBookMetadata } from './use-patch-book-metadata';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {

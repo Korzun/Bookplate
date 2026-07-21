@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppConfig } from './types';
-import { logger } from './logger';
+
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
+
+import { logger } from './logger';
+import { AppConfig } from './types';
 
 const log = logger('Config');
 

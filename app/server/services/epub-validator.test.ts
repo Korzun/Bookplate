@@ -1,7 +1,7 @@
-import type { MockedFunction } from 'vitest';
-
 import type { Report } from '@korzun/epubcheck-ts';
 import { validateEpub } from '@korzun/epubcheck-ts';
+import type { MockedFunction } from 'vitest';
+
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 
 vi.mock('@korzun/epubcheck-ts', () => ({ validateEpub: vi.fn() }));

@@ -7,7 +7,6 @@ import {
   type AuthContext as AuthContextType,
 } from '../provider/auth/context';
 import { ThemeProvider } from '../provider/theme/provider';
-
 import { ProtectedRoute } from './protected-route';
 
 const baseState = {

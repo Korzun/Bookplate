@@ -7,7 +7,6 @@ import { Context as AuthContext } from '../../auth/context';
 import type { AuthContext as AuthContextType } from '../../auth/context';
 import { Context as ProgressContext } from '../context';
 import type { ProgressList, UserProgressList } from '../type';
-
 import { useSetMyProgress } from './use-set-my-progress';
 
 function makeAuthValue(username: string | undefined): AuthContextType {

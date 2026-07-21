@@ -1,11 +1,13 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { UserStore } from './user-store';
+import { PrismaClient } from '@prisma/client';
+
 import { runMigrations } from '../db/migrate';
+import { UserStore } from './user-store';
 import { WORDLIST } from './wordlist';
 
 vi.mock('../logger');

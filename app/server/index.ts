@@ -1,17 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadConfig } from './config';
-import { UserStore } from './services/user-store';
-import { BookStore } from './services/book-store';
-import { TokenStore } from './services/token-store';
-import { ThumbnailQueue } from './services/thumbnail-queue';
-import { EditionStore } from './services/edition-store';
-import { DeviceStore } from './services/device-store';
-import { createServer } from './server';
-import { logger } from './logger';
-import { runMigrations } from './db/migrate';
-import { createPrismaClient } from './db/client';
+
 import packageJson from '../../package.json';
+import { loadConfig } from './config';
+import { createPrismaClient } from './db/client';
+import { runMigrations } from './db/migrate';
+import { logger } from './logger';
+import { createServer } from './server';
+import { BookStore } from './services/book-store';
+import { DeviceStore } from './services/device-store';
+import { EditionStore } from './services/edition-store';
+import { ThumbnailQueue } from './services/thumbnail-queue';
+import { TokenStore } from './services/token-store';
+import { UserStore } from './services/user-store';
 
 const version: string = packageJson.version;
 

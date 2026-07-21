@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { ProgressList, UserProgressList } from '../type';
-
 import { useDeleteUserProgress } from './use-delete-user-progress';
 
 function makeWrapper(initialProgress: ProgressList = {}) {
