@@ -1,13 +1,15 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
+
+import { ValidationThreshold, Report, Severity } from '@korzun/epubcheck-ts';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+
 import { runMigrations } from '../db/migrate';
+import { Book, Device, Owner } from '../types';
 import { EditionStore, EditionDeps } from './edition-store';
 import { EpubValidationError } from './epub-validator';
-import { ValidationThreshold, Report, Severity } from '@korzun/epubcheck-ts';
-import { Book, Device, Owner } from '../types';
 
 vi.mock('../logger');
 

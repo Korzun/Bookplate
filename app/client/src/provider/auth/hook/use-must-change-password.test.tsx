@@ -2,7 +2,6 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { Context, type AuthContext } from '../context';
-
 import { useMustChangePassword } from './use-must-change-password';
 
 const baseState: AuthContext = {

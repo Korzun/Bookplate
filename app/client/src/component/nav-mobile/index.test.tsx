@@ -5,7 +5,6 @@ import { BookIcon, SettingsIcon, UploadIcon } from '~/icon';
 import { renderWithProviders } from '~/test-utils';
 
 import type { NavItem } from '../nav/types';
-
 import { NavMobile } from './index';
 
 const items = (activeLabel: string | null): NavItem[] =>

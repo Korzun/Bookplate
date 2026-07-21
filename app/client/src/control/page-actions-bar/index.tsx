@@ -3,7 +3,6 @@ import { useCallback, useRef, useState } from 'react';
 import { ActionMenuList, type PageActionItem } from '../action-menu-list';
 import { useDismiss } from '../action-menu-list/use-dismiss';
 import { Button } from '../button';
-
 import { useStyle } from './style';
 
 interface PageActionsBarProps {

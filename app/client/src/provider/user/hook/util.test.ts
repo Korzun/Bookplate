@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { UserList } from '../type';
-
 import { removeUserByUsername } from './util';
 
 describe('removeUserByUsername', () => {

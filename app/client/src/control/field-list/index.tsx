@@ -3,7 +3,6 @@ import { RowRemoveIcon } from '~/icon';
 import { Button } from '../button';
 import { NumberInput } from '../number-input';
 import { TextInput } from '../text-input';
-
 import { useStyle } from './style';
 
 export type ColumnDescriptor =

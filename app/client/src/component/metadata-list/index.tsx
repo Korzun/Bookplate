@@ -1,5 +1,4 @@
 import { Metadata as MetadataComponent } from '../metadata';
-
 import { useStyle } from './style';
 
 export type Metadata = { title: string; value: string | React.ReactNode };

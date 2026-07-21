@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { makeJwt } from '../../lib/test-jwt';
 import { setToken } from '../../lib/token';
-
 import { Context } from './context';
 import { AuthProvider } from './provider';
 

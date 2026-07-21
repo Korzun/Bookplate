@@ -10,7 +10,6 @@ import { useMyProgress } from '~/provider/progress';
 import { path } from '~/router';
 
 import { Card } from '../card';
-
 import { useStyle } from './style';
 
 interface BookRowProps {

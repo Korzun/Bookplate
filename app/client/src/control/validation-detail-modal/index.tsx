@@ -5,7 +5,6 @@ import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/sev
 
 import { Button } from '../button';
 import { SeverityCounts } from '../severity-counts';
-
 import { useStyle } from './style';
 
 interface Props {

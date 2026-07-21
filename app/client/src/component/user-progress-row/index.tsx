@@ -9,7 +9,6 @@ import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
 
 import { ProgressIndicator } from '../progress-indicator';
-
 import { useStyle } from './style';
 
 interface UserProgressRowProps {

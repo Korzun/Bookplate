@@ -7,7 +7,6 @@ import { Context as AuthContext } from '../../auth/context';
 import type { AuthContext as AuthContextType } from '../../auth/context';
 import { Context as ProgressContext } from '../context';
 import type { ProgressList, UserProgressList } from '../type';
-
 import { useMyProgressList } from './use-my-progress-list';
 
 function makeAuthValue(overrides: { username?: string } = {}): AuthContextType {

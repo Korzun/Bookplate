@@ -1,5 +1,4 @@
 import { Button } from '../button';
-
 import { useStyle } from './style';
 
 export interface FooterAction {

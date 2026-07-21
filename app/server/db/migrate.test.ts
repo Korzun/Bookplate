@@ -2,9 +2,11 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
 import { PrismaClient } from '@prisma/client';
-import { runMigrations } from './migrate';
+
 import { createPrismaClient } from './client';
+import { runMigrations } from './migrate';
 
 vi.mock('../logger');
 

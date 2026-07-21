@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import type { User } from '../type';
-
 import { useUserList } from './use-user-list';
 
 export type UseUser =

@@ -2,7 +2,6 @@ import { useBookLineage } from '~/provider/book/hook/use-book-lineage';
 
 import { BookLineageRow, type BookLineageRowProps } from '../book-lineage-row';
 import { Card } from '../card';
-
 import { useStyle } from './style';
 
 type Props = { bookId: string; addedAt?: number };

@@ -4,7 +4,6 @@ import { MoreIcon } from '~/icon';
 
 import { ActionMenuList, type PageActionItem } from '../action-menu-list';
 import { useDismiss } from '../action-menu-list/use-dismiss';
-
 import { useStyle } from './style';
 
 export type { PageActionItem };

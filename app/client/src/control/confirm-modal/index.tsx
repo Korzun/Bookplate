@@ -3,7 +3,6 @@ import { useEffect, PropsWithChildren, useRef, useCallback } from 'react';
 import { IconProps } from '~/icon';
 
 import { Button } from '../button';
-
 import { useStyle } from './style';
 
 type ConfirmModalProps = PropsWithChildren<{

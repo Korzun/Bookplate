@@ -6,7 +6,6 @@ import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
 import type { UploadItem as UploadItemType } from '~/provider/book';
 
 import { Card } from '../card';
-
 import { useStyle } from './style';
 
 interface Props {

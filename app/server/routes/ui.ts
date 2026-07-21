@@ -1,8 +1,12 @@
+import { createHash, randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+
 import express, { Router, Request, Response } from 'express';
 import multer from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
-import { createHash, randomUUID } from 'crypto';
+
+import { logger } from '../logger';
+import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import {
   BookStore,
   BookHashCollisionError,
@@ -11,6 +15,14 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from '../services/book-store';
+import { parseEpub, partialMD5 } from '../services/epub-parser';
+import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
+import { buildUpdatedEpub, EpubChanges } from '../services/epub-writer';
+import { signAccessToken, AuthUser } from '../services/jwt';
+import { ScanJobStore } from '../services/scan-job-store';
+import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
+import { UserStore } from '../services/user-store';
 import {
   AppConfig,
   BookListFilters,
@@ -19,19 +31,9 @@ import {
   PageCursor,
   SearchSuggestionsResponse,
 } from '../types';
-import { UserStore } from '../services/user-store';
-import { jwtAuth, passwordChangeGate } from '../middleware/auth';
-import { signAccessToken, AuthUser } from '../services/jwt';
-import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
-import { logger } from '../logger';
-import { parseEpub, partialMD5 } from '../services/epub-parser';
-import { buildUpdatedEpub, EpubChanges } from '../services/epub-writer';
-import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
+import { asyncHandler } from '../utils/async-handler';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
-import { ThumbnailQueue } from '../services/thumbnail-queue';
-import { ScanJobStore } from '../services/scan-job-store';
-import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('UI');
 

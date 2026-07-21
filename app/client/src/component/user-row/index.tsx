@@ -6,7 +6,6 @@ import { useDeleteUser, useUser } from '~/provider/user';
 
 import { Card } from '../card';
 import { UserRowContent } from '../user-row-content';
-
 import { useStyle } from './style';
 
 interface UserRowProps {

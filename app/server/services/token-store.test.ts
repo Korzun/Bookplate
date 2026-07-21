@@ -1,8 +1,10 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
-import { PrismaClient } from '@prisma/client';
+
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '@prisma/client';
+
 import { runMigrations } from '../db/migrate';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from './token-store';
 import { UserStore } from './user-store';

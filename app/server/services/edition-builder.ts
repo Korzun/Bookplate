@@ -1,8 +1,9 @@
 import AdmZip from 'adm-zip';
 import { XMLParser } from 'fast-xml-parser';
-import { simplifyContent } from './simplify';
+
 import { transformCover, CoverTransform } from './cover-transform';
 import { packEpub } from './epub-zip';
+import { simplifyContent } from './simplify';
 
 export interface EditionBuildOptions {
   simplify: boolean;

@@ -1,9 +1,11 @@
-import { zipSync, strToU8 } from 'fflate';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildUpdatedEpub } from './epub-writer';
+
+import { zipSync, strToU8 } from 'fflate';
+
 import { assertValidEpub } from './epub-validator';
+import { buildUpdatedEpub } from './epub-writer';
 
 // End-to-end guard: an edit of a genuinely valid EPUB must produce an EPUB that
 // still passes epubcheck. Exercises the real @korzun/epubcheck-ts validator, so

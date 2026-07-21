@@ -2,7 +2,6 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { UseSeriesBookList } from '../../book/hook/use-series-book-list';
-
 import type { UseMyProgressList } from './use-my-progress-list';
 import { useMySeriesProgress } from './use-my-series-progress';
 

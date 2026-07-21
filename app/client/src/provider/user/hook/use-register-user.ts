@@ -2,7 +2,6 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-
 import { removeUserByUsername } from './util';
 
 export type RegisterUser = (username: string) => Promise<string | null>;

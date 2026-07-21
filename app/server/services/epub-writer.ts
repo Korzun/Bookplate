@@ -1,7 +1,8 @@
-import { unzipSync, strToU8 } from 'fflate';
-import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { XMLParser, XMLBuilder } from 'fast-xml-parser';
+import { unzipSync, strToU8 } from 'fflate';
 
 import { packEpub } from './epub-zip';
 

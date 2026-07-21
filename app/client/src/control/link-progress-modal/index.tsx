@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLinkProgress } from '~/provider/progress';
 
 import { Button } from '../button';
-
 import { useStyle } from './style';
 import { useUserBookList } from './use-user-book-list';
 

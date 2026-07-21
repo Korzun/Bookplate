@@ -3,7 +3,6 @@ import cx from 'classnames';
 import { formatTimestamp } from '~/utils';
 
 import { BookLineageMergeRow, type BookLineageMergeRowProps } from '../book-lineage-merge-row';
-
 import { useStyle } from './style';
 
 export type BookLineageRowProps = {

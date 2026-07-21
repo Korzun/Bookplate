@@ -3,10 +3,9 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { useCreateDevice, useDeviceList } from '.';
 import { Context } from '../context';
 import type { Device, DeviceInput, DeviceList } from '../type';
-
-import { useCreateDevice, useDeviceList } from '.';
 
 function makeWrapper(initialDevices: Device[] = []) {
   return function Wrapper({ children }: { children: ReactNode }) {

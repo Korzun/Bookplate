@@ -4,7 +4,6 @@ import { useDeleteMyProgress, useSetMyProgress } from '~/provider/progress';
 
 import { Button } from '../button';
 import { ProportionalChapterSlider } from '../proportional-chapter-slider';
-
 import { useStyle } from './style';
 
 type SetProgressModalProps = {

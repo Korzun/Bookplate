@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import type { Progress } from '../type';
-
 import { useUserProgressList } from './use-user-progress-list';
 
 export type UseUserProgress =

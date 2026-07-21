@@ -2,7 +2,6 @@ import cx from 'classnames';
 import { Link } from 'react-router-dom';
 
 import type { NavItem } from '../nav/types';
-
 import { useStyle } from './style';
 
 export interface NavDesktopProps {

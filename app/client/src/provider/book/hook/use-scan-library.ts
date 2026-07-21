@@ -4,7 +4,6 @@ import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
-
 import { useFetchBookList } from './use-fetch-book-list';
 
 export type ScanResult = {

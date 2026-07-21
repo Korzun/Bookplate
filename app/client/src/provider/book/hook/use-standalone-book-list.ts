@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import type { Book } from '../type';
-
 import { useBookList } from './use-book-list';
 
 export type UseStandaloneBookList = [Book[], boolean, boolean, string | undefined];

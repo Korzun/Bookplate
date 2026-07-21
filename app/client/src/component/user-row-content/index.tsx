@@ -4,7 +4,6 @@ import { ReactNode } from 'react';
 import { useUserProgressList } from '~/provider/progress';
 
 import { UserProgressRow } from '../user-progress-row';
-
 import { useStyle } from './style';
 
 interface UserRowContentProps {

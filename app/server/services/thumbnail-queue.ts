@@ -1,6 +1,7 @@
 import sharp from 'sharp';
-import { BookStore } from './book-store';
+
 import { logger } from '../logger';
+import { BookStore } from './book-store';
 
 const log = logger('ThumbnailQueue');
 const INTER_JOB_DELAY_MS = 200;

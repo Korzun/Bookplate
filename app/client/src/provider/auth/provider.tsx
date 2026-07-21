@@ -2,7 +2,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { refreshAccessToken } from '../../lib/api-fetch';
 import { TOKEN_CHANGED_EVENT, TOKEN_KEY, decodeClaims, getToken, isExpired } from '../../lib/token';
-
 import { Context, AuthContext } from './context';
 
 const hasValidToken = (token: string | null): boolean => {

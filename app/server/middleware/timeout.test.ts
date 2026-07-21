@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import request from 'supertest';
+
 import { requestTimeout } from './timeout';
 
 vi.mock('../logger');

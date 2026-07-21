@@ -1,8 +1,9 @@
 // app/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
-import { UserStore } from '../services/user-store';
+
 import { logger } from '../logger';
 import { verifyAccessToken, AuthUser } from '../services/jwt';
+import { UserStore } from '../services/user-store';
 
 export type { AuthUser };
 

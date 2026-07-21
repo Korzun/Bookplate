@@ -6,7 +6,6 @@ import { Context as AuthContext } from '../../auth/context';
 import type { AuthContext as AuthContextType } from '../../auth/context';
 import { Context as ProgressContext } from '../context';
 import type { UserProgressList } from '../type';
-
 import { useFetchUserProgressList } from './use-fetch-user-progress-list';
 
 function makeAuthValue(overrides: { isAdmin?: boolean } = {}): AuthContextType {

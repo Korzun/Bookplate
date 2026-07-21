@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+
 import { transformCover } from './cover-transform';
 
 async function redSquare(size = 100): Promise<Buffer> {

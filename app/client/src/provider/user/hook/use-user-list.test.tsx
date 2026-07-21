@@ -3,11 +3,10 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { useUserList } from '.';
 import { Context as AuthContext } from '../../auth/context';
 import { Context } from '../context';
 import type { User, UserList } from '../type';
-
-import { useUserList } from '.';
 
 function makeWrapper(
   initialUsers: User[] = [],

@@ -3,7 +3,6 @@ import { useCallback, useState } from 'react';
 
 import { IconProps } from '../../icon';
 import { Button } from '../button';
-
 import { useStyle } from './style';
 
 type Action = {

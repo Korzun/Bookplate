@@ -1,12 +1,14 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+
 import { PrismaClient } from '@prisma/client';
+
+import { logger } from '../logger';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { generateUserId } from '../utils/id';
-import { isValidUsername, sanitizeUsername } from '../utils/username';
 import { seriesSortKey } from '../utils/series-sort-key';
-import { logger } from '../logger';
+import { isValidUsername, sanitizeUsername } from '../utils/username';
 
 const log = logger('Migrate');
 

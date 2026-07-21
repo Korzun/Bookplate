@@ -6,7 +6,6 @@ import { path } from '~/router';
 
 import { NavDesktop } from '../nav-desktop';
 import { NavMobile } from '../nav-mobile';
-
 import type { NavItem } from './types';
 
 // Owns the navigation destinations (which links exist, which is active, admin

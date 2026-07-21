@@ -5,7 +5,6 @@ import { BookIcon, SettingsIcon, UploadIcon } from '~/icon';
 import { renderWithProviders } from '~/test-utils';
 
 import type { NavItem } from '../nav/types';
-
 import { NavDesktop } from './index';
 
 const items: NavItem[] = [

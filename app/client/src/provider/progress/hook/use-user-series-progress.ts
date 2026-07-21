@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 
 import { useSeriesBookList } from '../../book';
 import { calculateSeriesProgressPercent } from '../helper';
-
 import { useUserProgressList } from './use-user-progress-list';
 
 export type UseUserSeriesProgress =

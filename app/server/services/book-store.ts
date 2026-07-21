@@ -1,7 +1,10 @@
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
+
 import { PrismaClient, Prisma, Series } from '@prisma/client';
+
+import { logger } from '../logger';
 import {
   Book,
   BookSummary,
@@ -12,16 +15,15 @@ import {
   BookListFilters,
   SearchSuggestionsResponse,
 } from '../types';
-import { parseEpub, partialMD5 } from './epub-parser';
-import { logger } from '../logger';
 import { downloadFilename } from '../utils/download-filename';
-import { seriesSortKey } from '../utils/series-sort-key';
 import {
   normalizeForSearch,
   toSubsequenceLike,
   computeMatchWindow,
   scoreAndRank,
 } from '../utils/fuzzy-search';
+import { seriesSortKey } from '../utils/series-sort-key';
+import { parseEpub, partialMD5 } from './epub-parser';
 
 const log = logger('BookStore');
 

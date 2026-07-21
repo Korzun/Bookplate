@@ -2,9 +2,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as zlib from 'zlib';
+
 import AdmZip from 'adm-zip';
-import { buildUpdatedEpub } from './epub-writer';
+
 import { parseEpub } from './epub-parser';
+import { buildUpdatedEpub } from './epub-writer';
 
 function makeEpub(
   opts: {

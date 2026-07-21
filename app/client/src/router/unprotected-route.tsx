@@ -1,7 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useUsername } from '../provider/auth';
-
 import * as path from './path-internal';
 
 export const UnprotectedRoute = () => {
