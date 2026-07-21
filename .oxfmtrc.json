@@ -3,5 +3,12 @@
   "singleQuote": true,
   "trailingComma": "es5",
   "printWidth": 100,
-  "tabWidth": 2
+  "tabWidth": 2,
+  "sortImports": {
+    "groups": ["builtin", "external", "internal", ["parent", "sibling", "index"], "unknown"],
+    "internalPattern": ["~/", "@/", "src/"],
+    "newlinesBetween": true,
+    "order": "asc",
+    "ignoreCase": true
+  }
 }
