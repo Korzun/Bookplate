@@ -26,8 +26,8 @@ export const useSeriesBookList = (seriesName: string): UseSeriesBookList => {
         seriesMap.get(book.series)!.push(book);
       }
     }
-    for (const bookList of seriesMap.values()) {
-      bookList.sort((bookA, bookB) => bookA.seriesIndex - bookB.seriesIndex);
+    for (const seriesBooks of seriesMap.values()) {
+      seriesBooks.sort((bookA, bookB) => bookA.seriesIndex - bookB.seriesIndex);
     }
 
     const seriesBookList = seriesMap.get(seriesName);

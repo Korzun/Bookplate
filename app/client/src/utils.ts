@@ -166,7 +166,7 @@ export const hashString = (str: string, seed = 0) => {
 };
 
 export const isNumeric = (value: string) =>
-  typeof value != 'string'
+  typeof value !== 'string'
     ? false
     : !isNaN(value as unknown as number) && !isNaN(parseFloat(value));
 
