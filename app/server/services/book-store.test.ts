@@ -3356,7 +3356,7 @@ describe('listBooksBySeries', () => {
       title: 'Bob Book',
     });
     const aliceSeries = await bookStore.listSeries(alice);
-    const s = aliceSeries.find((s) => s.name === 'Shared Series')!;
+    const s = aliceSeries.find((series) => series.name === 'Shared Series')!;
     const books = await bookStore.listBooksBySeries(alice, s.id);
     expect(books.map((b) => b.title)).toEqual(['Alice Book']);
   });

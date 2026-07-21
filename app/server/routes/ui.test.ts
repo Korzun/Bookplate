@@ -1236,10 +1236,12 @@ async function waitForScan(
   result?: { imported: string[]; removed: string[] };
   error?: string;
 }> {
-  const path = querySuffix ? `/api/books/scan/status${querySuffix}` : '/api/books/scan/status';
+  const statusPath = querySuffix
+    ? `/api/books/scan/status${querySuffix}`
+    : '/api/books/scan/status';
   for (let i = 0; i < 100; i++) {
     const res = await request(app)
-      .get(path)
+      .get(statusPath)
       .set(...bearer(token));
     if (res.body.status !== 'running') return res.body;
     await new Promise((r) => setTimeout(r, 10));

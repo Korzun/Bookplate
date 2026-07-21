@@ -1616,16 +1616,16 @@ describe('parseEpub', () => {
 });
 
 describe('pageCount', () => {
-  let tmpDir: string;
+  let pageTmpDir: string;
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'epub-pagecount-'));
+    pageTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'epub-pagecount-'));
   });
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true });
+    fs.rmSync(pageTmpDir, { recursive: true });
   });
 
   function writeTmp(buf: Buffer, name = 'test.epub'): string {
-    const p = path.join(tmpDir, name);
+    const p = path.join(pageTmpDir, name);
     fs.writeFileSync(p, buf);
     return p;
   }

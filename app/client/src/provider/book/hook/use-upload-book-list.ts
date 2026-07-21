@@ -49,14 +49,14 @@ export const useUploadBookList = (): UseUploadBookList => {
           const data = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(data.error ?? 'Upload failed');
         }
-        const uploadResult = await (response.json() as Promise<UploadResult>);
-        setUploadResult(uploadResult);
+        const result = await (response.json() as Promise<UploadResult>);
+        setUploadResult(result);
         clearCompleteBookIds();
         fetchBookList();
-      } catch (error) {
+      } catch (err) {
         setError(true);
-        if (error instanceof Error) {
-          setErrorMessage(error.message);
+        if (err instanceof Error) {
+          setErrorMessage(err.message);
         }
       } finally {
         setLoading(false);

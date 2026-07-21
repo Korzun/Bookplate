@@ -13,6 +13,8 @@
       }
     ],
     "typescript/no-explicit-any": "error",
-    "typescript/ban-ts-comment": "error"
+    "typescript/ban-ts-comment": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-shadow": "error"
   }
 }

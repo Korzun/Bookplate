@@ -17,7 +17,7 @@ export const useUser = (username: string): UseUser => {
       return [undefined, false, error, errorMessage];
     }
 
-    const user = userList.find((user) => user.username === username);
+    const user = userList.find((candidate) => candidate.username === username);
 
     if (user === undefined) {
       if (loading) {
