@@ -53,12 +53,19 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // Dense floors the row at a standard input's height (tuned to recipe.input);
     // the default keeps the roomier 2.25rem for the Subjects card.
     minHeight: ({ dense }: StyleProps) => (dense ? '2.0625rem' : '2.25rem'),
+    // Hover state to match the other inputs (recipe.input); focus takes precedence.
+    '&:hover': {
+      borderColor: theme.color.border.hover,
+    },
     '&:focus-within': {
       borderColor: theme.color.border.focus,
     },
     '&$disabled': {
       cursor: 'default',
       color: theme.color.text.muted,
+      '&:hover': {
+        borderColor: theme.color.border.default,
+      },
       '&:focus-within': {
         borderColor: theme.color.border.default,
       },
