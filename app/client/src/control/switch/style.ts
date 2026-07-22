@@ -80,6 +80,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
     '& $description': {
       margin: 0,
+      // The whole shaded row toggles, so the description shows the toggle cursor too.
+      cursor: 'pointer',
     },
     '& $track': {
       // Kept in its own column so the description never runs beneath it.
