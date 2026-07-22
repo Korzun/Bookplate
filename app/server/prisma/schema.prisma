@@ -81,6 +81,7 @@ model User {
   refreshTokens      RefreshToken[]
   books              Book[]
   series             Series[]
+  deviceAccess       DeviceUser[]
 
   @@map("users")
 }
@@ -97,14 +98,14 @@ model BookIdHistory {
 }
 
 model Progress {
-  userId     String  @map("user_id")
+  userId     String @map("user_id")
   document   String
   progress   String
   percentage Float
   device     String
-  deviceId   String  @map("device_id")
+  deviceId   String @map("device_id")
   timestamp  Int
-  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, document])
   @@map("progress")
@@ -147,16 +148,17 @@ model ProgressHistory {
 }
 
 model Device {
-  id          String  @id
-  name        String
-  slug        String  @unique
-  coverWidth  Int?    @map("cover_width")
-  coverHeight Int?    @map("cover_height")
-  coverFit    String  @default("contain") @map("cover_fit")
-  bwCover     Boolean @default(false) @map("bw_cover")
-  simplify    Boolean @default(false)
-  createdAt   Float   @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("created_at")
-  updatedAt   Float   @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("updated_at")
+  id           String       @id
+  name         String
+  slug         String       @unique
+  coverWidth   Int?         @map("cover_width")
+  coverHeight  Int?         @map("cover_height")
+  coverFit     String       @default("contain") @map("cover_fit")
+  bwCover      Boolean      @default(false) @map("bw_cover")
+  simplify     Boolean      @default(false)
+  createdAt    Float        @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("created_at")
+  updatedAt    Float        @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("updated_at")
+  enabledUsers DeviceUser[]
 
   @@map("devices")
 }
@@ -172,4 +174,16 @@ model DeviceEdition {
   @@id([userId, originalBookId, deviceId])
   @@index([userId, editionId])
   @@map("device_editions")
+}
+
+model DeviceUser {
+  deviceId  String @map("device_id")
+  userId    String @map("user_id")
+  createdAt Float  @default(dbgenerated("strftime('%s', 'now') * 1000")) @map("created_at")
+  device    Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, userId])
+  @@index([userId])
+  @@map("device_users")
 }

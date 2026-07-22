@@ -98,4 +98,36 @@ export class DeviceStore {
       throw err;
     }
   }
+  async enableUser(deviceId: string, userId: string): Promise<void> {
+    await this.prisma.deviceUser.upsert({
+      where: { deviceId_userId: { deviceId, userId } },
+      create: { deviceId, userId },
+      update: {},
+    });
+  }
+  async disableUser(deviceId: string, userId: string): Promise<void> {
+    await this.prisma.deviceUser.deleteMany({ where: { deviceId, userId } });
+  }
+  async isEnabled(deviceId: string, userId: string): Promise<boolean> {
+    const row = await this.prisma.deviceUser.findUnique({
+      where: { deviceId_userId: { deviceId, userId } },
+    });
+    return row !== null;
+  }
+  async listUsernamesForDevice(deviceId: string): Promise<string[]> {
+    const rows = await this.prisma.deviceUser.findMany({
+      where: { deviceId },
+      include: { user: { select: { username: true } } },
+      orderBy: { user: { username: 'asc' } },
+    });
+    return rows.map((r) => r.user.username);
+  }
+  async listForUser(userId: string): Promise<Device[]> {
+    const rows = await this.prisma.deviceUser.findMany({
+      where: { userId },
+      include: { device: true },
+      orderBy: { device: { name: 'asc' } },
+    });
+    return rows.map((r) => toDevice(r.device));
+  }
 }
