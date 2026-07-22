@@ -61,7 +61,7 @@ const DeviceRow = ({ device }: DeviceRowProps) => {
             { title: 'Slug', value: device.slug },
             { title: 'Cover size', value: formatCoverSize(device) },
             { title: 'Cover fit', value: formatCoverFit(device.coverFit) },
-            { title: 'B&W cover', value: device.bwCover ? 'Yes' : 'No' },
+            { title: 'Grayscale Cover', value: device.bwCover ? 'Yes' : 'No' },
             { title: 'Simplify', value: device.simplify ? 'Yes' : 'No' },
           ]}
         />
