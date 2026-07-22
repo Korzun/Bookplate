@@ -20,7 +20,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // helper text for this toggle rather than a separate row.
     marginLeft: `calc(28px + ${theme.space.md})`,
     fontSize: theme.fontSize.sm,
-    color: theme.color.text.faint,
+    // Dedicated description colour — darker than faint for readable helper text,
+    // especially on the shaded background of the horizontal layout.
+    color: theme.color.text.description,
     cursor: 'auto',
   },
   track: {
@@ -54,36 +56,34 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   label: {
     ...theme.recipe.label,
   },
+  content: {},
   horizontal: {
+    // Two columns: content (label + description) on the left, toggle on the right.
     display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
     width: '100%',
     backgroundColor: theme.color.bg.cardHeader,
     borderRadius: theme.radius.md,
-    '& $row': {
-      width: '100%',
-      // No left padding so the label lines up with the other fields' label column.
-      paddingTop: theme.space.md,
-      paddingBottom: theme.space.md,
-      paddingRight: theme.space.lg,
-      gap: theme.space.md,
+    padding: `${theme.space.md} ${theme.space.lg} ${theme.space.md} ${theme.space.sm}`,
+    '& $content': {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.space.xs,
+      flexGrow: 1,
+      minWidth: 0,
     },
     '& $label': {
-      // Matches the other controls' label column (left-aligned, 6rem wide).
-      minWidth: '6rem',
+      // Left-aligned to the same edge as the other fields' labels.
       textAlign: 'left',
-      marginLeft: theme.space.sm,
-      flexShrink: 0,
-    },
-    '& $track': {
-      // Toggle pinned to the far right of the row.
-      marginLeft: 'auto',
     },
     '& $description': {
       margin: 0,
-      paddingBottom: theme.space.md,
-      paddingRight: theme.space.lg,
-      // Left-aligned to the same edge as the label.
-      marginLeft: theme.space.sm,
+    },
+    '& $track': {
+      // Kept in its own column so the description never runs beneath it.
+      flexShrink: 0,
     },
   },
   checked: {},
