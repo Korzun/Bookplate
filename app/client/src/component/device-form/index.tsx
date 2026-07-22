@@ -260,6 +260,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         onChange={setSimplify}
         description="Replaces quote tags and special character codes in the book with plain equivalents, so simpler e-readers (such as Crosspoint) render the text correctly. Enable it for devices that struggle with complex formatting."
       />
+      {!isEdit && <CardDivider />}
     </div>
   );
 
