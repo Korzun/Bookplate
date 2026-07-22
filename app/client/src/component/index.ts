@@ -3,6 +3,7 @@ export { BookLineageCard } from './book-lineage-card';
 export { BookRow } from './book-row';
 export { BrandLockup } from './brand-lockup';
 export { Card } from './card';
+export { CardDivider } from './card-divider';
 export { ChapterProgress } from './chapter-progress';
 export { CollapsibleSection } from './collapsible-section';
 export { ConnectionUrls } from './connection-urls';
