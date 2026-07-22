@@ -8,20 +8,29 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
   },
+  line: {
+    // Grows by default (fills a side / the whole width when there's no label).
+    flexGrow: 1,
+    height: '1px',
+    backgroundColor: theme.color.border.strong,
+  },
+  lineStart: {},
+  lineEnd: {},
   label: {
-    // Left-aligned to the card's content edge, with a gap before the rule.
-    paddingLeft: theme.space.xl,
-    paddingRight: theme.space.md,
+    padding: `0 ${theme.space.md}`,
     // Same colour as the toggle helper text, a step larger so it reads as a heading.
     fontSize: theme.fontSize.md,
     color: theme.color.text.faint,
     whiteSpace: 'nowrap',
     flexShrink: 0,
   },
-  line: {
-    // Fills the remaining width to the right border; spans the whole width with no label.
-    flexGrow: 1,
-    height: '1px',
-    backgroundColor: theme.color.border.strong,
+  // Left/right: the label hugs that edge with a short stub of line poking past it;
+  // the opposite line fills the rest. Center leaves both lines growing equally.
+  left: {
+    '& $lineStart': { flexGrow: 0, flexShrink: 0, width: theme.space.md },
+  },
+  center: {},
+  right: {
+    '& $lineEnd': { flexGrow: 0, flexShrink: 0, width: theme.space.md },
   },
 }));

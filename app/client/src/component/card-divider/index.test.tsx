@@ -18,4 +18,9 @@ describe('CardDivider', () => {
     expect(screen.getByText('Cover')).toBeInTheDocument();
     expect(screen.getByRole('separator')).toHaveTextContent('Cover');
   });
+
+  it.each(['left', 'center', 'right'] as const)('renders the label with align=%s', (align) => {
+    renderWithProviders(<CardDivider align={align}>Cover</CardDivider>);
+    expect(screen.getByText('Cover')).toBeInTheDocument();
+  });
 });
