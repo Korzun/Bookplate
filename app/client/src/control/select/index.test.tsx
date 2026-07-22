@@ -32,6 +32,13 @@ describe('Select', () => {
       expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
     });
 
+    it('hides clear button when clearable is false even with a value', () => {
+      renderWithProviders(
+        <Select name="genre" options={options} value="Horror" clearable={false} />
+      );
+      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    });
+
     it('calls onChange(undefined) when clear is clicked', async () => {
       const user = userEvent.setup();
       const onChange = vi.fn();

@@ -241,6 +241,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         options={COVER_FIT_OPTIONS}
         onChange={setCoverFit}
         searchable={false}
+        clearable={false}
       />
       <Switch
         name="bwCover"

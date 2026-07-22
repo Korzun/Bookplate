@@ -11,6 +11,8 @@ type InternalOption = { label: string; value: string; description?: string; _isC
 
 export type SelectProps = {
   allowCreate?: boolean;
+  // Show the inline "clear" (✕) control when a value is selected (default true).
+  clearable?: boolean;
   disabled?: boolean;
   label?: string;
   layout?: 'horizontal' | 'vertical' | 'inline';
@@ -42,6 +44,7 @@ function highlight(text: string, query: string, className: string): React.ReactN
 
 export const Select = ({
   allowCreate = false,
+  clearable = true,
   disabled = false,
   label,
   layout = 'horizontal',
@@ -236,7 +239,7 @@ export const Select = ({
             <span className={cx(style.triggerText, { [style.placeholder]: !selectedLabel })}>
               {loading ? 'Loading…' : (selectedLabel ?? placeholder)}
             </span>
-            {value && !disabled && !loading && (
+            {value && clearable && !disabled && !loading && (
               <span
                 className={style.clearButton}
                 role="button"
