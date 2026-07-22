@@ -245,6 +245,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       <Switch
         name="bwCover"
         label="Grayscale"
+        layout="horizontal"
         checked={bwCover}
         onChange={setBwCover}
         description="Convert cover to grayscale for monochrome screens."
@@ -253,6 +254,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       <Switch
         name="simplify"
         label="Simplify markup"
+        layout="horizontal"
         checked={simplify}
         onChange={setSimplify}
         description="Replaces quote tags and special character codes in the book with plain equivalents, so simpler e-readers (such as Crosspoint) render the text correctly. Enable it for devices that struggle with complex formatting."
