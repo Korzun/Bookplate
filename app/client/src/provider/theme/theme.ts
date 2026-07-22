@@ -447,6 +447,9 @@ function buildTheme(mode: ThemeMode): Theme {
   const recipe: Theme['recipe'] = {
     input: {
       fontFamily: fontFamily.body,
+      // Match the select controls (0.80rem); without this, inputs fall back to the
+      // smaller browser default and look inconsistent next to selects/chips.
+      fontSize: '0.80rem',
       outlineWidth: '2px',
       outlineStyle: 'solid',
       outlineColor: 'transparent',
