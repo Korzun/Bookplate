@@ -4,6 +4,7 @@ import { logger } from '../logger';
 import { adminAuth } from '../middleware/auth';
 import { DeviceStore, DeviceInput, DeviceSlugConflictError } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
+import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
 import { generateSlug } from '../utils/slug';
 
@@ -53,6 +54,7 @@ function parseBody(raw: Record<string, unknown>): DeviceInput | { error: string 
 export function createDevicesRouter(
   deviceStore: DeviceStore,
   editionStore: EditionStore,
+  userStore: UserStore,
   requireAuth: RequestHandler
 ): Router {
   const router = Router();
@@ -63,8 +65,17 @@ export function createDevicesRouter(
 
   router.get(
     '/',
-    asyncHandler(async (_req: Request, res: Response) => {
-      res.json(await deviceStore.list());
+    asyncHandler(async (req: Request, res: Response) => {
+      const user = req.user;
+      if (user?.isAdmin) {
+        res.json(await deviceStore.list());
+        return;
+      }
+      if (!user?.userId) {
+        res.json([]);
+        return;
+      }
+      res.json(await deviceStore.listForUser(user.userId));
     })
   );
 
@@ -157,6 +168,64 @@ export function createDevicesRouter(
       } catch (err) {
         log.warn(
           `DELETE /:id — edition-cache purge failed for device "${existing.id}" — ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      res.status(204).end();
+    })
+  );
+
+  router.get(
+    '/:id/users',
+    adminAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const device = await deviceStore.getById(req.params.id);
+      if (!device) {
+        res.status(404).json({ error: 'Device not found' });
+        return;
+      }
+      res.json(await deviceStore.listUsernamesForDevice(device.id));
+    })
+  );
+
+  router.put(
+    '/:id/users/:username',
+    adminAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const device = await deviceStore.getById(req.params.id);
+      if (!device) {
+        res.status(404).json({ error: 'Device not found' });
+        return;
+      }
+      const userId = await userStore.getUserIdByUsername(req.params.username);
+      if (!userId) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      await deviceStore.enableUser(device.id, userId);
+      res.status(204).end();
+    })
+  );
+
+  router.delete(
+    '/:id/users/:username',
+    adminAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const device = await deviceStore.getById(req.params.id);
+      if (!device) {
+        res.status(404).json({ error: 'Device not found' });
+        return;
+      }
+      const userId = await userStore.getUserIdByUsername(req.params.username);
+      if (!userId) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      await deviceStore.disableUser(device.id, userId);
+      try {
+        await editionStore.purgeForDeviceAndUser(device.id, userId);
+      } catch (err) {
+        log.warn(
+          `DELETE /:id/users/:username — edition purge failed for device "${device.id}" user "${userId}" — ${err instanceof Error ? err.message : String(err)}`
         );
       }
       res.status(204).end();

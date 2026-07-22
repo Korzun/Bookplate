@@ -60,7 +60,10 @@ export function createServer(
     '/api/users',
     createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
   );
-  server.use('/api/devices', createDevicesRouter(deviceStore, editionStore, jwtAuth(jwtSecret)));
+  server.use(
+    '/api/devices',
+    createDevicesRouter(deviceStore, editionStore, userStore, jwtAuth(jwtSecret))
+  );
   const scanJobStore = new ScanJobStore();
   server.use(
     '/',
