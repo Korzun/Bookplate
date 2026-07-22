@@ -220,3 +220,39 @@ it("countForBook counts a book's editions for the user, ignoring other users/boo
   expect(await s.countForBook(owner.userId, book.id)).toBe(2);
   expect(await s.countForBook(owner.userId, 'nonexistent')).toBe(0);
 });
+
+it('purgeForDeviceAndUser removes only that user+device editions, leaving others intact', async () => {
+  const otherOwner: Owner = { userId: 'u2', username: 'bob' };
+  const device2: Device = { ...device, id: 'devP', slug: 'phone', name: 'Phone' };
+  const deps: EditionDeps = {
+    buildEdition: async () => Buffer.from('E'),
+    assertValidEpub: async () => report(),
+    partialMD5: () => 'h',
+  };
+  const s = store(deps);
+  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  await s.getOrCreateEdition(owner, book, device2, ValidationThreshold.ERROR);
+  await s.getOrCreateEdition(otherOwner, book, device, ValidationThreshold.ERROR);
+
+  await s.purgeForDeviceAndUser(device.id, owner.userId);
+
+  // Target pair gone (row + file).
+  expect(
+    await prisma.deviceEdition.count({ where: { deviceId: device.id, userId: owner.userId } })
+  ).toBe(0);
+  expect(fs.existsSync(path.join(root, device.id, owner.userId, `${book.id}.epub`))).toBe(false);
+
+  // Same user on a different device is untouched.
+  expect(
+    await prisma.deviceEdition.count({ where: { deviceId: device2.id, userId: owner.userId } })
+  ).toBe(1);
+  expect(fs.existsSync(path.join(root, device2.id, owner.userId, `${book.id}.epub`))).toBe(true);
+
+  // Other user on the same device is untouched.
+  expect(
+    await prisma.deviceEdition.count({ where: { deviceId: device.id, userId: otherOwner.userId } })
+  ).toBe(1);
+  expect(fs.existsSync(path.join(root, device.id, otherOwner.userId, `${book.id}.epub`))).toBe(
+    true
+  );
+});
