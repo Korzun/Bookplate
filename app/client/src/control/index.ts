@@ -1,5 +1,6 @@
 export { BackButton } from './back-button';
 export { Button } from './button';
+export { ChipsInput } from './chips-input';
 export { ConfirmModal } from './confirm-modal';
 export { FieldList } from './field-list';
 export { LinkProgressModal } from './link-progress-modal';
