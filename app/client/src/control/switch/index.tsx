@@ -57,7 +57,13 @@ export const Switch = ({
   );
 
   const descriptionEl = description ? (
-    <div id={descriptionId} className={style.description} onClick={handleDescriptionClick}>
+    <div
+      id={descriptionId}
+      className={style.description}
+      // In the horizontal layout the whole shaded row is a toggle target, so let
+      // description clicks bubble up. Elsewhere the description stays inert helper text.
+      onClick={layout === 'horizontal' ? undefined : handleDescriptionClick}
+    >
       {description}
     </div>
   ) : null;
