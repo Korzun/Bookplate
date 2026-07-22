@@ -249,6 +249,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       bwCover: false,
       simplify: true,
     });
+    await deviceStore.enableUser(device.id, alice.userId);
     const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const editionStore = new EditionStore(editionsRoot, prisma, {
       buildEdition: async () => Buffer.from('EDITION'),
@@ -285,6 +286,43 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       .get(`/opds/books/${bookId}/devices/nope/download`)
       .set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(404);
+  });
+
+  it('403s on a device download for a user the device is not enabled for', async () => {
+    const bookId = 'devicedl-forbidden';
+    await bookStore.addBook(bob, bookId, stage(bookId, 'epub-content'), FAKE_META);
+    const deviceStore = new DeviceStore(prisma);
+    const device = await deviceStore.create({
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
+    });
+    await deviceStore.enableUser(device.id, alice.userId); // alice enabled, bob not
+    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
+      buildEdition: async () => Buffer.from('EDITION'),
+      assertValidEpub: async () => ({}) as never,
+      partialMD5: () => 'edhash',
+    });
+    const app3 = express();
+    app3.use(
+      '/opds',
+      createOpdsRouter(
+        bookStore,
+        userStore,
+        [60, 170],
+        'Bookplate',
+        deviceStore,
+        editionStore,
+        ValidationThreshold.ERROR
+      )
+    );
+    const res = await request(app3)
+      .get(`/opds/books/${bookId}/devices/${device.slug}/download`)
+      .set(basicAuth('bob', 'bobsecret'));
+    expect(res.status).toBe(403);
   });
 });
 
@@ -835,6 +873,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
       bwCover: false,
       simplify: true,
     });
+    await deviceStore.enableUser(device.id, alice.userId);
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
       buildEdition: async () => Buffer.from('EDITION'),
       assertValidEpub: async () => ({}) as never,
@@ -853,8 +892,20 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
         ValidationThreshold.ERROR
       )
     );
-    return { app: a, device };
+    return { app: a, device, deviceStore };
   }
+
+  it('403s for a user the device is not enabled for', async () => {
+    const { app: a } = await deviceApp(); // alice enabled; bob is not
+    const res = await request(a).get('/opds/device/kindle/').set(basicAuth('bob', 'bobsecret'));
+    expect(res.status).toBe(403);
+  });
+
+  it('serves the catalog to an enabled user', async () => {
+    const { app: a } = await deviceApp();
+    const res = await request(a).get('/opds/device/kindle/').set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+  });
 
   it('404s for an unknown device slug', async () => {
     const { app: a } = await deviceApp();
