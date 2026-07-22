@@ -146,6 +146,8 @@ function makeEpub(
     seriesIndex?: number;
     coverData?: Buffer;
     coverMime?: string;
+    version?: string;
+    modified?: string[];
   } = {}
 ): Buffer {
   const zip = new AdmZip();
@@ -165,15 +167,19 @@ function makeEpub(
   const seriesMeta = opts.series
     ? `<meta name="calibre:series" content="${opts.series}"/><meta name="calibre:series_index" content="${opts.seriesIndex ?? 1}"/>`
     : '';
+  const modifiedMeta = (opts.modified ?? [])
+    .map((ts) => `<meta property="dcterms:modified">${ts}</meta>`)
+    .join('\n    ');
 
   const opf = `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+<package xmlns="http://www.idpf.org/2007/opf" version="${opts.version ?? '2.0'}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     ${opts.title !== undefined ? `<dc:title>${opts.title}</dc:title>` : ''}
     ${opts.author !== undefined ? `<dc:creator>${opts.author}</dc:creator>` : ''}
     ${opts.description !== undefined ? `<dc:description>${opts.description}</dc:description>` : ''}
     ${coverMeta}
     ${seriesMeta}
+    ${modifiedMeta}
   </metadata>
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
@@ -883,6 +889,102 @@ describe('POST /api/books/upload — metadata detection', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('POST /api/books/upload — dcterms:modified repair', () => {
+  it('dedupes a duplicate dcterms:modified and reports a document fix', async () => {
+    const token = await loginAlice();
+    const epub = makeEpub({
+      version: '3.0',
+      title: 'Dup Modified',
+      author: 'Peter Watts',
+      modified: ['2020-01-01T00:00:00Z', '2022-01-01T00:00:00Z'],
+    });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'dup.epub')
+      .expect(200);
+
+    const result = res.body.results[0];
+    const fix = result.applied.find((f: { kind: string }) => f.kind === 'duplicate-modified-date');
+    expect(fix).toBeTruthy();
+    expect(fix.field).toBe('document');
+    // Book is retrievable under the (repaired) id.
+    await request(app)
+      .get(`/api/books/${result.bookId}`)
+      .set(...bearer(token))
+      .expect(200);
+  });
+
+  it('injects a missing dcterms:modified and reports a document fix', async () => {
+    const token = await loginAlice();
+    const epub = makeEpub({
+      version: '3.0',
+      title: 'No Modified',
+      author: 'Peter Watts',
+      modified: [],
+    });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'nomod.epub')
+      .expect(200);
+    expect(
+      res.body.results[0].applied.find((f: { kind: string }) => f.kind === 'missing-modified-date')
+    ).toBeTruthy();
+  });
+
+  it('does not touch an EPUB3 that already has exactly one dcterms:modified', async () => {
+    const token = await loginAlice();
+    const epub = makeEpub({
+      version: '3.0',
+      title: 'One Modified',
+      author: 'Peter Watts',
+      modified: ['2020-01-01T00:00:00Z'],
+    });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'onemod.epub')
+      .expect(200);
+    expect(
+      res.body.results[0].applied.find((f: { field: string }) => f.field === 'document')
+    ).toBeUndefined();
+  });
+
+  it('applies both a structural repair and a post-add auto-fix to the same upload', async () => {
+    const token = await loginAlice();
+    const epub = makeEpub({
+      version: '3.0',
+      title: 'The Coexist Book',
+      author: 'Peter Watts',
+      modified: ['2020-01-01T00:00:00Z', '2022-01-01T00:00:00Z'],
+    });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'coexist.epub')
+      .expect(200);
+
+    const result = res.body.results[0];
+    const structuralFix = result.applied.find(
+      (f: { kind: string }) => f.kind === 'duplicate-modified-date'
+    );
+    expect(structuralFix).toBeTruthy();
+    expect(structuralFix.field).toBe('document');
+
+    const metadataFix = result.applied.find(
+      (f: { kind: string }) => f.kind === 'title-sort-missing'
+    );
+    expect(metadataFix).toBeTruthy();
+
+    // The returned bookId is the final post-auto-fix id and is retrievable.
+    await request(app)
+      .get(`/api/books/${result.bookId}`)
+      .set(...bearer(token))
+      .expect(200);
   });
 });
 

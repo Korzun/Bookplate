@@ -22,11 +22,19 @@ export interface EpubChanges {
   coverMime?: string;
 }
 
-export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
-  // Read every entry into memory. Rebuilding the archive from decompressed data
-  // (rather than editing in place) sidesteps source quirks like ZIP general-
-  // purpose bit 3 (data descriptors) that some EPUB authoring tools set, which
-  // can otherwise leave the rewritten file unreadable.
+interface LoadedOpf {
+  files: Record<string, Uint8Array>;
+  opfRelPath: string;
+  opf: Record<string, unknown>;
+  pkg: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+// Unzip an EPUB and parse its OPF package document. Rebuilding the archive
+// from decompressed data (rather than editing in place) sidesteps source
+// quirks like ZIP general-purpose bit 3 (data descriptors) that some EPUB
+// authoring tools set, which can otherwise leave the rewritten file unreadable.
+function loadOpf(filePath: string): LoadedOpf {
   const files = unzipSync(fs.readFileSync(filePath));
 
   // Step 1: resolve OPF path from container.xml
@@ -63,6 +71,94 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
   const pkg = (opf?.package ?? opf) as Record<string, unknown>;
   if (!pkg.metadata) pkg.metadata = {};
   const metadata = pkg.metadata as Record<string, unknown>;
+  return { files, opfRelPath, opf, pkg, metadata };
+}
+
+function serializeEpub(
+  files: Record<string, Uint8Array>,
+  opfRelPath: string,
+  opf: Record<string, unknown>
+): Buffer {
+  const builder = new XMLBuilder({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    suppressEmptyNode: false,
+    format: false,
+  });
+  const newOpfXml = '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(opf) as string);
+  files[opfRelPath] = strToU8(newOpfXml);
+  return packEpub(files);
+}
+
+// Deterministic placeholder injected for a missing dcterms:modified meta, so
+// re-uploads of the same content keep the same fingerprint. The upload
+// validator (@korzun/epubcheck-ts) only counts dcterms:modified metas; it does
+// not validate the value's date format.
+const INJECTED_MODIFIED = '0000-00-00T00:00:00Z';
+
+/**
+ * Ensure an EPUB-3 package has exactly one non-refining
+ * `<meta property="dcterms:modified">` (EPUBCheck RSC-005). Dedupes 2+ (keeping
+ * the latest timestamp) and injects one when absent. No-op for non-EPUB3
+ * packages, for exactly-one, and for refining metas. Mutates `metadata.meta`.
+ */
+export function normalizeModifiedMeta(
+  metadata: Record<string, unknown>,
+  version: string
+): { changed: boolean; action: 'deduped' | 'injected' | 'none' } {
+  if (!version.startsWith('3')) return { changed: false, action: 'none' };
+
+  const metas = Array.isArray(metadata['meta'])
+    ? (metadata['meta'] as Record<string, unknown>[])
+    : [];
+  const isModified = (m: Record<string, unknown>) =>
+    m?.['@_property'] === 'dcterms:modified' && m?.['@_refines'] === undefined;
+  const idxs = metas.map((m, i) => (isModified(m) ? i : -1)).filter((i) => i >= 0);
+
+  if (idxs.length === 1) return { changed: false, action: 'none' };
+
+  if (idxs.length === 0) {
+    if (!Array.isArray(metadata['meta'])) metadata['meta'] = [];
+    (metadata['meta'] as Record<string, unknown>[]).push({
+      '@_property': 'dcterms:modified',
+      '#text': INJECTED_MODIFIED,
+    });
+    return { changed: true, action: 'injected' };
+  }
+
+  // 2+: keep the lexically-greatest #text (ISO-8601 = chronological); tie-break
+  // on the later document position so exactly one survives.
+  let keep = idxs[0];
+  for (const i of idxs.slice(1)) {
+    const cur = String(metas[i]['#text'] ?? '');
+    const best = String(metas[keep]['#text'] ?? '');
+    if (cur > best || (cur === best && i > keep)) keep = i;
+  }
+  const drop = new Set(idxs.filter((i) => i !== keep));
+  metadata['meta'] = metas.filter((_, i) => !drop.has(i));
+  return { changed: true, action: 'deduped' };
+}
+
+/**
+ * Repair the RSC-005 dcterms:modified count on disk-resident EPUB bytes. Returns
+ * the (possibly rewritten) bytes; `repaired: false` with the original bytes when
+ * nothing needed changing (so the caller can preserve the fingerprint).
+ */
+export function repairPackageDocument(filePath: string): {
+  bytes: Buffer;
+  repaired: boolean;
+  action: 'deduped' | 'injected' | 'none';
+} {
+  const { files, opfRelPath, opf, pkg, metadata } = loadOpf(filePath);
+  const result = normalizeModifiedMeta(metadata, String(pkg['@_version'] ?? ''));
+  if (!result.changed) {
+    return { bytes: Buffer.from(fs.readFileSync(filePath)), repaired: false, action: 'none' };
+  }
+  return { bytes: serializeEpub(files, opfRelPath, opf), repaired: true, action: result.action };
+}
+
+export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
+  const { files, opfRelPath, opf, pkg, metadata } = loadOpf(filePath);
   if (!pkg.manifest) pkg.manifest = { item: [] };
   const mfst = pkg.manifest as Record<string, unknown>;
   if (!mfst.item) mfst.item = [];
@@ -204,15 +300,10 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
     metadata['meta'] = metas;
   }
 
-  // Step 6: serialize OPF and write ZIP
-  const builder = new XMLBuilder({
-    ignoreAttributes: false,
-    attributeNamePrefix: '@_',
-    suppressEmptyNode: false,
-    format: false,
-  });
-  const newOpfXml = '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(opf) as string);
-  files[opfRelPath] = strToU8(newOpfXml);
+  // Step 6a: keep exactly one dcterms:modified so an edit never emits an
+  // RSC-005 package.
+  normalizeModifiedMeta(metadata, String(pkg['@_version'] ?? ''));
 
-  return packEpub(files);
+  // Step 6b: serialize the updated OPF and write the ZIP.
+  return serializeEpub(files, opfRelPath, opf);
 }

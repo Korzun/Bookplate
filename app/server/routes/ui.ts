@@ -7,6 +7,7 @@ import multer from 'multer';
 
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
+import { applyEpubChanges } from '../services/apply-epub-changes';
 import {
   BookStore,
   BookHashCollisionError,
@@ -17,7 +18,7 @@ import {
 } from '../services/book-store';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
-import { EpubChanges } from '../services/epub-writer';
+import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -31,10 +32,9 @@ import {
   PageCursor,
   SearchSuggestionsResponse,
 } from '../types';
-import { applyEpubChanges } from '../services/apply-epub-changes';
-import { detectMetadataIssues, MetadataIssue } from '../utils/metadata-issues';
 import { asyncHandler } from '../utils/async-handler';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
+import { detectMetadataIssues, MetadataIssue } from '../utils/metadata-issues';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 
 const log = logger('UI');
@@ -629,10 +629,8 @@ export function createUiRouter(
       for (const file of files) {
         const savedPath = file.path;
         let meta: EpubMeta;
-        let id: string;
         try {
           meta = parseEpub(savedPath);
-          id = partialMD5(savedPath);
         } catch (err: unknown) {
           try {
             fs.unlinkSync(savedPath);
@@ -641,6 +639,67 @@ export function createUiRouter(
           }
           res.status(400).json({
             error: `Failed to parse EPUB: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          return;
+        }
+
+        // Pre-validation repair: fix the RSC-005 dcterms:modified count so the
+        // file passes validation. Best-effort — on failure fall through to
+        // validation, which rejects it exactly as before.
+        let structuralFix: MetadataFix | null = null;
+        try {
+          const repair = repairPackageDocument(savedPath);
+          if (repair.repaired) {
+            const tmpPath = path.join(
+              path.dirname(savedPath),
+              `.tmp-repair-${randomUUID()}${path.extname(savedPath)}`
+            );
+            try {
+              fs.writeFileSync(tmpPath, repair.bytes);
+              fs.renameSync(tmpPath, savedPath);
+            } catch (err) {
+              try {
+                fs.unlinkSync(tmpPath);
+              } catch {
+                /* temp file may not exist */
+              }
+              throw err;
+            }
+            structuralFix =
+              repair.action === 'injected'
+                ? {
+                    field: 'document',
+                    kind: 'missing-modified-date',
+                    from: '',
+                    to: 'added a missing modification date',
+                    changes: {},
+                  }
+                : {
+                    field: 'document',
+                    kind: 'duplicate-modified-date',
+                    from: '',
+                    to: 'removed a duplicate modification date',
+                    changes: {},
+                  };
+          }
+        } catch (err: unknown) {
+          log.warn(
+            `Package repair skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+
+        // Fingerprint reflects the repaired bytes.
+        let id: string;
+        try {
+          id = partialMD5(savedPath);
+        } catch (err: unknown) {
+          try {
+            fs.unlinkSync(savedPath);
+          } catch {
+            /* file may already be gone */
+          }
+          res.status(400).json({
+            error: `Failed to fingerprint EPUB: ${err instanceof Error ? err.message : String(err)}`,
           });
           return;
         }
@@ -686,7 +745,7 @@ export function createUiRouter(
         }
         // Detect metadata issues; auto-apply the high-confidence ones in-request.
         let finalId = id;
-        const applied: MetadataFix[] = [];
+        const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
         const proposals: MetadataFix[] = [];
         try {
           const librarySubjects = await bookStore.getSubjects(owner);

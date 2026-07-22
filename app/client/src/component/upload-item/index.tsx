@@ -23,6 +23,7 @@ const FIELD_LABEL: Record<string, string> = {
   author: 'Author',
   authorSort: 'Author sort',
   subjects: 'Subjects',
+  document: 'EPUB',
 };
 
 export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props) => {

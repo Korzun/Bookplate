@@ -6,7 +6,7 @@ import * as zlib from 'zlib';
 import AdmZip from 'adm-zip';
 
 import { parseEpub } from './epub-parser';
-import { buildUpdatedEpub } from './epub-writer';
+import { buildUpdatedEpub, normalizeModifiedMeta } from './epub-writer';
 
 function makeEpub(
   opts: {
@@ -438,5 +438,85 @@ describe('buildUpdatedEpub', () => {
       expect(after.seriesIndex).toBe(2);
       expect(after.title).toBe('Descriptor Test');
     });
+  });
+});
+
+const modified = (text: string, extra: Record<string, string> = {}) => ({
+  '@_property': 'dcterms:modified',
+  '#text': text,
+  ...extra,
+});
+
+describe('normalizeModifiedMeta', () => {
+  it('is a no-op for non-EPUB3 packages', () => {
+    const meta = { meta: [modified('2020-01-01T00:00:00Z'), modified('2021-01-01T00:00:00Z')] };
+    expect(normalizeModifiedMeta(meta, '2.0')).toEqual({
+      changed: false,
+      action: 'none',
+    });
+    expect((meta.meta as unknown[]).length).toBe(2);
+  });
+
+  it('is a no-op when exactly one non-refining dcterms:modified exists', () => {
+    const meta = { meta: [modified('2020-01-01T00:00:00Z')] };
+    expect(normalizeModifiedMeta(meta, '3.0')).toEqual({
+      changed: false,
+      action: 'none',
+    });
+    expect((meta.meta as unknown[]).length).toBe(1);
+  });
+
+  it('dedupes to the latest timestamp', () => {
+    const meta = {
+      meta: [
+        modified('2019-01-01T00:00:00Z'),
+        modified('2022-05-01T00:00:00Z'),
+        modified('2020-01-01T00:00:00Z'),
+      ],
+    };
+    const r = normalizeModifiedMeta(meta, '3.0');
+    expect(r).toEqual({ changed: true, action: 'deduped' });
+    const kept = (meta.meta as Record<string, string>[]).filter(
+      (m) => m['@_property'] === 'dcterms:modified'
+    );
+    expect(kept).toHaveLength(1);
+    expect(kept[0]['#text']).toBe('2022-05-01T00:00:00Z');
+  });
+
+  it('tie-breaks equal timestamps by last document order (keeps exactly one)', () => {
+    const meta = { meta: [modified('2020-01-01T00:00:00Z'), modified('2020-01-01T00:00:00Z')] };
+    normalizeModifiedMeta(meta, '3.0');
+    expect(
+      (meta.meta as Record<string, string>[]).filter((m) => m['@_property'] === 'dcterms:modified')
+    ).toHaveLength(1);
+  });
+
+  it('does not count or remove refining dcterms:modified metas', () => {
+    const meta = {
+      meta: [modified('2020-01-01T00:00:00Z'), modified('ignored', { '@_refines': '#x' })],
+    };
+    // one non-refining + one refining = count 1 → no change
+    expect(normalizeModifiedMeta(meta, '3.0')).toEqual({
+      changed: false,
+      action: 'none',
+    });
+    expect((meta.meta as unknown[]).length).toBe(2);
+  });
+
+  it('injects a modification date when none exists', () => {
+    const meta: Record<string, unknown> = { meta: [] };
+    const r = normalizeModifiedMeta(meta, '3.0');
+    expect(r).toEqual({ changed: true, action: 'injected' });
+    const metas = meta.meta as Record<string, string>[];
+    expect(metas).toHaveLength(1);
+    expect(metas[0]['@_property']).toBe('dcterms:modified');
+    expect(metas[0]['#text']).toBe('0000-00-00T00:00:00Z');
+  });
+
+  it('injects when meta is missing entirely (total on malformed input)', () => {
+    const meta: Record<string, unknown> = {};
+    const r = normalizeModifiedMeta(meta, '3.0');
+    expect(r).toEqual({ changed: true, action: 'injected' });
+    expect((meta.meta as Record<string, string>[])[0]['#text']).toBe('0000-00-00T00:00:00Z');
   });
 });
