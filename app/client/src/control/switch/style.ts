@@ -68,9 +68,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       gap: theme.space.md,
     },
     '& $label': {
-      // Matches the other controls' label column (right-aligned, 6rem wide).
+      // Matches the other controls' label column (left-aligned, 6rem wide).
       minWidth: '6rem',
-      textAlign: 'right',
+      textAlign: 'left',
       marginLeft: theme.space.sm,
       flexShrink: 0,
     },
@@ -82,8 +82,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       margin: 0,
       paddingBottom: theme.space.md,
       paddingRight: theme.space.lg,
-      // Align the helper text under the content column (past the label + gap).
-      marginLeft: `calc(${theme.space.sm} + 6rem + ${theme.space.md})`,
+      // Left-aligned to the same edge as the label.
+      marginLeft: theme.space.sm,
     },
   },
   checked: {},
