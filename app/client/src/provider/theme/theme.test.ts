@@ -77,6 +77,12 @@ describe('new semantic tokens — light values are byte-identical to replaced li
     expect(lightTheme.color.chip.entryType.bg).toBe('rgba(192, 65, 94, 0.08)');
     expect(lightTheme.color.chip.entryType.border).toBe('rgba(192, 65, 94, 0.22)');
   });
+  it('chip.user light values are a distinct plum, off subject', () => {
+    expect(lightTheme.color.chip.user.text).toBe('#a23a95');
+    expect(lightTheme.color.chip.user.bg).toBe('rgba(162,58,149,0.08)');
+    expect(lightTheme.color.chip.user.border).toBe('rgba(162,58,149,0.22)');
+    expect(lightTheme.color.chip.user.text).not.toBe(lightTheme.color.chip.subject.text);
+  });
 });
 
 describe('new semantic tokens — dark values exist and differ from light', () => {
@@ -117,6 +123,11 @@ describe('new semantic tokens — dark values exist and differ from light', () =
     expect(darkTheme.color.chip.entryType.text).not.toBe(lightTheme.color.chip.entryType.text);
     expect(darkTheme.color.chip.entryType.bg).not.toBe(lightTheme.color.chip.entryType.bg);
     expect(darkTheme.color.chip.entryType.border).not.toBe(lightTheme.color.chip.entryType.border);
+  });
+  it('chip.user dark differs from light', () => {
+    expect(darkTheme.color.chip.user.text).not.toBe(lightTheme.color.chip.user.text);
+    expect(darkTheme.color.chip.user.bg).not.toBe(lightTheme.color.chip.user.bg);
+    expect(darkTheme.color.chip.user.border).not.toBe(lightTheme.color.chip.user.border);
   });
 });
 
