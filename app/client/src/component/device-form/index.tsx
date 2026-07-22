@@ -261,6 +261,17 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         description="Replaces quote tags and special character codes in the book with plain equivalents, so simpler e-readers (such as Crosspoint) render the text correctly. Enable it for devices that struggle with complex formatting."
       />
       {!isEdit && <CardDivider />}
+      {!isEdit && (
+        <Button
+          type="primary"
+          radius="card"
+          loading={loading}
+          disabled={name.trim() === ''}
+          onClick={handleSubmit}
+        >
+          {loading ? 'Adding…' : 'Add device'}
+        </Button>
+      )}
     </div>
   );
 
@@ -286,17 +297,6 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   return (
     <Card allowOverflow title={isEdit ? device.name : 'Add new Device'} footer={footer}>
       {fields}
-      {!isEdit && (
-        <Button
-          type="primary"
-          radius="card"
-          loading={loading}
-          disabled={name.trim() === ''}
-          onClick={handleSubmit}
-        >
-          {loading ? 'Adding…' : 'Add device'}
-        </Button>
-      )}
     </Card>
   );
 };
