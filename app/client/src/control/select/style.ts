@@ -13,7 +13,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
         marginTop: theme.space.md,
         marginLeft: theme.space.sm,
         minWidth: '6rem',
-        textAlign: 'right',
+        textAlign: 'left',
       },
       '& $triggerWrapper': { flexGrow: 1 },
     },
