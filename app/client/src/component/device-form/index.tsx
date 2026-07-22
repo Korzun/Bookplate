@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Card } from '~/component';
+import { Card, CardDivider } from '~/component';
 import { Button, ChipsInput, NumberInput, Select, Switch, TextInput } from '~/control';
 import type { SelectOption } from '~/control';
 import { useIsAdmin } from '~/provider/auth';
@@ -219,23 +219,24 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
           dense
         />
       )}
+      <CardDivider>Cover</CardDivider>
       <NumberInput
         name="coverWidth"
-        label="Cover width"
+        label="Width"
         value={coverWidth}
         onChange={setCoverWidth}
         validate={isValidCoverDimension}
       />
       <NumberInput
         name="coverHeight"
-        label="Cover height"
+        label="Height"
         value={coverHeight}
         onChange={setCoverHeight}
         validate={isValidCoverDimension}
       />
       <Select
         name="coverFit"
-        label="Cover fit"
+        label="Fit"
         value={coverFit}
         options={COVER_FIT_OPTIONS}
         onChange={setCoverFit}
@@ -243,14 +244,15 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       />
       <Switch
         name="bwCover"
-        label="Black & white cover"
+        label="Grayscale"
         checked={bwCover}
         onChange={setBwCover}
         description="Convert cover to grayscale for monochrome screens."
       />
+      <CardDivider>Content</CardDivider>
       <Switch
         name="simplify"
-        label="Simplify Book"
+        label="Simplify markup"
         checked={simplify}
         onChange={setSimplify}
         description="Replaces quote tags and special character codes in the book with plain equivalents, so simpler e-readers (such as Crosspoint) render the text correctly. Enable it for devices that struggle with complex formatting."
