@@ -54,6 +54,38 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   label: {
     ...theme.recipe.label,
   },
+  horizontal: {
+    display: 'flex',
+    width: '100%',
+    backgroundColor: theme.color.bg.cardHeader,
+    borderRadius: theme.radius.md,
+    '& $row': {
+      width: '100%',
+      // No left padding so the label lines up with the other fields' label column.
+      paddingTop: theme.space.md,
+      paddingBottom: theme.space.md,
+      paddingRight: theme.space.lg,
+      gap: theme.space.md,
+    },
+    '& $label': {
+      // Matches the other controls' label column (right-aligned, 6rem wide).
+      minWidth: '6rem',
+      textAlign: 'right',
+      marginLeft: theme.space.sm,
+      flexShrink: 0,
+    },
+    '& $track': {
+      // Toggle pinned to the far right of the row.
+      marginLeft: 'auto',
+    },
+    '& $description': {
+      margin: 0,
+      paddingBottom: theme.space.md,
+      paddingRight: theme.space.lg,
+      // Align the helper text under the content column (past the label + gap).
+      marginLeft: `calc(${theme.space.sm} + 6rem + ${theme.space.md})`,
+    },
+  },
   checked: {},
   disabled: {},
   danger: {},
