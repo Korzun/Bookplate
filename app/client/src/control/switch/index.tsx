@@ -8,6 +8,7 @@ type SwitchProps = {
   description?: ReactNode;
   disabled?: boolean;
   label?: string;
+  layout?: 'default' | 'horizontal';
   name: string;
   onChange: (checked: boolean) => void;
 };
@@ -17,6 +18,7 @@ export const Switch = ({
   description,
   disabled = false,
   label,
+  layout = 'default',
   name,
   onChange,
 }: SwitchProps) => {
@@ -56,11 +58,12 @@ export const Switch = ({
       aria-describedby={descriptionId}
       aria-disabled={disabled}
       tabIndex={disabled ? -1 : 0}
-      className={style.root}
+      className={cx(style.root, { [style.horizontal]: layout === 'horizontal' })}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
       <div className={style.row}>
+        {layout === 'horizontal' && label && <span className={style.label}>{label}</span>}
         <div
           className={cx(style.track, {
             [style.checked]: checked,
@@ -69,7 +72,7 @@ export const Switch = ({
         >
           <div className={style.thumb} />
         </div>
-        {label && <span className={style.label}>{label}</span>}
+        {layout !== 'horizontal' && label && <span className={style.label}>{label}</span>}
       </div>
       {description && (
         <div id={descriptionId} className={style.description} onClick={handleDescriptionClick}>

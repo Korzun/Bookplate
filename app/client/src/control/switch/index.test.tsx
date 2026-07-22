@@ -84,4 +84,23 @@ describe('Switch', () => {
     await user.click(screen.getByText('Helper text explaining the toggle'));
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('renders label and description and still toggles in the horizontal layout', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Switch
+        name="grayscale"
+        checked={false}
+        label="Grayscale"
+        description="Helper text explaining the toggle"
+        layout="horizontal"
+        onChange={onChange}
+      />
+    );
+    expect(screen.getByText('Grayscale')).toBeInTheDocument();
+    expect(screen.getByText('Helper text explaining the toggle')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch'));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
 });
