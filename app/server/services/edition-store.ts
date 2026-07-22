@@ -149,6 +149,18 @@ export class EditionStore {
     fs.rmSync(path.join(this.editionsRoot, deviceId), { recursive: true, force: true });
   }
 
+  async purgeForDeviceAndUser(deviceId: string, userId: string): Promise<void> {
+    const rows = await this.prisma.deviceEdition.findMany({ where: { deviceId, userId } });
+    for (const r of rows) {
+      try {
+        fs.unlinkSync(this.editionPath(deviceId, userId, r.originalBookId));
+      } catch {
+        /* ignore */
+      }
+    }
+    await this.prisma.deviceEdition.deleteMany({ where: { deviceId, userId } });
+  }
+
   async purgeForBook(userId: string, originalBookId: string): Promise<void> {
     const rows = await this.prisma.deviceEdition.findMany({ where: { userId, originalBookId } });
     for (const r of rows) {
