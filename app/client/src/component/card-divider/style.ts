@@ -7,6 +7,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginRight: `-${theme.space.xl}`,
     display: 'flex',
     alignItems: 'center',
+    // Reserve the label's line height so the divider takes the same vertical space
+    // with or without a label.
+    minHeight: `calc(${theme.fontSize.md} * ${theme.lineHeight.body})`,
   },
   line: {
     // Grows by default (fills a side / the whole width when there's no label).
@@ -20,6 +23,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     padding: `0 ${theme.space.md}`,
     // Same colour as the toggle helper text, a step larger so it reads as a heading.
     fontSize: theme.fontSize.md,
+    lineHeight: theme.lineHeight.body,
     color: theme.color.text.faint,
     whiteSpace: 'nowrap',
     flexShrink: 0,
