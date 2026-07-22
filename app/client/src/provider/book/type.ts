@@ -30,7 +30,23 @@ export type Identifier = { scheme: string; value: string };
 
 export type Series = Record<string, BookList>;
 
-export type UploadResult = { uploaded: string[] };
+export type MetadataFix = {
+  field: string;
+  kind: string;
+  from: string;
+  to: string | null;
+  reason?: string;
+  changes: Record<string, string | string[]>;
+};
+
+export type UploadFileResult = {
+  filename: string;
+  bookId: string;
+  applied: MetadataFix[];
+  proposals: MetadataFix[];
+};
+
+export type UploadResult = { uploaded: string[]; results: UploadFileResult[] };
 
 export type DisplayUnit =
   | { type: 'standalone'; bookId: string }

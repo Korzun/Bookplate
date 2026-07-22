@@ -17,7 +17,7 @@ import {
 } from '../services/book-store';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
-import { buildUpdatedEpub, EpubChanges } from '../services/epub-writer';
+import { EpubChanges } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -31,6 +31,8 @@ import {
   PageCursor,
   SearchSuggestionsResponse,
 } from '../types';
+import { applyEpubChanges } from '../services/apply-epub-changes';
+import { detectMetadataIssues, MetadataIssue } from '../utils/metadata-issues';
 import { asyncHandler } from '../utils/async-handler';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
@@ -57,6 +59,26 @@ function requireUserId(req: Request, res: Response): string | null {
 }
 
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
+
+type MetadataFix = {
+  field: string;
+  kind: string;
+  from: string;
+  to: string | null;
+  reason?: string;
+  changes: Record<string, string | string[]>;
+};
+
+function toFix(issue: MetadataIssue): MetadataFix {
+  return {
+    field: issue.field,
+    kind: issue.kind,
+    from: issue.from,
+    to: issue.to,
+    ...(issue.reason ? { reason: issue.reason } : {}),
+    changes: issue.changes,
+  };
+}
 
 export function createUiRouter(
   bookStore: BookStore,
@@ -598,6 +620,12 @@ export function createUiRouter(
         return;
       }
       const uploaded: string[] = [];
+      const results: {
+        filename: string;
+        bookId: string;
+        applied: MetadataFix[];
+        proposals: MetadataFix[];
+      }[] = [];
       for (const file of files) {
         const savedPath = file.path;
         let meta: EpubMeta;
@@ -656,11 +684,69 @@ export function createUiRouter(
           }
           throw err;
         }
-        thumbnailQueue.enqueue(owner.userId, id);
+        // Detect metadata issues; auto-apply the high-confidence ones in-request.
+        let finalId = id;
+        const applied: MetadataFix[] = [];
+        const proposals: MetadataFix[] = [];
+        try {
+          const librarySubjects = await bookStore.getSubjects(owner);
+          const created = await bookStore.getBookById(owner, id);
+          if (created) {
+            const issues = detectMetadataIssues({
+              title: created.title,
+              titleSort: created.titleSort,
+              author: created.author,
+              authorSort: created.authorSort,
+              subjects: created.subjects,
+              filenameStem: path.basename(file.originalname, path.extname(file.originalname)),
+              librarySubjects,
+            });
+            const autoIssues = issues.filter((i) => i.autoEligible);
+            const proposalIssues = issues.filter((i) => !i.autoEligible);
+
+            if (autoIssues.length > 0) {
+              const changes: EpubChanges = {};
+              for (const issue of autoIssues) Object.assign(changes, issue.changes);
+              // The EPUB had no genuine dc:title, so `created.title` is the
+              // filename-fallback we substituted before addBook. reimportBook
+              // (invoked by applyEpubChanges below) re-derives the title from
+              // the on-disk EPUB bytes, which would silently clobber that
+              // fallback with a hash-like id unless we write it back in.
+              // Skip this if an auto issue already set a real title change.
+              if (realTitle === '' && changes.title === undefined) {
+                changes.title = created.title;
+              }
+              try {
+                const updated = await applyEpubChanges(
+                  { bookStore, validationThreshold: config.validationThreshold },
+                  owner,
+                  created,
+                  changes
+                );
+                finalId = updated.id;
+                applied.push(...autoIssues.map(toFix));
+              } catch (err: unknown) {
+                // Never fail an upload because a cosmetic fix failed — surface as proposals instead.
+                log.warn(
+                  `Auto-fix skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
+                );
+                proposals.push(...autoIssues.map(toFix));
+              }
+            }
+            proposals.push(...proposalIssues.map(toFix));
+          }
+        } catch (err: unknown) {
+          log.warn(
+            `Metadata detection skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+
+        thumbnailQueue.enqueue(owner.userId, finalId);
         uploaded.push(file.originalname);
+        results.push({ filename: file.originalname, bookId: finalId, applied, proposals });
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);
-      res.json({ uploaded });
+      res.json({ uploaded, results });
     })
   );
 
@@ -992,21 +1078,14 @@ export function createUiRouter(
         `Metadata edit applying changes for book=${book.id}: [${Object.keys(changes).join(',')}]`
       );
 
-      let updatedBytes: Buffer;
+      let updated;
       try {
-        updatedBytes = buildUpdatedEpub(book.path, changes);
-      } catch (err: unknown) {
-        log.error(
-          `Metadata edit failed building EPUB for book=${book.id}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+        updated = await applyEpubChanges(
+          { bookStore, validationThreshold: config.validationThreshold },
+          owner,
+          book,
+          changes
         );
-        res.status(500).json({
-          error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        return;
-      }
-
-      try {
-        await assertValidEpub(updatedBytes, config.validationThreshold);
       } catch (err: unknown) {
         if (err instanceof EpubValidationError) {
           log.warn(
@@ -1023,33 +1102,6 @@ export function createUiRouter(
           });
           return;
         }
-        throw err;
-      }
-
-      // Atomic replace: write to a temp file in the same directory, then rename.
-      const tmpPath = path.join(path.dirname(book.path), `.tmp-${randomUUID()}.epub`);
-      try {
-        fs.writeFileSync(tmpPath, updatedBytes);
-        fs.renameSync(tmpPath, book.path);
-      } catch (err: unknown) {
-        try {
-          fs.unlinkSync(tmpPath);
-        } catch {
-          /* temp file may not exist */
-        }
-        log.error(
-          `Metadata edit failed writing EPUB for book=${book.id} at ${book.path}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
-        );
-        res.status(500).json({
-          error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        return;
-      }
-
-      let updated;
-      try {
-        updated = await bookStore.reimportBook(owner, req.params.id);
-      } catch (err) {
         if (err instanceof BookHashCollisionError) {
           log.warn(
             `Metadata edit rejected: edited book=${book.id} now collides with another book's fingerprint`
@@ -1061,13 +1113,15 @@ export function createUiRouter(
           });
           return;
         }
-        throw err;
-      }
-      if (!updated) {
-        log.error(`Metadata edit failed: re-import returned no book for book=${book.id}`);
-        res.status(500).json({ error: 'Failed to re-import book after update' });
+        log.error(
+          `Metadata edit failed for book=${book.id}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+        );
+        res.status(500).json({
+          error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
+        });
         return;
       }
+
       if (req.file) {
         thumbnailQueue.enqueue(owner.userId, updated.id);
       }

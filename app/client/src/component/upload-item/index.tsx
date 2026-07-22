@@ -1,21 +1,37 @@
 import cx from 'classnames';
 import { Fragment, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Button, SeverityCounts, ValidationDetailModal } from '~/control';
 import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
-import type { UploadItem as UploadItemType } from '~/provider/book';
+import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book';
+import { path } from '~/router';
 
 import { Card } from '../card';
 import { useStyle } from './style';
 
 interface Props {
   item: UploadItemType;
+  onApplyFix: (fix: MetadataFix) => void;
+  onApplyAll: () => void;
+  onDismissFix: (fix: MetadataFix) => void;
 }
 
-export const UploadItem = ({ item }: Props) => {
+const FIELD_LABEL: Record<string, string> = {
+  title: 'Title',
+  titleSort: 'Title sort',
+  author: 'Author',
+  authorSort: 'Author sort',
+  subjects: 'Subjects',
+};
+
+export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const { file, status, bytesUploaded, errorMessage, validation } = item;
+  const { file, status, bytesUploaded, errorMessage, validation, bookId } = item;
+  const appliedFixes = item.appliedFixes ?? [];
+  const proposals = item.proposals ?? [];
+  const actionable = proposals.filter((p) => p.to !== null);
 
   const totalMB = (file.size / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
@@ -82,6 +98,70 @@ export const UploadItem = ({ item }: Props) => {
               />
             </div>
           </div>
+
+          {status === 'done' && (appliedFixes.length > 0 || proposals.length > 0) && (
+            <div className={styles.metadata}>
+              {appliedFixes.map((fix) => (
+                <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
+                  <CheckIcon />
+                  <span>
+                    Fixed {FIELD_LABEL[fix.field] ?? fix.field}: <strong>{fix.to}</strong>
+                  </span>
+                </div>
+              ))}
+
+              {proposals.length > 0 && (
+                <div className={styles.proposalsHeader}>
+                  <span>Suggested fixes</span>
+                  {actionable.length > 1 && (
+                    <Button type="link" onClick={onApplyAll}>
+                      Apply all
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {proposals.map((fix) => (
+                <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
+                  <div className={styles.proposalText}>
+                    <span className={styles.fieldName}>{FIELD_LABEL[fix.field] ?? fix.field}</span>
+                    {fix.to !== null ? (
+                      <span>
+                        {fix.from ? (
+                          <span className={styles.fromValue}>{fix.from}</span>
+                        ) : (
+                          <em>empty</em>
+                        )}
+                        {' → '}
+                        <strong>{fix.to}</strong>
+                      </span>
+                    ) : (
+                      <span className={styles.flagText}>needs review</span>
+                    )}
+                    {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
+                  </div>
+                  <div className={styles.proposalActions}>
+                    {fix.to !== null ? (
+                      <Fragment>
+                        <Button type="link" onClick={() => onApplyFix(fix)}>
+                          Apply
+                        </Button>
+                        <Button type="link" onClick={() => onDismissFix(fix)}>
+                          Dismiss
+                        </Button>
+                      </Fragment>
+                    ) : (
+                      bookId && (
+                        <Link to={path.bookEdit(bookId)} className={styles.editLink}>
+                          Edit
+                        </Link>
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
       {validation && detailsOpen && (

@@ -5,7 +5,10 @@ import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
 import { Context } from '../context';
+import type { MetadataFix, UploadFileResult } from '../type';
 import { useFetchBookList } from './use-fetch-book-list';
+import type { BookMetadataPatch } from './use-patch-book-metadata';
+import { usePatchBookMetadata } from './use-patch-book-metadata';
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error';
 
@@ -16,12 +19,27 @@ export type UploadItem = {
   bytesUploaded: number;
   errorMessage?: string;
   validation?: ValidationFailure;
+  bookId?: string;
+  appliedFixes?: MetadataFix[];
+  proposals?: MetadataFix[];
 };
 
 export type UseUploadQueue = {
   items: UploadItem[];
   addFiles: (files: FileList) => void;
+  applyFix: (itemId: string, fix: MetadataFix) => Promise<boolean>;
+  applyAllProposals: (itemId: string) => Promise<boolean>;
+  dismissFix: (itemId: string, fix: MetadataFix) => void;
 };
+
+/** Fixes have no server id — the queue identifies them by field:kind. */
+export const fixKey = (fix: MetadataFix): string => `${fix.field}:${fix.kind}`;
+
+/** The PATCH hook accepts scalar strings and `subjects: string[]`; the fix's
+ * `changes` map already matches that shape field-by-field. */
+function changesToPatch(changes: Record<string, string | string[]>): Partial<BookMetadataPatch> {
+  return { ...changes } as Partial<BookMetadataPatch>;
+}
 
 export const useUploadQueue = (): UseUploadQueue => {
   const [items, setItems] = useState<UploadItem[]>([]);
@@ -29,6 +47,7 @@ export const useUploadQueue = (): UseUploadQueue => {
   const fetchBookList = useFetchBookList();
   const { clearCompleteBookIds } = useContext(Context);
   const withTargetUser = useWithTargetUser();
+  const [patchBookMetadata] = usePatchBookMetadata();
 
   // IDs of items whose XHR has been created — prevents double-starting across renders
   const startedRef = useRef(new Set<string>());
@@ -40,10 +59,13 @@ export const useUploadQueue = (): UseUploadQueue => {
   const fetchBookListRef = useRef(fetchBookList);
   const clearCompleteBookIdsRef = useRef(clearCompleteBookIds);
   const withTargetUserRef = useRef(withTargetUser);
+  // Latest items, read by the fix actions so callbacks stay stable
+  const itemsRef = useRef(items);
   useLayoutEffect(() => {
     fetchBookListRef.current = fetchBookList;
     clearCompleteBookIdsRef.current = clearCompleteBookIds;
     withTargetUserRef.current = withTargetUser;
+    itemsRef.current = items;
   });
 
   // Fetch server config on mount
@@ -99,10 +121,24 @@ export const useUploadQueue = (): UseUploadQueue => {
         xhrMapRef.current.delete(item.id);
 
         if (xhr.status >= 200 && xhr.status < 300) {
+          let result: UploadFileResult | undefined;
+          try {
+            const data = JSON.parse(xhr.responseText) as { results?: UploadFileResult[] };
+            result = data.results?.[0];
+          } catch {
+            // no structured result
+          }
           setItems((prev) =>
             prev.map((i) =>
               i.id === item.id
-                ? { ...i, status: 'done' as const, bytesUploaded: item.file.size }
+                ? {
+                    ...i,
+                    status: 'done' as const,
+                    bytesUploaded: item.file.size,
+                    bookId: result?.bookId,
+                    appliedFixes: result?.applied ?? [],
+                    proposals: result?.proposals ?? [],
+                  }
                 : i
             )
           );
@@ -160,5 +196,65 @@ export const useUploadQueue = (): UseUploadQueue => {
     setItems((prev) => [...prev, ...newItems]);
   }, []);
 
-  return { items, addFiles };
+  // Applies one or more proposed fixes as a single PATCH, then — only if the
+  // patch succeeds — removes them from the item's pending proposals and
+  // records them as applied. A PATCH may return a new book id (e.g. when the
+  // id itself is derived from the fixed metadata), which we must track so
+  // subsequent fixes patch the right book. On failure the item is left
+  // untouched so the user can retry.
+  const applyPatch = useCallback(
+    async (itemId: string, fixes: MetadataFix[]): Promise<boolean> => {
+      const item = itemsRef.current.find((i) => i.id === itemId);
+      if (fixes.length === 0) return true;
+      if (!item?.bookId) return false;
+      const patch: Partial<BookMetadataPatch> = {};
+      for (const fix of fixes) Object.assign(patch, changesToPatch(fix.changes));
+      const newId = await patchBookMetadata(item.bookId, patch);
+      if (newId === undefined) return false;
+      const applied = new Set(fixes.map(fixKey));
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId
+            ? {
+                ...i,
+                bookId: newId,
+                proposals: (i.proposals ?? []).filter((p) => !applied.has(fixKey(p))),
+                appliedFixes: [...(i.appliedFixes ?? []), ...fixes],
+              }
+            : i
+        )
+      );
+      return true;
+    },
+    [patchBookMetadata]
+  );
+
+  const applyFix = useCallback(
+    (itemId: string, fix: MetadataFix) => applyPatch(itemId, [fix]),
+    [applyPatch]
+  );
+
+  const applyAllProposals = useCallback(
+    (itemId: string) => {
+      const item = itemsRef.current.find((i) => i.id === itemId);
+      return applyPatch(
+        itemId,
+        (item?.proposals ?? []).filter((p) => p.to !== null)
+      );
+    },
+    [applyPatch]
+  );
+
+  const dismissFix = useCallback((itemId: string, fix: MetadataFix) => {
+    const key = fixKey(fix);
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === itemId
+          ? { ...i, proposals: (i.proposals ?? []).filter((p) => fixKey(p) !== key) }
+          : i
+      )
+    );
+  }, []);
+
+  return { items, addFiles, applyFix, applyAllProposals, dismissFix };
 };

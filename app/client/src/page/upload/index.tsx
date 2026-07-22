@@ -20,11 +20,34 @@ export const UploadPage = () => {
   const [targetUsername] = useLibraryTarget();
   const [userList, userListLoading] = useUserList();
 
-  const { items, addFiles } = useUploadQueue();
+  const { items, addFiles, applyFix, applyAllProposals, dismissFix } = useUploadQueue();
   const uploadsInProgress = items.some((i) => i.status === 'queued' || i.status === 'uploading');
 
   const [scanLibrary, , scanning] = useScanLibrary();
   const showToast = useToast();
+
+  // Announce auto-fixed metadata once the batch goes idle, one toast per newly
+  // finished set of items. announcedRef tracks item ids we've already surfaced
+  // so re-renders (or later batches) don't repeat the toast for the same item.
+  const announcedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (uploadsInProgress) return; // wait until the batch is idle
+    const doneItems = items.filter((i) => i.status === 'done');
+    const fixedNow = doneItems.filter(
+      (i) => (i.appliedFixes?.length ?? 0) > 0 && !announcedRef.current.has(i.id)
+    );
+    if (fixedNow.length > 0) {
+      showToast(
+        `Auto-fixed metadata on ${fixedNow.length} book${fixedNow.length === 1 ? '' : 's'}.`,
+        'info'
+      );
+    }
+    // Mark every currently-done item as announced — including ones with zero
+    // auto-fixes — so a later *manual* Apply (which moves a fix into
+    // appliedFixes) can't retroactively look "newly fixed" and re-trigger
+    // this toast.
+    doneItems.forEach((i) => announcedRef.current.add(i.id));
+  }, [items, uploadsInProgress, showToast]);
 
   // scanLibrary resolves null for both a real failure and a cancellation, and it
   // only cancels when this page unmounts. Skip the result toast if we've unmounted
@@ -100,7 +123,19 @@ export const UploadPage = () => {
       {items.length > 0 && (
         <div className={styles.queue}>
           {items.map((item) => (
-            <UploadItem key={item.id} item={item} />
+            <UploadItem
+              key={item.id}
+              item={item}
+              onApplyFix={async (fix) => {
+                const ok = await applyFix(item.id, fix);
+                if (!ok) showToast("Couldn't apply fix", 'error');
+              }}
+              onApplyAll={async () => {
+                const ok = await applyAllProposals(item.id);
+                if (!ok) showToast("Couldn't apply fixes", 'error');
+              }}
+              onDismissFix={(fix) => dismissFix(item.id, fix)}
+            />
           ))}
         </div>
       )}
