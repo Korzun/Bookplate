@@ -6,7 +6,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  submit: {
-    marginTop: theme.space.xxl,
-  },
 }));
