@@ -126,4 +126,65 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   uploading: {},
   done: {},
   error: {},
+
+  metadata: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.sm,
+    marginTop: theme.space.lg,
+  },
+  appliedRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    fontSize: theme.fontSize.sm,
+    color: theme.color.success,
+  },
+  proposalsHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: theme.fontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    color: theme.color.text.faint,
+    marginTop: theme.space.xs,
+  },
+  proposalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: theme.space.md,
+    fontSize: theme.fontSize.sm,
+  },
+  proposalText: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: theme.space.sm,
+  },
+  fieldName: {
+    fontWeight: theme.fontWeight.semibold,
+  },
+  fromValue: {
+    textDecoration: 'line-through',
+    color: theme.color.text.faint,
+  },
+  flagText: {
+    fontStyle: 'italic',
+    color: theme.color.danger.default,
+  },
+  reason: {
+    fontSize: theme.fontSize.xs,
+    color: theme.color.text.faint,
+  },
+  proposalActions: {
+    display: 'flex',
+    gap: theme.space.md,
+    flexShrink: 0,
+  },
+  editLink: {
+    fontSize: theme.fontSize.sm,
+    color: theme.color.brand.default,
+  },
 }));

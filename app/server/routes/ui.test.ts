@@ -12,6 +12,7 @@ import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
+import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookStore } from '../services/book-store';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { TokenStore } from '../services/token-store';
@@ -187,6 +188,14 @@ function makeEpub(
   }
 
   return zip.toBuffer();
+}
+
+// Thin wrapper over makeEpub for metadata-detection tests: builds an EPUB
+// whose dc:title/dc:creator carry no file-as attribute, so titleSort/authorSort
+// parse as empty and detectMetadataIssues has something to find. Omitting
+// `title` builds an EPUB with no dc:title element at all (title-less EPUB).
+function buildTestEpub(opts: { title?: string; author: string }): Buffer {
+  return makeEpub({ title: opts.title, author: opts.author });
 }
 
 async function loginAdmin(): Promise<string> {
@@ -690,7 +699,9 @@ describe('POST /api/books/upload', () => {
 
   it('returns 409 when uploading a duplicate (same content twice)', async () => {
     const token = await loginAlice();
-    const epubBuf = makeEpub({ title: 'Dup', author: 'A' });
+    // 3-token author keeps author-sort-missing a proposal (not auto-applied), so the
+    // book's id/fingerprint doesn't shift via reimport before the duplicate check.
+    const epubBuf = makeEpub({ title: 'Dup', author: 'A B Cee' });
     await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'first.epub')
@@ -705,6 +716,9 @@ describe('POST /api/books/upload', () => {
 
   it('falls back to original-filename stem when title metadata is empty', async () => {
     const token = await loginAlice();
+    // Single-token author makes author-sort-missing auto-eligible, so this
+    // exercises the reimport path: the upload-time filename-fallback title
+    // must survive the auto-fix's applyEpubChanges -> reimportBook round trip.
     const epubBuf = makeEpub({ author: 'A' }); // no title
     await request(app)
       .post('/api/books/upload')
@@ -769,6 +783,106 @@ describe('POST /api/books/upload', () => {
       .attach('files', epubBuf, 'boom.epub');
 
     expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /api/books/upload — metadata detection', () => {
+  it('auto-applies a missing title sort and reports it as applied', async () => {
+    const token = await loginAlice();
+    // Build an EPUB whose dc:title is "The Test Title" with no title file-as.
+    const epub = buildTestEpub({ title: 'The Test Title', author: 'Peter Watts' });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'the-test-title.epub')
+      .expect(200);
+
+    expect(res.body.results).toHaveLength(1);
+    const result = res.body.results[0];
+    const applied = result.applied.find((f: { kind: string }) => f.kind === 'title-sort-missing');
+    expect(applied).toBeTruthy();
+    expect(applied.to).toBe('Test Title, The');
+
+    // The persisted book reflects the applied fix.
+    const book = await request(app)
+      .get(`/api/books/${result.bookId}`)
+      .set(...bearer(token))
+      .expect(200);
+    expect(book.body.titleSort).toBe('Test Title, The');
+  });
+
+  it('returns a low-confidence author sort as a proposal, not applied', async () => {
+    const token = await loginAlice();
+    const epub = buildTestEpub({ title: 'Some Book', author: 'Ursula K. Le Guin' }); // no author file-as
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'some-book.epub')
+      .expect(200);
+
+    const result = res.body.results[0];
+    const proposal = result.proposals.find(
+      (f: { kind: string }) => f.kind === 'author-sort-missing'
+    );
+    expect(proposal).toBeTruthy();
+    expect(proposal.to).toBe('Guin, Ursula K. Le');
+    expect(
+      result.applied.find((f: { kind: string }) => f.kind === 'author-sort-missing')
+    ).toBeUndefined();
+  });
+
+  it('preserves the filename-fallback title through an auto-applied author fix', async () => {
+    const token = await loginAlice();
+    // No dc:title at all, so the stored title is the filename-fallback
+    // ('my-great-book'). A single-token author makes author-sort-missing
+    // auto-eligible, which triggers applyEpubChanges -> reimportBook. The
+    // reimport re-parses the title from the EPUB bytes on disk; without the
+    // fix, that clobbers the fallback with a hash-like id.
+    const epub = buildTestEpub({ author: 'Peter Watts' });
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', epub, 'my-great-book.epub')
+      .expect(200);
+
+    const result = res.body.results[0];
+    const applied = result.applied.find((f: { kind: string }) => f.kind === 'author-sort-missing');
+    expect(applied).toBeTruthy();
+
+    const book = await request(app)
+      .get(`/api/books/${result.bookId}`)
+      .set(...bearer(token))
+      .expect(200);
+    expect(book.body.title).toBe('my-great-book');
+  });
+
+  it('never fails an upload when the auto-fix write fails; surfaces it as a proposal instead', async () => {
+    // Force the auto-apply write (applyEpubChanges -> buildUpdatedEpub) to
+    // fail for this single upload, simulating e.g. a disk error while
+    // rewriting the EPUB. The route must catch this, leave `applied` empty,
+    // and surface the would-be auto-fix as a proposal — never a 500.
+    const spy = vi
+      .spyOn(applyEpubChangesModule, 'applyEpubChanges')
+      .mockRejectedValueOnce(new Error('simulated write failure'));
+    try {
+      const token = await loginAlice();
+      const epub = buildTestEpub({ title: 'The Test Title', author: 'Peter Watts' });
+      const res = await request(app)
+        .post('/api/books/upload')
+        .set(...bearer(token))
+        .attach('files', epub, 'the-test-title.epub')
+        .expect(200);
+
+      const result = res.body.results[0];
+      expect(result.applied).toEqual([]);
+      const proposal = result.proposals.find(
+        (f: { kind: string }) => f.kind === 'title-sort-missing'
+      );
+      expect(proposal).toBeTruthy();
+      expect(proposal.to).toBe('Test Title, The');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

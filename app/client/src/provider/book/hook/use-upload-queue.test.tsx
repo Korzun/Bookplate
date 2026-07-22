@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
-import type { BookList } from '../type';
+import type { BookList, MetadataFix } from '../type';
 import { useUploadQueue } from './use-upload-queue';
 
 // ── XHR mock ─────────────────────────────────────────────────────────────────
@@ -73,6 +73,40 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
 function makeFileList(...names: string[]): FileList {
   const files = names.map((name) => new File(['x'.repeat(1000)], name));
   return files as unknown as FileList;
+}
+
+function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
+  return {
+    field: 'authorSort',
+    kind: 'author-sort-missing',
+    from: '',
+    to: 'Herbert, Frank',
+    changes: { authorSort: 'Herbert, Frank' },
+    ...overrides,
+  };
+}
+
+/** fetch mock that also answers PATCH /api/books/:id/metadata for applyFix tests. */
+function stubFetchWithPatch(patchResponse: { ok: boolean; body: unknown }) {
+  vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/config') {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+      }) as unknown as Promise<Response>;
+    }
+    if (url.includes('/metadata') && init?.method === 'PATCH') {
+      return Promise.resolve({
+        ok: patchResponse.ok,
+        json: () => Promise.resolve(patchResponse.body),
+      }) as unknown as Promise<Response>;
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    }) as unknown as Promise<Response>;
+  });
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -335,5 +369,73 @@ describe('useUploadQueue', () => {
 
     expect(result.current.items[0].status).toBe('error');
     expect(result.current.items[0].validation).toBeUndefined();
+  });
+
+  it('applyFix leaves the proposal untouched and resolves false when the patch fails', async () => {
+    const fix = makeFix();
+    stubFetchWithPatch({ ok: false, body: { error: 'Save failed' } });
+
+    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [{ filename: 'a.epub', bookId: 'book-1', applied: [], proposals: [fix] }],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    const itemId = result.current.items[0].id;
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyFix(itemId, fix);
+    });
+
+    expect(succeeded).toBe(false);
+    expect(result.current.items[0].bookId).toBe('book-1');
+    expect(result.current.items[0].proposals).toEqual([fix]);
+    expect(result.current.items[0].appliedFixes ?? []).toEqual([]);
+  });
+
+  it('applyFix moves the fix from proposals to appliedFixes and updates bookId on success', async () => {
+    const fix = makeFix();
+    stubFetchWithPatch({ ok: true, body: { id: 'book-2' } });
+
+    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [{ filename: 'a.epub', bookId: 'book-1', applied: [], proposals: [fix] }],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    const itemId = result.current.items[0].id;
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyFix(itemId, fix);
+    });
+
+    expect(succeeded).toBe(true);
+    expect(result.current.items[0].bookId).toBe('book-2');
+    expect(result.current.items[0].proposals).toEqual([]);
+    expect(result.current.items[0].appliedFixes).toEqual([fix]);
   });
 });

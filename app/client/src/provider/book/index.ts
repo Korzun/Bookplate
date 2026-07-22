@@ -29,7 +29,9 @@ export type {
   BookListFilter,
   DisplayUnit,
   Identifier,
+  MetadataFix,
   Series,
+  UploadFileResult,
   UploadResult,
 } from './type';
 export type { SeriesMeta, FetchSeriesNextIndex } from './hook';
