@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card } from '~/component';
-import { Button, NumberInput, Select, Switch, TextInput } from '~/control';
+import { Button, ChipsInput, NumberInput, Select, Switch, TextInput } from '~/control';
 import type { SelectOption } from '~/control';
-import { useCreateDevice, useUpdateDevice } from '~/provider/device';
+import { useIsAdmin } from '~/provider/auth';
+import {
+  useCreateDevice,
+  useDeviceUsers,
+  useDisableDeviceUser,
+  useEnableDeviceUser,
+  useUpdateDevice,
+} from '~/provider/device';
 import type { Device, DeviceInput } from '~/provider/device';
 import { useToast } from '~/provider/toast';
+import { useUserList } from '~/provider/user';
 import { isNumeric } from '~/utils';
 
 import { useStyle } from './style';
@@ -61,6 +69,24 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const errorMessage = isEdit ? updateErrorMessage : createErrorMessage;
   const lastErrorRef = useRef<boolean>(false);
 
+  const [isAdmin] = useIsAdmin();
+  const [allUsers] = useUserList();
+  const userOptions = allUsers.map((u) => u.username);
+  // Only fetch when the field will actually be shown — non-admins can still
+  // open the edit form (Edit isn't gated), and the device users endpoint is
+  // admin-only server-side.
+  const [fetchedUsers, loadingUsers] = useDeviceUsers(isAdmin ? device?.id : undefined);
+  const [enableUser] = useEnableDeviceUser();
+  const [disableUser] = useDisableDeviceUser();
+  // The Users chips field shows fetchedUsers (server truth) until the admin
+  // edits it; editedUsers then takes over as the pending selection until Save
+  // reconciles it back to the server and this resets to null. Deriving this
+  // way (rather than syncing fetchedUsers into state via useEffect) avoids a
+  // set-state-in-effect render loop, since useDeviceUsers returns a fresh []
+  // on every render while loading.
+  const [editedUsers, setEditedUsers] = useState<string[] | null>(null);
+  const selectedUsers = editedUsers ?? fetchedUsers;
+
   const [name, setName] = useState<string>(device?.name ?? '');
   const [coverWidth, setCoverWidth] = useState<number | undefined>(device?.coverWidth ?? undefined);
   const [coverHeight, setCoverHeight] = useState<number | undefined>(
@@ -73,6 +99,29 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const handleNameChange = useCallback((newValue: string | undefined) => {
     setName(newValue ?? '');
   }, []);
+
+  // Reconciles the chips' pending selection against fetchedUsers (server
+  // truth) once the device has been created/updated and a device id exists.
+  // Returns whether reconciliation fully succeeded, so callers can hold back
+  // the success toast when it didn't (the error toast stands on its own).
+  const reconcileUsers = useCallback(
+    async (targetId: string) => {
+      const toAdd = selectedUsers.filter((u) => !fetchedUsers.includes(u));
+      const toRemove = fetchedUsers.filter((u) => !selectedUsers.includes(u));
+      if (toAdd.length === 0 && toRemove.length === 0) return true;
+
+      const results = await Promise.all([
+        ...toAdd.map((u) => enableUser(targetId, u)),
+        ...toRemove.map((u) => disableUser(targetId, u)),
+      ]);
+      if (results.some((ok) => ok === false)) {
+        showToast('Some users could not be updated', 'error');
+        return false;
+      }
+      return true;
+    },
+    [selectedUsers, fetchedUsers, enableUser, disableUser, showToast]
+  );
 
   const handleSubmit = useCallback(async () => {
     const trimmedName = name.trim();
@@ -90,26 +139,30 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
     if (isEdit) {
       const updated = await updateDevice(device.id, input);
       if (updated === null) return;
-      showToast(`Device "${updated.name}" updated`, 'success');
+      const reconciled = await reconcileUsers(device.id);
+      if (reconciled) showToast(`Device "${updated.name}" updated`, 'success');
       onDone?.();
       return;
     }
 
     const created = await createDevice(input);
     if (created === null) return;
+    const reconciled = await reconcileUsers(created.id);
 
-    showToast(`Device "${created.name}" created`, 'success');
+    if (reconciled) showToast(`Device "${created.name}" created`, 'success');
     setName('');
     setCoverWidth(undefined);
     setCoverHeight(undefined);
     setCoverFit('contain');
     setBwCover(false);
     setSimplify(false);
+    setEditedUsers(null);
   }, [
     isEdit,
     device,
     createDevice,
     updateDevice,
+    reconcileUsers,
     name,
     coverWidth,
     coverHeight,
@@ -151,6 +204,21 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         validate={(newValue) => newValue.length <= NAME_MAX_LENGTH}
         onKeyDown={handleKeyDown}
       />
+      {isAdmin && (
+        <ChipsInput
+          name="users"
+          label="Users"
+          layout="horizontal"
+          value={selectedUsers}
+          suggestions={userOptions}
+          onChange={setEditedUsers}
+          allowCustom={false}
+          disabled={loadingUsers}
+          placeholder={loadingUsers ? 'Loading…' : 'Add users…'}
+          chipColor="user"
+          dense
+        />
+      )}
       <NumberInput
         name="coverWidth"
         label="Cover width"

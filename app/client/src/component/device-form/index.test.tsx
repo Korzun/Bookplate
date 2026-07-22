@@ -19,18 +19,65 @@ const kindle: Device = {
   simplify: false,
 };
 
-function renderForm() {
+// useDeviceUsers/useEnableDeviceUser/useDisableDeviceUser are mocked so the
+// Users field's fetched baseline and reconciliation calls are directly
+// assertable; useCreateDevice/useUpdateDevice keep their real implementation
+// so the existing fetch-based tests below are unaffected.
+let mockDeviceUsers: [string[], boolean, boolean, string | undefined] = [
+  [],
+  false,
+  false,
+  undefined,
+];
+const enableUser = vi.fn().mockResolvedValue(true);
+const disableUser = vi.fn().mockResolvedValue(true);
+
+vi.mock('~/provider/device', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/provider/device')>();
+  return {
+    ...actual,
+    useDeviceUsers: () => mockDeviceUsers,
+    useEnableDeviceUser: () => [enableUser, false, false, undefined],
+    useDisableDeviceUser: () => [disableUser, false, false, undefined],
+  };
+});
+
+vi.mock('~/provider/user', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/provider/user')>();
+  return {
+    ...actual,
+    useUserList: () => [
+      [
+        { username: 'alice', progressCount: 0 },
+        { username: 'bob', progressCount: 0 },
+      ],
+      false,
+      false,
+      undefined,
+    ],
+  };
+});
+
+type RenderFormOptions = Parameters<typeof renderWithProviders>[1];
+
+function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOptions) {
   const rendered = renderWithProviders(
     <DeviceProvider>
-      <DeviceForm />
-    </DeviceProvider>
+      <DeviceForm device={device} onDone={onDone} />
+    </DeviceProvider>,
+    options
   );
   const nameInput = rendered.container.querySelector('input[name="name"]') as HTMLInputElement;
   return { ...rendered, nameInput };
 }
 
 describe('DeviceForm', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mockDeviceUsers = [[], false, false, undefined];
+    enableUser.mockClear();
+    disableUser.mockClear();
+  });
 
   it('caps the committed name at 50 characters', async () => {
     const user = userEvent.setup();
@@ -231,5 +278,94 @@ describe('DeviceForm', () => {
 
     expect(onDone).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('Users field', () => {
+    it('is not rendered for a non-admin', () => {
+      renderForm(kindle, () => {}, { user: { username: 'user', isAdmin: false } });
+      expect(screen.queryByText('Users')).not.toBeInTheDocument();
+    });
+
+    it('creating a device with users selected enables them for the newly created device', async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { nameInput } = renderForm(undefined, undefined, {
+        user: { username: 'admin', isAdmin: true },
+      });
+      await user.type(nameInput, 'Kindle');
+
+      const usersInput = screen.getByLabelText('Users');
+      await user.type(usersInput, 'alice');
+      await user.click(screen.getByRole('option', { name: 'alice' }));
+      await user.type(usersInput, 'bob');
+      await user.click(screen.getByRole('option', { name: 'bob' }));
+      expect(screen.getByLabelText('Remove alice')).toBeInTheDocument();
+      expect(screen.getByLabelText('Remove bob')).toBeInTheDocument();
+
+      // allowCustom is false, so a name that doesn't match a known user must
+      // not be added even when Enter is pressed.
+      await user.type(usersInput, 'nonexistent{Enter}');
+      expect(screen.queryByLabelText('Remove nonexistent')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /add device/i }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'alice'));
+      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
+      expect(disableUser).not.toHaveBeenCalled();
+    });
+
+    it('editing pre-fills enabled users and reconciles added/removed users on Save', async () => {
+      mockDeviceUsers = [['alice'], false, false, undefined];
+      const user = userEvent.setup();
+      const onDone = vi.fn();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderForm(kindle, onDone, { user: { username: 'admin', isAdmin: true } });
+
+      // Pre-filled with the fetched 'alice' chip.
+      expect(screen.getByLabelText('Remove alice')).toBeInTheDocument();
+
+      // Type to filter and add 'bob'.
+      const usersInput = screen.getByLabelText('Users');
+      await user.type(usersInput, 'bob');
+      await user.click(screen.getByRole('option', { name: 'bob' }));
+      // Then remove the pre-filled 'alice'.
+      await user.click(screen.getByLabelText('Remove alice'));
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith('/api/devices/d1', expect.any(Object))
+      );
+      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
+      await waitFor(() => expect(disableUser).toHaveBeenCalledWith('d1', 'alice'));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+    });
+
+    it('keeps the Users field inert while enabled users are still loading', async () => {
+      // Regression test: with the fetch in flight, fetchedUsers is still []
+      // while loadingUsers is true. Before the fix, the field ignored the
+      // loading flag, so an admin could interact with it during this window
+      // and lock in a stale empty selection — clobbering the server's real
+      // list on Save. Asserting the field is inert (shows "Loading…" and is
+      // disabled) guards against that regression.
+      mockDeviceUsers = [[], true, false, undefined];
+      const user = userEvent.setup();
+
+      renderForm(kindle, () => {}, { user: { username: 'admin', isAdmin: true } });
+
+      const usersInput = screen.getByPlaceholderText('Loading…');
+      expect(usersInput).toBeDisabled();
+      await user.type(usersInput, 'alice');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
   });
 });
