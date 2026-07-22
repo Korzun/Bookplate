@@ -97,6 +97,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     flexShrink: 0,
     color: theme.color.text.faint,
+    // Optical nudge down so the caret reads as vertically centered.
+    position: 'relative',
+    top: '1px',
     transform: 'rotate(90deg)',
     transition: `transform ${theme.transition.fast}`,
     '&$open': { transform: 'rotate(-90deg)' },
