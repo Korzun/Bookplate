@@ -74,3 +74,72 @@ it('throws DeviceSlugConflictError when a create collides on slug', async () => 
     DeviceSlugConflictError
   );
 });
+
+describe('device-user enablement', () => {
+  async function makeUser(id: string, username: string) {
+    await prisma.user.create({ data: { id, username } });
+  }
+
+  it('enableUser adds a row and isEnabled reflects it; disableUser removes it', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'alice');
+
+    expect(await store.isEnabled(device.id, 'u1')).toBe(false);
+    await store.enableUser(device.id, 'u1');
+    expect(await store.isEnabled(device.id, 'u1')).toBe(true);
+
+    await store.disableUser(device.id, 'u1');
+    expect(await store.isEnabled(device.id, 'u1')).toBe(false);
+  });
+
+  it('enableUser is idempotent (no unique-constraint crash on repeat)', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'alice');
+    await store.enableUser(device.id, 'u1');
+    await store.enableUser(device.id, 'u1');
+    expect(await store.listUsernamesForDevice(device.id)).toEqual(['alice']);
+  });
+
+  it('disableUser is idempotent (no crash when not enabled)', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'alice');
+    await expect(store.disableUser(device.id, 'u1')).resolves.toBeUndefined();
+  });
+
+  it('listUsernamesForDevice returns enabled usernames sorted', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'bob');
+    await makeUser('u2', 'alice');
+    await store.enableUser(device.id, 'u1');
+    await store.enableUser(device.id, 'u2');
+    expect(await store.listUsernamesForDevice(device.id)).toEqual(['alice', 'bob']);
+  });
+
+  it('listForUser returns only devices enabled for that user, sorted by name', async () => {
+    const kindle = await store.create({ name: 'Kindle', ...base });
+    const kobo = await store.create({ name: 'Kobo', ...base });
+    await store.create({ name: 'Nook', ...base }); // not enabled for anyone
+    await makeUser('u1', 'alice');
+    await store.enableUser(kobo.id, 'u1');
+    await store.enableUser(kindle.id, 'u1');
+
+    const devices = await store.listForUser('u1');
+    expect(devices.map((d) => d.name)).toEqual(['Kindle', 'Kobo']);
+  });
+
+  it('deleting a device cascades its device_users rows', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'alice');
+    await store.enableUser(device.id, 'u1');
+    await store.delete(device.id);
+    expect(await prisma.deviceUser.count()).toBe(0);
+  });
+
+  it('deleting a user cascades its device_users rows', async () => {
+    const device = await store.create({ name: 'Kindle', ...base });
+    await makeUser('u1', 'alice');
+    await store.enableUser(device.id, 'u1');
+    await prisma.user.delete({ where: { id: 'u1' } });
+    expect(await prisma.deviceUser.count()).toBe(0);
+  });
+});
