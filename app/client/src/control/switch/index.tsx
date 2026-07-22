@@ -50,35 +50,50 @@ export const Switch = ({
     event.stopPropagation();
   }, []);
 
-  return (
-    <div
-      role="switch"
-      aria-checked={checked}
-      aria-label={label ?? name}
-      aria-describedby={descriptionId}
-      aria-disabled={disabled}
-      tabIndex={disabled ? -1 : 0}
-      className={cx(style.root, { [style.horizontal]: layout === 'horizontal' })}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-    >
-      <div className={style.row}>
-        {layout === 'horizontal' && label && <span className={style.label}>{label}</span>}
-        <div
-          className={cx(style.track, {
-            [style.checked]: checked,
-            [style.disabled]: disabled,
-          })}
-        >
-          <div className={style.thumb} />
+  const track = (
+    <div className={cx(style.track, { [style.checked]: checked, [style.disabled]: disabled })}>
+      <div className={style.thumb} />
+    </div>
+  );
+
+  const descriptionEl = description ? (
+    <div id={descriptionId} className={style.description} onClick={handleDescriptionClick}>
+      {description}
+    </div>
+  ) : null;
+
+  const commonProps = {
+    role: 'switch' as const,
+    'aria-checked': checked,
+    'aria-label': label ?? name,
+    'aria-describedby': descriptionId,
+    'aria-disabled': disabled,
+    tabIndex: disabled ? -1 : 0,
+    onClick: handleClick,
+    onKeyDown: handleKeyDown,
+  };
+
+  // Horizontal keeps the toggle in its own right-hand column so the description,
+  // stacked under the label in the content column, never runs beneath it.
+  if (layout === 'horizontal') {
+    return (
+      <div {...commonProps} className={cx(style.root, style.horizontal)}>
+        <div className={style.content}>
+          {label && <span className={style.label}>{label}</span>}
+          {descriptionEl}
         </div>
-        {layout !== 'horizontal' && label && <span className={style.label}>{label}</span>}
+        {track}
       </div>
-      {description && (
-        <div id={descriptionId} className={style.description} onClick={handleDescriptionClick}>
-          {description}
-        </div>
-      )}
+    );
+  }
+
+  return (
+    <div {...commonProps} className={style.root}>
+      <div className={style.row}>
+        {track}
+        {label && <span className={style.label}>{label}</span>}
+      </div>
+      {descriptionEl}
     </div>
   );
 };
