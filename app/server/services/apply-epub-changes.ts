@@ -3,10 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { Book, Owner } from '../types';
-
+import { BookStore } from './book-store';
 import { assertValidEpub } from './epub-validator';
 import { buildUpdatedEpub, EpubChanges } from './epub-writer';
-import { BookStore } from './book-store';
 
 export interface ApplyEpubChangesDeps {
   bookStore: BookStore;

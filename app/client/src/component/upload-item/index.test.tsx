@@ -217,4 +217,29 @@ describe('UploadItem metadata fixes', () => {
     expect(screen.queryByText(/Fixed/)).toBeNull();
     expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
   });
+
+  it('renders a document (dcterms:modified) repair as a Fixed note', () => {
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          status: 'done',
+          bytesUploaded: 1_048_576,
+          bookId: 'abc',
+          appliedFixes: [
+            {
+              field: 'document',
+              kind: 'duplicate-modified-date',
+              from: '',
+              to: 'removed a duplicate modification date',
+              changes: {},
+            },
+          ],
+          proposals: [],
+        })}
+        {...noop}
+      />
+    );
+    expect(screen.getByText(/removed a duplicate modification date/)).toBeInTheDocument();
+    expect(screen.getByText(/EPUB/)).toBeInTheDocument();
+  });
 });

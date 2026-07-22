@@ -86,11 +86,13 @@ const NAMED_ENTITIES: Record<string, string> = {
 
 const ENTITY_RE = /&(#\d+|#x[0-9a-f]+|[a-z]+);/gi;
 
+// Matching control characters is intentional here (stripping them from metadata
+// so they collapse to a single space); the no-control-regex rule is a false positive.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x1F\x7F]+/g;
+
 function collapseWhitespace(s: string): string {
-  return s
-    .replace(/[\x00-\x1F\x7F]+/g, ' ')
-    .replace(/ {2,}/g, ' ')
-    .trim();
+  return s.replace(CONTROL_CHARS, ' ').replace(/ {2,}/g, ' ').trim();
 }
 
 function hasEntity(s: string): boolean {

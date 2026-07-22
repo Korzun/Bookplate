@@ -5,7 +5,7 @@ import * as path from 'path';
 import { zipSync, strToU8 } from 'fflate';
 
 import { assertValidEpub } from './epub-validator';
-import { buildUpdatedEpub } from './epub-writer';
+import { buildUpdatedEpub, repairPackageDocument } from './epub-writer';
 
 // End-to-end guard: an edit of a genuinely valid EPUB must produce an EPUB that
 // still passes epubcheck. Exercises the real @korzun/epubcheck-ts validator, so
@@ -13,15 +13,19 @@ import { buildUpdatedEpub } from './epub-writer';
 // e.g. the mimetype entry losing its first/stored position (PKG-005/PKG-006) or
 // a duplicated XML declaration in the OPF (RSC-005).
 
-/** A minimal but epubcheck-valid EPUB 3 whose OPF carries an XML declaration. */
-function minimalValidEpub(): Buffer {
+// Builds the same minimal valid EPUB-3 but with a caller-controlled set of
+// dcterms:modified metas (0, 1, or many) to exercise the RSC-005 repair.
+function epubWithModified(timestamps: string[]): Buffer {
+  const modifiedMetas = timestamps
+    .map((t) => `    <meta property="dcterms:modified">${t}</meta>`)
+    .join('\n');
   const opf = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="pub-id">urn:uuid:12345678-1234-1234-1234-123456789abc</dc:identifier>
     <dc:title>Baseline Title</dc:title>
     <dc:language>en</dc:language>
-    <meta property="dcterms:modified">2020-01-01T00:00:00Z</meta>
+${modifiedMetas}
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
@@ -48,6 +52,11 @@ function minimalValidEpub(): Buffer {
       'OEBPS/c1.xhtml': strToU8(c1),
     })
   );
+}
+
+/** A minimal but epubcheck-valid EPUB 3 whose OPF carries an XML declaration. */
+function minimalValidEpub(): Buffer {
+  return epubWithModified(['2020-01-01T00:00:00Z']);
 }
 
 describe('buildUpdatedEpub (real @korzun/epubcheck-ts)', () => {
@@ -77,4 +86,58 @@ describe('buildUpdatedEpub (real @korzun/epubcheck-ts)', () => {
     const edited = buildUpdatedEpub(src, { title: 'Edited Title' });
     await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
   }, 60000);
+});
+
+describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epub-repair-'));
+  });
+
+  it('dedupes a duplicate dcterms:modified so the EPUB validates', async () => {
+    const src = path.join(dir, 'dup.epub');
+    fs.writeFileSync(src, epubWithModified(['2020-01-01T00:00:00Z', '2022-01-01T00:00:00Z']));
+    // RSC-005 pre-fix: epubcheck rejects a duplicate dcterms:modified.
+    await expect(assertValidEpub(fs.readFileSync(src), 'ERROR')).rejects.toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'RSC-005',
+          message: expect.stringContaining('dcterms:modified'),
+        }),
+      ]),
+    });
+    const repair = repairPackageDocument(src);
+    expect(repair.repaired).toBe(true);
+    expect(repair.action).toBe('deduped');
+    await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
+  });
+
+  it('injects a dcterms:modified when missing so the EPUB validates', async () => {
+    const src = path.join(dir, 'missing.epub');
+    fs.writeFileSync(src, epubWithModified([]));
+    // RSC-005 pre-fix: epubcheck rejects a missing dcterms:modified.
+    await expect(assertValidEpub(fs.readFileSync(src), 'ERROR')).rejects.toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'RSC-005',
+          message: expect.stringContaining('dcterms:modified'),
+        }),
+      ]),
+    });
+    const repair = repairPackageDocument(src);
+    expect(repair.repaired).toBe(true);
+    expect(repair.action).toBe('injected');
+    await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
+  });
+
+  it('leaves a valid single-modified EPUB byte-identical (no rewrite)', () => {
+    const src = path.join(dir, 'clean.epub');
+    const original = epubWithModified(['2020-01-01T00:00:00Z']);
+    fs.writeFileSync(src, original);
+    const repair = repairPackageDocument(src);
+    expect(repair.repaired).toBe(false);
+    expect(repair.action).toBe('none');
+    expect(Buffer.compare(repair.bytes, original)).toBe(0);
+  });
 });
