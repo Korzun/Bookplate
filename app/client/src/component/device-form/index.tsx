@@ -288,7 +288,6 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       {fields}
       {!isEdit && (
         <Button
-          className={styles.submit}
           type="primary"
           radius="card"
           loading={loading}
