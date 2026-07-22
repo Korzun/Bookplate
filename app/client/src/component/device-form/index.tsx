@@ -241,7 +241,13 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         onChange={setCoverFit}
         searchable={false}
       />
-      <Switch name="bwCover" label="Black & white cover" checked={bwCover} onChange={setBwCover} />
+      <Switch
+        name="bwCover"
+        label="Black & white cover"
+        checked={bwCover}
+        onChange={setBwCover}
+        description="Convert cover to grayscale for monochrome screens."
+      />
       <Switch
         name="simplify"
         label="Simplify Book"
