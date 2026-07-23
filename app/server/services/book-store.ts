@@ -626,6 +626,21 @@ export class BookStore {
     });
   }
 
+  /**
+   * Delete a book's organic "edit" lineage rows (both directions). Because
+   * reimportBook flattens the chain so every historical old id points at the
+   * current head, passing the head id removes the whole edit chain. Manual
+   * "merge" links and other users' rows are left intact. Returns rows deleted.
+   */
+  async clearEditLineage(owner: Owner, id: string): Promise<number> {
+    return await this.prisma.$executeRaw`
+      DELETE FROM book_id_history
+      WHERE user_id = ${owner.userId}
+        AND type = 'edit'
+        AND (old_id = ${id} OR current_id = ${id})
+    `;
+  }
+
   async deleteBook(owner: Owner, id: string): Promise<Book | null> {
     const book = await this.getBookById(owner, id);
     if (!book) return null;

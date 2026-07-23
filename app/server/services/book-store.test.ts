@@ -2115,6 +2115,31 @@ describe('unlinkDocument', () => {
   });
 });
 
+describe('clearEditLineage', () => {
+  it('deletes edit rows for the book/owner and leaves merge rows and other users', async () => {
+    await bookStore.addBook(OWNER, 'cel-head', stage('cel-head'), FAKE_META);
+    await insertHistory('cel-old-a', 'cel-head', { type: 'edit' });
+    await insertHistory('cel-old-b', 'cel-head', { type: 'merge' });
+    await prisma.$executeRaw`
+      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+      VALUES ('other-user', 'cel-old-c', 'cel-head', ${Date.now()}, 'edit')
+    `;
+
+    const deleted = await bookStore.clearEditLineage(OWNER, 'cel-head');
+    expect(deleted).toBe(1);
+
+    const remaining = await prisma.$queryRaw<
+      Array<{ old_id: string; type: string; user_id: string }>
+    >`
+      SELECT old_id, type, user_id FROM book_id_history WHERE current_id = 'cel-head' ORDER BY old_id`;
+    expect(remaining.map((r) => r.old_id)).toEqual(['cel-old-b', 'cel-old-c']); // merge kept, other user kept
+  });
+
+  it('is a no-op (0) when there is no edit lineage for the book', async () => {
+    expect(await bookStore.clearEditLineage(OWNER, 'cel-nope')).toBe(0);
+  });
+});
+
 describe('BookStore.listBooksPage()', () => {
   it('returns empty result for an empty library', async () => {
     const result = await bookStore.listBooksPage(OWNER, null, 20);

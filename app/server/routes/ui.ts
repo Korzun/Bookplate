@@ -844,6 +844,23 @@ export function createUiRouter(
     })
   );
 
+  router.delete(
+    '/api/books/:id/lineage',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const cleared = await bookStore.clearEditLineage(owner, book.id);
+      log.info(`Cleared ${cleared} edit-lineage row(s) for book=${book.id}`);
+      res.json({ cleared });
+    })
+  );
+
   router.post(
     '/api/books/:id/link',
     requireAuth,
