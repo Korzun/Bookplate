@@ -63,3 +63,45 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('tabindex', '3');
   });
 });
+
+describe('Button submit mode', () => {
+  it('renders a native submit button and associates via the form attribute', () => {
+    renderWithProviders(
+      <Button submit form="my-form">
+        Save
+      </Button>
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button.tagName).toBe('BUTTON');
+    expect(button).toHaveAttribute('type', 'submit');
+    expect(button).toHaveAttribute('form', 'my-form');
+  });
+
+  it('submits its parent form on click', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    renderWithProviders(
+      <form onSubmit={onSubmit}>
+        <Button submit>Go</Button>
+      </form>
+    );
+    await user.click(screen.getByRole('button', { name: 'Go' }));
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it('is natively disabled when loading and does not submit', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    renderWithProviders(
+      <form onSubmit={onSubmit}>
+        <Button submit loading>
+          Go
+        </Button>
+      </form>
+    );
+    const button = screen.getByRole('button', { name: 'Go' });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
