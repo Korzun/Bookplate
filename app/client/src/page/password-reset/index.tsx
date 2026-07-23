@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useActionState, useCallback, useState } from 'react';
 
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -11,7 +11,7 @@ import { useStyle } from './style';
 
 export const PasswordResetPage = () => {
   const styles = useStyle();
-  const [changeMyPassword, loading] = useChangeMyPassword();
+  const [changeMyPassword] = useChangeMyPassword();
   const showToast = useToast();
   const libraryName = useLibraryName();
   const [currentPassword, setCurrentPassword] = useState<string>('');
@@ -19,7 +19,7 @@ export const PasswordResetPage = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  const handleChangePassword = useCallback(async () => {
+  const [, submitAction, isPending] = useActionState(async () => {
     const changed = await changeMyPassword(currentPassword, newPassword);
     if (changed) {
       setCurrentPassword('');
@@ -30,7 +30,8 @@ export const PasswordResetPage = () => {
     } else {
       showToast('Password change failed', 'error');
     }
-  }, [changeMyPassword, currentPassword, newPassword, showToast]);
+    return null;
+  }, null);
 
   const handleCurrentPasswordChange = useCallback((newValue: string | undefined) => {
     setCurrentPassword(newValue ?? '');
@@ -43,15 +44,6 @@ export const PasswordResetPage = () => {
   const handleConfirmPasswordChange = useCallback((newValue: string | undefined) => {
     setConfirmPassword(newValue ?? '');
   }, []);
-  const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (loading) return;
-      void handleChangePassword();
-    },
-    [handleChangePassword, loading]
-  );
-
   const handleConfirmPasswordValidation = useCallback(
     (newValue: string): boolean => {
       const isValid = newPassword.length > 0 && newValue.length > 0 && newValue === newPassword;
@@ -69,7 +61,7 @@ export const PasswordResetPage = () => {
         </h1>
         <Card className={styles.card}>
           <div className={styles.banner}>You must change your password before continuing.</div>
-          <form onSubmit={handleSubmit}>
+          <form action={submitAction}>
             <div className={styles.inputContainer}>
               <TextInput
                 name="current-password"
@@ -101,10 +93,10 @@ export const PasswordResetPage = () => {
               />
             </div>
             <Button
+              submit
               disabled={!currentPassword || !newPassword || !isPasswordValid}
-              loading={loading}
+              loading={isPending}
               type="primary"
-              onClick={handleChangePassword}
               radius="card"
             >
               Change password
