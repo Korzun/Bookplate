@@ -64,6 +64,14 @@ it('allowCustom={false}: a real suggestion can still be added via Enter when hig
   expect(onChange).toHaveBeenCalledWith(['Fiction']);
 });
 
+it('allowCustom: a custom chip differing only by case from an existing value is not added', async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  renderWithProviders(<ChipsInput value={['Fiction']} suggestions={[]} onChange={onChange} />);
+  await user.type(screen.getByRole('textbox'), 'fiction{Enter}');
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 it('removes a chip via its remove button', async () => {
   const user = userEvent.setup();
   const onChange = vi.fn();
@@ -105,6 +113,7 @@ it('disabled: chip remove buttons are inert and clicking does not call onChange'
     <ChipsInput value={['Fiction']} suggestions={[]} onChange={onChange} disabled />
   );
   const removeButton = screen.getByRole('button', { name: 'Remove Fiction' });
+  expect(removeButton).toBeDisabled();
   expect(removeButton).toHaveAttribute('tabindex', '-1');
   await user.click(removeButton);
   expect(onChange).not.toHaveBeenCalled();
