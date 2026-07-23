@@ -130,15 +130,23 @@ function fixStrayInitialComma(author: string): string | null {
   return fixed !== author ? fixed : null;
 }
 
-function deriveAuthorSort(author: string): { value: string; auto: boolean } | null {
+// `auto`: the derivation is both correct and simple (mononym or plain
+//   "First Last") — safe to auto-apply even when overwriting an existing sort.
+// `reliable`: the "last token = surname" derivation is trustworthy — true for
+//   any name without particles/suffixes (including initials like "N. K.
+//   Jemisin"), false for particle/suffix names ("Ursula K. Le Guin", "John
+//   Smith Jr") where the naive split gets the surname wrong.
+function deriveAuthorSort(
+  author: string
+): { value: string; auto: boolean; reliable: boolean } | null {
   const tokens = author.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
-  if (tokens.length === 1) return { value: tokens[0], auto: true };
+  if (tokens.length === 1) return { value: tokens[0], auto: true, reliable: true };
   const flagged = tokens.some(
     (t) => PARTICLES.has(t.toLowerCase()) || SUFFIXES.has(t.replace(/\.$/, '').toLowerCase())
   );
   if (tokens.length === 2 && !flagged) {
-    return { value: `${tokens[1]}, ${tokens[0]}`, auto: true };
+    return { value: `${tokens[1]}, ${tokens[0]}`, auto: true, reliable: true };
   }
   // Proposal branch: strip trailing suffix tokens (Jr, Sr, III, ...) so they don't
   // get mistaken for the surname, then append them after the given names.
@@ -152,7 +160,7 @@ function deriveAuthorSort(author: string): { value: string; auto: boolean } | nu
   const surname = coreTokens[coreTokens.length - 1];
   const rest = coreTokens.slice(0, -1).join(' ');
   const suffixPart = suffixTokens.length ? ` ${suffixTokens.join(' ')}` : '';
-  return { value: `${surname}, ${rest}${suffixPart}`, auto: false };
+  return { value: `${surname}, ${rest}${suffixPart}`, auto: false, reliable: !flagged };
 }
 
 function titleCase(s: string): string {
@@ -292,14 +300,18 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
   if (!authorSortResolved && scalar.author && !scalar.author.includes(',')) {
     const derived = deriveAuthorSort(scalar.author);
     if (derived) {
-      const auto = derived.auto && !MULTI_AUTHOR.test(scalar.author);
+      const notMultiAuthor = !MULTI_AUTHOR.test(scalar.author);
       if (scalar.authorSort === '') {
+        // Fill an empty author sort automatically whenever the derivation is
+        // reliable (plain names + initials). Particle/suffix names, where the
+        // naive "last token = surname" split is untrustworthy, and multi-author
+        // strings stay proposals for the user to confirm.
         issues.push({
           field: 'authorSort',
           kind: 'author-sort-missing',
           from: '',
           to: derived.value,
-          autoEligible: auto,
+          autoEligible: derived.reliable && notMultiAuthor,
           changes: { authorSort: derived.value },
         });
       } else if (
@@ -307,12 +319,14 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
         !scalar.authorSort.includes(',') &&
         scalar.authorSort !== derived.value
       ) {
+        // Overwriting a present-but-wrong sort is riskier than filling an empty
+        // one, so keep the stricter gate here (mononyms + plain "First Last").
         issues.push({
           field: 'authorSort',
           kind: 'author-sort-wrong',
           from: scalar.authorSort,
           to: derived.value,
-          autoEligible: auto,
+          autoEligible: derived.auto && notMultiAuthor,
           changes: { authorSort: derived.value },
         });
       }

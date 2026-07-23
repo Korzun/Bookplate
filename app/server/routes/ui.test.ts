@@ -705,9 +705,10 @@ describe('POST /api/books/upload', () => {
 
   it('returns 409 when uploading a duplicate (same content twice)', async () => {
     const token = await loginAlice();
-    // 3-token author keeps author-sort-missing a proposal (not auto-applied), so the
-    // book's id/fingerprint doesn't shift via reimport before the duplicate check.
-    const epubBuf = makeEpub({ title: 'Dup', author: 'A B Cee' });
+    // A particle name keeps author-sort-missing a proposal (its derivation is
+    // unreliable, so it's never auto-applied), so the book's id/fingerprint
+    // doesn't shift via reimport before the duplicate check.
+    const epubBuf = makeEpub({ title: 'Dup', author: 'A de Cee' });
     await request(app)
       .post('/api/books/upload')
       .attach('files', epubBuf, 'first.epub')
