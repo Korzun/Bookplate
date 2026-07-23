@@ -59,6 +59,51 @@ function minimalValidEpub(): Buffer {
   return epubWithModified(['2020-01-01T00:00:00Z']);
 }
 
+// A minimal EPUB *2* package (version="2.0", NCX toc) with a caller-controlled
+// set of dcterms:modified metas. epubcheck enforces the RSC-005 "exactly once"
+// count for EPUB 2 as well as 3, so the repair must handle these too.
+function epub2WithModified(timestamps: string[]): Buffer {
+  const modifiedMetas = timestamps
+    .map((t) => `    <meta property="dcterms:modified">${t}</meta>`)
+    .join('\n');
+  const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:identifier id="pub-id" opf:scheme="uuid">urn:uuid:12345678-1234-1234-1234-123456789abc</dc:identifier>
+    <dc:title>Baseline 2 Title</dc:title>
+    <dc:language>en</dc:language>
+${modifiedMetas}
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="c1"/></spine>
+</package>`;
+  const ncx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head><meta name="dtb:uid" content="urn:uuid:12345678-1234-1234-1234-123456789abc"/></head>
+  <docTitle><text>Baseline 2 Title</text></docTitle>
+  <navMap><navPoint id="n1" playOrder="1"><navLabel><text>Chapter 1</text></navLabel><content src="c1.xhtml"/></navPoint></navMap>
+</ncx>`;
+  const c1 = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>C1</title></head><body><p>Hello.</p></body></html>`;
+  const container = `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`;
+  return Buffer.from(
+    zipSync({
+      mimetype: [strToU8('application/epub+zip'), { level: 0 }],
+      'META-INF/container.xml': strToU8(container),
+      'OEBPS/content.opf': strToU8(opf),
+      'OEBPS/toc.ncx': strToU8(ncx),
+      'OEBPS/c1.xhtml': strToU8(c1),
+    })
+  );
+}
+
 describe('buildUpdatedEpub (real @korzun/epubcheck-ts)', () => {
   let dir: string;
   let src: string;
@@ -130,6 +175,26 @@ describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
     expect(repair.action).toBe('injected');
     await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
   });
+
+  it('injects a dcterms:modified into an EPUB 2 package missing one (regression)', async () => {
+    // Regression for the real-world upload failure: a Calibre-exported EPUB 2
+    // (version="2.0") with no dcterms:modified was rejected with RSC-005 because
+    // the repair had bailed for non-3.x versions.
+    const src = path.join(dir, 'epub2-missing.epub');
+    fs.writeFileSync(src, epub2WithModified([]));
+    await expect(assertValidEpub(fs.readFileSync(src), 'ERROR')).rejects.toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'RSC-005',
+          message: expect.stringContaining('dcterms:modified'),
+        }),
+      ]),
+    });
+    const repair = repairPackageDocument(src);
+    expect(repair.repaired).toBe(true);
+    expect(repair.action).toBe('injected');
+    await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
+  }, 60000);
 
   it('leaves a valid single-modified EPUB byte-identical (no rewrite)', () => {
     const src = path.join(dir, 'clean.epub');

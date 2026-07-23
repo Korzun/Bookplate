@@ -97,16 +97,19 @@ function serializeEpub(
 const INJECTED_MODIFIED = '0000-00-00T00:00:00Z';
 
 /**
- * Ensure an EPUB-3 package has exactly one non-refining
+ * Ensure an EPUB 2 or 3 package has exactly one non-refining
  * `<meta property="dcterms:modified">` (EPUBCheck RSC-005). Dedupes 2+ (keeping
- * the latest timestamp) and injects one when absent. No-op for non-EPUB3
- * packages, for exactly-one, and for refining metas. Mutates `metadata.meta`.
+ * the latest timestamp) and injects one when absent. epubcheck enforces the
+ * "exactly once" count for EPUB 2 as well as 3, so both are normalized; only
+ * versions outside 2.x/3.x, exactly-one, and refining metas are no-ops.
+ * Mutates `metadata.meta`.
  */
 export function normalizeModifiedMeta(
   metadata: Record<string, unknown>,
   version: string
 ): { changed: boolean; action: 'deduped' | 'injected' | 'none' } {
-  if (!version.startsWith('3')) return { changed: false, action: 'none' };
+  if (!(version.startsWith('2') || version.startsWith('3')))
+    return { changed: false, action: 'none' };
 
   const metas = Array.isArray(metadata['meta'])
     ? (metadata['meta'] as Record<string, unknown>[])
