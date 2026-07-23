@@ -191,6 +191,17 @@ describe('detectMetadataIssues', () => {
     expect(splitIssues[1].fromChips).toEqual(['Arts & Crafts']);
   });
 
+  it('dedupes an exact-duplicate compound subject to a single fix', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Sci-Fi & Fantasy', 'Sci-Fi & Fantasy'],
+    });
+    const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
+    expect(splitIssues).toHaveLength(1);
+    expect(splitIssues[0].from).toBe('Sci-Fi & Fantasy');
+    expect(splitIssues[0].toChips).toEqual(['Sci-Fi', 'Fantasy']);
+  });
+
   it('splits comma-separated compounds into separate per-compound fixes', () => {
     const issues = detectMetadataIssues({
       ...base,
