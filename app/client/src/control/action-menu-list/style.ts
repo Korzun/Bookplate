@@ -27,8 +27,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     textAlign: 'left',
     width: '100%',
     // Optical nudge up: system-ui glyphs sit low in the line box, so shift the
-    // text up while keeping the overall row height symmetric.
-    padding: `calc(${theme.space.md} - 2px) ${theme.space.lg} calc(${theme.space.md} + 2px)`,
+    // text up 1px while keeping the overall row height symmetric. (2px reads
+    // as too high on labels without descenders.)
+    padding: `calc(${theme.space.md} - 1px) ${theme.space.lg} calc(${theme.space.md} + 1px)`,
     borderRadius: theme.radius.sm,
     fontSize: theme.fontSize.md,
     fontFamily: theme.fontFamily.body,
