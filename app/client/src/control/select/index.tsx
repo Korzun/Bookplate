@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { ChevronIcon, SpinnerIcon } from '~/icon';
 
@@ -57,6 +57,9 @@ export const Select = ({
   value,
 }: SelectProps) => {
   const style = useStyle();
+  // Per-instance DOM id so label/input association stays unique when two forms
+  // sharing a `name` mount at once (e.g. the device create + edit forms).
+  const inputId = useId();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -191,7 +194,7 @@ export const Select = ({
   return (
     <div ref={rootRef} className={cx(style.root, style[layout])}>
       {label && (
-        <label className={style.label} htmlFor={name}>
+        <label className={style.label} htmlFor={inputId}>
           {label}
         </label>
       )}
@@ -200,7 +203,9 @@ export const Select = ({
           <div className={style.trigger}>
             <input
               ref={inputRef}
-              id={name}
+              id={inputId}
+              name={name}
+              autoComplete="off"
               className={style.searchInput}
               aria-label="Search"
               placeholder="Type to search…"
