@@ -112,11 +112,16 @@ function stubFetchWithPatch(patchResponse: { ok: boolean; body: unknown }) {
 /** fetch mock for the applyAllProposals + undo flow: answers GET /api/books/:id
  * (snapshot), PATCH .../metadata (apply, then revert), and DELETE .../lineage.
  * Pass `snapshotOk: false` to make the snapshot GET fail (e.g. network error)
- * while PATCH still succeeds, exercising the best-effort-snapshot path. */
+ * while PATCH still succeeds, exercising the best-effort-snapshot path.
+ * Pass `failLineageDelete: true` to make the lineage DELETE reject (network
+ * error), exercising the best-effort-cleanup path — the revert must still
+ * stand even when this fails. A revert-PATCH failure needs no separate flag:
+ * just give `patchResponses[1]` (the undo re-PATCH call) `{ ok: false }`. */
 function stubFetchForApplyAll(opts: {
   original: Partial<Book>;
   patchResponses: { ok: boolean; body: unknown }[];
   snapshotOk?: boolean;
+  failLineageDelete?: boolean;
 }) {
   let patchCallIndex = 0;
   vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
@@ -129,6 +134,9 @@ function stubFetchForApplyAll(opts: {
       }) as unknown as Promise<Response>;
     }
     if (method === 'DELETE' && url.includes('/lineage')) {
+      if (opts.failLineageDelete) {
+        return Promise.reject(new Error('lineage delete failed'));
+      }
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ cleared: 1 }),
@@ -573,9 +581,93 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0].undo).toBeUndefined();
     expect(result.current.items[0].bookId).toBe('book-3');
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/books\/[^/]+\/lineage/),
+      expect.stringMatching(/\/api\/books\/book-3\/lineage/),
       expect.objectContaining({ method: 'DELETE' })
     );
+  });
+
+  it('undo resolves false and preserves applied state + undo when the revert PATCH fails', async () => {
+    const fixes = [
+      makeFix(),
+      makeFix({ field: 'title', kind: 'title-missing', to: 'Dune', changes: { title: 'Dune' } }),
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+
+    const original = {
+      title: 'Original Title',
+      titleSort: 'Original Title',
+      author: 'Original Author',
+      authorSort: 'Author, Original',
+      subjects: ['Fiction'],
+    };
+    stubFetchForApplyAll({
+      original,
+      patchResponses: [
+        { ok: true, body: { id: 'book-2' } },
+        { ok: false, body: { error: 'Save failed' } },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.applyAllProposals(id);
+    });
+    expect(result.current.items[0].bookId).toBe('book-2');
+    expect(result.current.items[0].undo).toBeDefined();
+
+    let undone: boolean | undefined;
+    await act(async () => {
+      undone = await result.current.undo(id);
+    });
+
+    expect(undone).toBe(false);
+    // Applied state stands: proposals still emptied, appliedFixes still holds the fixes.
+    expect(result.current.items[0].proposals).toEqual([]);
+    expect(result.current.items[0].appliedFixes).toEqual(fixes);
+    // Undo snapshot is preserved (not cleared) so the user can retry.
+    expect(result.current.items[0].undo).toBeDefined();
+    expect(result.current.items[0].bookId).toBe('book-2');
+  });
+
+  it('undo still resolves true and the card is restored when the lineage DELETE fails', async () => {
+    const fixes = [
+      makeFix(),
+      makeFix({ field: 'title', kind: 'title-missing', to: 'Dune', changes: { title: 'Dune' } }),
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+    const before = result.current.items[0].proposals;
+
+    const original = {
+      title: 'Original Title',
+      titleSort: 'Original Title',
+      author: 'Original Author',
+      authorSort: 'Author, Original',
+      subjects: ['Fiction'],
+    };
+    stubFetchForApplyAll({
+      original,
+      patchResponses: [
+        { ok: true, body: { id: 'book-2' } },
+        { ok: true, body: { id: 'book-3' } },
+      ],
+      failLineageDelete: true,
+    });
+
+    await act(async () => {
+      await result.current.applyAllProposals(id);
+    });
+    expect(result.current.items[0].bookId).toBe('book-2');
+
+    let undone: boolean | undefined;
+    await act(async () => {
+      undone = await result.current.undo(id);
+    });
+
+    expect(undone).toBe(true);
+    expect(result.current.items[0].proposals).toEqual(before);
+    expect(result.current.items[0].undo).toBeUndefined();
+    expect(result.current.items[0].bookId).toBe('book-3');
   });
 
   it('applyAllProposals still applies when the snapshot GET fails, but arms no undo', async () => {

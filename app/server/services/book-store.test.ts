@@ -2138,6 +2138,20 @@ describe('clearEditLineage', () => {
   it('is a no-op (0) when there is no edit lineage for the book', async () => {
     expect(await bookStore.clearEditLineage(OWNER, 'cel-nope')).toBe(0);
   });
+
+  it('also deletes edit rows where the target id is the old_id (reverse direction)', async () => {
+    await bookStore.addBook(OWNER, 'cel-target', stage('cel-target'), FAKE_META);
+    // This row's old_id — not current_id — matches the target, exercising the
+    // `old_id = id` side of the OR predicate.
+    await insertHistory('cel-target', 'cel-other-head', { type: 'edit' });
+
+    const deleted = await bookStore.clearEditLineage(OWNER, 'cel-target');
+    expect(deleted).toBe(1);
+
+    const remaining = await prisma.$queryRaw<Array<{ old_id: string }>>`
+      SELECT old_id FROM book_id_history WHERE old_id = 'cel-target'`;
+    expect(remaining).toHaveLength(0);
+  });
 });
 
 describe('BookStore.listBooksPage()', () => {
