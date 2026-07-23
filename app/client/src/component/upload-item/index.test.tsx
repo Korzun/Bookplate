@@ -162,6 +162,40 @@ describe('UploadItem metadata fixes', () => {
       proposals,
     });
 
+  it('renders an "Automatic fixes" section with original → fixed rows and no undo', () => {
+    const autoFixes: MetadataFix[] = [
+      {
+        field: 'author',
+        kind: 'author-inverted',
+        from: 'Watts, Peter',
+        to: 'Peter Watts',
+        changes: { author: 'Peter Watts' },
+      },
+      {
+        // Structural repair — empty changes, description-only.
+        field: 'document',
+        kind: 'duplicate-modified-date',
+        from: '',
+        to: 'removed a duplicate modification date',
+        changes: {},
+      },
+    ];
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({ status: 'done', bytesUploaded: 1_048_576, bookId: 'abc', autoFixes })}
+        {...noop}
+      />
+    );
+    expect(screen.getByText('Automatic fixes')).toBeInTheDocument();
+    // Field fix shows both the original (struck through) and the fixed value.
+    expect(screen.getByText('Watts, Peter')).toBeInTheDocument();
+    expect(screen.getByText('Peter Watts')).toBeInTheDocument();
+    // Structural repair shows just its description.
+    expect(screen.getByText('removed a duplicate modification date')).toBeInTheDocument();
+    // No undo affordance for automatic fixes — they're high-confidence.
+    expect(screen.queryByRole('button', { name: /undo/i })).toBeNull();
+  });
+
   it('shows an applied note without the word "Fixed"', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
     expect(screen.getByText(/Book, The/)).toBeInTheDocument();

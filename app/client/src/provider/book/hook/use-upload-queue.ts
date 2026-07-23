@@ -30,6 +30,8 @@ export type UploadItem = {
   errorMessage?: string;
   validation?: ValidationFailure;
   bookId?: string;
+  /** High-confidence fixes the server applied during upload (informational). */
+  autoFixes?: MetadataFix[];
   appliedFixes?: MetadataFix[];
   proposals?: MetadataFix[];
   undo?: UndoSnapshot;
@@ -193,7 +195,8 @@ export const useUploadQueue = (): UseUploadQueue => {
                     status: 'done' as const,
                     bytesUploaded: item.file.size,
                     bookId: result?.bookId,
-                    appliedFixes: result?.applied ?? [],
+                    autoFixes: result?.applied ?? [],
+                    appliedFixes: [],
                     proposals: result?.proposals ?? [],
                   }
                 : i
