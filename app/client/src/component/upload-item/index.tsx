@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { Button, SeverityCounts, ValidationDetailModal } from '~/control';
 import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
-import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book';
+import type { MetadataFix, UploadItem as UploadItemType, UploadItemStatus } from '~/provider/book';
 import { path } from '~/router';
 
 import { Card } from '../card';
@@ -32,6 +32,13 @@ const FIELD_LABEL: Record<string, string> = {
 
 const labelFor = (fix: MetadataFix): string =>
   fix.kind === 'subjects-split' ? 'Subject' : (FIELD_LABEL[fix.field] ?? fix.field);
+
+const STATUS_LABEL: Record<UploadItemStatus, string> = {
+  queued: 'Queued',
+  uploading: 'Uploading',
+  done: 'Upload complete',
+  error: 'Error',
+};
 
 export const UploadItem = ({
   item,
@@ -98,7 +105,7 @@ export const UploadItem = ({
         <div className={styles.content}>
           <div className={styles.labelContainer}>
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
-            <div className={cx(styles.leftLabel, styles[status])}>{status}</div>
+            <div className={cx(styles.leftLabel, styles[status])}>{STATUS_LABEL[status]}</div>
             {validation ? (
               <div className={cx(styles.rightLabel, styles.validationLabel)}>
                 <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
@@ -136,19 +143,10 @@ export const UploadItem = ({
                     actions={
                       pendingUndo ? (
                         <Button type="link" disabled={busy} onClick={() => void runAction(onUndo)}>
-                          Undo
+                          Undo {pendingUndo.kind}
                         </Button>
                       ) : (
                         <Fragment>
-                          {actionable.length >= 1 && (
-                            <Button
-                              type="link"
-                              disabled={busy}
-                              onClick={() => void runAction(onApplyAll)}
-                            >
-                              Apply all
-                            </Button>
-                          )}
                           {proposals.length >= 1 && (
                             <Button
                               type="link"
@@ -157,6 +155,15 @@ export const UploadItem = ({
                               onClick={() => void runAction(onDismissAll)}
                             >
                               Dismiss all
+                            </Button>
+                          )}
+                          {actionable.length >= 1 && (
+                            <Button
+                              type="link"
+                              disabled={busy}
+                              onClick={() => void runAction(onApplyAll)}
+                            >
+                              Apply all
                             </Button>
                           )}
                         </Fragment>
@@ -227,11 +234,11 @@ export const UploadItem = ({
                     <div className={styles.proposalActions}>
                       {fix.to !== null ? (
                         <Fragment>
-                          <Button type="link" onClick={() => onApplyFix(fix)}>
-                            Apply
-                          </Button>
                           <Button type="link" danger onClick={() => onDismissFix(fix)}>
                             Dismiss
+                          </Button>
+                          <Button type="link" onClick={() => onApplyFix(fix)}>
+                            Apply
                           </Button>
                         </Fragment>
                       ) : (

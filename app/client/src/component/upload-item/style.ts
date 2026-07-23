@@ -69,7 +69,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   leftLabel: {
     fontSize: theme.fontSize.sm,
     flexGrow: 1,
-    textTransform: 'capitalize',
     '&$queued': {
       color: theme.color.text.faint,
     },
@@ -154,6 +153,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: theme.space.md,
     fontSize: theme.fontSize.sm,
+    // Uniform row height so a chip-based subject row matches the text rows and
+    // the vertical rhythm between suggested fixes stays even.
+    minHeight: '1.5rem',
   },
   proposalText: {
     display: 'flex',

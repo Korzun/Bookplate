@@ -56,6 +56,14 @@ describe('UploadItem', () => {
     expect(screen.getByText('1.0 / 1.0 MB')).toBeTruthy();
   });
 
+  it('done: shows "Upload complete" (not "Done")', () => {
+    renderWithProviders(
+      <UploadItem item={makeItem({ status: 'done', bytesUploaded: 1_048_576 })} {...noop} />
+    );
+    expect(screen.getByText('Upload complete')).toBeInTheDocument();
+    expect(screen.queryByText('Done')).toBeNull();
+  });
+
   it('error: shows error message', () => {
     renderWithProviders(
       <UploadItem item={makeItem({ status: 'error', errorMessage: 'Invalid EPUB' })} {...noop} />
@@ -278,6 +286,18 @@ describe('UploadItem metadata fixes', () => {
     expect(screen.getByRole('button', { name: /dismiss all/i })).toBeInTheDocument();
   });
 
+  it('places Apply to the right of Dismiss (header and per-row)', () => {
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
+    const dismissAll = screen.getByRole('button', { name: /dismiss all/i });
+    const applyAll = screen.getByRole('button', { name: /apply all/i });
+    expect(
+      dismissAll.compareDocumentPosition(applyAll) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const dismiss = screen.getByRole('button', { name: /^dismiss$/i });
+    const apply = screen.getByRole('button', { name: /^apply$/i });
+    expect(dismiss.compareDocumentPosition(apply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('renders only Undo when a snapshot is pending', () => {
     const item = makeItem({
       status: 'done',
@@ -288,7 +308,8 @@ describe('UploadItem metadata fixes', () => {
       undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
     });
     renderWithProviders(<UploadItem item={item} {...noop} />);
-    expect(screen.getByRole('button', { name: /^undo$/i })).toBeInTheDocument();
+    // Undo label reflects the action kind.
+    expect(screen.getByRole('button', { name: /^undo dismiss$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /apply all/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /dismiss all/i })).not.toBeInTheDocument();
   });
@@ -308,7 +329,7 @@ describe('UploadItem metadata fixes', () => {
       undo: { kind: 'apply', proposals: [], appliedFixes: [] },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
-    fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^undo apply$/i }));
     expect(onUndo).toHaveBeenCalled();
   });
 
@@ -328,7 +349,7 @@ describe('UploadItem metadata fixes', () => {
       undo: { kind: 'apply', proposals: [], appliedFixes: [] },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
-    const undoBtn = screen.getByRole('button', { name: /^undo$/i });
+    const undoBtn = screen.getByRole('button', { name: /^undo apply$/i });
 
     fireEvent.click(undoBtn);
     expect(onUndo).toHaveBeenCalledTimes(1);
