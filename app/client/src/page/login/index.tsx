@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useActionState, useState } from 'react';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -11,21 +11,11 @@ export const LoginPage = () => {
   const styles = useStyle();
   const showToast = useToast();
 
-  const [loading, setLoading] = useState<boolean>(false);
   const [username, setUsername] = useState<string | undefined>();
   const [password, setPassword] = useState<string | undefined>();
 
-  const handleUsernameChange = useCallback((newUsername: string | undefined) => {
-    setUsername(newUsername);
-  }, []);
-
-  const handlePasswordChange = useCallback((newPassword: string | undefined) => {
-    setPassword(newPassword);
-  }, []);
-
-  const handleLogin = useCallback(async () => {
+  const [, submitAction, isPending] = useActionState(async () => {
     try {
-      setLoading(true);
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -43,46 +33,36 @@ export const LoginPage = () => {
       }
     } catch {
       showToast('Network error — please try again', 'error');
-    } finally {
-      setLoading(false);
     }
-  }, [username, password, showToast]);
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === 'Enter') {
-        event.stopPropagation();
-        handleLogin();
-      }
-    },
-    [handleLogin]
-  );
+    return null;
+  }, null);
 
   return (
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
         <Card className={styles.card}>
-          <div className={styles.inputContainer}>
-            <TextInput
-              placeholder="Username"
-              name="username"
-              autoCapitalize="none"
-              onChange={handleUsernameChange}
-              value={username}
-            />
-            <TextInput
-              placeholder="Password"
-              name="password"
-              onChange={handlePasswordChange}
-              onKeyDown={handleKeyDown}
-              password
-              value={password}
-            />
-          </div>
-          <Button loading={loading} type="primary" onClick={handleLogin} radius="card">
-            Sign In
-          </Button>
+          <form action={submitAction}>
+            <div className={styles.inputContainer}>
+              <TextInput
+                placeholder="Username"
+                name="username"
+                autoCapitalize="none"
+                onChange={setUsername}
+                value={username}
+              />
+              <TextInput
+                placeholder="Password"
+                name="password"
+                onChange={setPassword}
+                password
+                value={password}
+              />
+            </div>
+            <Button submit loading={isPending} type="primary" radius="card">
+              Sign In
+            </Button>
+          </form>
         </Card>
       </div>
     </Page>
