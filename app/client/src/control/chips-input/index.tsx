@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { XIcon } from '~/icon';
 import type { Theme } from '~/provider/theme';
@@ -39,6 +39,10 @@ export const ChipsInput = ({
   dense = false,
 }: ChipsInputProps) => {
   const style = useStyle({ chipColor, dense });
+  // A per-instance DOM id keeps label/input association unique even when two
+  // forms with the same `name` mount at once (e.g. the create form plus a row
+  // being edited on the device list). `name` stays form-data only.
+  const inputId = useId();
   const [inputValue, setInputValue] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
@@ -50,7 +54,9 @@ export const ChipsInput = ({
 
   function addChip(chip: string) {
     const trimmed = chip.trim();
-    if (!trimmed || value.includes(trimmed)) return;
+    // Case-insensitive so a custom-typed chip can't duplicate an existing one
+    // (or a suggestion) that differs only by letter case.
+    if (!trimmed || value.some((v) => v.toLowerCase() === trimmed.toLowerCase())) return;
     onChange([...value, trimmed]);
     setInputValue('');
     setHighlightedIndex(-1);
@@ -93,6 +99,7 @@ export const ChipsInput = ({
               type="button"
               className={style.chipRemove}
               aria-label={`Remove ${chip}`}
+              disabled={disabled}
               tabIndex={disabled ? -1 : 0}
               onClick={disabled ? undefined : () => removeChip(chip)}
             >
@@ -101,7 +108,9 @@ export const ChipsInput = ({
           </span>
         ))}
         <input
-          id={name}
+          id={inputId}
+          name={name}
+          autoComplete="off"
           className={style.input}
           type="text"
           value={inputValue}
@@ -141,7 +150,7 @@ export const ChipsInput = ({
 
   return (
     <div className={cx(style.root, style[layout])}>
-      <label className={style.label} htmlFor={name}>
+      <label className={style.label} htmlFor={inputId}>
         {label}
       </label>
       {control}
