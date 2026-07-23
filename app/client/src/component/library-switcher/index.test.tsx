@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -69,4 +69,50 @@ it('lists users and selects a target library', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Select library…' }));
   await userEvent.click(await screen.findByRole('option', { name: 'alice' }));
   expect(localStorage.getItem('library-target-user')).toBe('alice');
+});
+
+it('clears a persisted target missing from the loaded user list', async () => {
+  localStorage.setItem('library-target-user', 'ghost');
+  renderAsAdmin(<LibrarySwitcher />);
+  await waitFor(() => expect(localStorage.getItem('library-target-user')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Select library…' })).toBeInTheDocument();
+});
+
+it('keeps a persisted target present in the loaded user list', async () => {
+  localStorage.setItem('library-target-user', 'bob');
+  renderAsAdmin(<LibrarySwitcher />);
+  expect(await screen.findByRole('button', { name: 'bob' })).toBeInTheDocument();
+  expect(localStorage.getItem('library-target-user')).toBe('bob');
+});
+
+it('keeps the persisted target while the user list is loading', () => {
+  localStorage.setItem('library-target-user', 'ghost');
+  vi.mocked(useIsAdmin).mockReturnValue([true, false]);
+  vi.mocked(useUserList).mockReturnValue([[], true, false, undefined]);
+  render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <ThemeProvider>
+        <LibraryTargetProvider>
+          <LibrarySwitcher />
+        </LibraryTargetProvider>
+      </ThemeProvider>
+    </MemoryRouter>
+  );
+  expect(localStorage.getItem('library-target-user')).toBe('ghost');
+});
+
+it('keeps the persisted target when the user list is empty (not yet fetched)', () => {
+  localStorage.setItem('library-target-user', 'ghost');
+  vi.mocked(useIsAdmin).mockReturnValue([true, false]);
+  vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
+  render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <ThemeProvider>
+        <LibraryTargetProvider>
+          <LibrarySwitcher />
+        </LibraryTargetProvider>
+      </ThemeProvider>
+    </MemoryRouter>
+  );
+  expect(localStorage.getItem('library-target-user')).toBe('ghost');
 });
