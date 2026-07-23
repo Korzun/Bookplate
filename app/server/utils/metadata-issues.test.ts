@@ -159,48 +159,50 @@ describe('detectMetadataIssues', () => {
     expect(f.changes).toEqual({});
   });
 
-  it('proposes splitting a compound subject, flagging library matches', () => {
+  it('proposes splitting a compound subject as one fix, flagging library matches', () => {
     const issues = detectMetadataIssues({
       ...base,
       subjects: ['Sci-Fi & Fantasy'],
       librarySubjects: ['Sci-Fi', 'Fantasy'],
     });
     const s = find(issues, 'subjects-split')!;
+    expect(s.from).toBe('Sci-Fi & Fantasy');
     expect(s.to).toBe('Sci-Fi, Fantasy');
     expect(s.autoEligible).toBe(false);
     expect(s.reason).toBe('Both already exist in your library');
-    expect(s.changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy'] });
-    // Discrete before/after values for chip rendering.
+    // The split operation is carried by the chips; the patch is computed at apply time.
+    expect(s.changes).toEqual({});
     expect(s.fromChips).toEqual(['Sci-Fi & Fantasy']);
     expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy']);
   });
 
-  it('emits exactly one combined subjects-split issue for multiple compound subjects', () => {
+  it('emits one subjects-split fix per compound subject', () => {
     const issues = detectMetadataIssues({
       ...base,
       subjects: ['Sci-Fi & Fantasy', 'Arts & Crafts'],
     });
     const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
-    expect(splitIssues).toHaveLength(1);
-    const s = splitIssues[0];
-    expect(s.changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy', 'Arts', 'Crafts'] });
-    expect(s.reason).toBeUndefined();
-    expect(s.fromChips).toEqual(['Sci-Fi & Fantasy', 'Arts & Crafts']);
-    expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy', 'Arts', 'Crafts']);
+    expect(splitIssues).toHaveLength(2);
+    expect(splitIssues.map((s) => s.from)).toEqual(['Sci-Fi & Fantasy', 'Arts & Crafts']);
+    expect(splitIssues[0].toChips).toEqual(['Sci-Fi', 'Fantasy']);
+    expect(splitIssues[0].fromChips).toEqual(['Sci-Fi & Fantasy']);
+    expect(splitIssues[0].changes).toEqual({});
+    expect(splitIssues[1].toChips).toEqual(['Arts', 'Crafts']);
+    expect(splitIssues[1].fromChips).toEqual(['Arts & Crafts']);
   });
 
-  it('splits comma-separated compound subjects and dedupes parts across separators', () => {
+  it('splits comma-separated compounds into separate per-compound fixes', () => {
     const issues = detectMetadataIssues({
       ...base,
       subjects: ['Sci-Fi, Fantasy', 'Fantasy & Horror'],
     });
     const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
-    expect(splitIssues).toHaveLength(1);
-    // 'Sci-Fi, Fantasy' -> [Sci-Fi, Fantasy]; 'Fantasy & Horror' -> [Fantasy, Horror];
-    // the duplicate 'Fantasy' is collapsed case-insensitively, first occurrence wins.
-    expect(splitIssues[0].changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy', 'Horror'] });
-    expect(splitIssues[0].fromChips).toEqual(['Sci-Fi, Fantasy', 'Fantasy & Horror']);
-    expect(splitIssues[0].toChips).toEqual(['Sci-Fi', 'Fantasy', 'Horror']);
+    expect(splitIssues).toHaveLength(2);
+    // Each fix carries its own parts; cross-compound dedupe now happens at apply time.
+    expect(splitIssues[0].from).toBe('Sci-Fi, Fantasy');
+    expect(splitIssues[0].toChips).toEqual(['Sci-Fi', 'Fantasy']);
+    expect(splitIssues[1].from).toBe('Fantasy & Horror');
+    expect(splitIssues[1].toChips).toEqual(['Fantasy', 'Horror']);
   });
 
   it('never throws on empty input', () => {
