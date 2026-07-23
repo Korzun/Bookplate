@@ -168,7 +168,7 @@ export const UploadItem = ({
                   <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
                     <CheckIcon />
                     <span className={styles.chipLine}>
-                      Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
+                      {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
                       {fix.toChips ? (
                         <span className={styles.chipGroup}>
                           {fix.toChips.map((c) => (
@@ -186,7 +186,7 @@ export const UploadItem = ({
                   <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
                     <div className={styles.proposalText}>
                       <span className={styles.fieldName}>
-                        {FIELD_LABEL[fix.field] ?? fix.field}
+                        {FIELD_LABEL[fix.field] ?? fix.field}:
                       </span>
                       {fix.to === null ? (
                         <span className={styles.flagText}>needs review</span>
@@ -223,7 +223,7 @@ export const UploadItem = ({
                           <Button type="link" onClick={() => onApplyFix(fix)}>
                             Apply
                           </Button>
-                          <Button type="link" onClick={() => onDismissFix(fix)}>
+                          <Button type="link" danger onClick={() => onDismissFix(fix)}>
                             Dismiss
                           </Button>
                         </Fragment>

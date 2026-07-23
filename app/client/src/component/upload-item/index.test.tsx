@@ -154,14 +154,17 @@ describe('UploadItem metadata fixes', () => {
       proposals,
     });
 
-  it('shows an applied "Fixed" note', () => {
+  it('shows an applied note without the word "Fixed"', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
     expect(screen.getByText(/Book, The/)).toBeInTheDocument();
+    // The green check + colour convey success; no "Fixed" prefix.
+    expect(screen.queryByText(/Fixed/)).toBeNull();
   });
 
-  it('renders a proposal row with the proposed value and calls onApplyFix', () => {
+  it('renders a proposal row with a colon after the label and calls onApplyFix', () => {
     const onApplyFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onApplyFix={onApplyFix} />);
+    expect(screen.getByText('Author sort:')).toBeInTheDocument();
     expect(screen.getByText(/Guin, Ursula K\. Le/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
     expect(onApplyFix).toHaveBeenCalledWith(proposals[0]);

@@ -138,7 +138,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: theme.space.sm,
     fontSize: theme.fontSize.sm,
-    color: theme.color.success,
+    // The fix text stays in the normal body colour; only the check icon is green
+    // — the icon + colour already convey success without recolouring the text.
+    color: theme.color.text.primary,
+    '& svg': {
+      // Match the upload "Done" status checkmark size.
+      height: '15px',
+      width: '15px',
+      color: theme.color.success,
+    },
   },
   proposalRow: {
     display: 'flex',
