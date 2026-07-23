@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { ReactNode, useCallback } from 'react';
+import { ReactNode, useCallback, useId } from 'react';
 
 import { useStyle } from './style';
 
@@ -23,7 +23,10 @@ export const Switch = ({
   onChange,
 }: SwitchProps) => {
   const style = useStyle();
-  const descriptionId = description ? `${name}-description` : undefined;
+  // Per-instance id so the description's aria target stays unique even when two
+  // switches sharing a `name` mount at once (e.g. the device create + edit forms).
+  const generatedId = useId();
+  const descriptionId = description ? generatedId : undefined;
 
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
