@@ -41,9 +41,19 @@ describe('detectMetadataIssues', () => {
     expect(s.changes).toEqual({ authorSort: 'Homer' });
   });
 
-  it('proposes (not auto) author sort for 3+ token names', () => {
+  it('fills missing author sort for a reliable 3-token / initials name (auto)', () => {
+    const issues = detectMetadataIssues({ ...base, author: 'N. K. Jemisin', authorSort: '' });
+    const s = find(issues, 'author-sort-missing')!;
+    expect(s.to).toBe('Jemisin, N. K.');
+    expect(s.autoEligible).toBe(true);
+    expect(s.changes).toEqual({ authorSort: 'Jemisin, N. K.' });
+  });
+
+  it('proposes (not auto) author sort for particle names (unreliable derivation)', () => {
     const issues = detectMetadataIssues({ ...base, author: 'Ursula K. Le Guin', authorSort: '' });
     const s = find(issues, 'author-sort-missing')!;
+    // The naive split would produce the wrong "Guin, Ursula K. Le", so it must
+    // stay a proposal for the user to confirm.
     expect(s.autoEligible).toBe(false);
     expect(s.to).toBe('Guin, Ursula K. Le');
     expect(s.changes).toEqual({ authorSort: 'Guin, Ursula K. Le' });
