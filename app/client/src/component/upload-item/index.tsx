@@ -8,6 +8,7 @@ import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book'
 import { path } from '~/router';
 
 import { Card } from '../card';
+import { CardDivider } from '../card-divider';
 import { Tag } from '../tag';
 import { useStyle } from './style';
 
@@ -122,14 +123,17 @@ export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props
               ))}
 
               {proposals.length > 0 && (
-                <div className={styles.proposalsHeader}>
-                  <span>Suggested fixes</span>
-                  {actionable.length > 1 && (
-                    <Button type="link" onClick={onApplyAll}>
-                      Apply all
-                    </Button>
-                  )}
-                </div>
+                <CardDivider
+                  actions={
+                    actionable.length > 1 ? (
+                      <Button type="link" onClick={onApplyAll}>
+                        Apply all
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  Suggested fixes
+                </CardDivider>
               )}
 
               {proposals.map((fix) => (

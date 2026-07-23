@@ -140,16 +140,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.color.success,
   },
-  proposalsHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: theme.fontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    color: theme.color.text.faint,
-    marginTop: theme.space.xs,
-  },
   proposalRow: {
     display: 'flex',
     justifyContent: 'space-between',

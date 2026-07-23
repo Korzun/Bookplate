@@ -12,29 +12,37 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minHeight: `calc(${theme.fontSize.md} * ${theme.lineHeight.body})`,
   },
   line: {
-    // Grows by default (fills a side / the whole width when there's no label).
+    // Grows by default (fills a side / the whole width when there's no content).
     flexGrow: 1,
     height: '1px',
     backgroundColor: theme.color.border.strong,
   },
-  lineStart: {},
-  lineEnd: {},
-  label: {
+  // A line segment that hugs an edge: a short fixed stub instead of growing, so
+  // content pinned to that side pokes past it toward the border.
+  stub: {
+    flexGrow: 0,
+    flexShrink: 0,
+    width: theme.space.md,
+  },
+  // Wraps the content at a position (label and/or actions). Padding separates it
+  // from the flanking lines; the gap spaces stacked label + actions.
+  group: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.space.md,
     padding: `0 ${theme.space.md}`,
+    flexShrink: 0,
+  },
+  label: {
     // Same colour as the toggle helper text, a step larger so it reads as a heading.
     fontSize: theme.fontSize.md,
     lineHeight: theme.lineHeight.body,
     color: theme.color.text.faint,
     whiteSpace: 'nowrap',
-    flexShrink: 0,
   },
-  // Left/right: the label hugs that edge with a short stub of line poking past it;
-  // the opposite line fills the rest. Center leaves both lines growing equally.
-  left: {
-    '& $lineStart': { flexGrow: 0, flexShrink: 0, width: theme.space.md },
-  },
-  center: {},
-  right: {
-    '& $lineEnd': { flexGrow: 0, flexShrink: 0, width: theme.space.md },
+  actions: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.space.md,
   },
 }));
