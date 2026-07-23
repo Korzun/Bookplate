@@ -184,6 +184,18 @@ describe('detectMetadataIssues', () => {
     expect(s.reason).toBeUndefined();
   });
 
+  it('splits comma-separated compound subjects and dedupes parts across separators', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Sci-Fi, Fantasy', 'Fantasy & Horror'],
+    });
+    const splitIssues = issues.filter((i) => i.kind === 'subjects-split');
+    expect(splitIssues).toHaveLength(1);
+    // 'Sci-Fi, Fantasy' -> [Sci-Fi, Fantasy]; 'Fantasy & Horror' -> [Fantasy, Horror];
+    // the duplicate 'Fantasy' is collapsed case-insensitively, first occurrence wins.
+    expect(splitIssues[0].changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy', 'Horror'] });
+  });
+
   it('never throws on empty input', () => {
     expect(
       detectMetadataIssues({ title: '', titleSort: '', author: '', authorSort: '', subjects: [] })

@@ -160,9 +160,13 @@ function isAllCaps(title: string): boolean {
   return letters.length >= 4 && title === title.toUpperCase() && title !== title.toLowerCase();
 }
 
+// Compound-subject separators. Comma is included because publishers/Calibre
+// often join tags with commas (e.g. "Sci-Fi, Fantasy"); "Last, First" person
+// forms are an author-field concern and do not occur in subjects. Splitting is
+// proposal-only, so any unwanted split can be dismissed.
 function splitSubject(subject: string): string[] {
   return subject
-    .split(/\s*(?:&|\/|;)\s*/)
+    .split(/\s*(?:&|\/|;|,)\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
 }
