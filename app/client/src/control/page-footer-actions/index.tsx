@@ -9,6 +9,8 @@ export interface FooterAction {
   danger?: boolean;
   emphasis?: boolean;
   align?: 'leading' | 'trailing';
+  submit?: boolean;
+  form?: string;
 }
 
 interface PageFooterActionsProps {
@@ -31,6 +33,8 @@ export function PageFooterActions({ items }: PageFooterActionsProps) {
       loading={item.loading}
       danger={item.danger}
       type={item.emphasis ? 'primary' : 'default'}
+      submit={item.submit}
+      form={item.form}
     >
       {item.label}
     </Button>

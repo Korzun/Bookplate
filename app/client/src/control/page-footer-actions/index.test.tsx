@@ -45,4 +45,22 @@ describe('PageFooterActions', () => {
     await user.click(screen.getByRole('button', { name: 'Saving…' }));
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('renders a submit-associated button when the action opts in', () => {
+    renderWithProviders(
+      <PageFooterActions
+        items={[
+          { label: 'Cancel', onClick: () => {} },
+          { label: 'Save', onClick: () => {}, submit: true, form: 'edit-form', emphasis: true },
+        ]}
+      />
+    );
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save.tagName).toBe('BUTTON');
+    expect(save).toHaveAttribute('type', 'submit');
+    expect(save).toHaveAttribute('form', 'edit-form');
+
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel.tagName).toBe('DIV'); // non-submit stays the div button
+  });
 });
