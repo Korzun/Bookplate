@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { Book, BookList, MetadataFix } from '../type';
-import { useUploadQueue } from './use-upload-queue';
+import { fixKey, useUploadQueue } from './use-upload-queue';
 
 // ── XHR mock ─────────────────────────────────────────────────────────────────
 
@@ -188,6 +188,56 @@ async function renderQueueWithProposals(fixes: MetadataFix[]) {
   });
 
   return { result };
+}
+
+/** fetch mock for subject-split apply tests: answers GET /api/books/:id with
+ * the given current `subjects`, and records every PATCH .../metadata body
+ * (decoding the `subjects` field back out of the FormData JSON string) into
+ * `patchBodies` so the test can assert on the composed array. */
+function stubFetchWithSubjectSnapshot(subjects: string[]) {
+  const patchBodies: Record<string, unknown>[] = [];
+  vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url === '/api/config') {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'PATCH' && url.includes('/metadata')) {
+      const body: Record<string, unknown> = {};
+      const fd = init?.body as FormData;
+      for (const [key, value] of fd.entries()) {
+        body[key] = key === 'subjects' ? JSON.parse(value as string) : value;
+      }
+      patchBodies.push(body);
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ id: 'book-1' }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'GET' && /^\/api\/books\/[^/]+$/.test(url)) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ subjects }),
+      }) as unknown as Promise<Response>;
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    }) as unknown as Promise<Response>;
+  });
+  return { patchBodies };
+}
+
+/** Drives a single-file upload to `done` with the given subject-split
+ * proposals, and stubs the current-subjects GET the composed apply needs.
+ * Mirrors `renderQueueWithProposals` but also returns `patchBodies`. */
+async function renderQueueWithSubjectProposals(fixes: MetadataFix[], currentSubjects: string[]) {
+  const { patchBodies } = stubFetchWithSubjectSnapshot(currentSubjects);
+  const { result } = await renderQueueWithProposals(fixes);
+  return { result, patchBodies };
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -694,5 +744,105 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0].proposals).toEqual([]);
     expect(result.current.items[0].appliedFixes).toEqual(fixes);
     expect(result.current.items[0].undo).toBeUndefined();
+  });
+
+  it('fixKey distinguishes two subject-split fixes by their compound', () => {
+    const a = makeFix({ field: 'subjects', kind: 'subjects-split', from: 'A & B', to: 'A, B' });
+    const b = makeFix({ field: 'subjects', kind: 'subjects-split', from: 'C & D', to: 'C, D' });
+    expect(fixKey(a)).not.toBe(fixKey(b));
+  });
+
+  it("applies a subject split by composing against the book's current subjects", async () => {
+    const splitFix: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'Sci-Fi & Fantasy',
+      to: 'Sci-Fi, Fantasy',
+      changes: {},
+      fromChips: ['Sci-Fi & Fantasy'],
+      toChips: ['Sci-Fi', 'Fantasy'],
+    };
+    const { result, patchBodies } = await renderQueueWithSubjectProposals(
+      [splitFix],
+      ['Sci-Fi & Fantasy', 'History']
+    );
+
+    const id = result.current.items[0].id;
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyFix(id, result.current.items[0].proposals![0]);
+    });
+
+    expect(succeeded).toBe(true);
+    // The PATCH replaces the compound with its parts, keeping the untouched subject.
+    expect(patchBodies.at(-1)?.subjects).toEqual(['Sci-Fi', 'Fantasy', 'History']);
+    expect(result.current.items[0].proposals).toEqual([]);
+  });
+
+  it('resolves false and does not PATCH when the current-subjects GET fails', async () => {
+    const splitFix: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'Sci-Fi & Fantasy',
+      to: 'Sci-Fi, Fantasy',
+      changes: {},
+      fromChips: ['Sci-Fi & Fantasy'],
+      toChips: ['Sci-Fi', 'Fantasy'],
+    };
+    const { result } = await renderQueueWithSubjectProposals([splitFix], ['Sci-Fi & Fantasy']);
+    // Make the snapshot GET fail after the item is seeded.
+    vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && /^\/api\/books\/[^/]+$/.test(url)) {
+        return Promise.reject(new Error('network error'));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      }) as unknown as Promise<Response>;
+    });
+
+    const id = result.current.items[0].id;
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyFix(id, result.current.items[0].proposals![0]);
+    });
+
+    expect(succeeded).toBe(false);
+    const patchCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH');
+    expect(patchCalls).toEqual([]);
+    expect(result.current.items[0].proposals).toEqual([splitFix]);
+  });
+
+  it('dismissing one subject fix leaves the other', async () => {
+    const fixes: MetadataFix[] = [
+      {
+        field: 'subjects',
+        kind: 'subjects-split',
+        from: 'A & B',
+        to: 'A, B',
+        changes: {},
+        fromChips: ['A & B'],
+        toChips: ['A', 'B'],
+      },
+      {
+        field: 'subjects',
+        kind: 'subjects-split',
+        from: 'C & D',
+        to: 'C, D',
+        changes: {},
+        fromChips: ['C & D'],
+        toChips: ['C', 'D'],
+      },
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+
+    act(() => result.current.dismissFix(id, result.current.items[0].proposals![0]));
+
+    expect(result.current.items[0].proposals!.map((p) => p.from)).toEqual(['C & D']);
   });
 });
