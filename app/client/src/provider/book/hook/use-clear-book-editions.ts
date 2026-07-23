@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -13,7 +13,7 @@ export type UseClearBookEditions = [
 ];
 
 export const useClearBookEditions = (): UseClearBookEditions => {
-  const { setBookList } = useContext(Context);
+  const { setBookList } = use(Context);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);

@@ -1,9 +1,9 @@
-import { useContext, useMemo } from 'react';
+import { use, useMemo } from 'react';
 
 import { Context } from '../context';
 
 export type UseIsAdmin = [boolean, boolean];
 export const useIsAdmin = (): UseIsAdmin => {
-  const { isAdmin, loading } = useContext(Context);
+  const { isAdmin, loading } = use(Context);
   return useMemo(() => [isAdmin, loading], [isAdmin, loading]);
 };

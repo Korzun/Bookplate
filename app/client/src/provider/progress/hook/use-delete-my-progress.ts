@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { useUsername } from '../../../provider/auth';
@@ -15,7 +15,7 @@ export type UseDeleteMyProgress =
   | [DeleteMyProgress, false, true, string]; // There was a specified error while deleting progress
 export const useDeleteMyProgress = (): UseDeleteMyProgress => {
   const [username] = useUsername();
-  const { progressList, setProgressForUsername } = useContext(Context);
+  const { progressList, setProgressForUsername } = use(Context);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();

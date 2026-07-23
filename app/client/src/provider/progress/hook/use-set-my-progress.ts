@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { useUsername } from '../../../provider/auth';
@@ -25,7 +25,7 @@ export type UseSetMyProgress =
   | [SetMyProgress, false, true, string];
 
 export const useSetMyProgress = (bookId: string): UseSetMyProgress => {
-  const { progressList, setProgressForUsername } = useContext(Context);
+  const { progressList, setProgressForUsername } = use(Context);
   const [username] = useUsername();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);

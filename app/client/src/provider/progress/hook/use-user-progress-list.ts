@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo } from 'react';
+import { use, useEffect, useMemo } from 'react';
 
 import { Context } from '../context';
 import type { UserProgressList } from '../type';
@@ -13,7 +13,7 @@ export type UseUserProgressList =
   | [undefined, false, true, string];
 
 export const useUserProgressList = (username: string | undefined): UseUserProgressList => {
-  const { progressList, loadingByUsername, errorByUsername } = useContext(Context);
+  const { progressList, loadingByUsername, errorByUsername } = use(Context);
   const fetchUserProgressList = useFetchUserProgressList();
 
   const loading = username !== undefined ? (loadingByUsername[username] ?? false) : false;

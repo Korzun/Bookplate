@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect } from 'react';
+import { useCallback, use, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { Context } from '../context';
@@ -46,7 +46,7 @@ function filtersEqual(a: BookListFilter, b: BookListFilter): boolean {
 }
 
 export const useBookListFilter = (): [BookListFilter, (filter: BookListFilter) => void] => {
-  const { bookListFilter, setBookListFilter } = useContext(Context);
+  const { bookListFilter, setBookListFilter } = use(Context);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {

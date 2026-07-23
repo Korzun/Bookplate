@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { useCallback, use, useMemo, useRef, useState } from 'react';
 
 import { useIsAdmin } from '~/provider/auth';
 
@@ -34,7 +34,7 @@ export type UseLinkProgress =
   | [LinkProgress, false, true, string];
 
 export const useLinkProgress = (bookId: string, username: string): UseLinkProgress => {
-  const { progressList, setProgressForUsername } = useContext(Context);
+  const { progressList, setProgressForUsername } = use(Context);
   const [isAdmin] = useIsAdmin();
   const [linking, setLinking] = useState(false);
   const linkingRef = useRef(false);

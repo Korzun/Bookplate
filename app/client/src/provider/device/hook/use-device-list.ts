@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo } from 'react';
+import { useCallback, use, useEffect, useMemo } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -14,7 +14,7 @@ export type UseDeviceList =
   | [Device[], false, true, string];
 
 export const useDeviceList = (): UseDeviceList => {
-  const { deviceList, loading, error, setDeviceList, setLoading, setError } = useContext(Context);
+  const { deviceList, loading, error, setDeviceList, setLoading, setError } = use(Context);
 
   const getDeviceList = useCallback(async () => {
     setLoading(true);

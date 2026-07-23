@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -11,7 +11,7 @@ export type UseDeleteDevice =
   | [DeleteDevice, false, true, undefined] // Unspecified error
   | [DeleteDevice, false, true, string]; // Specified error
 export const useDeleteDevice = (): UseDeleteDevice => {
-  const { deviceList, setDeviceList } = useContext(Context);
+  const { deviceList, setDeviceList } = use(Context);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();

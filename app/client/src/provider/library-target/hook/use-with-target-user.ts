@@ -1,4 +1,4 @@
-import { useCallback, useContext } from 'react';
+import { useCallback, use } from 'react';
 
 import { useIsAdmin } from '~/provider/auth';
 
@@ -13,7 +13,7 @@ export type WithTargetUser = (url: string) => string;
  */
 export const useWithTargetUser = (): WithTargetUser => {
   const [isAdmin] = useIsAdmin();
-  const { targetUsername } = useContext(Context);
+  const { targetUsername } = use(Context);
 
   return useCallback(
     (url: string) => {

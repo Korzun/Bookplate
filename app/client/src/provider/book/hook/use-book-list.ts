@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef } from 'react';
+import { use, useEffect, useMemo, useRef } from 'react';
 
 import { useLibraryTarget } from '~/provider/library-target';
 
@@ -23,7 +23,7 @@ export const useBookList = (): UseBookList => {
     clearCompleteBookIds,
     setBookListItems,
     setNextCursor,
-  } = useContext(Context);
+  } = use(Context);
   const fetchBookList = useFetchBookList();
   const [targetUsername] = useLibraryTarget();
 
