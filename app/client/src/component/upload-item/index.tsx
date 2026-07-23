@@ -128,24 +128,6 @@ export const UploadItem = ({
           {status === 'done' &&
             (appliedFixes.length > 0 || proposals.length > 0 || pendingUndo) && (
               <div className={styles.metadata}>
-                {appliedFixes.map((fix) => (
-                  <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
-                    <CheckIcon />
-                    <span className={styles.chipLine}>
-                      Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
-                      {fix.toChips ? (
-                        <span className={styles.chipGroup}>
-                          {fix.toChips.map((c) => (
-                            <Tag key={c}>{c}</Tag>
-                          ))}
-                        </span>
-                      ) : (
-                        <strong>{fix.to}</strong>
-                      )}
-                    </span>
-                  </div>
-                ))}
-
                 {(proposals.length > 0 || pendingUndo) && (
                   <CardDivider
                     actions={
@@ -181,6 +163,24 @@ export const UploadItem = ({
                     Suggested fixes
                   </CardDivider>
                 )}
+
+                {appliedFixes.map((fix) => (
+                  <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
+                    <CheckIcon />
+                    <span className={styles.chipLine}>
+                      Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
+                      {fix.toChips ? (
+                        <span className={styles.chipGroup}>
+                          {fix.toChips.map((c) => (
+                            <Tag key={c}>{c}</Tag>
+                          ))}
+                        </span>
+                      ) : (
+                        <strong>{fix.to}</strong>
+                      )}
+                    </span>
+                  </div>
+                ))}
 
                 {proposals.map((fix) => (
                   <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>

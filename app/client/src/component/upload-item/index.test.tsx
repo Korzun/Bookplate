@@ -314,6 +314,32 @@ describe('UploadItem metadata fixes', () => {
     await waitFor(() => expect(undoBtn).not.toHaveAttribute('aria-disabled'));
   });
 
+  it('renders the Suggested fixes divider above the applied changes', () => {
+    const item = makeItem({
+      status: 'done',
+      bytesUploaded: 1_048_576,
+      bookId: 'abc',
+      appliedFixes: [
+        {
+          field: 'titleSort',
+          kind: 'title-sort-missing',
+          from: '',
+          to: 'Book, The',
+          changes: { titleSort: 'Book, The' },
+        },
+      ],
+      proposals: [],
+      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+    });
+    renderWithProviders(<UploadItem item={item} {...noop} />);
+    const divider = screen.getByText('Suggested fixes');
+    const appliedNote = screen.getByText(/Book, The/);
+    // The divider comes before (is above) the applied "Fixed" note in the DOM.
+    expect(
+      divider.compareDocumentPosition(appliedNote) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('does not render a metadata section when there are no fixes or proposals', () => {
     renderWithProviders(
       <UploadItem item={makeItem({ status: 'done', bytesUploaded: 1_048_576 })} {...noop} />
