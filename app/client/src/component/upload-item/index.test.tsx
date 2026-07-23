@@ -212,7 +212,7 @@ describe('UploadItem metadata fixes', () => {
     expect(onApplyFix).toHaveBeenCalledWith(proposals[0]);
   });
 
-  it('renders a subjects-split proposal as chips (compound -> parts)', () => {
+  it('renders a subjects-split proposal: struck-through compound → part chips', () => {
     const subjectsFix: MetadataFix = {
       field: 'subjects',
       kind: 'subjects-split',
@@ -234,8 +234,11 @@ describe('UploadItem metadata fixes', () => {
         {...noop}
       />
     );
-    // The original compound is one chip; each split part is its own chip (no comma-join).
-    expect(screen.getByText('Sci-Fi, Fantasy')).toBeInTheDocument();
+    // The original compound renders as the scalar "from" styling (struck-through
+    // faint text), not a chip; each split part is its own chip (no comma-join).
+    const compound = screen.getByText('Sci-Fi, Fantasy');
+    expect(compound).toBeInTheDocument();
+    expect(compound.className).toMatch(/fromValue/);
     expect(screen.getByText('Sci-Fi')).toBeInTheDocument();
     expect(screen.getByText('Fantasy')).toBeInTheDocument();
     // Apply is still wired for the proposal.
