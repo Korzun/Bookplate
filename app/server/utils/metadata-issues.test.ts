@@ -170,6 +170,9 @@ describe('detectMetadataIssues', () => {
     expect(s.autoEligible).toBe(false);
     expect(s.reason).toBe('Both already exist in your library');
     expect(s.changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy'] });
+    // Discrete before/after values for chip rendering.
+    expect(s.fromChips).toEqual(['Sci-Fi & Fantasy']);
+    expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy']);
   });
 
   it('emits exactly one combined subjects-split issue for multiple compound subjects', () => {
@@ -182,6 +185,8 @@ describe('detectMetadataIssues', () => {
     const s = splitIssues[0];
     expect(s.changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy', 'Arts', 'Crafts'] });
     expect(s.reason).toBeUndefined();
+    expect(s.fromChips).toEqual(['Sci-Fi & Fantasy', 'Arts & Crafts']);
+    expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy', 'Arts', 'Crafts']);
   });
 
   it('splits comma-separated compound subjects and dedupes parts across separators', () => {
@@ -194,6 +199,8 @@ describe('detectMetadataIssues', () => {
     // 'Sci-Fi, Fantasy' -> [Sci-Fi, Fantasy]; 'Fantasy & Horror' -> [Fantasy, Horror];
     // the duplicate 'Fantasy' is collapsed case-insensitively, first occurrence wins.
     expect(splitIssues[0].changes).toEqual({ subjects: ['Sci-Fi', 'Fantasy', 'Horror'] });
+    expect(splitIssues[0].fromChips).toEqual(['Sci-Fi, Fantasy', 'Fantasy & Horror']);
+    expect(splitIssues[0].toChips).toEqual(['Sci-Fi', 'Fantasy', 'Horror']);
   });
 
   it('never throws on empty input', () => {

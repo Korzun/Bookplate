@@ -165,6 +165,36 @@ describe('UploadItem metadata fixes', () => {
     expect(onApplyFix).toHaveBeenCalledWith(proposals[0]);
   });
 
+  it('renders a subjects-split proposal as chips (compound -> parts)', () => {
+    const subjectsFix: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'Sci-Fi, Fantasy',
+      to: 'Sci-Fi, Fantasy',
+      changes: { subjects: ['Sci-Fi', 'Fantasy'] },
+      fromChips: ['Sci-Fi, Fantasy'],
+      toChips: ['Sci-Fi', 'Fantasy'],
+    };
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          status: 'done',
+          bytesUploaded: 1_048_576,
+          bookId: 'abc',
+          appliedFixes: [],
+          proposals: [subjectsFix],
+        })}
+        {...noop}
+      />
+    );
+    // The original compound is one chip; each split part is its own chip (no comma-join).
+    expect(screen.getByText('Sci-Fi, Fantasy')).toBeInTheDocument();
+    expect(screen.getByText('Sci-Fi')).toBeInTheDocument();
+    expect(screen.getByText('Fantasy')).toBeInTheDocument();
+    // Apply is still wired for the proposal.
+    expect(screen.getByRole('button', { name: /^apply$/i })).toBeInTheDocument();
+  });
+
   it('calls onDismissFix when Dismiss is clicked', () => {
     const onDismissFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissFix={onDismissFix} />);

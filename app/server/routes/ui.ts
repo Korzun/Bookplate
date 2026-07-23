@@ -67,6 +67,8 @@ type MetadataFix = {
   to: string | null;
   reason?: string;
   changes: Record<string, string | string[]>;
+  fromChips?: string[];
+  toChips?: string[];
 };
 
 function toFix(issue: MetadataIssue): MetadataFix {
@@ -77,6 +79,8 @@ function toFix(issue: MetadataIssue): MetadataFix {
     to: issue.to,
     ...(issue.reason ? { reason: issue.reason } : {}),
     changes: issue.changes,
+    ...(issue.fromChips ? { fromChips: issue.fromChips } : {}),
+    ...(issue.toChips ? { toChips: issue.toChips } : {}),
   };
 }
 

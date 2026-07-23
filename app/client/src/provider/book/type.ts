@@ -37,6 +37,8 @@ export type MetadataFix = {
   to: string | null;
   reason?: string;
   changes: Record<string, string | string[]>;
+  fromChips?: string[];
+  toChips?: string[];
 };
 
 export type UploadFileResult = {
