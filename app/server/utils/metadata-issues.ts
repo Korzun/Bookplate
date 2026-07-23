@@ -367,49 +367,32 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
     });
   }
 
-  // 10. Compound subjects — a single combined proposal per book. Multiple
-  // compound subjects must not each push their own issue: they'd collide on
-  // the field:kind identity used downstream (React keys, dismiss, apply-all),
-  // and applying them one at a time via full-replacement `changes.subjects`
-  // would let the last one silently clobber the others.
+  // 10. Compound subjects — one fix per compound subject.
   const library = new Set((input.librarySubjects ?? []).map((s) => s.toLowerCase()));
   const subjects = Array.isArray(input.subjects) ? input.subjects : [];
-  const compoundPartsByIdx = new Map<number, string[]>();
-  subjects.forEach((subject, idx) => {
+
+  // subjects-split: one fix per compound subject so each can be applied/dismissed
+  // individually. The split operation is carried by fromChips[0] -> toChips; the
+  // final subjects array is computed at apply time from the book's current state.
+  subjects.forEach((subject) => {
     const parts = splitSubject(subject);
-    if (parts.length >= 2) compoundPartsByIdx.set(idx, parts);
-  });
-  if (compoundPartsByIdx.size > 0) {
-    const next: string[] = [];
-    subjects.forEach((subject, idx) => {
-      const parts = compoundPartsByIdx.get(idx);
-      if (parts) {
-        next.push(...parts);
-      } else {
-        next.push(subject);
-      }
-    });
-    const deduped = next.filter(
-      (s, i) => next.findIndex((o) => o.toLowerCase() === s.toLowerCase()) === i
+    if (parts.length < 2) return;
+    const dedupedParts = parts.filter(
+      (p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
     );
-    const compoundSubjects = subjects.filter((_, idx) => compoundPartsByIdx.has(idx));
-    const allParts = Array.from(compoundPartsByIdx.values()).flat();
-    const dedupedParts = allParts.filter(
-      (p, i) => allParts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
-    );
-    const allKnown = allParts.every((p) => library.has(p.toLowerCase()));
+    const allKnown = dedupedParts.every((p) => library.has(p.toLowerCase()));
     issues.push({
       field: 'subjects',
       kind: 'subjects-split',
-      from: compoundSubjects.join('; '),
+      from: subject,
       to: dedupedParts.join(', '),
       autoEligible: false,
       reason: allKnown ? 'Both already exist in your library' : undefined,
-      changes: { subjects: deduped },
-      fromChips: compoundSubjects,
+      changes: {},
+      fromChips: [subject],
       toChips: dedupedParts,
     });
-  }
+  });
 
   return issues;
 }
