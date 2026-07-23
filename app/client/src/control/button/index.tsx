@@ -1,5 +1,6 @@
 import cx from 'classnames';
 import { ComponentType, useCallback } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { IconProps, SpinnerIcon } from '~/icon';
 
@@ -13,10 +14,12 @@ type ButtonProps = React.PropsWithChildren<
   {
     className?: string;
     disabled?: boolean;
+    form?: string;
     loading?: boolean;
     onClick?: () => void;
     prefix?: ComponentType<IconProps>;
     radius?: ButtonRadiusValue;
+    submit?: boolean;
     suffix?: ComponentType<IconProps>;
     tabIndex?: number;
     title?: string;
@@ -28,10 +31,12 @@ export const Button = ({
   className: classNameProp,
   danger = false,
   disabled = false,
+  form,
   loading = false,
   onClick = () => {},
   prefix: Prefix,
   radius = ButtonRadius.Background as ButtonRadiusValue,
+  submit = false,
   suffix: Suffix,
   success = false,
   tabIndex,
@@ -39,42 +44,69 @@ export const Button = ({
   type = ButtonType.Default as ButtonTypeValue,
 }: ButtonProps) => {
   const styles = useStyle();
+  // Safe to call unconditionally: outside a <form> action, useFormStatus
+  // returns a default { pending: false }. Only consulted in submit mode.
+  const { pending } = useFormStatus();
+  const busy = loading || (submit && pending);
+
   const className = cx(
     styles.root,
     styles[type],
     styles[radius],
     { [styles.danger]: danger },
-    { [styles.loading]: loading },
+    { [styles.loading]: busy },
     { [styles.disabled]: disabled },
     { [styles.success]: success },
     classNameProp
   );
 
+  const loadingIcon = busy ? <SpinnerIcon className={styles.spinner} /> : null;
+  const prefixIcon = !busy && Prefix ? <Prefix className={styles.buttonIcon} /> : null;
+  const suffixIcon = !busy && Suffix ? <Suffix className={styles.buttonIcon} /> : null;
+
+  // Hoisted above the `if (submit)` branch (rather than left after the early
+  // return, as in the naive version) so hook order never depends on the
+  // `submit` branch taken during a given render. Both hooks are cheap and
+  // simply unused in submit mode.
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-      if (!disabled && !loading) {
+      if (!disabled && !busy) {
         event.stopPropagation();
         onClick();
       }
     },
-    [loading, disabled, onClick]
+    [busy, disabled, onClick]
   );
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!disabled && !loading && (event.key === 'Enter' || event.key === ' ')) {
+      if (!disabled && !busy && (event.key === 'Enter' || event.key === ' ')) {
         event.stopPropagation();
         onClick();
       }
     },
-    [loading, disabled, onClick]
+    [busy, disabled, onClick]
   );
 
-  const nonInteractive = disabled || loading;
+  if (submit) {
+    return (
+      <button
+        type="submit"
+        form={form}
+        className={className}
+        disabled={disabled || busy}
+        title={title}
+        tabIndex={tabIndex}
+      >
+        {loadingIcon}
+        {prefixIcon}
+        {children}
+        {suffixIcon}
+      </button>
+    );
+  }
 
-  const loadingIcon = loading ? <SpinnerIcon className={styles.spinner} /> : null;
-  const prefixIcon = !loading && Prefix ? <Prefix className={styles.buttonIcon} /> : null;
-  const suffixIcon = !loading && Suffix ? <Suffix className={styles.buttonIcon} /> : null;
+  const nonInteractive = disabled || busy;
 
   return (
     <div
