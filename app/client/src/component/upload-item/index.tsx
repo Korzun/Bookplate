@@ -221,7 +221,9 @@ export const UploadItem = ({
                       {fix.toChips ? (
                         <span className={styles.chipGroup}>
                           {fix.toChips.map((c) => (
-                            <Tag key={c}>{c}</Tag>
+                            <Tag key={c} size="sm">
+                              {c}
+                            </Tag>
                           ))}
                         </span>
                       ) : (
@@ -248,7 +250,9 @@ export const UploadItem = ({
                           {' → '}
                           <span className={styles.chipGroup}>
                             {fix.toChips.map((c) => (
-                              <Tag key={c}>{c}</Tag>
+                              <Tag key={c} size="sm">
+                                {c}
+                              </Tag>
                             ))}
                           </span>
                         </span>
