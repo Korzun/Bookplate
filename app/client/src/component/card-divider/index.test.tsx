@@ -23,4 +23,27 @@ describe('CardDivider', () => {
     renderWithProviders(<CardDivider align={align}>Cover</CardDivider>);
     expect(screen.getByText('Cover')).toBeInTheDocument();
   });
+
+  it('renders actions alongside the label on the divider', () => {
+    renderWithProviders(
+      <CardDivider actions={<button>Apply all</button>}>Suggested fixes</CardDivider>
+    );
+    expect(screen.getByText('Suggested fixes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply all' })).toBeInTheDocument();
+  });
+
+  it('renders actions on their own when there is no label', () => {
+    renderWithProviders(<CardDivider actions={<button>Apply all</button>} />);
+    expect(screen.getByRole('button', { name: 'Apply all' })).toBeInTheDocument();
+  });
+
+  it('stacks label before actions when they share a position', () => {
+    renderWithProviders(
+      <CardDivider align="left" actions={<button>Go</button>} actionsAlign="left">
+        Label
+      </CardDivider>
+    );
+    // Label renders before the action within the same group.
+    expect(screen.getByRole('separator')).toHaveTextContent('LabelGo');
+  });
 });
