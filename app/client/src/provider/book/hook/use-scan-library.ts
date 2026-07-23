@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, use, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -32,7 +32,7 @@ export type UseScanLibrary =
   | [ScanLibrary, undefined, false, true, string]; // There was a specified error while scanning
 
 export const useScanLibrary = (): UseScanLibrary => {
-  const { clearCompleteBookIds } = useContext(Context);
+  const { clearCompleteBookIds } = use(Context);
   const fetchBookList = useFetchBookList();
   const withTargetUser = useWithTargetUser();
   const [scanResult, setScanResult] = useState<ScanResult | undefined>();

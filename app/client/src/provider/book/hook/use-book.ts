@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo } from 'react';
+import { use, useEffect, useMemo } from 'react';
 
 import { Context } from '../context';
 import type { Book } from '../type';
@@ -12,7 +12,7 @@ export type UseBook =
   | [undefined, false, true, string];
 
 export const useBook = (bookId: string, completeBook: boolean = false): UseBook => {
-  const { bookList, loadingByBookId, errorByBookId, completeBookIds } = useContext(Context);
+  const { bookList, loadingByBookId, errorByBookId, completeBookIds } = use(Context);
   const fetchBook = useFetchBook();
 
   const loading = loadingByBookId[bookId] ?? false;

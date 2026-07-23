@@ -1,4 +1,4 @@
-import { useCallback, useContext } from 'react';
+import { useCallback, use } from 'react';
 
 import { useIsAdmin } from '~/provider/auth';
 import { useLibraryTarget, useWithTargetUser } from '~/provider/library-target';
@@ -21,7 +21,7 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListItems,
     setNextCursor,
     bookListFilter,
-  } = useContext(Context);
+  } = use(Context);
   const [isAdmin] = useIsAdmin();
   const [targetUsername, setTargetUsername] = useLibraryTarget();
   const withTargetUser = useWithTargetUser();

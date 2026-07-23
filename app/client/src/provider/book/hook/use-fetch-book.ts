@@ -1,4 +1,4 @@
-import { useCallback, useContext } from 'react';
+import { useCallback, use } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -10,7 +10,7 @@ export type FetchBook = (bookId: string) => Promise<void>;
 
 export const useFetchBook = (): FetchBook => {
   const { loadingByBookId, setBookList, setLoadingForBook, setErrorForBook, setBookComplete } =
-    useContext(Context);
+    use(Context);
   const withTargetUser = useWithTargetUser();
 
   return useCallback(

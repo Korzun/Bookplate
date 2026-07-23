@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -29,8 +29,8 @@ export type UsePatchBookMetadata = [
   string | undefined,
 ];
 export const usePatchBookMetadata = (): UsePatchBookMetadata => {
-  const { setBookList, setBookListFetched, setBookListItems, setNextCursor } = useContext(Context);
-  const { renameProgressKey } = useContext(ProgressContext);
+  const { setBookList, setBookListFetched, setBookListItems, setNextCursor } = use(Context);
+  const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);

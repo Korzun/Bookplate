@@ -1,4 +1,4 @@
-import { useCallback, useContext } from 'react';
+import { useCallback, use } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { useIsAdmin } from '../../auth';
@@ -9,7 +9,7 @@ export type FetchUserProgressList = (username: string) => Promise<void>;
 
 export const useFetchUserProgressList = (): FetchUserProgressList => {
   const { loadingByUsername, setLoadingForUsername, setErrorForUsername, setProgressForUsername } =
-    useContext(Context);
+    use(Context);
   const [isAdmin] = useIsAdmin();
 
   return useCallback(

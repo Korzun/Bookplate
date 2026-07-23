@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -15,8 +15,8 @@ export type UseRegenChapters = [
 ];
 
 export const useRegenChapters = (): UseRegenChapters => {
-  const { setBookList } = useContext(Context);
-  const { renameProgressKey } = useContext(ProgressContext);
+  const { setBookList } = use(Context);
+  const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { ValidationFailure } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
@@ -104,7 +104,7 @@ export const useUploadQueue = (): UseUploadQueue => {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [maxConcurrent, setMaxConcurrent] = useState(3);
   const fetchBookList = useFetchBookList();
-  const { clearCompleteBookIds } = useContext(Context);
+  const { clearCompleteBookIds } = use(Context);
   const withTargetUser = useWithTargetUser();
   const [patchBookMetadata] = usePatchBookMetadata();
 

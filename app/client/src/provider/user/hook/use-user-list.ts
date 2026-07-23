@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo } from 'react';
+import { useCallback, use, useEffect, useMemo } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context as AuthContext } from '../../auth/context';
@@ -15,8 +15,8 @@ export type UseUserList =
   | [User[], false, true, string];
 
 export const useUserList = (): UseUserList => {
-  const { isAdmin } = useContext(AuthContext);
-  const { userList, loading, error, setUserList, setLoading, setError } = useContext(Context);
+  const { isAdmin } = use(AuthContext);
+  const { userList, loading, error, setUserList, setLoading, setError } = use(Context);
 
   const getUserList = useCallback(async () => {
     setLoading(true);

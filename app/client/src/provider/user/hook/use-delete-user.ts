@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -11,7 +11,7 @@ export type UseDeleteUser =
   | [DeleteUser, false, true, undefined] // Unspecified error
   | [DeleteUser, false, true, string]; // Specified error
 export const useDeleteUser = (): UseDeleteUser => {
-  const { userList, setUserList } = useContext(Context);
+  const { userList, setUserList } = use(Context);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();

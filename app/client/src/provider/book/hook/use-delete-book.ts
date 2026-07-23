@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -17,7 +17,7 @@ const isSeries = (item: DisplayUnit, seriesName: string) =>
 export type UseDeleteBook = [(id: string) => Promise<void>, boolean, boolean, string | undefined];
 export const useDeleteBook = (): UseDeleteBook => {
   const { bookList, bookListItems, setBookList, setBookListItems, clearCompleteBookIds } =
-    useContext(Context);
+    use(Context);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, use, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
@@ -15,7 +15,7 @@ export type UseUploadBookList = [
   string | undefined,
 ];
 export const useUploadBookList = (): UseUploadBookList => {
-  const { clearCompleteBookIds } = useContext(Context);
+  const { clearCompleteBookIds } = use(Context);
   const fetchBookList = useFetchBookList();
   const withTargetUser = useWithTargetUser();
   const [uploadResult, setUploadResult] = useState<UploadResult | undefined>();
