@@ -30,6 +30,9 @@ const FIELD_LABEL: Record<string, string> = {
   document: 'EPUB',
 };
 
+const labelFor = (fix: MetadataFix): string =>
+  fix.kind === 'subjects-split' ? 'Subject' : (FIELD_LABEL[fix.field] ?? fix.field);
+
 export const UploadItem = ({
   item,
   onApplyFix,
@@ -165,10 +168,13 @@ export const UploadItem = ({
                 )}
 
                 {appliedFixes.map((fix) => (
-                  <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
+                  <div
+                    key={`applied-${fix.field}-${fix.kind}-${fix.from}`}
+                    className={styles.appliedRow}
+                  >
                     <CheckIcon />
                     <span className={styles.chipLine}>
-                      {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
+                      {labelFor(fix)}:{' '}
                       {fix.toChips ? (
                         <span className={styles.chipGroup}>
                           {fix.toChips.map((c) => (
@@ -183,11 +189,12 @@ export const UploadItem = ({
                 ))}
 
                 {proposals.map((fix) => (
-                  <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
+                  <div
+                    key={`prop-${fix.field}-${fix.kind}-${fix.from}`}
+                    className={styles.proposalRow}
+                  >
                     <div className={styles.proposalText}>
-                      <span className={styles.fieldName}>
-                        {FIELD_LABEL[fix.field] ?? fix.field}:
-                      </span>
+                      <span className={styles.fieldName}>{labelFor(fix)}:</span>
                       {fix.to === null ? (
                         <span className={styles.flagText}>needs review</span>
                       ) : fix.toChips ? (

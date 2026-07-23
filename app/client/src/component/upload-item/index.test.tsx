@@ -200,6 +200,33 @@ describe('UploadItem metadata fixes', () => {
     expect(screen.getByRole('button', { name: /^apply$/i })).toBeInTheDocument();
   });
 
+  it('renders each compound subject as its own "Subject" row with its own Apply', () => {
+    const subjectFix = (from: string, toChips: string[]): MetadataFix => ({
+      field: 'subjects',
+      kind: 'subjects-split',
+      from,
+      to: toChips.join(', '),
+      changes: {},
+      fromChips: [from],
+      toChips,
+    });
+    const item = makeItem({
+      status: 'done',
+      bytesUploaded: 1_048_576,
+      bookId: 'abc',
+      appliedFixes: [],
+      proposals: [
+        subjectFix('Sci-Fi & Fantasy', ['Sci-Fi', 'Fantasy']),
+        subjectFix('Arts & Crafts', ['Arts', 'Crafts']),
+      ],
+    });
+    renderWithProviders(<UploadItem item={item} {...noop} />);
+    // Two singular "Subject:" labels, one per compound.
+    expect(screen.getAllByText('Subject:')).toHaveLength(2);
+    // Two per-row Apply buttons (one per subject fix).
+    expect(screen.getAllByRole('button', { name: /^apply$/i })).toHaveLength(2);
+  });
+
   it('calls onDismissFix when Dismiss is clicked', () => {
     const onDismissFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissFix={onDismissFix} />);
