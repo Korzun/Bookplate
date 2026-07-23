@@ -99,9 +99,9 @@ const INJECTED_MODIFIED = '0000-00-00T00:00:00Z';
 /**
  * Ensure an EPUB 2 or 3 package has exactly one non-refining
  * `<meta property="dcterms:modified">` (EPUBCheck RSC-005). Dedupes 2+ (keeping
- * the latest timestamp) and injects one when absent. epubcheck enforces the
- * "exactly once" count for EPUB 2 as well as 3, so both are normalized; only
- * versions outside 2.x/3.x, exactly-one, and refining metas are no-ops.
+ * the latest timestamp) and injects one when absent. The RSC-005 count is an
+ * EPUB 3 rule, but EPUB 2 packages are normalized the same way; only versions
+ * outside 2.x/3.x, exactly-one, and refining metas are no-ops.
  * Mutates `metadata.meta`.
  */
 export function normalizeModifiedMeta(
