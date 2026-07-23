@@ -11,6 +11,9 @@ const removeBookById = (bookId: string, { [bookId]: _, ...rest }: BookList) => r
 const isStandalone = (item: DisplayUnit, bookId: string) =>
   item.type === 'standalone' && item.bookId === bookId;
 
+const isSeries = (item: DisplayUnit, seriesName: string) =>
+  item.type === 'series' && item.seriesName === seriesName;
+
 export type UseDeleteBook = [(id: string) => Promise<void>, boolean, boolean, string | undefined];
 export const useDeleteBook = (): UseDeleteBook => {
   const { bookList, bookListItems, setBookList, setBookListItems, clearCompleteBookIds } =
@@ -34,12 +37,20 @@ export const useDeleteBook = (): UseDeleteBook => {
         return;
       }
 
-      const itemIndex = bookListItems.findIndex((item) => isStandalone(item, id));
+      // The book's list item disappears too when it is a standalone entry, or the
+      // last remaining book of its series (the server deletes the emptied series).
+      const isLastInSeries =
+        book.series.length > 0 &&
+        !Object.values(bookList).some((other) => other.id !== id && other.series === book.series);
+      const isRemovedItem = (item: DisplayUnit) =>
+        isStandalone(item, id) || (isLastInSeries && isSeries(item, book.series));
+
+      const itemIndex = bookListItems.findIndex(isRemovedItem);
       const removedItem = itemIndex === -1 ? undefined : bookListItems[itemIndex];
 
       setBookList((prev) => removeBookById(id, prev));
       if (removedItem) {
-        setBookListItems((prev) => prev.filter((item) => !isStandalone(item, id)));
+        setBookListItems((prev) => prev.filter((item) => !isRemovedItem(item)));
       }
 
       try {
@@ -55,7 +66,7 @@ export const useDeleteBook = (): UseDeleteBook => {
         setBookList((prev) => ({ ...prev, [book.id]: book }));
         if (removedItem) {
           setBookListItems((prev) => {
-            if (prev.some((item) => isStandalone(item, id))) return prev;
+            if (prev.some(isRemovedItem)) return prev;
             const restored = [...prev];
             restored.splice(itemIndex, 0, removedItem);
             return restored;

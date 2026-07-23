@@ -211,6 +211,63 @@ describe('useDeleteBook', () => {
     expect(result.current.ctx.bookListItems).toEqual([{ type: 'standalone', bookId: '2' }]);
   });
 
+  it('removes the series item from bookListItems when deleting the last book in a series', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+    const items: DisplayUnit[] = [
+      { type: 'standalone', bookId: '1' },
+      { type: 'series', seriesName: 'Teixcalaan' },
+    ];
+    const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper(
+        [makeBook({ id: '1' }), makeBook({ id: '2', series: 'Teixcalaan', seriesIndex: 1 })],
+        vi.fn(),
+        items
+      ),
+    });
+    await act(() => result.current.hook[0]('2'));
+    expect(result.current.ctx.bookListItems).toEqual([{ type: 'standalone', bookId: '1' }]);
+  });
+
+  it('keeps the series item in bookListItems when other books remain in the series', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+    const items: DisplayUnit[] = [{ type: 'series', seriesName: 'Teixcalaan' }];
+    const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper(
+        [
+          makeBook({ id: '1', series: 'Teixcalaan', seriesIndex: 1 }),
+          makeBook({ id: '2', series: 'Teixcalaan', seriesIndex: 2 }),
+        ],
+        vi.fn(),
+        items
+      ),
+    });
+    await act(() => result.current.hook[0]('2'));
+    expect(result.current.ctx.bookListItems).toEqual(items);
+  });
+
+  it('restores the series item at its original position on rollback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 500 }));
+    const items: DisplayUnit[] = [
+      { type: 'standalone', bookId: '1' },
+      { type: 'series', seriesName: 'Teixcalaan' },
+      { type: 'standalone', bookId: '3' },
+    ];
+    const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+      wrapper: makeWrapper(
+        [
+          makeBook({ id: '1' }),
+          makeBook({ id: '2', series: 'Teixcalaan', seriesIndex: 1 }),
+          makeBook({ id: '3' }),
+        ],
+        vi.fn(),
+        items
+      ),
+    });
+    await act(() => result.current.hook[0]('2'));
+    expect(result.current.ctx.bookListItems).toEqual(items);
+    expect(result.current.hook[2]).toBe(true);
+  });
+
   it('restores the item in bookListItems at its original position on rollback', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 500 }));
     const items: DisplayUnit[] = [
