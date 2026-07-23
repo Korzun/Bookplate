@@ -865,8 +865,10 @@ describe('POST /api/books/upload — metadata detection', () => {
   it('never fails an upload when the auto-fix write fails; surfaces it as a proposal instead', async () => {
     // Force the auto-apply write (applyEpubChanges -> buildUpdatedEpub) to
     // fail for this single upload, simulating e.g. a disk error while
-    // rewriting the EPUB. The route must catch this, leave `applied` empty,
-    // and surface the would-be auto-fix as a proposal — never a 500.
+    // rewriting the EPUB. The route must catch this and surface the would-be
+    // metadata auto-fix as a proposal — never a 500. (The structural
+    // dcterms:modified repair is a separate, earlier step that already
+    // succeeded, so it legitimately remains in `applied`.)
     const spy = vi
       .spyOn(applyEpubChangesModule, 'applyEpubChanges')
       .mockRejectedValueOnce(new Error('simulated write failure'));
@@ -880,7 +882,8 @@ describe('POST /api/books/upload — metadata detection', () => {
         .expect(200);
 
       const result = res.body.results[0];
-      expect(result.applied).toEqual([]);
+      // No metadata auto-fix leaked into `applied` — only the structural repair.
+      expect(result.applied.every((f: { field: string }) => f.field === 'document')).toBe(true);
       const proposal = result.proposals.find(
         (f: { kind: string }) => f.kind === 'title-sort-missing'
       );
