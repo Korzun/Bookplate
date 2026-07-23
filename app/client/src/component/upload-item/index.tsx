@@ -242,11 +242,9 @@ export const UploadItem = ({
                         <span className={styles.flagText}>needs review</span>
                       ) : fix.toChips ? (
                         <span className={styles.chipLine}>
-                          <span className={styles.chipGroup}>
-                            {(fix.fromChips ?? []).map((c) => (
-                              <Tag key={c}>{c}</Tag>
-                            ))}
-                          </span>
+                          {/* Left side matches the scalar "from" styling: struck-through,
+                              faint text — not a chip. The split parts stay chips. */}
+                          <span className={styles.fromValue}>{fix.from}</span>
                           {' → '}
                           <span className={styles.chipGroup}>
                             {fix.toChips.map((c) => (
