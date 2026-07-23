@@ -26,7 +26,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     border: 'none',
     textAlign: 'left',
     width: '100%',
-    padding: `${theme.space.md} ${theme.space.lg}`,
+    // Optical nudge up: system-ui glyphs sit low in the line box, so shift the
+    // text up while keeping the overall row height symmetric.
+    padding: `calc(${theme.space.md} - 2px) ${theme.space.lg} calc(${theme.space.md} + 2px)`,
     borderRadius: theme.radius.sm,
     fontSize: theme.fontSize.md,
     fontFamily: theme.fontFamily.body,
@@ -40,7 +42,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   separator: {
     height: '1px',
-    margin: `${theme.space.xxs} ${theme.space.sm}`,
+    // No horizontal margin: the popover padding already insets the separator to
+    // the same edges as the row hover background.
+    margin: `${theme.space.xxs} 0`,
     backgroundColor: theme.color.border.strong,
   },
 }));
