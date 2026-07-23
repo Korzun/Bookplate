@@ -11,7 +11,7 @@ export const BookEditPage = () => {
   const { id } = useParams<{ id: string }>();
   const styles = useStyle();
   const showToast = useToast();
-  const lastErrorRef = useRef<string | undefined>();
+  const lastErrorRef = useRef<string | undefined>(undefined);
 
   const [original, loading, hasError, errorMessage] = useBook(id!);
 

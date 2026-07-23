@@ -1,7 +1,8 @@
+import type React from 'react';
 import { ComponentType, ReactNode } from 'react';
 
 type ProviderEntry = [ComponentType<{ children: ReactNode }>, Record<string, unknown>?];
-type WrapperComponent = ({ children }: { children: ReactNode }) => JSX.Element;
+type WrapperComponent = ({ children }: { children: ReactNode }) => React.JSX.Element;
 
 export const buildProvidersTree = (componentsWithProps: ProviderEntry[]): WrapperComponent => {
   const initialComponent = ({ children }: { children: ReactNode }) => <>{children}</>;
