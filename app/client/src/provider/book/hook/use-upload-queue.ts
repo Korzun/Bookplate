@@ -12,6 +12,16 @@ import { usePatchBookMetadata } from './use-patch-book-metadata';
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error';
 
+/** Snapshot armed after `applyAllProposals`/`dismissAllProposals` so the user
+ * can undo that bulk action. `apply` also carries the book's pre-patch
+ * metadata (when the snapshot GET succeeded) so `undo` can revert it. */
+export type UndoSnapshot = {
+  kind: 'apply' | 'dismiss';
+  proposals: MetadataFix[];
+  appliedFixes: MetadataFix[];
+  originalMetadata?: Partial<BookMetadataPatch>;
+};
+
 export type UploadItem = {
   id: string;
   file: File;
@@ -22,6 +32,7 @@ export type UploadItem = {
   bookId?: string;
   appliedFixes?: MetadataFix[];
   proposals?: MetadataFix[];
+  undo?: UndoSnapshot;
 };
 
 export type UseUploadQueue = {
@@ -29,7 +40,9 @@ export type UseUploadQueue = {
   addFiles: (files: FileList) => void;
   applyFix: (itemId: string, fix: MetadataFix) => Promise<boolean>;
   applyAllProposals: (itemId: string) => Promise<boolean>;
+  dismissAllProposals: (itemId: string) => void;
   dismissFix: (itemId: string, fix: MetadataFix) => void;
+  undo: (itemId: string) => Promise<boolean>;
 };
 
 /** Fixes have no server id — the queue identifies them by field:kind. */
@@ -39,6 +52,34 @@ export const fixKey = (fix: MetadataFix): string => `${fix.field}:${fix.kind}`;
  * `changes` map already matches that shape field-by-field. */
 function changesToPatch(changes: Record<string, string | string[]>): Partial<BookMetadataPatch> {
   return { ...changes } as Partial<BookMetadataPatch>;
+}
+
+/** Fetch a book's editable fields for a pre-apply undo snapshot. Best-effort:
+ * returns null on any failure (the caller applies without offering undo). */
+async function fetchBookSnapshot(
+  bookId: string,
+  url: (path: string) => string
+): Promise<Partial<BookMetadataPatch> | null> {
+  try {
+    const res = await apiFetch(url(`/api/books/${encodeURIComponent(bookId)}`));
+    if (!res.ok) return null;
+    const b = (await res.json()) as {
+      title?: string;
+      titleSort?: string;
+      author?: string;
+      authorSort?: string;
+      subjects?: string[];
+    };
+    return {
+      title: b.title ?? '',
+      titleSort: b.titleSort ?? '',
+      author: b.author ?? '',
+      authorSort: b.authorSort ?? '',
+      subjects: b.subjects ?? [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const useUploadQueue = (): UseUploadQueue => {
@@ -234,13 +275,39 @@ export const useUploadQueue = (): UseUploadQueue => {
     [applyPatch]
   );
 
+  // Applies every pending proposal as one PATCH. Before doing so, best-effort
+  // snapshots the book's current metadata so `undo` can revert it later — the
+  // apply itself proceeds even when the snapshot GET fails, it just leaves no
+  // undo armed.
   const applyAllProposals = useCallback(
-    (itemId: string) => {
+    async (itemId: string): Promise<boolean> => {
       const item = itemsRef.current.find((i) => i.id === itemId);
-      return applyPatch(
-        itemId,
-        (item?.proposals ?? []).filter((p) => p.to !== null)
-      );
+      if (!item?.bookId) return false;
+      const toApply = (item.proposals ?? []).filter((p) => p.to !== null);
+      if (toApply.length === 0) return true;
+      const originalMetadata = await fetchBookSnapshot(item.bookId, withTargetUserRef.current);
+      const beforeProposals = item.proposals ?? [];
+      const beforeApplied = item.appliedFixes ?? [];
+      const ok = await applyPatch(itemId, toApply);
+      if (!ok) return false;
+      if (originalMetadata) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === itemId
+              ? {
+                  ...i,
+                  undo: {
+                    kind: 'apply',
+                    proposals: beforeProposals,
+                    appliedFixes: beforeApplied,
+                    originalMetadata,
+                  },
+                }
+              : i
+          )
+        );
+      }
+      return true;
     },
     [applyPatch]
   );
@@ -256,5 +323,84 @@ export const useUploadQueue = (): UseUploadQueue => {
     );
   }, []);
 
-  return { items, addFiles, applyFix, applyAllProposals, dismissFix };
+  // Client-only: clears every pending proposal and arms an undo snapshot so
+  // the user can bring them back without re-uploading.
+  const dismissAllProposals = useCallback((itemId: string) => {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== itemId) return i;
+        const proposals = i.proposals ?? [];
+        if (proposals.length === 0) return i;
+        return {
+          ...i,
+          proposals: [],
+          undo: { kind: 'dismiss', proposals, appliedFixes: i.appliedFixes ?? [] },
+        };
+      })
+    );
+  }, []);
+
+  // Reverses the last dismiss-all or apply-all. For `dismiss` this is purely
+  // client-side. For `apply` it re-PATCHes the (now current) book back to the
+  // pre-apply metadata — which, like any metadata patch, may mint a new book
+  // id — then best-effort clears that book's edit lineage so the reverted
+  // book doesn't retain stale fix history. The lineage DELETE's failure never
+  // blocks the revert since the metadata is already back to original by then.
+  const undo = useCallback(
+    async (itemId: string): Promise<boolean> => {
+      const item = itemsRef.current.find((i) => i.id === itemId);
+      if (!item?.undo) return true;
+      const snap = item.undo;
+
+      if (snap.kind === 'dismiss') {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === itemId ? { ...i, proposals: snap.proposals, undo: undefined } : i
+          )
+        );
+        return true;
+      }
+
+      if (!item.bookId) return false;
+      let revertedId = item.bookId;
+      if (snap.originalMetadata) {
+        const newId = await patchBookMetadata(item.bookId, snap.originalMetadata);
+        if (newId === undefined) return false; // revert failed — keep applied state + undo
+        revertedId = newId;
+      }
+      try {
+        await apiFetch(
+          withTargetUserRef.current(`/api/books/${encodeURIComponent(revertedId)}/lineage`),
+          { method: 'DELETE' }
+        );
+      } catch {
+        // Best-effort: the revert stands even if lineage cleanup fails.
+      }
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId
+            ? {
+                ...i,
+                bookId: revertedId,
+                proposals: snap.proposals,
+                appliedFixes: snap.appliedFixes,
+                undo: undefined,
+              }
+            : i
+        )
+      );
+      return true;
+    },
+    [patchBookMetadata]
+  );
+
+  return {
+    items,
+    addFiles,
+    applyFix,
+    applyAllProposals,
+    dismissAllProposals,
+    dismissFix,
+    undo,
+  };
 };

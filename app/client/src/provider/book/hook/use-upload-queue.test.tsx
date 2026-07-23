@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
-import type { BookList, MetadataFix } from '../type';
+import type { Book, BookList, MetadataFix } from '../type';
 import { useUploadQueue } from './use-upload-queue';
 
 // ── XHR mock ─────────────────────────────────────────────────────────────────
@@ -107,6 +107,73 @@ function stubFetchWithPatch(patchResponse: { ok: boolean; body: unknown }) {
       json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
     }) as unknown as Promise<Response>;
   });
+}
+
+/** fetch mock for the applyAllProposals + undo flow: answers GET /api/books/:id
+ * (snapshot), PATCH .../metadata (apply, then revert), and DELETE .../lineage. */
+function stubFetchForApplyAll(opts: {
+  original: Partial<Book>;
+  patchResponses: { ok: boolean; body: unknown }[];
+}) {
+  let patchCallIndex = 0;
+  vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url === '/api/config') {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'DELETE' && url.includes('/lineage')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ cleared: 1 }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'PATCH' && url.includes('/metadata')) {
+      const resp = opts.patchResponses[patchCallIndex++] ?? { ok: true, body: {} };
+      return Promise.resolve({
+        ok: resp.ok,
+        json: () => Promise.resolve(resp.body),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'GET' && /^\/api\/books\/[^/]+$/.test(url)) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(opts.original),
+      }) as unknown as Promise<Response>;
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    }) as unknown as Promise<Response>;
+  });
+}
+
+/** Drives a single-file upload through to `done` with the given proposals,
+ * yielding an item with `bookId: 'book-1'` and those proposals. */
+async function renderQueueWithProposals(fixes: MetadataFix[]) {
+  const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  act(() => {
+    result.current.addFiles(makeFileList('a.epub'));
+  });
+
+  xhrInstances[0].status = 200;
+  xhrInstances[0].responseText = JSON.stringify({
+    results: [{ filename: 'a.epub', bookId: 'book-1', applied: [], proposals: fixes }],
+  });
+  await act(async () => {
+    xhrInstances[0].onload?.(new Event('load'));
+    await Promise.resolve();
+  });
+
+  return { result };
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -437,5 +504,71 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0].bookId).toBe('book-2');
     expect(result.current.items[0].proposals).toEqual([]);
     expect(result.current.items[0].appliedFixes).toEqual([fix]);
+  });
+
+  it('dismissAllProposals clears every proposal and arms undo; undo restores them', async () => {
+    const fixes = [
+      makeFix(),
+      makeFix({ field: 'title', kind: 'title-missing', to: 'Dune', changes: { title: 'Dune' } }),
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+    const before = result.current.items[0].proposals;
+
+    act(() => result.current.dismissAllProposals(id));
+    expect(result.current.items[0].proposals).toEqual([]);
+    expect(result.current.items[0].undo?.kind).toBe('dismiss');
+
+    await act(async () => {
+      await result.current.undo(id);
+    });
+    expect(result.current.items[0].proposals).toEqual(before);
+    expect(result.current.items[0].undo).toBeUndefined();
+  });
+
+  it('applyAllProposals snapshots the book; undo re-patches original metadata and clears lineage', async () => {
+    const fixes = [
+      makeFix(),
+      makeFix({ field: 'title', kind: 'title-missing', to: 'Dune', changes: { title: 'Dune' } }),
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+    const before = result.current.items[0].proposals;
+
+    const original = {
+      title: 'Original Title',
+      titleSort: 'Original Title',
+      author: 'Original Author',
+      authorSort: 'Author, Original',
+      subjects: ['Fiction'],
+    };
+    stubFetchForApplyAll({
+      original,
+      patchResponses: [
+        { ok: true, body: { id: 'book-2' } },
+        { ok: true, body: { id: 'book-3' } },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.applyAllProposals(id);
+    });
+    expect(result.current.items[0].bookId).toBe('book-2');
+    expect(result.current.items[0].undo?.kind).toBe('apply');
+    expect(result.current.items[0].undo?.originalMetadata).toMatchObject({
+      author: 'Original Author',
+    });
+
+    const fetchSpy = vi.mocked(fetch);
+    await act(async () => {
+      await result.current.undo(id);
+    });
+    expect(result.current.items[0].proposals).toEqual(before);
+    expect(result.current.items[0].undo).toBeUndefined();
+    expect(result.current.items[0].bookId).toBe('book-3');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/books\/[^/]+\/lineage/),
+      expect.objectContaining({ method: 'DELETE' })
+    );
   });
 });
