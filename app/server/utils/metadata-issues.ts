@@ -374,9 +374,12 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
   // subjects-split: one fix per compound subject so each can be applied/dismissed
   // individually. The split operation is carried by fromChips[0] -> toChips; the
   // final subjects array is computed at apply time from the book's current state.
+  const seen = new Set<string>();
   subjects.forEach((subject) => {
     const parts = splitSubject(subject);
     if (parts.length < 2) return;
+    if (seen.has(subject.toLowerCase())) return;
+    seen.add(subject.toLowerCase());
     const dedupedParts = parts.filter(
       (p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
     );

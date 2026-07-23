@@ -240,6 +240,55 @@ async function renderQueueWithSubjectProposals(fixes: MetadataFix[], currentSubj
   return { result, patchBodies };
 }
 
+/** Stateful fetch mock for sequential-apply composition tests: unlike
+ * `stubFetchWithSubjectSnapshot` (which always answers the snapshot GET with
+ * a fixed array), this keeps a mutable `currentSubjects` that each successful
+ * PATCH .../metadata overwrites with the body it just sent — so a later GET
+ * (from a subsequent applyFix's own snapshot fetch) observes the previous
+ * apply's result. Each PATCH also mints a fresh book id so the item's bookId
+ * threads forward, mirroring how a real id-derived-from-metadata rename
+ * would behave across calls. */
+function stubFetchWithComposingSubjects(initialSubjects: string[]) {
+  let currentSubjects = initialSubjects;
+  let nextId = 2;
+  const patchBodies: Record<string, unknown>[] = [];
+  vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url === '/api/config') {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'PATCH' && url.includes('/metadata')) {
+      const body: Record<string, unknown> = {};
+      const fd = init?.body as FormData;
+      for (const [key, value] of fd.entries()) {
+        body[key] = key === 'subjects' ? JSON.parse(value as string) : value;
+      }
+      patchBodies.push(body);
+      currentSubjects = body.subjects as string[];
+      const id = `book-${nextId++}`;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ id }),
+      }) as unknown as Promise<Response>;
+    }
+    if (method === 'GET' && /^\/api\/books\/[^/]+$/.test(url)) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ subjects: currentSubjects }),
+      }) as unknown as Promise<Response>;
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    }) as unknown as Promise<Response>;
+  });
+  return { patchBodies };
+}
+
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -844,5 +893,105 @@ describe('useUploadQueue', () => {
     act(() => result.current.dismissFix(id, result.current.items[0].proposals![0]));
 
     expect(result.current.items[0].proposals!.map((p) => p.from)).toEqual(['C & D']);
+  });
+
+  it('applyAllProposals folds multiple subject splits into one PATCH with cross-compound dedupe', async () => {
+    const fixA: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'A & Fiction',
+      to: 'A, Fiction',
+      changes: {},
+      fromChips: ['A & Fiction'],
+      toChips: ['A', 'Fiction'],
+    };
+    const fixB: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'B & Fiction',
+      to: 'B, Fiction',
+      changes: {},
+      fromChips: ['B & Fiction'],
+      toChips: ['B', 'Fiction'],
+    };
+    const { result, patchBodies } = await renderQueueWithSubjectProposals(
+      [fixA, fixB],
+      ['A & Fiction', 'B & Fiction', 'History']
+    );
+
+    const id = result.current.items[0].id;
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyAllProposals(id);
+    });
+
+    expect(succeeded).toBe(true);
+    // Apply-all reuses its own snapshot as `knownSubjects`, so applyPatch does
+    // not issue a second GET before the PATCH — exactly one GET, one PATCH.
+    const bookGetCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        (c) =>
+          /^\/api\/books\/[^/]+$/.test(String(c[0])) &&
+          (c[1] as RequestInit | undefined)?.method !== 'PATCH'
+      );
+    expect(bookGetCalls).toHaveLength(1);
+    const patchCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH');
+    expect(patchCalls).toHaveLength(1);
+    expect(patchBodies).toHaveLength(1);
+    // Both compounds fold into one array; the 'Fiction' shared by both splits
+    // collapses to a single entry instead of appearing twice.
+    expect(patchBodies[0].subjects).toEqual(['A', 'Fiction', 'B', 'History']);
+    expect(result.current.items[0].proposals).toEqual([]);
+  });
+
+  it('applyFix composes sequential subject splits against the result of the previous apply', async () => {
+    const fix1: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'Sci-Fi & Fantasy',
+      to: 'Sci-Fi, Fantasy',
+      changes: {},
+      fromChips: ['Sci-Fi & Fantasy'],
+      toChips: ['Sci-Fi', 'Fantasy'],
+    };
+    const fix2: MetadataFix = {
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'Arts & Crafts',
+      to: 'Arts, Crafts',
+      changes: {},
+      fromChips: ['Arts & Crafts'],
+      toChips: ['Arts', 'Crafts'],
+    };
+    const { patchBodies } = stubFetchWithComposingSubjects([
+      'Sci-Fi & Fantasy',
+      'Arts & Crafts',
+      'History',
+    ]);
+    const { result } = await renderQueueWithProposals([fix1, fix2]);
+    const id = result.current.items[0].id;
+
+    let firstOk: boolean | undefined;
+    await act(async () => {
+      firstOk = await result.current.applyFix(id, fix1);
+    });
+    expect(firstOk).toBe(true);
+    expect(patchBodies[0].subjects).toEqual(['Sci-Fi', 'Fantasy', 'Arts & Crafts', 'History']);
+
+    let secondOk: boolean | undefined;
+    await act(async () => {
+      secondOk = await result.current.applyFix(id, fix2);
+    });
+    expect(secondOk).toBe(true);
+
+    expect(patchBodies).toHaveLength(2);
+    // The second apply's PATCH must be composed against the first apply's
+    // result (read back via the snapshot GET), not a stale precomputed array
+    // from before fix1 was applied — otherwise 'Sci-Fi'/'Fantasy' would be
+    // lost or 'Sci-Fi & Fantasy' would reappear.
+    expect(patchBodies[1].subjects).toEqual(['Sci-Fi', 'Fantasy', 'Arts', 'Crafts', 'History']);
   });
 });
