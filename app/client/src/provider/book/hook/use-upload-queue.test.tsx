@@ -585,6 +585,44 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0].appliedFixes ?? []).toEqual([]);
   });
 
+  it('upload success routes `applied` to autoFixes and leaves appliedFixes empty', async () => {
+    const autoFix = makeFix({
+      field: 'author',
+      kind: 'author-inverted',
+      from: 'Watts, Peter',
+      to: 'Peter Watts',
+      changes: { author: 'Peter Watts' },
+    });
+    const proposal = makeFix();
+    stubFetchWithPatch({ ok: true, body: { id: 'book-1' } });
+
+    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [
+        { filename: 'a.epub', bookId: 'book-1', applied: [autoFix], proposals: [proposal] },
+      ],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    // Server-applied fixes are surfaced separately as automatic fixes; only
+    // user-driven applies populate appliedFixes.
+    expect(result.current.items[0].autoFixes).toEqual([autoFix]);
+    expect(result.current.items[0].appliedFixes ?? []).toEqual([]);
+    expect(result.current.items[0].proposals).toEqual([proposal]);
+  });
+
   it('applyFix moves the fix from proposals to appliedFixes and updates bookId on success', async () => {
     const fix = makeFix();
     stubFetchWithPatch({ ok: true, body: { id: 'book-2' } });

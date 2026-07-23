@@ -54,6 +54,7 @@ export const UploadItem = ({
   // so the buttons disable and a rapid second click can't re-trigger it.
   const [busy, setBusy] = useState(false);
   const { file, status, bytesUploaded, errorMessage, validation, bookId } = item;
+  const autoFixes = item.autoFixes ?? [];
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
   const actionable = proposals.filter((p) => p.to !== null);
@@ -136,8 +137,43 @@ export const UploadItem = ({
           </div>
 
           {status === 'done' &&
-            (appliedFixes.length > 0 || proposals.length > 0 || pendingUndo) && (
+            (autoFixes.length > 0 ||
+              appliedFixes.length > 0 ||
+              proposals.length > 0 ||
+              pendingUndo) && (
               <div className={styles.metadata}>
+                {autoFixes.length > 0 && (
+                  <Fragment>
+                    <CardDivider>Automatic fixes</CardDivider>
+                    {autoFixes.map((fix) => (
+                      <div
+                        key={`auto-${fix.field}-${fix.kind}-${fix.from}`}
+                        className={styles.appliedRow}
+                      >
+                        <CheckIcon />
+                        <span className={styles.chipLine}>
+                          {labelFor(fix)}:{' '}
+                          {Object.keys(fix.changes).length === 0 ? (
+                            // Structural repairs (e.g. the dcterms:modified fix) have no
+                            // original field value — show just the description.
+                            <strong>{fix.to}</strong>
+                          ) : (
+                            <span>
+                              {fix.from ? (
+                                <span className={styles.fromValue}>{fix.from}</span>
+                              ) : (
+                                <em>empty</em>
+                              )}
+                              {' → '}
+                              <strong>{fix.to}</strong>
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </Fragment>
+                )}
+
                 {(proposals.length > 0 || pendingUndo) && (
                   <CardDivider
                     actions={
