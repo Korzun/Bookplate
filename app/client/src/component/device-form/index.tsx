@@ -140,7 +140,10 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       const updated = await updateDevice(device.id, input);
       if (updated === null) return;
       const reconciled = await reconcileUsers(device.id);
-      if (reconciled) showToast(`Device "${updated.name}" updated`, 'success');
+      // Keep the form open on a partial user failure so the pending selection
+      // survives and the admin can re-submit; the error toast already fired.
+      if (!reconciled) return;
+      showToast(`Device "${updated.name}" updated`, 'success');
       onDone?.();
       return;
     }

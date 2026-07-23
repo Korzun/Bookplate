@@ -350,6 +350,33 @@ describe('DeviceForm', () => {
       await waitFor(() => expect(onDone).toHaveBeenCalled());
     });
 
+    it('keeps the edit form open when user reconciliation fails on Save', async () => {
+      // A partial user-enable failure should not close the form: the pending
+      // selection survives so the admin can re-submit.
+      mockDeviceUsers = [['alice'], false, false, undefined];
+      enableUser.mockResolvedValueOnce(false);
+      const user = userEvent.setup();
+      const onDone = vi.fn();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderForm(kindle, onDone, { user: { username: 'admin', isAdmin: true } });
+
+      const usersInput = screen.getByLabelText('Users');
+      await user.type(usersInput, 'bob');
+      await user.click(screen.getByRole('option', { name: 'bob' }));
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
+      // Form stays open (Save still present) and the 'bob' selection is retained.
+      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Remove bob')).toBeInTheDocument();
+      expect(onDone).not.toHaveBeenCalled();
+    });
+
     it('keeps the Users field inert while enabled users are still loading', async () => {
       // Regression test: with the fetch in flight, fetchedUsers is still []
       // while loadingUsers is true. Before the fix, the field ignored the
