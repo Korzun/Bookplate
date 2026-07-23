@@ -1109,6 +1109,44 @@ describe('GET /api/books/:id/lineage', () => {
   });
 });
 
+describe('DELETE /api/books/:id/lineage', () => {
+  it('returns 401 without a token', async () => {
+    const res = await request(app).delete('/api/books/some-id/lineage');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 when book does not exist', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .delete('/api/books/no-such-book/lineage')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+  });
+
+  it("clears the book's edit lineage and returns the count", async () => {
+    const token = await loginAlice();
+    await bookStore.addBook(
+      aliceOwner,
+      'clear-lineage-book',
+      stage('clear-lineage-book'),
+      FAKE_META
+    );
+    const spy = vi.spyOn(bookStore, 'clearEditLineage').mockResolvedValueOnce(2);
+
+    const res = await request(app)
+      .delete('/api/books/clear-lineage-book/lineage')
+      .set(...bearer(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ cleared: 2 });
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: expect.any(String) }),
+      'clear-lineage-book'
+    );
+    spy.mockRestore();
+  });
+});
+
 describe('POST /api/books/:id/link', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/some-id/link').send({ documentId: 'doc' });
