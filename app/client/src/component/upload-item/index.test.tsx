@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book';
@@ -280,6 +280,38 @@ describe('UploadItem metadata fixes', () => {
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
     fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
     expect(onUndo).toHaveBeenCalled();
+  });
+
+  it('disables Undo while its action is in flight and ignores a second click', async () => {
+    let resolve!: () => void;
+    const onUndo = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        })
+    );
+    const undoItem = makeItem({
+      status: 'done',
+      bytesUploaded: 1_048_576,
+      bookId: 'abc',
+      proposals: [],
+      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+    });
+    renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
+    const undoBtn = screen.getByRole('button', { name: /^undo$/i });
+
+    fireEvent.click(undoBtn);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    // In flight → disabled; a second click is ignored.
+    await waitFor(() => expect(undoBtn).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(undoBtn);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+
+    // Once the action settles the button re-enables.
+    await act(async () => {
+      resolve();
+    });
+    await waitFor(() => expect(undoBtn).not.toHaveAttribute('aria-disabled'));
   });
 
   it('does not render a metadata section when there are no fixes or proposals', () => {

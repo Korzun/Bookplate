@@ -15,9 +15,9 @@ import { useStyle } from './style';
 interface Props {
   item: UploadItemType;
   onApplyFix: (fix: MetadataFix) => void;
-  onApplyAll: () => void;
-  onDismissAll: () => void;
-  onUndo: () => void;
+  onApplyAll: () => void | Promise<void>;
+  onDismissAll: () => void | Promise<void>;
+  onUndo: () => void | Promise<void>;
   onDismissFix: (fix: MetadataFix) => void;
 }
 
@@ -40,11 +40,24 @@ export const UploadItem = ({
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // True while a bulk header action (Apply all / Dismiss all / Undo) is running,
+  // so the buttons disable and a rapid second click can't re-trigger it.
+  const [busy, setBusy] = useState(false);
   const { file, status, bytesUploaded, errorMessage, validation, bookId } = item;
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
   const actionable = proposals.filter((p) => p.to !== null);
   const pendingUndo = item.undo;
+
+  const runAction = async (action: () => void | Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const totalMB = (file.size / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
@@ -137,18 +150,27 @@ export const UploadItem = ({
                   <CardDivider
                     actions={
                       pendingUndo ? (
-                        <Button type="link" onClick={onUndo}>
+                        <Button type="link" disabled={busy} onClick={() => void runAction(onUndo)}>
                           Undo
                         </Button>
                       ) : (
                         <Fragment>
                           {actionable.length >= 1 && (
-                            <Button type="link" onClick={onApplyAll}>
+                            <Button
+                              type="link"
+                              disabled={busy}
+                              onClick={() => void runAction(onApplyAll)}
+                            >
                               Apply all
                             </Button>
                           )}
                           {proposals.length >= 1 && (
-                            <Button type="link" danger onClick={onDismissAll}>
+                            <Button
+                              type="link"
+                              danger
+                              disabled={busy}
+                              onClick={() => void runAction(onDismissAll)}
+                            >
                               Dismiss all
                             </Button>
                           )}
