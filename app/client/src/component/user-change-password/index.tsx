@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useActionState, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -9,14 +9,14 @@ import { useStyle } from './style';
 
 export const UserChangePassword = () => {
   const styles = useStyle();
-  const [changeMyPassword, loading] = useChangeMyPassword();
+  const [changeMyPassword] = useChangeMyPassword();
   const showToast = useToast();
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  const handleChangePassword = useCallback(async () => {
+  const [, submitAction, isPending] = useActionState(async () => {
     const changed = await changeMyPassword(currentPassword, newPassword);
     if (changed) {
       setCurrentPassword('');
@@ -27,7 +27,8 @@ export const UserChangePassword = () => {
     } else {
       showToast('Password change failed', 'error');
     }
-  }, [changeMyPassword, currentPassword, newPassword, showToast]);
+    return null;
+  }, null);
 
   const handleCurrentPasswordChange = useCallback((newValue: string | undefined) => {
     setCurrentPassword(newValue ?? '');
@@ -54,9 +55,10 @@ export const UserChangePassword = () => {
       title="Change password"
       footer={
         <Button
+          submit
+          form="user-change-password"
           type="primary"
-          loading={loading}
-          onClick={handleChangePassword}
+          loading={isPending}
           radius="card"
           disabled={
             !isPasswordValid ||
@@ -65,40 +67,42 @@ export const UserChangePassword = () => {
             confirmPassword.length === 0
           }
         >
-          {loading ? 'Changing…' : 'Change password'}
+          {isPending ? 'Changing…' : 'Change password'}
         </Button>
       }
     >
-      <div className={styles.inputContainer}>
-        <TextInput
-          name="current-password"
-          password
-          value={currentPassword}
-          onChange={handleCurrentPasswordChange}
-          layout="horizontal"
-          label="Current"
-          autoComplete="off"
-        />
-        <TextInput
-          name="new-password"
-          password
-          value={newPassword}
-          onChange={handleNewPasswordChange}
-          layout="horizontal"
-          label="New"
-          autoComplete="off"
-        />
-        <TextInput
-          name="confirm-new-password"
-          password
-          value={confirmPassword}
-          onChange={handleConfirmPasswordChange}
-          layout="horizontal"
-          label="Confirm"
-          autoComplete="off"
-          validate={handleConfirmPasswordValidation}
-        />
-      </div>
+      <form id="user-change-password" action={submitAction}>
+        <div className={styles.inputContainer}>
+          <TextInput
+            name="current-password"
+            password
+            value={currentPassword}
+            onChange={handleCurrentPasswordChange}
+            layout="horizontal"
+            label="Current"
+            autoComplete="off"
+          />
+          <TextInput
+            name="new-password"
+            password
+            value={newPassword}
+            onChange={handleNewPasswordChange}
+            layout="horizontal"
+            label="New"
+            autoComplete="off"
+          />
+          <TextInput
+            name="confirm-new-password"
+            password
+            value={confirmPassword}
+            onChange={handleConfirmPasswordChange}
+            layout="horizontal"
+            label="Confirm"
+            autoComplete="off"
+            validate={handleConfirmPasswordValidation}
+          />
+        </div>
+      </form>
     </Card>
   );
 };
