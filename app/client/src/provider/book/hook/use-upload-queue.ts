@@ -278,16 +278,22 @@ export const useUploadQueue = (): UseUploadQueue => {
   // Applies every pending proposal as one PATCH. Before doing so, best-effort
   // snapshots the book's current metadata so `undo` can revert it later — the
   // apply itself proceeds even when the snapshot GET fails, it just leaves no
-  // undo armed.
+  // undo armed. The item is re-read from itemsRef after the snapshot GET
+  // (rather than reusing the pre-await reference) so a concurrent mutation —
+  // e.g. a per-row dismissFix while the GET is in flight — is respected
+  // instead of being clobbered by a stale proposal list. `item.bookId` itself
+  // can't change during the GET since `patchBookMetadata` is single-flight.
   const applyAllProposals = useCallback(
     async (itemId: string): Promise<boolean> => {
       const item = itemsRef.current.find((i) => i.id === itemId);
       if (!item?.bookId) return false;
-      const toApply = (item.proposals ?? []).filter((p) => p.to !== null);
-      if (toApply.length === 0) return true;
       const originalMetadata = await fetchBookSnapshot(item.bookId, withTargetUserRef.current);
-      const beforeProposals = item.proposals ?? [];
-      const beforeApplied = item.appliedFixes ?? [];
+      const current = itemsRef.current.find((i) => i.id === itemId);
+      if (!current?.bookId) return false;
+      const toApply = (current.proposals ?? []).filter((p) => p.to !== null);
+      if (toApply.length === 0) return true;
+      const beforeProposals = current.proposals ?? [];
+      const beforeApplied = current.appliedFixes ?? [];
       const ok = await applyPatch(itemId, toApply);
       if (!ok) return false;
       if (originalMetadata) {
