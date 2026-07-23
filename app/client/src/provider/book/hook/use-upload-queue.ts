@@ -45,8 +45,24 @@ export type UseUploadQueue = {
   undo: (itemId: string) => Promise<boolean>;
 };
 
-/** Fixes have no server id — the queue identifies them by field:kind. */
-export const fixKey = (fix: MetadataFix): string => `${fix.field}:${fix.kind}`;
+/** Fixes have no server id — the queue identifies them by field:kind:from so
+ * multiple compound-subject splits (same field+kind, different compound) stay
+ * distinct. */
+export const fixKey = (fix: MetadataFix): string => `${fix.field}:${fix.kind}:${fix.from}`;
+
+const isSubjectSplit = (fix: MetadataFix): boolean =>
+  fix.field === 'subjects' && fix.kind === 'subjects-split';
+
+/** Replace `compound` (case-insensitive) with `parts` in a subjects array,
+ * de-duplicating case-insensitively. Adds the parts if the compound is gone. */
+function applySplit(subjects: string[], compound: string, parts: string[]): string[] {
+  const idx = subjects.findIndex((s) => s.toLowerCase() === compound.toLowerCase());
+  const next =
+    idx >= 0
+      ? [...subjects.slice(0, idx), ...parts, ...subjects.slice(idx + 1)]
+      : [...subjects, ...parts];
+  return next.filter((s, i) => next.findIndex((o) => o.toLowerCase() === s.toLowerCase()) === i);
+}
 
 /** The PATCH hook accepts scalar strings and `subjects: string[]`; the fix's
  * `changes` map already matches that shape field-by-field. */
@@ -243,13 +259,38 @@ export const useUploadQueue = (): UseUploadQueue => {
   // id itself is derived from the fixed metadata), which we must track so
   // subsequent fixes patch the right book. On failure the item is left
   // untouched so the user can retry.
+  //
+  // Subject-split fixes are compositional rather than a plain `changes` merge:
+  // PATCH /metadata replaces the whole `subjects` array, so a split must be
+  // folded into the book's CURRENT subjects. `knownSubjects` lets a caller
+  // that already has a fresh snapshot (e.g. `applyAllProposals`) skip a
+  // redundant GET; otherwise this fetches one. If that GET fails there's no
+  // safe base to fold into, so the apply fails without patching anything.
   const applyPatch = useCallback(
-    async (itemId: string, fixes: MetadataFix[]): Promise<boolean> => {
+    async (itemId: string, fixes: MetadataFix[], knownSubjects?: string[]): Promise<boolean> => {
       const item = itemsRef.current.find((i) => i.id === itemId);
       if (fixes.length === 0) return true;
       if (!item?.bookId) return false;
+
+      const subjectFixes = fixes.filter(isSubjectSplit);
       const patch: Partial<BookMetadataPatch> = {};
-      for (const fix of fixes) Object.assign(patch, changesToPatch(fix.changes));
+      for (const fix of fixes) {
+        if (!isSubjectSplit(fix)) Object.assign(patch, changesToPatch(fix.changes));
+      }
+
+      if (subjectFixes.length > 0) {
+        let subjects = knownSubjects;
+        if (subjects === undefined) {
+          const snap = await fetchBookSnapshot(item.bookId, withTargetUserRef.current);
+          if (!snap) return false; // can't safely apply a split without current subjects
+          subjects = snap.subjects ?? [];
+        }
+        for (const fix of subjectFixes) {
+          subjects = applySplit(subjects, fix.fromChips?.[0] ?? fix.from, fix.toChips ?? []);
+        }
+        patch.subjects = subjects;
+      }
+
       const newId = await patchBookMetadata(item.bookId, patch);
       if (newId === undefined) return false;
       const applied = new Set(fixes.map(fixKey));
@@ -294,7 +335,7 @@ export const useUploadQueue = (): UseUploadQueue => {
       if (toApply.length === 0) return true;
       const beforeProposals = current.proposals ?? [];
       const beforeApplied = current.appliedFixes ?? [];
-      const ok = await applyPatch(itemId, toApply);
+      const ok = await applyPatch(itemId, toApply, originalMetadata?.subjects);
       if (!ok) return false;
       if (originalMetadata) {
         setItems((prev) =>
