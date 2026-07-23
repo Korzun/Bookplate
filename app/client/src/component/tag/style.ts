@@ -10,6 +10,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontWeight: theme.fontWeight.medium,
     border: `1px solid ${theme.color.chip.subject.border}`,
   },
+  // Compact variant: minimal vertical padding + tight line height so the chip
+  // fits inside a normal text line, keeping fix rows the same height whether or
+  // not they contain chips (no row min-height needed).
+  sm: {
+    padding: `${theme.space.xxxs} ${theme.space.sm}`,
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.lineHeight.tight,
+  },
   clickable: {
     cursor: 'pointer',
     '&:hover': {

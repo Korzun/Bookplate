@@ -5,13 +5,19 @@ import { useStyle } from './style';
 interface TagProps {
   children: React.ReactNode;
   onClick?: () => void;
+  /** `sm` renders a compact chip that fits within a normal text line height. */
+  size?: 'sm' | 'md';
 }
 
-export const Tag = ({ children, onClick }: TagProps) => {
+export const Tag = ({ children, onClick, size = 'md' }: TagProps) => {
   const style = useStyle();
   return (
     <span
-      className={cx(style.root, onClick !== undefined && style.clickable)}
+      className={cx(
+        style.root,
+        size === 'sm' && style.sm,
+        onClick !== undefined && style.clickable
+      )}
       onClick={onClick}
       role={onClick !== undefined ? 'button' : undefined}
       tabIndex={onClick !== undefined ? 0 : undefined}
