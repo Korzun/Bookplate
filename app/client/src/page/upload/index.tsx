@@ -20,7 +20,8 @@ export const UploadPage = () => {
   const [targetUsername] = useLibraryTarget();
   const [userList, userListLoading] = useUserList();
 
-  const { items, addFiles, applyFix, applyAllProposals, dismissFix } = useUploadQueue();
+  const { items, addFiles, applyFix, applyAllProposals, dismissAllProposals, dismissFix, undo } =
+    useUploadQueue();
   const uploadsInProgress = items.some((i) => i.status === 'queued' || i.status === 'uploading');
 
   const [scanLibrary, , scanning] = useScanLibrary();
@@ -133,6 +134,11 @@ export const UploadPage = () => {
               onApplyAll={async () => {
                 const ok = await applyAllProposals(item.id);
                 if (!ok) showToast("Couldn't apply fixes", 'error');
+              }}
+              onDismissAll={() => dismissAllProposals(item.id)}
+              onUndo={async () => {
+                const ok = await undo(item.id);
+                if (!ok) showToast("Couldn't undo", 'error');
               }}
               onDismissFix={(fix) => dismissFix(item.id, fix)}
             />

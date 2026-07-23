@@ -16,6 +16,8 @@ interface Props {
   item: UploadItemType;
   onApplyFix: (fix: MetadataFix) => void;
   onApplyAll: () => void;
+  onDismissAll: () => void;
+  onUndo: () => void;
   onDismissFix: (fix: MetadataFix) => void;
 }
 
@@ -28,13 +30,21 @@ const FIELD_LABEL: Record<string, string> = {
   document: 'EPUB',
 };
 
-export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props) => {
+export const UploadItem = ({
+  item,
+  onApplyFix,
+  onApplyAll,
+  onDismissAll,
+  onUndo,
+  onDismissFix,
+}: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { file, status, bytesUploaded, errorMessage, validation, bookId } = item;
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
   const actionable = proposals.filter((p) => p.to !== null);
+  const pendingUndo = item.undo;
 
   const totalMB = (file.size / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
@@ -102,95 +112,111 @@ export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props
             </div>
           </div>
 
-          {status === 'done' && (appliedFixes.length > 0 || proposals.length > 0) && (
-            <div className={styles.metadata}>
-              {appliedFixes.map((fix) => (
-                <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
-                  <CheckIcon />
-                  <span className={styles.chipLine}>
-                    Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
-                    {fix.toChips ? (
-                      <span className={styles.chipGroup}>
-                        {fix.toChips.map((c) => (
-                          <Tag key={c}>{c}</Tag>
-                        ))}
-                      </span>
-                    ) : (
-                      <strong>{fix.to}</strong>
-                    )}
-                  </span>
-                </div>
-              ))}
-
-              {proposals.length > 0 && (
-                <CardDivider
-                  actions={
-                    actionable.length > 1 ? (
-                      <Button type="link" onClick={onApplyAll}>
-                        Apply all
-                      </Button>
-                    ) : undefined
-                  }
-                >
-                  Suggested fixes
-                </CardDivider>
-              )}
-
-              {proposals.map((fix) => (
-                <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
-                  <div className={styles.proposalText}>
-                    <span className={styles.fieldName}>{FIELD_LABEL[fix.field] ?? fix.field}</span>
-                    {fix.to === null ? (
-                      <span className={styles.flagText}>needs review</span>
-                    ) : fix.toChips ? (
-                      <span className={styles.chipLine}>
-                        <span className={styles.chipGroup}>
-                          {(fix.fromChips ?? []).map((c) => (
-                            <Tag key={c}>{c}</Tag>
-                          ))}
-                        </span>
-                        {' → '}
+          {status === 'done' &&
+            (appliedFixes.length > 0 || proposals.length > 0 || pendingUndo) && (
+              <div className={styles.metadata}>
+                {appliedFixes.map((fix) => (
+                  <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
+                    <CheckIcon />
+                    <span className={styles.chipLine}>
+                      Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
+                      {fix.toChips ? (
                         <span className={styles.chipGroup}>
                           {fix.toChips.map((c) => (
                             <Tag key={c}>{c}</Tag>
                           ))}
                         </span>
-                      </span>
-                    ) : (
-                      <span>
-                        {fix.from ? (
-                          <span className={styles.fromValue}>{fix.from}</span>
-                        ) : (
-                          <em>empty</em>
-                        )}
-                        {' → '}
+                      ) : (
                         <strong>{fix.to}</strong>
-                      </span>
-                    )}
-                    {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
+                      )}
+                    </span>
                   </div>
-                  <div className={styles.proposalActions}>
-                    {fix.to !== null ? (
-                      <Fragment>
-                        <Button type="link" onClick={() => onApplyFix(fix)}>
-                          Apply
+                ))}
+
+                {(proposals.length > 0 || pendingUndo) && (
+                  <CardDivider
+                    actions={
+                      pendingUndo ? (
+                        <Button type="link" onClick={onUndo}>
+                          Undo
                         </Button>
-                        <Button type="link" onClick={() => onDismissFix(fix)}>
-                          Dismiss
-                        </Button>
-                      </Fragment>
-                    ) : (
-                      bookId && (
-                        <Link to={path.bookEdit(bookId)} className={styles.editLink}>
-                          Edit
-                        </Link>
+                      ) : (
+                        <Fragment>
+                          {actionable.length >= 1 && (
+                            <Button type="link" onClick={onApplyAll}>
+                              Apply all
+                            </Button>
+                          )}
+                          {proposals.length >= 1 && (
+                            <Button type="link" danger onClick={onDismissAll}>
+                              Dismiss all
+                            </Button>
+                          )}
+                        </Fragment>
                       )
-                    )}
+                    }
+                  >
+                    Suggested fixes
+                  </CardDivider>
+                )}
+
+                {proposals.map((fix) => (
+                  <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
+                    <div className={styles.proposalText}>
+                      <span className={styles.fieldName}>
+                        {FIELD_LABEL[fix.field] ?? fix.field}
+                      </span>
+                      {fix.to === null ? (
+                        <span className={styles.flagText}>needs review</span>
+                      ) : fix.toChips ? (
+                        <span className={styles.chipLine}>
+                          <span className={styles.chipGroup}>
+                            {(fix.fromChips ?? []).map((c) => (
+                              <Tag key={c}>{c}</Tag>
+                            ))}
+                          </span>
+                          {' → '}
+                          <span className={styles.chipGroup}>
+                            {fix.toChips.map((c) => (
+                              <Tag key={c}>{c}</Tag>
+                            ))}
+                          </span>
+                        </span>
+                      ) : (
+                        <span>
+                          {fix.from ? (
+                            <span className={styles.fromValue}>{fix.from}</span>
+                          ) : (
+                            <em>empty</em>
+                          )}
+                          {' → '}
+                          <strong>{fix.to}</strong>
+                        </span>
+                      )}
+                      {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
+                    </div>
+                    <div className={styles.proposalActions}>
+                      {fix.to !== null ? (
+                        <Fragment>
+                          <Button type="link" onClick={() => onApplyFix(fix)}>
+                            Apply
+                          </Button>
+                          <Button type="link" onClick={() => onDismissFix(fix)}>
+                            Dismiss
+                          </Button>
+                        </Fragment>
+                      ) : (
+                        bookId && (
+                          <Link to={path.bookEdit(bookId)} className={styles.editLink}>
+                            Edit
+                          </Link>
+                        )
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
         </div>
       </Card>
       {validation && detailsOpen && (
