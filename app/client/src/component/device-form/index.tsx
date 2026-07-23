@@ -295,7 +295,12 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   ) : undefined;
 
   return (
-    <Card allowOverflow title={isEdit ? device.name : 'Add new Device'} footer={footer}>
+    <Card
+      allowOverflow
+      className={isEdit ? styles.editing : undefined}
+      title={isEdit ? device.name : 'Add new Device'}
+      footer={footer}
+    >
       {fields}
     </Card>
   );
