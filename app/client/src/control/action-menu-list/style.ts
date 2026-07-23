@@ -26,10 +26,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     border: 'none',
     textAlign: 'left',
     width: '100%',
-    // Optical nudge up: system-ui glyphs sit low in the line box, so shift the
-    // text up 1px while keeping the overall row height symmetric. (2px reads
-    // as too high on labels without descenders.)
-    padding: `calc(${theme.space.md} - 1px) ${theme.space.lg} calc(${theme.space.md} + 1px)`,
+    // Optical centering, tuned by eye: an extra 1px below the text (system-ui
+    // glyphs sit low in the line box) and 1px horizontally to balance the
+    // hover inset against the vertical padding.
+    padding: `${theme.space.md} calc(${theme.space.lg} + 1px) calc(${theme.space.md} + 1px)`,
     borderRadius: theme.radius.sm,
     fontSize: theme.fontSize.md,
     fontFamily: theme.fontFamily.body,
