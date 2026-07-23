@@ -62,7 +62,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       transitionDuration: '0.1s',
       transitionTimingFunction: 'ease-in',
       '&:focus-visible': { outlineColor: theme.color.brand.outline },
-      '&$active': { color: theme.color.text.primary },
+      '&$active': { color: theme.color.brand.default },
       '&:disabled': { cursor: 'not-allowed' },
     },
     active: {},
