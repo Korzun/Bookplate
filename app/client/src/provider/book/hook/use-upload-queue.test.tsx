@@ -110,10 +110,13 @@ function stubFetchWithPatch(patchResponse: { ok: boolean; body: unknown }) {
 }
 
 /** fetch mock for the applyAllProposals + undo flow: answers GET /api/books/:id
- * (snapshot), PATCH .../metadata (apply, then revert), and DELETE .../lineage. */
+ * (snapshot), PATCH .../metadata (apply, then revert), and DELETE .../lineage.
+ * Pass `snapshotOk: false` to make the snapshot GET fail (e.g. network error)
+ * while PATCH still succeeds, exercising the best-effort-snapshot path. */
 function stubFetchForApplyAll(opts: {
   original: Partial<Book>;
   patchResponses: { ok: boolean; body: unknown }[];
+  snapshotOk?: boolean;
 }) {
   let patchCallIndex = 0;
   vi.mocked(fetch).mockImplementation((input: unknown, init?: RequestInit) => {
@@ -139,6 +142,9 @@ function stubFetchForApplyAll(opts: {
       }) as unknown as Promise<Response>;
     }
     if (method === 'GET' && /^\/api\/books\/[^/]+$/.test(url)) {
+      if (opts.snapshotOk === false) {
+        return Promise.reject(new Error('network error'));
+      }
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(opts.original),
@@ -570,5 +576,31 @@ describe('useUploadQueue', () => {
       expect.stringMatching(/\/api\/books\/[^/]+\/lineage/),
       expect.objectContaining({ method: 'DELETE' })
     );
+  });
+
+  it('applyAllProposals still applies when the snapshot GET fails, but arms no undo', async () => {
+    const fixes = [
+      makeFix(),
+      makeFix({ field: 'title', kind: 'title-missing', to: 'Dune', changes: { title: 'Dune' } }),
+    ];
+    const { result } = await renderQueueWithProposals(fixes);
+    const id = result.current.items[0].id;
+
+    stubFetchForApplyAll({
+      original: {},
+      snapshotOk: false,
+      patchResponses: [{ ok: true, body: { id: 'book-2' } }],
+    });
+
+    let succeeded: boolean | undefined;
+    await act(async () => {
+      succeeded = await result.current.applyAllProposals(id);
+    });
+
+    expect(succeeded).toBe(true);
+    expect(result.current.items[0].bookId).toBe('book-2');
+    expect(result.current.items[0].proposals).toEqual([]);
+    expect(result.current.items[0].appliedFixes).toEqual(fixes);
+    expect(result.current.items[0].undo).toBeUndefined();
   });
 });
