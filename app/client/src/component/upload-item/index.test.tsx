@@ -19,6 +19,8 @@ function makeItem(overrides: Partial<UploadItemType>): UploadItemType {
 const noop = {
   onApplyFix: () => {},
   onApplyAll: () => {},
+  onDismissAll: () => {},
+  onUndo: () => {},
   onDismissFix: () => {},
 };
 
@@ -161,7 +163,7 @@ describe('UploadItem metadata fixes', () => {
     const onApplyFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onApplyFix={onApplyFix} />);
     expect(screen.getByText(/Guin, Ursula K\. Le/)).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: /apply/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
     expect(onApplyFix).toHaveBeenCalledWith(proposals[0]);
   });
 
@@ -198,7 +200,7 @@ describe('UploadItem metadata fixes', () => {
   it('calls onDismissFix when Dismiss is clicked', () => {
     const onDismissFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissFix={onDismissFix} />);
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^dismiss$/i }));
     expect(onDismissFix).toHaveBeenCalledWith(proposals[0]);
   });
 
@@ -238,6 +240,46 @@ describe('UploadItem metadata fixes', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /apply all/i }));
     expect(onApplyAll).toHaveBeenCalled();
+  });
+
+  it('renders Apply all and a danger Dismiss all when proposals are present', () => {
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
+    expect(screen.getByRole('button', { name: /apply all/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /dismiss all/i })).toBeInTheDocument();
+  });
+
+  it('renders only Undo when a snapshot is pending', () => {
+    const item = makeItem({
+      status: 'done',
+      bytesUploaded: 1_048_576,
+      bookId: 'abc',
+      proposals: [],
+      appliedFixes: [],
+      undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
+    });
+    renderWithProviders(<UploadItem item={item} {...noop} />);
+    expect(screen.getByRole('button', { name: /^undo$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply all/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /dismiss all/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onDismissAll / onUndo', () => {
+    const onDismissAll = vi.fn();
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissAll={onDismissAll} />);
+    fireEvent.click(screen.getByRole('button', { name: /dismiss all/i }));
+    expect(onDismissAll).toHaveBeenCalled();
+
+    const onUndo = vi.fn();
+    const undoItem = makeItem({
+      status: 'done',
+      bytesUploaded: 1_048_576,
+      bookId: 'abc',
+      proposals: [],
+      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+    });
+    renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
+    fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
+    expect(onUndo).toHaveBeenCalled();
   });
 
   it('does not render a metadata section when there are no fixes or proposals', () => {
