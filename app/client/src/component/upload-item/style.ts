@@ -187,4 +187,16 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.color.brand.default,
   },
+  chipLine: {
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.space.xs,
+  },
+  chipGroup: {
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.space.xs,
+  },
 }));

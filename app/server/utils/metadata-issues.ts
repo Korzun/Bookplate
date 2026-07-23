@@ -21,6 +21,10 @@ export interface MetadataIssue {
   autoEligible: boolean;
   reason?: string;
   changes: Partial<Record<MetadataField, string | string[]>>;
+  // For list-valued fixes (subjects-split), the before/after values as discrete
+  // items so the UI can render them as chips instead of a joined string.
+  fromChips?: string[];
+  toChips?: string[];
 }
 
 export interface DetectInput {
@@ -390,15 +394,20 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
     );
     const compoundSubjects = subjects.filter((_, idx) => compoundPartsByIdx.has(idx));
     const allParts = Array.from(compoundPartsByIdx.values()).flat();
+    const dedupedParts = allParts.filter(
+      (p, i) => allParts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
+    );
     const allKnown = allParts.every((p) => library.has(p.toLowerCase()));
     issues.push({
       field: 'subjects',
       kind: 'subjects-split',
       from: compoundSubjects.join('; '),
-      to: allParts.join(', '),
+      to: dedupedParts.join(', '),
       autoEligible: false,
       reason: allKnown ? 'Both already exist in your library' : undefined,
       changes: { subjects: deduped },
+      fromChips: compoundSubjects,
+      toChips: dedupedParts,
     });
   }
 

@@ -8,6 +8,7 @@ import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book'
 import { path } from '~/router';
 
 import { Card } from '../card';
+import { Tag } from '../tag';
 import { useStyle } from './style';
 
 interface Props {
@@ -105,8 +106,17 @@ export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props
               {appliedFixes.map((fix) => (
                 <div key={`applied-${fix.field}-${fix.kind}`} className={styles.appliedRow}>
                   <CheckIcon />
-                  <span>
-                    Fixed {FIELD_LABEL[fix.field] ?? fix.field}: <strong>{fix.to}</strong>
+                  <span className={styles.chipLine}>
+                    Fixed {FIELD_LABEL[fix.field] ?? fix.field}:{' '}
+                    {fix.toChips ? (
+                      <span className={styles.chipGroup}>
+                        {fix.toChips.map((c) => (
+                          <Tag key={c}>{c}</Tag>
+                        ))}
+                      </span>
+                    ) : (
+                      <strong>{fix.to}</strong>
+                    )}
                   </span>
                 </div>
               ))}
@@ -126,7 +136,23 @@ export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props
                 <div key={`prop-${fix.field}-${fix.kind}`} className={styles.proposalRow}>
                   <div className={styles.proposalText}>
                     <span className={styles.fieldName}>{FIELD_LABEL[fix.field] ?? fix.field}</span>
-                    {fix.to !== null ? (
+                    {fix.to === null ? (
+                      <span className={styles.flagText}>needs review</span>
+                    ) : fix.toChips ? (
+                      <span className={styles.chipLine}>
+                        <span className={styles.chipGroup}>
+                          {(fix.fromChips ?? []).map((c) => (
+                            <Tag key={c}>{c}</Tag>
+                          ))}
+                        </span>
+                        {' → '}
+                        <span className={styles.chipGroup}>
+                          {fix.toChips.map((c) => (
+                            <Tag key={c}>{c}</Tag>
+                          ))}
+                        </span>
+                      </span>
+                    ) : (
                       <span>
                         {fix.from ? (
                           <span className={styles.fromValue}>{fix.from}</span>
@@ -136,8 +162,6 @@ export const UploadItem = ({ item, onApplyFix, onApplyAll, onDismissFix }: Props
                         {' → '}
                         <strong>{fix.to}</strong>
                       </span>
-                    ) : (
-                      <span className={styles.flagText}>needs review</span>
                     )}
                     {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
                   </div>
