@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
@@ -40,7 +40,7 @@ export const BookEditForm = ({ original, id }: Props) => {
     setIsEditValid((previous) => ({ ...previous, [fieldName]: newValid }));
   }, []);
 
-  const [patchBookMetadata, saving, saveError, saveErrorMessage] = usePatchBookMetadata();
+  const [patchBookMetadata, , saveError, saveErrorMessage] = usePatchBookMetadata();
   const [librarySubjects] = useLibrarySubjects();
   const [seriesOptions, seriesLoading] = useSeriesNames();
 
@@ -179,127 +179,140 @@ export const BookEditForm = ({ original, id }: Props) => {
     navigate(path.book(newId));
   }
 
+  const [, submitAction, isPending] = useActionState(async () => {
+    await handleSave();
+    return null;
+  }, null);
+
   return (
     <>
       <h1 className={styles.heading}>Edit Metadata — {original.title}</h1>
 
-      <Card>
-        <div className={styles.cardContainer}>
-          <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
-          <TextInput
-            value={titleSort}
-            label="Title Sort"
-            name="titleSort"
-            onChange={handleTitleSortChange}
-            onValidChange={handleIsValidChange}
-            validate={(v) => !v || !/^(the |a |an )/i.test(v)}
-          />
-          <TextInput value={author} label="Author" name="author" onChange={handleAuthorChange} />
-          <TextInput
-            value={authorSort}
-            label="Author Sort"
-            name="authorSort"
-            onChange={handleAuthorSortChange}
-            onValidChange={handleIsValidChange}
-            validate={(v) => !v || !v.includes(' ') || v.includes(',')}
-          />
-          <TextInput
-            value={publisher}
-            label="Publisher"
-            name="publisher"
-            onChange={handlePublisherChange}
-          />
-          <TextInput
-            value={publishDate}
-            label="Publish Date"
-            name="publishDate"
-            onChange={handlePublishDateChange}
-            onValidChange={handleIsValidChange}
-            validate={(v) =>
-              !v ||
-              /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/.test(
-                v
-              )
-            }
-          />
-        </div>
-      </Card>
-
-      <CoverImagePicker value={cover} onChange={setCover} />
-
-      <Card title="Description">
-        <TextArea
-          value={description}
-          name="description"
-          layout="vertical"
-          onChange={handleDescriptionChange}
-          maxLength={3000}
-          autoResize
-        />
-      </Card>
-
-      <Card
-        title="Series"
-        headerAction={<Switch name="isSeries" checked={isSeries} onChange={handleIsSeriesChange} />}
-        allowOverflow
-      >
-        {isSeries && (
+      <form id="book-edit-form" action={submitAction}>
+        <Card>
           <div className={styles.cardContainer}>
-            <Select
-              value={series || undefined}
-              label="Name"
-              name="seriesName"
-              options={seriesOptions}
-              onChange={handleSeriesChange}
-              loading={seriesLoading}
-              allowCreate
-            />
-            <NumberInput
-              name="seriesIndex"
-              value={seriesIndex}
-              label="Order"
-              onChange={handleSeriesIndexChange}
+            <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
+            <TextInput
+              value={titleSort}
+              label="Title Sort"
+              name="titleSort"
+              onChange={handleTitleSortChange}
               onValidChange={handleIsValidChange}
+              validate={(v) => !v || !/^(the |a |an )/i.test(v)}
+            />
+            <TextInput value={author} label="Author" name="author" onChange={handleAuthorChange} />
+            <TextInput
+              value={authorSort}
+              label="Author Sort"
+              name="authorSort"
+              onChange={handleAuthorSortChange}
+              onValidChange={handleIsValidChange}
+              validate={(v) => !v || !v.includes(' ') || v.includes(',')}
+            />
+            <TextInput
+              value={publisher}
+              label="Publisher"
+              name="publisher"
+              onChange={handlePublisherChange}
+            />
+            <TextInput
+              value={publishDate}
+              label="Publish Date"
+              name="publishDate"
+              onChange={handlePublishDateChange}
+              onValidChange={handleIsValidChange}
+              validate={(v) =>
+                !v ||
+                /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/.test(
+                  v
+                )
+              }
             />
           </div>
-        )}
-      </Card>
+        </Card>
 
-      <Card title="Subjects" allowOverflow>
-        <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
-      </Card>
+        <CoverImagePicker value={cover} onChange={setCover} />
 
-      <Card title="Identifiers">
-        <FieldList
-          addLabel="Add identifier"
-          columns={[
-            { type: 'text', key: 'scheme', placeholder: 'Scheme (e.g. isbn)' },
-            { type: 'text', key: 'value', placeholder: 'Value' },
-          ]}
-          rows={identifiers as FieldRow[]}
-          onAdd={() =>
-            setIdentifiers((prev) => [...prev, { _key: generateUUID(), scheme: '', value: '' }])
+        <Card title="Description">
+          <TextArea
+            value={description}
+            name="description"
+            layout="vertical"
+            onChange={handleDescriptionChange}
+            maxLength={3000}
+            autoResize
+          />
+        </Card>
+
+        <Card
+          title="Series"
+          headerAction={
+            <Switch name="isSeries" checked={isSeries} onChange={handleIsSeriesChange} />
           }
-          onRemove={(key) => setIdentifiers((prev) => prev.filter((r) => r._key !== key))}
-          onChange={(key, field, val) =>
-            setIdentifiers((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: val } : r)))
-          }
-          onValidChange={handleIsValidChange}
-        />
-      </Card>
+          allowOverflow
+        >
+          {isSeries && (
+            <div className={styles.cardContainer}>
+              <Select
+                value={series || undefined}
+                label="Name"
+                name="seriesName"
+                options={seriesOptions}
+                onChange={handleSeriesChange}
+                loading={seriesLoading}
+                allowCreate
+              />
+              <NumberInput
+                name="seriesIndex"
+                value={seriesIndex}
+                label="Order"
+                onChange={handleSeriesIndexChange}
+                onValidChange={handleIsValidChange}
+              />
+            </div>
+          )}
+        </Card>
+
+        <Card title="Subjects" allowOverflow>
+          <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
+        </Card>
+
+        <Card title="Identifiers">
+          <FieldList
+            addLabel="Add identifier"
+            columns={[
+              { type: 'text', key: 'scheme', placeholder: 'Scheme (e.g. isbn)' },
+              { type: 'text', key: 'value', placeholder: 'Value' },
+            ]}
+            rows={identifiers as FieldRow[]}
+            onAdd={() =>
+              setIdentifiers((prev) => [...prev, { _key: generateUUID(), scheme: '', value: '' }])
+            }
+            onRemove={(key) => setIdentifiers((prev) => prev.filter((r) => r._key !== key))}
+            onChange={(key, field, val) =>
+              setIdentifiers((prev) =>
+                prev.map((r) => (r._key === key ? { ...r, [field]: val } : r))
+              )
+            }
+            onValidChange={handleIsValidChange}
+          />
+        </Card>
+      </form>
 
       <PageFooterActions
         items={[
           {
             label: 'Cancel',
             onClick: () => navigate(path.book(id)),
-            disabled: saving,
+            disabled: isPending,
           },
           {
-            label: saving ? 'Saving…' : 'Save',
-            onClick: () => void handleSave(),
+            label: isPending ? 'Saving…' : 'Save',
+            onClick: () => {},
+            submit: true,
+            form: 'book-edit-form',
             disabled: Object.values(isEditValid).some((valid) => !valid),
-            loading: saving,
+            loading: isPending,
             emphasis: true,
           },
         ]}
