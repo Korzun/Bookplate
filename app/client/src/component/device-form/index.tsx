@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card, CardDivider } from '~/component';
 import { Button, ChipsInput, NumberInput, Select, Switch, TextInput } from '~/control';
@@ -62,9 +62,8 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const showToast = useToast();
   const isEdit = device !== undefined;
 
-  const [createDevice, creating, createHasError, createErrorMessage] = useCreateDevice();
-  const [updateDevice, updating, updateHasError, updateErrorMessage] = useUpdateDevice();
-  const loading = isEdit ? updating : creating;
+  const [createDevice, , createHasError, createErrorMessage] = useCreateDevice();
+  const [updateDevice, , updateHasError, updateErrorMessage] = useUpdateDevice();
   const hasError = isEdit ? updateHasError : createHasError;
   const errorMessage = isEdit ? updateErrorMessage : createErrorMessage;
   const lastErrorRef = useRef<boolean>(false);
@@ -176,12 +175,10 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
     onDone,
   ]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter' && !loading) void handleSubmit();
-    },
-    [handleSubmit, loading]
-  );
+  const [, submitAction, isPending] = useActionState(async () => {
+    await handleSubmit();
+    return null;
+  }, null);
 
   // useCreateDevice()/useUpdateDevice() reset hasError/errorMessage at the start
   // of every attempt, so watching hasError's transition to true reliably fires
@@ -194,7 +191,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   }, [hasError, errorMessage, isEdit, showToast]);
 
   const fields = (
-    <div className={styles.container}>
+    <form id="device-form" action={submitAction} className={styles.container}>
       <TextInput
         name="name"
         value={name}
@@ -205,7 +202,6 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
         autoComplete="off"
         maxLength={NAME_MAX_LENGTH}
         validate={(newValue) => newValue.length <= NAME_MAX_LENGTH}
-        onKeyDown={handleKeyDown}
       />
       {isAdmin && (
         <ChipsInput
@@ -266,33 +262,34 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       {!isEdit && <CardDivider />}
       {!isEdit && (
         <Button
+          submit
           type="primary"
           radius="card"
-          loading={loading}
+          loading={isPending}
           disabled={name.trim() === ''}
-          onClick={handleSubmit}
         >
-          {loading ? 'Adding…' : 'Add device'}
+          {isPending ? 'Adding…' : 'Add device'}
         </Button>
       )}
-    </div>
+    </form>
   );
 
   // Create renders its action inline in the body; edit keeps Cancel/Save in the
   // card footer. In edit mode the card replaces the device row's view card.
   const footer = isEdit ? (
     <>
-      <Button radius="card" type="text" disabled={loading} onClick={onDone}>
+      <Button radius="card" type="text" disabled={isPending} onClick={onDone}>
         Cancel
       </Button>
       <Button
+        submit
+        form="device-form"
         type="primary"
         radius="card"
-        loading={loading}
+        loading={isPending}
         disabled={name.trim() === ''}
-        onClick={handleSubmit}
       >
-        {loading ? 'Saving…' : 'Save'}
+        {isPending ? 'Saving…' : 'Save'}
       </Button>
     </>
   ) : undefined;
