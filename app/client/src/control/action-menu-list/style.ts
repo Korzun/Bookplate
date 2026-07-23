@@ -42,9 +42,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   separator: {
     height: '1px',
-    // No horizontal margin: the popover padding already insets the separator to
-    // the same edges as the row hover background.
-    margin: `${theme.space.xxs} 0`,
+    // Negative horizontal margin cancels the popover padding so the separator
+    // runs clear across the menu, edge to edge.
+    margin: `${theme.space.xxs} calc(${theme.space.xs} * -1)`,
     backgroundColor: theme.color.border.strong,
   },
 }));
