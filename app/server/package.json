@@ -13,7 +13,7 @@
     "lint:fix": "oxlint --fix && oxfmt \"**/*.ts\""
   },
   "dependencies": {
-    "@korzun/epubcheck-ts": "^0.1.0-beta.3",
+    "@korzun/epubcheck-ts": "^0.1.0-beta.4",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "adm-zip": "^0.6.0",
