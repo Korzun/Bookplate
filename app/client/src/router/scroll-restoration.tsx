@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { useLocation, useNavigationType } from 'react-router-dom';
+import { useLocation, useNavigationType } from 'react-router';
 
 // Navigation state that pages (e.g. the back control) can attach to a push so this
 // manager restores the destination's remembered scroll instead of jumping to the top.

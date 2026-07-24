@@ -1,5 +1,5 @@
 import { useActionState, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { Card } from '~/component/card';
 import { CoverImagePicker } from '~/component/cover-image-picker';
