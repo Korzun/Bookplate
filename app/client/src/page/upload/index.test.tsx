@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MetadataFix } from '~/provider/book';
+import { UploadProvider } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadPage } from './index';
@@ -63,22 +64,29 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  localStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 // ── Regression test for Fix 3 ─────────────────────────────────────────────────
 //
 // An item that uploads with no server auto-fixes must never be announced.
 // Previously it was never added to `announcedRef`, so a later *manual* Apply
 // (which moves a fix into appliedFixes) tripped the "Auto-fixed" effect and
-// fired a misleading toast. This mounts the real UploadPage (with only the
-// leaf providers that have real state — everything else uses its context's
-// default no-op value) and drives an upload + manual apply end-to-end.
+// fired a misleading toast. This mounts the real UploadPage wrapped in the
+// (lifted) UploadProvider — everything else uses its context's default
+// no-op value — and drives an upload + manual apply end-to-end.
 
 describe('UploadPage — manual apply does not trigger the auto-fix toast', () => {
   it('shows no "Auto-fixed" toast for a manually-applied proposal', async () => {
     const fix = makeFix();
 
-    renderWithProviders(<UploadPage />);
+    renderWithProviders(
+      <UploadProvider>
+        <UploadPage />
+      </UploadProvider>
+    );
 
     // Let the initial config/scan-status fetches settle.
     await act(async () => {

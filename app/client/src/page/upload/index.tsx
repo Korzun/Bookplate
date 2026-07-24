@@ -5,9 +5,10 @@ import { Page, UploadItem, UploadZone } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
 import type { PageActionItem } from '~/control';
 import { useIsAdmin } from '~/provider/auth';
-import { useScanLibrary, useUploadQueue } from '~/provider/book';
+import { useScanLibrary } from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
+import { useUploadQueue } from '~/provider/upload';
 import { useUserList } from '~/provider/user';
 import { path } from '~/router';
 
@@ -31,6 +32,14 @@ export const UploadPage = () => {
   // finished set of items. announcedRef tracks item ids we've already surfaced
   // so re-renders (or later batches) don't repeat the toast for the same item.
   const announcedRef = useRef(new Set<string>());
+  const didInitAnnouncedRef = useRef(false);
+  useEffect(() => {
+    if (didInitAnnouncedRef.current) return;
+    didInitAnnouncedRef.current = true;
+    // Items already present at mount (restored from storage) were not fixed in
+    // this session — mark them announced so they never trigger the toast.
+    items.forEach((i) => announcedRef.current.add(i.id));
+  }, [items]);
   useEffect(() => {
     if (uploadsInProgress) return; // wait until the batch is idle
     const doneItems = items.filter((i) => i.status === 'done');

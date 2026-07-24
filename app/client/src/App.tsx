@@ -7,6 +7,7 @@ import { LibraryTargetProvider } from './provider/library-target';
 import { ProgressProvider } from './provider/progress';
 import { ThemeProvider } from './provider/theme';
 import { ToastProvider } from './provider/toast';
+import { UploadProvider } from './provider/upload';
 import { UserProvider } from './provider/user';
 import { AppRouter } from './router/';
 
@@ -18,6 +19,7 @@ const ProvidersTree = buildProvidersTree([
   [UserProvider],
   [DeviceProvider],
   [BookProvider],
+  [UploadProvider],
   [ProgressProvider],
   [ToastProvider],
 ]);
