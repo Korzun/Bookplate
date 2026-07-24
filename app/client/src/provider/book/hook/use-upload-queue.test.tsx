@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Context } from '../context';
 import type { Book, BookList, MetadataFix } from '../type';
-import { fixKey, useUploadQueue } from './use-upload-queue';
+import { fixKey, useUploadQueueEngine } from './use-upload-queue';
 
 // ── XHR mock ─────────────────────────────────────────────────────────────────
 
@@ -168,7 +168,7 @@ function stubFetchForApplyAll(opts: {
 /** Drives a single-file upload through to `done` with the given proposals,
  * yielding an item with `bookId: 'book-1'` and those proposals. */
 async function renderQueueWithProposals(fixes: MetadataFix[]) {
-  const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+  const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
   await act(async () => {
     await Promise.resolve();
@@ -312,13 +312,19 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  // The engine now hydrates from/persists to localStorage; clear it between
+  // tests so one test's proposals/undo state can't leak into the next via
+  // the initial loadQueue() call.
+  localStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('useUploadQueue', () => {
+describe('useUploadQueueEngine', () => {
   it('addFiles appends items with queued status', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     // Wait for config fetch to resolve (maxConcurrentUploads → 2)
     await act(async () => {
@@ -335,7 +341,7 @@ describe('useUploadQueue', () => {
   });
 
   it('starts at most maxConcurrentUploads uploads simultaneously', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -351,7 +357,7 @@ describe('useUploadQueue', () => {
   });
 
   it('updates bytesUploaded on progress events', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -374,7 +380,9 @@ describe('useUploadQueue', () => {
 
   it('transitions to done on HTTP 200 and triggers book list refresh', async () => {
     const clearMock = vi.fn();
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper(clearMock) });
+    const { result } = renderHook(() => useUploadQueueEngine(), {
+      wrapper: makeWrapper(clearMock),
+    });
 
     await act(async () => {
       await Promise.resolve();
@@ -397,7 +405,7 @@ describe('useUploadQueue', () => {
   });
 
   it('transitions to error with message on non-200 response', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -418,7 +426,7 @@ describe('useUploadQueue', () => {
   });
 
   it('transitions to error without message on XHR network error', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -437,7 +445,7 @@ describe('useUploadQueue', () => {
   });
 
   it('starts next queued item when a slot frees up', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -463,7 +471,7 @@ describe('useUploadQueue', () => {
   });
 
   it('appending new files while uploads are in progress joins the rolling queue', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -486,31 +494,13 @@ describe('useUploadQueue', () => {
     expect(result.current.items[2].status).toBe('queued');
   });
 
-  it('aborts in-flight XHRs on unmount', async () => {
-    const { result, unmount } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    act(() => {
-      result.current.addFiles(makeFileList('a.epub'));
-    });
-
-    expect(xhrInstances).toHaveLength(1);
-
-    unmount();
-
-    expect(xhrInstances[0].abort).toHaveBeenCalledTimes(1);
-  });
-
   it('attaches the validation payload from a failed upload response', async () => {
     const validation = {
       counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
       messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
       threshold: 'ERROR',
     };
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -531,7 +521,7 @@ describe('useUploadQueue', () => {
   });
 
   it('leaves validation undefined for a non-validation error', async () => {
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await Promise.resolve();
@@ -555,7 +545,7 @@ describe('useUploadQueue', () => {
     const fix = makeFix();
     stubFetchWithPatch({ ok: false, body: { error: 'Save failed' } });
 
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
     await act(async () => {
       await Promise.resolve();
     });
@@ -596,7 +586,7 @@ describe('useUploadQueue', () => {
     const proposal = makeFix();
     stubFetchWithPatch({ ok: true, body: { id: 'book-1' } });
 
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
     await act(async () => {
       await Promise.resolve();
     });
@@ -627,7 +617,7 @@ describe('useUploadQueue', () => {
     const fix = makeFix();
     stubFetchWithPatch({ ok: true, body: { id: 'book-2' } });
 
-    const { result } = renderHook(() => useUploadQueue(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
     await act(async () => {
       await Promise.resolve();
     });

@@ -2,6 +2,7 @@ import { useCallback, use, useEffect, useLayoutEffect, useRef, useState } from '
 
 import type { ValidationFailure } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
+import { loadQueue, saveQueue } from '~/provider/upload/persistence';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -105,8 +106,8 @@ async function fetchBookSnapshot(
   }
 }
 
-export const useUploadQueue = (): UseUploadQueue => {
-  const [items, setItems] = useState<UploadItem[]>([]);
+export const useUploadQueueEngine = (): UseUploadQueue => {
+  const [items, setItems] = useState<UploadItem[]>(() => loadQueue());
   const [maxConcurrent, setMaxConcurrent] = useState(3);
   const fetchBookList = useFetchBookList();
   const { clearCompleteBookIds } = use(Context);
@@ -142,15 +143,10 @@ export const useUploadQueue = (): UseUploadQueue => {
       });
   }, []);
 
-  // Abort in-flight XHRs when the page unmounts
+  // Persist the "needs-attention" subset so pending fixes survive a reload.
   useEffect(() => {
-    const xhrMap = xhrMapRef.current;
-    return () => {
-      for (const xhr of xhrMap.values()) {
-        xhr.abort();
-      }
-    };
-  }, []);
+    saveQueue(items);
+  }, [items]);
 
   // Rolling concurrency: start uploads whenever a slot is free
   useEffect(() => {

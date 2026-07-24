@@ -21,4 +21,4 @@ export type { FetchSeriesNextIndex } from './use-fetch-series-next-index';
 export { useStandaloneBookList } from './use-standalone-book-list';
 export { useUnlinkBookLineage } from './use-unlink-book-lineage';
 export { useUploadBookList } from './use-upload-book-list';
-export { useUploadQueue } from './use-upload-queue';
+export { useUploadQueueEngine } from './use-upload-queue';
