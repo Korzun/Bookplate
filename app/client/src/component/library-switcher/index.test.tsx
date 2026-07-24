@@ -29,7 +29,7 @@ function renderAsUser(ui: ReactNode) {
   vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
 
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <ThemeProvider>
         <LibraryTargetProvider>{ui}</LibraryTargetProvider>
       </ThemeProvider>
@@ -50,7 +50,7 @@ function renderAsAdmin(ui: ReactNode) {
   ]);
 
   return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <ThemeProvider>
         <LibraryTargetProvider>{ui}</LibraryTargetProvider>
       </ThemeProvider>
@@ -90,7 +90,7 @@ it('keeps the persisted target while the user list is loading', () => {
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([[], true, false, undefined]);
   render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <ThemeProvider>
         <LibraryTargetProvider>
           <LibrarySwitcher />
@@ -106,7 +106,7 @@ it('keeps the persisted target when the user list is empty (not yet fetched)', (
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
   render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <ThemeProvider>
         <LibraryTargetProvider>
           <LibrarySwitcher />

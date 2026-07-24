@@ -15,10 +15,7 @@ const baseState = {
 
 function renderWithAuth(authState: AuthContextType, initialEntries: string[]) {
   return render(
-    <MemoryRouter
-      initialEntries={initialEntries}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
+    <MemoryRouter initialEntries={initialEntries}>
       <ThemeProvider>
         <AuthContext.Provider value={authState}>
           <Routes>
