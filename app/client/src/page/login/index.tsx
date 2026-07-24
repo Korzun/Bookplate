@@ -42,7 +42,7 @@ export const LoginPage = () => {
       <div className={styles.root}>
         <BrandLockup />
         <Card className={styles.card}>
-          <form action={submitAction}>
+          <form className={styles.form} action={submitAction}>
             <div className={styles.inputContainer}>
               <TextInput
                 placeholder="Username"

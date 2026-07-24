@@ -45,4 +45,14 @@ describe('UserRegister', () => {
     // The password result modal never opens: no generated password is rendered.
     expect(screen.queryByText('newpassword')).not.toBeInTheDocument();
   });
+
+  // The Register button is a native <button> in submit mode, which shrink-wraps
+  // its label instead of filling the card the way a div does. The form's flex
+  // column is what stretches it back across the card, level with the field.
+  it('lays the form out as a column so Register spans the card', () => {
+    const { container } = renderWithProviders(<UserRegister />);
+    const style = getComputedStyle(container.querySelector('form') as HTMLElement);
+    expect(style.display).toBe('flex');
+    expect(style.flexDirection).toBe('column');
+  });
 });

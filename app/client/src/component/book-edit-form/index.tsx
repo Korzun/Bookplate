@@ -191,7 +191,7 @@ export const BookEditForm = ({ original, id }: Props) => {
     <>
       <h1 className={styles.heading}>Edit Metadata — {original.title}</h1>
 
-      <form id={formId} action={submitAction}>
+      <form id={formId} className={styles.form} action={submitAction}>
         <Card>
           <div className={styles.cardContainer}>
             <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
