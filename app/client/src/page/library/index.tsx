@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { Page, BookRow, SearchBar, SeriesRow } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';

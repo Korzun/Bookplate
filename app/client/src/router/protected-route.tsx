@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { LoadingPage } from '../page';
 import { useMustChangePassword, useUsername } from '../provider/auth';

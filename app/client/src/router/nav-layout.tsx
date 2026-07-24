@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 import { Nav } from '~/component/nav';
 import { TopFade } from '~/component/top-fade';
