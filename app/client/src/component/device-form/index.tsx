@@ -1,4 +1,4 @@
-import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Card, CardDivider } from '~/component';
 import { Button, ChipsInput, NumberInput, Select, Switch, TextInput } from '~/control';
@@ -61,6 +61,10 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const styles = useStyle();
   const showToast = useToast();
   const isEdit = device !== undefined;
+  // Unique per instance: device-form is co-mounted (an always-present create
+  // form plus an edit form per editing row), so a static id would collide and
+  // the footer-slot Save button's form="..." would resolve to the first match.
+  const formId = useId();
 
   const [createDevice, , createHasError, createErrorMessage] = useCreateDevice();
   const [updateDevice, , updateHasError, updateErrorMessage] = useUpdateDevice();
@@ -191,7 +195,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   }, [hasError, errorMessage, isEdit, showToast]);
 
   const fields = (
-    <form id="device-form" action={submitAction} className={styles.container}>
+    <form id={formId} action={submitAction} className={styles.container}>
       <TextInput
         name="name"
         value={name}
@@ -283,7 +287,7 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
       </Button>
       <Button
         submit
-        form="device-form"
+        form={formId}
         type="primary"
         radius="card"
         loading={isPending}

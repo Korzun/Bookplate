@@ -16,6 +16,8 @@ type ButtonProps = React.PropsWithChildren<
     disabled?: boolean;
     form?: string;
     loading?: boolean;
+    // Applies to the default (div) mode only. In submit mode it is ignored:
+    // native form submission (driven by the associated <form>) fires instead.
     onClick?: () => void;
     prefix?: ComponentType<IconProps>;
     radius?: ButtonRadiusValue;
