@@ -116,7 +116,8 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
 
   // IDs of items whose XHR has been created — prevents double-starting across renders
   const startedRef = useRef(new Set<string>());
-  // Active XHRs keyed by item ID — used for cleanup on unmount
+  // Active XHRs keyed by item ID — lets progress/load/error handlers correlate
+  // events with the in-flight request during the upload lifecycle
   const xhrMapRef = useRef(new Map<string, XMLHttpRequest>());
   // Stable counter for generating unique IDs within this hook instance
   const nextIdRef = useRef(0);

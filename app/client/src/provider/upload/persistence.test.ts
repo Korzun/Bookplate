@@ -82,4 +82,16 @@ describe('save/load round-trip', () => {
     localStorage.setItem(STORAGE_KEY, 'not json{');
     expect(loadQueue()).toEqual([]);
   });
+  it('drops elements with a malformed shape', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        { id: 'ok', fileName: 'a.epub', fileSize: 1, status: 'done', bytesUploaded: 1 },
+        { id: 'bad' },
+      ])
+    );
+    const loaded = loadQueue();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe('ok');
+  });
 });
