@@ -61,7 +61,7 @@ function minimalValidEpub(): Buffer {
 
 // A minimal EPUB *2* package (version="2.0", NCX toc) with a caller-controlled
 // set of dcterms:modified metas. The RSC-005 "exactly once" count is an EPUB 3
-// rule; the repair normalizes EPUB 2 packages anyway, so these cover that path.
+// rule, so these packages must come back from the repair untouched.
 function epub2WithModified(timestamps: string[]): Buffer {
   const modifiedMetas = timestamps
     .map((t) => `    <meta property="dcterms:modified">${t}</meta>`)
@@ -176,21 +176,23 @@ describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
     await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
   });
 
-  it('injects a dcterms:modified into an EPUB 2 package missing one', async () => {
-    // Originally a regression guard for a real-world upload failure: a Calibre-
-    // exported EPUB 2 (version="2.0") with no dcterms:modified was rejected with
-    // RSC-005. That rejection turned out to be an epubcheck-ts bug — the "exactly
-    // one dcterms:modified" rule is EPUB 3-only, but the library applied it to
-    // EPUB 2 packages too through 0.1.0-beta.2. Since beta.3 this fixture
-    // validates as-is, so what remains worth pinning is that the EPUB 2 repair
-    // path still injects a dcterms:modified and leaves the package valid.
+  it('leaves an EPUB 2 without a dcterms:modified byte-identical (no rewrite)', async () => {
+    // A Calibre-exported EPUB 2 (version="2.0") with no dcterms:modified once
+    // failed upload with RSC-005, which is why the repair was extended to 2.x.
+    // That rejection was an epubcheck-ts bug — the "exactly one dcterms:modified"
+    // rule is EPUB 3-only, but the library applied it to EPUB 2 packages too
+    // through 0.1.0-beta.2. Injecting is also wrong on its own terms: EPUBCheck
+    // validates a 2.x package against opf20.rng, where `<meta>` takes `name` and
+    // `content`, no other attributes, and no text — so a `property` meta would
+    // make this valid file invalid. It must come back untouched.
     const src = path.join(dir, 'epub2-missing.epub');
-    fs.writeFileSync(src, epub2WithModified([]));
-    await expect(assertValidEpub(fs.readFileSync(src), 'ERROR')).resolves.toBeDefined();
+    const original = epub2WithModified([]);
+    fs.writeFileSync(src, original);
+    await expect(assertValidEpub(original, 'ERROR')).resolves.toBeDefined();
     const repair = repairPackageDocument(src);
-    expect(repair.repaired).toBe(true);
-    expect(repair.action).toBe('injected');
-    await expect(assertValidEpub(repair.bytes, 'ERROR')).resolves.toBeDefined();
+    expect(repair.repaired).toBe(false);
+    expect(repair.action).toBe('none');
+    expect(Buffer.compare(repair.bytes, original)).toBe(0);
   }, 60000);
 
   it('leaves a valid single-modified EPUB byte-identical (no rewrite)', () => {
