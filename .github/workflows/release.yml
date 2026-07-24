@@ -27,8 +27,8 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    name: Tests must pass on main
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -40,7 +40,34 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
-      - run: npm test
+
+  test-client:
+    name: Client tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -w app/client
+
+  test-server:
+    name: Server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -w app/server
 
   docker-build:
     name: Docker build (multi-arch)
@@ -88,7 +115,7 @@ jobs:
 
   version:
     name: Bump version
-    needs: [test, docker-build, docker-smoke-test]
+    needs: [lint, test-client, test-server, docker-build, docker-smoke-test]
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
