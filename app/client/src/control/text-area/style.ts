@@ -48,6 +48,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     resize: 'none',
     '&$outlined': {
       ...theme.recipe.input,
+      // Keep the textarea's own type scale; the shared input recipe pins a
+      // smaller size meant for single-line controls.
+      fontSize: theme.fontSize.lg,
     },
     '&$borderless': {
       borderStyle: 'none',

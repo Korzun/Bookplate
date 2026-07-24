@@ -138,7 +138,7 @@ export interface Theme {
   // Intrinsic sizes of chrome that other elements must lay out around. These are
   // measured, not derived (the element's real height comes from its content), so
   // they need on-device tuning — keep the single source of truth here.
-  layout: { navHeightMobile: string };
+  layout: { navHeightMobile: string; controlHeight: string };
   fontSize: {
     xxs: string;
     xs: string;
@@ -383,7 +383,9 @@ function buildTheme(mode: ThemeMode): Theme {
   // The floating mobile nav capsule is ~96px tall on-device (content + padding +
   // the min bottom floor). Tune against the measured height during on-device
   // verification; page padding and bottom-docked toasts both clear it via this token.
-  const layout: Theme['layout'] = { navHeightMobile: '96px' };
+  // controlHeight: the shared single-line height for inputs/select/chips (~33px)
+  // so form controls line up on one row. Single source of truth.
+  const layout: Theme['layout'] = { navHeightMobile: '96px', controlHeight: '2.0625rem' };
   const fontSize: Theme['fontSize'] = {
     xxs: '0.6rem',
     xs: '0.7rem',
@@ -450,6 +452,10 @@ function buildTheme(mode: ThemeMode): Theme {
       // Match the select controls (0.80rem); without this, inputs fall back to the
       // smaller browser default and look inconsistent next to selects/chips.
       fontSize: '0.80rem',
+      // Restore the 16px floor on mobile: this class-level font-size otherwise
+      // out-specifies the global `input` rule and would let iOS auto-zoom on
+      // focus. See global-styles.ts.
+      [breakpoint.mobile]: { fontSize: '16px' },
       outlineWidth: '2px',
       outlineStyle: 'solid',
       outlineColor: 'transparent',

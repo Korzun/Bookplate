@@ -40,6 +40,8 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   trigger: {
     ...theme.recipe.input,
+    // Shared single-line control height so inputs/select/chips line up on one row.
+    height: theme.layout.controlHeight,
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
