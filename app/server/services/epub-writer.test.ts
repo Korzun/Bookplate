@@ -448,32 +448,23 @@ const modified = (text: string, extra: Record<string, string> = {}) => ({
 });
 
 describe('normalizeModifiedMeta', () => {
-  it('normalizes EPUB 2 packages too (epubcheck enforces the count there)', () => {
-    // epubcheck flags RSC-005 "dcterms:modified must occur exactly once" for
-    // EPUB 2 packages as well, so the repair must run for them — not just 3.x.
-    const meta = { meta: [modified('2020-01-01T00:00:00Z'), modified('2021-01-01T00:00:00Z')] };
-    expect(normalizeModifiedMeta(meta, '2.0')).toEqual({
-      changed: true,
-      action: 'deduped',
-    });
-    expect(
-      (meta.meta as Record<string, string>[]).filter((m) => m['@_property'] === 'dcterms:modified')
-    ).toHaveLength(1);
-  });
+  it('is a no-op for non-EPUB3 packages', () => {
+    // RSC-005's "exactly one dcterms:modified" count is an EPUB 3 rule, and
+    // `property` is an EPUB 3 attribute — opf20.rng requires `name`/`content`
+    // on an empty `<meta>` — so touching a 2.x package would only make it
+    // invalid. Neither dedupe nor injection may run outside 3.x.
+    for (const version of ['2.0', '1.0']) {
+      const meta = { meta: [modified('2020-01-01T00:00:00Z'), modified('2021-01-01T00:00:00Z')] };
+      expect(normalizeModifiedMeta(meta, version)).toEqual({
+        changed: false,
+        action: 'none',
+      });
+      expect((meta.meta as unknown[]).length).toBe(2);
 
-  it('injects a modification date for an EPUB 2 package missing one', () => {
-    const meta: Record<string, unknown> = { meta: [] };
-    expect(normalizeModifiedMeta(meta, '2.0')).toEqual({ changed: true, action: 'injected' });
-    expect((meta.meta as Record<string, string>[])[0]['@_property']).toBe('dcterms:modified');
-  });
-
-  it('is a no-op for versions outside 2.x/3.x', () => {
-    const meta = { meta: [modified('2020-01-01T00:00:00Z'), modified('2021-01-01T00:00:00Z')] };
-    expect(normalizeModifiedMeta(meta, '1.0')).toEqual({
-      changed: false,
-      action: 'none',
-    });
-    expect((meta.meta as unknown[]).length).toBe(2);
+      const empty: Record<string, unknown> = { meta: [] };
+      expect(normalizeModifiedMeta(empty, version)).toEqual({ changed: false, action: 'none' });
+      expect((empty.meta as unknown[]).length).toBe(0);
+    }
   });
 
   it('is a no-op when exactly one non-refining dcterms:modified exists', () => {
