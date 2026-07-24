@@ -138,7 +138,7 @@ export interface Theme {
   // Intrinsic sizes of chrome that other elements must lay out around. These are
   // measured, not derived (the element's real height comes from its content), so
   // they need on-device tuning — keep the single source of truth here.
-  layout: { navHeightMobile: string; controlHeight: string };
+  layout: { navHeightMobile: string; modalWidth: string; controlHeight: string };
   fontSize: {
     xxs: string;
     xs: string;
@@ -383,9 +383,14 @@ function buildTheme(mode: ThemeMode): Theme {
   // The floating mobile nav capsule is ~96px tall on-device (content + padding +
   // the min bottom floor). Tune against the measured height during on-device
   // verification; page padding and bottom-docked toasts both clear it via this token.
+  // modalWidth: one width for every dialog so modals read as a single system.
   // controlHeight: the shared single-line height for inputs/select/chips (~33px)
   // so form controls line up on one row. Single source of truth.
-  const layout: Theme['layout'] = { navHeightMobile: '96px', controlHeight: '2.0625rem' };
+  const layout: Theme['layout'] = {
+    navHeightMobile: '96px',
+    modalWidth: '500px',
+    controlHeight: '2.0625rem',
+  };
   const fontSize: Theme['fontSize'] = {
     xxs: '0.6rem',
     xs: '0.7rem',
@@ -521,6 +526,9 @@ function buildTheme(mode: ThemeMode): Theme {
         border: 'none',
         padding: 0,
         overflow: 'hidden',
+        // One shared width for every modal; the maxWidth keeps it inside a
+        // narrow viewport (the auto side-margins then center it).
+        width: layout.modalWidth,
         maxWidth: `calc(100vw - ${space.xxl} * 2)`,
         marginTop: '100px',
         marginLeft: 'auto',

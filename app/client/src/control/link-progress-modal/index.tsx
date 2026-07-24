@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLinkProgress } from '~/provider/progress';
 
 import { Button } from '../button';
+import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
 import { useUserBookList } from './use-user-book-list';
 
@@ -21,7 +22,6 @@ export function LinkProgressModal({
   onClose,
 }: LinkProgressModalProps) {
   const styles = useStyle();
-  const modalRef = useRef<HTMLDialogElement>(null);
 
   const [books, booksLoading, booksError, booksErrorMessage] = useUserBookList(username, isOpen);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
@@ -34,16 +34,6 @@ export function LinkProgressModal({
 
   const pendingRef = useRef(false);
   const wasBusyRef = useRef(false);
-
-  useEffect(() => {
-    const modal = modalRef.current;
-    if (!modal) return;
-    if (isOpen) {
-      modal.showModal();
-    } else {
-      modal.close();
-    }
-  }, [isOpen]);
 
   // Close after a successful link
   useEffect(() => {
@@ -76,6 +66,8 @@ export function LinkProgressModal({
   }, [selectedBookId, link, documentId]);
 
   const handleCancel = useCallback(() => onClose(), [onClose]);
+  // Escape dismisses the modal the same way the Cancel button does.
+  const modalRef = useModalDialog(isOpen, handleCancel);
 
   const handleClickBackground = useCallback(
     (e: React.MouseEvent<HTMLDialogElement>) => {
@@ -90,7 +82,7 @@ export function LinkProgressModal({
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>Link Progress</div>
         <div className={styles.body}>

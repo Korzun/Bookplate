@@ -7,7 +7,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dialog: {
     display: 'flex',
     flexDirection: 'column',
-    maxWidth: '540px',
     // Bound the dialog to the viewport (the shared modal recipe positions it 100px from
     // the top and 50px from the bottom) so a long message list scrolls inside the body
     // instead of being clipped by the recipe's `overflow: hidden`.

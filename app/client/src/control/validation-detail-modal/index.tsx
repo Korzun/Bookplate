@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 
 import { SEVERITY_LABEL, THRESHOLD_LABEL } from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
 import { Button } from '../button';
 import { SeverityCounts } from '../severity-counts';
+import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
 
 interface Props {
@@ -25,19 +26,8 @@ export function ValidationDetailModal({
   onClose = () => {},
 }: Props) {
   const styles = useStyle();
-  const modalRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const el = modalRef.current;
-    if (!el) {
-      return;
-    }
-    if (isOpen) {
-      el.showModal();
-    } else {
-      el.close();
-    }
-  }, [isOpen]);
+  // Escape dismisses the modal the same way the Close button does.
+  const modalRef = useModalDialog(isOpen, onClose);
 
   const handleClickBackground = useCallback(() => {
     onClose();
@@ -48,7 +38,7 @@ export function ValidationDetailModal({
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>

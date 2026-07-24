@@ -1,5 +1,5 @@
 // client/src/control/confirm-modal/index.test.tsx
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -43,5 +43,19 @@ describe('ConfirmModal', () => {
     renderWithProviders(<ConfirmModal isOpen />);
     expect(screen.getByRole('button', { name: 'Confirm', hidden: true })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel', hidden: true })).toBeInTheDocument();
+  });
+
+  it('dismisses on Escape (cancel event) when idle', () => {
+    const onCancel = vi.fn();
+    const { container } = renderWithProviders(<ConfirmModal isOpen onCancel={onCancel} />);
+    fireEvent(container.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('ignores Escape while the action is loading', () => {
+    const onCancel = vi.fn();
+    const { container } = renderWithProviders(<ConfirmModal isOpen loading onCancel={onCancel} />);
+    fireEvent(container.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

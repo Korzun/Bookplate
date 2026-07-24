@@ -7,7 +7,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dialog: {
     display: 'flex',
     flexDirection: 'column',
-    maxWidth: '500px',
     backgroundColor: theme.color.bg.card,
   },
   header: {

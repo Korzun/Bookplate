@@ -69,4 +69,27 @@ describe('PasswordResultModal', () => {
     expect(onDone).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
+
+  it('ignores Escape while the countdown still gates Done', () => {
+    const onDone = vi.fn();
+    const { container } = renderWithProviders(
+      <PasswordResultModal isOpen username="alice" password="k4tWc9pLxQ2mAbCd" onDone={onDone} />
+    );
+    fireEvent(container.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('dismisses on Escape once the countdown completes', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    const { container } = renderWithProviders(
+      <PasswordResultModal isOpen username="alice" password="k4tWc9pLxQ2mAbCd" onDone={onDone} />
+    );
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    fireEvent(container.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+    expect(onDone).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
 });

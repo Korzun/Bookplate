@@ -4,6 +4,7 @@ import { useDeleteMyProgress, useSetMyProgress } from '~/provider/progress';
 
 import { Button } from '../button';
 import { ProportionalChapterSlider } from '../proportional-chapter-slider';
+import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
 
 type SetProgressModalProps = {
@@ -26,7 +27,6 @@ export function SetProgressModal({
   onClose,
 }: SetProgressModalProps) {
   const styles = useStyle();
-  const modalRef = useRef<HTMLDialogElement>(null);
   const [selectedChapter, setSelectedChapter] = useState(initialChapter);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
 
@@ -40,16 +40,6 @@ export function SetProgressModal({
   // Refs to track the busy transition so we can close after a successful operation
   const pendingRef = useRef(false);
   const wasBusyRef = useRef(false);
-
-  useEffect(() => {
-    const modal = modalRef.current;
-    if (!modal) return;
-    if (isOpen) {
-      modal.showModal();
-    } else {
-      modal.close();
-    }
-  }, [isOpen]);
 
   // Close when the API call completes without error
   useEffect(() => {
@@ -82,6 +72,8 @@ export function SetProgressModal({
   }, [selectedChapter, bookId, chapterCount, setMyProgress, deleteMyProgress]);
 
   const handleCancel = useCallback(() => onClose(), [onClose]);
+  // Escape dismisses the modal the same way the Cancel button does.
+  const modalRef = useModalDialog(isOpen, handleCancel);
 
   const handleClickBackground = useCallback(
     (e: React.MouseEvent<HTMLDialogElement>) => {
@@ -105,7 +97,7 @@ export function SetProgressModal({
       : '';
 
   return (
-    <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>Set Progress</div>
         <div className={styles.chapterDisplay}>

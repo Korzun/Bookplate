@@ -1,8 +1,9 @@
-import { useEffect, PropsWithChildren, useRef, useCallback } from 'react';
+import { PropsWithChildren, useCallback } from 'react';
 
 import { IconProps } from '~/icon';
 
 import { Button } from '../button';
+import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
 
 type ConfirmModalProps = PropsWithChildren<{
@@ -30,19 +31,6 @@ export function ConfirmModal({
   title = 'Confirm action',
 }: ConfirmModalProps) {
   const styles = useStyle();
-  const modalRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const modalElement = modalRef.current;
-    if (!modalElement) {
-      return;
-    }
-    if (isOpen) {
-      modalElement.showModal();
-    } else {
-      modalElement.close();
-    }
-  }, [isOpen]);
 
   const handleCancel = useCallback(() => {
     onCancel();
@@ -50,6 +38,9 @@ export function ConfirmModal({
   const handleConfirm = useCallback(() => {
     onConfirm();
   }, [onConfirm]);
+  // Escape dismisses the modal, except while the action is in flight — the
+  // Cancel button is disabled then, so Escape is gated to match.
+  const modalRef = useModalDialog(isOpen, handleCancel, !loading);
   const handleClickBackground = useCallback(
     (event: React.MouseEvent<HTMLDialogElement, MouseEvent>) => {
       event.stopPropagation();
@@ -62,7 +53,7 @@ export function ConfirmModal({
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} closedby="none" onClick={handleClickBackground}>
+    <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>
           {Icon && (
