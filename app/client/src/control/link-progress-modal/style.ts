@@ -7,7 +7,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   dialog: {
     display: 'flex',
     flexDirection: 'column',
-    width: `min(480px, calc(100vw - ${theme.space.xxl} * 2))`,
     backgroundColor: theme.color.bg.card,
   },
   header: {
@@ -20,12 +19,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.md,
   },
   searchInput: {
+    // Share the input recipe (0.8rem text with a 16px mobile floor) and the
+    // single-line control height so this filter matches every other input.
     ...theme.recipe.input,
+    height: theme.layout.controlHeight,
     width: '100%',
     boxSizing: 'border-box',
-    fontSize: theme.fontSize.md,
-    // Keep font-size at the 16px floor on mobile so focusing it doesn't zoom iOS.
-    [theme.breakpoint.mobile]: { fontSize: '1rem' },
   },
   bookList: {
     listStyle: 'none',

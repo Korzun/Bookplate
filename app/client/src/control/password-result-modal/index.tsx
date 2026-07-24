@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { copyToClipboard } from '~/utils';
 
 import { Button } from '../button';
+import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
 
 function renderPassword(password: string, numberClass: string, symbolClass: string) {
@@ -36,21 +37,8 @@ export function PasswordResultModal({
   onDone = () => {},
 }: PasswordResultModalProps) {
   const styles = useStyle();
-  const modalRef = useRef<HTMLDialogElement>(null);
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState(5);
-
-  useEffect(() => {
-    const modalElement = modalRef.current;
-    if (!modalElement) {
-      return;
-    }
-    if (isOpen) {
-      modalElement.showModal();
-    } else {
-      modalElement.close();
-    }
-  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -76,13 +64,16 @@ export function PasswordResultModal({
     setCopied(false);
     onDone();
   }, [onDone]);
+  // Escape closes only once "Done" is enabled (after the copy countdown), so the
+  // password can't be dismissed before the user has had a chance to copy it.
+  const modalRef = useModalDialog(isOpen, handleDone, countdown === 0);
 
   const handleClickDialog = useCallback((event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     event.stopPropagation();
   }, []);
 
   return (
-    <dialog ref={modalRef} className={styles.root} closedby="none">
+    <dialog ref={modalRef} className={styles.root}>
       <div className={styles.dialog} onClick={handleClickDialog}>
         <div className={styles.header}>New password for {username}</div>
         <div className={styles.body}>
