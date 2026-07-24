@@ -16,7 +16,7 @@
     "@korzun/epubcheck-ts": "^0.1.0-beta.3",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "argon2": "^0.44.0",
     "better-sqlite3": "^12.9.0",
     "cookie-parser": "^1.4.7",
