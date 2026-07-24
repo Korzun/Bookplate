@@ -20,10 +20,21 @@ export const loadQueue = (): UploadItem[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as PersistedUploadItem[];
+    const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
+    // Guard against a tampered/stale shape: keep only well-formed items so
+    // rehydration never produces a blank title or a `NaN MB` size.
+    const wellFormed = parsed.filter(
+      (i): i is PersistedUploadItem =>
+        typeof i === 'object' &&
+        i !== null &&
+        typeof (i as PersistedUploadItem).id === 'string' &&
+        typeof (i as PersistedUploadItem).fileName === 'string' &&
+        typeof (i as PersistedUploadItem).fileSize === 'number' &&
+        typeof (i as PersistedUploadItem).status === 'string'
+    );
     // Rehydrated items never carry a File; they resume as completed uploads.
-    return parsed.map((i) => ({ ...i, file: undefined }));
+    return wellFormed.map((i) => ({ ...i, file: undefined }));
   } catch {
     return [];
   }
