@@ -494,6 +494,26 @@ describe('useUploadQueueEngine', () => {
     expect(result.current.items[2].status).toBe('queued');
   });
 
+  it('does not abort in-flight XHRs on unmount — uploads must survive navigation', async () => {
+    const { result, unmount } = renderHook(() => useUploadQueueEngine(), {
+      wrapper: makeWrapper(),
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    expect(xhrInstances).toHaveLength(1);
+
+    unmount();
+
+    expect(xhrInstances[0].abort).not.toHaveBeenCalled();
+  });
+
   it('attaches the validation payload from a failed upload response', async () => {
     const validation = {
       counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
