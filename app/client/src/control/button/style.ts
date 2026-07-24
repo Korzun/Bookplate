@@ -36,6 +36,16 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     color: theme.color.text.primary,
     ...theme.recipe.focusRing,
+    // In submit mode the root is a native <button>, which the UA styles rather
+    // than inheriting from the page: it gets its own font and a native chrome
+    // (ButtonFace background, system border). Reset all three so a submit button
+    // is pixel-identical to the div the component renders otherwise. The
+    // transparent background is only a floor — every `type` below is declared
+    // later in this sheet, so any type that paints a background still wins.
+    fontFamily: theme.fontFamily.body,
+    backgroundColor: 'transparent',
+    appearance: 'none',
+    '-webkit-appearance': 'none',
     borderColor: 'transparent',
     borderStyle: 'solid',
     borderWidth: '1px',
