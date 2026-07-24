@@ -252,7 +252,6 @@ export const BookEditForm = ({ original, id }: Props) => {
           headerAction={
             <Switch name="isSeries" checked={isSeries} onChange={handleIsSeriesChange} />
           }
-          allowOverflow
         >
           {isSeries && (
             <div className={styles.cardContainer}>
@@ -276,7 +275,7 @@ export const BookEditForm = ({ original, id }: Props) => {
           )}
         </Card>
 
-        <Card title="Subjects" allowOverflow>
+        <Card title="Subjects">
           <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
         </Card>
 
