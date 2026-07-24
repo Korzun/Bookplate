@@ -16,7 +16,7 @@
     "@korzun/epubcheck-ts": "^0.1.0-beta.3",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "argon2": "^0.44.0",
     "better-sqlite3": "^12.9.0",
     "cookie-parser": "^1.4.7",
@@ -27,7 +27,7 @@
     "mime-types": "^2.1.35",
     "multer": "^2.2.0",
     "nanoid": "^3.3.8",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "smartcrop": "^2.0.5",
     "smartcrop-sharp": "^2.0.8"
   },
