@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { ChevronIcon, SpinnerIcon } from '~/icon';
 
+import { Popover } from '../popover';
 import { useStyle } from './style';
 
 export type SelectOption = string | { label: string; value: string; description?: string };
@@ -63,7 +64,7 @@ export const Select = ({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerWrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const normalisedOptions = useMemo(() => options.map(normalise), [options]);
@@ -118,16 +119,6 @@ export const Select = ({
       inputRef.current?.focus();
     }
   }, [isOpen, searchable]);
-
-  useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        close();
-      }
-    };
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [close]);
 
   const handleTriggerKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -192,13 +183,13 @@ export const Select = ({
   );
 
   return (
-    <div ref={rootRef} className={cx(style.root, style[layout])}>
+    <div className={cx(style.root, style[layout])}>
       {label && (
         <label className={style.label} htmlFor={inputId}>
           {label}
         </label>
       )}
-      <div className={style.triggerWrapper}>
+      <div ref={triggerWrapperRef} className={style.triggerWrapper}>
         {isOpen && searchable ? (
           <div className={style.trigger}>
             <input
@@ -270,7 +261,7 @@ export const Select = ({
             </span>
           </div>
         )}
-        {isOpen && (
+        <Popover anchorRef={triggerWrapperRef} open={isOpen} onClose={close}>
           <div className={style.dropdown}>
             <ul className={style.optionList} role="listbox">
               {visibleOptions.length === 0 ? (
@@ -312,7 +303,7 @@ export const Select = ({
               )}
             </ul>
           </div>
-        )}
+        </Popover>
       </div>
     </div>
   );

@@ -105,12 +105,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&$open': { transform: 'rotate(-90deg)' },
   },
   dropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: theme.space.xxs,
-    zIndex: theme.zIndex.sticky,
     border: `1px solid ${theme.color.border.strong}`,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.bg.card,
