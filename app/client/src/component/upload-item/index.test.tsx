@@ -10,6 +10,8 @@ function makeItem(overrides: Partial<UploadItemType>): UploadItemType {
   return {
     id: '1',
     file: new File(['x'.repeat(1_048_576)], 'test.epub'), // 1 MB
+    fileName: 'test.epub',
+    fileSize: 1_048_576,
     status: 'queued',
     bytesUploaded: 0,
     ...overrides,
@@ -32,9 +34,26 @@ beforeAll(() => {
 describe('UploadItem', () => {
   it('shows filename', () => {
     renderWithProviders(
-      <UploadItem item={makeItem({ file: new File([''], 'dune.epub') })} {...noop} />
+      <UploadItem item={makeItem({ fileName: 'dune.epub', fileSize: 0 })} {...noop} />
     );
     expect(screen.getByText('dune.epub')).toBeTruthy();
+  });
+
+  it('rehydrated item (no File) still shows name and size', () => {
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          file: undefined,
+          fileName: 'restored.epub',
+          fileSize: 1_048_576,
+          status: 'done',
+          bytesUploaded: 1_048_576,
+        })}
+        {...noop}
+      />
+    );
+    expect(screen.getByText('restored.epub')).toBeTruthy();
+    expect(screen.getByText('1.0 / 1.0 MB')).toBeTruthy();
   });
 
   it('queued: shows total MB and no error border', () => {
