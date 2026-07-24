@@ -9,6 +9,7 @@ export { PageActionsBar } from './page-actions-bar';
 export { PageActionsMenu } from './page-actions-menu';
 export { PageFooterActions } from './page-footer-actions';
 export { PasswordResultModal } from './password-result-modal';
+export { Popover } from './popover';
 export { ProportionalChapterSlider } from './proportional-chapter-slider';
 export { ResetPasswordButton } from './reset-password-button';
 export { SetProgressModal } from './set-progress-modal';
