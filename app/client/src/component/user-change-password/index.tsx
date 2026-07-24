@@ -1,4 +1,4 @@
-import { useActionState, useCallback, useState } from 'react';
+import { useActionState, useCallback, useId, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -9,6 +9,9 @@ import { useStyle } from './style';
 
 export const UserChangePassword = () => {
   const styles = useStyle();
+  // Unique id ties the footer-slot submit button to this form by construction,
+  // robust against any future co-mounting.
+  const formId = useId();
   const [changeMyPassword] = useChangeMyPassword();
   const showToast = useToast();
   const [currentPassword, setCurrentPassword] = useState<string>('');
@@ -56,7 +59,7 @@ export const UserChangePassword = () => {
       footer={
         <Button
           submit
-          form="user-change-password"
+          form={formId}
           type="primary"
           loading={isPending}
           radius="card"
@@ -71,7 +74,7 @@ export const UserChangePassword = () => {
         </Button>
       }
     >
-      <form id="user-change-password" action={submitAction}>
+      <form id={formId} action={submitAction}>
         <div className={styles.inputContainer}>
           <TextInput
             name="current-password"

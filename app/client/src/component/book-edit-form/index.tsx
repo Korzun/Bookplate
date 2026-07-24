@@ -1,4 +1,4 @@
-import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Card } from '~/component/card';
@@ -34,6 +34,9 @@ type Props = { original: Book; id: string };
 export const BookEditForm = ({ original, id }: Props) => {
   const navigate = useNavigate();
   const styles = useStyle();
+  // Unique id ties the footer-slot Save action to this form by construction,
+  // robust against any future co-mounting.
+  const formId = useId();
 
   const [isEditValid, setIsEditValid] = useState<Record<string, boolean>>({});
   const handleIsValidChange = useCallback((fieldName: string, newValid: boolean) => {
@@ -188,7 +191,7 @@ export const BookEditForm = ({ original, id }: Props) => {
     <>
       <h1 className={styles.heading}>Edit Metadata — {original.title}</h1>
 
-      <form id="book-edit-form" action={submitAction}>
+      <form id={formId} action={submitAction}>
         <Card>
           <div className={styles.cardContainer}>
             <TextInput value={title} label="Title" name="title" onChange={handleTitleChange} />
@@ -310,7 +313,7 @@ export const BookEditForm = ({ original, id }: Props) => {
             label: isPending ? 'Saving…' : 'Save',
             onClick: () => {},
             submit: true,
-            form: 'book-edit-form',
+            form: formId,
             disabled: Object.values(isEditValid).some((valid) => !valid),
             loading: isPending,
             emphasis: true,

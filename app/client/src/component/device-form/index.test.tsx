@@ -263,6 +263,50 @@ describe('DeviceForm', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
+  it('edit Save submits the edit form, not a co-mounted create form (id collision)', async () => {
+    // Regression: DeviceListPage renders an always-present create <DeviceForm />
+    // followed by an editing row's <DeviceForm device={...} />. With a static
+    // id="device-form" both <form>s share the same id, so the edit Save button's
+    // form="device-form" resolves to the FIRST match (the create form) and fires
+    // the create action instead of updateDevice. A unique useId() id fixes it.
+    const user = userEvent.setup();
+    const onDone = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = renderWithProviders(
+      <DeviceProvider>
+        <DeviceForm />
+        <DeviceForm device={kindle} onDone={onDone} />
+      </DeviceProvider>
+    );
+
+    // Fill the create form's name so, if the collision fires, it would issue a
+    // POST — making the wrong-form regression observable rather than a silent
+    // early return on an empty name.
+    const createNameInput = container.querySelectorAll('input[name="name"]')[0] as HTMLInputElement;
+    await user.type(createNameInput, 'CreatedByMistake');
+
+    // Only the edit instance renders a "Save" button (create renders "Add device").
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The edit Save must drive the edit form: PATCH /api/devices/:id, never the
+    // create POST.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/devices/d1', expect.any(Object))
+    );
+    const patchCall = fetchMock.mock.calls.find(([url]) => url === '/api/devices/d1');
+    expect(patchCall).toBeDefined();
+    expect((patchCall![1] as { method: string }).method).toBe('PATCH');
+    const createCalls = fetchMock.mock.calls.filter(
+      ([url, opts]) => url === '/api/devices' && (opts as { method?: string })?.method === 'POST'
+    );
+    expect(createCalls).toHaveLength(0);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
   it('calls onDone without saving when Cancel is clicked', async () => {
     const user = userEvent.setup();
     const onDone = vi.fn();
