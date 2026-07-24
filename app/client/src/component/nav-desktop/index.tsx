@@ -16,7 +16,7 @@ export const NavDesktop = ({ items }: NavDesktopProps) => {
   return (
     <header className={styles.root}>
       <nav className={styles.items}>
-        {items.map(({ to, label, Icon, active }) => (
+        {items.map(({ to, label, Icon, active, badge }) => (
           <Link
             key={to}
             className={cx(styles.item, { [styles.active]: active })}
@@ -25,6 +25,10 @@ export const NavDesktop = ({ items }: NavDesktopProps) => {
           >
             <Icon height={14} width={14} />
             {label}
+            {typeof badge === 'number' && badge > 0 && (
+              <span className={styles.badge}>{badge}</span>
+            )}
+            {badge === 'dot' && <span className={styles.badgeDot} data-testid="nav-badge-dot" />}
           </Link>
         ))}
       </nav>

@@ -24,6 +24,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginTop: '15px', // optical baseline tweak — geometry
   },
   item: {
+    position: 'relative',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -52,4 +53,24 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
   active: {},
+  badge: {
+    minWidth: '16px',
+    height: '16px',
+    padding: `0 ${theme.space.xs}`,
+    marginLeft: theme.space.xs,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.danger.default,
+    color: theme.color.bg.page,
+    fontSize: '0.65rem',
+    lineHeight: '16px',
+    textAlign: 'center',
+  },
+  badgeDot: {
+    width: '8px',
+    height: '8px',
+    marginLeft: theme.space.xs,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.danger.default,
+    display: 'inline-block',
+  },
 }));

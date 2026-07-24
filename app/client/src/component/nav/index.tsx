@@ -2,6 +2,7 @@ import { useLocation } from 'react-router';
 
 import { BookIcon, DeviceIcon, SettingsIcon, UploadIcon, UsersIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
+import { useUploadBadge } from '~/provider/upload';
 import { path } from '~/router';
 
 import { NavDesktop } from '../nav-desktop';
@@ -14,6 +15,8 @@ import type { NavItem } from './types';
 export const Nav = () => {
   const [isAdmin] = useIsAdmin();
   const { pathname } = useLocation();
+  const { count, active } = useUploadBadge();
+  const uploadBadge: NavItem['badge'] = count > 0 ? count : active ? 'dot' : undefined;
 
   const items: NavItem[] = [
     {
@@ -27,6 +30,7 @@ export const Nav = () => {
       label: 'Upload',
       Icon: UploadIcon,
       active: pathname === path.upload(),
+      badge: uploadBadge,
     },
     ...(isAdmin
       ? [
