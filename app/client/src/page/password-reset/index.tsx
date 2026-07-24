@@ -61,7 +61,7 @@ export const PasswordResetPage = () => {
         </h1>
         <Card className={styles.card}>
           <div className={styles.banner}>You must change your password before continuing.</div>
-          <form action={submitAction}>
+          <form className={styles.form} action={submitAction}>
             <div className={styles.inputContainer}>
               <TextInput
                 name="current-password"

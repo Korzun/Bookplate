@@ -33,4 +33,14 @@ describe('LoginPage', () => {
     await user.type(screen.getByPlaceholderText('Password'), 'secret{Enter}');
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/login', expect.anything()));
   });
+
+  // The Sign In button is a native <button> in submit mode, which shrink-wraps
+  // its label instead of filling the card the way a div does. The form's flex
+  // column is what stretches it back across the card, level with the fields.
+  it('lays the form out as a column so Sign In spans the card', () => {
+    const { container } = renderWithProviders(<LoginPage />);
+    const style = getComputedStyle(container.querySelector('form') as HTMLElement);
+    expect(style.display).toBe('flex');
+    expect(style.flexDirection).toBe('column');
+  });
 });

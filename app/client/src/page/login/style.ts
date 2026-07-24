@@ -18,6 +18,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       width: '100%',
     },
   },
+  // A native <button> shrink-wraps its content even at `display: flex`, unlike
+  // the div the Button renders outside submit mode. Making the form a column
+  // stretches the Sign In button back across the card, matching the fields.
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
   inputContainer: {
     display: 'flex',
     flexDirection: 'column',

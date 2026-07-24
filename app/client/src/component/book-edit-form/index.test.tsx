@@ -94,6 +94,16 @@ describe('BookEditForm', () => {
     );
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
+
+  // The cards are spaced by Page's flex column gap. If the wrapping <form> ever
+  // generates a box it swallows them into a single flex item and every gap
+  // between the cards disappears, so it has to stay `display: contents`.
+  it('keeps the form boxless so the cards stay spaced by the page', () => {
+    const { container } = renderWithProviders(<BookEditForm original={original} id="book-1" />);
+    const form = container.querySelector('form') as HTMLElement;
+    expect(form.querySelectorAll(':scope > *').length).toBeGreaterThan(1);
+    expect(getComputedStyle(form).display).toBe('contents');
+  });
 });
 
 describe('series order auto-fill', () => {

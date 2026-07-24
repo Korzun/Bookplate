@@ -36,7 +36,7 @@ export const UserRegister = () => {
   return (
     <Fragment>
       <Card title="Register new User">
-        <form action={submitAction}>
+        <form className={styles.form} action={submitAction}>
           <div className={styles.inputContainer}>
             <TextInput
               name="username"

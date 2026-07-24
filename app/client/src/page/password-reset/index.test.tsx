@@ -23,4 +23,14 @@ describe('PasswordResetPage', () => {
 
     await waitFor(() => expect(changeMyPassword).toHaveBeenCalledWith('old', 'newpass'));
   });
+
+  // The Change password button is a native <button> in submit mode, which
+  // shrink-wraps its label instead of filling the card the way a div does. The
+  // form's flex column stretches it back across the card, level with the fields.
+  it('lays the form out as a column so Change password spans the card', () => {
+    const { container } = renderWithProviders(<PasswordResetPage />);
+    const style = getComputedStyle(container.querySelector('form') as HTMLElement);
+    expect(style.display).toBe('flex');
+    expect(style.flexDirection).toBe('column');
+  });
 });
