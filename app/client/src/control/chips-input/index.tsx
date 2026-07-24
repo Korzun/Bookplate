@@ -1,9 +1,10 @@
 import cx from 'classnames';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { XIcon } from '~/icon';
 import type { Theme } from '~/provider/theme';
 
+import { Popover } from '../popover';
 import { useStyle } from './style';
 
 export type ChipColor = keyof Theme['color']['chip'];
@@ -45,6 +46,7 @@ export const ChipsInput = ({
   const inputId = useId();
   const [inputValue, setInputValue] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const chipsContainerRef = useRef<HTMLDivElement>(null);
 
   const filteredSuggestions = suggestions.filter(
     (s) => !value.includes(s) && s.toLowerCase().includes(inputValue.toLowerCase())
@@ -91,7 +93,10 @@ export const ChipsInput = ({
 
   const control = (
     <div className={style.controlRoot}>
-      <div className={cx(style.chipsContainer, { [style.disabled]: disabled })}>
+      <div
+        ref={chipsContainerRef}
+        className={cx(style.chipsContainer, { [style.disabled]: disabled })}
+      >
         {value.map((chip) => (
           <span key={chip} className={style.chip}>
             {chip}
@@ -123,7 +128,7 @@ export const ChipsInput = ({
           onKeyDown={handleKeyDown}
         />
       </div>
-      {showDropdown && (
+      <Popover anchorRef={chipsContainerRef} open={showDropdown}>
         <ul className={style.dropdown} role="listbox">
           {filteredSuggestions.map((s, i) => (
             <li
@@ -140,7 +145,7 @@ export const ChipsInput = ({
             </li>
           ))}
         </ul>
-      )}
+      </Popover>
     </div>
   );
 
