@@ -104,4 +104,21 @@ describe('Button submit mode', () => {
     await user.click(button);
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  // In submit mode the root is a native <button>, which the UA styles instead of
+  // letting it inherit: it gets its own font and native chrome. Only the
+  // background is assertable here — jsdom ships no UA button font and does not
+  // model `appearance`, so those two resets are verified in a real browser. The
+  // background still catches the visible leak: text and link buttons paint none
+  // of their own, so the UA's ButtonFace would show through without the reset.
+  it('drops the native button background in submit mode', () => {
+    renderWithProviders(
+      <Button submit type="text">
+        Go
+      </Button>
+    );
+    const button = screen.getByRole('button', { name: 'Go' });
+    expect(button.tagName).toBe('BUTTON');
+    expect(getComputedStyle(button).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  });
 });
