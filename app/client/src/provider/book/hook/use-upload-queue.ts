@@ -24,7 +24,12 @@ export type UndoSnapshot = {
 
 export type UploadItem = {
   id: string;
-  file: File;
+  /** The picked file — present only for live (session-added) items; absent for
+   * items rehydrated from storage after a reload. */
+  file?: File;
+  /** File identity kept separately so an item can be serialized without the blob. */
+  fileName: string;
+  fileSize: number;
   status: UploadItemStatus;
   bytesUploaded: number;
   errorMessage?: string;
@@ -154,7 +159,7 @@ export const useUploadQueue = (): UseUploadQueue => {
     if (slots <= 0) return;
 
     const toStart = items
-      .filter((i) => i.status === 'queued' && !startedRef.current.has(i.id))
+      .filter((i) => i.status === 'queued' && !!i.file && !startedRef.current.has(i.id))
       .slice(0, slots);
 
     for (const item of toStart) {
@@ -193,7 +198,7 @@ export const useUploadQueue = (): UseUploadQueue => {
                 ? {
                     ...i,
                     status: 'done' as const,
-                    bytesUploaded: item.file.size,
+                    bytesUploaded: item.fileSize,
                     bookId: result?.bookId,
                     autoFixes: result?.applied ?? [],
                     appliedFixes: [],
@@ -234,6 +239,7 @@ export const useUploadQueue = (): UseUploadQueue => {
       };
 
       void (async () => {
+        if (!item.file) return; // rehydrated items are never 'queued', but keep TS honest
         const token = await ensureFreshToken();
         // The XHR may have been aborted (unmount) while we awaited the refresh.
         if (xhrMapRef.current.get(item.id) !== xhr) return;
@@ -250,6 +256,8 @@ export const useUploadQueue = (): UseUploadQueue => {
     const newItems: UploadItem[] = Array.from(files).map((file) => ({
       id: String(nextIdRef.current++),
       file,
+      fileName: file.name,
+      fileSize: file.size,
       status: 'queued' as const,
       bytesUploaded: 0,
     }));

@@ -53,7 +53,7 @@ export const UploadItem = ({
   // True while a bulk header action (Apply all / Dismiss all / Undo) is running,
   // so the buttons disable and a rapid second click can't re-trigger it.
   const [busy, setBusy] = useState(false);
-  const { file, status, bytesUploaded, errorMessage, validation, bookId } = item;
+  const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookId } = item;
   const autoFixes = item.autoFixes ?? [];
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
@@ -70,9 +70,9 @@ export const UploadItem = ({
     }
   };
 
-  const totalMB = (file.size / 1_048_576).toFixed(1);
+  const totalMB = (fileSize / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
-  const progressPercent = file.size > 0 ? Math.min((bytesUploaded / file.size) * 100, 100) : 0;
+  const progressPercent = fileSize > 0 ? Math.min((bytesUploaded / fileSize) * 100, 100) : 0;
 
   const icon = (() => {
     if (status === 'uploading') {
@@ -102,7 +102,7 @@ export const UploadItem = ({
 
   return (
     <Fragment>
-      <Card title={file.name}>
+      <Card title={fileName}>
         <div className={styles.content}>
           <div className={styles.labelContainer}>
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
@@ -296,7 +296,7 @@ export const UploadItem = ({
       {validation && detailsOpen && (
         <ValidationDetailModal
           isOpen
-          filename={file.name}
+          filename={fileName}
           counts={validation.counts}
           messages={validation.messages}
           threshold={validation.threshold}
