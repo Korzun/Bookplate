@@ -37,30 +37,34 @@ export const FieldList = ({
       <div className={style.rowContainer}>
         {rows.map((row) => (
           <div className={style.row} key={row._key}>
-            {columns.map((col) => (
-              <div className={style.field} key={col.key}>
-                {col.type === 'text' ? (
-                  <TextInput
-                    name={`${row._key}.${col.key}`}
-                    placeholder={col.placeholder}
-                    validate={col.validate}
-                    value={row[col.key] !== undefined ? String(row[col.key]) : ''}
-                    onChange={(newValue) => onChange(row._key, col.key, newValue)}
-                    onValidChange={onValidChange}
-                  />
-                ) : (
-                  <NumberInput
-                    label={undefined}
-                    name={`${row._key}.${col.key}`}
-                    placeholder={col.placeholder}
-                    validate={col.validate}
-                    value={typeof row[col.key] === 'number' ? (row[col.key] as number) : undefined}
-                    onChange={(newValue) => onChange(row._key, col.key, newValue)}
-                    onValidChange={onValidChange}
-                  />
-                )}
-              </div>
-            ))}
+            <div className={style.fields}>
+              {columns.map((col) => (
+                <div className={style.field} key={col.key}>
+                  {col.type === 'text' ? (
+                    <TextInput
+                      name={`${row._key}.${col.key}`}
+                      placeholder={col.placeholder}
+                      validate={col.validate}
+                      value={row[col.key] !== undefined ? String(row[col.key]) : ''}
+                      onChange={(newValue) => onChange(row._key, col.key, newValue)}
+                      onValidChange={onValidChange}
+                    />
+                  ) : (
+                    <NumberInput
+                      label={undefined}
+                      name={`${row._key}.${col.key}`}
+                      placeholder={col.placeholder}
+                      validate={col.validate}
+                      value={
+                        typeof row[col.key] === 'number' ? (row[col.key] as number) : undefined
+                      }
+                      onChange={(newValue) => onChange(row._key, col.key, newValue)}
+                      onValidChange={onValidChange}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
             <Button type="link" danger title="Remove row" onClick={() => onRemove(row._key)}>
               <RowRemoveIcon height={20} width={20} strokeWidth={2} />
             </Button>
