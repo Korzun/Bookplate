@@ -4,17 +4,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
     ...theme.recipe.card.shell,
     '&$small': { borderRadius: '9px' },
-    '&$allowOverflow': { overflow: 'visible' },
   },
   header: {
     ...theme.recipe.card.header,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
     '&$danger': { color: theme.color.danger.default },
     '&$collapsed': {
       borderBottomStyle: 'none',
-      borderBottomLeftRadius: theme.radius.lg,
-      borderBottomRightRadius: theme.radius.lg,
     },
   },
   headerAction: {
@@ -23,10 +18,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   footer: {
     ...theme.recipe.card.footer,
-    // Round the bottom corners so the footer still looks right when a card
-    // opts into `allowOverflow` (which drops the shell's clipping).
-    borderBottomLeftRadius: theme.radius.lg,
-    borderBottomRightRadius: theme.radius.lg,
   },
   title: {
     fontWeight: theme.fontWeight.semibold,
@@ -75,5 +66,4 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   danger: {},
   small: {},
   large: {},
-  allowOverflow: {},
 }));
