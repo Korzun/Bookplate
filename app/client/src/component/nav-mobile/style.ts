@@ -142,5 +142,16 @@ export const useStyle = createUseStyles((theme: Theme) => {
     layerItem: {
       ...tab,
     },
+    badge: {
+      position: 'absolute',
+      top: '2px',
+      right: '10px',
+      minWidth: '8px',
+      height: '8px',
+      padding: 0,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.color.danger.default,
+      pointerEvents: 'none',
+    },
   };
 });

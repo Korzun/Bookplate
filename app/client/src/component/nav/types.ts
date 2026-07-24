@@ -8,4 +8,6 @@ export interface NavItem {
   label: string;
   Icon: (props: IconProps) => ReactElement;
   active: boolean;
+  /** A count of pending fixes, or `'dot'` for "active, nothing to decide yet". */
+  badge?: number | 'dot';
 }

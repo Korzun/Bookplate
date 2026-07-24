@@ -114,10 +114,14 @@ export const NavMobile = ({ items }: NavMobileProps) => {
           style={lensStyle}
           aria-hidden="true"
         />
-        {items.map(({ to, label, Icon, active }) => (
+        {items.map(({ to, label, Icon, active, badge }) => (
           <Link key={to} className={styles.item} aria-current={active ? 'page' : undefined} to={to}>
             <Icon height={14} width={14} />
             {label}
+            {typeof badge === 'number' && badge > 0 && (
+              <span className={styles.badge}>{badge}</span>
+            )}
+            {badge === 'dot' && <span className={styles.badge} data-testid="nav-badge-dot" />}
           </Link>
         ))}
         <div className={styles.grayLayer} aria-hidden="true">

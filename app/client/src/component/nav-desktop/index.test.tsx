@@ -35,3 +35,22 @@ describe('NavDesktop', () => {
     expect(container.querySelector('#nav-desktop-noise')).toBeNull();
   });
 });
+
+function badgeItems(badge: NavItem['badge']): NavItem[] {
+  return [{ to: '/upload', label: 'Upload', Icon: UploadIcon, active: false, badge }];
+}
+
+describe('NavDesktop badge', () => {
+  it('renders the count when badge is a positive number', () => {
+    renderWithProviders(<NavDesktop items={badgeItems(3)} />);
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+  it('renders a dot (no number) when badge is "dot"', () => {
+    renderWithProviders(<NavDesktop items={badgeItems('dot')} />);
+    expect(screen.getByTestId('nav-badge-dot')).toBeTruthy();
+  });
+  it('renders nothing when badge is undefined', () => {
+    renderWithProviders(<NavDesktop items={badgeItems(undefined)} />);
+    expect(screen.queryByTestId('nav-badge-dot')).toBeNull();
+  });
+});
