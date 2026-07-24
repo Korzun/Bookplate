@@ -32,10 +32,7 @@ export function renderWithProviders(
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter
-        initialEntries={initialEntries}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
+      <MemoryRouter initialEntries={initialEntries}>
         <ThemeProvider>
           <ToastProvider>
             <AuthContext.Provider value={authState}>{children}</AuthContext.Provider>
