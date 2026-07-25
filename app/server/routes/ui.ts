@@ -1172,7 +1172,11 @@ export function createUiRouter(
             `Metadata edit rejected: edited EPUB failed validation for book=${book.id}: ` +
               err.messages
                 .map(
-                  (m) => `${m.severity} ${m.id} ${m.message}${m.location ? ` @ ${m.location}` : ''}`
+                  (m) =>
+                    `${m.severity} ${m.id} ${m.message}` +
+                    (m.location
+                      ? ` @ ${m.location.path}${m.location.line != null ? `:${m.location.line}` : ''}`
+                      : '')
                 )
                 .join('; ')
           );
