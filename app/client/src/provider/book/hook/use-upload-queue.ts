@@ -2,7 +2,6 @@ import { useCallback, use, useEffect, useLayoutEffect, useRef, useState } from '
 
 import type { ValidationFailure } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
-import { loadQueue, saveQueue } from '~/provider/upload/persistence';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -107,7 +106,7 @@ async function fetchBookSnapshot(
 }
 
 export const useUploadQueueEngine = (): UseUploadQueue => {
-  const [items, setItems] = useState<UploadItem[]>(() => loadQueue());
+  const [items, setItems] = useState<UploadItem[]>([]);
   const [maxConcurrent, setMaxConcurrent] = useState(3);
   const fetchBookList = useFetchBookList();
   const { clearCompleteBookIds } = use(Context);
@@ -143,11 +142,6 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
         // keep default of 3 on failure
       });
   }, []);
-
-  // Persist the "needs-attention" subset so pending fixes survive a reload.
-  useEffect(() => {
-    saveQueue(items);
-  }, [items]);
 
   // Rolling concurrency: start uploads whenever a slot is free
   useEffect(() => {
