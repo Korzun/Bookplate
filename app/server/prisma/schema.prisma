@@ -35,6 +35,7 @@ model Book {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   seriesRel       Series?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   thumbnails      BookThumbnail[]
+  pendingFix      PendingFix?
 
   @@id([userId, id])
   @@map("books")
@@ -56,6 +57,21 @@ model Series {
 
   @@unique([userId, name])
   @@map("series")
+}
+
+model PendingFix {
+  userId    String @map("user_id")
+  bookId    String @map("book_id")
+  fileName  String @map("file_name")
+  fileSize  Int    @map("file_size")
+  state     String
+  createdAt Float  @default(dbgenerated("strftime('%s','now') * 1000")) @map("created_at")
+  updatedAt Float  @map("updated_at")
+
+  book Book @relation(fields: [userId, bookId], references: [userId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, bookId])
+  @@map("pending_fixes")
 }
 
 model BookThumbnail {

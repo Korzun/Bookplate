@@ -1745,6 +1745,26 @@ describe('book_thumbnails', () => {
   });
 });
 
+describe('pending_fixes table', () => {
+  it('round-trips a row and cascades on book delete', async () => {
+    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
+    await prisma.pendingFix.create({
+      data: {
+        userId: OWNER.userId,
+        bookId: 'abc123',
+        fileName: 'x.epub',
+        fileSize: 10,
+        state: '{"autoFixes":[],"appliedFixes":[],"proposals":[],"undo":null}',
+        updatedAt: 1,
+      },
+    });
+    expect(await prisma.pendingFix.findMany({ where: { userId: OWNER.userId } })).toHaveLength(1);
+
+    await bookStore.deleteBook(OWNER, 'abc123');
+    expect(await prisma.pendingFix.findMany({ where: { userId: OWNER.userId } })).toHaveLength(0);
+  });
+});
+
 describe('book_id_history table', () => {
   it('creates the book_id_history table during migration', async () => {
     const cols = await prisma.$queryRaw<Array<{ name: string }>>`
