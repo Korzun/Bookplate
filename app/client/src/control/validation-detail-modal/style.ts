@@ -79,10 +79,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   severityBlocking: {
     color: theme.color.danger.default,
     fontWeight: theme.fontWeight.semibold,
+    textTransform: 'uppercase',
   },
   severityMuted: {
     color: theme.color.text.muted,
     fontWeight: theme.fontWeight.semibold,
+    textTransform: 'uppercase',
   },
   id: {
     fontFamily: theme.fontFamily.mono,
@@ -94,6 +96,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   subject: {
     fontFamily: theme.fontFamily.mono,
+    fontSize: '0.9em',
+    // Markdown-style inline code: a subtle tinted chip with a faint border.
+    backgroundColor: theme.color.bg.hover,
+    border: `1px solid ${theme.color.border.faint}`,
+    borderRadius: theme.radius.sm,
+    padding: '0.1em 0.35em',
     // Long unbroken subjects (paths, fragment ids) break mid-token instead of
     // overflowing the modal width.
     overflowWrap: 'anywhere',
