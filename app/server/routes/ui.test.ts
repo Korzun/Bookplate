@@ -3177,3 +3177,103 @@ describe('GET /api/series/:name/next-index', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('pending-fixes endpoints', () => {
+  it('GET returns the user rows; PUT upserts; DELETE removes', async () => {
+    const token = await loginAlice();
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    const bookId = 'pf-book-1';
+    await bookStore.addBook(aliceOwner, bookId, stage(bookId), FAKE_META);
+
+    const put = await request(app)
+      .put(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token))
+      .send({
+        fileName: 'x.epub',
+        fileSize: 10,
+        state: {
+          autoFixes: [],
+          appliedFixes: [],
+          proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+          undo: null,
+        },
+      });
+    expect(put.status).toBe(204);
+
+    const list = await request(app)
+      .get('/api/books/pending-fixes')
+      .set(...bearer(token));
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0]).toMatchObject({ bookId, fileName: 'x.epub', fileSize: 10 });
+
+    const del = await request(app)
+      .delete(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token));
+    expect(del.status).toBe(204);
+    expect(
+      (
+        await request(app)
+          .get('/api/books/pending-fixes')
+          .set(...bearer(token))
+      ).body
+    ).toHaveLength(0);
+  });
+
+  it('PUT with fully-resolved state deletes the row', async () => {
+    const token = await loginAlice();
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    const bookId = 'pf-book-2';
+    await bookStore.addBook(aliceOwner, bookId, stage(bookId), FAKE_META);
+
+    await request(app)
+      .put(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token))
+      .send({
+        fileName: 'x.epub',
+        fileSize: 10,
+        state: {
+          autoFixes: [],
+          appliedFixes: [],
+          proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+          undo: null,
+        },
+      });
+    await request(app)
+      .put(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token))
+      .send({
+        fileName: 'x.epub',
+        fileSize: 10,
+        state: { autoFixes: [], appliedFixes: [], proposals: [], undo: null },
+      });
+    expect(
+      (
+        await request(app)
+          .get('/api/books/pending-fixes')
+          .set(...bearer(token))
+      ).body
+    ).toHaveLength(0);
+  });
+
+  it('PUT with a missing/wrong-typed body returns 400', async () => {
+    const token = await loginAlice();
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    const bookId = 'pf-book-3';
+    await bookStore.addBook(aliceOwner, bookId, stage(bookId), FAKE_META);
+
+    const res = await request(app)
+      .put(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token))
+      .send({ fileName: 'x.epub', fileSize: 'not-a-number', state: {} });
+    expect(res.status).toBe(400);
+  });
+
+  it('a non-admin cannot read another user via ?user=', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/pending-fixes?user=someoneelse')
+      .set(...bearer(token));
+    expect(res.status).toBe(403);
+  });
+});

@@ -813,6 +813,53 @@ export function createUiRouter(
   );
 
   router.get(
+    '/api/books/pending-fixes',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      res.json(await bookStore.getPendingFixes(owner));
+    })
+  );
+
+  router.put(
+    '/api/books/:id/pending-fixes',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const { fileName, fileSize, state } = req.body ?? {};
+      if (
+        typeof fileName !== 'string' ||
+        typeof fileSize !== 'number' ||
+        typeof state !== 'object' ||
+        state === null
+      ) {
+        res.status(400).json({ error: 'fileName, fileSize, and state are required' });
+        return;
+      }
+      await bookStore.upsertPendingFix(owner, req.params.id, fileName, fileSize, {
+        autoFixes: state.autoFixes ?? [],
+        appliedFixes: state.appliedFixes ?? [],
+        proposals: state.proposals ?? [],
+        undo: state.undo ?? null,
+      });
+      res.status(204).end();
+    })
+  );
+
+  router.delete(
+    '/api/books/:id/pending-fixes',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      await bookStore.deletePendingFix(owner, req.params.id);
+      res.status(204).end();
+    })
+  );
+
+  router.get(
     '/api/books/:id',
     requireAuth,
     asyncHandler(async (req: Request, res: Response) => {
