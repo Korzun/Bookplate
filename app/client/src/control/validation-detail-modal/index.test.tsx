@@ -171,6 +171,39 @@ describe('ValidationDetailModal location phrasing', () => {
   });
 });
 
+describe('ValidationDetailModal message subjects', () => {
+  it('renders subject segments as monospaced <code> without quotes', () => {
+    renderModal({
+      messages: [
+        {
+          id: 'RSC-007',
+          severity: 'ERROR',
+          message: 'Referenced resource "text/001-ch1.xhtml#pg-11" could not be found.',
+          segments: [
+            { text: 'Referenced resource ' },
+            { text: 'text/001-ch1.xhtml#pg-11', subject: true },
+            { text: ' could not be found.' },
+          ],
+        },
+      ],
+      counts: { ERROR: 1 },
+    });
+    const subject = screen.getByText('text/001-ch1.xhtml#pg-11');
+    expect(subject.tagName).toBe('CODE');
+    // the quotes are dropped from the rendered output
+    expect(screen.queryByText(/"text/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Referenced resource/)).toBeInTheDocument();
+  });
+
+  it('falls back to the raw message when segments are absent', () => {
+    renderModal({
+      messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+      counts: { FATAL: 1 },
+    });
+    expect(screen.getByText('unreadable')).toBeInTheDocument();
+  });
+});
+
 describe('ValidationDetailModal severity grouping', () => {
   it('renders a labeled separator per non-empty severity, most severe first', () => {
     renderModal({

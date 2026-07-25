@@ -92,6 +92,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.primary,
     flexBasis: '100%',
   },
+  subject: {
+    fontFamily: theme.fontFamily.mono,
+    // Long unbroken subjects (paths, fragment ids) break mid-token instead of
+    // overflowing the modal width.
+    overflowWrap: 'anywhere',
+  },
   locationLabel: {
     fontSize: theme.fontSize.xs,
     color: theme.color.text.faint,

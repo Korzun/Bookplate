@@ -4,10 +4,21 @@ export type Severity = 'FATAL' | 'ERROR' | 'WARNING' | 'INFO' | 'USAGE';
 // book; 'NONE' accepts everything. Mirrors the server's ValidationThreshold.
 export type ValidationThreshold = Severity | 'NONE';
 
+// A message split into display runs. A run with `subject: true` was a
+// double-quoted span in the raw message (quotes stripped) and renders
+// monospaced. Mirrors the server's MessageSegment.
+export interface MessageSegment {
+  text: string;
+  subject?: boolean;
+}
+
 export interface ValidationMessage {
   id: string;
   severity: Severity;
   message: string;
+  // Server-provided prose/subject runs for display; falls back to `message`
+  // when absent (e.g. hand-built fixtures).
+  segments?: MessageSegment[];
   location?: { path: string; line?: number; column?: number };
 }
 
