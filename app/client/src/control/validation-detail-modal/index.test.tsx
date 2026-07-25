@@ -44,7 +44,7 @@ function renderModal(overrides: {
 const counts = { FATAL: 1, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 };
 const messages: ValidationMessage[] = [
   { id: 'PKG-003', severity: 'FATAL', message: 'unreadable' },
-  { id: 'RSC-005', severity: 'ERROR', message: 'parse error', location: 'OEBPS/ch1.xhtml' },
+  { id: 'RSC-005', severity: 'ERROR', message: 'parse error', location: { path: 'OEBPS/ch1.xhtml' } },
 ];
 
 describe('ValidationDetailModal', () => {
@@ -63,7 +63,7 @@ describe('ValidationDetailModal', () => {
     expect(screen.getByText('unreadable')).toBeTruthy();
     expect(screen.getByText('RSC-005')).toBeTruthy();
     expect(screen.getByText('parse error')).toBeTruthy();
-    expect(screen.getByText('at OEBPS/ch1.xhtml')).toBeTruthy();
+    expect(screen.getByText('in OEBPS/ch1.xhtml')).toBeTruthy();
   });
 
   it('calls onClose when the Close button is clicked', () => {
@@ -127,5 +127,37 @@ describe('ValidationDetailModal subtitle', () => {
     expect(danger.tagName).toBe('STRONG');
     expect(strong.tagName).toBe('STRONG');
     expect(screen.getByText(/before this EPUB can be uploaded\./)).toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal location phrasing', () => {
+  it('says "at path:line" when a line is present', () => {
+    renderModal({
+      messages: [
+        {
+          id: 'RSC-005',
+          severity: 'ERROR',
+          message: 'parse error',
+          location: { path: 'content.opf', line: 12 },
+        },
+      ],
+      counts: { ERROR: 1 },
+    });
+    expect(screen.getByText('at content.opf:12')).toBeInTheDocument();
+  });
+
+  it('says "in path" when only a path is present', () => {
+    renderModal({
+      messages: [
+        {
+          id: 'PKG-006',
+          severity: 'FATAL',
+          message: 'bad mimetype',
+          location: { path: 'mimetype' },
+        },
+      ],
+      counts: { FATAL: 1 },
+    });
+    expect(screen.getByText('in mimetype')).toBeInTheDocument();
   });
 });

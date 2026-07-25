@@ -59,7 +59,13 @@ export function ValidationDetailModal({
                 <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>
                 <span className={styles.id}>{m.id}</span>
                 <span className={styles.text}>{m.message}</span>
-                {m.location && <span className={styles.location}>at {m.location}</span>}
+                {m.location && (
+                  <span className={styles.location}>
+                    {m.location.line != null
+                      ? `at ${m.location.path}:${m.location.line}`
+                      : `in ${m.location.path}`}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

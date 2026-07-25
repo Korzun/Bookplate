@@ -8,7 +8,7 @@ export interface ValidationMessage {
   id: string;
   severity: Severity;
   message: string;
-  location?: string;
+  location?: { path: string; line?: number; column?: number };
 }
 
 export interface ValidationFailure {
