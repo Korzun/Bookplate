@@ -55,7 +55,7 @@ export function ValidationDetailModal({
             uploaded.
           </p>
           <div className={styles.countsRow}>
-            <SeverityCounts counts={counts} threshold={threshold} />
+            <SeverityCounts counts={counts} threshold={threshold} pluralize />
             {hasNonBlocking && (
               <Button type="link" className={styles.toggle} onClick={() => setShowAll((v) => !v)}>
                 {showAll ? 'Show blocking only' : 'Show all messages'}

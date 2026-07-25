@@ -42,6 +42,18 @@ describe('SeverityCounts', () => {
     expect(screen.getByText('2 Warning').getAttribute('data-blocking')).toBe('false');
   });
 
+  it('pluralizes labels by count when pluralize is set', () => {
+    renderWithProviders(
+      <SeverityCounts
+        counts={{ FATAL: 1, ERROR: 2, WARNING: 0, INFO: 0, USAGE: 0 }}
+        threshold="ERROR"
+        pluralize
+      />
+    );
+    expect(screen.getByText('1 Fatal')).toBeTruthy();
+    expect(screen.getByText('2 Errors')).toBeTruthy();
+  });
+
   it('renders nothing when all counts are zero', () => {
     const { container } = renderWithProviders(
       <SeverityCounts
