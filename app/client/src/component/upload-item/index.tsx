@@ -38,7 +38,7 @@ const STATUS_LABEL: Record<UploadItemStatus, string> = {
   queued: 'Queued',
   uploading: 'Uploading',
   done: 'Upload complete',
-  error: 'Upload error',
+  error: 'Upload failed',
 };
 
 // The undo `kind` is stored as the internal action name ('apply'/'dismiss');
@@ -98,7 +98,9 @@ export const UploadItem = ({
 
   const rightLabel = (() => {
     if (status === 'error') {
-      return errorMessage ?? 'Upload failed';
+      // The left status label already reads "Upload failed"; the right side shows
+      // the server's specific message when there is one, otherwise nothing.
+      return errorMessage ?? '';
     }
     if (status === 'queued') {
       return `${totalMB} MB`;
@@ -111,8 +113,7 @@ export const UploadItem = ({
 
   // A rejected upload carrying a validation payload was turned away by epubcheck;
   // a plain error is a transport/server failure. Name them distinctly.
-  const statusLabel =
-    status === 'error' && validation ? 'Book validation failure' : STATUS_LABEL[status];
+  const statusLabel = status === 'error' && validation ? 'Validation failed' : STATUS_LABEL[status];
 
   const dismissAction =
     status === 'done' && proposals.length === 0 ? (
