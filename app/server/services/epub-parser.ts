@@ -402,12 +402,33 @@ export function parseEpub(filePath: string): EpubMeta {
     ).trim()
   );
 
+  const metas: Array<{
+    '@_name'?: string;
+    '@_content'?: string;
+    '@_property'?: string;
+    '@_refines'?: string;
+    '#text'?: string;
+  }> = metadata?.meta ?? [];
+
   const rawIdentifiers = (metadata['dc:identifier'] ?? []) as MetaLike[];
   const identifiers = rawIdentifiers
     .map((item) => {
       const value = (typeof item === 'string' ? item : (item['#text'] ?? '')).trim();
+      const idAttr = typeof item === 'object' ? (item['@_id'] ?? '') : '';
       const schemeAttr = typeof item === 'object' ? ((item['@_opf:scheme'] as string) ?? '') : '';
-      const scheme = schemeAttr || inferScheme(value);
+      // EPUB 3 carries the scheme as <meta refines property="identifier-type">
+      // rather than an opf:scheme attribute. Inference wins over the refinement
+      // so a recognizable value still shows a friendly scheme (e.g. "ISBN")
+      // rather than a raw ONIX code list 5 value ("15"); the refinement is the
+      // last resort, which recovers schemes inference can't derive (e.g. Google).
+      const refineType =
+        !schemeAttr && idAttr
+          ? metas.find(
+              (m) => m['@_property'] === 'identifier-type' && m['@_refines'] === `#${idAttr}`
+            )
+          : undefined;
+      const refineScheme = refineType ? (refineType['#text'] ?? '').trim() : '';
+      const scheme = schemeAttr || inferScheme(value) || refineScheme;
       return { scheme, value };
     })
     .filter(({ value }) => value !== '');
@@ -416,14 +437,6 @@ export function parseEpub(filePath: string): EpubMeta {
   const subjects = rawSubjects
     .map((item) => decodeEntities((typeof item === 'string' ? item : (item['#text'] ?? '')).trim()))
     .filter(Boolean);
-
-  const metas: Array<{
-    '@_name'?: string;
-    '@_content'?: string;
-    '@_property'?: string;
-    '@_refines'?: string;
-    '#text'?: string;
-  }> = metadata?.meta ?? [];
 
   let calibreSeries = '';
   let calibreSeriesIndex = 0;
@@ -452,8 +465,18 @@ export function parseEpub(filePath: string): EpubMeta {
   const titleSort =
     attrTitleSort || (refinesMeta ? decodeEntities((refinesMeta['#text'] ?? '').trim()) : '');
 
-  // authorSort: dc:creator file-as only; no fallback to title
-  const authorSort = creatorCandidate.fileAs;
+  // authorSort: dc:creator file-as attribute, with an EPUB 3 <meta refines>
+  // fallback for the creator element (mirrors the titleSort handling above).
+  const attrAuthorSort = creatorCandidate.text ? creatorCandidate.fileAs : '';
+  const authorRefinesMeta =
+    !attrAuthorSort && creatorCandidate.id
+      ? metas.find(
+          (m) => m['@_property'] === 'file-as' && m['@_refines'] === `#${creatorCandidate.id}`
+        )
+      : undefined;
+  const authorSort =
+    attrAuthorSort ||
+    (authorRefinesMeta ? decodeEntities((authorRefinesMeta['#text'] ?? '').trim()) : '');
 
   // publishDate: dc:date, validated as ISO 8601; discard invalid values
   // fast-xml-parser may give string, {#text:...} (when attrs present), or array (multiple elements)
