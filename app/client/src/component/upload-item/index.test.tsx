@@ -91,17 +91,17 @@ describe('UploadItem', () => {
     expect(screen.getByText('Invalid EPUB')).toBeTruthy();
   });
 
-  it('non-validation error: labels the status "Upload error"', () => {
+  it('non-validation error: labels the status "Upload failed"', () => {
     renderWithProviders(
       <UploadItem item={makeItem({ status: 'error', errorMessage: 'boom' })} {...noop} />
     );
-    expect(screen.getByText('Upload error')).toBeTruthy();
-    expect(screen.queryByText('Book validation failure')).toBeNull();
+    expect(screen.getByText('Upload failed')).toBeTruthy();
+    expect(screen.queryByText('Validation failed')).toBeNull();
   });
 
-  it('error: shows fallback text when no errorMessage', () => {
+  it('error with no message: shows the "Upload failed" status once (no duplicate)', () => {
     renderWithProviders(<UploadItem item={makeItem({ status: 'error' })} {...noop} />);
-    expect(screen.getByText('Upload failed')).toBeTruthy();
+    expect(screen.getAllByText('Upload failed')).toHaveLength(1);
   });
 
   it('validation error: shows severity counts and a Details button', () => {
@@ -118,7 +118,7 @@ describe('UploadItem', () => {
         {...noop}
       />
     );
-    expect(screen.getByText('Book validation failure')).toBeTruthy();
+    expect(screen.getByText('Validation failed')).toBeTruthy();
     expect(screen.getByText('1 Fatal')).toBeTruthy();
     expect(screen.getByText('1 Error')).toBeTruthy();
     expect(screen.getByText('2 Warning')).toBeTruthy();
