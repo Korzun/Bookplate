@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { Fragment, useCallback } from 'react';
 
-import { SEVERITY_LABEL } from '~/lib/severity';
+import { SEVERITY_LABEL, SEVERITY_ORDER } from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
+import { CardDivider } from '../../component/card-divider';
 import { Button } from '../button';
 import { SeverityCounts } from '../severity-counts';
 import { useModalDialog } from '../use-modal-dialog';
@@ -51,24 +52,35 @@ export function ValidationDetailModal({
           <div className={styles.counts}>
             <SeverityCounts counts={counts} threshold={threshold} />
           </div>
-          <ul className={styles.messageList}>
-            {/* messages contains every issue at or above the configured threshold — the reasons
-                this book was rejected — so the danger-colored label is always correct */}
-            {messages.map((m, i) => (
-              <li key={`${m.id}-${i}`} className={styles.message}>
-                <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>
-                <span className={styles.id}>{m.id}</span>
-                <span className={styles.text}>{m.message}</span>
-                {m.location && (
-                  <span className={styles.location}>
-                    {m.location.line != null
-                      ? `at ${m.location.path}:${m.location.line}`
-                      : `in ${m.location.path}`}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <div className={styles.messageList}>
+            {SEVERITY_ORDER.map((severity) => {
+              const group = messages.filter((m) => m.severity === severity);
+              if (group.length === 0) {
+                return null;
+              }
+              return (
+                <Fragment key={severity}>
+                  <CardDivider>{SEVERITY_LABEL[severity]}</CardDivider>
+                  <ul className={styles.group}>
+                    {group.map((m, i) => (
+                      <li key={`${m.id}-${i}`} className={styles.message}>
+                        <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>
+                        <span className={styles.id}>{m.id}</span>
+                        <span className={styles.text}>{m.message}</span>
+                        {m.location && (
+                          <span className={styles.location}>
+                            {m.location.line != null
+                              ? `at ${m.location.path}:${m.location.line}`
+                              : `in ${m.location.path}`}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </Fragment>
+              );
+            })}
+          </div>
         </div>
         <div className={styles.footer}>
           <Button onClick={onClose} type="primary" radius="modal">

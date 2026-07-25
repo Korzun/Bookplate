@@ -44,7 +44,12 @@ function renderModal(overrides: {
 const counts = { FATAL: 1, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 };
 const messages: ValidationMessage[] = [
   { id: 'PKG-003', severity: 'FATAL', message: 'unreadable' },
-  { id: 'RSC-005', severity: 'ERROR', message: 'parse error', location: { path: 'OEBPS/ch1.xhtml' } },
+  {
+    id: 'RSC-005',
+    severity: 'ERROR',
+    message: 'parse error',
+    location: { path: 'OEBPS/ch1.xhtml' },
+  },
 ];
 
 describe('ValidationDetailModal', () => {
@@ -159,5 +164,26 @@ describe('ValidationDetailModal location phrasing', () => {
       counts: { FATAL: 1 },
     });
     expect(screen.getByText('in mimetype')).toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal severity grouping', () => {
+  it('renders a labeled separator per non-empty severity, most severe first', () => {
+    renderModal({
+      messages: [
+        { id: 'RSC-012', severity: 'ERROR', message: 'error one' },
+        { id: 'PKG-003', severity: 'FATAL', message: 'fatal one' },
+        { id: 'RSC-013', severity: 'ERROR', message: 'error two' },
+      ],
+      counts: { FATAL: 1, ERROR: 2 },
+      threshold: 'ERROR',
+    });
+    const separators = screen.getAllByRole('separator', { hidden: true });
+    const labels = separators.map((s) => s.textContent);
+    // Fatal group precedes Error group; no Warning/Info/Usage separators
+    expect(labels).toEqual(['Fatal', 'Error']);
+    // messages appear under their groups
+    expect(screen.getByText('fatal one')).toBeInTheDocument();
+    expect(screen.getByText('error two')).toBeInTheDocument();
   });
 });
