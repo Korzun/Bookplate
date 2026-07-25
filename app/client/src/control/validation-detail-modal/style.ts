@@ -34,6 +34,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   intro: {
     marginTop: 0,
+    marginBottom: theme.space.xxxl,
   },
   emphasisDanger: {
     color: theme.color.danger.default,
