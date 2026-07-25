@@ -69,7 +69,8 @@ describe('ValidationDetailModal', () => {
     expect(screen.getByText('unreadable')).toBeTruthy();
     expect(screen.getByText('RSC-005')).toBeTruthy();
     expect(screen.getByText('parse error')).toBeTruthy();
-    expect(screen.getByText('in OEBPS/ch1.xhtml')).toBeTruthy();
+    expect(screen.getByText('in')).toBeTruthy();
+    expect(screen.getByText('OEBPS/ch1.xhtml')).toBeTruthy();
   });
 
   it('calls onClose when the Close button is clicked', () => {
@@ -149,7 +150,8 @@ describe('ValidationDetailModal location phrasing', () => {
       ],
       counts: { ERROR: 1 },
     });
-    expect(screen.getByText('at content.opf:12')).toBeInTheDocument();
+    expect(screen.getByText('at')).toBeInTheDocument();
+    expect(screen.getByText('content.opf:12')).toBeInTheDocument();
   });
 
   it('says "in path" when only a path is present', () => {
@@ -164,7 +166,8 @@ describe('ValidationDetailModal location phrasing', () => {
       ],
       counts: { FATAL: 1 },
     });
-    expect(screen.getByText('in mimetype')).toBeInTheDocument();
+    expect(screen.getByText('in')).toBeInTheDocument();
+    expect(screen.getByText('mimetype')).toBeInTheDocument();
   });
 });
 

@@ -92,6 +92,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.primary,
     flexBasis: '100%',
   },
+  locationLabel: {
+    fontSize: theme.fontSize.xs,
+    color: theme.color.text.faint,
+  },
   location: {
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,

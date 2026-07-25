@@ -83,11 +83,16 @@ export function ValidationDetailModal({
                         </span>
                         <span className={styles.id}>{m.id}</span>
                         {m.location && (
-                          <span className={styles.location}>
-                            {m.location.line != null
-                              ? `at ${m.location.path}:${m.location.line}`
-                              : `in ${m.location.path}`}
-                          </span>
+                          <Fragment>
+                            <span className={styles.locationLabel}>
+                              {m.location.line != null ? 'at' : 'in'}
+                            </span>
+                            <span className={styles.location}>
+                              {m.location.line != null
+                                ? `${m.location.path}:${m.location.line}`
+                                : m.location.path}
+                            </span>
+                          </Fragment>
                         )}
                         <span className={styles.text}>{m.message}</span>
                       </li>
