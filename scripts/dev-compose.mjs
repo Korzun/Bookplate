@@ -72,6 +72,11 @@ async function main() {
   }
 
   const child = spawn('docker', ['compose', ...args], { stdio: 'inherit', env });
+  child.on('error', (err) => {
+    console.error(`\n  dev-compose: failed to run 'docker' (${err.message})`);
+    console.error(`  Tip: make sure Docker is installed and on your PATH.\n`);
+    process.exit(1);
+  });
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 
