@@ -24,6 +24,7 @@ const noop = {
   onDismissAll: () => {},
   onUndo: () => {},
   onDismissFix: () => {},
+  onDismissCompleted: () => {},
 };
 
 beforeAll(() => {
@@ -453,6 +454,24 @@ describe('UploadItem metadata fixes', () => {
     );
     expect(screen.queryByText(/Fixed/)).toBeNull();
     expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
+  });
+
+  it('done + armed undo: dismiss-completed control fires', () => {
+    const onDismissCompleted = vi.fn();
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({
+          status: 'done',
+          bytesUploaded: 1_048_576,
+          proposals: [],
+          undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+        })}
+        {...noop}
+        onDismissCompleted={onDismissCompleted}
+      />
+    );
+    fireEvent.click(screen.getByText(/dismiss upload/i));
+    expect(onDismissCompleted).toHaveBeenCalled();
   });
 
   it('renders a document (dcterms:modified) repair as a Fixed note', () => {

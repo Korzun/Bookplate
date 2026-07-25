@@ -51,6 +51,7 @@ export type UseUploadQueue = {
   dismissAllProposals: (itemId: string) => void;
   dismissFix: (itemId: string, fix: MetadataFix) => void;
   undo: (itemId: string) => Promise<boolean>;
+  dismissCompleted: (itemId: string) => void;
 };
 
 /** Fixes have no server id — the queue identifies them by field:kind:from so
@@ -527,6 +528,17 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     [patchBookMetadata]
   );
 
+  // Removes a completed row (armed undo, auto-fixed-only, or fully resolved)
+  // from the queue and clears its server pending-fixes row, if any.
+  const dismissCompleted = useCallback((itemId: string) => {
+    const item = itemsRef.current.find((i) => i.id === itemId);
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    if (item?.bookId) {
+      syncedRef.current.delete(item.bookId);
+      void deletePendingFix(withTargetUserRef.current, item.bookId);
+    }
+  }, []);
+
   return {
     items,
     addFiles,
@@ -535,5 +547,6 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     dismissAllProposals,
     dismissFix,
     undo,
+    dismissCompleted,
   };
 };

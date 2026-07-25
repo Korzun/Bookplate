@@ -16,6 +16,7 @@ const base: UseUploadQueue = {
   dismissAllProposals: () => {},
   dismissFix: () => {},
   undo: async () => false,
+  dismissCompleted: () => {},
 };
 
 function item(overrides: Partial<UploadItem>): UploadItem {

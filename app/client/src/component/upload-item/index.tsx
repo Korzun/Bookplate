@@ -19,6 +19,7 @@ interface Props {
   onDismissAll: () => void | Promise<void>;
   onUndo: () => void | Promise<void>;
   onDismissFix: (fix: MetadataFix) => void;
+  onDismissCompleted?: () => void;
 }
 
 const FIELD_LABEL: Record<string, string> = {
@@ -47,6 +48,7 @@ export const UploadItem = ({
   onDismissAll,
   onUndo,
   onDismissFix,
+  onDismissCompleted,
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -291,6 +293,14 @@ export const UploadItem = ({
                 ))}
               </div>
             )}
+
+          {status === 'done' && proposals.length === 0 && (
+            <div className={styles.dismissRow}>
+              <Button type="link" onClick={() => onDismissCompleted?.()}>
+                Dismiss upload
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
       {validation && detailsOpen && (
