@@ -2,6 +2,7 @@ import { useCallback, use, useEffect, useLayoutEffect, useRef, useState } from '
 
 import type { ValidationFailure } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
+import { getPendingFixes, putPendingFix, deletePendingFix } from '~/provider/upload/api';
 
 import { apiFetch, ensureFreshToken } from '../../../lib/api-fetch';
 import { Context } from '../context';
@@ -25,7 +26,7 @@ export type UndoSnapshot = {
 export type UploadItem = {
   id: string;
   /** The picked file — present only for live (session-added) items; absent for
-   * items rehydrated from storage after a reload. */
+   * items seeded from the server's pending-fixes fetch on mount. */
   file?: File;
   /** File identity kept separately so an item can be serialized without the blob. */
   fileName: string;
@@ -56,6 +57,29 @@ export type UseUploadQueue = {
  * multiple compound-subject splits (same field+kind, different compound) stay
  * distinct. */
 export const fixKey = (fix: MetadataFix): string => `${fix.field}:${fix.kind}:${fix.from}`;
+
+const stateOf = (i: UploadItem) => ({
+  autoFixes: i.autoFixes ?? [],
+  appliedFixes: i.appliedFixes ?? [],
+  proposals: i.proposals ?? [],
+  undo: i.undo ?? null,
+});
+
+/** Stable-key-order serialization of an item's (or DTO row's) fix-state, used
+ * to detect changes worth syncing to the server. `undo` is normalized to
+ * `null` so a DTO's `null` and an item's `undefined` compare equal. */
+const serializeState = (i: {
+  autoFixes?: unknown;
+  appliedFixes?: unknown;
+  proposals?: unknown;
+  undo?: unknown;
+}) =>
+  JSON.stringify({
+    autoFixes: i.autoFixes ?? [],
+    appliedFixes: i.appliedFixes ?? [],
+    proposals: i.proposals ?? [],
+    undo: i.undo ?? null,
+  });
 
 const isSubjectSplit = (fix: MetadataFix): boolean =>
   fix.field === 'subjects' && fix.kind === 'subjects-split';
@@ -126,6 +150,10 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   const withTargetUserRef = useRef(withTargetUser);
   // Latest items, read by the fix actions so callbacks stay stable
   const itemsRef = useRef(items);
+  // Last fix-state synced to the server per bookId — lets the sync effect
+  // diff against what the server already has instead of re-PUTing unchanged
+  // items on every render (e.g. progress ticks).
+  const syncedRef = useRef(new Map<string, string>());
   useLayoutEffect(() => {
     fetchBookListRef.current = fetchBookList;
     clearCompleteBookIdsRef.current = clearCompleteBookIds;
@@ -142,6 +170,62 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
         // keep default of 3 on failure
       });
   }, []);
+
+  // Seed the queue from the server's pending-fix records on mount so a reload
+  // restores books with unresolved fixes. bookId (MD5-hex) is the item id —
+  // it can't collide with the numeric session counter used by addFiles.
+  useEffect(() => {
+    let cancelled = false;
+    void getPendingFixes(withTargetUserRef.current).then((rows) => {
+      if (cancelled) return;
+      const seeded: UploadItem[] = rows.map((r) => ({
+        id: r.bookId,
+        fileName: r.fileName,
+        fileSize: r.fileSize,
+        status: 'done' as const,
+        bytesUploaded: r.fileSize,
+        bookId: r.bookId,
+        autoFixes: r.autoFixes,
+        appliedFixes: r.appliedFixes,
+        proposals: r.proposals,
+        undo: r.undo ?? undefined,
+      }));
+      // Initialize the sync baseline so we don't immediately echo seeds back.
+      for (const r of rows) syncedRef.current.set(r.bookId, serializeState(r));
+      setItems((prev) => [...seeded, ...prev]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist each done item's fix-state to the server when it changes. Keyed by
+  // bookId so a bookId change (apply → new fingerprint) writes under the new id;
+  // the server already migrated the old row via FK cascade. Progress ticks don't
+  // trigger a PUT because bytesUploaded isn't part of the serialized state.
+  useEffect(() => {
+    for (const item of items) {
+      if (item.status !== 'done' || !item.bookId) continue;
+      const serialized = serializeState(item);
+      const resolved = (item.proposals?.length ?? 0) === 0 && !item.undo;
+      const lastSynced = syncedRef.current.get(item.bookId);
+      if (resolved) {
+        if (lastSynced !== undefined) {
+          syncedRef.current.delete(item.bookId);
+          void deletePendingFix(withTargetUserRef.current, item.bookId);
+        }
+        continue;
+      }
+      if (lastSynced !== serialized) {
+        syncedRef.current.set(item.bookId, serialized);
+        void putPendingFix(withTargetUserRef.current, item.bookId, {
+          fileName: item.fileName,
+          fileSize: item.fileSize,
+          state: stateOf(item),
+        });
+      }
+    }
+  }, [items]);
 
   // Rolling concurrency: start uploads whenever a slot is free
   useEffect(() => {

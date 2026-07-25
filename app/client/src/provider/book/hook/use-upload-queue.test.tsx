@@ -977,6 +977,7 @@ describe('useUploadQueueEngine', () => {
       .mock.calls.filter(
         (c) =>
           /^\/api\/books\/[^/]+$/.test(String(c[0])) &&
+          !String(c[0]).includes('/api/books/pending-fixes') &&
           (c[1] as RequestInit | undefined)?.method !== 'PATCH'
       );
     expect(bookGetCalls).toHaveLength(1);
