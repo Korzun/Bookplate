@@ -1,6 +1,6 @@
-import { Fragment, useCallback } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
-import { SEVERITY_LABEL, SEVERITY_ORDER } from '~/lib/severity';
+import { isBlockingAtThreshold, SEVERITY_LABEL, SEVERITY_ORDER } from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
 import { CardDivider } from '../../component/card-divider';
@@ -30,6 +30,11 @@ export function ValidationDetailModal({
   // Escape dismisses the modal the same way the Close button does.
   const modalRef = useModalDialog(isOpen, onClose);
 
+  const [showAll, setShowAll] = useState(false);
+  const blockingMessages = messages.filter((m) => isBlockingAtThreshold(m.severity, threshold));
+  const hasNonBlocking = blockingMessages.length < messages.length;
+  const visible = showAll ? messages : blockingMessages;
+
   const handleClickBackground = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -49,22 +54,33 @@ export function ValidationDetailModal({
             <strong className={styles.emphasisStrong}>must be fixed</strong> before this EPUB can be
             uploaded.
           </p>
-          <div className={styles.counts}>
+          <div className={styles.countsRow}>
             <SeverityCounts counts={counts} threshold={threshold} />
+            {hasNonBlocking && (
+              <Button type="link" className={styles.toggle} onClick={() => setShowAll((v) => !v)}>
+                {showAll ? 'Show blocking only' : 'Show all messages'}
+              </Button>
+            )}
           </div>
           <div className={styles.messageList}>
             {SEVERITY_ORDER.map((severity) => {
-              const group = messages.filter((m) => m.severity === severity);
+              const group = visible.filter((m) => m.severity === severity);
               if (group.length === 0) {
                 return null;
               }
+              const blocking = isBlockingAtThreshold(severity, threshold);
               return (
                 <Fragment key={severity}>
                   <CardDivider>{SEVERITY_LABEL[severity]}</CardDivider>
                   <ul className={styles.group}>
                     {group.map((m, i) => (
                       <li key={`${m.id}-${i}`} className={styles.message}>
-                        <span className={styles.severity}>{SEVERITY_LABEL[m.severity]}</span>
+                        <span
+                          data-blocking={blocking}
+                          className={blocking ? styles.severityBlocking : styles.severityMuted}
+                        >
+                          {SEVERITY_LABEL[m.severity]}
+                        </span>
                         <span className={styles.id}>{m.id}</span>
                         <span className={styles.text}>{m.message}</span>
                         {m.location && (

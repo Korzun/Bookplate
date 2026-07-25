@@ -42,8 +42,16 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   emphasisStrong: {
     fontWeight: theme.fontWeight.semibold,
   },
-  counts: {
+  countsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
+    flexWrap: 'wrap',
     marginBottom: theme.space.lg,
+  },
+  toggle: {
+    flexShrink: 0,
   },
   messageList: {
     display: 'flex',
@@ -66,8 +74,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.xs,
     fontSize: theme.fontSize.sm,
   },
-  severity: {
+  severityBlocking: {
     color: theme.color.danger.default,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  severityMuted: {
+    color: theme.color.text.muted,
     fontWeight: theme.fontWeight.semibold,
   },
   id: {

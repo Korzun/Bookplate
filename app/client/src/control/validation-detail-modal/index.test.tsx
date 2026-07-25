@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
@@ -185,5 +186,43 @@ describe('ValidationDetailModal severity grouping', () => {
     // messages appear under their groups
     expect(screen.getByText('fatal one')).toBeInTheDocument();
     expect(screen.getByText('error two')).toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal blocking-by-default toggle', () => {
+  const mixed: ValidationMessage[] = [
+    { id: 'PKG-003', severity: 'FATAL', message: 'fatal blocking' },
+    { id: 'CSS-999', severity: 'USAGE', message: 'usage non-blocking' },
+  ];
+
+  it('shows only blocking messages by default', () => {
+    renderModal({ messages: mixed, counts: { FATAL: 1, USAGE: 1 }, threshold: 'ERROR' });
+    expect(screen.getByText('fatal blocking')).toBeInTheDocument();
+    expect(screen.queryByText('usage non-blocking')).not.toBeInTheDocument();
+  });
+
+  it('reveals all messages when the toggle is clicked', async () => {
+    const user = userEvent.setup();
+    renderModal({ messages: mixed, counts: { FATAL: 1, USAGE: 1 }, threshold: 'ERROR' });
+    await user.click(screen.getByRole('button', { name: 'Show all messages', hidden: true }));
+    expect(screen.getByText('usage non-blocking')).toBeInTheDocument();
+    // the revealed non-blocking severity label is marked non-blocking
+    const row = screen.getByText('CSS-999').closest('li');
+    expect(row?.querySelector('[data-blocking]')).toHaveAttribute('data-blocking', 'false');
+    // toggle flips its label
+    expect(
+      screen.getByRole('button', { name: 'Show blocking only', hidden: true })
+    ).toBeInTheDocument();
+  });
+
+  it('hides the toggle when there are no non-blocking messages', () => {
+    renderModal({
+      messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'fatal blocking' }],
+      counts: { FATAL: 1 },
+      threshold: 'ERROR',
+    });
+    expect(
+      screen.queryByRole('button', { name: /show all messages/i, hidden: true })
+    ).not.toBeInTheDocument();
   });
 });
