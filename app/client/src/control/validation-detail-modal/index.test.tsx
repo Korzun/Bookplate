@@ -1,15 +1,45 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { ValidationMessage } from '~/lib/severity';
+import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 import { renderWithProviders } from '~/test-utils';
 
 import { ValidationDetailModal } from './index';
 
+// jsdom does not implement <dialog> showModal/close — stub them.
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn();
   HTMLDialogElement.prototype.close = vi.fn();
 });
+
+const EMPTY_COUNTS: Record<Severity, number> = {
+  FATAL: 0,
+  ERROR: 0,
+  WARNING: 0,
+  INFO: 0,
+  USAGE: 0,
+};
+
+// Shared harness for this modal's tests. Extend the `overrides` shape here as later
+// tasks need more control (e.g. filename, onClose spies) rather than duplicating props
+// across every test.
+function renderModal(overrides: {
+  messages?: ValidationMessage[];
+  counts?: Partial<Record<Severity, number>>;
+  threshold?: ValidationThreshold;
+}) {
+  const messages = overrides.messages ?? [];
+  return renderWithProviders(
+    <ValidationDetailModal
+      isOpen
+      filename="book.epub"
+      counts={{ ...EMPTY_COUNTS, ...overrides.counts }}
+      messages={messages}
+      threshold={overrides.threshold ?? 'ERROR'}
+      onClose={vi.fn()}
+    />
+  );
+}
 
 const counts = { FATAL: 1, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 };
 const messages: ValidationMessage[] = [
@@ -34,19 +64,6 @@ describe('ValidationDetailModal', () => {
     expect(screen.getByText('RSC-005')).toBeTruthy();
     expect(screen.getByText('parse error')).toBeTruthy();
     expect(screen.getByText('at OEBPS/ch1.xhtml')).toBeTruthy();
-  });
-
-  it('names the active rejection threshold', () => {
-    renderWithProviders(
-      <ValidationDetailModal
-        isOpen
-        filename="dune.epub"
-        counts={counts}
-        messages={messages}
-        threshold="WARNING"
-      />
-    );
-    expect(screen.getByText(/reached the Warning rejection threshold/i)).toBeTruthy();
   });
 
   it('calls onClose when the Close button is clicked', () => {
@@ -96,5 +113,19 @@ describe('ValidationDetailModal', () => {
     );
     fireEvent.click(screen.getByText('dune.epub'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('ValidationDetailModal subtitle', () => {
+  it('renders the rejection copy with emphasized phrases', () => {
+    renderModal({
+      messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+      counts: { FATAL: 1 },
+    });
+    const danger = screen.getByText('rejection threshold');
+    const strong = screen.getByText('must be fixed');
+    expect(danger.tagName).toBe('STRONG');
+    expect(strong.tagName).toBe('STRONG');
+    expect(screen.getByText(/before this EPUB can be uploaded\./)).toBeInTheDocument();
   });
 });

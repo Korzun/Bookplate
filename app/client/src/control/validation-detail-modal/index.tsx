@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { SEVERITY_LABEL, THRESHOLD_LABEL } from '~/lib/severity';
+import { SEVERITY_LABEL } from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
 import { Button } from '../button';
@@ -43,8 +43,10 @@ export function ValidationDetailModal({
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>
           <p className={styles.intro}>
-            These issues reached the {THRESHOLD_LABEL[threshold]} rejection threshold and must be
-            fixed before this EPUB can be added.
+            These issues reached the{' '}
+            <strong className={styles.emphasisDanger}>rejection threshold</strong> and{' '}
+            <strong className={styles.emphasisStrong}>must be fixed</strong> before this EPUB can be
+            uploaded.
           </p>
           <div className={styles.counts}>
             <SeverityCounts counts={counts} threshold={threshold} />
