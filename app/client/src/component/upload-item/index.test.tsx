@@ -104,6 +104,19 @@ describe('UploadItem', () => {
     expect(screen.getAllByText('Upload failed')).toHaveLength(1);
   });
 
+  it('error: offers a Dismiss upload control that fires onDismissCompleted', () => {
+    const onDismissCompleted = vi.fn();
+    renderWithProviders(
+      <UploadItem
+        item={makeItem({ status: 'error', errorMessage: 'boom' })}
+        {...noop}
+        onDismissCompleted={onDismissCompleted}
+      />
+    );
+    fireEvent.click(screen.getByText(/dismiss upload/i));
+    expect(onDismissCompleted).toHaveBeenCalled();
+  });
+
   it('validation error: shows severity counts and a Details button', () => {
     renderWithProviders(
       <UploadItem
