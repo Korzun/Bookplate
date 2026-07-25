@@ -35,5 +35,10 @@ export type {
   UploadResult,
 } from './type';
 export type { SeriesMeta, FetchSeriesNextIndex } from './hook';
-export type { UploadItem, UploadItemStatus, UseUploadQueue } from './hook/use-upload-queue';
+export type {
+  UndoSnapshot,
+  UploadItem,
+  UploadItemStatus,
+  UseUploadQueue,
+} from './hook/use-upload-queue';
 export type { Severity, ValidationMessage, ValidationFailure } from '~/lib/severity';

@@ -16,7 +16,25 @@ function Probe() {
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ ok: true, json: async () => ({ maxConcurrentUploads: 3 }) })) as never
+    vi.fn(async (url: string) => {
+      if (String(url).includes('/api/books/pending-fixes')) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              bookId: 'b1',
+              fileName: 'x.epub',
+              fileSize: 10,
+              autoFixes: [],
+              appliedFixes: [],
+              proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+              undo: null,
+            },
+          ],
+        };
+      }
+      return { ok: true, json: async () => ({ maxConcurrentUploads: 3 }) };
+    }) as never
   );
 });
 afterEach(() => {
@@ -25,7 +43,7 @@ afterEach(() => {
 });
 
 describe('UploadProvider', () => {
-  it('starts with an empty queue', () => {
+  it('seeds the queue from the server pending-fixes on mount', async () => {
     render(
       <MemoryRouter>
         <LibraryTargetProvider>
@@ -38,6 +56,6 @@ describe('UploadProvider', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('count:0')).toBeTruthy();
+    expect(await screen.findByText('count:1')).toBeTruthy();
   });
 });
