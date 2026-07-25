@@ -115,8 +115,10 @@ export const UploadItem = ({
   // a plain error is a transport/server failure. Name them distinctly.
   const statusLabel = status === 'error' && validation ? 'Validation failed' : STATUS_LABEL[status];
 
+  // Offer a clear-from-queue action on a failed upload, and on a completed one
+  // once there are no pending fixes left to decide.
   const dismissAction =
-    status === 'done' && proposals.length === 0 ? (
+    status === 'error' || (status === 'done' && proposals.length === 0) ? (
       <Button type="link" onClick={() => onDismissCompleted?.()}>
         Dismiss upload
       </Button>
