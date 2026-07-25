@@ -38,7 +38,7 @@ const STATUS_LABEL: Record<UploadItemStatus, string> = {
   queued: 'Queued',
   uploading: 'Uploading',
   done: 'Upload complete',
-  error: 'Error',
+  error: 'Upload error',
 };
 
 // The undo `kind` is stored as the internal action name ('apply'/'dismiss');
@@ -109,6 +109,11 @@ export const UploadItem = ({
     return `${uploadedMB} / ${totalMB} MB`;
   })();
 
+  // A rejected upload carrying a validation payload was turned away by epubcheck;
+  // a plain error is a transport/server failure. Name them distinctly.
+  const statusLabel =
+    status === 'error' && validation ? 'Book validation failure' : STATUS_LABEL[status];
+
   const dismissAction =
     status === 'done' && proposals.length === 0 ? (
       <Button type="link" onClick={() => onDismissCompleted?.()}>
@@ -122,7 +127,7 @@ export const UploadItem = ({
         <div className={styles.content}>
           <div className={styles.labelContainer}>
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
-            <div className={cx(styles.leftLabel, styles[status])}>{STATUS_LABEL[status]}</div>
+            <div className={cx(styles.leftLabel, styles[status])}>{statusLabel}</div>
             {validation ? (
               <div className={cx(styles.rightLabel, styles.validationLabel)}>
                 <SeverityCounts counts={validation.counts} threshold={validation.threshold} />
