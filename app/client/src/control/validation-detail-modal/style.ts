@@ -46,12 +46,18 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginBottom: theme.space.lg,
   },
   messageList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.md,
+  },
+  group: {
     listStyle: 'none',
     margin: 0,
     padding: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.md,
+    marginTop: theme.space.md,
   },
   message: {
     display: 'flex',
