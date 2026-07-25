@@ -94,7 +94,17 @@ export function ValidationDetailModal({
                             </span>
                           </Fragment>
                         )}
-                        <span className={styles.text}>{m.message}</span>
+                        <span className={styles.text}>
+                          {(m.segments ?? [{ text: m.message }]).map((seg, si) =>
+                            seg.subject ? (
+                              <code key={si} className={styles.subject}>
+                                {seg.text}
+                              </code>
+                            ) : (
+                              <Fragment key={si}>{seg.text}</Fragment>
+                            )
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>

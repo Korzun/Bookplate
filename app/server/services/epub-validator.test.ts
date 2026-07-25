@@ -2,7 +2,12 @@ import type { Message, Report } from '@korzun/epubcheck-ts';
 import { validateEpub } from '@korzun/epubcheck-ts';
 import type { MockedFunction } from 'vitest';
 
-import { assertValidEpub, EpubValidationError, formatMessages } from './epub-validator';
+import {
+  assertValidEpub,
+  EpubValidationError,
+  formatMessages,
+  splitSubjects,
+} from './epub-validator';
 
 vi.mock('@korzun/epubcheck-ts', () => ({ validateEpub: vi.fn() }));
 
@@ -152,5 +157,46 @@ describe('formatMessages', () => {
     ] as Message[]);
     expect(out[0].location).toBeUndefined();
     expect(out[1].location).toBeUndefined();
+  });
+
+  it('splits the message into subject segments with quotes stripped', () => {
+    const out = formatMessages([
+      {
+        id: 'RSC-007',
+        severity: 'ERROR',
+        message: 'Referenced resource "text/001-ch1.xhtml#pg-11" could not be found in the EPUB.',
+      },
+    ] as Message[]);
+    expect(out[0].segments).toEqual([
+      { text: 'Referenced resource ' },
+      { text: 'text/001-ch1.xhtml#pg-11', subject: true },
+      { text: ' could not be found in the EPUB.' },
+    ]);
+  });
+});
+
+describe('splitSubjects', () => {
+  it('extracts a single quoted subject and strips the quotes', () => {
+    expect(splitSubjects('Referenced resource "a/b.xhtml" could not be found.')).toEqual([
+      { text: 'Referenced resource ' },
+      { text: 'a/b.xhtml', subject: true },
+      { text: ' could not be found.' },
+    ]);
+  });
+
+  it('extracts multiple quoted subjects', () => {
+    expect(splitSubjects('"a.xhtml" conflicts with "b.xhtml"')).toEqual([
+      { text: 'a.xhtml', subject: true },
+      { text: ' conflicts with ' },
+      { text: 'b.xhtml', subject: true },
+    ]);
+  });
+
+  it('returns a single plain run when there are no quotes', () => {
+    expect(splitSubjects('unreadable EPUB')).toEqual([{ text: 'unreadable EPUB' }]);
+  });
+
+  it('leaves an unbalanced trailing quote as plain text', () => {
+    expect(splitSubjects('missing "close')).toEqual([{ text: 'missing "close' }]);
   });
 });
