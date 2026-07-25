@@ -794,6 +794,15 @@ export function createUiRouter(
           );
         }
 
+        if (proposals.length > 0) {
+          await bookStore.upsertPendingFix(owner, finalId, file.originalname, file.size, {
+            autoFixes: applied,
+            appliedFixes: [],
+            proposals,
+            undo: null,
+          });
+        }
+
         thumbnailQueue.enqueue(owner.userId, finalId);
         uploaded.push(file.originalname);
         results.push({ filename: file.originalname, bookId: finalId, applied, proposals });
