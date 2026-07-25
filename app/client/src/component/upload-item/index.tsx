@@ -102,9 +102,16 @@ export const UploadItem = ({
     return `${uploadedMB} / ${totalMB} MB`;
   })();
 
+  const dismissAction =
+    status === 'done' && proposals.length === 0 ? (
+      <Button type="link" onClick={() => onDismissCompleted?.()}>
+        Dismiss upload
+      </Button>
+    ) : undefined;
+
   return (
     <Fragment>
-      <Card title={fileName}>
+      <Card title={fileName} headerAction={dismissAction}>
         <div className={styles.content}>
           <div className={styles.labelContainer}>
             <div className={cx(styles.icon, styles[status])}>{icon}</div>
@@ -293,14 +300,6 @@ export const UploadItem = ({
                 ))}
               </div>
             )}
-
-          {status === 'done' && proposals.length === 0 && (
-            <div className={styles.dismissRow}>
-              <Button type="link" onClick={() => onDismissCompleted?.()}>
-                Dismiss upload
-              </Button>
-            </div>
-          )}
         </div>
       </Card>
       {validation && detailsOpen && (
