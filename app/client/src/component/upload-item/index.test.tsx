@@ -91,6 +91,14 @@ describe('UploadItem', () => {
     expect(screen.getByText('Invalid EPUB')).toBeTruthy();
   });
 
+  it('non-validation error: labels the status "Upload error"', () => {
+    renderWithProviders(
+      <UploadItem item={makeItem({ status: 'error', errorMessage: 'boom' })} {...noop} />
+    );
+    expect(screen.getByText('Upload error')).toBeTruthy();
+    expect(screen.queryByText('Book validation failure')).toBeNull();
+  });
+
   it('error: shows fallback text when no errorMessage', () => {
     renderWithProviders(<UploadItem item={makeItem({ status: 'error' })} {...noop} />);
     expect(screen.getByText('Upload failed')).toBeTruthy();
@@ -110,6 +118,7 @@ describe('UploadItem', () => {
         {...noop}
       />
     );
+    expect(screen.getByText('Book validation failure')).toBeTruthy();
     expect(screen.getByText('1 Fatal')).toBeTruthy();
     expect(screen.getByText('1 Error')).toBeTruthy();
     expect(screen.getByText('2 Warning')).toBeTruthy();
