@@ -679,4 +679,26 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     }
     log.info(`Data migration (series sort_key): updated ${updated} series`);
   });
+
+  // Data migration: create the pending_fixes table. This runs after
+  // data_v11_per_user_libraries (which establishes the composite (user_id, id)
+  // primary key on "books") so the FK on (user_id, book_id) is valid. The
+  // Prisma DDL migration (20260725000000_add_pending_fixes) is a no-op; see
+  // its comment for why the table can't be created there.
+  await runDataMigration(prisma, 'data_v16_pending_fixes', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "pending_fixes" (
+        "user_id" TEXT NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "file_name" TEXT NOT NULL,
+        "file_size" INTEGER NOT NULL,
+        "state" TEXT NOT NULL,
+        "created_at" REAL NOT NULL DEFAULT (strftime('%s','now') * 1000),
+        "updated_at" REAL NOT NULL,
+        PRIMARY KEY ("user_id", "book_id"),
+        CONSTRAINT "pending_fixes_book_fkey" FOREIGN KEY ("user_id", "book_id")
+          REFERENCES "books" ("user_id", "id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+  });
 }

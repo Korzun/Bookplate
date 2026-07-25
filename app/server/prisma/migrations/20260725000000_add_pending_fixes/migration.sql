@@ -1,0 +1,14 @@
+-- This migration is intentionally a no-op.
+--
+-- The pending_fixes table has a composite foreign key to books(user_id, id),
+-- which only becomes a valid target once the data_v11_per_user_libraries data
+-- migration rebuilds "books" with a composite primary key. Creating the table
+-- here (during the plain DDL migration pass, which runs before any data
+-- migration) would raise SQLite's "foreign key mismatch" error for databases
+-- still on the pre-per-user-libraries schema (i.e. real upgrades from an old
+-- install, exercised by the "migration v2" tests in book-store.test.ts).
+--
+-- The table is instead created by the data_v16_pending_fixes data migration
+-- in migrate.ts, which runs after data_v11_per_user_libraries, mirroring the
+-- series table's 20260613200000_add_series_table no-op migration.
+SELECT 1;
