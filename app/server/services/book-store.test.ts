@@ -1796,6 +1796,12 @@ describe('PendingFix store', () => {
       ...emptyState(),
       undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
     });
+    // fresh: must be kept (this is the persist-undo-across-reload path)
+    const freshRows = await bookStore.getPendingFixes(OWNER);
+    expect(freshRows).toHaveLength(1);
+    expect(freshRows[0].proposals).toHaveLength(0);
+    expect(freshRows[0].undo).not.toBeNull();
+
     // force it stale by backdating updated_at 8 days
     const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
     await prisma.pendingFix.update({
