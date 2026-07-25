@@ -28,6 +28,7 @@ import {
   AppConfig,
   BookListFilters,
   EpubMeta,
+  MetadataFix,
   Owner,
   PageCursor,
   SearchSuggestionsResponse,
@@ -59,17 +60,6 @@ function requireUserId(req: Request, res: Response): string | null {
 }
 
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
-
-type MetadataFix = {
-  field: string;
-  kind: string;
-  from: string;
-  to: string | null;
-  reason?: string;
-  changes: Record<string, string | string[]>;
-  fromChips?: string[];
-  toChips?: string[];
-};
 
 function toFix(issue: MetadataIssue): MetadataFix {
   return {

@@ -138,3 +138,28 @@ export interface Device {
   bwCover: boolean;
   simplify: boolean;
 }
+
+export type MetadataFix = {
+  field: string;
+  kind: string;
+  from: string;
+  to: string | null;
+  reason?: string;
+  changes: Record<string, string | string[]>;
+  fromChips?: string[];
+  toChips?: string[];
+};
+
+export type UndoSnapshot = {
+  kind: 'apply' | 'dismiss';
+  proposals: MetadataFix[];
+  appliedFixes: MetadataFix[];
+  originalMetadata?: Record<string, string | string[]>;
+};
+
+export type PendingFixState = {
+  autoFixes: MetadataFix[];
+  appliedFixes: MetadataFix[];
+  proposals: MetadataFix[];
+  undo: UndoSnapshot | null;
+};

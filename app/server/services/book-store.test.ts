@@ -1765,6 +1765,65 @@ describe('pending_fixes table', () => {
   });
 });
 
+const emptyState = () => ({ autoFixes: [], appliedFixes: [], proposals: [], undo: null });
+const withProposal = () => ({
+  ...emptyState(),
+  proposals: [{ field: 'subjects', kind: 'subjects-split', from: 'A & B', to: null, changes: {} }],
+});
+
+describe('PendingFix store', () => {
+  beforeEach(async () => {
+    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
+  });
+
+  it('upsert then get returns the parsed row', async () => {
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
+    const rows = await bookStore.getPendingFixes(OWNER);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bookId: 'abc123', fileName: 'x.epub', fileSize: 42 });
+    expect(rows[0].proposals).toHaveLength(1);
+  });
+
+  it('upsert with no proposals and no undo deletes the row', async () => {
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, emptyState());
+    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+  });
+
+  it('getPendingFixes drops an undo-only row older than the TTL, keeps a fresh one', async () => {
+    // fresh undo-only row
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, {
+      ...emptyState(),
+      undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
+    });
+    // force it stale by backdating updated_at 8 days
+    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    await prisma.pendingFix.update({
+      where: { userId_bookId: { userId: OWNER.userId, bookId: 'abc123' } },
+      data: { updatedAt: eightDaysAgo },
+    });
+    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+  });
+
+  it('deletePendingFix is idempotent', async () => {
+    await bookStore.deletePendingFix(OWNER, 'abc123'); // no row yet
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
+    await bookStore.deletePendingFix(OWNER, 'abc123');
+    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+  });
+
+  it('row follows a bookId change via FK onUpdate cascade', async () => {
+    await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
+    // Directly rename the book id to simulate reimport's tx.book.update
+    await prisma.book.update({
+      where: { userId_id: { userId: OWNER.userId, id: 'abc123' } },
+      data: { id: 'def456' },
+    });
+    const rows = await bookStore.getPendingFixes(OWNER);
+    expect(rows.map((r) => r.bookId)).toEqual(['def456']);
+  });
+});
+
 describe('book_id_history table', () => {
   it('creates the book_id_history table during migration', async () => {
     const cols = await prisma.$queryRaw<Array<{ name: string }>>`

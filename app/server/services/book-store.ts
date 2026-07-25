@@ -13,6 +13,7 @@ import {
   PageCursor,
   PagedBookListResponse,
   BookListFilters,
+  PendingFixState,
   SearchSuggestionsResponse,
 } from '../types';
 import { downloadFilename } from '../utils/download-filename';
@@ -26,6 +27,14 @@ import { seriesSortKey } from '../utils/series-sort-key';
 import { parseEpub, partialMD5 } from './epub-parser';
 
 const log = logger('BookStore');
+
+const PENDING_FIX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type PendingFixDto = {
+  bookId: string;
+  fileName: string;
+  fileSize: number;
+} & PendingFixState;
 
 /** Compares two cover blobs (or their absence) for equality. */
 function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | null): boolean {
@@ -639,6 +648,71 @@ export class BookStore {
         AND type = 'edit'
         AND (old_id = ${id} OR current_id = ${id})
     `;
+  }
+
+  async upsertPendingFix(
+    owner: Owner,
+    bookId: string,
+    fileName: string,
+    fileSize: number,
+    state: PendingFixState
+  ): Promise<void> {
+    const resolved = state.proposals.length === 0 && !state.undo;
+    if (resolved) {
+      await this.deletePendingFix(owner, bookId);
+      return;
+    }
+    const data = {
+      fileName,
+      fileSize,
+      state: JSON.stringify(state),
+      updatedAt: Date.now(),
+    };
+    await this.prisma.pendingFix.upsert({
+      where: { userId_bookId: { userId: owner.userId, bookId } },
+      create: { userId: owner.userId, bookId, ...data },
+      update: data,
+    });
+  }
+
+  async deletePendingFix(owner: Owner, bookId: string): Promise<void> {
+    await this.prisma.pendingFix.deleteMany({
+      where: { userId: owner.userId, bookId },
+    });
+  }
+
+  async getPendingFixes(owner: Owner): Promise<PendingFixDto[]> {
+    const rows = await this.prisma.pendingFix.findMany({
+      where: { userId: owner.userId },
+    });
+    const now = Date.now();
+    const keep: PendingFixDto[] = [];
+    for (const row of rows) {
+      let state: PendingFixState;
+      try {
+        state = JSON.parse(row.state) as PendingFixState;
+      } catch {
+        await this.deletePendingFix(owner, row.bookId);
+        continue;
+      }
+      const noProposals = (state.proposals?.length ?? 0) === 0;
+      const noUndo = !state.undo;
+      const expiredUndo = noProposals && !noUndo && row.updatedAt < now - PENDING_FIX_TTL_MS;
+      if ((noProposals && noUndo) || expiredUndo) {
+        await this.deletePendingFix(owner, row.bookId);
+        continue;
+      }
+      keep.push({
+        bookId: row.bookId,
+        fileName: row.fileName,
+        fileSize: row.fileSize,
+        autoFixes: state.autoFixes ?? [],
+        appliedFixes: state.appliedFixes ?? [],
+        proposals: state.proposals ?? [],
+        undo: state.undo ?? null,
+      });
+    }
+    return keep;
   }
 
   async deleteBook(owner: Owner, id: string): Promise<Book | null> {
