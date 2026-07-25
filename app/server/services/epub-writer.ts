@@ -163,8 +163,92 @@ export function repairPackageDocument(filePath: string): {
   return { bytes: serializeEpub(files, opfRelPath, opf), repaired: true, action: result.action };
 }
 
+/**
+ * Add, update, or remove a refining `<meta refines="#id" property="…">value</meta>`
+ * element in `metadata.meta`. An empty `value` removes any existing match; a
+ * non-empty value replaces the match (or appends one). Mutates `metadata.meta`.
+ */
+function setRefinement(
+  metadata: Record<string, unknown>,
+  id: string,
+  property: string,
+  value: string
+): void {
+  const metas = Array.isArray(metadata['meta'])
+    ? (metadata['meta'] as Record<string, unknown>[])
+    : [];
+  const kept = metas.filter((m) => !(m['@_property'] === property && m['@_refines'] === `#${id}`));
+  if (value) {
+    kept.push({ '@_refines': `#${id}`, '@_property': property, '#text': value });
+  }
+  metadata['meta'] = kept;
+}
+
+/** Read the text of a refining meta (`<meta refines="#id" property="…">`), or ''. */
+function getRefinement(metadata: Record<string, unknown>, id: string, property: string): string {
+  const metas = Array.isArray(metadata['meta'])
+    ? (metadata['meta'] as Record<string, unknown>[])
+    : [];
+  const m = metas.find((mm) => mm['@_property'] === property && mm['@_refines'] === `#${id}`);
+  return m ? String(m['#text'] ?? '') : '';
+}
+
+/**
+ * Write a Dublin Core element that carries an optional sort key (dc:title /
+ * dc:creator), in the encoding valid for the package version:
+ *   • EPUB 3 — a plain element with an `id`, plus a sibling
+ *     `<meta refines="#id" property="file-as">` for the sort key. The EPUB 2
+ *     `file-as` / `opf:file-as` attributes are schema-invalid on a 3.x package
+ *     (EPUBCheck RSC-005 "attribute file-as not allowed here").
+ *   • EPUB 2 — the `opf:file-as` attribute (needs the opf namespace).
+ * Collapses to a single element, matching the prior writer. Mutates `metadata`.
+ */
+function writeSortedField(
+  pkg: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+  key: 'dc:title' | 'dc:creator',
+  fallbackId: string,
+  changeText: string | undefined,
+  changeSort: string | undefined,
+  isV3: boolean
+): void {
+  const arr = (metadata[key] as unknown[]) ?? [];
+  const first = arr[0];
+  const obj =
+    typeof first === 'object' && first !== null ? (first as Record<string, string>) : undefined;
+  const existingId = obj?.['@_id'] ?? '';
+  const attrSort = obj?.['@_file-as'] ?? obj?.['@_opf:file-as'] ?? '';
+  const refineSort = existingId ? getRefinement(metadata, existingId, 'file-as') : '';
+  const text = changeText ?? (typeof first === 'string' ? first : (obj?.['#text'] ?? ''));
+  // An explicit '' clears the sort; undefined preserves the existing one
+  // (from either an attribute or an EPUB 3 refinement).
+  const sort = changeSort ?? (attrSort || refineSort);
+
+  if (isV3) {
+    if (sort) {
+      const id = existingId || fallbackId;
+      metadata[key] = [{ '#text': text, '@_id': id }];
+      setRefinement(metadata, id, 'file-as', sort);
+    } else if (existingId) {
+      setRefinement(metadata, existingId, 'file-as', '');
+      metadata[key] = [{ '#text': text, '@_id': existingId }];
+    } else {
+      metadata[key] = [text];
+    }
+    return;
+  }
+
+  // EPUB 2: opf:file-as attribute; drop any stale EPUB 3 refinement.
+  if (sort && !(pkg as Record<string, string>)['@_xmlns:opf']) {
+    (pkg as Record<string, string>)['@_xmlns:opf'] = 'http://www.idpf.org/2007/opf';
+  }
+  if (existingId) setRefinement(metadata, existingId, 'file-as', '');
+  metadata[key] = sort ? [{ '#text': text, '@_opf:file-as': sort }] : [text];
+}
+
 export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
   const { files, opfRelPath, opf, pkg, metadata } = loadOpf(filePath);
+  const isV3 = String(pkg['@_version'] ?? '').startsWith('3');
   if (!pkg.manifest) pkg.manifest = { item: [] };
   const mfst = pkg.manifest as Record<string, unknown>;
   if (!mfst.item) mfst.item = [];
@@ -173,46 +257,22 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
 
   // Step 3: apply text field changes
 
-  // dc:title: update title and/or titleSort together to preserve each other
+  // dc:title / dc:creator: update the value and/or its sort key together,
+  // encoded per the package version (EPUB 3 <meta refines>, EPUB 2 opf:file-as).
   if (changes.title !== undefined || changes.titleSort !== undefined) {
-    const existingTitleArr = (metadata['dc:title'] as unknown[]) ?? [];
-    const existingTitle0 = existingTitleArr[0];
-    const currentTitle =
-      changes.title ??
-      (typeof existingTitle0 === 'string'
-        ? existingTitle0
-        : ((existingTitle0 as Record<string, string>)?.['#text'] ?? ''));
-    const currentTitleSort =
-      changes.titleSort ??
-      (typeof existingTitle0 === 'object' && existingTitle0 !== null
-        ? ((existingTitle0 as Record<string, string>)['@_file-as'] ??
-          (existingTitle0 as Record<string, string>)['@_opf:file-as'] ??
-          '')
-        : '');
-    metadata['dc:title'] = currentTitleSort
-      ? [{ '#text': currentTitle, '@_file-as': currentTitleSort }]
-      : [currentTitle];
+    writeSortedField(pkg, metadata, 'dc:title', 'title-1', changes.title, changes.titleSort, isV3);
   }
 
-  // dc:creator: update author and/or authorSort together to preserve each other
   if (changes.author !== undefined || changes.authorSort !== undefined) {
-    const existingCreatorArr = (metadata['dc:creator'] as unknown[]) ?? [];
-    const existingCreator0 = existingCreatorArr[0];
-    const currentAuthor =
-      changes.author ??
-      (typeof existingCreator0 === 'string'
-        ? existingCreator0
-        : ((existingCreator0 as Record<string, string>)?.['#text'] ?? ''));
-    const currentAuthorSort =
-      changes.authorSort ??
-      (typeof existingCreator0 === 'object' && existingCreator0 !== null
-        ? ((existingCreator0 as Record<string, string>)['@_file-as'] ??
-          (existingCreator0 as Record<string, string>)['@_opf:file-as'] ??
-          '')
-        : '');
-    metadata['dc:creator'] = currentAuthorSort
-      ? [{ '#text': currentAuthor, '@_file-as': currentAuthorSort }]
-      : [currentAuthor];
+    writeSortedField(
+      pkg,
+      metadata,
+      'dc:creator',
+      'creator-1',
+      changes.author,
+      changes.authorSort,
+      isV3
+    );
   }
 
   // dc:date: set or remove publishDate
@@ -233,15 +293,38 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
   }
 
   if (changes.identifiers !== undefined) {
-    if (
-      changes.identifiers.some((id) => id.scheme) &&
-      !(pkg as Record<string, string>)['@_xmlns:opf']
-    ) {
+    // The <package unique-identifier> attribute points at a dc:identifier by id.
+    // Rebuilding the identifier list would orphan that reference (EPUBCheck
+    // OPF-030), so carry the id onto the first rebuilt identifier.
+    const uid = String((pkg as Record<string, string>)['@_unique-identifier'] ?? '');
+    const hasScheme = changes.identifiers.some((id) => id.scheme);
+
+    // Rebuild identifier-type refinements from scratch (ids are regenerated below).
+    if (Array.isArray(metadata['meta'])) {
+      metadata['meta'] = (metadata['meta'] as Record<string, unknown>[]).filter(
+        (m) => m['@_property'] !== 'identifier-type'
+      );
+    }
+
+    // EPUB 3 forbids opf:scheme on dc:identifier; it carries the scheme via a
+    // <meta refines property="identifier-type"> instead. EPUB 2 keeps opf:scheme.
+    if (!isV3 && hasScheme && !(pkg as Record<string, string>)['@_xmlns:opf']) {
       (pkg as Record<string, string>)['@_xmlns:opf'] = 'http://www.idpf.org/2007/opf';
     }
-    metadata['dc:identifier'] = changes.identifiers.map((id) =>
-      id.scheme ? { '#text': id.value, '@_opf:scheme': id.scheme } : id.value
-    );
+
+    metadata['dc:identifier'] = changes.identifiers.map((id, i) => {
+      const keepUid = i === 0 && uid !== '';
+      const elemId = keepUid ? uid : `book-id-${i}`;
+      if (isV3) {
+        if (id.scheme) setRefinement(metadata, elemId, 'identifier-type', id.scheme);
+        // An id anchors the unique-identifier reference and/or the refinement.
+        return keepUid || id.scheme ? { '#text': id.value, '@_id': elemId } : id.value;
+      }
+      const el: Record<string, string> = { '#text': id.value };
+      if (keepUid) el['@_id'] = uid;
+      if (id.scheme) el['@_opf:scheme'] = id.scheme;
+      return keepUid || id.scheme ? el : id.value;
+    });
   }
 
   if (changes.subjects !== undefined) {

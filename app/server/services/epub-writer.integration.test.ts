@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import { zipSync, strToU8 } from 'fflate';
 
+import { parseEpub } from './epub-parser';
 import { assertValidEpub } from './epub-validator';
 import { buildUpdatedEpub, repairPackageDocument } from './epub-writer';
 
@@ -204,4 +205,105 @@ describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
     expect(repair.action).toBe('none');
     expect(Buffer.compare(repair.bytes, original)).toBe(0);
   });
+});
+
+// A minimal but epubcheck-valid EPUB 3 whose OPF carries a titled creator and a
+// unique-identifier-referenced identifier — the shape needed to exercise
+// version-aware refinement writing (file-as / identifier-type). EPUB 3 forbids
+// the EPUB 2 opf:file-as / opf:scheme attributes on Dublin Core elements
+// (RSC-005 under epubcheck's schema layer); the writer must instead emit
+// <meta refines> elements.
+function minimalValidEpub3Rich(): Buffer {
+  const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">urn:uuid:12345678-1234-1234-1234-123456789abc</dc:identifier>
+    <dc:title id="t1">Baseline Title</dc:title>
+    <dc:creator id="c1">Original Author</dc:creator>
+    <dc:language>en</dc:language>
+    <meta property="dcterms:modified">2020-01-01T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="c1doc" href="c1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="c1doc"/></spine>
+</package>`;
+  const nav = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>TOC</title></head>
+<body><nav epub:type="toc"><ol><li><a href="c1.xhtml">Chapter 1</a></li></ol></nav></body></html>`;
+  const c1 = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>C1</title></head><body><p>Hello.</p></body></html>`;
+  const container = `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`;
+  return Buffer.from(
+    zipSync({
+      mimetype: [strToU8('application/epub+zip'), { level: 0 }],
+      'META-INF/container.xml': strToU8(container),
+      'OEBPS/content.opf': strToU8(opf),
+      'OEBPS/nav.xhtml': strToU8(nav),
+      'OEBPS/c1.xhtml': strToU8(c1),
+    })
+  );
+}
+
+// Regression guard for the epubcheck-ts beta.4 upgrade, which added a schema
+// (RelaxNG) layer that rejects EPUB 2-style refinement attributes on Dublin
+// Core elements in an EPUB 3 package. buildUpdatedEpub must write refinements
+// as <meta refines> elements for EPUB 3, and the result must both validate and
+// round-trip through parseEpub.
+describe('buildUpdatedEpub EPUB 3 refinements (real @korzun/epubcheck-ts)', () => {
+  let dir: string;
+  let src: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epub-writer-v3-'));
+    src = path.join(dir, 'book.epub');
+    fs.writeFileSync(src, minimalValidEpub3Rich());
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  it('the rich fixture is itself valid', async () => {
+    await expect(assertValidEpub(fs.readFileSync(src), 'ERROR')).resolves.toBeDefined();
+  });
+
+  it('a titleSort edit stays valid and round-trips', async () => {
+    const edited = buildUpdatedEpub(src, { titleSort: 'Baseline Title, The' });
+    await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(src, edited);
+    expect(parseEpub(src).titleSort).toBe('Baseline Title, The');
+  }, 60000);
+
+  it('an authorSort edit stays valid and round-trips', async () => {
+    const edited = buildUpdatedEpub(src, { authorSort: 'Author, Original' });
+    await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(src, edited);
+    expect(parseEpub(src).authorSort).toBe('Author, Original');
+  }, 60000);
+
+  it('an identifier edit with a scheme stays valid, round-trips, and keeps the unique-identifier', async () => {
+    const edited = buildUpdatedEpub(src, {
+      identifiers: [{ scheme: 'ISBN', value: '9780316229296' }],
+    });
+    // Must not raise OPF-030 (unique-identifier reference lost) or RSC-005
+    // (opf:scheme attribute rejected on an EPUB 3 dc:identifier).
+    await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(src, edited);
+    expect(parseEpub(src).identifiers).toEqual([{ scheme: 'ISBN', value: '9780316229296' }]);
+  }, 60000);
+
+  it('clearing a titleSort removes the file-as refinement and stays valid', async () => {
+    const withSort = buildUpdatedEpub(src, { titleSort: 'Baseline Title, The' });
+    fs.writeFileSync(src, withSort);
+    const cleared = buildUpdatedEpub(src, { titleSort: '' });
+    await expect(assertValidEpub(cleared, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(src, cleared);
+    expect(parseEpub(src).titleSort).toBe('');
+  }, 60000);
 });
