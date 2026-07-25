@@ -35,6 +35,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   intro: {
     marginTop: 0,
   },
+  emphasisDanger: {
+    color: theme.color.danger.default,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  emphasisStrong: {
+    fontWeight: theme.fontWeight.semibold,
+  },
   counts: {
     marginBottom: theme.space.lg,
   },
