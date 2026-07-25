@@ -37,7 +37,7 @@ describe('assertValidEpub', () => {
     await expect(assertValidEpub(Buffer.from('x'), 'ERROR')).resolves.toBe(r);
   });
 
-  it('under ERROR, reports only FATAL/ERROR messages', async () => {
+  it('carries all messages but summarizes only the blocking ones', async () => {
     const r = report({
       valid: false,
       counts: { FATAL: 1, ERROR: 1, WARNING: 1, INFO: 0, USAGE: 0 },
@@ -51,9 +51,15 @@ describe('assertValidEpub', () => {
 
     const err = await assertValidEpub(Buffer.from('x'), 'ERROR').catch((e) => e);
     expect(err).toBeInstanceOf(EpubValidationError);
-    expect(err.messages.map((m: { id: string }) => m.id)).toEqual(['PKG-003', 'RSC-005']);
+    // messages now carries every severity, not just the blocking subset
+    expect(err.messages.map((m: { id: string }) => m.id)).toEqual([
+      'PKG-003',
+      'RSC-005',
+      'PKG-001',
+    ]);
     expect(err.counts).toEqual(r.counts);
     expect(err.threshold).toBe('ERROR');
+    // the summary string still reflects only the blocking severities
     expect(err.message).toBe('EPUB failed validation (threshold ERROR): 1 fatal, 1 error');
   });
 
@@ -91,7 +97,11 @@ describe('assertValidEpub', () => {
     mockValidate.mockResolvedValue(r);
 
     const err = await assertValidEpub(Buffer.from('x'), 'WARNING').catch((e) => e);
-    expect(err.messages.map((m: { id: string }) => m.id)).toEqual(['RSC-005', 'PKG-001']);
+    expect(err.messages.map((m: { id: string }) => m.id)).toEqual([
+      'RSC-005',
+      'PKG-001',
+      'ACC-001',
+    ]);
   });
 
   it('under INFO, also reports INFO messages', async () => {
@@ -107,6 +117,10 @@ describe('assertValidEpub', () => {
     mockValidate.mockResolvedValue(r);
 
     const err = await assertValidEpub(Buffer.from('x'), 'INFO').catch((e) => e);
-    expect(err.messages.map((m: { id: string }) => m.id)).toEqual(['PKG-001', 'ACC-001']);
+    expect(err.messages.map((m: { id: string }) => m.id)).toEqual([
+      'PKG-001',
+      'ACC-001',
+      'CSS-999',
+    ]);
   });
 });

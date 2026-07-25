@@ -35,11 +35,13 @@ export function formatMessages(messages: Message[]): ValidationMessage[] {
 const SEVERITY_ORDER: Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
 
 // Summarize the blocking messages by severity, e.g. "1 fatal, 2 error".
-// Derived from the blocking set (not the full report counts) so the summary
-// always matches what actually crossed the threshold.
-function summarizeBlocking(messages: ValidationMessage[]): string {
+// Filters to severities at/above the threshold so the summary always matches
+// what actually crossed it, even though `messages` now holds every severity.
+function summarizeBlocking(messages: ValidationMessage[], threshold: ValidationThreshold): string {
+  const floor = thresholdRank(threshold);
   const counts: Partial<Record<Severity, number>> = {};
   for (const m of messages) {
+    if (RANK[m.severity] < floor) continue;
     counts[m.severity] = (counts[m.severity] ?? 0) + 1;
   }
   const parts = SEVERITY_ORDER.filter((s) => counts[s]).map(
@@ -58,7 +60,9 @@ export class EpubValidationError extends Error {
     counts: Record<Severity, number>,
     threshold: ValidationThreshold
   ) {
-    super(`EPUB failed validation (threshold ${threshold}): ${summarizeBlocking(messages)}`);
+    super(
+      `EPUB failed validation (threshold ${threshold}): ${summarizeBlocking(messages, threshold)}`
+    );
     this.name = 'EpubValidationError';
     this.messages = messages;
     this.counts = counts;
@@ -72,9 +76,8 @@ export async function assertValidEpub(
 ): Promise<Report> {
   const report = await validateEpub(bytes, { threshold });
   if (!report.valid) {
-    const floor = thresholdRank(threshold);
-    const blocking = formatMessages(report.messages.filter((m) => RANK[m.severity] >= floor));
-    throw new EpubValidationError(blocking, report.counts, threshold);
+    const messages = formatMessages(report.messages);
+    throw new EpubValidationError(messages, report.counts, threshold);
   }
   return report;
 }
