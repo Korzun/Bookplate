@@ -49,6 +49,8 @@ function isPortFree(port) {
 async function main() {
   const args = process.argv.slice(2); // e.g. ["up","--build"] or ["down"]
   const isDown = args.includes('down');
+  // Assumes worktree directory basenames are unique; two worktrees sharing a
+  // basename would derive the same COMPOSE_PROJECT_NAME and clobber one stack.
   const projectName = sanitizeProjectName(path.basename(process.cwd()));
 
   const env = { ...process.env, COMPOSE_PROJECT_NAME: projectName };
