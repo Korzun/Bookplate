@@ -795,12 +795,20 @@ export function createUiRouter(
         }
 
         if (proposals.length > 0) {
-          await bookStore.upsertPendingFix(owner, finalId, file.originalname, file.size, {
-            autoFixes: applied,
-            appliedFixes: [],
-            proposals,
-            undo: null,
-          });
+          try {
+            await bookStore.upsertPendingFix(owner, finalId, file.originalname, file.size, {
+              autoFixes: applied,
+              appliedFixes: [],
+              proposals,
+              undo: null,
+            });
+          } catch (err: unknown) {
+            // Never fail an upload because a pending-fix write failed — the upload
+            // already succeeded; the book just won't show proposals until retried.
+            log.warn(
+              `Pending-fix write skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
+            );
+          }
         }
 
         thumbnailQueue.enqueue(owner.userId, finalId);

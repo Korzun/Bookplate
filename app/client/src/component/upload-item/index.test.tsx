@@ -456,6 +456,11 @@ describe('UploadItem metadata fixes', () => {
     expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
   });
 
+  it('done with a pending proposal: does not show the dismiss-upload control', () => {
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
+    expect(screen.queryByText(/dismiss upload/i)).toBeNull();
+  });
+
   it('done + armed undo: dismiss-completed control fires', () => {
     const onDismissCompleted = vi.fn();
     renderWithProviders(
