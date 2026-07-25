@@ -33,15 +33,24 @@ export const putPendingFix = async (
   bookId: string,
   body: { fileName: string; fileSize: number; state: PendingFixState }
 ): Promise<void> => {
-  await apiFetch(withUser(`/api/books/${encodeURIComponent(bookId)}/pending-fixes`), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  try {
+    await apiFetch(withUser(`/api/books/${encodeURIComponent(bookId)}/pending-fixes`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    // Swallow — this is a best-effort sync of pending-fix state; a failure here
+    // shouldn't surface as an unhandled rejection to callers that fire-and-forget.
+  }
 };
 
 export const deletePendingFix = async (withUser: WithUser, bookId: string): Promise<void> => {
-  await apiFetch(withUser(`/api/books/${encodeURIComponent(bookId)}/pending-fixes`), {
-    method: 'DELETE',
-  });
+  try {
+    await apiFetch(withUser(`/api/books/${encodeURIComponent(bookId)}/pending-fixes`), {
+      method: 'DELETE',
+    });
+  } catch {
+    // Swallow — best-effort cleanup; see putPendingFix.
+  }
 };
