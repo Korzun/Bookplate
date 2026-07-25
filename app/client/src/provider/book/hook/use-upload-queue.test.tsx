@@ -313,10 +313,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // The engine now hydrates from/persists to localStorage; clear it between
-  // tests so one test's proposals/undo state can't leak into the next via
-  // the initial loadQueue() call.
-  localStorage.clear();
   vi.unstubAllGlobals();
 });
 

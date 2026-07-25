@@ -6,7 +6,6 @@ import { BookProvider } from '~/provider/book';
 import { LibraryTargetProvider } from '~/provider/library-target';
 
 import { useUploadQueue } from './hook';
-import { STORAGE_KEY } from './persistence';
 import { UploadProvider } from './provider';
 
 function Probe() {
@@ -26,22 +25,7 @@ afterEach(() => {
 });
 
 describe('UploadProvider', () => {
-  it('hydrates the queue from localStorage and shares it via context', () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([
-        {
-          id: 'r1',
-          fileName: 'restored.epub',
-          fileSize: 10,
-          status: 'done',
-          bytesUploaded: 10,
-          bookId: 'b1',
-          proposals: [{ field: 'title', kind: 'x', from: 'a', to: 'b', changes: {} }],
-        },
-      ])
-    );
-
+  it('starts with an empty queue', () => {
     render(
       <MemoryRouter>
         <LibraryTargetProvider>
@@ -54,6 +38,6 @@ describe('UploadProvider', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('count:1')).toBeTruthy();
+    expect(screen.getByText('count:0')).toBeTruthy();
   });
 });
