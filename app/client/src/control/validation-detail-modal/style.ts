@@ -65,13 +65,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.md,
-    marginTop: theme.space.md,
   },
   message: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'baseline',
-    gap: theme.space.xs,
+    // Keep the severity/id/location row spaced with xs, but tighten the vertical
+    // gap to the wrapped message text below it.
+    columnGap: theme.space.xs,
+    rowGap: theme.space.xxs,
     fontSize: theme.fontSize.sm,
   },
   severityBlocking: {
@@ -94,7 +96,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
     color: theme.color.text.faint,
-    flexBasis: '100%',
   },
   footer: {
     ...theme.recipe.modal.footer,

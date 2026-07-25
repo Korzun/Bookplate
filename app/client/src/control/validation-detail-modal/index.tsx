@@ -82,7 +82,6 @@ export function ValidationDetailModal({
                           {SEVERITY_LABEL[m.severity]}
                         </span>
                         <span className={styles.id}>{m.id}</span>
-                        <span className={styles.text}>{m.message}</span>
                         {m.location && (
                           <span className={styles.location}>
                             {m.location.line != null
@@ -90,6 +89,7 @@ export function ValidationDetailModal({
                               : `in ${m.location.path}`}
                           </span>
                         )}
+                        <span className={styles.text}>{m.message}</span>
                       </li>
                     ))}
                   </ul>
