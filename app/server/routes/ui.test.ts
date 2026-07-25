@@ -21,6 +21,17 @@ import { AppConfig, EpubMeta, Owner } from '../types';
 import { createUiRouter } from './ui';
 
 vi.mock('../logger');
+// Wrap (not replace) the real implementation so every other upload test in
+// this file keeps exercising real detection behavior. Individual tests can
+// override the return value with mockReturnValueOnce/mockImplementationOnce
+// to force a specific proposal/auto-fix shape without affecting other tests.
+vi.mock('../utils/metadata-issues', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/metadata-issues')>();
+  return {
+    ...actual,
+    detectMetadataIssues: vi.fn(actual.detectMetadataIssues),
+  };
+});
 vi.mock('../services/epub-validator', () => {
   class EpubValidationError extends Error {
     messages: { id: string; severity: string; message: string }[];
@@ -47,7 +58,11 @@ vi.setConfig({ testTimeout: 30000 });
 import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { detectMetadataIssues } from '../utils/metadata-issues';
 const mockAssertValid = assertValidEpub as MockedFunction<typeof assertValidEpub>;
+const mockDetectMetadataIssues = detectMetadataIssues as MockedFunction<
+  typeof detectMetadataIssues
+>;
 
 // The SPA routes call res.sendFile('client/dist/index.html'). Create a
 // minimal placeholder before the suite runs so the file exists in CI.
@@ -893,6 +908,70 @@ describe('POST /api/books/upload — metadata detection', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('POST /api/books/upload — pending_fixes persistence', () => {
+  it('upload persists a pending_fixes row when there are proposals', async () => {
+    mockDetectMetadataIssues.mockReturnValueOnce([
+      {
+        field: 'subjects',
+        kind: 'subjects-split',
+        from: 'A & B',
+        to: null,
+        changes: {},
+        autoEligible: false,
+      },
+    ]);
+
+    const token = await loginAlice();
+    await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', makeEpub({ title: 'Pending Fix Book', author: 'A' }), 'book.epub')
+      .expect(200);
+
+    const rows = await prisma.pendingFix.findMany({ where: { userId: aliceId } });
+    expect(rows).toHaveLength(1);
+    const state = JSON.parse(rows[0].state);
+    expect(state.proposals).toHaveLength(1);
+  });
+
+  it('does not persist a pending_fixes row when detection yields no proposals', async () => {
+    mockDetectMetadataIssues.mockReturnValueOnce([]);
+
+    const token = await loginAlice();
+    await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', makeEpub({ title: 'No Fix Book', author: 'A' }), 'book.epub')
+      .expect(200);
+
+    const rows = await prisma.pendingFix.findMany({ where: { userId: aliceId } });
+    expect(rows).toHaveLength(0);
+  });
+
+  it('does not persist a pending_fixes row when detection yields only auto-eligible issues', async () => {
+    mockDetectMetadataIssues.mockReturnValueOnce([
+      {
+        field: 'titleSort',
+        kind: 'title-sort-missing',
+        from: '',
+        to: 'Book, No Fix',
+        changes: { titleSort: 'Book, No Fix' },
+        autoEligible: true,
+      },
+    ]);
+
+    const token = await loginAlice();
+    await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', makeEpub({ title: 'No Fix Book', author: 'A' }), 'book.epub')
+      .expect(200);
+
+    const rows = await prisma.pendingFix.findMany({ where: { userId: aliceId } });
+    expect(rows).toHaveLength(0);
   });
 });
 
