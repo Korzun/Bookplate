@@ -5,7 +5,7 @@ export interface ValidationMessage {
   id: string;
   severity: Severity;
   message: string;
-  location?: string;
+  location?: { path: string; line?: number; column?: number };
 }
 
 const RANK: Record<Severity, number> = {
@@ -27,7 +27,9 @@ export function formatMessages(messages: Message[]): ValidationMessage[] {
     id: m.id,
     severity: m.severity,
     message: m.message,
-    location: m.location ? String(m.location.path ?? '') || undefined : undefined,
+    location: m.location?.path
+      ? { path: m.location.path, line: m.location.line, column: m.location.column }
+      : undefined,
   }));
 }
 

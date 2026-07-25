@@ -1,8 +1,8 @@
-import type { Report } from '@korzun/epubcheck-ts';
+import type { Message, Report } from '@korzun/epubcheck-ts';
 import { validateEpub } from '@korzun/epubcheck-ts';
 import type { MockedFunction } from 'vitest';
 
-import { assertValidEpub, EpubValidationError } from './epub-validator';
+import { assertValidEpub, EpubValidationError, formatMessages } from './epub-validator';
 
 vi.mock('@korzun/epubcheck-ts', () => ({ validateEpub: vi.fn() }));
 
@@ -122,5 +122,35 @@ describe('assertValidEpub', () => {
       'ACC-001',
       'CSS-999',
     ]);
+  });
+});
+
+describe('formatMessages', () => {
+  it('preserves line and column when present', () => {
+    const out = formatMessages([
+      {
+        id: 'RSC-005',
+        severity: 'ERROR',
+        message: 'parse error',
+        location: { path: 'content.opf', line: 12, column: 4 },
+      },
+    ] as Message[]);
+    expect(out[0].location).toEqual({ path: 'content.opf', line: 12, column: 4 });
+  });
+
+  it('keeps just the path when there is no line', () => {
+    const out = formatMessages([
+      { id: 'PKG-006', severity: 'FATAL', message: 'bad mimetype', location: { path: 'mimetype' } },
+    ] as Message[]);
+    expect(out[0].location).toEqual({ path: 'mimetype' });
+  });
+
+  it('drops the location when the path is empty or absent', () => {
+    const out = formatMessages([
+      { id: 'X', severity: 'INFO', message: 'x', location: { path: '' } },
+      { id: 'Y', severity: 'INFO', message: 'y' },
+    ] as Message[]);
+    expect(out[0].location).toBeUndefined();
+    expect(out[1].location).toBeUndefined();
   });
 });
