@@ -32,9 +32,10 @@ clean:
 dev-clean:
 	docker compose down --rmi all -v 2>/dev/null || true
 
-# Dev: live-reload via docker compose (backend on :3000, frontend on :5173)
+# Dev: live-reload via docker compose, auto-selecting a free host port per
+# worktree (server 3000-3099, client 5173-5272) with a per-worktree project name.
 dev:
-	BOOKS="$(BOOKS)" docker compose up --build
+	BOOKS="$(BOOKS)" node scripts/dev-compose.mjs up --build
 
 dev-down:
-	docker compose down
+	node scripts/dev-compose.mjs down

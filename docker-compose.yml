@@ -18,7 +18,7 @@ services:
       ADMIN_PASS: ${ADMIN_PASS:-changeme}
       BOOKS_DIR: /media/books
     ports:
-      - "3000:3000"
+      - "${SERVER_PORT:-3000}:3000"
 
   client:
     build:
@@ -33,7 +33,7 @@ services:
       API_URL: http://server:3000
       DOCKER: "true"
     ports:
-      - "5173:5173"
+      - "${CLIENT_PORT:-5173}:5173"
     depends_on:
       - server
 
