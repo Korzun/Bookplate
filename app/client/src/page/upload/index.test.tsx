@@ -72,7 +72,7 @@ afterEach(() => {
 // ── Regression test for Fix 3 ─────────────────────────────────────────────────
 //
 // An item that uploads with no server auto-fixes must never be announced.
-// Previously it was never added to `announcedRef`, so a later *manual* Apply
+// Previously it was never added to `announcedRef`, so a later *manual* Accept
 // (which moves a fix into appliedFixes) tripped the "Auto-fixed" effect and
 // fired a misleading toast. This mounts the real UploadPage wrapped in the
 // (lifted) UploadProvider — everything else uses its context's default
@@ -116,7 +116,7 @@ describe('UploadPage — manual apply does not trigger the auto-fix toast', () =
     expect(screen.queryByText(/Auto-fixed/)).toBeNull();
 
     // The user manually applies the proposed fix.
-    const applyButton = screen.getByRole('button', { name: /^apply$/i });
+    const applyButton = screen.getByRole('button', { name: /^accept$/i });
     await act(async () => {
       fireEvent.click(applyButton);
       await Promise.resolve();

@@ -41,6 +41,13 @@ const STATUS_LABEL: Record<UploadItemStatus, string> = {
   error: 'Error',
 };
 
+// The undo `kind` is stored as the internal action name ('apply'/'dismiss');
+// surface it in the user-facing accept/reject language.
+const UNDO_LABEL: Record<'apply' | 'dismiss', string> = {
+  apply: 'accept',
+  dismiss: 'reject',
+};
+
 export const UploadItem = ({
   item,
   onApplyFix,
@@ -52,7 +59,7 @@ export const UploadItem = ({
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // True while a bulk header action (Apply all / Dismiss all / Undo) is running,
+  // True while a bulk fix action (Accept all / Reject all / Undo) is running,
   // so the buttons disable and a rapid second click can't re-trigger it.
   const [busy, setBusy] = useState(false);
   const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookId } = item;
@@ -188,7 +195,7 @@ export const UploadItem = ({
                     actions={
                       pendingUndo ? (
                         <Button type="link" disabled={busy} onClick={() => void runAction(onUndo)}>
-                          Undo {pendingUndo.kind}
+                          Undo {UNDO_LABEL[pendingUndo.kind]}
                         </Button>
                       ) : (
                         <Fragment>
@@ -199,7 +206,7 @@ export const UploadItem = ({
                               disabled={busy}
                               onClick={() => void runAction(onDismissAll)}
                             >
-                              Dismiss all
+                              Reject all
                             </Button>
                           )}
                           {actionable.length >= 1 && (
@@ -208,7 +215,7 @@ export const UploadItem = ({
                               disabled={busy}
                               onClick={() => void runAction(onApplyAll)}
                             >
-                              Apply all
+                              Accept all
                             </Button>
                           )}
                         </Fragment>
@@ -282,10 +289,10 @@ export const UploadItem = ({
                       {fix.to !== null ? (
                         <Fragment>
                           <Button type="link" danger onClick={() => onDismissFix(fix)}>
-                            Dismiss
+                            Reject
                           </Button>
                           <Button type="link" onClick={() => onApplyFix(fix)}>
-                            Apply
+                            Accept
                           </Button>
                         </Fragment>
                       ) : (

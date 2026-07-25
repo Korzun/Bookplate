@@ -228,7 +228,7 @@ describe('UploadItem metadata fixes', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onApplyFix={onApplyFix} />);
     expect(screen.getByText('Author sort:')).toBeInTheDocument();
     expect(screen.getByText(/Guin, Ursula K\. Le/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^accept$/i }));
     expect(onApplyFix).toHaveBeenCalledWith(proposals[0]);
   });
 
@@ -261,11 +261,11 @@ describe('UploadItem metadata fixes', () => {
     expect(compound.className).toMatch(/fromValue/);
     expect(screen.getByText('Sci-Fi')).toBeInTheDocument();
     expect(screen.getByText('Fantasy')).toBeInTheDocument();
-    // Apply is still wired for the proposal.
-    expect(screen.getByRole('button', { name: /^apply$/i })).toBeInTheDocument();
+    // Accept is still wired for the proposal.
+    expect(screen.getByRole('button', { name: /^accept$/i })).toBeInTheDocument();
   });
 
-  it('renders each compound subject as its own "Subject" row with its own Apply', () => {
+  it('renders each compound subject as its own "Subject" row with its own Accept', () => {
     const subjectFix = (from: string, toChips: string[]): MetadataFix => ({
       field: 'subjects',
       kind: 'subjects-split',
@@ -288,27 +288,27 @@ describe('UploadItem metadata fixes', () => {
     renderWithProviders(<UploadItem item={item} {...noop} />);
     // Two singular "Subject:" labels, one per compound.
     expect(screen.getAllByText('Subject:')).toHaveLength(2);
-    // Two per-row Apply buttons (one per subject fix).
-    expect(screen.getAllByRole('button', { name: /^apply$/i })).toHaveLength(2);
+    // Two per-row Accept buttons (one per subject fix).
+    expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(2);
   });
 
-  it('calls onDismissFix when Dismiss is clicked', () => {
+  it('calls onDismissFix when Reject is clicked', () => {
     const onDismissFix = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissFix={onDismissFix} />);
-    fireEvent.click(screen.getByRole('button', { name: /^dismiss$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^reject$/i }));
     expect(onDismissFix).toHaveBeenCalledWith(proposals[0]);
   });
 
-  it('renders a flag-only row (no Apply) with an Edit link, and no Apply for it', () => {
+  it('renders a flag-only row (no Accept) with an Edit link, and no Accept for it', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
     // The title-is-filename proposal has to === null -> an Edit link to the book page.
     const editLink = screen.getByRole('link', { name: /edit/i });
     expect(editLink).toHaveAttribute('href', expect.stringContaining('abc'));
-    // Only one actionable proposal -> only one Apply button (the flag-only row has none).
-    expect(screen.getAllByRole('button', { name: /^apply$/i })).toHaveLength(1);
+    // Only one actionable proposal -> only one Accept button (the flag-only row has none).
+    expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(1);
   });
 
-  it('shows Apply all when there is more than one actionable proposal', () => {
+  it('shows Accept all when there is more than one actionable proposal', () => {
     const onApplyAll = vi.fn();
     const twoActionable: MetadataFix[] = [
       ...proposals,
@@ -333,25 +333,25 @@ describe('UploadItem metadata fixes', () => {
         onApplyAll={onApplyAll}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /apply all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /accept all/i }));
     expect(onApplyAll).toHaveBeenCalled();
   });
 
-  it('renders Apply all and a danger Dismiss all when proposals are present', () => {
+  it('renders Accept all and a danger Reject all when proposals are present', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
-    expect(screen.getByRole('button', { name: /apply all/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /dismiss all/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /accept all/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject all/i })).toBeInTheDocument();
   });
 
-  it('places Apply to the right of Dismiss (header and per-row)', () => {
+  it('places Accept to the right of Reject (header and per-row)', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
-    const dismissAll = screen.getByRole('button', { name: /dismiss all/i });
-    const applyAll = screen.getByRole('button', { name: /apply all/i });
+    const dismissAll = screen.getByRole('button', { name: /reject all/i });
+    const applyAll = screen.getByRole('button', { name: /accept all/i });
     expect(
       dismissAll.compareDocumentPosition(applyAll) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    const dismiss = screen.getByRole('button', { name: /^dismiss$/i });
-    const apply = screen.getByRole('button', { name: /^apply$/i });
+    const dismiss = screen.getByRole('button', { name: /^reject$/i });
+    const apply = screen.getByRole('button', { name: /^accept$/i });
     expect(dismiss.compareDocumentPosition(apply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -366,15 +366,15 @@ describe('UploadItem metadata fixes', () => {
     });
     renderWithProviders(<UploadItem item={item} {...noop} />);
     // Undo label reflects the action kind.
-    expect(screen.getByRole('button', { name: /^undo dismiss$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /apply all/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /dismiss all/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^undo reject$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /accept all/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject all/i })).not.toBeInTheDocument();
   });
 
   it('calls onDismissAll / onUndo', () => {
     const onDismissAll = vi.fn();
     renderWithProviders(<UploadItem item={doneItem()} {...noop} onDismissAll={onDismissAll} />);
-    fireEvent.click(screen.getByRole('button', { name: /dismiss all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /reject all/i }));
     expect(onDismissAll).toHaveBeenCalled();
 
     const onUndo = vi.fn();
@@ -386,7 +386,7 @@ describe('UploadItem metadata fixes', () => {
       undo: { kind: 'apply', proposals: [], appliedFixes: [] },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
-    fireEvent.click(screen.getByRole('button', { name: /^undo apply$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^undo accept$/i }));
     expect(onUndo).toHaveBeenCalled();
   });
 
@@ -406,7 +406,7 @@ describe('UploadItem metadata fixes', () => {
       undo: { kind: 'apply', proposals: [], appliedFixes: [] },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
-    const undoBtn = screen.getByRole('button', { name: /^undo apply$/i });
+    const undoBtn = screen.getByRole('button', { name: /^undo accept$/i });
 
     fireEvent.click(undoBtn);
     expect(onUndo).toHaveBeenCalledTimes(1);
