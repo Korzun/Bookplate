@@ -196,4 +196,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     gap: theme.space.xs,
   },
+  dismissRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: theme.space.sm,
+  },
 }));

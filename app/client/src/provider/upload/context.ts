@@ -12,4 +12,5 @@ export const UploadContext = createContext<UseUploadQueue>({
   dismissAllProposals: () => {},
   dismissFix: () => {},
   undo: async () => false,
+  dismissCompleted: () => {},
 });

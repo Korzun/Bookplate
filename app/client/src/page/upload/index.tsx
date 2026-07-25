@@ -21,8 +21,16 @@ export const UploadPage = () => {
   const [targetUsername] = useLibraryTarget();
   const [userList, userListLoading] = useUserList();
 
-  const { items, addFiles, applyFix, applyAllProposals, dismissAllProposals, dismissFix, undo } =
-    useUploadQueue();
+  const {
+    items,
+    addFiles,
+    applyFix,
+    applyAllProposals,
+    dismissAllProposals,
+    dismissFix,
+    undo,
+    dismissCompleted,
+  } = useUploadQueue();
   const uploadsInProgress = items.some((i) => i.status === 'queued' || i.status === 'uploading');
 
   const [scanLibrary, , scanning] = useScanLibrary();
@@ -150,6 +158,7 @@ export const UploadPage = () => {
                 if (!ok) showToast("Couldn't undo", 'error');
               }}
               onDismissFix={(fix) => dismissFix(item.id, fix)}
+              onDismissCompleted={() => dismissCompleted(item.id)}
             />
           ))}
         </div>
