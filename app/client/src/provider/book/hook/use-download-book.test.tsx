@@ -15,7 +15,7 @@ describe('useDownloadBook', () => {
       // only the anchor's `click` is faked so it doesn't trigger a real navigation.
       const el = realCreateElement(tag);
       if (tag === 'a') {
-        (el as HTMLAnchorElement).click = clickSpy;
+        (el as HTMLAnchorElement).click = clickSpy as unknown as () => void;
       }
       return el;
     }) as typeof document.createElement);
