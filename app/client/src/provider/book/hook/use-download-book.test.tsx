@@ -10,17 +10,14 @@ describe('useDownloadBook', () => {
     clickSpy = vi.fn();
     const realCreateElement = document.createElement.bind(document);
     vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
-      if (tag === 'a') {
-        return {
-          href: '',
-          download: '',
-          click: clickSpy,
-          remove: vi.fn(),
-        } as unknown as HTMLElement;
-      }
       // Delegate to the real implementation so testing-library's own container
-      // (a real <div>) still works; only anchor creation is faked.
-      return realCreateElement(tag);
+      // (a real <div>) and document.body.appendChild(anchor) both keep working;
+      // only the anchor's `click` is faked so it doesn't trigger a real navigation.
+      const el = realCreateElement(tag);
+      if (tag === 'a') {
+        (el as HTMLAnchorElement).click = clickSpy;
+      }
+      return el;
     }) as typeof document.createElement);
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:mock'),
