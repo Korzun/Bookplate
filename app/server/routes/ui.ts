@@ -1055,6 +1055,28 @@ export function createUiRouter(
     })
   );
 
+  router.get(
+    '/api/books/:id/download',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        log.warn(`Download attempted for unknown book ID: ${req.params.id}`);
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      log.info(`User "${owner.username}" downloaded "${book.filename}"`);
+      res.set('Content-Type', 'application/epub+zip');
+      res.set(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
+      );
+      res.sendFile(book.path);
+    })
+  );
+
   router.delete(
     '/api/books/:id',
     requireAuth,

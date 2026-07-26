@@ -1536,6 +1536,40 @@ describe('DELETE /api/books/:id', () => {
   });
 });
 
+describe('GET /api/books/:id/download', () => {
+  it('streams the epub with attachment headers', async () => {
+    await bookStore.addBook(aliceOwner, 'dl1', stage('dl1', 'EPUBDATA'), FAKE_META);
+    const [book] = await bookStore.listBooks(aliceOwner);
+
+    const token = await loginAlice();
+    const res = await request(app)
+      .get(`/api/books/${book.id}/download`)
+      .set(...bearer(token));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/epub+zip');
+    expect(res.headers['content-disposition']).toContain('attachment');
+    expect(res.headers['content-disposition']).toContain(encodeURIComponent(book.filename));
+    // supertest/superagent only buffers responses to a Buffer for mime types it
+    // recognizes as binary (image/audio/video/font); `application/epub+zip` isn't
+    // one of those, so the body arrives via `res.text` instead of `res.body`.
+    expect(res.text).toBe('EPUBDATA');
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).get('/api/books/whatever/download');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 for an unknown book id', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books/deadbeefdeadbeef/download')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('DELETE /api/books/:id/editions', () => {
   it('returns 200 with a cleared count for an existing book', async () => {
     await bookStore.addBook(aliceOwner, 'ed1', stage('ed1'), FAKE_META);
