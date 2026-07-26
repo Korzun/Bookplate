@@ -6,6 +6,7 @@ export {
   useBookListItems,
   useClearBookEditions,
   useDeleteBook,
+  useDownloadBook,
   useFetchBook,
   useFetchBookList,
   useFetchNextPage,
