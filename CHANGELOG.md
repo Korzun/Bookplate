@@ -1,3 +1,30 @@
+## 0.7.0
+
+- feat(series): auto-fill series Order with next available number
+- Migrate to TypeScript 7 with a modernized toolchain (oxlint, oxfmt, Vitest, Vite 8)
+- feat: enable/disable a device for a specific user
+- fix(book): remove the series row from the library list when deleting its last book
+- feat(segmented-control): use brand blue for the active segment label
+- Detect and fix book metadata issues on upload (incl. dcterms:modified repair)
+- fix(action-menu-list): align separator with row hover and optically center item text
+- fix(library-switcher): clear a persisted admin target that no longer exists
+- chore(deps): bump @korzun/epubcheck-ts to 0.1.0-beta.3
+- React 19 upgrade + native form-hooks adoption
+- fix(epub): restrict the dcterms:modified repair to EPUB 3 packages
+- fix(forms): restore submit button width and book-edit card spacing after the React 19 refactor
+- chore: remove CodeRabbit configuration
+- build(deps): bump sharp, adm-zip and react-router-dom (supersedes #167)
+- ci: split Test job into Client tests and Server tests
+- Visual tweaks: portal dropdowns, harmonized controls, mobile field-list, unified modals
+- build(deps): bump @korzun/epubcheck-ts to 0.1.0-beta.4
+- build(deps): silence install-script warnings and drop whatwg-encoding deprecation
+- build(deps): migrate client from react-router-dom 7 to react-router 8
+- fix(epub-writer): write EPUB 3 refinements as <meta refines>, not attributes
+- feat(upload-modal): clearer rejection details, severity grouping, and blocking-by-default toggle
+- feat(dev): auto-select per-worktree ports for the Docker Compose dev server
+- Persist uploads across navigation & reload
+- ci: branch-protection-respecting release pipeline
+
 ## 0.6.0
 
 - feat(nav-desktop): remove sticky positioning so nav scrolls with page
