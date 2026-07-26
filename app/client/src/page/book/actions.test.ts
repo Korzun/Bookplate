@@ -9,6 +9,7 @@ function handlers(): BookActionHandlers {
     onShowLineage: vi.fn(),
     onRegenChapters: vi.fn(),
     onClearEditions: vi.fn(),
+    onValidate: vi.fn(),
     onDownloadBook: vi.fn(),
     onDeleteBook: vi.fn(),
   };
@@ -17,7 +18,7 @@ function handlers(): BookActionHandlers {
 describe('buildBookActions', () => {
   it('includes Set progress as a leading primary when there are chapters', () => {
     const actions = buildBookActions(
-      { chapterCount: 5, deviceEditionCount: 0, regenLoading: false },
+      { chapterCount: 5, deviceEditionCount: 0, regenLoading: false, validating: false },
       handlers()
     );
     const setProgress = actions.find((a) => a.label === 'Set progress');
@@ -26,7 +27,7 @@ describe('buildBookActions', () => {
 
   it('omits Set progress when there are no chapters', () => {
     const actions = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false, validating: false },
       handlers()
     );
     expect(actions.find((a) => a.label === 'Set progress')).toBeUndefined();
@@ -34,7 +35,7 @@ describe('buildBookActions', () => {
 
   it('marks Edit metadata as a trailing primary', () => {
     const actions = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false, validating: false },
       handlers()
     );
     expect(actions.find((a) => a.label === 'Edit metadata')).toMatchObject({
@@ -45,13 +46,13 @@ describe('buildBookActions', () => {
 
   it('labels Clear device editions with the count and disables it at zero', () => {
     const zero = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false, validating: false },
       handlers()
     ).find((a) => a.label.startsWith('Clear device editions'));
     expect(zero).toMatchObject({ label: 'Clear device editions (0)', disabled: true });
 
     const three = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 3, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 3, regenLoading: false, validating: false },
       handlers()
     ).find((a) => a.label.startsWith('Clear device editions'));
     expect(three).toMatchObject({ label: 'Clear device editions (3)', disabled: false });
@@ -59,7 +60,7 @@ describe('buildBookActions', () => {
 
   it('disables Regen chapters while a regen is loading', () => {
     const actions = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 0, regenLoading: true },
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: true, validating: false },
       handlers()
     );
     expect(actions.find((a) => a.label === 'Regen chapters')).toMatchObject({ disabled: true });
@@ -67,7 +68,7 @@ describe('buildBookActions', () => {
 
   it('marks Delete as danger and non-primary', () => {
     const actions = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false, validating: false },
       handlers()
     );
     const del = actions.find((a) => a.label === 'Delete');
@@ -78,7 +79,7 @@ describe('buildBookActions', () => {
   it('wires each handler to the matching action', () => {
     const h = handlers();
     const actions = buildBookActions(
-      { chapterCount: 5, deviceEditionCount: 2, regenLoading: false },
+      { chapterCount: 5, deviceEditionCount: 2, regenLoading: false, validating: false },
       h
     );
     actions.find((a) => a.label === 'Set progress')?.onClick();
@@ -104,7 +105,7 @@ describe('buildBookActions', () => {
   it('places Download between Clear device editions and Delete, with a separator before it', () => {
     const h = handlers();
     const actions = buildBookActions(
-      { chapterCount: 0, deviceEditionCount: 2, regenLoading: false },
+      { chapterCount: 0, deviceEditionCount: 2, regenLoading: false, validating: false },
       h
     );
     const labels = actions.map((a) => a.label);
@@ -120,5 +121,32 @@ describe('buildBookActions', () => {
 
     download.onClick();
     expect(h.onDownloadBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('places Validate directly below Clear device editions and above Download', () => {
+    const h = handlers();
+    const actions = buildBookActions(
+      { chapterCount: 0, deviceEditionCount: 2, regenLoading: false, validating: false },
+      h
+    );
+    const labels = actions.map((a) => a.label);
+    const clearIdx = labels.findIndex((l) => l.startsWith('Clear device editions'));
+    const validateIdx = labels.indexOf('Validate');
+    const downloadIdx = labels.indexOf('Download');
+    expect(validateIdx).toBe(clearIdx + 1);
+    expect(validateIdx).toBeLessThan(downloadIdx);
+    const validate = actions[validateIdx];
+    expect(validate.danger).toBeUndefined();
+    expect(validate.separatorBefore).toBeUndefined();
+    validate.onClick();
+    expect(h.onValidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables Validate while validating', () => {
+    const actions = buildBookActions(
+      { chapterCount: 0, deviceEditionCount: 0, regenLoading: false, validating: true },
+      handlers()
+    );
+    expect(actions.find((a) => a.label === 'Validate')).toMatchObject({ disabled: true });
   });
 });
