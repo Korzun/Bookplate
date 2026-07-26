@@ -7,7 +7,13 @@ import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
-import { useBook, useClearBookEditions, useDeleteBook, useRegenChapters } from '~/provider/book';
+import {
+  useBook,
+  useClearBookEditions,
+  useDeleteBook,
+  useDownloadBook,
+  useRegenChapters,
+} from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 import { useMyProgress } from '~/provider/progress';
 import { useToast } from '~/provider/toast';
@@ -35,6 +41,7 @@ export const BookPage = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [clearBookEditions, clearingEditions] = useClearBookEditions();
   const [clearEditionsModalOpen, setClearEditionsModalOpen] = useState(false);
+  const [downloadBook] = useDownloadBook();
   const showToast = useToast();
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -52,6 +59,11 @@ export const BookPage = () => {
     }
     showToast(`Cleared ${cleared} device edition${cleared === 1 ? '' : 's'}`, 'success');
   }, [clearBookEditions, id, showToast]);
+
+  const handleDownload = useCallback(async () => {
+    const ok = await downloadBook(id!);
+    if (!ok) showToast('Download failed', 'error');
+  }, [downloadBook, id, showToast]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -153,6 +165,7 @@ export const BookPage = () => {
       onShowLineage: () => setLineageModalOpen(true),
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
+      onDownloadBook: () => void handleDownload(),
       onDeleteBook: () => setDeleteModalOpen(true),
     }
   );
