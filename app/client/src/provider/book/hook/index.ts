@@ -5,6 +5,7 @@ export { useBookListFilter } from './use-book-list-filter';
 export { useBookListItems } from './use-book-list-items';
 export { useClearBookEditions } from './use-clear-book-editions';
 export { useDeleteBook } from './use-delete-book';
+export { useDownloadBook } from './use-download-book';
 export { useFetchBook } from './use-fetch-book';
 export { useFetchBookList } from './use-fetch-book-list';
 export { useFetchNextPage } from './use-fetch-next-page';
