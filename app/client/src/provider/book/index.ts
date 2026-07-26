@@ -22,6 +22,7 @@ export {
   useUnlinkBookLineage,
   useUploadBookList,
   useUploadQueueEngine,
+  useValidateBook,
 } from './hook';
 export { BookProvider } from './provider';
 export type {
@@ -42,4 +43,9 @@ export type {
   UploadItemStatus,
   UseUploadQueue,
 } from './hook/use-upload-queue';
-export type { Severity, ValidationMessage, ValidationFailure } from '~/lib/severity';
+export type {
+  Severity,
+  ValidationMessage,
+  ValidationFailure,
+  ValidationReport,
+} from '~/lib/severity';

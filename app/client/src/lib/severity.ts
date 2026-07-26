@@ -28,6 +28,12 @@ export interface ValidationFailure {
   threshold: ValidationThreshold;
 }
 
+// A validation run's full result: the failure payload plus whether the book
+// passes the configured threshold. Returned by POST /api/books/:id/validate.
+export interface ValidationReport extends ValidationFailure {
+  valid: boolean;
+}
+
 export interface SeverityCount {
   severity: Severity;
   count: number;
