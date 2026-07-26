@@ -1,0 +1,133 @@
+name: Release · Prepare
+
+# Entry point for cutting a release. Type in a version, pick a channel — the rest
+# is automated end-to-end:
+#   stable -> opens a release/vX.Y.Z PR (version bump + CHANGELOG) with auto-merge on.
+#             CI (the 5 required checks) runs on the PR; once green it rebase-merges,
+#             and Release · Finalize tags the merge, which triggers Release · Publish.
+#   beta   -> the beta branch is not protected, so this bumps + force-pushes beta and
+#             pushes the tag directly. Release · Publish builds and publishes the prerelease.
+#
+# The workflow never pushes to the protected main branch. All writes are made by the
+# release GitHub App (RELEASE_APP_ID / RELEASE_APP_PRIVATE_KEY) so that the PR it opens
+# and the tag it pushes actually trigger downstream CI — the default GITHUB_TOKEN would not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.7.0 or 0.7.0-rc.1)'
+        required: true
+      channel:
+        description: 'Release channel'
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+
+run-name: Prepare v${{ inputs.version }} (${{ inputs.channel }})
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+      - name: Bump version in config.yaml, package.json, package-lock.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          sed -i -E "s/^version: .*/version: \"${VERSION}\"/" config.yaml
+          npm version --no-git-tag-version --allow-same-version "$VERSION"
+
+      # --- Stable: land the bump through a normal PR (respects branch protection) ---
+
+      - name: Generate CHANGELOG entry
+        if: inputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            --method POST \
+            --field tag_name="v${VERSION}" \
+            --field target_commitish=main \
+            --jq '.body' > /tmp/release_notes.md
+          {
+            echo "## ${VERSION}"
+            echo ""
+            grep '^\* ' /tmp/release_notes.md \
+              | grep -v 'made their first contribution' \
+              | sed 's/^\* /- /' \
+              | sed 's/ by @[^ ]* in https:\/\/[^ ]*$//'
+            echo ""
+          } > /tmp/new_entry.md
+          if [ -f CHANGELOG.md ]; then
+            cat /tmp/new_entry.md CHANGELOG.md > /tmp/CHANGELOG.md
+          else
+            cp /tmp/new_entry.md /tmp/CHANGELOG.md
+          fi
+          mv /tmp/CHANGELOG.md CHANGELOG.md
+
+      - name: Open release PR with auto-merge
+        if: inputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          BRANCH="release/v${VERSION}"
+          git checkout -B "$BRANCH"
+          git add config.yaml package.json package-lock.json CHANGELOG.md
+          git commit -m "chore: release v${VERSION}"
+          git push origin "$BRANCH" --force
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: release v${VERSION}" \
+            --body "Automated release preparation for **v${VERSION}**.
+
+          Merging this PR tags \`v${VERSION}\` (via Release · Finalize) and publishes the
+          release (via Release · Publish). Auto-merge is enabled — it will rebase-merge as
+          soon as the required checks pass."
+          gh pr merge "$BRANCH" --auto --rebase
+
+      # --- Beta: beta branch is unprotected, so bump + tag it directly ---
+
+      - name: Release beta channel
+        if: inputs.channel == 'beta'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git checkout -B beta
+          git add config.yaml package.json package-lock.json
+          git commit -m "chore: release v${VERSION} [skip ci]"
+          git push origin beta --force
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"

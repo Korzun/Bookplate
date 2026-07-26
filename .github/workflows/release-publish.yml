@@ -1,0 +1,218 @@
+name: Release · Publish
+
+# Final stage of the release pipeline, triggered by a vX.Y.Z tag pushed by
+# Release · Finalize (stable) or Release · Prepare (beta). It validates the tagged
+# commit, builds and pushes the add-on images, syncs the beta channel, and creates the
+# GitHub Release.
+#
+# This workflow NEVER pushes to main. The version bump and CHANGELOG already landed on
+# main via the release PR (see Release · Prepare / Release · Finalize), so branch
+# protection is fully respected — nothing here needs to bypass it.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Gate jobs re-validate the exact tagged commit. For stable this is belt-and-suspenders
+  # (the release PR already passed these), but for beta — which has no PR — it is the only
+  # gate, and it also guards against a manually pushed tag.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  test-client:
+    name: Client tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -w app/client
+
+  test-server:
+    name: Server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -w app/server
+
+  docker-build:
+    name: Docker build (multi-arch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Build for amd64 and arm64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+  docker-smoke-test:
+    name: Docker smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+      - name: Build image
+        run: docker build -t bookplate:smoke .
+      - name: Run and verify startup
+        run: |
+          docker run -d --name smoke-test -p 3000:3000 bookplate:smoke
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:3000/login -o /dev/null; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "Server failed to become ready. Logs:"
+              docker logs smoke-test
+              docker rm -f smoke-test
+              exit 1
+            fi
+            sleep 1
+          done
+          docker stop smoke-test
+          docker rm smoke-test
+
+  resolve:
+    name: Resolve version
+    needs: [lint, test-client, test-server, docker-build, docker-smoke-test]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      target_branch: ${{ steps.resolve.outputs.target_branch }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version and channel
+        id: resolve
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # A pre-release tag (e.g. v0.7.0-rc.1) routes to the beta channel
+          if echo "$VERSION" | grep -q '-'; then
+            echo "target_branch=beta" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "target_branch=main" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Stable: point the beta channel at the freshly released commit. beta is not a
+      # protected branch, so the default token can push it directly.
+      - name: Sync beta branch to stable release
+        if: steps.resolve.outputs.target_branch == 'main'
+        run: git push origin HEAD:beta --force
+
+  build:
+    name: Build & push images
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.resolve.outputs.target_branch }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: home-assistant/builder@2024.03.5
+        with:
+          args: >-
+            --all
+            --target /data
+            --docker-hub ghcr.io/${{ github.repository_owner }}
+            --addon
+
+  # Syncs Docker images for the beta channel after a stable release. By this point the
+  # resolve job has already force-pushed beta to match the released commit, so building
+  # from beta produces the same image content — but ensures the HA builder runs against
+  # the beta ref specifically.
+  build-beta-sync:
+    name: Build & push images (beta channel sync)
+    needs: [resolve, build]
+    if: needs.resolve.outputs.target_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: beta
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: home-assistant/builder@2024.03.5
+        with:
+          args: >-
+            --all
+            --target /data
+            --docker-hub ghcr.io/${{ github.repository_owner }}
+            --addon
+
+  release:
+    name: Create GitHub Release
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          tag_name: v${{ needs.resolve.outputs.version }}
+          generate_release_notes: true
+          prerelease: ${{ needs.resolve.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ needs.resolve.outputs.is_prerelease == 'false' }}
