@@ -17,6 +17,7 @@ import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
+import { ValidationStore } from './services/validation-store';
 import { AppConfig } from './types';
 
 const log = logger('Server');
@@ -29,7 +30,8 @@ export function createServer(
   tokenStore: TokenStore,
   jwtSecret: Buffer,
   deviceStore: DeviceStore,
-  editionStore: EditionStore
+  editionStore: EditionStore,
+  validationStore: ValidationStore
 ): express.Express {
   const server = express();
 
@@ -74,7 +76,8 @@ export function createServer(
       thumbnailQueue,
       tokenStore,
       jwtSecret,
-      scanJobStore
+      scanJobStore,
+      validationStore
     )
   );
 

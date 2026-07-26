@@ -17,6 +17,7 @@ import { BookStore } from '../services/book-store';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
+import { ValidationStore } from '../services/validation-store';
 import { AppConfig, EpubMeta, Owner } from '../types';
 import { createUiRouter } from './ui';
 
@@ -49,9 +50,21 @@ vi.mock('../services/epub-validator', () => {
       this.threshold = threshold;
     }
   }
+  const okReport = {
+    valid: true,
+    messages: [],
+    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+  };
   return {
     EpubValidationError,
-    assertValidEpub: vi.fn().mockResolvedValue({ valid: true }),
+    assertValidEpub: vi.fn().mockResolvedValue(okReport),
+    validateEpubReport: vi.fn().mockResolvedValue({ ...okReport, threshold: 'ERROR' }),
+    toValidationReport: vi.fn((report: { valid: boolean }, threshold: string) => ({
+      valid: report.valid,
+      messages: [],
+      counts: okReport.counts,
+      threshold,
+    })),
   };
 });
 vi.setConfig({ testTimeout: 30000 });
@@ -83,6 +96,7 @@ let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
 let tokenStore: TokenStore;
+let validationStore: ValidationStore;
 let app: express.Express;
 let dbPath: string;
 let aliceId: string;
@@ -247,6 +261,7 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
   bookStore = new BookStore(booksDir, prisma);
+  validationStore = new ValidationStore(prisma);
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
@@ -267,7 +282,8 @@ beforeEach(async () => {
       mockThumbnailQueue,
       tokenStore,
       jwtSecret,
-      scanJobStore
+      scanJobStore,
+      validationStore
     )
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
@@ -2054,6 +2070,37 @@ describe('POST /api/books/:id/regen-chapters', () => {
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.title).toBe(FAKE_META.title);
+  });
+});
+
+describe('POST /api/books/:id/validate', () => {
+  it('returns the report and persists it', async () => {
+    await bookStore.addBook(aliceOwner, 'valbook', stage('valbook'), FAKE_META);
+    const [book] = await bookStore.listBooks(aliceOwner);
+    const token = await loginAlice();
+
+    const res = await request(app)
+      .post(`/api/books/${book.id}/validate`)
+      .set(...bearer(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ valid: true, threshold: 'ERROR' });
+    const stored = await validationStore.getValidation(aliceOwner, book.id);
+    expect(stored).not.toBeNull();
+    expect(stored!.valid).toBe(true);
+  });
+
+  it('returns 404 for an unknown book', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/deadbeef/validate')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).post('/api/books/whatever/validate');
+    expect(res.status).toBe(401);
   });
 });
 
