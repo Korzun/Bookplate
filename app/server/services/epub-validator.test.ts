@@ -7,11 +7,14 @@ import {
   EpubValidationError,
   formatMessages,
   splitSubjects,
+  toValidationReport,
+  validateEpubReport,
 } from './epub-validator';
 
 vi.mock('@korzun/epubcheck-ts', () => ({ validateEpub: vi.fn() }));
 
 const mockValidate = validateEpub as MockedFunction<typeof validateEpub>;
+const mockValidateEpub = validateEpub as unknown as ReturnType<typeof vi.fn>;
 
 function report(partial: Partial<Report>): Report {
   return {
@@ -198,5 +201,51 @@ describe('splitSubjects', () => {
 
   it('leaves an unbalanced trailing quote as plain text', () => {
     expect(splitSubjects('missing "close')).toEqual([{ text: 'missing "close' }]);
+  });
+});
+
+const RAW = {
+  valid: false,
+  counts: { FATAL: 0, ERROR: 1, WARNING: 1, INFO: 0, USAGE: 0 },
+  messages: [
+    {
+      id: 'OPF-014',
+      severity: 'ERROR',
+      message: 'Bad "value" here',
+      location: { path: 'a.opf', line: 3, column: 5 },
+    },
+    { id: 'HTM-004', severity: 'WARNING', message: 'plain note' },
+  ],
+};
+
+describe('toValidationReport', () => {
+  it('maps a raw report into the stored shape with formatted messages', () => {
+    const out = toValidationReport(RAW as never, 'ERROR');
+    expect(out.valid).toBe(false);
+    expect(out.threshold).toBe('ERROR');
+    expect(out.counts).toEqual(RAW.counts);
+    expect(out.messages[0]).toMatchObject({
+      id: 'OPF-014',
+      severity: 'ERROR',
+      location: { path: 'a.opf', line: 3, column: 5 },
+    });
+    // "value" becomes a subject segment
+    expect(out.messages[0].segments).toEqual([
+      { text: 'Bad ' },
+      { text: 'value', subject: true },
+      { text: ' here' },
+    ]);
+    expect(out.messages[1].segments).toEqual([{ text: 'plain note' }]);
+  });
+});
+
+describe('validateEpubReport', () => {
+  it('runs validateEpub and maps the result', async () => {
+    mockValidateEpub.mockResolvedValue(RAW);
+    const out = await validateEpubReport(Buffer.from('x'), 'WARNING');
+    expect(mockValidateEpub).toHaveBeenCalledWith(Buffer.from('x'), { threshold: 'WARNING' });
+    expect(out.valid).toBe(false);
+    expect(out.threshold).toBe('WARNING');
+    expect(out.messages).toHaveLength(2);
   });
 });
