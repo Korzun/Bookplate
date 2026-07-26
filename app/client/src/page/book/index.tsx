@@ -2,7 +2,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
 import { Card, Page, ProgressIndicator, Tag, MetadataList, type Metadata } from '~/component';
-import { BookLineageModal, ConfirmModal, SetProgressModal, type PageActionItem } from '~/control';
+import {
+  BookLineageModal,
+  ConfirmModal,
+  SetProgressModal,
+  ValidationDetailModal,
+  type PageActionItem,
+} from '~/control';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
@@ -13,6 +19,8 @@ import {
   useDeleteBook,
   useDownloadBook,
   useRegenChapters,
+  useValidateBook,
+  type ValidationReport,
 } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 import { useMyProgress } from '~/provider/progress';
@@ -42,6 +50,9 @@ export const BookPage = () => {
   const [clearBookEditions, clearingEditions] = useClearBookEditions();
   const [clearEditionsModalOpen, setClearEditionsModalOpen] = useState(false);
   const [downloadBook] = useDownloadBook();
+  const [validateBook, validating] = useValidateBook();
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
+  const [validationNonce, setValidationNonce] = useState(0);
   const showToast = useToast();
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -64,6 +75,16 @@ export const BookPage = () => {
     const ok = await downloadBook(id!);
     if (!ok) showToast('Download failed', 'error');
   }, [downloadBook, id, showToast]);
+
+  const handleValidate = useCallback(async () => {
+    const result = await validateBook(id!);
+    if (!result) {
+      showToast('Validation failed', 'error');
+      return;
+    }
+    setValidationReport(result);
+    setValidationNonce((n) => n + 1);
+  }, [validateBook, id, showToast]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -158,6 +179,7 @@ export const BookPage = () => {
       chapterCount: book.chapterCount,
       deviceEditionCount,
       regenLoading,
+      validating,
     },
     {
       onSetProgress: () => setProgressModalOpen(true),
@@ -165,6 +187,7 @@ export const BookPage = () => {
       onShowLineage: () => setLineageModalOpen(true),
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
+      onValidate: () => void handleValidate(),
       onDownloadBook: () => void handleDownload(),
       onDeleteBook: () => setDeleteModalOpen(true),
     }
@@ -281,6 +304,18 @@ export const BookPage = () => {
         All cached device editions for this book will be removed. They&apos;ll be regenerated the
         next time each device downloads it.
       </ConfirmModal>
+      {validationReport && (
+        <ValidationDetailModal
+          key={validationNonce}
+          isOpen
+          filename={book.title}
+          counts={validationReport.counts}
+          messages={validationReport.messages}
+          threshold={validationReport.threshold}
+          intro="EPUBCheck results for this book. Issues below the rejection threshold don't block anything, but you may want to fix them."
+          onClose={() => setValidationReport(null)}
+        />
+      )}
     </Page>
   );
 };

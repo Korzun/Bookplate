@@ -4,6 +4,7 @@ export interface BookActionState {
   chapterCount: number;
   deviceEditionCount: number;
   regenLoading: boolean;
+  validating: boolean;
 }
 
 export interface BookActionHandlers {
@@ -12,6 +13,7 @@ export interface BookActionHandlers {
   onShowLineage: () => void;
   onRegenChapters: () => void;
   onClearEditions: () => void;
+  onValidate: () => void;
   onDownloadBook: () => void;
   onDeleteBook: () => void;
 }
@@ -53,6 +55,12 @@ export function buildBookActions(
     label: `Clear device editions (${state.deviceEditionCount})`,
     onClick: handlers.onClearEditions,
     disabled: state.deviceEditionCount === 0,
+  });
+
+  actions.push({
+    label: 'Validate',
+    onClick: handlers.onValidate,
+    disabled: state.validating,
   });
 
   actions.push({
