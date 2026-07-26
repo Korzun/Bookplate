@@ -17,13 +17,18 @@ import {
   DocumentIsBookError,
 } from '../services/book-store';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
-import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
+import {
+  assertValidEpub,
+  EpubValidationError,
+  validateEpubReport,
+} from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
 import { UserStore } from '../services/user-store';
+import { ValidationStore } from '../services/validation-store';
 import {
   AppConfig,
   BookListFilters,
@@ -81,7 +86,8 @@ export function createUiRouter(
   thumbnailQueue: ThumbnailQueue,
   tokenStore: TokenStore,
   jwtSecret: Buffer,
-  scanJobStore: ScanJobStore
+  scanJobStore: ScanJobStore,
+  validationStore: ValidationStore
 ): Router {
   const router = Router();
 
@@ -1327,6 +1333,27 @@ export function createUiRouter(
       log.info(`Book chapters regenerated: "${updated.filename}"`);
       const { path: _path, ...rest } = updated;
       res.json(rest);
+    })
+  );
+
+  router.post(
+    '/api/books/:id/validate',
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const report = await validateEpubReport(
+        fs.readFileSync(book.path),
+        config.validationThreshold
+      );
+      await validationStore.saveValidation(owner, book.id, report);
+      log.info(`Book validated: "${book.filename}" (valid=${report.valid})`);
+      res.json(report);
     })
   );
 
