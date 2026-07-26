@@ -784,7 +784,7 @@ export function createUiRouter(
               }
               try {
                 const updated = await applyEpubChanges(
-                  { bookStore, validationThreshold: config.validationThreshold },
+                  { bookStore, validationStore, validationThreshold: config.validationThreshold },
                   owner,
                   created,
                   changes
@@ -1250,7 +1250,7 @@ export function createUiRouter(
       let updated;
       try {
         updated = await applyEpubChanges(
-          { bookStore, validationThreshold: config.validationThreshold },
+          { bookStore, validationStore, validationThreshold: config.validationThreshold },
           owner,
           book,
           changes

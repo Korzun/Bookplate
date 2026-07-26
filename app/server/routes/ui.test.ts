@@ -2432,6 +2432,17 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it('persists validation after a metadata edit', async () => {
+    const spy = vi.spyOn(validationStore, 'saveValidation');
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'New Title')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalled();
+  });
+
   it('rejects an edit that produces an invalid EPUB with 422 and leaves the original file intact', async () => {
     const book = await bookStore.getBookById(aliceOwner, bookId);
     const storedPath = book!.path;

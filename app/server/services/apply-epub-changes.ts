@@ -4,11 +4,13 @@ import * as path from 'path';
 
 import { Book, Owner } from '../types';
 import { BookStore } from './book-store';
-import { assertValidEpub } from './epub-validator';
+import { assertValidEpub, toValidationReport } from './epub-validator';
 import { buildUpdatedEpub, EpubChanges } from './epub-writer';
+import { ValidationStore } from './validation-store';
 
 export interface ApplyEpubChangesDeps {
   bookStore: BookStore;
+  validationStore: ValidationStore;
   validationThreshold: Parameters<typeof assertValidEpub>[1];
 }
 
@@ -25,7 +27,7 @@ export async function applyEpubChanges(
   changes: EpubChanges
 ): Promise<Book> {
   const updatedBytes = buildUpdatedEpub(book.path, changes);
-  await assertValidEpub(updatedBytes, deps.validationThreshold);
+  const report = await assertValidEpub(updatedBytes, deps.validationThreshold);
 
   const tmpPath = path.join(path.dirname(book.path), `.tmp-${randomUUID()}.epub`);
   try {
@@ -42,5 +44,10 @@ export async function applyEpubChanges(
 
   const updated = await deps.bookStore.reimportBook(owner, book.id);
   if (!updated) throw new Error('Re-import returned no book after update');
+  await deps.validationStore.saveValidation(
+    owner,
+    updated.id,
+    toValidationReport(report, deps.validationThreshold)
+  );
   return updated;
 }
