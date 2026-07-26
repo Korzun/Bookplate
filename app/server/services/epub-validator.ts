@@ -66,6 +66,35 @@ export function formatMessages(messages: Message[]): ValidationMessage[] {
   }));
 }
 
+export interface ValidationReport {
+  valid: boolean;
+  messages: ValidationMessage[];
+  counts: Record<Severity, number>;
+  threshold: ValidationThreshold;
+}
+
+// Map a raw library Report (from assertValidEpub's success path, or a direct
+// validateEpub call) into the shape we store and return to clients.
+export function toValidationReport(
+  report: Report,
+  threshold: ValidationThreshold
+): ValidationReport {
+  return {
+    valid: report.valid,
+    messages: formatMessages(report.messages),
+    counts: report.counts,
+    threshold,
+  };
+}
+
+// Full validation of raw bytes without throwing — used by the Validate action.
+export async function validateEpubReport(
+  bytes: Buffer,
+  threshold: ValidationThreshold
+): Promise<ValidationReport> {
+  return toValidationReport(await validateEpub(bytes, { threshold }), threshold);
+}
+
 // Severity order, most severe first — used to render the blocking summary.
 const SEVERITY_ORDER: Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
 
