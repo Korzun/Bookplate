@@ -186,6 +186,31 @@ variables:
 
 See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
+### Cutting a release
+
+Releasing is on-rails: go to **Actions → Release · Prepare → Run workflow**, enter a
+version (e.g. `0.7.0`, or `0.7.0-rc.1` for a pre-release) and pick a channel. The rest is
+automatic — you don't push tags or edit versions by hand.
+
+The pipeline never pushes to the protected `main` branch. Instead it flows through a
+normal pull request, so releases respect the same branch protection as everything else:
+
+1. **Release · Prepare** — for **stable**, opens a `release/vX.Y.Z` PR that bumps the
+   version (`config.yaml`, `package.json`, `package-lock.json`) and prepends a
+   `CHANGELOG.md` entry, with auto-merge enabled. For **beta**, it bumps and tags the
+   (unprotected) `beta` branch directly.
+2. CI runs on the PR; once the required checks pass it rebase-merges automatically.
+3. **Release · Finalize** — tags the merge commit `vX.Y.Z`.
+4. **Release · Publish** — re-validates the tagged commit, builds and pushes the
+   multi-arch add-on images, syncs the `beta` channel, and creates the GitHub Release.
+
+The workflows authenticate as a dedicated **release GitHub App** (repository variable
+`RELEASE_APP_ID` + secret `RELEASE_APP_PRIVATE_KEY`, with "Allow auto-merge" enabled in
+repo settings). This is required because GitHub's default `GITHUB_TOKEN` cannot trigger
+the downstream CI and publish runs on the PRs and tags it creates — it is **not** a
+branch-protection bypass. If the release identity is ever rotated, update those two
+values; nothing else changes.
+
 ## License
 
 No license has been declared for this project yet. All rights reserved by the
