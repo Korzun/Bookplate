@@ -319,3 +319,29 @@ describe('devices and device_editions tables', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('data_v17_validation', () => {
+  let tmpDir: string;
+  let booksDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-val-'));
+    booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the validations and validation_messages tables', async () => {
+    await runMigrations(prisma, booksDir);
+    const rows = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('validations','validation_messages') ORDER BY name`
+    );
+    expect(rows.map((r) => r.name)).toEqual(['validation_messages', 'validations']);
+  });
+});

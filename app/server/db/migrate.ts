@@ -701,4 +701,39 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       )
     `);
   });
+
+  // Data migration: create the validation tables. Runs after
+  // data_v11_per_user_libraries so the composite FK on (user_id, book_id) is
+  // valid. The Prisma DDL migration (20260726120000_add_validation_tables) is a
+  // no-op; see its comment.
+  await runDataMigration(prisma, 'data_v17_validation', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "validations" (
+        "user_id" TEXT NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "valid" INTEGER NOT NULL,
+        "threshold" TEXT NOT NULL,
+        "validated_at" REAL NOT NULL,
+        PRIMARY KEY ("user_id", "book_id"),
+        CONSTRAINT "validations_book_fkey" FOREIGN KEY ("user_id", "book_id")
+          REFERENCES "books" ("user_id", "id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "validation_messages" (
+        "user_id" TEXT NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "seq" INTEGER NOT NULL,
+        "code" TEXT NOT NULL,
+        "severity" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "path" TEXT,
+        "line" INTEGER,
+        "column_num" INTEGER,
+        PRIMARY KEY ("user_id", "book_id", "seq"),
+        CONSTRAINT "validation_messages_validation_fkey" FOREIGN KEY ("user_id", "book_id")
+          REFERENCES "validations" ("user_id", "book_id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+  });
 }

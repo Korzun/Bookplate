@@ -36,6 +36,7 @@ model Book {
   seriesRel       Series?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   thumbnails      BookThumbnail[]
   pendingFix      PendingFix?
+  validation      Validation?
 
   @@id([userId, id])
   @@map("books")
@@ -72,6 +73,37 @@ model PendingFix {
 
   @@id([userId, bookId])
   @@map("pending_fixes")
+}
+
+model Validation {
+  userId      String @map("user_id")
+  bookId      String @map("book_id")
+  valid       Boolean
+  threshold   String
+  validatedAt Float  @map("validated_at")
+
+  book     Book                @relation(fields: [userId, bookId], references: [userId, id], onDelete: Cascade, onUpdate: Cascade)
+  messages ValidationMessage[]
+
+  @@id([userId, bookId])
+  @@map("validations")
+}
+
+model ValidationMessage {
+  userId   String  @map("user_id")
+  bookId   String  @map("book_id")
+  seq      Int
+  code     String
+  severity String
+  message  String
+  path     String?
+  line     Int?
+  column   Int?    @map("column_num")
+
+  validation Validation @relation(fields: [userId, bookId], references: [userId, bookId], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, bookId, seq])
+  @@map("validation_messages")
 }
 
 model BookThumbnail {
