@@ -12,6 +12,7 @@ export interface BookActionHandlers {
   onShowLineage: () => void;
   onRegenChapters: () => void;
   onClearEditions: () => void;
+  onDownloadBook: () => void;
   onDeleteBook: () => void;
 }
 
@@ -55,7 +56,13 @@ export function buildBookActions(
   });
 
   actions.push({
-    label: 'Delete book',
+    label: 'Download',
+    onClick: handlers.onDownloadBook,
+    separatorBefore: true,
+  });
+
+  actions.push({
+    label: 'Delete',
     onClick: handlers.onDeleteBook,
     danger: true,
     // Set the destructive action off from the rest with a divider. (The menu no
