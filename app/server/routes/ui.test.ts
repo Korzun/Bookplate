@@ -718,6 +718,20 @@ describe('POST /api/books/upload', () => {
     expect(mockThumbnailQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it('persists validation after a successful upload', async () => {
+    const spy = vi.spyOn(validationStore, 'saveValidation');
+    const epubBuf = makeEpub({ title: 'Validated Book' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'validated.epub')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalled();
+    const [, bookId] = spy.mock.calls[0];
+    expect(typeof bookId).toBe('string');
+  });
+
   it('places uploaded file at <booksDir>/<id>.epub', async () => {
     const token = await loginAlice();
     const epubBuf = makeEpub({ title: 'Stored Book', author: 'A' });

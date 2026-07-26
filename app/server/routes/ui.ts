@@ -20,6 +20,7 @@ import { parseEpub, partialMD5 } from '../services/epub-parser';
 import {
   assertValidEpub,
   EpubValidationError,
+  toValidationReport,
   validateEpubReport,
 } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
@@ -703,8 +704,9 @@ export function createUiRouter(
           });
           return;
         }
+        let report: Awaited<ReturnType<typeof assertValidEpub>>;
         try {
-          await assertValidEpub(fs.readFileSync(savedPath), config.validationThreshold);
+          report = await assertValidEpub(fs.readFileSync(savedPath), config.validationThreshold);
         } catch (err: unknown) {
           try {
             fs.unlinkSync(savedPath);
@@ -743,6 +745,11 @@ export function createUiRouter(
           }
           throw err;
         }
+        await validationStore.saveValidation(
+          owner,
+          id,
+          toValidationReport(report, config.validationThreshold)
+        );
         // Detect metadata issues; auto-apply the high-confidence ones in-request.
         let finalId = id;
         const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
