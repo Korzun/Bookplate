@@ -28,6 +28,7 @@ function renderModal(overrides: {
   messages?: ValidationMessage[];
   counts?: Partial<Record<Severity, number>>;
   threshold?: ValidationThreshold;
+  intro?: React.ReactNode;
 }) {
   const messages = overrides.messages ?? [];
   return renderWithProviders(
@@ -37,6 +38,7 @@ function renderModal(overrides: {
       counts={{ ...EMPTY_COUNTS, ...overrides.counts }}
       messages={messages}
       threshold={overrides.threshold ?? 'ERROR'}
+      intro={overrides.intro}
       onClose={vi.fn()}
     />
   );
@@ -260,5 +262,36 @@ describe('ValidationDetailModal blocking-by-default toggle', () => {
     expect(
       screen.queryByRole('button', { name: /show all messages/i, hidden: true })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal empty state', () => {
+  it('shows an empty success state when there are no messages', () => {
+    renderModal({ messages: [], counts: {} });
+    expect(screen.getByText(/no validation issues/i)).toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal show-all default', () => {
+  it('defaults to showing all messages when nothing is blocking', () => {
+    renderModal({
+      messages: [{ id: 'HTM-004', severity: 'WARNING', message: 'note' }],
+      counts: { WARNING: 1 },
+      threshold: 'ERROR',
+    });
+    // A non-blocking WARNING is visible without clicking "Show all"
+    expect(screen.getByText('note')).toBeInTheDocument();
+  });
+});
+
+describe('ValidationDetailModal custom intro', () => {
+  it('renders a custom intro when provided', () => {
+    renderModal({
+      messages: [{ id: 'HTM-004', severity: 'WARNING', message: 'note' }],
+      counts: { WARNING: 1 },
+      threshold: 'ERROR',
+      intro: <span>custom intro text</span>,
+    });
+    expect(screen.getByText('custom intro text')).toBeInTheDocument();
   });
 });
