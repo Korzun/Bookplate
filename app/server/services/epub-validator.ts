@@ -1,6 +1,8 @@
 import { validateEpub } from '@korzun/epubcheck-ts';
 import type { Report, Message, Severity, ValidationThreshold } from '@korzun/epubcheck-ts';
 
+export type { Severity };
+
 // A message split into display runs. A run with `subject: true` was a
 // double-quoted span in the raw message (quotes stripped) — the client renders
 // it monospaced. Plain prose runs have `subject` unset.
