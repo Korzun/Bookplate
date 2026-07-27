@@ -2288,6 +2288,94 @@ describe('replace routes', () => {
     expect(res.status).toBe(200);
   });
 
+  it('commit applies auto-fixes and accepted proposals, and persists no pending-fix row', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repfix',
+      stage('repfix', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    mockDetectMetadataIssues.mockReturnValueOnce([
+      {
+        field: 'titleSort',
+        kind: 'title-sort-missing',
+        from: '',
+        to: 'Test Title, The',
+        changes: { titleSort: 'Test Title, The' },
+        autoEligible: true,
+      },
+      {
+        field: 'authorSort',
+        kind: 'author-sort-missing',
+        from: '',
+        to: 'Guin, Ursula K. Le',
+        changes: { authorSort: 'Guin, Ursula K. Le' },
+        autoEligible: false,
+      },
+    ]);
+    const acceptedKey = 'authorSort:author-sort-missing:';
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/repfix/replace')
+      .set(...bearer(token))
+      .field('acceptedFixKeys', JSON.stringify([acceptedKey]))
+      .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+    expect(res.status).toBe(200);
+    // Auto-eligible fix applied.
+    expect(res.body.titleSort).toBe('Test Title, The');
+    // Accepted proposal applied.
+    expect(res.body.authorSort).toBe('Guin, Ursula K. Le');
+
+    // No pending-fix row is ever created by the commit handler — proposals
+    // are resolved inline via acceptedFixKeys.
+    const pending = await request(app)
+      .get('/api/books/pending-fixes')
+      .set(...bearer(token));
+    expect(pending.body).toHaveLength(0);
+  });
+
+  it('commit leaves a proposal unapplied when its key is not in acceptedFixKeys', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repfix2',
+      stage('repfix2', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    mockDetectMetadataIssues.mockReturnValueOnce([
+      {
+        field: 'titleSort',
+        kind: 'title-sort-missing',
+        from: '',
+        to: 'Test Title, The',
+        changes: { titleSort: 'Test Title, The' },
+        autoEligible: true,
+      },
+      {
+        field: 'authorSort',
+        kind: 'author-sort-missing',
+        from: '',
+        to: 'Guin, Ursula K. Le',
+        changes: { authorSort: 'Guin, Ursula K. Le' },
+        autoEligible: false,
+      },
+    ]);
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/repfix2/replace')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+    expect(res.status).toBe(200);
+    // Auto-eligible fix still applied.
+    expect(res.body.titleSort).toBe('Test Title, The');
+    // Proposal NOT applied — no acceptedFixKeys field was sent.
+    expect(res.body.authorSort).not.toBe('Guin, Ursula K. Le');
+
+    const pending = await request(app)
+      .get('/api/books/pending-fixes')
+      .set(...bearer(token));
+    expect(pending.body).toHaveLength(0);
+  });
+
   it('commit returns 422 when the new file fails validation, leaving the book unchanged', async () => {
     await bookStore.addBook(
       aliceOwner,

@@ -19,7 +19,7 @@ import {
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { EpubValidationError } from '../services/epub-validator';
-import { EpubChanges } from '../services/epub-writer';
+import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
@@ -1369,14 +1369,44 @@ export function createUiRouter(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      let updated: Awaited<ReturnType<typeof replaceEpubBytes>>;
+
+      let acceptedKeys: string[] = [];
       try {
-        updated = await replaceEpubBytes(
-          { bookStore, validationStore, validationThreshold: config.validationThreshold },
-          owner,
-          book,
-          req.file.buffer
-        );
+        const parsed = JSON.parse((req.body.acceptedFixKeys as string) ?? '[]') as unknown;
+        if (Array.isArray(parsed) && parsed.every((k) => typeof k === 'string')) {
+          acceptedKeys = parsed;
+        }
+      } catch {
+        acceptedKeys = [];
+      }
+
+      // Structurally repair the candidate buffer before swapping it in, so
+      // the file that gets persisted matches what /replace/analyze previewed.
+      const dir = bookStore.getStagingDir();
+      fs.mkdirSync(dir, { recursive: true });
+      const tmpPath = path.join(dir, `replace-${randomUUID()}.epub`);
+      fs.writeFileSync(tmpPath, req.file.buffer);
+      let repairedBytes: Buffer;
+      try {
+        repairedBytes = repairPackageDocument(tmpPath).bytes;
+      } finally {
+        fs.unlinkSync(tmpPath);
+      }
+
+      let finalBook: Awaited<ReturnType<typeof replaceEpubBytes>>;
+      try {
+        const deps = {
+          bookStore,
+          validationStore,
+          validationThreshold: config.validationThreshold,
+        };
+        const updated = await replaceEpubBytes(deps, owner, book, repairedBytes);
+        const result = await applyAutoAndAccepted(deps, owner, updated, {
+          originalName: req.file.originalname,
+          librarySubjects: await bookStore.getSubjects(owner),
+          acceptedKeys,
+        });
+        finalBook = result.book;
       } catch (err: unknown) {
         if (err instanceof EpubValidationError) {
           res.status(422).json({
@@ -1393,8 +1423,8 @@ export function createUiRouter(
         }
         throw err;
       }
-      log.info(`Book replaced: "${updated.filename}"`);
-      const { path: _path, ...rest } = updated;
+      log.info(`Book replaced: "${finalBook.filename}"`);
+      const { path: _p, ...rest } = finalBook;
       res.json(rest);
     })
   );
