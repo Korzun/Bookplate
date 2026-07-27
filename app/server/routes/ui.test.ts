@@ -1716,6 +1716,28 @@ describe('POST /api/books/scan', () => {
     expect(mockThumbnailQueue.reconcile).toHaveBeenCalledTimes(1);
   });
 
+  it('validates and persists every book after a scan', async () => {
+    await bookStore.addBook(aliceOwner, 'scanval1', stage('scanval1'), {
+      ...FAKE_META,
+      title: 'Scan Val One',
+    });
+    await bookStore.addBook(aliceOwner, 'scanval2', stage('scanval2'), {
+      ...FAKE_META,
+      title: 'Scan Val Two',
+    });
+
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/scan')
+      .set(...bearer(token));
+    expect(res.status).toBe(202);
+    const final = await waitForScan(token);
+    expect(final.status).toBe('completed');
+
+    expect(await validationStore.getValidation(aliceOwner, 'scanval1')).not.toBeNull();
+    expect(await validationStore.getValidation(aliceOwner, 'scanval2')).not.toBeNull();
+  });
+
   it('returns 409 with the current job when a scan is already running', async () => {
     const token = await loginAlice();
     scanJobStore.start(aliceId); // simulate an in-flight scan

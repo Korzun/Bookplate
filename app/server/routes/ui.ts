@@ -24,7 +24,7 @@ import {
 } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import { revalidateBook } from '../services/revalidate-library';
+import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
@@ -1140,8 +1140,15 @@ export function createUiRouter(
       void (async () => {
         try {
           const result = await bookStore.scan(owner);
+          const val = await revalidateLibrary(
+            { bookStore, validationStore, validationThreshold: config.validationThreshold },
+            owner
+          );
           await thumbnailQueue.reconcile();
-          log.info(`Scan: ${result.imported.length} imported, ${result.removed.length} removed`);
+          log.info(
+            `Scan: ${result.imported.length} imported, ${result.removed.length} removed, ` +
+              `${val.validated} validated (${val.failed} failed)`
+          );
           scanJobStore.complete(owner.userId, result);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
