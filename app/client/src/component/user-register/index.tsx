@@ -1,6 +1,6 @@
 import { Fragment, useActionState, useCallback, useState } from 'react';
 
-import { Card, CardDivider } from '~/component';
+import { Card } from '~/component';
 import { Button, PasswordResultModal, TextInput } from '~/control';
 import { useToast } from '~/provider/toast';
 import { useRegisterUser } from '~/provider/user';
@@ -59,7 +59,6 @@ export const UserRegister = () => {
               autoComplete="off"
             />
           </div>
-          <CardDivider />
           <Button
             type="primary"
             radius="card"
