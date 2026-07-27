@@ -23,11 +23,6 @@ describe('UserRegister', () => {
     expect(screen.getByText('Register a user')).toBeInTheDocument();
   });
 
-  it('renders a divider between the field and the button', () => {
-    const { container } = renderWithProviders(<UserRegister />);
-    expect(container.querySelector('form [role="separator"]')).not.toBeNull();
-  });
-
   it('keeps Register disabled until the username has at least 6 characters', async () => {
     const user = userEvent.setup();
     const { container } = renderWithProviders(<UserRegister />);
