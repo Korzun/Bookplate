@@ -11,8 +11,9 @@ vi.mock('react-router', async (orig) => ({
   useParams: () => ({ id: 'b1' }),
   useNavigate: () => navigate,
 }));
+let bookReturn: unknown = { id: 'b1', title: 'X', valid: true };
 vi.mock('~/provider/book', () => ({
-  useBook: () => [{ id: 'b1', title: 'X' }, false, false, undefined],
+  useBook: () => [bookReturn, false, false, undefined],
 }));
 // `~/provider/toast` is left unmocked: `renderWithProviders` supplies a real
 // `ToastProvider`, and `errorMessage` is undefined in our fixture so the
@@ -44,6 +45,7 @@ beforeEach(() => {
   navigate.mockClear();
   dismissAllProposals.mockClear();
   pendingReturn = pending;
+  bookReturn = { id: 'b1', title: 'X', valid: true };
 });
 
 async function renderPage() {
@@ -61,5 +63,12 @@ describe('BookEditPage fix guard', () => {
     pendingReturn = undefined;
     await renderPage();
     expect(screen.getByText('EDIT FORM')).toBeTruthy();
+  });
+  it('shows the blocked message (not the form) when the book is not valid', async () => {
+    pendingReturn = undefined;
+    bookReturn = { id: 'b1', title: 'X', valid: false };
+    await renderPage();
+    expect(screen.getByText(/must pass validation/i)).toBeTruthy();
+    expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 });
