@@ -22,14 +22,28 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       color: theme.color.success,
     },
   },
+  // Suggestions are set apart from one another so each reads as a distinct block.
+  proposalList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.xl,
+  },
   proposalRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: theme.space.md,
     fontSize: theme.fontSize.sm,
   },
+  // Column: the change on the first line, its reason tucked directly beneath it
+  // (tight gap) so the reason reads as part of this suggestion, not a separate one.
   proposalText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.xxs,
+    minWidth: 0,
+  },
+  proposalMain: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'baseline',
