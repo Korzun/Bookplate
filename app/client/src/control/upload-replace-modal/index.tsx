@@ -78,7 +78,9 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       loading={committing}
       confirmDisabled={report?.valid !== true}
     >
-      {!file && <UploadZone multiple={false} addFiles={pick} />}
+      {!file && (
+        <UploadZone multiple={false} card={false} dropLabel="replacement" addFiles={pick} />
+      )}
       {file && validating && <p>Validating {file.name}…</p>}
       {file && !validating && report && report.valid && (
         <div>
