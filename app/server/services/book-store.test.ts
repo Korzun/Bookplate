@@ -3670,3 +3670,21 @@ describe('getSeriesNextIndex', () => {
     expect(await bookStore.getSeriesNextIndex(other, 'Dune')).toBe(1);
   });
 });
+
+describe('getBookById maps validation.valid', () => {
+  it('reflects the stored validation valid flag, or null when unvalidated', async () => {
+    await bookStore.addBook(OWNER, 'val-true', stage('val-true'), FAKE_META);
+    await bookStore.addBook(OWNER, 'val-false', stage('val-false'), FAKE_META);
+    await bookStore.addBook(OWNER, 'val-none', stage('val-none'), FAKE_META);
+    await prisma.validation.create({
+      data: { userId: OWNER.userId, bookId: 'val-true', valid: true, threshold: 'ERROR', validatedAt: 1 },
+    });
+    await prisma.validation.create({
+      data: { userId: OWNER.userId, bookId: 'val-false', valid: false, threshold: 'ERROR', validatedAt: 1 },
+    });
+
+    expect((await bookStore.getBookById(OWNER, 'val-true'))?.valid).toBe(true);
+    expect((await bookStore.getBookById(OWNER, 'val-false'))?.valid).toBe(false);
+    expect((await bookStore.getBookById(OWNER, 'val-none'))?.valid).toBeNull();
+  });
+});

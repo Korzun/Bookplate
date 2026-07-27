@@ -65,6 +65,7 @@ const BOOK_SELECT = {
   chapterSpineMap: true,
   chapterNames: true,
   pageCount: true,
+  validation: { select: { valid: true } },
 } as const;
 
 export class BookHashCollisionError extends Error {
@@ -1573,6 +1574,7 @@ export class BookStore {
       chapterSpineMap: JSON.parse(r.chapterSpineMap) as number[],
       chapterNames: r.chapterNames ? (JSON.parse(r.chapterNames) as string[]) : [],
       pageCount: r.pageCount,
+      valid: r.validation?.valid ?? null,
     };
   }
 }
