@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
 
 import { UploadZone } from '~/component';
+import { CheckIcon } from '~/icon';
 import type { ValidationReport } from '~/lib/severity';
 import { useReplaceBook } from '~/provider/book';
 
 import { Button } from '../button';
 import { ConfirmModal } from '../confirm-modal';
 import { SeverityCounts } from '../severity-counts';
+import { useStyle } from './style';
 
 interface Props {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface Props {
 }
 
 export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onReplaced }: Props) {
+  const styles = useStyle();
   const { validateReplacement, commitReplacement, validating, committing, commitError } =
     useReplaceBook();
   const [file, setFile] = useState<File | null>(null);
@@ -79,7 +82,10 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       {file && validating && <p>Validating {file.name}…</p>}
       {file && !validating && report && report.valid && (
         <div>
-          <p>✓ {file.name} is valid.</p>
+          <p className={styles.validLine}>
+            <CheckIcon width={16} height={16} className={styles.checkIcon} aria-hidden />
+            {file.name} is valid.
+          </p>
           <SeverityCounts counts={report.counts} threshold={report.threshold} />
           {commitFailed && <p>{commitError || 'Replace failed.'}</p>}
           {chooseDifferentFile}
