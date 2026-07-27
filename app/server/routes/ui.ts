@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -16,14 +16,10 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from '../services/book-store';
+import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
-import {
-  assertValidEpub,
-  EpubValidationError,
-  toValidationReport,
-  validateEpubReport,
-} from '../services/epub-validator';
-import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
+import { EpubValidationError, validateEpubReport } from '../services/epub-validator';
+import { EpubChanges } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
@@ -42,7 +38,6 @@ import {
 } from '../types';
 import { asyncHandler } from '../utils/async-handler';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
-import { detectMetadataIssues, MetadataIssue } from '../utils/metadata-issues';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 
 const log = logger('UI');
@@ -67,19 +62,6 @@ function requireUserId(req: Request, res: Response): string | null {
 }
 
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
-
-function toFix(issue: MetadataIssue): MetadataFix {
-  return {
-    field: issue.field,
-    kind: issue.kind,
-    from: issue.from,
-    to: issue.to,
-    ...(issue.reason ? { reason: issue.reason } : {}),
-    changes: issue.changes,
-    ...(issue.fromChips ? { fromChips: issue.fromChips } : {}),
-    ...(issue.toChips ? { toChips: issue.toChips } : {}),
-  };
-}
 
 export function createUiRouter(
   bookStore: BookStore,
@@ -653,50 +635,42 @@ export function createUiRouter(
           return;
         }
 
-        // Pre-validation repair: fix the RSC-005 dcterms:modified count so the
-        // file passes validation. Best-effort — on failure fall through to
-        // validation, which rejects it exactly as before.
-        let structuralFix: MetadataFix | null = null;
+        // Repair (RSC-005) + validate. Detection is deferred to the
+        // post-addBook applyAutoAndAccepted call below, which re-detects
+        // against the persisted book — skipDetect avoids doing that work twice.
+        let analysis: EpubAnalysis;
         try {
-          const repair = repairPackageDocument(savedPath);
-          if (repair.repaired) {
-            const tmpPath = path.join(
-              path.dirname(savedPath),
-              `.tmp-repair-${randomUUID()}${path.extname(savedPath)}`
-            );
-            try {
-              fs.writeFileSync(tmpPath, repair.bytes);
-              fs.renameSync(tmpPath, savedPath);
-            } catch (err) {
-              try {
-                fs.unlinkSync(tmpPath);
-              } catch {
-                /* temp file may not exist */
-              }
-              throw err;
-            }
-            structuralFix =
-              repair.action === 'injected'
-                ? {
-                    field: 'document',
-                    kind: 'missing-modified-date',
-                    from: '',
-                    to: 'added a missing modification date',
-                    changes: {},
-                  }
-                : {
-                    field: 'document',
-                    kind: 'duplicate-modified-date',
-                    from: '',
-                    to: 'removed a duplicate modification date',
-                    changes: {},
-                  };
-          }
+          analysis = await analyzeEpub(savedPath, {
+            originalName: file.originalname,
+            librarySubjects: [],
+            validationThreshold: config.validationThreshold,
+            skipDetect: true,
+          });
         } catch (err: unknown) {
-          log.warn(
-            `Package repair skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-          );
+          try {
+            fs.unlinkSync(savedPath);
+          } catch {
+            /* file may already be gone */
+          }
+          throw err;
         }
+        if (!analysis.valid) {
+          try {
+            fs.unlinkSync(savedPath);
+          } catch {
+            /* file may already be gone */
+          }
+          res.status(400).json({
+            error: 'EPUB failed validation',
+            validation: {
+              messages: analysis.report.messages,
+              counts: analysis.report.counts,
+              threshold: analysis.report.threshold,
+            },
+          });
+          return;
+        }
+        const structuralFix = analysis.structuralFix;
 
         // Fingerprint reflects the repaired bytes.
         let id: string;
@@ -712,24 +686,6 @@ export function createUiRouter(
             error: `Failed to fingerprint EPUB: ${err instanceof Error ? err.message : String(err)}`,
           });
           return;
-        }
-        let report: Awaited<ReturnType<typeof assertValidEpub>>;
-        try {
-          report = await assertValidEpub(fs.readFileSync(savedPath), config.validationThreshold);
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          if (err instanceof EpubValidationError) {
-            res.status(400).json({
-              error: 'EPUB failed validation',
-              validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
-            });
-            return;
-          }
-          throw err;
         }
         // parseEpub falls back to the file's basename when no dc:title is present.
         // Since savedPath is a staging path with a unique prefix, we must ignore
@@ -754,11 +710,7 @@ export function createUiRouter(
           }
           throw err;
         }
-        await validationStore.saveValidation(
-          owner,
-          id,
-          toValidationReport(report, config.validationThreshold)
-        );
+        await validationStore.saveValidation(owner, id, analysis.report);
         // Detect metadata issues; auto-apply the high-confidence ones in-request.
         let finalId = id;
         const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
@@ -767,48 +719,15 @@ export function createUiRouter(
           const librarySubjects = await bookStore.getSubjects(owner);
           const created = await bookStore.getBookById(owner, id);
           if (created) {
-            const issues = detectMetadataIssues({
-              title: created.title,
-              titleSort: created.titleSort,
-              author: created.author,
-              authorSort: created.authorSort,
-              subjects: created.subjects,
-              filenameStem: path.basename(file.originalname, path.extname(file.originalname)),
-              librarySubjects,
-            });
-            const autoIssues = issues.filter((i) => i.autoEligible);
-            const proposalIssues = issues.filter((i) => !i.autoEligible);
-
-            if (autoIssues.length > 0) {
-              const changes: EpubChanges = {};
-              for (const issue of autoIssues) Object.assign(changes, issue.changes);
-              // The EPUB had no genuine dc:title, so `created.title` is the
-              // filename-fallback we substituted before addBook. reimportBook
-              // (invoked by applyEpubChanges below) re-derives the title from
-              // the on-disk EPUB bytes, which would silently clobber that
-              // fallback with a hash-like id unless we write it back in.
-              // Skip this if an auto issue already set a real title change.
-              if (realTitle === '' && changes.title === undefined) {
-                changes.title = created.title;
-              }
-              try {
-                const updated = await applyEpubChanges(
-                  { bookStore, validationStore, validationThreshold: config.validationThreshold },
-                  owner,
-                  created,
-                  changes
-                );
-                finalId = updated.id;
-                applied.push(...autoIssues.map(toFix));
-              } catch (err: unknown) {
-                // Never fail an upload because a cosmetic fix failed — surface as proposals instead.
-                log.warn(
-                  `Auto-fix skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-                );
-                proposals.push(...autoIssues.map(toFix));
-              }
-            }
-            proposals.push(...proposalIssues.map(toFix));
+            const result = await applyAutoAndAccepted(
+              { bookStore, validationStore, validationThreshold: config.validationThreshold },
+              owner,
+              created,
+              { originalName: file.originalname, librarySubjects, acceptedKeys: [] }
+            );
+            finalId = result.book.id;
+            applied.push(...result.applied);
+            proposals.push(...result.proposals);
           }
         } catch (err: unknown) {
           log.warn(
