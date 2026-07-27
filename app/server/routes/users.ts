@@ -136,7 +136,9 @@ export function createUsersRouter(
       }
       if (trimmedUsername.length < MIN_USERNAME_LENGTH) {
         log.warn(`Registration rejected — username "${trimmedUsername}" too short`);
-        res.status(400).json({ error: `Username must be at least ${MIN_USERNAME_LENGTH} characters` });
+        res
+          .status(400)
+          .json({ error: `Username must be at least ${MIN_USERNAME_LENGTH} characters` });
         return;
       }
       fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });
