@@ -3677,10 +3677,22 @@ describe('getBookById maps validation.valid', () => {
     await bookStore.addBook(OWNER, 'val-false', stage('val-false'), FAKE_META);
     await bookStore.addBook(OWNER, 'val-none', stage('val-none'), FAKE_META);
     await prisma.validation.create({
-      data: { userId: OWNER.userId, bookId: 'val-true', valid: true, threshold: 'ERROR', validatedAt: 1 },
+      data: {
+        userId: OWNER.userId,
+        bookId: 'val-true',
+        valid: true,
+        threshold: 'ERROR',
+        validatedAt: 1,
+      },
     });
     await prisma.validation.create({
-      data: { userId: OWNER.userId, bookId: 'val-false', valid: false, threshold: 'ERROR', validatedAt: 1 },
+      data: {
+        userId: OWNER.userId,
+        bookId: 'val-false',
+        valid: false,
+        threshold: 'ERROR',
+        validatedAt: 1,
+      },
     });
 
     expect((await bookStore.getBookById(OWNER, 'val-true'))?.valid).toBe(true);
