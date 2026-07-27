@@ -18,31 +18,52 @@ describe('UserRegister', () => {
     HTMLDialogElement.prototype.close = vi.fn();
   });
 
+  it('renders the card titled "Register a user"', () => {
+    renderWithProviders(<UserRegister />);
+    expect(screen.getByText('Register a user')).toBeInTheDocument();
+  });
+
+  it('renders a divider between the field and the button', () => {
+    const { container } = renderWithProviders(<UserRegister />);
+    expect(container.querySelector('form [role="separator"]')).not.toBeNull();
+  });
+
+  it('keeps Register disabled until the username has at least 6 characters', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<UserRegister />);
+    const usernameInput = container.querySelector('input[name="username"]') as HTMLInputElement;
+    const button = screen.getByRole('button', { name: 'Register' });
+
+    expect(button).toBeDisabled();
+    await user.type(usernameInput, 'abc');
+    expect(button).toBeDisabled();
+    await user.type(usernameInput, 'def'); // now "abcdef" (6 chars)
+    expect(button).toBeEnabled();
+  });
+
   it('registers via the form and shows the password result', async () => {
     const user = userEvent.setup();
     const { container } = renderWithProviders(<UserRegister />);
     const usernameInput = container.querySelector('input[name="username"]') as HTMLInputElement;
 
-    await user.type(usernameInput, 'bob');
+    await user.type(usernameInput, 'bobuser');
     await user.click(screen.getByRole('button', { name: 'Register' }));
 
-    await waitFor(() => expect(registerUser).toHaveBeenCalledWith('bob'));
+    await waitFor(() => expect(registerUser).toHaveBeenCalledWith('bobuser'));
     await waitFor(() => expect(screen.getByText('newpassword')).toBeInTheDocument());
   });
 
   it('surfaces the failure toast and does not open the modal when registration fails', async () => {
     const user = userEvent.setup();
-    // Faithful to the original: an empty submit still calls registerUser(''),
-    // the hook resolves null, and the component shows the failure toast without
-    // opening the PasswordResultModal.
     registerUser.mockResolvedValueOnce(null);
-    renderWithProviders(<UserRegister />);
+    const { container } = renderWithProviders(<UserRegister />);
+    const usernameInput = container.querySelector('input[name="username"]') as HTMLInputElement;
 
+    await user.type(usernameInput, 'baduser');
     await user.click(screen.getByRole('button', { name: 'Register' }));
 
-    await waitFor(() => expect(registerUser).toHaveBeenCalledWith(''));
+    await waitFor(() => expect(registerUser).toHaveBeenCalledWith('baduser'));
     expect(await screen.findByText('Registration failed')).toBeInTheDocument();
-    // The password result modal never opens: no generated password is rendered.
     expect(screen.queryByText('newpassword')).not.toBeInTheDocument();
   });
 
