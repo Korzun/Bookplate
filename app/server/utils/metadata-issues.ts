@@ -400,9 +400,10 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
     const allKnown = dedupedParts.every((p) => library.has(p.toLowerCase()));
     let reason: string | undefined;
     if (allKnown) {
-      if (dedupedParts.length === 1) reason = 'Already exists in your library';
-      else if (dedupedParts.length === 2) reason = 'Both already exist in your library';
-      else reason = 'These already exist in your library';
+      reason =
+        dedupedParts.length === 1
+          ? 'Subject already exists in your library'
+          : 'Subjects already exist in your library';
     }
     issues.push({
       field: 'subjects',

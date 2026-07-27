@@ -179,7 +179,7 @@ describe('detectMetadataIssues', () => {
     expect(s.from).toBe('Sci-Fi & Fantasy');
     expect(s.to).toBe('Sci-Fi, Fantasy');
     expect(s.autoEligible).toBe(false);
-    expect(s.reason).toBe('Both already exist in your library');
+    expect(s.reason).toBe('Subjects already exist in your library');
     // The split operation is carried by the chips; the patch is computed at apply time.
     expect(s.changes).toEqual({});
     expect(s.fromChips).toEqual(['Sci-Fi & Fantasy']);
@@ -194,7 +194,7 @@ describe('detectMetadataIssues', () => {
     });
     const s = find(issues, 'subjects-split')!;
     expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy', 'Horror']);
-    expect(s.reason).toBe('These already exist in your library');
+    expect(s.reason).toBe('Subjects already exist in your library');
   });
 
   it('uses singular wording when a compound collapses to one known subject', () => {
@@ -205,7 +205,7 @@ describe('detectMetadataIssues', () => {
     });
     const s = find(issues, 'subjects-split')!;
     expect(s.toChips).toEqual(['Fantasy']);
-    expect(s.reason).toBe('Already exists in your library');
+    expect(s.reason).toBe('Subject already exists in your library');
   });
 
   it('emits one subjects-split fix per compound subject', () => {
