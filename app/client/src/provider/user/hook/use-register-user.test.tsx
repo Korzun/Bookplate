@@ -40,9 +40,9 @@ describe('useRegisterUser', () => {
 
   it('sets error and message when username already exists', async () => {
     const { result } = renderHook(() => useRegisterUser(), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+      wrapper: makeWrapper([{ username: 'alicia', progressCount: 0 }]),
     });
-    await act(() => result.current[0]('alice'));
+    await act(() => result.current[0]('alicia'));
     expect(result.current[2]).toBe(true);
     expect(result.current[3]).toBe('Username already taken');
   });
@@ -55,11 +55,11 @@ describe('useRegisterUser', () => {
         .mockResolvedValue({ status: 201, json: () => Promise.resolve({ password: 'abc123' }) })
     );
     const { result } = renderHook(() => useRegisterUser(), { wrapper: makeWrapper() });
-    await act(() => result.current[0]('alice'));
+    await act(() => result.current[0]('alicia'));
     expect(fetch).toHaveBeenCalledWith('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'alice' }),
+      body: JSON.stringify({ username: 'alicia' }),
     });
   });
 
@@ -72,7 +72,7 @@ describe('useRegisterUser', () => {
       })
     );
     const { result } = renderHook(() => useRegisterUser(), { wrapper: makeWrapper() });
-    const password = await act(() => result.current[0]('alice'));
+    const password = await act(() => result.current[0]('alicia'));
     expect(password).toBe('generatedPass123');
   });
 
@@ -90,9 +90,9 @@ describe('useRegisterUser', () => {
       wrapper: makeWrapper([{ username: 'charlie', progressCount: 0 }]),
     });
     act(() => {
-      void result.current.register[0]('alice');
+      void result.current.register[0]('alicia');
     });
-    expect(result.current.list[0][0].username).toBe('alice');
+    expect(result.current.list[0][0].username).toBe('alicia');
     expect(result.current.list[0][1].username).toBe('charlie');
     resolveFetch({ status: 201, json: () => Promise.resolve({ password: 'pass' }) });
     await waitFor(() => expect(result.current.register[1]).toBe(false));
@@ -103,10 +103,21 @@ describe('useRegisterUser', () => {
     const { result } = renderHook(() => ({ register: useRegisterUser(), list: useUserList() }), {
       wrapper: makeWrapper(),
     });
-    await act(() => result.current.register[0]('alice'));
+    await act(() => result.current.register[0]('alicia'));
     expect(result.current.list[0]).toEqual([]);
     expect(result.current.register[2]).toBe(true);
     expect(result.current.register[3]).toBe('Server error');
+  });
+
+  it('sets error and does not POST when username is shorter than 6 characters', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const { result } = renderHook(() => useRegisterUser(), { wrapper: makeWrapper() });
+    const password = await act(() => result.current[0]('bob'));
+    expect(password).toBe(null);
+    expect(result.current[2]).toBe(true);
+    expect(result.current[3]).toBe('Username must be at least 6 characters');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('sets loading to true while POST is pending', async () => {
@@ -121,7 +132,7 @@ describe('useRegisterUser', () => {
     );
     const { result } = renderHook(() => useRegisterUser(), { wrapper: makeWrapper() });
     act(() => {
-      void result.current[0]('alice');
+      void result.current[0]('alicia');
     });
     expect(result.current[1]).toBe(true);
     resolveFetch({ status: 201, json: () => Promise.resolve({ password: 'pass' }) });
