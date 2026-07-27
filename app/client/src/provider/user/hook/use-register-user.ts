@@ -25,6 +25,13 @@ export const useRegisterUser = (): UseRegisterUser => {
         return null;
       }
 
+      // Mirror of the server's MIN_USERNAME_LENGTH (app/server/utils/username.ts).
+      if (normalizedUsername.length < 6) {
+        setError(true);
+        setErrorMessage('Username must be at least 6 characters');
+        return null;
+      }
+
       if (userList[normalizedUsername] !== undefined) {
         setError(true);
         setErrorMessage('Username already taken');
