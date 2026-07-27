@@ -186,6 +186,28 @@ describe('detectMetadataIssues', () => {
     expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy']);
   });
 
+  it('uses plural wording when three-plus split parts already exist in the library', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Sci-Fi & Fantasy & Horror'],
+      librarySubjects: ['Sci-Fi', 'Fantasy', 'Horror'],
+    });
+    const s = find(issues, 'subjects-split')!;
+    expect(s.toChips).toEqual(['Sci-Fi', 'Fantasy', 'Horror']);
+    expect(s.reason).toBe('These already exist in your library');
+  });
+
+  it('uses singular wording when a compound collapses to one known subject', () => {
+    const issues = detectMetadataIssues({
+      ...base,
+      subjects: ['Fantasy / Fantasy'],
+      librarySubjects: ['Fantasy'],
+    });
+    const s = find(issues, 'subjects-split')!;
+    expect(s.toChips).toEqual(['Fantasy']);
+    expect(s.reason).toBe('Already exists in your library');
+  });
+
   it('emits one subjects-split fix per compound subject', () => {
     const issues = detectMetadataIssues({
       ...base,

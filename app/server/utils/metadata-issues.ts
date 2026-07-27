@@ -398,13 +398,19 @@ export function detectMetadataIssues(input: DetectInput): MetadataIssue[] {
       (p, i) => parts.findIndex((o) => o.toLowerCase() === p.toLowerCase()) === i
     );
     const allKnown = dedupedParts.every((p) => library.has(p.toLowerCase()));
+    let reason: string | undefined;
+    if (allKnown) {
+      if (dedupedParts.length === 1) reason = 'Already exists in your library';
+      else if (dedupedParts.length === 2) reason = 'Both already exist in your library';
+      else reason = 'These already exist in your library';
+    }
     issues.push({
       field: 'subjects',
       kind: 'subjects-split',
       from: subject,
       to: dedupedParts.join(', '),
       autoEligible: false,
-      reason: allKnown ? 'Both already exist in your library' : undefined,
+      reason,
       changes: {},
       fromChips: [subject],
       toChips: dedupedParts,
