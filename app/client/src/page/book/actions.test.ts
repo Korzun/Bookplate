@@ -17,7 +17,7 @@ function handlers(): BookActionHandlers {
 }
 
 describe('buildBookActions', () => {
-  it('includes Set progress as a leading primary when there are chapters', () => {
+  it('includes Set progress as a non-primary menu item when there are chapters', () => {
     const actions = buildBookActions(
       {
         chapterCount: 5,
@@ -29,7 +29,8 @@ describe('buildBookActions', () => {
       handlers()
     );
     const setProgress = actions.find((a) => a.label === 'Set progress');
-    expect(setProgress).toMatchObject({ primary: true, align: 'leading' });
+    expect(setProgress).toBeDefined();
+    expect(setProgress?.primary).toBeUndefined();
   });
 
   it('omits Set progress when there are no chapters', () => {
@@ -157,56 +158,41 @@ describe('buildBookActions', () => {
     expect(h.onShowLineage).toHaveBeenCalledTimes(1);
   });
 
-  it('places Download between Clear device editions and Delete, with a separator before it', () => {
-    const h = handlers();
+  it('orders the menu into dividered groups', () => {
     const actions = buildBookActions(
       {
-        chapterCount: 0,
+        chapterCount: 5,
         deviceEditionCount: 2,
         regenLoading: false,
         validating: false,
         editingBlocked: false,
       },
-      h
+      handlers()
     );
-    const labels = actions.map((a) => a.label);
-    const clearIdx = labels.findIndex((l) => l.startsWith('Clear device editions'));
-    const downloadIdx = labels.indexOf('Download');
-    const deleteIdx = labels.indexOf('Delete');
-    expect(clearIdx).toBeLessThan(downloadIdx);
-    expect(downloadIdx).toBeLessThan(deleteIdx);
+    expect(actions.map((a) => a.label)).toEqual([
+      'Set progress',
+      'Edit metadata',
+      'Validate',
+      'Upload and replace',
+      'Regen chapters',
+      'Clear device editions (2)',
+      'Book lineage',
+      'Download',
+      'Delete',
+    ]);
 
-    const download = actions[downloadIdx];
-    expect(download).toMatchObject({ separatorBefore: true });
-    expect(download.danger).toBeUndefined();
+    // A divider (`separatorBefore`) starts each group after the first.
+    const sep = (label: string) => actions.find((a) => a.label === label)?.separatorBefore;
+    expect(sep('Validate')).toBe(true);
+    expect(sep('Regen chapters')).toBe(true);
+    expect(sep('Book lineage')).toBe(true);
+    expect(sep('Delete')).toBe(true);
 
-    download.onClick();
-    expect(h.onDownloadBook).toHaveBeenCalledTimes(1);
-  });
-
-  it('places Validate directly below Clear device editions and above Download', () => {
-    const h = handlers();
-    const actions = buildBookActions(
-      {
-        chapterCount: 0,
-        deviceEditionCount: 2,
-        regenLoading: false,
-        validating: false,
-        editingBlocked: false,
-      },
-      h
-    );
-    const labels = actions.map((a) => a.label);
-    const clearIdx = labels.findIndex((l) => l.startsWith('Clear device editions'));
-    const validateIdx = labels.indexOf('Validate');
-    const downloadIdx = labels.indexOf('Download');
-    expect(validateIdx).toBe(clearIdx + 1);
-    expect(validateIdx).toBeLessThan(downloadIdx);
-    const validate = actions[validateIdx];
-    expect(validate.danger).toBeUndefined();
-    expect(validate.separatorBefore).toBeUndefined();
-    validate.onClick();
-    expect(h.onValidate).toHaveBeenCalledTimes(1);
+    // No stray dividers inside a group.
+    expect(sep('Set progress')).toBeUndefined();
+    expect(sep('Upload and replace')).toBeUndefined();
+    expect(sep('Clear device editions (2)')).toBeUndefined();
+    expect(sep('Download')).toBeUndefined();
   });
 
   it('disables Validate while validating', () => {
