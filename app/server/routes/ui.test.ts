@@ -2173,7 +2173,7 @@ describe('POST /api/books/:id/validate', () => {
 });
 
 describe('replace routes', () => {
-  it('validate returns the report without modifying the book', async () => {
+  it('analyze returns the report plus autoFixes/proposals without modifying the book', async () => {
     await bookStore.addBook(
       aliceOwner,
       'rep1',
@@ -2182,26 +2182,57 @@ describe('replace routes', () => {
     );
     const token = await loginAlice();
     const res = await request(app)
-      .post('/api/books/rep1/replace/validate')
+      .post('/api/books/rep1/replace/analyze')
       .set(...bearer(token))
       .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('valid');
+    expect(Array.isArray(res.body.autoFixes)).toBe(true);
+    expect(Array.isArray(res.body.proposals)).toBe(true);
     // unchanged
     expect((await bookStore.getBookById(aliceOwner, 'rep1'))?.title).toBe('Old');
   });
 
-  it('validate returns 404 for unknown, 401 without token, 400 with no file', async () => {
+  it('analyze surfaces a non-empty proposals array without modifying the book', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repprop',
+      stage('repprop', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    mockDetectMetadataIssues.mockReturnValueOnce([
+      {
+        field: 'subjects',
+        kind: 'subjects-split',
+        from: 'A & B',
+        to: null,
+        changes: {},
+        autoEligible: false,
+      },
+    ]);
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/repprop/replace/analyze')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+    expect(res.status).toBe(200);
+    expect(res.body.proposals).toHaveLength(1);
+    expect(res.body.proposals[0].kind).toBe('subjects-split');
+    // unchanged
+    expect((await bookStore.getBookById(aliceOwner, 'repprop'))?.title).toBe('Old');
+  });
+
+  it('analyze returns 404 for unknown, 401 without token, 400 with no file', async () => {
     const token = await loginAlice();
     expect(
       (
         await request(app)
-          .post('/api/books/nope/replace/validate')
+          .post('/api/books/nope/replace/analyze')
           .set(...bearer(token))
           .attach('file', makeEpub({ title: 'x', author: 'a' }), 'x.epub')
       ).status
     ).toBe(404);
-    expect((await request(app).post('/api/books/rep1/replace/validate')).status).toBe(401);
+    expect((await request(app).post('/api/books/rep1/replace/analyze')).status).toBe(401);
     await bookStore.addBook(
       aliceOwner,
       'rep1b',
@@ -2211,7 +2242,7 @@ describe('replace routes', () => {
     expect(
       (
         await request(app)
-          .post('/api/books/rep1b/replace/validate')
+          .post('/api/books/rep1b/replace/analyze')
           .set(...bearer(token))
       ).status
     ).toBe(400);

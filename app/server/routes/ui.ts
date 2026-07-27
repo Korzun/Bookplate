@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -18,7 +18,7 @@ import {
 } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
-import { EpubValidationError, validateEpubReport } from '../services/epub-validator';
+import { EpubValidationError } from '../services/epub-validator';
 import { EpubChanges } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
@@ -1314,7 +1314,7 @@ export function createUiRouter(
   );
 
   router.post(
-    '/api/books/:id/replace/validate',
+    '/api/books/:id/replace/analyze',
     requireAuth,
     epubUpload.single('file'),
     asyncHandler(async (req: Request, res: Response) => {
@@ -1329,8 +1329,27 @@ export function createUiRouter(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      const report = await validateEpubReport(req.file.buffer, config.validationThreshold);
-      res.json(report);
+      const dir = bookStore.getStagingDir();
+      fs.mkdirSync(dir, { recursive: true });
+      const tmpPath = path.join(dir, `analyze-${randomUUID()}.epub`);
+      fs.writeFileSync(tmpPath, req.file.buffer);
+      try {
+        const analysis = await analyzeEpub(tmpPath, {
+          originalName: req.file.originalname,
+          librarySubjects: await bookStore.getSubjects(owner),
+          validationThreshold: config.validationThreshold,
+        });
+        res.json({
+          valid: analysis.valid,
+          messages: analysis.report.messages,
+          counts: analysis.report.counts,
+          threshold: analysis.report.threshold,
+          autoFixes: analysis.autoFixes,
+          proposals: analysis.proposals,
+        });
+      } finally {
+        fs.unlinkSync(tmpPath);
+      }
     })
   );
 
