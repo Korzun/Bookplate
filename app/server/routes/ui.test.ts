@@ -145,6 +145,13 @@ const FAKE_META: EpubMeta = {
   pageCount: 0,
 };
 
+const VALID_REPORT = {
+  valid: true,
+  threshold: 'ERROR' as const,
+  counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+  messages: [],
+};
+
 function stage(id: string, content: string | Buffer = 'x'): string {
   const p = path.join(booksDir, `staged-${id}.epub`);
   fs.writeFileSync(p, content);
@@ -2100,12 +2107,34 @@ describe('POST /api/books/:id/regen-chapters', () => {
   it('returns the updated book on success', async () => {
     const epubBuf = makeEpub({ title: FAKE_META.title, author: FAKE_META.author });
     await bookStore.addBook(aliceOwner, 'regen-ok', stage('regen-ok', epubBuf), FAKE_META);
+    await validationStore.saveValidation(aliceOwner, 'regen-ok', VALID_REPORT);
     const token = await loginAlice();
     const res = await request(app)
       .post('/api/books/regen-ok/regen-chapters')
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.body.title).toBe(FAKE_META.title);
+  });
+
+  it('returns 409 and does not re-import when the book failed validation', async () => {
+    await bookStore.addBook(aliceOwner, 'regen-invalid', stage('regen-invalid'), FAKE_META);
+    await validationStore.saveValidation(aliceOwner, 'regen-invalid', { ...VALID_REPORT, valid: false });
+    const spy = vi.spyOn(bookStore, 'reimportBook');
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/regen-invalid/regen-chapters')
+      .set(...bearer(token));
+    expect(res.status).toBe(409);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the book has never been validated', async () => {
+    await bookStore.addBook(aliceOwner, 'regen-null', stage('regen-null'), FAKE_META);
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/regen-null/regen-chapters')
+      .set(...bearer(token));
+    expect(res.status).toBe(409);
   });
 });
 
@@ -2375,6 +2404,7 @@ describe('PATCH /api/books/:id/metadata', () => {
     fs.writeFileSync(epubPath, zip.toBuffer());
     await bookStore.scan(aliceOwner); // import the file into the DB
     bookId = (await bookStore.listBooks(aliceOwner))[0].id;
+    await validationStore.saveValidation(aliceOwner, bookId, VALID_REPORT);
   });
 
   it('lets a regular user edit metadata in their own library', async () => {
@@ -2495,6 +2525,28 @@ describe('PATCH /api/books/:id/metadata', () => {
     expect(res.body.validation.messages[0].id).toBe('OPF-030');
     expect(res.body.validation.threshold).toBe('ERROR');
     expect(fs.readFileSync(storedPath).equals(before)).toBe(true);
+  });
+
+  it('returns 409 and does not edit when the book failed validation', async () => {
+    await validationStore.saveValidation(aliceOwner, bookId, { ...VALID_REPORT, valid: false });
+    const spy = vi.spyOn(applyEpubChangesModule, 'applyEpubChanges');
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch(`/api/books/${bookId}/metadata`)
+      .field('title', 'X')
+      .set(...bearer(token));
+    expect(res.status).toBe(409);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the book has never been validated', async () => {
+    await bookStore.addBook(aliceOwner, 'metanull', stage('metanull'), FAKE_META);
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch('/api/books/metanull/metadata')
+      .field('title', 'X')
+      .set(...bearer(token));
+    expect(res.status).toBe(409);
   });
 });
 
