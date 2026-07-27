@@ -2118,7 +2118,10 @@ describe('POST /api/books/:id/regen-chapters', () => {
 
   it('returns 409 and does not re-import when the book failed validation', async () => {
     await bookStore.addBook(aliceOwner, 'regen-invalid', stage('regen-invalid'), FAKE_META);
-    await validationStore.saveValidation(aliceOwner, 'regen-invalid', { ...VALID_REPORT, valid: false });
+    await validationStore.saveValidation(aliceOwner, 'regen-invalid', {
+      ...VALID_REPORT,
+      valid: false,
+    });
     const spy = vi.spyOn(bookStore, 'reimportBook');
     const token = await loginAlice();
     const res = await request(app)
