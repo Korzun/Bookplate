@@ -111,7 +111,10 @@ describe('UploadReplaceModal', () => {
     });
 
     expect(analyzeReplacement).toHaveBeenCalledWith('b1', file);
-    expect(screen.getByText(/is valid/)).toBeInTheDocument();
+    // Filename hoisted to the top; a "Validation" divider precedes the valid line.
+    expect(screen.getByText('replacement.epub')).toBeInTheDocument();
+    expect(screen.getByText('Validation')).toBeInTheDocument();
+    expect(screen.getByText(/book is valid/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Replace', hidden: true })).not.toHaveAttribute(
       'aria-disabled'
     );
@@ -143,7 +146,7 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/failed validation/)).toBeInTheDocument();
+    expect(screen.getByText(/book is not valid/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Replace', hidden: true })).toHaveAttribute(
       'aria-disabled',
       'true'
@@ -360,62 +363,7 @@ describe('UploadReplaceModal', () => {
     expect(screen.getByText('Replace failed.')).toBeInTheDocument();
   });
 
-  it('returns to the upload zone when choosing a different file after a valid preview, resetting accepted fixes', async () => {
-    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
-    const analysis = makeAnalysis({ valid: true, proposals: [proposal] });
-    analyzeReplacement.mockResolvedValue(analysis);
-
-    renderWithProviders(
-      <UploadReplaceModal
-        isOpen
-        bookId="b1"
-        bookTitle="Dune"
-        onClose={vi.fn()}
-        onReplaced={vi.fn()}
-      />
-    );
-
-    const file = new File(['x'.repeat(100)], 'replacement.epub');
-    await act(async () => {
-      pickFile(file);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(document.getElementById('upload-file-input')).toBeNull();
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Accept', hidden: true }));
-    });
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Choose a different file', hidden: true })
-      );
-    });
-
-    expect(document.getElementById('upload-file-input')).toBeTruthy();
-
-    const file2 = new File(['y'.repeat(100)], 'replacement2.epub');
-    analyzeReplacement.mockResolvedValue(makeAnalysis({ valid: true, proposals: [proposal] }));
-    await act(async () => {
-      pickFile(file2);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // The earlier Accept click was on the first file's preview; re-picking must
-    // not carry it forward into the new commit.
-    expect(commitReplacement).toHaveBeenLastCalledWith('b1', file2, []);
-  });
-
-  it('shows a "couldn\'t validate" message and a way to pick another file when validation returns no report', async () => {
+  it('shows a "couldn\'t validate" message when validation returns no report', async () => {
     analyzeReplacement.mockResolvedValue(undefined);
 
     renderWithProviders(
@@ -436,16 +384,9 @@ describe('UploadReplaceModal', () => {
     });
 
     expect(screen.getByText(/Couldn't validate/)).toBeInTheDocument();
+    // No in-modal re-pick affordance — the user cancels to start over.
     expect(
-      screen.getByRole('button', { name: 'Choose a different file', hidden: true })
-    ).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Choose a different file', hidden: true })
-      );
-    });
-
-    expect(document.getElementById('upload-file-input')).toBeTruthy();
+      screen.queryByRole('button', { name: 'Choose a different file', hidden: true })
+    ).not.toBeInTheDocument();
   });
 });

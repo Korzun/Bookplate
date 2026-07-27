@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { FixReview, UploadZone } from '~/component';
+import { CardDivider, FixReview, UploadZone } from '~/component';
 import { CheckIcon } from '~/icon';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
 import { useReplaceBook } from '~/provider/book';
 
-import { Button } from '../button';
 import { ConfirmModal } from '../confirm-modal';
 import { SeverityCounts } from '../severity-counts';
 import { useStyle } from './style';
@@ -103,12 +102,6 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
     onClose();
   }, [reset, onClose]);
 
-  const chooseDifferentFile = (
-    <Button type="link" onClick={reset}>
-      Choose a different file
-    </Button>
-  );
-
   return (
     <ConfirmModal
       isOpen={isOpen}
@@ -122,41 +115,47 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       {!file && (
         <UploadZone multiple={false} card={false} dropLabel="replacement" addFiles={pick} />
       )}
-      {file && analyzing && <p>Validating {file.name}…</p>}
-      {file && !analyzing && analysis && analysis.valid && (
-        <div>
-          <p className={styles.validLine}>
-            <CheckIcon width={16} height={16} className={styles.checkIcon} aria-hidden />
-            {file.name} is valid.
-          </p>
-          <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
-          <FixReview
-            autoFixes={analysis.autoFixes}
-            appliedFixes={accepted}
-            proposals={remainingProposals}
-            onApplyFix={onApplyFix}
-            onApplyAll={onApplyAll}
-            onDismissFix={onDismissFix}
-            onDismissAll={onDismissAll}
-            disabled={committing}
-            showEditLink={false}
-          />
-          {commitFailed && <p>{commitError || 'Replace failed.'}</p>}
-          {chooseDifferentFile}
-        </div>
-      )}
-      {file && !analyzing && analysis && !analysis.valid && (
-        <div>
-          <p>{file.name} failed validation and can&apos;t replace this book.</p>
-          <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
-          {chooseDifferentFile}
-        </div>
-      )}
-      {file && !analyzing && analysis === null && (
-        <div>
-          <p>Couldn&apos;t validate {file.name}. Try another file.</p>
-          {chooseDifferentFile}
-        </div>
+      {file && (
+        <>
+          <div className={styles.fileName}>{file.name}</div>
+
+          {analyzing && <p className={styles.muted}>Validating…</p>}
+
+          {!analyzing && analysis && analysis.valid && (
+            <>
+              <CardDivider>Validation</CardDivider>
+              <p className={styles.validLine}>
+                <CheckIcon width={15} height={15} className={styles.checkIcon} aria-hidden />
+                Book is valid
+              </p>
+              <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
+              <FixReview
+                autoFixes={analysis.autoFixes}
+                appliedFixes={accepted}
+                proposals={remainingProposals}
+                onApplyFix={onApplyFix}
+                onApplyAll={onApplyAll}
+                onDismissFix={onDismissFix}
+                onDismissAll={onDismissAll}
+                disabled={committing}
+                showEditLink={false}
+              />
+              {commitFailed && <p className={styles.error}>{commitError || 'Replace failed.'}</p>}
+            </>
+          )}
+
+          {!analyzing && analysis && !analysis.valid && (
+            <>
+              <CardDivider>Validation</CardDivider>
+              <p className={styles.invalidLine}>Book is not valid</p>
+              <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
+            </>
+          )}
+
+          {!analyzing && analysis === null && (
+            <p className={styles.error}>Couldn&apos;t validate this file.</p>
+          )}
+        </>
       )}
     </ConfirmModal>
   );
