@@ -157,6 +157,7 @@ export const BookPage = () => {
     {
       onSetProgress: () => setProgressModalOpen(true),
       onEditMetadata: handleEditMetadata,
+      onShowLineage: () => {},
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
       onDeleteBook: () => setDeleteModalOpen(true),

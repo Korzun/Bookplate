@@ -1,4 +1,4 @@
-import { UnlinkBookLineageButton } from '~/control';
+import { UnlinkBookLineageButton } from '~/control/unlink-book-lineage-button';
 import { formatTimestamp } from '~/utils';
 
 import { useStyle } from './style';

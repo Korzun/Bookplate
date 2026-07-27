@@ -6,6 +6,7 @@ function handlers(): BookActionHandlers {
   return {
     onSetProgress: vi.fn(),
     onEditMetadata: vi.fn(),
+    onShowLineage: vi.fn(),
     onRegenChapters: vi.fn(),
     onClearEditions: vi.fn(),
     onDeleteBook: vi.fn(),
@@ -83,5 +84,19 @@ describe('buildBookActions', () => {
     actions.find((a) => a.label === 'Delete book')?.onClick();
     expect(h.onSetProgress).toHaveBeenCalledTimes(1);
     expect(h.onDeleteBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds a non-primary Book lineage overflow action wired to onShowLineage', () => {
+    const h = handlers();
+    const actions = buildBookActions(
+      { chapterCount: 5, deviceEditionCount: 0, regenLoading: false },
+      h
+    );
+    const lineage = actions.find((a) => a.label === 'Book lineage');
+    expect(lineage).toBeDefined();
+    expect(lineage?.primary).toBeUndefined();
+    expect(lineage?.danger).toBeUndefined();
+    lineage?.onClick();
+    expect(h.onShowLineage).toHaveBeenCalledTimes(1);
   });
 });
