@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useState } from 'react';
 
+import { CheckIcon } from '~/icon';
 import { isBlockingAtThreshold, SEVERITY_LABEL, SEVERITY_ORDER } from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
@@ -51,7 +52,10 @@ export function ValidationDetailModal({
         <div className={styles.header}>{filename}</div>
         <div className={styles.body}>
           {messages.length === 0 ? (
-            <p className={styles.intro}>✅ No validation issues found.</p>
+            <p className={styles.validEmpty}>
+              <CheckIcon width={16} height={16} className={styles.checkIcon} aria-hidden />
+              No validation issues found.
+            </p>
           ) : (
             <>
               <p className={styles.intro}>

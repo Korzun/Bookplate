@@ -36,6 +36,17 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginTop: 0,
     marginBottom: theme.space.xl,
   },
+  validEmpty: {
+    marginTop: 0,
+    marginBottom: theme.space.xl,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.xs,
+  },
+  checkIcon: {
+    color: theme.color.success,
+    flexShrink: 0,
+  },
   emphasisDanger: {
     color: theme.color.danger.default,
     fontWeight: theme.fontWeight.semibold,
