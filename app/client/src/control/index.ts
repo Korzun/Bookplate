@@ -1,4 +1,5 @@
 export { BackButton } from './back-button';
+export { BookLineageModal } from './book-lineage-modal';
 export { Button } from './button';
 export { ChipsInput } from './chips-input';
 export { ConfirmModal } from './confirm-modal';

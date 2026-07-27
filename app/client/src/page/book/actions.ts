@@ -9,6 +9,7 @@ export interface BookActionState {
 export interface BookActionHandlers {
   onSetProgress: () => void;
   onEditMetadata: () => void;
+  onShowLineage: () => void;
   onRegenChapters: () => void;
   onClearEditions: () => void;
   onDeleteBook: () => void;
@@ -34,6 +35,11 @@ export function buildBookActions(
     onClick: handlers.onEditMetadata,
     primary: true,
     align: 'trailing',
+  });
+
+  actions.push({
+    label: 'Book lineage',
+    onClick: handlers.onShowLineage,
   });
 
   actions.push({
