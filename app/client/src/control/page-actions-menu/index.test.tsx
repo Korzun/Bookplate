@@ -9,7 +9,7 @@ import { PageActionsMenu, type PageActionItem } from './index';
 function makeItems(overrides: Partial<PageActionItem> = {}): PageActionItem[] {
   return [
     { label: 'Edit metadata', onClick: vi.fn() },
-    { label: 'Delete book', onClick: vi.fn(), danger: true, ...overrides },
+    { label: 'Delete book', onClick: vi.fn(), danger: true, separatorBefore: true, ...overrides },
   ];
 }
 
@@ -76,11 +76,11 @@ describe('PageActionsMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('renders a separator before danger items', async () => {
+  it('renders a separator before an item flagged separatorBefore', async () => {
     const user = userEvent.setup();
     renderWithProviders(<PageActionsMenu items={makeItems()} />);
     await user.click(screen.getByRole('button', { name: 'More actions' }));
-    // makeItems() = 1 regular + 1 danger → 2 menuitems + 1 separator
+    // makeItems() = 1 plain + 1 flagged separatorBefore → 2 menuitems + 1 separator
     expect(screen.getByRole('menu').children).toHaveLength(3);
   });
 });

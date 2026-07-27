@@ -58,6 +58,9 @@ export function buildBookActions(
     label: 'Delete book',
     onClick: handlers.onDeleteBook,
     danger: true,
+    // Set the destructive action off from the rest with a divider. (The menu no
+    // longer derives separators from `danger` alone, so ask for it explicitly.)
+    separatorBefore: true,
   });
 
   return actions;

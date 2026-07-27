@@ -20,19 +20,40 @@ describe('ActionMenuList', () => {
     expect(onSelect).toHaveBeenCalledWith(items[0]);
   });
 
-  it('places danger items after a separator', () => {
+  it('renders a separator before an item flagged separatorBefore, preserving source order', () => {
     const items: PageActionItem[] = [
       { label: 'Edit metadata', onClick: vi.fn() },
-      { label: 'Delete book', onClick: vi.fn(), danger: true },
+      { label: 'Delete book', onClick: vi.fn(), danger: true, separatorBefore: true },
     ];
     renderWithProviders(<ActionMenuList items={items} surface="glass" onSelect={vi.fn()} />);
     const menu = screen.getByRole('menu');
-    // 2 menuitems + 1 separator between the groups
+    // 2 menuitems + 1 separator between them
     expect(menu.children).toHaveLength(3);
     expect(screen.getAllByRole('menuitem').map((n) => n.textContent)).toEqual([
       'Edit metadata',
       'Delete book',
     ]);
+  });
+
+  it('does not separate a danger item unless separatorBefore is set', () => {
+    const items: PageActionItem[] = [
+      { label: 'Accept all', onClick: vi.fn() },
+      { label: 'Reject all', onClick: vi.fn(), danger: true },
+    ];
+    renderWithProviders(<ActionMenuList items={items} surface="glass" onSelect={vi.fn()} />);
+    // danger drives styling only now — no divider without an explicit flag.
+    expect(screen.getByRole('menu').children).toHaveLength(2);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('ignores separatorBefore on the first item (no leading divider)', () => {
+    const items: PageActionItem[] = [
+      { label: 'Clear finished', onClick: vi.fn(), separatorBefore: true },
+      { label: 'Accept all', onClick: vi.fn() },
+    ];
+    renderWithProviders(<ActionMenuList items={items} surface="glass" onSelect={vi.fn()} />);
+    expect(screen.getByRole('menu').children).toHaveLength(2);
+    expect(screen.queryByRole('separator')).toBeNull();
   });
 
   it('does not fire onSelect for a disabled item', async () => {

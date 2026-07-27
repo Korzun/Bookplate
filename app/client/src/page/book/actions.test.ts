@@ -70,7 +70,7 @@ describe('buildBookActions', () => {
       handlers()
     );
     const del = actions.find((a) => a.label === 'Delete book');
-    expect(del).toMatchObject({ danger: true });
+    expect(del).toMatchObject({ danger: true, separatorBefore: true });
     expect(del?.primary).toBeUndefined();
   });
 
