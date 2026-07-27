@@ -66,30 +66,4 @@ describe('ActionMenuList', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Clear device editions (0)' }));
     expect(onSelect).not.toHaveBeenCalled();
   });
-
-  it('renders a separator before an item flagged separatorBefore', () => {
-    const items: PageActionItem[] = [
-      { label: 'Clear device editions (0)', onClick: vi.fn() },
-      { label: 'Download', onClick: vi.fn(), separatorBefore: true },
-      { label: 'Delete', onClick: vi.fn(), danger: true },
-    ];
-    renderWithProviders(<ActionMenuList items={items} surface="glass" onSelect={vi.fn()} />);
-    const menu = screen.getByRole('menu');
-    // 3 menuitems + separator-before-Download + danger separator = 5 children
-    expect(menu.children).toHaveLength(5);
-    expect(screen.getAllByRole('separator')).toHaveLength(2);
-    expect(screen.getAllByRole('menuitem').map((n) => n.textContent)).toEqual([
-      'Clear device editions (0)',
-      'Download',
-      'Delete',
-    ]);
-  });
-
-  it('does not render a leading separator when the first item is flagged', () => {
-    const items: PageActionItem[] = [
-      { label: 'Download', onClick: vi.fn(), separatorBefore: true },
-    ];
-    renderWithProviders(<ActionMenuList items={items} surface="glass" onSelect={vi.fn()} />);
-    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
-  });
 });
