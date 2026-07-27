@@ -7,8 +7,7 @@
     "build": "tsc && vite build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "type": "tsc --noEmit",
-    "lint": "oxlint src && oxfmt --check \"src/**/*.{ts,tsx}\"",
+    "lint": "oxlint src && oxfmt --check \"src/**/*.{ts,tsx}\" && tsc --noEmit",
     "lint:fix": "oxlint src --fix && oxfmt \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
