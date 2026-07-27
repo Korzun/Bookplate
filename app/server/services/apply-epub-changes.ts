@@ -15,23 +15,22 @@ export interface ApplyEpubChangesDeps {
 }
 
 /**
- * Durably apply metadata changes to a book: rebuild the EPUB, validate it,
- * atomically replace the file on disk, and re-import so the DB row (and the
- * fingerprint/id) reflect the new bytes. Returns the re-imported book.
+ * Durably replace a book's EPUB bytes on disk: validate, atomically swap the
+ * file, and re-import so the DB row (and the fingerprint/id) reflect the new
+ * bytes. Returns the re-imported book.
  * Throws EpubValidationError / BookHashCollisionError / Error — callers map these.
  */
-export async function applyEpubChanges(
+export async function replaceEpubBytes(
   deps: ApplyEpubChangesDeps,
   owner: Owner,
   book: Book,
-  changes: EpubChanges
+  newBytes: Buffer
 ): Promise<Book> {
-  const updatedBytes = buildUpdatedEpub(book.path, changes);
-  const report = await assertValidEpub(updatedBytes, deps.validationThreshold);
+  const report = await assertValidEpub(newBytes, deps.validationThreshold);
 
   const tmpPath = path.join(path.dirname(book.path), `.tmp-${randomUUID()}.epub`);
   try {
-    fs.writeFileSync(tmpPath, updatedBytes);
+    fs.writeFileSync(tmpPath, newBytes);
     fs.renameSync(tmpPath, book.path);
   } catch (err) {
     try {
@@ -43,11 +42,24 @@ export async function applyEpubChanges(
   }
 
   const updated = await deps.bookStore.reimportBook(owner, book.id);
-  if (!updated) throw new Error('Re-import returned no book after update');
+  if (!updated) throw new Error('Re-import returned no book after replace');
   await deps.validationStore.saveValidation(
     owner,
     updated.id,
     toValidationReport(report, deps.validationThreshold)
   );
   return updated;
+}
+
+/**
+ * Durably apply metadata changes to a book: rebuild the EPUB and delegate to
+ * replaceEpubBytes for validation, atomic swap, and re-import.
+ */
+export async function applyEpubChanges(
+  deps: ApplyEpubChangesDeps,
+  owner: Owner,
+  book: Book,
+  changes: EpubChanges
+): Promise<Book> {
+  return replaceEpubBytes(deps, owner, book, buildUpdatedEpub(book.path, changes));
 }
