@@ -7,6 +7,7 @@ import {
   SyncPassword,
   ConnectionUrls,
   ThemeSetting,
+  ScanLibrarySetting,
 } from '~/component';
 import { Button } from '~/control';
 import { useIsAdmin, useLogout } from '~/provider/auth';
@@ -23,6 +24,7 @@ export const UserPage = () => {
     return (
       <Page>
         <ThemeSetting />
+        <ScanLibrarySetting />
         <Button loading={loggingOut} onClick={handleLogout} danger>
           Log out
         </Button>
@@ -33,6 +35,7 @@ export const UserPage = () => {
   return (
     <Page>
       <ThemeSetting />
+      <ScanLibrarySetting />
       <SyncPassword />
       <ConnectionUrls />
       <UserChangePassword />
