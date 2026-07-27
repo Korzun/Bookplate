@@ -8,6 +8,7 @@ import { useStyle } from './style';
 
 type ConfirmModalProps = PropsWithChildren<{
   cancelText?: string;
+  confirmDisabled?: boolean;
   confirmText?: string;
   danger?: boolean;
   icon?: React.ComponentType<IconProps>;
@@ -21,6 +22,7 @@ type ConfirmModalProps = PropsWithChildren<{
 export function ConfirmModal({
   cancelText = 'Cancel',
   children,
+  confirmDisabled = false,
   confirmText = 'Confirm',
   danger = false,
   icon: Icon,
@@ -70,6 +72,7 @@ export function ConfirmModal({
           </Button>
           <Button
             onClick={handleConfirm}
+            disabled={confirmDisabled || loading}
             loading={loading}
             type="primary"
             danger={danger}

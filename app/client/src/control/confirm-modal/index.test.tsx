@@ -58,4 +58,27 @@ describe('ConfirmModal', () => {
     fireEvent(container.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it('disables the confirm button when confirmDisabled is set', () => {
+    renderWithProviders(<ConfirmModal isOpen confirmDisabled />);
+    expect(screen.getByRole('button', { name: 'Confirm', hidden: true })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+  });
+
+  it('does not call onConfirm when confirmDisabled and the button is clicked', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    renderWithProviders(<ConfirmModal isOpen onConfirm={onConfirm} confirmDisabled />);
+    await user.click(screen.getByRole('button', { name: 'Confirm', hidden: true }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('leaves the confirm button enabled by default', () => {
+    renderWithProviders(<ConfirmModal isOpen />);
+    expect(screen.getByRole('button', { name: 'Confirm', hidden: true })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+  });
 });

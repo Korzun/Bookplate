@@ -5,9 +5,10 @@ import { useStyle } from './style';
 
 interface Props {
   addFiles: (files: FileList) => void;
+  multiple?: boolean;
 }
 
-export const UploadZone = ({ addFiles }: Props) => {
+export const UploadZone = ({ addFiles, multiple = true }: Props) => {
   const styles = useStyle();
 
   const [dragOver, setDragOver] = useState<boolean>(false);
@@ -43,7 +44,7 @@ export const UploadZone = ({ addFiles }: Props) => {
           id="upload-file-input"
           type="file"
           accept=".epub"
-          multiple
+          multiple={multiple}
           style={{ display: 'none' }}
           onChange={(e) => {
             if (e.target.files) addFiles(e.target.files);

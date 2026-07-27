@@ -22,6 +22,7 @@ export { Switch } from './switch';
 export { TextArea } from './text-area';
 export { TextInput } from './text-input';
 export { UnlinkBookLineageButton } from './unlink-book-lineage-button';
+export { UploadReplaceModal } from './upload-replace-modal';
 export { ValidationDetailModal } from './validation-detail-modal';
 
 export type { ColumnDescriptor, FieldRow } from './field-list';
