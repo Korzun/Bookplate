@@ -1196,6 +1196,13 @@ export function createUiRouter(
         return;
       }
 
+      if (book.valid !== true) {
+        res.status(409).json({
+          error: 'This book must pass validation before it can be edited.',
+        });
+        return;
+      }
+
       const body = req.body as Record<string, string>;
       const changes: EpubChanges = {};
       if (body.title !== undefined) changes.title = body.title;
@@ -1326,6 +1333,13 @@ export function createUiRouter(
       const book = await bookStore.getBookById(owner, req.params.id);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+
+      if (book.valid !== true) {
+        res.status(409).json({
+          error: 'This book must pass validation before it can be edited.',
+        });
         return;
       }
 
