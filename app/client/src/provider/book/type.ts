@@ -24,6 +24,7 @@ export type Book = {
   pageCount: number;
   /** Cached device editions across all devices; present on the single-book detail fetch. */
   deviceEditionCount?: number;
+  valid?: boolean | null;
 };
 
 export type Identifier = { scheme: string; value: string };

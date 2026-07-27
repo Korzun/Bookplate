@@ -5,6 +5,7 @@ export interface BookActionState {
   deviceEditionCount: number;
   regenLoading: boolean;
   validating: boolean;
+  editingBlocked: boolean;
 }
 
 export interface BookActionHandlers {
@@ -38,6 +39,7 @@ export function buildBookActions(
     onClick: handlers.onEditMetadata,
     primary: true,
     align: 'trailing',
+    disabled: state.editingBlocked,
   });
 
   actions.push({
@@ -48,7 +50,7 @@ export function buildBookActions(
   actions.push({
     label: 'Regen chapters',
     onClick: handlers.onRegenChapters,
-    disabled: state.regenLoading,
+    disabled: state.regenLoading || state.editingBlocked,
   });
 
   actions.push({
