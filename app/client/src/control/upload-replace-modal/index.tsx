@@ -4,6 +4,7 @@ import { UploadZone } from '~/component';
 import type { ValidationReport } from '~/lib/severity';
 import { useReplaceBook } from '~/provider/book';
 
+import { Button } from '../button';
 import { ConfirmModal } from '../confirm-modal';
 import { SeverityCounts } from '../severity-counts';
 
@@ -16,9 +17,11 @@ interface Props {
 }
 
 export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onReplaced }: Props) {
-  const { validateReplacement, commitReplacement, validating, committing } = useReplaceBook();
+  const { validateReplacement, commitReplacement, validating, committing, commitError } =
+    useReplaceBook();
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<ValidationReport | null>(null);
+  const [commitFailed, setCommitFailed] = useState(false);
 
   const pick = useCallback(
     async (files: FileList) => {
@@ -26,6 +29,7 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       if (!f) return;
       setFile(f);
       setReport(null);
+      setCommitFailed(false);
       const r = await validateReplacement(bookId, f);
       setReport(r ?? null);
     },
@@ -35,14 +39,18 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
   const reset = useCallback(() => {
     setFile(null);
     setReport(null);
+    setCommitFailed(false);
   }, []);
 
   const handleConfirm = useCallback(async () => {
     if (!file) return;
+    setCommitFailed(false);
     const updated = await commitReplacement(bookId, file);
     if (updated) {
       reset();
       onReplaced(updated.id);
+    } else {
+      setCommitFailed(true);
     }
   }, [file, bookId, commitReplacement, onReplaced, reset]);
 
@@ -50,6 +58,12 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
     reset();
     onClose();
   }, [reset, onClose]);
+
+  const chooseDifferentFile = (
+    <Button type="link" onClick={reset}>
+      Choose a different file
+    </Button>
+  );
 
   return (
     <ConfirmModal
@@ -67,16 +81,22 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
         <div>
           <p>✓ {file.name} is valid.</p>
           <SeverityCounts counts={report.counts} threshold={report.threshold} />
+          {commitFailed && <p>{commitError || 'Replace failed.'}</p>}
+          {chooseDifferentFile}
         </div>
       )}
       {file && !validating && report && !report.valid && (
         <div>
           <p>{file.name} failed validation and can&apos;t replace this book.</p>
           <SeverityCounts counts={report.counts} threshold={report.threshold} />
+          {chooseDifferentFile}
         </div>
       )}
       {file && !validating && report === null && (
-        <p>Couldn&apos;t validate {file.name}. Try another file.</p>
+        <div>
+          <p>Couldn&apos;t validate {file.name}. Try another file.</p>
+          {chooseDifferentFile}
+        </div>
       )}
     </ConfirmModal>
   );

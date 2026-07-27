@@ -20,6 +20,7 @@ let validateReplacement = vi.fn();
 let commitReplacement = vi.fn();
 let validating = false;
 let committing = false;
+let commitError: string | undefined = undefined;
 
 vi.mock('~/provider/book', () => ({
   useReplaceBook: () => ({
@@ -27,6 +28,7 @@ vi.mock('~/provider/book', () => ({
     commitReplacement,
     validating,
     committing,
+    commitError,
   }),
 }));
 
@@ -40,6 +42,7 @@ beforeEach(() => {
   commitReplacement = vi.fn();
   validating = false;
   committing = false;
+  commitError = undefined;
 });
 
 function pickFile(file: File) {
@@ -153,5 +156,141 @@ describe('UploadReplaceModal', () => {
 
     expect(commitReplacement).toHaveBeenCalledWith('b1', file);
     expect(onReplaced).toHaveBeenCalledWith('b2');
+  });
+
+  it('keeps the modal open, shows the commit error, and does not call onReplaced when commit fails', async () => {
+    const report = makeReport({ valid: true });
+    validateReplacement.mockResolvedValue(report);
+    commitReplacement.mockResolvedValue(undefined);
+    commitError = 'Fingerprint already exists on another book.';
+    const onClose = vi.fn();
+    const onReplaced = vi.fn();
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={onClose}
+        onReplaced={onReplaced}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onReplaced).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Fingerprint already exists on another book.')).toBeInTheDocument();
+  });
+
+  it('shows a generic failure message when commit fails without an error body', async () => {
+    const report = makeReport({ valid: true });
+    validateReplacement.mockResolvedValue(report);
+    commitReplacement.mockResolvedValue(undefined);
+    commitError = undefined;
+    const onReplaced = vi.fn();
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={onReplaced}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onReplaced).not.toHaveBeenCalled();
+    expect(screen.getByText('Replace failed.')).toBeInTheDocument();
+  });
+
+  it('returns to the upload zone when choosing a different file after a valid preview', async () => {
+    const report = makeReport({ valid: true });
+    validateReplacement.mockResolvedValue(report);
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.getElementById('upload-file-input')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Choose a different file', hidden: true })
+      );
+    });
+
+    expect(document.getElementById('upload-file-input')).toBeTruthy();
+  });
+
+  it('shows a "couldn\'t validate" message and a way to pick another file when validation returns no report', async () => {
+    validateReplacement.mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Couldn't validate/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Choose a different file', hidden: true })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Choose a different file', hidden: true })
+      );
+    });
+
+    expect(document.getElementById('upload-file-input')).toBeTruthy();
   });
 });

@@ -288,6 +288,52 @@ describe('useReplaceBook', () => {
       expect(returned).toBeUndefined();
     });
 
+    it('captures the error message from a non-ok response into commitError', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: false,
+          json: () => Promise.resolve({ error: 'Fingerprint collision' }),
+        })
+      );
+      const { result } = renderHook(() => useReplaceBook(), {
+        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
+      });
+
+      let returned: Book | undefined;
+      await act(async () => {
+        returned = await result.current.commitReplacement('1', makeFile());
+      });
+
+      expect(returned).toBeUndefined();
+      expect(result.current.commitError).toBe('Fingerprint collision');
+    });
+
+    it('clears commitError at the start of a new commitReplacement call and on success', async () => {
+      const updated = makeBook({ id: '1', title: 'Replaced' });
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          json: () => Promise.resolve({ error: 'Fingerprint collision' }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(updated) });
+      vi.stubGlobal('fetch', fetchMock);
+      const { result } = renderHook(() => useReplaceBook(), {
+        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
+      });
+
+      await act(async () => {
+        await result.current.commitReplacement('1', makeFile());
+      });
+      expect(result.current.commitError).toBe('Fingerprint collision');
+
+      await act(async () => {
+        await result.current.commitReplacement('1', makeFile());
+      });
+      expect(result.current.commitError).toBeUndefined();
+    });
+
     it('does not send a second commit request while the first is still in flight', async () => {
       vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
 

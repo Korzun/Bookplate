@@ -13,6 +13,7 @@ export interface UseReplaceBook {
   commitReplacement: (id: string, file: File) => Promise<Book | undefined>;
   validating: boolean;
   committing: boolean;
+  commitError: string | undefined;
 }
 
 export const useReplaceBook = (): UseReplaceBook => {
@@ -21,12 +22,16 @@ export const useReplaceBook = (): UseReplaceBook => {
   const withTargetUser = useWithTargetUser();
   const [validating, setValidating] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [commitError, setCommitError] = useState<string | undefined>(undefined);
 
   const validateReplacement = useCallback(
     async (id: string, file: File): Promise<ValidationReport | undefined> => {
       if (validating) return undefined;
       try {
         setValidating(true);
+        // Picking a new file to validate supersedes any previous commit
+        // attempt — clear its error so a stale message doesn't linger.
+        setCommitError(undefined);
         const fd = new FormData();
         fd.append('file', file);
         const res = await apiFetch(
@@ -49,13 +54,18 @@ export const useReplaceBook = (): UseReplaceBook => {
       if (committing) return undefined;
       try {
         setCommitting(true);
+        setCommitError(undefined);
         const fd = new FormData();
         fd.append('file', file);
         const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}/replace`), {
           method: 'POST',
           body: fd,
         });
-        if (!res.ok) return undefined;
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          setCommitError(body.error);
+          return undefined;
+        }
         const updated = (await res.json()) as Book;
         setBookList((prev) => {
           const next = { ...prev, [updated.id]: updated };
@@ -66,6 +76,7 @@ export const useReplaceBook = (): UseReplaceBook => {
         setBookListFetched(false);
         setBookListItems(() => []);
         setNextCursor(null);
+        setCommitError(undefined);
         return updated;
       } catch {
         return undefined;
@@ -85,7 +96,7 @@ export const useReplaceBook = (): UseReplaceBook => {
   );
 
   return useMemo(
-    () => ({ validateReplacement, commitReplacement, validating, committing }),
-    [validateReplacement, commitReplacement, validating, committing]
+    () => ({ validateReplacement, commitReplacement, validating, committing, commitError }),
+    [validateReplacement, commitReplacement, validating, committing, commitError]
   );
 };
