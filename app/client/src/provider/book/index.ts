@@ -37,7 +37,7 @@ export type {
   UploadFileResult,
   UploadResult,
 } from './type';
-export type { SeriesMeta, FetchSeriesNextIndex } from './hook';
+export type { SeriesMeta, FetchSeriesNextIndex, ReplaceAnalysis } from './hook';
 export type {
   UndoSnapshot,
   UploadItem,
