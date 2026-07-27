@@ -14,6 +14,7 @@ import type { Mock, MockedFunction } from 'vitest';
 import { runMigrations } from '../db/migrate';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookHashCollisionError, BookStore } from '../services/book-store';
+import * as epubWriterModule from '../services/epub-writer';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
@@ -2374,6 +2375,41 @@ describe('replace routes', () => {
       .get('/api/books/pending-fixes')
       .set(...bearer(token));
     expect(pending.body).toHaveLength(0);
+  });
+
+  it('commit falls through to the original bytes (no 500) when structural repair throws', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repbadopf',
+      stage('repbadopf', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    const repairSpy = vi
+      .spyOn(epubWriterModule, 'repairPackageDocument')
+      .mockImplementationOnce(() => {
+        throw new Error('bad opf');
+      });
+    const stagingDir = bookStore.getStagingDir();
+    const before = fs.existsSync(stagingDir) ? fs.readdirSync(stagingDir) : [];
+    try {
+      const token = await loginAlice();
+      const res = await request(app)
+        .post('/api/books/repbadopf/replace')
+        .set(...bearer(token))
+        .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
+      // repairPackageDocument threw, but the handler falls through to the
+      // original candidate bytes and still succeeds via replaceEpubBytes
+      // (mocked assertValidEpub passes) — never a bare 500.
+      expect(res.status).toBe(200);
+      expect(res.body.title).toBe('Fixed');
+      // The temp file used for the repair attempt is still cleaned up.
+      const after = fs.existsSync(stagingDir) ? fs.readdirSync(stagingDir) : [];
+      expect(after.filter((f) => f.startsWith('replace-'))).toEqual(
+        before.filter((f) => f.startsWith('replace-'))
+      );
+    } finally {
+      repairSpy.mockRestore();
+    }
   });
 
   it('commit returns 422 when the new file fails validation, leaving the book unchanged', async () => {

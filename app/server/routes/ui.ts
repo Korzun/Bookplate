@@ -1382,13 +1382,22 @@ export function createUiRouter(
 
       // Structurally repair the candidate buffer before swapping it in, so
       // the file that gets persisted matches what /replace/analyze previewed.
+      // Best-effort, like analyzeEpub's own repair guard: on failure, fall
+      // through using the original candidate bytes so replaceEpubBytes's own
+      // validation still runs (a normal 422/success) instead of a bare 500.
       const dir = bookStore.getStagingDir();
       fs.mkdirSync(dir, { recursive: true });
       const tmpPath = path.join(dir, `replace-${randomUUID()}.epub`);
       fs.writeFileSync(tmpPath, req.file.buffer);
-      let repairedBytes: Buffer;
+      let repairedBytes: Buffer = req.file.buffer;
       try {
-        repairedBytes = repairPackageDocument(tmpPath).bytes;
+        try {
+          repairedBytes = repairPackageDocument(tmpPath).bytes;
+        } catch (err: unknown) {
+          log.warn(
+            `Package repair skipped for "${req.file.originalname}": ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       } finally {
         fs.unlinkSync(tmpPath);
       }
