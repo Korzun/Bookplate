@@ -1,16 +1,21 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Page, UploadItem, UploadZone } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
 import { useIsAdmin } from '~/provider/auth';
+import type { UploadItem as UploadItemType } from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
 import { useUploadQueue } from '~/provider/upload';
 import { useUserList } from '~/provider/user';
 import { path } from '~/router';
 
+import { buildUploadActions } from './actions';
 import { useStyle } from './style';
+
+const isDismissible = (i: UploadItemType) =>
+  i.status === 'error' || (i.status === 'done' && (i.proposals?.length ?? 0) === 0);
 
 export const UploadPage = () => {
   const styles = useStyle();
@@ -30,6 +35,9 @@ export const UploadPage = () => {
     dismissCompleted,
   } = useUploadQueue();
   const uploadsInProgress = items.some((i) => i.status === 'queued' || i.status === 'uploading');
+  const hasDismissible = items.some(isDismissible);
+  const hasActionable = items.some((i) => (i.proposals ?? []).some((p) => p.to !== null));
+  const hasProposals = items.some((i) => (i.proposals?.length ?? 0) > 0);
 
   const showToast = useToast();
 
@@ -64,6 +72,45 @@ export const UploadPage = () => {
     doneItems.forEach((i) => announcedRef.current.add(i.id));
   }, [items, uploadsInProgress, showToast]);
 
+  // Guards against a rapid re-entrant click firing a second, parallel PATCH
+  // wave over the same items while the first Accept All is still applying
+  // (mirrors the per-item `busy` guard in component/upload-item/index.tsx).
+  const acceptAllInFlightRef = useRef(false);
+  // Drives `actionsDisabled` on every card so the per-upload accept/reject
+  // controls lock while a queue-wide Accept all is applying. The ref above is
+  // the re-entrancy guard (synchronous); this state is purely for rendering.
+  const [acceptingAll, setAcceptingAll] = useState(false);
+  const handleAcceptAll = useCallback(async () => {
+    if (acceptAllInFlightRef.current) return;
+    acceptAllInFlightRef.current = true;
+    setAcceptingAll(true);
+    try {
+      let failed = false;
+      for (const item of items) {
+        if ((item.proposals ?? []).some((p) => p.to !== null)) {
+          const ok = await applyAllProposals(item.id);
+          if (!ok) failed = true;
+        }
+      }
+      if (failed) showToast("Couldn't apply some fixes", 'error');
+    } finally {
+      acceptAllInFlightRef.current = false;
+      setAcceptingAll(false);
+    }
+  }, [items, applyAllProposals, showToast]);
+
+  const handleRejectAll = useCallback(() => {
+    for (const item of items) {
+      if ((item.proposals?.length ?? 0) > 0) dismissAllProposals(item.id);
+    }
+  }, [items, dismissAllProposals]);
+
+  const handleDismissAll = useCallback(() => {
+    for (const item of items) {
+      if (isDismissible(item)) dismissCompleted(item.id);
+    }
+  }, [items, dismissCompleted]);
+
   if (isAdmin && !targetUsername) {
     const noUsers = !userListLoading && userList.length === 0;
     return (
@@ -92,8 +139,17 @@ export const UploadPage = () => {
     );
   }
 
+  const headerActions = buildUploadActions(
+    { hasDismissible, hasActionable, hasProposals },
+    {
+      onDismissAll: handleDismissAll,
+      onAcceptAll: () => void handleAcceptAll(),
+      onRejectAll: handleRejectAll,
+    }
+  );
+
   return (
-    <Page>
+    <Page headerActions={headerActions} actionsLabel="Actions">
       <UploadZone addFiles={addFiles} />
       {items.length > 0 && (
         <div className={styles.queue}>
@@ -101,6 +157,7 @@ export const UploadPage = () => {
             <UploadItem
               key={item.id}
               item={item}
+              actionsDisabled={acceptingAll}
               onApplyFix={async (fix) => {
                 const ok = await applyFix(item.id, fix);
                 if (!ok) showToast("Couldn't apply fix", 'error');

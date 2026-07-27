@@ -104,7 +104,7 @@ describe('UploadItem', () => {
     expect(screen.getAllByText('Upload failed')).toHaveLength(1);
   });
 
-  it('error: offers a Dismiss upload control that fires onDismissCompleted', () => {
+  it('error: offers a Clear upload control that fires onDismissCompleted', () => {
     const onDismissCompleted = vi.fn();
     renderWithProviders(
       <UploadItem
@@ -113,7 +113,7 @@ describe('UploadItem', () => {
         onDismissCompleted={onDismissCompleted}
       />
     );
-    fireEvent.click(screen.getByText(/dismiss upload/i));
+    fireEvent.click(screen.getByText(/clear upload/i));
     expect(onDismissCompleted).toHaveBeenCalled();
   });
 
@@ -478,9 +478,9 @@ describe('UploadItem metadata fixes', () => {
     expect(screen.queryByRole('link', { name: /edit/i })).toBeNull();
   });
 
-  it('done with a pending proposal: does not show the dismiss-upload control', () => {
+  it('done with a pending proposal: does not show the clear-upload control', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
-    expect(screen.queryByText(/dismiss upload/i)).toBeNull();
+    expect(screen.queryByText(/clear upload/i)).toBeNull();
   });
 
   it('done + armed undo: dismiss-completed control fires', () => {
@@ -497,7 +497,7 @@ describe('UploadItem metadata fixes', () => {
         onDismissCompleted={onDismissCompleted}
       />
     );
-    fireEvent.click(screen.getByText(/dismiss upload/i));
+    fireEvent.click(screen.getByText(/clear upload/i));
     expect(onDismissCompleted).toHaveBeenCalled();
   });
 
@@ -524,5 +524,63 @@ describe('UploadItem metadata fixes', () => {
     );
     expect(screen.getByText(/removed a duplicate modification date/)).toBeInTheDocument();
     expect(screen.getByText(/EPUB/)).toBeInTheDocument();
+  });
+
+  it('disables every accept/reject control when actionsDisabled is set', () => {
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} actionsDisabled />);
+    expect(screen.getByRole('button', { name: /^accept$/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /^reject$/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /accept all/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /reject all/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+  });
+
+  it('leaves the accept/reject controls enabled when actionsDisabled is unset', () => {
+    renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
+    expect(screen.getByRole('button', { name: /^accept$/i })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: /^reject$/i })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: /accept all/i })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+    expect(screen.getByRole('button', { name: /reject all/i })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+  });
+
+  it('does not fire any accept/reject handler while actionsDisabled is set', () => {
+    const onApplyFix = vi.fn();
+    const onDismissFix = vi.fn();
+    const onApplyAll = vi.fn();
+    const onDismissAll = vi.fn();
+    renderWithProviders(
+      <UploadItem
+        item={doneItem()}
+        {...noop}
+        actionsDisabled
+        onApplyFix={onApplyFix}
+        onDismissFix={onDismissFix}
+        onApplyAll={onApplyAll}
+        onDismissAll={onDismissAll}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^accept$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^reject$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /accept all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /reject all/i }));
+    expect(onApplyFix).not.toHaveBeenCalled();
+    expect(onDismissFix).not.toHaveBeenCalled();
+    expect(onApplyAll).not.toHaveBeenCalled();
+    expect(onDismissAll).not.toHaveBeenCalled();
   });
 });
