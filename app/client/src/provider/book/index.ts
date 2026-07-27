@@ -13,6 +13,7 @@ export {
   useLibrarySubjects,
   usePatchBookMetadata,
   useRegenChapters,
+  useReplaceBook,
   useScanLibrary,
   useSeries,
   useSeriesBookList,

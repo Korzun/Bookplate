@@ -12,6 +12,7 @@ export { useFetchNextPage } from './use-fetch-next-page';
 export { useLibrarySubjects } from './use-library-subjects';
 export { usePatchBookMetadata } from './use-patch-book-metadata';
 export { useRegenChapters } from './use-regen-chapters';
+export { useReplaceBook } from './use-replace-book';
 export { useScanLibrary } from './use-scan-library';
 export { useSeries } from './use-series';
 export type { SeriesMeta } from './use-series';
