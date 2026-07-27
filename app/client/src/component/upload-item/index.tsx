@@ -1,15 +1,12 @@
 import cx from 'classnames';
 import { Fragment, useState } from 'react';
-import { Link } from 'react-router';
 
 import { Button, SeverityCounts, ValidationDetailModal } from '~/control';
 import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
 import type { MetadataFix, UploadItem as UploadItemType, UploadItemStatus } from '~/provider/book';
-import { path } from '~/router';
 
 import { Card } from '../card';
-import { CardDivider } from '../card-divider';
-import { Tag } from '../tag';
+import { FixReview } from '../fix-review';
 import { useStyle } from './style';
 
 interface Props {
@@ -26,30 +23,11 @@ interface Props {
   actionsDisabled?: boolean;
 }
 
-const FIELD_LABEL: Record<string, string> = {
-  title: 'Title',
-  titleSort: 'Title sort',
-  author: 'Author',
-  authorSort: 'Author sort',
-  subjects: 'Subjects',
-  document: 'EPUB',
-};
-
-const labelFor = (fix: MetadataFix): string =>
-  fix.kind === 'subjects-split' ? 'Subject' : (FIELD_LABEL[fix.field] ?? fix.field);
-
 const STATUS_LABEL: Record<UploadItemStatus, string> = {
   queued: 'Queued',
   uploading: 'Uploading',
   done: 'Upload complete',
   error: 'Upload failed',
-};
-
-// The undo `kind` is stored as the internal action name ('apply'/'dismiss');
-// surface it in the user-facing accept/reject language.
-const UNDO_LABEL: Record<'apply' | 'dismiss', string> = {
-  apply: 'accept',
-  dismiss: 'reject',
 };
 
 export const UploadItem = ({
@@ -64,30 +42,10 @@ export const UploadItem = ({
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // True while a bulk fix action (Accept all / Reject all / Undo) is running,
-  // so the buttons disable and a rapid second click can't re-trigger it.
-  const [busy, setBusy] = useState(false);
   const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookId } = item;
   const autoFixes = item.autoFixes ?? [];
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
-  const actionable = proposals.filter((p) => p.to !== null);
-  const pendingUndo = item.undo;
-
-  // Lock the accept/reject controls while a bulk apply is running — either this
-  // card's own (busy) or a page-level Accept all sweeping the queue
-  // (actionsDisabled) — so a stray click can't race the in-flight apply.
-  const controlsDisabled = busy || !!actionsDisabled;
-
-  const runAction = async (action: () => void | Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await action();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const totalMB = (fileSize / 1_048_576).toFixed(1);
   const uploadedMB = (bytesUploaded / 1_048_576).toFixed(1);
@@ -170,170 +128,22 @@ export const UploadItem = ({
             </div>
           </div>
 
-          {status === 'done' &&
-            (autoFixes.length > 0 ||
-              appliedFixes.length > 0 ||
-              proposals.length > 0 ||
-              pendingUndo) && (
-              <div className={styles.metadata}>
-                {autoFixes.length > 0 && (
-                  <Fragment>
-                    <CardDivider>Automatic fixes</CardDivider>
-                    {autoFixes.map((fix) => (
-                      <div
-                        key={`auto-${fix.field}-${fix.kind}-${fix.from}`}
-                        className={styles.appliedRow}
-                      >
-                        <CheckIcon />
-                        <span className={styles.chipLine}>
-                          {labelFor(fix)}:{' '}
-                          {Object.keys(fix.changes).length === 0 ? (
-                            // Structural repairs (e.g. the dcterms:modified fix) have no
-                            // original field value — show just the description.
-                            <strong>{fix.to}</strong>
-                          ) : (
-                            <span>
-                              {fix.from ? (
-                                <span className={styles.fromValue}>{fix.from}</span>
-                              ) : (
-                                <em>empty</em>
-                              )}
-                              {' → '}
-                              <strong>{fix.to}</strong>
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </Fragment>
-                )}
-
-                {(proposals.length > 0 || pendingUndo) && (
-                  <CardDivider
-                    actions={
-                      pendingUndo ? (
-                        <Button type="link" disabled={busy} onClick={() => void runAction(onUndo)}>
-                          Undo {UNDO_LABEL[pendingUndo.kind]}
-                        </Button>
-                      ) : (
-                        <Fragment>
-                          {proposals.length >= 1 && (
-                            <Button
-                              type="link"
-                              danger
-                              disabled={controlsDisabled}
-                              onClick={() => void runAction(onDismissAll)}
-                            >
-                              Reject all
-                            </Button>
-                          )}
-                          {actionable.length >= 1 && (
-                            <Button
-                              type="link"
-                              disabled={controlsDisabled}
-                              onClick={() => void runAction(onApplyAll)}
-                            >
-                              Accept all
-                            </Button>
-                          )}
-                        </Fragment>
-                      )
-                    }
-                  >
-                    Suggested fixes
-                  </CardDivider>
-                )}
-
-                {appliedFixes.map((fix) => (
-                  <div
-                    key={`applied-${fix.field}-${fix.kind}-${fix.from}`}
-                    className={styles.appliedRow}
-                  >
-                    <CheckIcon />
-                    <span className={styles.chipLine}>
-                      {labelFor(fix)}:{' '}
-                      {fix.toChips ? (
-                        <span className={styles.chipGroup}>
-                          {fix.toChips.map((c) => (
-                            <Tag key={c} size="sm">
-                              {c}
-                            </Tag>
-                          ))}
-                        </span>
-                      ) : (
-                        <strong>{fix.to}</strong>
-                      )}
-                    </span>
-                  </div>
-                ))}
-
-                {proposals.map((fix) => (
-                  <div
-                    key={`prop-${fix.field}-${fix.kind}-${fix.from}`}
-                    className={styles.proposalRow}
-                  >
-                    <div className={styles.proposalText}>
-                      <span className={styles.fieldName}>{labelFor(fix)}:</span>
-                      {fix.to === null ? (
-                        <span className={styles.flagText}>needs review</span>
-                      ) : fix.toChips ? (
-                        <span className={styles.chipLine}>
-                          {/* Left side matches the scalar "from" styling: struck-through,
-                              faint text — not a chip. The split parts stay chips. */}
-                          <span className={styles.fromValue}>{fix.from}</span>
-                          {' → '}
-                          <span className={styles.chipGroup}>
-                            {fix.toChips.map((c) => (
-                              <Tag key={c} size="sm">
-                                {c}
-                              </Tag>
-                            ))}
-                          </span>
-                        </span>
-                      ) : (
-                        <span>
-                          {fix.from ? (
-                            <span className={styles.fromValue}>{fix.from}</span>
-                          ) : (
-                            <em>empty</em>
-                          )}
-                          {' → '}
-                          <strong>{fix.to}</strong>
-                        </span>
-                      )}
-                      {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
-                    </div>
-                    <div className={styles.proposalActions}>
-                      {fix.to !== null ? (
-                        <Fragment>
-                          <Button
-                            type="link"
-                            danger
-                            disabled={controlsDisabled}
-                            onClick={() => onDismissFix(fix)}
-                          >
-                            Reject
-                          </Button>
-                          <Button
-                            type="link"
-                            disabled={controlsDisabled}
-                            onClick={() => onApplyFix(fix)}
-                          >
-                            Accept
-                          </Button>
-                        </Fragment>
-                      ) : (
-                        bookId && (
-                          <Link to={path.bookEdit(bookId)} className={styles.editLink}>
-                            Edit
-                          </Link>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          {status === 'done' && (
+            <FixReview
+              autoFixes={autoFixes}
+              appliedFixes={appliedFixes}
+              proposals={proposals}
+              onApplyFix={onApplyFix}
+              onApplyAll={onApplyAll}
+              onDismissFix={onDismissFix}
+              onDismissAll={onDismissAll}
+              onUndo={onUndo}
+              undo={item.undo}
+              disabled={actionsDisabled}
+              bookId={bookId}
+              showEditLink
+            />
+          )}
         </div>
       </Card>
       {validation && detailsOpen && (
