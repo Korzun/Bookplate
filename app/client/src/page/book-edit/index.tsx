@@ -46,6 +46,14 @@ export const BookEditPage = () => {
     );
   }
 
+  if (original.valid !== true) {
+    return (
+      <Page>
+        <h1 className={styles.heading}>This book must pass validation before it can be edited.</h1>
+      </Page>
+    );
+  }
+
   return (
     <Page>
       {pendingItem ? (
