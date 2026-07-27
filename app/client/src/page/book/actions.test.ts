@@ -10,6 +10,7 @@ function handlers(): BookActionHandlers {
     onRegenChapters: vi.fn(),
     onClearEditions: vi.fn(),
     onValidate: vi.fn(),
+    onUploadReplace: vi.fn(),
     onDownloadBook: vi.fn(),
     onDeleteBook: vi.fn(),
   };
@@ -220,6 +221,28 @@ describe('buildBookActions', () => {
       handlers()
     );
     expect(actions.find((a) => a.label === 'Validate')).toMatchObject({ disabled: true });
+  });
+
+  it('includes Upload and replace after Validate, enabled even when editing is blocked', () => {
+    const h = handlers();
+    const actions = buildBookActions(
+      {
+        chapterCount: 0,
+        deviceEditionCount: 0,
+        regenLoading: false,
+        validating: false,
+        editingBlocked: true,
+      },
+      h
+    );
+    const labels = actions.map((a) => a.label);
+    const validateIdx = labels.indexOf('Validate');
+    const replaceIdx = labels.indexOf('Upload and replace');
+    expect(replaceIdx).toBe(validateIdx + 1);
+    const item = actions[replaceIdx];
+    expect(item.disabled).toBeFalsy(); // enabled even when editingBlocked
+    item.onClick();
+    expect(h.onUploadReplace).toHaveBeenCalledTimes(1);
   });
 
   it('disables Edit metadata and Regen chapters when editing is blocked', () => {

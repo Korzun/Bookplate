@@ -15,6 +15,7 @@ export interface BookActionHandlers {
   onRegenChapters: () => void;
   onClearEditions: () => void;
   onValidate: () => void;
+  onUploadReplace: () => void;
   onDownloadBook: () => void;
   onDeleteBook: () => void;
 }
@@ -63,6 +64,11 @@ export function buildBookActions(
     label: 'Validate',
     onClick: handlers.onValidate,
     disabled: state.validating,
+  });
+
+  actions.push({
+    label: 'Upload and replace',
+    onClick: handlers.onUploadReplace,
   });
 
   actions.push({
