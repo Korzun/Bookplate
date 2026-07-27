@@ -7,13 +7,11 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   form: {
     display: 'flex',
     flexDirection: 'column',
+    gap: theme.space.md,
   },
   inputContainer: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.md,
-  },
-  submit: {
-    marginTop: theme.space.xxl,
   },
 }));
