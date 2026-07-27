@@ -4,7 +4,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   // The uploaded epub's filename, hoisted to the top of the modal body.
   fileName: {
     fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
     color: theme.color.text.primary,
     wordBreak: 'break-word',
     marginBottom: theme.space.md,
