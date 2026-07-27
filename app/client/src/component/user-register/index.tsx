@@ -61,7 +61,6 @@ export const UserRegister = () => {
           </div>
           <CardDivider />
           <Button
-            className={styles.submit}
             type="primary"
             radius="card"
             submit
