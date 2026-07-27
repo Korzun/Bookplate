@@ -7,7 +7,7 @@ import multer from 'multer';
 
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
-import { applyEpubChanges } from '../services/apply-epub-changes';
+import { applyEpubChanges, replaceEpubBytes } from '../services/apply-epub-changes';
 import {
   BookStore,
   BookHashCollisionError,
@@ -21,6 +21,7 @@ import {
   assertValidEpub,
   EpubValidationError,
   toValidationReport,
+  validateEpubReport,
 } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -145,6 +146,14 @@ export function createUiRouter(
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
       cb(null, file.mimetype.startsWith('image/'));
+    },
+  });
+
+  const epubUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      cb(null, ALLOWED_EXTENSIONS.has(path.extname(file.originalname).toLowerCase()));
     },
   });
 
@@ -1382,6 +1391,73 @@ export function createUiRouter(
       );
       log.info(`Book validated: "${book.filename}" (valid=${report.valid})`);
       res.json(report);
+    })
+  );
+
+  router.post(
+    '/api/books/:id/replace/validate',
+    requireAuth,
+    epubUpload.single('file'),
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      const report = await validateEpubReport(req.file.buffer, config.validationThreshold);
+      res.json(report);
+    })
+  );
+
+  router.post(
+    '/api/books/:id/replace',
+    requireAuth,
+    epubUpload.single('file'),
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = await resolveOwner(req, res);
+      if (!owner) return;
+      const book = await bookStore.getBookById(owner, req.params.id);
+      if (!book) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      let updated: Awaited<ReturnType<typeof replaceEpubBytes>>;
+      try {
+        updated = await replaceEpubBytes(
+          { bookStore, validationStore, validationThreshold: config.validationThreshold },
+          owner,
+          book,
+          req.file.buffer
+        );
+      } catch (err: unknown) {
+        if (err instanceof EpubValidationError) {
+          res.status(422).json({
+            error: 'EPUB failed validation',
+            validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
+          });
+          return;
+        }
+        if (err instanceof BookHashCollisionError) {
+          res
+            .status(409)
+            .json({ error: 'A book with the same fingerprint is already in the library.' });
+          return;
+        }
+        throw err;
+      }
+      log.info(`Book replaced: "${updated.filename}"`);
+      const { path: _path, ...rest } = updated;
+      res.json(rest);
     })
   );
 

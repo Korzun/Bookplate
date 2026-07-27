@@ -13,7 +13,7 @@ import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
-import { BookStore } from '../services/book-store';
+import { BookHashCollisionError, BookStore } from '../services/book-store';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
@@ -2169,6 +2169,132 @@ describe('POST /api/books/:id/validate', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/whatever/validate');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('replace routes', () => {
+  it('validate returns the report without modifying the book', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'rep1',
+      stage('rep1', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/rep1/replace/validate')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('valid');
+    // unchanged
+    expect((await bookStore.getBookById(aliceOwner, 'rep1'))?.title).toBe('Old');
+  });
+
+  it('validate returns 404 for unknown, 401 without token, 400 with no file', async () => {
+    const token = await loginAlice();
+    expect(
+      (
+        await request(app)
+          .post('/api/books/nope/replace/validate')
+          .set(...bearer(token))
+          .attach('file', makeEpub({ title: 'x', author: 'a' }), 'x.epub')
+      ).status
+    ).toBe(404);
+    expect((await request(app).post('/api/books/rep1/replace/validate')).status).toBe(401);
+    await bookStore.addBook(
+      aliceOwner,
+      'rep1b',
+      stage('rep1b', makeEpub({ title: 'x', author: 'a' })),
+      FAKE_META
+    );
+    expect(
+      (
+        await request(app)
+          .post('/api/books/rep1b/replace/validate')
+          .set(...bearer(token))
+      ).status
+    ).toBe(400);
+  });
+
+  it('commit replaces the book, changing the id and recording lineage', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repc',
+      stage('repc', makeEpub({ title: 'Old', author: 'A' })),
+      FAKE_META
+    );
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/repc/replace')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
+    expect(res.status).toBe(200);
+    expect(res.body.id).not.toBe('repc');
+    expect(res.body.title).toBe('Fixed');
+    expect(await validationStore.getValidation(aliceOwner, res.body.id)).not.toBeNull();
+    expect(await bookStore.getBookById(aliceOwner, 'repc')).toBeNull(); // old id gone
+  });
+
+  it('commit works on an invalid book (not gated on valid)', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'repinv',
+      stage('repinv', makeEpub({ title: 'Old', author: 'A' })),
+      FAKE_META
+    );
+    await validationStore.saveValidation(aliceOwner, 'repinv', {
+      valid: false,
+      threshold: 'ERROR',
+      counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
+      messages: [],
+    });
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/repinv/replace')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
+    expect(res.status).toBe(200);
+  });
+
+  it('commit returns 422 when the new file fails validation, leaving the book unchanged', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'rep422',
+      stage('rep422', makeEpub({ title: 'Old', author: 'A' })),
+      { ...FAKE_META, title: 'Old', author: 'A' }
+    );
+    (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new EpubValidationError(
+        [],
+        { FATAL: 1, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 } as never,
+        'ERROR'
+      )
+    );
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/rep422/replace')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'Bad', author: 'A' }), 'bad.epub');
+    expect(res.status).toBe(422);
+    expect(res.body).toHaveProperty('validation');
+    expect((await bookStore.getBookById(aliceOwner, 'rep422'))?.title).toBe('Old');
+  });
+
+  it('commit returns 409 on a fingerprint collision', async () => {
+    await bookStore.addBook(
+      aliceOwner,
+      'rep409',
+      stage('rep409', makeEpub({ title: 'Old', author: 'A' })),
+      FAKE_META
+    );
+    vi.spyOn(bookStore, 'reimportBook').mockRejectedValueOnce(new BookHashCollisionError('dup'));
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/rep409/replace')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'Dup', author: 'A' }), 'dup.epub');
+    expect(res.status).toBe(409);
   });
 });
 
