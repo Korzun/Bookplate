@@ -17,6 +17,9 @@ type PageProps = PropsWithChildren<{
   type?: PageTypeValue;
   back?: string;
   headerActions?: PageActionItem[];
+  /** Overrides the overflow trigger's label (default "More…") on the desktop
+   * action bar — e.g. "Actions" when every action lives in the menu. */
+  actionsLabel?: string;
   footerActions?: FooterAction[];
 }>;
 
@@ -25,6 +28,7 @@ export const Page = ({
   type = PageType.default as PageTypeValue,
   back,
   headerActions,
+  actionsLabel,
   footerActions,
 }: PageProps) => {
   const styles = useStyle();
@@ -43,7 +47,7 @@ export const Page = ({
         {back !== undefined && <BackButton to={back} />}
         {hasHeaderActions && <PageActionsMenu items={headerActions} />}
         {showTopInset && <div className={styles.topInset} aria-hidden="true" />}
-        {hasHeaderActions && <PageActionsBar items={headerActions} />}
+        {hasHeaderActions && <PageActionsBar items={headerActions} actionsLabel={actionsLabel} />}
         {children}
         {footerActions !== undefined && footerActions.length > 0 && (
           <PageFooterActions items={footerActions} />

@@ -7,14 +7,21 @@ import { useStyle } from './style';
 
 interface PageActionsBarProps {
   items: PageActionItem[];
+  /** Visible label (and accessible name) for the overflow trigger. Defaults to
+   * "More…" — pass e.g. "Actions" on a page whose whole action set lives in the
+   * menu rather than spilling over from inline buttons. */
+  actionsLabel?: string;
 }
 
-export function PageActionsBar({ items }: PageActionsBarProps) {
+export function PageActionsBar({ items, actionsLabel }: PageActionsBarProps) {
   const styles = useStyle();
   const [open, setOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, moreRef);
+
+  const triggerLabel = actionsLabel ?? 'More…';
+  const triggerAriaLabel = actionsLabel ?? 'More actions';
 
   const primary = items.filter((item) => item.primary);
   const leading = primary.filter((item) => item.align === 'leading');
@@ -42,12 +49,12 @@ export function PageActionsBar({ items }: PageActionsBarProps) {
           <button
             type="button"
             className={styles.moreTrigger}
-            aria-label="More actions"
+            aria-label={triggerAriaLabel}
             aria-haspopup="menu"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
           >
-            More…
+            {triggerLabel}
           </button>
           {open && (
             <div className={styles.popoverAnchor}>
