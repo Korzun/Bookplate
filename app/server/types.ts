@@ -29,6 +29,8 @@ export interface Book {
   chapterSpineMap: number[];
   chapterNames: string[];
   pageCount: number;
+  /** Stored validation result: true = valid, false = failed, null = never validated. */
+  valid?: boolean | null;
   /** Cached device editions for this book across all devices. Present only on the single-book detail fetch. */
   deviceEditionCount?: number;
 }
