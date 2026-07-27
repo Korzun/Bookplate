@@ -181,61 +181,71 @@ export const FixReview = ({
         </div>
       ))}
 
-      {proposals.map((fix) => (
-        <div key={`prop-${fix.field}-${fix.kind}-${fix.from}`} className={styles.proposalRow}>
-          <div className={styles.proposalText}>
-            <span className={styles.fieldName}>{labelFor(fix)}:</span>
-            {fix.to === null ? (
-              <span className={styles.flagText}>needs review</span>
-            ) : fix.toChips ? (
-              <span className={styles.chipLine}>
-                {/* Left side matches the scalar "from" styling: struck-through,
-                    faint text — not a chip. The split parts stay chips. */}
-                <span className={styles.fromValue}>{fix.from}</span>
-                {' → '}
-                <span className={styles.chipGroup}>
-                  {fix.toChips.map((c) => (
-                    <Tag key={c} size="sm">
-                      {c}
-                    </Tag>
-                  ))}
-                </span>
-              </span>
-            ) : (
-              <span>
-                {fix.from ? <span className={styles.fromValue}>{fix.from}</span> : <em>empty</em>}
-                {' → '}
-                <strong>{fix.to}</strong>
-              </span>
-            )}
-            {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
-          </div>
-          <div className={styles.proposalActions}>
-            {fix.to !== null ? (
-              <Fragment>
-                <Button
-                  type="link"
-                  danger
-                  disabled={controlsDisabled}
-                  onClick={() => onDismissFix(fix)}
-                >
-                  Reject
-                </Button>
-                <Button type="link" disabled={controlsDisabled} onClick={() => onApplyFix(fix)}>
-                  Accept
-                </Button>
-              </Fragment>
-            ) : (
-              showEditLink &&
-              bookId && (
-                <Link to={path.bookEdit(bookId)} className={styles.editLink}>
-                  Edit
-                </Link>
-              )
-            )}
-          </div>
+      {proposals.length > 0 && (
+        <div className={styles.proposalList}>
+          {proposals.map((fix) => (
+            <div key={`prop-${fix.field}-${fix.kind}-${fix.from}`} className={styles.proposalRow}>
+              <div className={styles.proposalText}>
+                <div className={styles.proposalMain}>
+                  <span className={styles.fieldName}>{labelFor(fix)}:</span>
+                  {fix.to === null ? (
+                    <span className={styles.flagText}>needs review</span>
+                  ) : fix.toChips ? (
+                    <span className={styles.chipLine}>
+                      {/* Left side matches the scalar "from" styling: struck-through,
+                          faint text — not a chip. The split parts stay chips. */}
+                      <span className={styles.fromValue}>{fix.from}</span>
+                      {' → '}
+                      <span className={styles.chipGroup}>
+                        {fix.toChips.map((c) => (
+                          <Tag key={c} size="sm">
+                            {c}
+                          </Tag>
+                        ))}
+                      </span>
+                    </span>
+                  ) : (
+                    <span>
+                      {fix.from ? (
+                        <span className={styles.fromValue}>{fix.from}</span>
+                      ) : (
+                        <em>empty</em>
+                      )}
+                      {' → '}
+                      <strong>{fix.to}</strong>
+                    </span>
+                  )}
+                </div>
+                {fix.reason && <span className={styles.reason}>{fix.reason}</span>}
+              </div>
+              <div className={styles.proposalActions}>
+                {fix.to !== null ? (
+                  <Fragment>
+                    <Button
+                      type="link"
+                      danger
+                      disabled={controlsDisabled}
+                      onClick={() => onDismissFix(fix)}
+                    >
+                      Reject
+                    </Button>
+                    <Button type="link" disabled={controlsDisabled} onClick={() => onApplyFix(fix)}>
+                      Accept
+                    </Button>
+                  </Fragment>
+                ) : (
+                  showEditLink &&
+                  bookId && (
+                    <Link to={path.bookEdit(bookId)} className={styles.editLink}>
+                      Edit
+                    </Link>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 };
