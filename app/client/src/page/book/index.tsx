@@ -6,6 +6,7 @@ import {
   BookLineageModal,
   ConfirmModal,
   SetProgressModal,
+  UploadReplaceModal,
   ValidationDetailModal,
   type PageActionItem,
 } from '~/control';
@@ -43,6 +44,7 @@ export const BookPage = () => {
   const [progress] = useMyProgress(id!);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
+  const [replaceModalOpen, setReplaceModalOpen] = useState(false);
 
   const [regenChapters, regenLoading] = useRegenChapters();
   const [deleteBook, deleting] = useDeleteBook();
@@ -189,6 +191,7 @@ export const BookPage = () => {
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
       onValidate: () => void handleValidate(),
+      onUploadReplace: () => setReplaceModalOpen(true),
       onDownloadBook: () => void handleDownload(),
       onDeleteBook: () => setDeleteModalOpen(true),
     }
@@ -305,6 +308,18 @@ export const BookPage = () => {
         All cached device editions for this book will be removed. They&apos;ll be regenerated the
         next time each device downloads it.
       </ConfirmModal>
+      {replaceModalOpen && (
+        <UploadReplaceModal
+          isOpen
+          bookId={book.id}
+          bookTitle={book.title}
+          onClose={() => setReplaceModalOpen(false)}
+          onReplaced={(newId) => {
+            setReplaceModalOpen(false);
+            navigate(path.book(newId));
+          }}
+        />
+      )}
       {validationReport && (
         <ValidationDetailModal
           key={validationNonce}
