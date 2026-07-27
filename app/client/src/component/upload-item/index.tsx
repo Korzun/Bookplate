@@ -20,6 +20,10 @@ interface Props {
   onUndo: () => void | Promise<void>;
   onDismissFix: (fix: MetadataFix) => void;
   onDismissCompleted?: () => void;
+  /** When true, every accept/reject affordance on this card is disabled —
+   * used while a page-level "Accept all" is applying across the whole queue,
+   * so a per-card decision can't race the in-flight sweep. */
+  actionsDisabled?: boolean;
 }
 
 const FIELD_LABEL: Record<string, string> = {
@@ -56,6 +60,7 @@ export const UploadItem = ({
   onUndo,
   onDismissFix,
   onDismissCompleted,
+  actionsDisabled,
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -68,6 +73,11 @@ export const UploadItem = ({
   const proposals = item.proposals ?? [];
   const actionable = proposals.filter((p) => p.to !== null);
   const pendingUndo = item.undo;
+
+  // Lock the accept/reject controls while a bulk apply is running — either this
+  // card's own (busy) or a page-level Accept all sweeping the queue
+  // (actionsDisabled) — so a stray click can't race the in-flight apply.
+  const controlsDisabled = busy || !!actionsDisabled;
 
   const runAction = async (action: () => void | Promise<void>) => {
     if (busy) return;
@@ -120,7 +130,7 @@ export const UploadItem = ({
   const dismissAction =
     status === 'error' || (status === 'done' && proposals.length === 0) ? (
       <Button type="link" onClick={() => onDismissCompleted?.()}>
-        Dismiss upload
+        Clear upload
       </Button>
     ) : undefined;
 
@@ -211,7 +221,7 @@ export const UploadItem = ({
                             <Button
                               type="link"
                               danger
-                              disabled={busy}
+                              disabled={controlsDisabled}
                               onClick={() => void runAction(onDismissAll)}
                             >
                               Reject all
@@ -220,7 +230,7 @@ export const UploadItem = ({
                           {actionable.length >= 1 && (
                             <Button
                               type="link"
-                              disabled={busy}
+                              disabled={controlsDisabled}
                               onClick={() => void runAction(onApplyAll)}
                             >
                               Accept all
@@ -296,10 +306,19 @@ export const UploadItem = ({
                     <div className={styles.proposalActions}>
                       {fix.to !== null ? (
                         <Fragment>
-                          <Button type="link" danger onClick={() => onDismissFix(fix)}>
+                          <Button
+                            type="link"
+                            danger
+                            disabled={controlsDisabled}
+                            onClick={() => onDismissFix(fix)}
+                          >
                             Reject
                           </Button>
-                          <Button type="link" onClick={() => onApplyFix(fix)}>
+                          <Button
+                            type="link"
+                            disabled={controlsDisabled}
+                            onClick={() => onApplyFix(fix)}
+                          >
                             Accept
                           </Button>
                         </Fragment>
