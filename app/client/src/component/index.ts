@@ -1,5 +1,4 @@
 export { BookEditForm } from './book-edit-form';
-export { BookLineageCard } from './book-lineage-card';
 export { BookRow } from './book-row';
 export { BrandLockup } from './brand-lockup';
 export { Card } from './card';

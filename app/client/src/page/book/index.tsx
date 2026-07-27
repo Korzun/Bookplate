@@ -1,16 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
-import {
-  Card,
-  Page,
-  ProgressIndicator,
-  Tag,
-  MetadataList,
-  BookLineageCard,
-  type Metadata,
-} from '~/component';
-import { ConfirmModal, SetProgressModal, type PageActionItem } from '~/control';
+import { Card, Page, ProgressIndicator, Tag, MetadataList, type Metadata } from '~/component';
+import { BookLineageModal, ConfirmModal, SetProgressModal, type PageActionItem } from '~/control';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import { coverUrl } from '~/lib/cover-url';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
@@ -36,6 +28,7 @@ export const BookPage = () => {
   const [book, loading, error] = useBook(id!, true);
   const [progress] = useMyProgress(id!);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [lineageModalOpen, setLineageModalOpen] = useState(false);
 
   const [regenChapters, regenLoading] = useRegenChapters();
   const [deleteBook, deleting] = useDeleteBook();
@@ -157,7 +150,7 @@ export const BookPage = () => {
     {
       onSetProgress: () => setProgressModalOpen(true),
       onEditMetadata: handleEditMetadata,
-      onShowLineage: () => {},
+      onShowLineage: () => setLineageModalOpen(true),
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
       onDeleteBook: () => setDeleteModalOpen(true),
@@ -230,10 +223,6 @@ export const BookPage = () => {
           </div>
         )}
       </Card>
-      <BookLineageCard
-        bookId={book.id}
-        addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
-      />
       {progressModalOpen && (
         <SetProgressModal
           isOpen
@@ -243,6 +232,14 @@ export const BookPage = () => {
           chapterSpineMap={book.chapterSpineMap ?? []}
           chapterNames={book.chapterNames ?? []}
           onClose={() => setProgressModalOpen(false)}
+        />
+      )}
+      {lineageModalOpen && (
+        <BookLineageModal
+          isOpen
+          bookId={book.id}
+          addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
+          onClose={() => setLineageModalOpen(false)}
         />
       )}
       <ConfirmModal
