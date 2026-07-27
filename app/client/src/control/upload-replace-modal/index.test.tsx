@@ -2,9 +2,12 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValidationReport } from '~/lib/severity';
+import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadReplaceModal } from './index';
+
+const fixKey = (f: MetadataFix): string => `${f.field}:${f.kind}:${f.from}`;
 
 function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport {
   return {
@@ -12,6 +15,26 @@ function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
     threshold: 'ERROR',
+    ...overrides,
+  };
+}
+
+function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
+  return {
+    field: 'title',
+    kind: 'trim',
+    from: ' Dune ',
+    to: 'Dune',
+    changes: {},
+    ...overrides,
+  };
+}
+
+function makeAnalysis(overrides: Partial<ReplaceAnalysis> = {}): ReplaceAnalysis {
+  return {
+    ...makeReport(),
+    autoFixes: [],
+    proposals: [],
     ...overrides,
   };
 }
@@ -66,9 +89,9 @@ describe('UploadReplaceModal', () => {
     expect(screen.getByText('Replace "Dune"')).toBeInTheDocument();
   });
 
-  it('enables Confirm and shows the valid state after a valid report', async () => {
-    const report = makeReport({ valid: true });
-    analyzeReplacement.mockResolvedValue(report);
+  it('enables Confirm and shows the valid state after a valid analysis', async () => {
+    const analysis = makeAnalysis({ valid: true });
+    analyzeReplacement.mockResolvedValue(analysis);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -94,12 +117,14 @@ describe('UploadReplaceModal', () => {
     );
   });
 
-  it('keeps Confirm disabled and shows issues after an invalid report', async () => {
-    const report = makeReport({
+  it('keeps Confirm disabled and shows issues after an invalid analysis, with no FixReview', async () => {
+    const analysis = makeAnalysis({
       valid: false,
       counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
+      autoFixes: [makeFix()],
+      proposals: [makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' })],
     });
-    analyzeReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(analysis);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -123,10 +148,117 @@ describe('UploadReplaceModal', () => {
       'aria-disabled',
       'true'
     );
+    expect(screen.queryByText('Automatic fixes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Accept', hidden: true })).not.toBeInTheDocument();
   });
 
-  it('calls commitReplacement on confirm and fires onReplaced with the new id', async () => {
-    const report = makeReport({ valid: true });
+  it('renders the FixReview with the auto fix and the actionable proposal for a valid analysis', async () => {
+    const autoFix = makeFix();
+    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
+    const analysis = makeAnalysis({ valid: true, autoFixes: [autoFix], proposals: [proposal] });
+    analyzeReplacement.mockResolvedValue(analysis);
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Automatic fixes')).toBeInTheDocument();
+    expect(screen.getByText('Suggested fixes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reject', hidden: true })).toBeInTheDocument();
+  });
+
+  it('accepting a proposal then confirming includes its key in acceptedFixKeys', async () => {
+    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
+    const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
+    analyzeReplacement.mockResolvedValue(analysis);
+    commitReplacement.mockResolvedValue({ id: 'b2' });
+    const onReplaced = vi.fn();
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={onReplaced}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept', hidden: true }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(commitReplacement).toHaveBeenCalledWith('b1', file, [fixKey(proposal)]);
+    expect(onReplaced).toHaveBeenCalledWith('b2');
+  });
+
+  it('rejecting a proposal then confirming excludes its key from acceptedFixKeys', async () => {
+    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
+    const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
+    analyzeReplacement.mockResolvedValue(analysis);
+    commitReplacement.mockResolvedValue({ id: 'b2' });
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reject', hidden: true }));
+    });
+
+    expect(screen.queryByRole('button', { name: 'Accept', hidden: true })).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
+  });
+
+  it('leaving a proposal untouched excludes it from acceptedFixKeys on confirm', async () => {
+    const report = makeAnalysis({ valid: true });
     analyzeReplacement.mockResolvedValue(report);
     commitReplacement.mockResolvedValue({ id: 'b2' });
     const onReplaced = vi.fn();
@@ -159,8 +291,8 @@ describe('UploadReplaceModal', () => {
   });
 
   it('keeps the modal open, shows the commit error, and does not call onReplaced when commit fails', async () => {
-    const report = makeReport({ valid: true });
-    analyzeReplacement.mockResolvedValue(report);
+    const analysis = makeAnalysis({ valid: true });
+    analyzeReplacement.mockResolvedValue(analysis);
     commitReplacement.mockResolvedValue(undefined);
     commitError = 'Fingerprint already exists on another book.';
     const onClose = vi.fn();
@@ -195,8 +327,8 @@ describe('UploadReplaceModal', () => {
   });
 
   it('shows a generic failure message when commit fails without an error body', async () => {
-    const report = makeReport({ valid: true });
-    analyzeReplacement.mockResolvedValue(report);
+    const analysis = makeAnalysis({ valid: true });
+    analyzeReplacement.mockResolvedValue(analysis);
     commitReplacement.mockResolvedValue(undefined);
     commitError = undefined;
     const onReplaced = vi.fn();
@@ -228,9 +360,10 @@ describe('UploadReplaceModal', () => {
     expect(screen.getByText('Replace failed.')).toBeInTheDocument();
   });
 
-  it('returns to the upload zone when choosing a different file after a valid preview', async () => {
-    const report = makeReport({ valid: true });
-    analyzeReplacement.mockResolvedValue(report);
+  it('returns to the upload zone when choosing a different file after a valid preview, resetting accepted fixes', async () => {
+    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
+    const analysis = makeAnalysis({ valid: true, proposals: [proposal] });
+    analyzeReplacement.mockResolvedValue(analysis);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -252,12 +385,34 @@ describe('UploadReplaceModal', () => {
     expect(document.getElementById('upload-file-input')).toBeNull();
 
     await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept', hidden: true }));
+    });
+
+    await act(async () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Choose a different file', hidden: true })
       );
     });
 
     expect(document.getElementById('upload-file-input')).toBeTruthy();
+
+    const file2 = new File(['y'.repeat(100)], 'replacement2.epub');
+    analyzeReplacement.mockResolvedValue(makeAnalysis({ valid: true, proposals: [proposal] }));
+    await act(async () => {
+      pickFile(file2);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace', hidden: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The earlier Accept click was on the first file's preview; re-picking must
+    // not carry it forward into the new commit.
+    expect(commitReplacement).toHaveBeenLastCalledWith('b1', file2, []);
   });
 
   it('shows a "couldn\'t validate" message and a way to pick another file when validation returns no report', async () => {
