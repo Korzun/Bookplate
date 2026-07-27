@@ -8,7 +8,8 @@ import type { ValidationReport } from '~/lib/severity';
 import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
 import { Context } from '../context';
-import type { Book, BookList } from '../type';
+import type { Book, BookList, MetadataFix } from '../type';
+import type { ReplaceAnalysis } from './use-replace-book';
 import { useReplaceBook } from './use-replace-book';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {
@@ -38,6 +39,26 @@ function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
     threshold: 'ERROR',
+    ...overrides,
+  };
+}
+
+function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
+  return {
+    field: 'title',
+    kind: 'trim',
+    from: ' Dune ',
+    to: 'Dune',
+    changes: {},
+    ...overrides,
+  };
+}
+
+function makeAnalysis(overrides: Partial<ReplaceAnalysis> = {}): ReplaceAnalysis {
+  return {
+    ...makeReport(),
+    autoFixes: [],
+    proposals: [],
     ...overrides,
   };
 }
@@ -135,27 +156,33 @@ function makeWrapper({
 describe('useReplaceBook', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  describe('validateReplacement', () => {
-    it('posts to /api/books/:id/replace/validate and returns the parsed report', async () => {
-      const report = makeReport({ counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 } });
+  describe('analyzeReplacement', () => {
+    it('posts to /api/books/:id/replace/analyze and returns the parsed analysis', async () => {
+      const analysis = makeAnalysis({
+        counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
+        autoFixes: [makeFix({ kind: 'auto' })],
+        proposals: [makeFix({ kind: 'proposal', field: 'author' })],
+      });
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(report) })
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(analysis) })
       );
       const { result } = renderHook(() => useReplaceBook(), {
         wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
       });
 
-      let returned: ValidationReport | undefined;
+      let returned: ReplaceAnalysis | undefined;
       await act(async () => {
-        returned = await result.current.validateReplacement('1', makeFile());
+        returned = await result.current.analyzeReplacement('1', makeFile());
       });
 
       expect(fetch).toHaveBeenCalledWith(
-        `/api/books/${encodeURIComponent('1')}/replace/validate`,
+        `/api/books/${encodeURIComponent('1')}/replace/analyze`,
         expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
       );
-      expect(returned).toEqual(report);
+      expect(returned).toEqual(analysis);
+      expect(returned?.autoFixes).toEqual(analysis.autoFixes);
+      expect(returned?.proposals).toEqual(analysis.proposals);
     });
 
     it('returns undefined when the response is not ok', async () => {
@@ -167,9 +194,9 @@ describe('useReplaceBook', () => {
         wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
       });
 
-      let returned: ValidationReport | undefined;
+      let returned: ReplaceAnalysis | undefined;
       await act(async () => {
-        returned = await result.current.validateReplacement('1', makeFile());
+        returned = await result.current.analyzeReplacement('1', makeFile());
       });
 
       expect(returned).toBeUndefined();
@@ -189,7 +216,7 @@ describe('useReplaceBook', () => {
 
       let returned: Book | undefined;
       await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile());
+        returned = await result.current.commitReplacement('1', makeFile(), []);
       });
 
       expect(fetch).toHaveBeenCalledWith(
@@ -197,6 +224,28 @@ describe('useReplaceBook', () => {
         expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
       );
       expect(returned).toEqual(updated);
+    });
+
+    it('appends acceptedFixKeys as a JSON-stringified field on the FormData', async () => {
+      const updated = makeBook({ id: '1', title: 'Replaced' });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+      );
+      const appendSpy = vi.spyOn(FormData.prototype, 'append');
+      const { result } = renderHook(() => useReplaceBook(), {
+        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
+      });
+
+      await act(async () => {
+        await result.current.commitReplacement('1', makeFile(), ['title', 'author']);
+      });
+
+      expect(appendSpy).toHaveBeenCalledWith(
+        'acceptedFixKeys',
+        JSON.stringify(['title', 'author'])
+      );
+      appendSpy.mockRestore();
     });
 
     it('updates the store with the returned book on success', async () => {
@@ -210,7 +259,7 @@ describe('useReplaceBook', () => {
       });
 
       await act(async () => {
-        await result.current.hook.commitReplacement('1', makeFile());
+        await result.current.hook.commitReplacement('1', makeFile(), []);
       });
 
       expect(result.current.ctx.bookList['1'].title).toBe('Replaced');
@@ -235,7 +284,7 @@ describe('useReplaceBook', () => {
       );
 
       await act(async () => {
-        await result.current.hook.commitReplacement('1', makeFile());
+        await result.current.hook.commitReplacement('1', makeFile(), []);
       });
 
       expect(result.current.ctx.bookList['1']).toBeUndefined();
@@ -263,7 +312,7 @@ describe('useReplaceBook', () => {
       });
 
       await act(async () => {
-        await result.current.commitReplacement('1', makeFile());
+        await result.current.commitReplacement('1', makeFile(), []);
       });
 
       expect(setBookListFetched).toHaveBeenCalledWith(false);
@@ -282,7 +331,7 @@ describe('useReplaceBook', () => {
 
       let returned: Book | undefined;
       await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile());
+        returned = await result.current.commitReplacement('1', makeFile(), []);
       });
 
       expect(returned).toBeUndefined();
@@ -302,7 +351,7 @@ describe('useReplaceBook', () => {
 
       let returned: Book | undefined;
       await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile());
+        returned = await result.current.commitReplacement('1', makeFile(), []);
       });
 
       expect(returned).toBeUndefined();
@@ -324,12 +373,12 @@ describe('useReplaceBook', () => {
       });
 
       await act(async () => {
-        await result.current.commitReplacement('1', makeFile());
+        await result.current.commitReplacement('1', makeFile(), []);
       });
       expect(result.current.commitError).toBe('Fingerprint collision');
 
       await act(async () => {
-        await result.current.commitReplacement('1', makeFile());
+        await result.current.commitReplacement('1', makeFile(), []);
       });
       expect(result.current.commitError).toBeUndefined();
     });
@@ -342,11 +391,11 @@ describe('useReplaceBook', () => {
       });
 
       act(() => {
-        void result.current.commitReplacement('1', makeFile());
+        void result.current.commitReplacement('1', makeFile(), []);
       });
       await waitFor(() => expect(result.current.committing).toBe(true));
 
-      await act(() => result.current.commitReplacement('1', makeFile()));
+      await act(() => result.current.commitReplacement('1', makeFile(), []));
 
       expect(fetch).toHaveBeenCalledTimes(1);
     });

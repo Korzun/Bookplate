@@ -1,17 +1,30 @@
 import { useCallback, use, useMemo, useState } from 'react';
 
-import type { ValidationReport } from '~/lib/severity';
+import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
 import { Context as ProgressContext } from '../../progress/context';
 import { Context } from '../context';
-import { Book } from '../type';
+import { Book, MetadataFix } from '../type';
+
+export interface ReplaceAnalysis {
+  valid: boolean;
+  messages: ValidationMessage[];
+  counts: Record<Severity, number>;
+  threshold: ValidationThreshold;
+  autoFixes: MetadataFix[];
+  proposals: MetadataFix[];
+}
 
 export interface UseReplaceBook {
-  validateReplacement: (id: string, file: File) => Promise<ValidationReport | undefined>;
-  commitReplacement: (id: string, file: File) => Promise<Book | undefined>;
-  validating: boolean;
+  analyzeReplacement: (id: string, file: File) => Promise<ReplaceAnalysis | undefined>;
+  commitReplacement: (
+    id: string,
+    file: File,
+    acceptedFixKeys: string[]
+  ) => Promise<Book | undefined>;
+  analyzing: boolean;
   committing: boolean;
   commitError: string | undefined;
 }
@@ -20,43 +33,44 @@ export const useReplaceBook = (): UseReplaceBook => {
   const { setBookList, setBookListFetched, setBookListItems, setNextCursor } = use(Context);
   const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
-  const [validating, setValidating] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | undefined>(undefined);
 
-  const validateReplacement = useCallback(
-    async (id: string, file: File): Promise<ValidationReport | undefined> => {
-      if (validating) return undefined;
+  const analyzeReplacement = useCallback(
+    async (id: string, file: File): Promise<ReplaceAnalysis | undefined> => {
+      if (analyzing) return undefined;
       try {
-        setValidating(true);
-        // Picking a new file to validate supersedes any previous commit
+        setAnalyzing(true);
+        // Picking a new file to analyze supersedes any previous commit
         // attempt — clear its error so a stale message doesn't linger.
         setCommitError(undefined);
         const fd = new FormData();
         fd.append('file', file);
         const res = await apiFetch(
-          withTargetUser(`/api/books/${encodeURIComponent(id)}/replace/validate`),
+          withTargetUser(`/api/books/${encodeURIComponent(id)}/replace/analyze`),
           { method: 'POST', body: fd }
         );
         if (!res.ok) return undefined;
-        return (await res.json()) as ValidationReport;
+        return (await res.json()) as ReplaceAnalysis;
       } catch {
         return undefined;
       } finally {
-        setValidating(false);
+        setAnalyzing(false);
       }
     },
-    [withTargetUser, validating]
+    [withTargetUser, analyzing]
   );
 
   const commitReplacement = useCallback(
-    async (id: string, file: File): Promise<Book | undefined> => {
+    async (id: string, file: File, acceptedFixKeys: string[]): Promise<Book | undefined> => {
       if (committing) return undefined;
       try {
         setCommitting(true);
         setCommitError(undefined);
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('acceptedFixKeys', JSON.stringify(acceptedFixKeys));
         const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}/replace`), {
           method: 'POST',
           body: fd,
@@ -96,7 +110,7 @@ export const useReplaceBook = (): UseReplaceBook => {
   );
 
   return useMemo(
-    () => ({ validateReplacement, commitReplacement, validating, committing, commitError }),
-    [validateReplacement, commitReplacement, validating, committing, commitError]
+    () => ({ analyzeReplacement, commitReplacement, analyzing, committing, commitError }),
+    [analyzeReplacement, commitReplacement, analyzing, committing, commitError]
   );
 };

@@ -16,17 +16,17 @@ function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport
   };
 }
 
-let validateReplacement = vi.fn();
+let analyzeReplacement = vi.fn();
 let commitReplacement = vi.fn();
-let validating = false;
+let analyzing = false;
 let committing = false;
 let commitError: string | undefined = undefined;
 
 vi.mock('~/provider/book', () => ({
   useReplaceBook: () => ({
-    validateReplacement,
+    analyzeReplacement,
     commitReplacement,
-    validating,
+    analyzing,
     committing,
     commitError,
   }),
@@ -38,9 +38,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  validateReplacement = vi.fn();
+  analyzeReplacement = vi.fn();
   commitReplacement = vi.fn();
-  validating = false;
+  analyzing = false;
   committing = false;
   commitError = undefined;
 });
@@ -68,7 +68,7 @@ describe('UploadReplaceModal', () => {
 
   it('enables Confirm and shows the valid state after a valid report', async () => {
     const report = makeReport({ valid: true });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -87,7 +87,7 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(validateReplacement).toHaveBeenCalledWith('b1', file);
+    expect(analyzeReplacement).toHaveBeenCalledWith('b1', file);
     expect(screen.getByText(/is valid/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Replace', hidden: true })).not.toHaveAttribute(
       'aria-disabled'
@@ -99,7 +99,7 @@ describe('UploadReplaceModal', () => {
       valid: false,
       counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
     });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -127,7 +127,7 @@ describe('UploadReplaceModal', () => {
 
   it('calls commitReplacement on confirm and fires onReplaced with the new id', async () => {
     const report = makeReport({ valid: true });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
     commitReplacement.mockResolvedValue({ id: 'b2' });
     const onReplaced = vi.fn();
 
@@ -154,13 +154,13 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(commitReplacement).toHaveBeenCalledWith('b1', file);
+    expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
     expect(onReplaced).toHaveBeenCalledWith('b2');
   });
 
   it('keeps the modal open, shows the commit error, and does not call onReplaced when commit fails', async () => {
     const report = makeReport({ valid: true });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
     commitReplacement.mockResolvedValue(undefined);
     commitError = 'Fingerprint already exists on another book.';
     const onClose = vi.fn();
@@ -196,7 +196,7 @@ describe('UploadReplaceModal', () => {
 
   it('shows a generic failure message when commit fails without an error body', async () => {
     const report = makeReport({ valid: true });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
     commitReplacement.mockResolvedValue(undefined);
     commitError = undefined;
     const onReplaced = vi.fn();
@@ -230,7 +230,7 @@ describe('UploadReplaceModal', () => {
 
   it('returns to the upload zone when choosing a different file after a valid preview', async () => {
     const report = makeReport({ valid: true });
-    validateReplacement.mockResolvedValue(report);
+    analyzeReplacement.mockResolvedValue(report);
 
     renderWithProviders(
       <UploadReplaceModal
@@ -261,7 +261,7 @@ describe('UploadReplaceModal', () => {
   });
 
   it('shows a "couldn\'t validate" message and a way to pick another file when validation returns no report', async () => {
-    validateReplacement.mockResolvedValue(undefined);
+    analyzeReplacement.mockResolvedValue(undefined);
 
     renderWithProviders(
       <UploadReplaceModal

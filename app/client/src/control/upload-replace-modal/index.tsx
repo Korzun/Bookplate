@@ -20,7 +20,7 @@ interface Props {
 
 export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onReplaced }: Props) {
   const styles = useStyle();
-  const { validateReplacement, commitReplacement, validating, committing, commitError } =
+  const { analyzeReplacement, commitReplacement, analyzing, committing, commitError } =
     useReplaceBook();
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<ValidationReport | null>(null);
@@ -33,10 +33,10 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       setFile(f);
       setReport(null);
       setCommitFailed(false);
-      const r = await validateReplacement(bookId, f);
+      const r = await analyzeReplacement(bookId, f);
       setReport(r ?? null);
     },
-    [bookId, validateReplacement]
+    [bookId, analyzeReplacement]
   );
 
   const reset = useCallback(() => {
@@ -48,7 +48,8 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
   const handleConfirm = useCallback(async () => {
     if (!file) return;
     setCommitFailed(false);
-    const updated = await commitReplacement(bookId, file);
+    // TODO(task-6): pass the user-accepted proposal keys instead of [].
+    const updated = await commitReplacement(bookId, file, []);
     if (updated) {
       reset();
       onReplaced(updated.id);
@@ -81,8 +82,8 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       {!file && (
         <UploadZone multiple={false} card={false} dropLabel="replacement" addFiles={pick} />
       )}
-      {file && validating && <p>Validating {file.name}…</p>}
-      {file && !validating && report && report.valid && (
+      {file && analyzing && <p>Validating {file.name}…</p>}
+      {file && !analyzing && report && report.valid && (
         <div>
           <p className={styles.validLine}>
             <CheckIcon width={16} height={16} className={styles.checkIcon} aria-hidden />
@@ -93,14 +94,14 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
           {chooseDifferentFile}
         </div>
       )}
-      {file && !validating && report && !report.valid && (
+      {file && !analyzing && report && !report.valid && (
         <div>
           <p>{file.name} failed validation and can&apos;t replace this book.</p>
           <SeverityCounts counts={report.counts} threshold={report.threshold} />
           {chooseDifferentFile}
         </div>
       )}
-      {file && !validating && report === null && (
+      {file && !analyzing && report === null && (
         <div>
           <p>Couldn&apos;t validate {file.name}. Try another file.</p>
           {chooseDifferentFile}
