@@ -139,7 +139,13 @@ describe('buildBookActions', () => {
   it('adds a non-primary Book lineage overflow action wired to onShowLineage', () => {
     const h = handlers();
     const actions = buildBookActions(
-      { chapterCount: 5, deviceEditionCount: 0, regenLoading: false },
+      {
+        chapterCount: 5,
+        deviceEditionCount: 0,
+        regenLoading: false,
+        validating: false,
+        editingBlocked: false,
+      },
       h
     );
     const lineage = actions.find((a) => a.label === 'Book lineage');
