@@ -180,6 +180,7 @@ export const BookPage = () => {
       deviceEditionCount,
       regenLoading,
       validating,
+      editingBlocked: book.valid !== true,
     },
     {
       onSetProgress: () => setProgressModalOpen(true),
