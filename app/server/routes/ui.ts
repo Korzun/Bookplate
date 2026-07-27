@@ -21,10 +21,10 @@ import {
   assertValidEpub,
   EpubValidationError,
   toValidationReport,
-  validateEpubReport,
 } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
+import { revalidateBook } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
@@ -1354,11 +1354,11 @@ export function createUiRouter(
         res.status(404).json({ error: 'Book not found' });
         return;
       }
-      const report = await validateEpubReport(
-        fs.readFileSync(book.path),
-        config.validationThreshold
+      const report = await revalidateBook(
+        { validationStore, validationThreshold: config.validationThreshold },
+        owner,
+        book
       );
-      await validationStore.saveValidation(owner, book.id, report);
       log.info(`Book validated: "${book.filename}" (valid=${report.valid})`);
       res.json(report);
     })
