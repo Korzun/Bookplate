@@ -10,7 +10,7 @@ import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
-import { isValidUsername } from '../utils/username';
+import { isValidUsername, MIN_USERNAME_LENGTH } from '../utils/username';
 
 const log = logger('Users');
 
@@ -132,6 +132,11 @@ export function createUsersRouter(
       if (trimmedUsername === adminUsername) {
         log.warn(`Registration rejected — username "${trimmedUsername}" is reserved`);
         res.status(409).json({ error: 'Username already exists' });
+        return;
+      }
+      if (trimmedUsername.length < MIN_USERNAME_LENGTH) {
+        log.warn(`Registration rejected — username "${trimmedUsername}" too short`);
+        res.status(400).json({ error: `Username must be at least ${MIN_USERNAME_LENGTH} characters` });
         return;
       }
       fs.mkdirSync(path.join(booksRoot, trimmedUsername), { recursive: true });

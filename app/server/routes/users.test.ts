@@ -289,40 +289,60 @@ describe('POST /api/users', () => {
   it("creates the user's library folder on disk", async () => {
     await request(app)
       .post('/api/users')
-      .send({ username: 'bob' })
+      .send({ username: 'bobuser' })
       .set('Authorization', `Bearer ${adminToken()}`);
-    expect(fs.existsSync(path.join(booksRoot, 'bob'))).toBe(true);
+    expect(fs.existsSync(path.join(booksRoot, 'bobuser'))).toBe(true);
   });
 
   it('creates a user with a generated password and returns 201', async () => {
     const res = await request(app)
       .post('/api/users')
-      .send({ username: 'bob' })
+      .send({ username: 'bobuser' })
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(201);
-    expect(res.body.username).toBe('bob');
+    expect(res.body.username).toBe('bobuser');
     expect(typeof res.body.password).toBe('string');
     expect(res.body.password).toHaveLength(16);
-    expect(await userStore.userExists('bob')).toBe(true);
-    expect(await userStore.validateUser('bob', res.body.password)).toBeTruthy();
+    expect(await userStore.userExists('bobuser')).toBe(true);
+    expect(await userStore.validateUser('bobuser', res.body.password)).toBeTruthy();
   });
 
   it('sets mustChangePassword on the newly created user', async () => {
     await request(app)
       .post('/api/users')
-      .send({ username: 'bob' })
+      .send({ username: 'bobuser' })
       .set('Authorization', `Bearer ${adminToken()}`);
-    expect(await userStore.getMustChangePassword('bob')).toBe(true);
+    expect(await userStore.getMustChangePassword('bobuser')).toBe(true);
   });
 
   it('returns 409 for duplicate username', async () => {
-    await userStore.createUser('bob', null);
+    await userStore.createUser('robert', null);
+    const res = await request(app)
+      .post('/api/users')
+      .send({ username: 'robert' })
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('Username already exists');
+  });
+
+  it('rejects usernames shorter than 6 characters', async () => {
     const res = await request(app)
       .post('/api/users')
       .send({ username: 'bob' })
       .set('Authorization', `Bearer ${adminToken()}`);
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('Username already exists');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Username must be at least 6 characters');
+    expect(await userStore.userExists('bob')).toBe(false);
+    expect(fs.existsSync(path.join(booksRoot, 'bob'))).toBe(false);
+  });
+
+  it('accepts a username of exactly 6 characters', async () => {
+    const res = await request(app)
+      .post('/api/users')
+      .send({ username: 'sixchr' })
+      .set('Authorization', `Bearer ${adminToken()}`);
+    expect(res.status).toBe(201);
+    expect(res.body.username).toBe('sixchr');
   });
 
   it('returns 400 when username is missing', async () => {
