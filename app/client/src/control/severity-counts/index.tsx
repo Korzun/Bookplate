@@ -1,6 +1,11 @@
 import cx from 'classnames';
 
-import { isBlockingAtThreshold, orderSeverityCounts, SEVERITY_LABEL } from '~/lib/severity';
+import {
+  isBlockingAtThreshold,
+  isDangerSeverity,
+  orderSeverityCounts,
+  SEVERITY_LABEL,
+} from '~/lib/severity';
 import type { Severity, ValidationThreshold } from '~/lib/severity';
 
 import { useStyle } from './style';
@@ -28,7 +33,7 @@ export const SeverityCounts = ({ counts, threshold, pluralize = false }: Props) 
           <span
             key={severity}
             data-blocking={blocking}
-            className={cx(styles.chip, blocking ? styles.blocking : styles.muted)}
+            className={cx(styles.chip, isDangerSeverity(severity) ? styles.danger : styles.muted)}
           >
             {count} {label}
           </span>

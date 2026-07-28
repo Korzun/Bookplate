@@ -12,7 +12,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontWeight: theme.fontWeight.medium,
     whiteSpace: 'nowrap',
   },
-  blocking: {
+  danger: {
     color: theme.color.danger.default,
   },
   muted: {
