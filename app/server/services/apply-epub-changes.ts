@@ -28,6 +28,12 @@ export async function replaceEpubBytes(
 ): Promise<Book> {
   const report = await assertValidEpub(newBytes, deps.validationThreshold);
 
+  // Retain the original bytes so a failed re-import can be rolled back: the
+  // swap lands on disk before reimportBook runs, so anything it throws (most
+  // notably BookHashCollisionError) would otherwise leave the file changed
+  // while the DB row still points at the old fingerprint.
+  const originalBytes = fs.readFileSync(book.path);
+
   const tmpPath = path.join(path.dirname(book.path), `.tmp-${randomUUID()}.epub`);
   try {
     fs.writeFileSync(tmpPath, newBytes);
@@ -41,8 +47,21 @@ export async function replaceEpubBytes(
     throw err;
   }
 
-  const updated = await deps.bookStore.reimportBook(owner, book.id);
-  if (!updated) throw new Error('Re-import returned no book after replace');
+  // Until reimportBook succeeds the DB still describes the original bytes, so
+  // if it throws we restore them to keep disk and DB in sync. Once it returns,
+  // the DB reflects the new bytes and the swap is committed — a later failure
+  // (e.g. saveValidation) must NOT roll the file back.
+  let updated: Book | null;
+  try {
+    updated = await deps.bookStore.reimportBook(owner, book.id);
+  } catch (err) {
+    fs.writeFileSync(book.path, originalBytes);
+    throw err;
+  }
+  if (!updated) {
+    fs.writeFileSync(book.path, originalBytes);
+    throw new Error('Re-import returned no book after replace');
+  }
   await deps.validationStore.saveValidation(
     owner,
     updated.id,

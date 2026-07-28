@@ -24,7 +24,7 @@ import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
 import { replaceEpubBytes } from './apply-epub-changes';
-import { BookStore } from './book-store';
+import { BookHashCollisionError, BookStore } from './book-store';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 import { ValidationStore } from './validation-store';
 
@@ -123,6 +123,19 @@ describe('replaceEpubBytes', () => {
     await expect(replaceEpubBytes(deps, OWNER, book, epub('Broken'))).rejects.toBeInstanceOf(
       EpubValidationError
     );
+    expect(fs.readFileSync(book.path).equals(before)).toBe(true);
+  });
+
+  it('restores the original bytes when reimport throws a collision', async () => {
+    const book = (await bookStore.getBookById(OWNER, 'oldid'))!;
+    const before = fs.readFileSync(book.path);
+    vi.spyOn(bookStore, 'reimportBook').mockRejectedValueOnce(new BookHashCollisionError('dup'));
+
+    await expect(replaceEpubBytes(deps, OWNER, book, epub('New'))).rejects.toBeInstanceOf(
+      BookHashCollisionError
+    );
+
+    // Disk matches DB again: the failed swap left the original bytes in place.
     expect(fs.readFileSync(book.path).equals(before)).toBe(true);
   });
 });
