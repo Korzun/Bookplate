@@ -39,6 +39,20 @@ export function toFix(issue: MetadataIssue): MetadataFix {
 // acceptedFixKeys).
 export const fixKey = (f: MetadataFix): string => `${f.field}:${f.kind}:${f.from}`;
 
+// Replace `compound` (case-insensitive) with `parts` in a subjects array,
+// de-duplicating case-insensitively. Adds the parts if the compound is gone.
+// Mirrors the client upload flow's applySplit (use-upload-queue.ts): a
+// subjects-split fix carries its edit in fromChips/toChips rather than a plain
+// `changes` merge, so it must be folded into the book's CURRENT subjects.
+function applySplit(subjects: string[], compound: string, parts: string[]): string[] {
+  const idx = subjects.findIndex((s) => s.toLowerCase() === compound.toLowerCase());
+  const next =
+    idx >= 0
+      ? [...subjects.slice(0, idx), ...parts, ...subjects.slice(idx + 1)]
+      : [...subjects, ...parts];
+  return next.filter((s, i) => next.findIndex((o) => o.toLowerCase() === s.toLowerCase()) === i);
+}
+
 export interface EpubAnalysis {
   valid: boolean;
   report: ValidationReport;
@@ -217,7 +231,19 @@ export async function applyAutoAndAccepted(
   }
 
   const changes: EpubChanges = {};
-  for (const issue of toApplyIssues) Object.assign(changes, issue.changes);
+  let subjects = [...book.subjects];
+  let subjectsChanged = false;
+  for (const issue of toApplyIssues) {
+    if (issue.kind === 'subjects-split') {
+      // The split's payload lives in fromChips/toChips (its `changes` is empty);
+      // fold it into the running subjects array instead of merging `changes`.
+      subjects = applySplit(subjects, issue.fromChips?.[0] ?? issue.from, issue.toChips ?? []);
+      subjectsChanged = true;
+    } else {
+      Object.assign(changes, issue.changes);
+    }
+  }
+  if (subjectsChanged) changes.subjects = subjects;
   // The on-disk EPUB may have no genuine dc:title (book.title is then the
   // filename-fallback substituted at creation time). reimportBook (invoked by
   // applyEpubChanges below) re-derives the title from the on-disk EPUB bytes,
