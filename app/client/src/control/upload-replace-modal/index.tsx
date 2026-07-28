@@ -34,6 +34,12 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
     );
   }, [analysis, accepted, rejectedKeys]);
 
+  // Block Replace until every actionable suggested fix (one with a concrete `to`
+  // value) has been accepted or rejected. Flag-only "needs review" proposals
+  // (to === null) can't be accepted and have no per-row action here, so they
+  // don't gate the button.
+  const hasPendingFixes = remainingProposals.some((p) => p.to !== null);
+
   const pick = useCallback(
     async (files: FileList) => {
       const f = files[0];
@@ -106,7 +112,7 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
       onCancel={handleCancel}
       onConfirm={handleConfirm}
       loading={committing}
-      confirmDisabled={analysis?.valid !== true}
+      confirmDisabled={analysis?.valid !== true || hasPendingFixes}
     >
       {!file && (
         <UploadZone multiple={false} card={false} dropLabel="replacement" addFiles={pick} />

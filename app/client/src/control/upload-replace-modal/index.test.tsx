@@ -260,6 +260,78 @@ describe('UploadReplaceModal', () => {
     expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
   });
 
+  it('keeps Replace disabled while an actionable suggested fix is unresolved, then enables it once resolved', async () => {
+    const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
+    const analysis = makeAnalysis({ valid: true, proposals: [proposal] });
+    analyzeReplacement.mockResolvedValue(analysis);
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The EPUB is valid, but a suggested fix is still pending → Replace is blocked.
+    expect(screen.getByRole('button', { name: 'Replace', hidden: true })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+
+    // Resolving the last actionable fix (here by rejecting it) unblocks Replace.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reject', hidden: true }));
+    });
+    expect(screen.getByRole('button', { name: 'Replace', hidden: true })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+  });
+
+  it('does not block Replace on a flag-only "needs review" suggestion', async () => {
+    const flagOnly = makeFix({
+      field: 'subjects',
+      kind: 'subjects-split',
+      from: 'A / B',
+      to: null,
+    });
+    const analysis = makeAnalysis({ valid: true, proposals: [flagOnly] });
+    analyzeReplacement.mockResolvedValue(analysis);
+
+    renderWithProviders(
+      <UploadReplaceModal
+        isOpen
+        bookId="b1"
+        bookTitle="Dune"
+        onClose={vi.fn()}
+        onReplaced={vi.fn()}
+      />
+    );
+
+    const file = new File(['x'.repeat(100)], 'replacement.epub');
+    await act(async () => {
+      pickFile(file);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // A "needs review" item can't be accepted and has no per-row action here, so it
+    // must not gate Replace — the button stays enabled.
+    expect(screen.getByText('needs review')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace', hidden: true })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+  });
+
   it('leaving a proposal untouched excludes it from acceptedFixKeys on confirm', async () => {
     const report = makeAnalysis({ valid: true });
     analyzeReplacement.mockResolvedValue(report);
