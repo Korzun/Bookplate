@@ -70,6 +70,14 @@ export function isBlockingAtThreshold(severity: Severity, threshold: ValidationT
   return threshold !== 'NONE' && RANK[severity] >= RANK[threshold];
 }
 
+// A severity renders in the danger color when it's an ERROR or FATAL — an error
+// is an error regardless of whether it meets the configured rejection threshold.
+// Kept separate from `isBlockingAtThreshold` so coloring tracks severity, not the
+// admin's block level.
+export function isDangerSeverity(severity: Severity): boolean {
+  return RANK[severity] >= RANK.ERROR;
+}
+
 export function orderSeverityCounts(counts: Record<Severity, number>): SeverityCount[] {
   return SEVERITY_ORDER.map((severity) => ({ severity, count: counts[severity] ?? 0 })).filter(
     (entry) => entry.count > 0

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isBlockingAtThreshold,
+  isDangerSeverity,
   orderSeverityCounts,
   SEVERITY_LABEL,
   THRESHOLD_LABEL,
@@ -39,6 +40,19 @@ describe('isBlockingAtThreshold', () => {
   it('treats nothing as blocking when the threshold is NONE', () => {
     expect(isBlockingAtThreshold('FATAL', 'NONE')).toBe(false);
     expect(isBlockingAtThreshold('USAGE', 'NONE')).toBe(false);
+  });
+});
+
+describe('isDangerSeverity', () => {
+  it('treats ERROR and FATAL as danger', () => {
+    expect(isDangerSeverity('FATAL')).toBe(true);
+    expect(isDangerSeverity('ERROR')).toBe(true);
+  });
+
+  it('does not treat WARNING, INFO or USAGE as danger', () => {
+    expect(isDangerSeverity('WARNING')).toBe(false);
+    expect(isDangerSeverity('INFO')).toBe(false);
+    expect(isDangerSeverity('USAGE')).toBe(false);
   });
 });
 

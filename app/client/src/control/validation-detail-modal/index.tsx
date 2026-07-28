@@ -1,7 +1,12 @@
 import { Fragment, useCallback, useState } from 'react';
 
 import { CheckIcon } from '~/icon';
-import { isBlockingAtThreshold, SEVERITY_LABEL, SEVERITY_ORDER } from '~/lib/severity';
+import {
+  isBlockingAtThreshold,
+  isDangerSeverity,
+  SEVERITY_LABEL,
+  SEVERITY_ORDER,
+} from '~/lib/severity';
 import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
 
 import { CardDivider } from '../../component/card-divider';
@@ -87,6 +92,7 @@ export function ValidationDetailModal({
                     return null;
                   }
                   const blocking = isBlockingAtThreshold(severity, threshold);
+                  const danger = isDangerSeverity(severity);
                   return (
                     <Fragment key={severity}>
                       <CardDivider>{SEVERITY_LABEL[severity]}</CardDivider>
@@ -95,7 +101,7 @@ export function ValidationDetailModal({
                           <li key={`${m.id}-${i}`} className={styles.message}>
                             <span
                               data-blocking={blocking}
-                              className={blocking ? styles.severityBlocking : styles.severityMuted}
+                              className={danger ? styles.severityDanger : styles.severityMuted}
                             >
                               {SEVERITY_LABEL[m.severity]}
                             </span>

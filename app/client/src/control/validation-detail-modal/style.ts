@@ -88,7 +88,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     rowGap: theme.space.xxs,
     fontSize: theme.fontSize.sm,
   },
-  severityBlocking: {
+  severityDanger: {
     color: theme.color.danger.default,
     fontWeight: theme.fontWeight.semibold,
     textTransform: 'uppercase',
