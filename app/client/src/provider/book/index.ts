@@ -24,6 +24,7 @@ export {
   useUploadBookList,
   useUploadQueueEngine,
   useValidateBook,
+  fixKey,
 } from './hook';
 export { BookProvider } from './provider';
 export type {

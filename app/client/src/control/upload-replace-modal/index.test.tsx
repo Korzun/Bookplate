@@ -2,12 +2,11 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValidationReport } from '~/lib/severity';
+import { fixKey } from '~/provider/book';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadReplaceModal } from './index';
-
-const fixKey = (f: MetadataFix): string => `${f.field}:${f.kind}:${f.from}`;
 
 function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport {
   return {
@@ -45,7 +44,8 @@ let analyzing = false;
 let committing = false;
 let commitError: string | undefined = undefined;
 
-vi.mock('~/provider/book', () => ({
+vi.mock('~/provider/book', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/provider/book')>()),
   useReplaceBook: () => ({
     analyzeReplacement,
     commitReplacement,
