@@ -1,3 +1,14 @@
+## 0.8.0
+
+- docs: document the release process
+- Move ID Lineage card into a modal
+- Rework upload page actions; move Library scan to Settings
+- build(client): run tsc --noEmit in lint to match CI
+- feat: register-a-user card divider, title, and 6-char username minimum
+- Book file management: download, persisted validation, and upload-and-replace
+- fix(replace): roll back file swap when re-import fails
+- refactor(client): dedupe fixKey into the provider/book barrel
+
 ## 0.7.0
 
 - feat(series): auto-fill series Order with next available number
