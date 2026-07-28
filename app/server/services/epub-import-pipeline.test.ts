@@ -60,7 +60,7 @@ const FAKE_META: EpubMeta = {
 // (title-sort-missing, from the leading "The") and one proposal-only fix
 // (author-sort-missing, low-confidence because "Le Guin" has a particle) —
 // mirrors the fixture used by ui.test.ts's upload-detection tests.
-function makeEpub(opts: { title?: string; author?: string } = {}): Buffer {
+function makeEpub(opts: { title?: string; author?: string; subjects?: string[] } = {}): Buffer {
   const zip = new AdmZip();
   zip.addFile(
     'META-INF/container.xml',
@@ -72,7 +72,7 @@ function makeEpub(opts: { title?: string; author?: string } = {}): Buffer {
     opts.title !== undefined ? `<dc:title>${opts.title}</dc:title>` : ''
   }${
     opts.author !== undefined ? `<dc:creator>${opts.author}</dc:creator>` : ''
-  }</metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"/></package>`;
+  }${(opts.subjects ?? []).map((s) => `<dc:subject>${s}</dc:subject>`).join('')}</metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"/></package>`;
   zip.addFile('OEBPS/content.opf', Buffer.from(opf));
   return zip.toBuffer();
 }
@@ -107,6 +107,16 @@ describe('epub-import-pipeline', () => {
     const staged = path.join(booksDir, `staged-${randomUUID()}.epub`);
     fs.writeFileSync(staged, makeEpub({ title: FAKE_META.title, author: FAKE_META.author }));
     await bookStore.addBook(OWNER, id, staged, FAKE_META);
+    return (await bookStore.getBookById(OWNER, id))!;
+  }
+
+  async function seedBookWithSubjects(id: string, subjects: string[]): Promise<Book> {
+    const staged = path.join(booksDir, `staged-${randomUUID()}.epub`);
+    fs.writeFileSync(
+      staged,
+      makeEpub({ title: FAKE_META.title, author: FAKE_META.author, subjects })
+    );
+    await bookStore.addBook(OWNER, id, staged, { ...FAKE_META, subjects });
     return (await bookStore.getBookById(OWNER, id))!;
   }
 
@@ -197,6 +207,33 @@ describe('epub-import-pipeline', () => {
       expect(result.book.authorSort).toBe('Guin, Ursula K. Le');
       expect(result.applied.some((f) => f.kind === 'author-sort-missing')).toBe(true);
       expect(result.proposals.find((f) => f.kind === 'author-sort-missing')).toBeUndefined();
+    });
+
+    it('applies an accepted subjects-split by folding it into the book’s current subjects', async () => {
+      const book = await seedBookWithSubjects('book-subj', ['Science Fiction, Fantasy']);
+      // subjects-split carries its edit in fromChips/toChips, not `changes`.
+      const acceptedKey = fixKey(
+        toFix({
+          field: 'subjects',
+          kind: 'subjects-split',
+          from: 'Science Fiction, Fantasy',
+          to: 'Science Fiction, Fantasy',
+          autoEligible: false,
+          changes: {},
+          fromChips: ['Science Fiction, Fantasy'],
+          toChips: ['Science Fiction', 'Fantasy'],
+        })
+      );
+
+      const result = await applyAutoAndAccepted(deps, OWNER, book, {
+        originalName: 'the-test-title.epub',
+        librarySubjects: [],
+        acceptedKeys: [acceptedKey],
+      });
+
+      expect(result.book.subjects).toEqual(['Science Fiction', 'Fantasy']);
+      expect(result.applied.some((f) => f.kind === 'subjects-split')).toBe(true);
+      expect(result.proposals.find((f) => f.kind === 'subjects-split')).toBeUndefined();
     });
   });
 });
