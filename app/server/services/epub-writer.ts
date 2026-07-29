@@ -280,6 +280,60 @@ function writeSortedField(
   metadata[key] = sort ? [{ '#text': text, '@_opf:file-as': sort }] : [text];
 }
 
+/**
+ * Keep the NCX's `<meta name="dtb:uid">` in step with the package
+ * unique-identifier's value. epubcheck (NCX-001) requires them to match, so an
+ * identifier edit that leaves a stale `dtb:uid` behind invalidates the EPUB.
+ * No-op when there is no NCX, no dtb:uid target value, or the NCX is unparsable.
+ * Applies to any package that ships an NCX (legacy toc), version-independent.
+ */
+function syncNcxUid(
+  files: Record<string, Uint8Array>,
+  opfDir: string,
+  manifestItems: Record<string, string>[],
+  uidValue: string
+): void {
+  if (!uidValue) return;
+  const ncxItem = manifestItems.find((i) => i['@_media-type'] === 'application/x-dtbncx+xml');
+  const href = ncxItem?.['@_href'];
+  if (!href) return;
+  const ncxPath = opfDir === '.' ? href : `${opfDir}/${href}`;
+  const ncxData = files[ncxPath];
+  if (!ncxData) return;
+
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    parseTagValue: false,
+    ignoreDeclaration: true,
+    isArray: (name) => name === 'meta',
+  });
+  let doc: Record<string, unknown>;
+  try {
+    doc = parser.parse(Buffer.from(ncxData).toString('utf8')) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  const ncx = doc?.['ncx'] as Record<string, unknown> | undefined;
+  if (!ncx) return;
+  if (!ncx['head'] || typeof ncx['head'] !== 'object') ncx['head'] = {};
+  const head = ncx['head'] as Record<string, unknown>;
+  const metas = Array.isArray(head['meta']) ? (head['meta'] as Record<string, string>[]) : [];
+  const kept = metas.filter((m) => m['@_name'] !== 'dtb:uid');
+  kept.push({ '@_name': 'dtb:uid', '@_content': uidValue });
+  head['meta'] = kept;
+
+  const builder = new XMLBuilder({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    suppressEmptyNode: false,
+    format: false,
+  });
+  files[ncxPath] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' + (builder.build(doc) as string)
+  );
+}
+
 export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer {
   const { files, opfRelPath, opf, pkg, metadata } = loadOpf(filePath);
   const isV3 = String(pkg['@_version'] ?? '').startsWith('3');
@@ -359,6 +413,13 @@ export function buildUpdatedEpub(filePath: string, changes: EpubChanges): Buffer
       if (id.scheme) el['@_opf:scheme'] = id.scheme;
       return keepUid || id.scheme ? el : id.value;
     });
+
+    // The unique-identifier's value changed, so a legacy NCX's dtb:uid must be
+    // re-synced or epubcheck fails with NCX-001. The new value lives on the
+    // first (uid-carrying) identifier.
+    const newUidValue =
+      uid !== '' && changes.identifiers.length > 0 ? changes.identifiers[0].value : '';
+    syncNcxUid(files, opfDir, manifestItems, newUidValue);
   }
 
   if (changes.subjects !== undefined) {

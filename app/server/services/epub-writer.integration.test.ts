@@ -159,6 +159,57 @@ describe('buildUpdatedEpub (real @korzun/epubcheck-ts)', () => {
   }, 60000);
 });
 
+// A 1x1 PNG, so cover replacement points at real image bytes.
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+// Cross-version write sweep: every EpubChanges field, applied to both an EPUB 2
+// (NCX toc) and an EPUB 3 (nav) package, must leave the EPUB epubcheck-valid.
+// The write paths pick a version- and element-specific encoding; before this
+// suite existed those choices were only exercised on EPUB 3, which is how the
+// dc:title opf:file-as (RSC-005) and identifier/NCX dtb:uid (NCX-001) defects
+// reached production. `identifiers` on the EPUB 2 fixture is the NCX-001 guard.
+describe('buildUpdatedEpub cross-version write sweep (real @korzun/epubcheck-ts)', () => {
+  const cases: Array<[string, Parameters<typeof buildUpdatedEpub>[1]]> = [
+    ['title', { title: 'New Title' }],
+    ['titleSort', { titleSort: 'New Title, A' }],
+    ['author', { author: 'New Author' }],
+    ['authorSort', { authorSort: 'Author, New' }],
+    ['publishDate', { publishDate: '2021-05-04' }],
+    ['description', { description: 'A new description.' }],
+    ['publisher', { publisher: 'New Publisher' }],
+    ['subjects', { subjects: ['Fiction', 'Adventure'] }],
+    ['series', { series: 'My Series', seriesIndex: 2 }],
+    ['identifiers', { identifiers: [{ scheme: 'ISBN', value: '9780316229296' }] }],
+    ['cover', { coverData: TINY_PNG, coverMime: 'image/png' }],
+  ];
+
+  for (const [ver, make] of [
+    ['EPUB 3', minimalValidEpub3Rich],
+    ['EPUB 2', () => epub2WithModified([])],
+  ] as const) {
+    describe(ver, () => {
+      let dir: string;
+      beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epub-sweep-'));
+      });
+      afterEach(() => fs.rmSync(dir, { recursive: true }));
+
+      for (const [name, changes] of cases) {
+        it(`${name} leaves the EPUB valid`, async () => {
+          const src = path.join(dir, 'b.epub');
+          fs.writeFileSync(src, make());
+          await expect(
+            assertValidEpub(buildUpdatedEpub(src, changes), 'ERROR')
+          ).resolves.toBeDefined();
+        }, 60000);
+      }
+    });
+  }
+});
+
 describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
   let dir: string;
 
