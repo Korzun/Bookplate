@@ -184,6 +184,22 @@ function setRefinement(
   metadata['meta'] = kept;
 }
 
+/**
+ * Add, update, or remove a named OPF-2 `<meta name="…" content="…"/>` element in
+ * `metadata.meta`. An empty `content` removes any existing match; a non-empty
+ * value replaces the match (or appends one). Mutates `metadata.meta`.
+ */
+function setNamedMeta(metadata: Record<string, unknown>, name: string, content: string): void {
+  const metas = Array.isArray(metadata['meta'])
+    ? (metadata['meta'] as Record<string, unknown>[])
+    : [];
+  const kept = metas.filter((m) => m['@_name'] !== name);
+  if (content) {
+    kept.push({ '@_name': name, '@_content': content });
+  }
+  metadata['meta'] = kept;
+}
+
 /** Read the text of a refining meta (`<meta refines="#id" property="…">`), or ''. */
 function getRefinement(metadata: Record<string, unknown>, id: string, property: string): string {
   const metas = Array.isArray(metadata['meta'])
@@ -200,7 +216,13 @@ function getRefinement(metadata: Record<string, unknown>, id: string, property: 
  *     `<meta refines="#id" property="file-as">` for the sort key. The EPUB 2
  *     `file-as` / `opf:file-as` attributes are schema-invalid on a 3.x package
  *     (EPUBCheck RSC-005 "attribute file-as not allowed here").
- *   • EPUB 2 — the `opf:file-as` attribute (needs the opf namespace).
+ *   • EPUB 2 — the sort key's valid home depends on the element. `opf:file-as`
+ *     is allowed on `dc:creator`/`dc:contributor` (needs the opf namespace) but
+ *     NOT on `dc:title` under opf20.rng, so a title sort is written as the
+ *     widely-supported `<meta name="calibre:title_sort" content="…"/>` instead.
+ *     Emitting `opf:file-as` on `dc:title` triggers EPUBCheck RSC-005
+ *     ("attribute opf:file-as not allowed here; expected attribute id or
+ *     xml:lang").
  * Collapses to a single element, matching the prior writer. Mutates `metadata`.
  */
 function writeSortedField(
@@ -238,11 +260,23 @@ function writeSortedField(
     return;
   }
 
-  // EPUB 2: opf:file-as attribute; drop any stale EPUB 3 refinement.
+  // EPUB 2: drop any stale EPUB 3 refinement first, then encode the sort in the
+  // form that's schema-valid for this element.
+  if (existingId) setRefinement(metadata, existingId, 'file-as', '');
+
+  if (key === 'dc:title') {
+    // opf:file-as is not permitted on dc:title under opf20.rng (RSC-005). Encode
+    // the title sort as <meta name="calibre:title_sort"> and write a plain
+    // element, dropping any pre-existing (invalid) file-as attribute.
+    setNamedMeta(metadata, 'calibre:title_sort', sort);
+    metadata[key] = [text];
+    return;
+  }
+
+  // dc:creator/dc:contributor: opf:file-as attribute (needs the opf namespace).
   if (sort && !(pkg as Record<string, string>)['@_xmlns:opf']) {
     (pkg as Record<string, string>)['@_xmlns:opf'] = 'http://www.idpf.org/2007/opf';
   }
-  if (existingId) setRefinement(metadata, existingId, 'file-as', '');
   metadata[key] = sort ? [{ '#text': text, '@_opf:file-as': sort }] : [text];
 }
 

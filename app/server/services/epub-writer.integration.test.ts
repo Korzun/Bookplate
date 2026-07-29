@@ -132,6 +132,31 @@ describe('buildUpdatedEpub (real @korzun/epubcheck-ts)', () => {
     const edited = buildUpdatedEpub(src, { title: 'Edited Title' });
     await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
   }, 60000);
+
+  // Regression: a title sort on an EPUB 2 package must NOT be written as an
+  // `opf:file-as` attribute on <dc:title> — opf20.rng forbids it there, so
+  // epubcheck raises RSC-005 ("attribute opf:file-as not allowed here"). The
+  // sort belongs in <meta name="calibre:title_sort">. This is the ingest path
+  // that silently corrupted leading-article titles (e.g. "The Dying Earth").
+  it('an EPUB 2 titleSort edit stays valid and round-trips (no opf:file-as on dc:title)', async () => {
+    const e2 = path.join(dir, 'book2.epub');
+    fs.writeFileSync(e2, epub2WithModified([]));
+    const edited = buildUpdatedEpub(e2, { titleSort: 'Baseline 2 Title, The' });
+    await expect(assertValidEpub(edited, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(e2, edited);
+    expect(parseEpub(e2).titleSort).toBe('Baseline 2 Title, The');
+  }, 60000);
+
+  // Clearing the sort must remove the calibre:title_sort meta and stay valid.
+  it('an EPUB 2 titleSort clear stays valid and round-trips to empty', async () => {
+    const e2 = path.join(dir, 'book2clear.epub');
+    fs.writeFileSync(e2, epub2WithModified([]));
+    fs.writeFileSync(e2, buildUpdatedEpub(e2, { titleSort: 'Baseline 2 Title, The' }));
+    const cleared = buildUpdatedEpub(e2, { titleSort: '' });
+    await expect(assertValidEpub(cleared, 'ERROR')).resolves.toBeDefined();
+    fs.writeFileSync(e2, cleared);
+    expect(parseEpub(e2).titleSort).toBe('');
+  }, 60000);
 });
 
 describe('repairPackageDocument (real @korzun/epubcheck-ts)', () => {
