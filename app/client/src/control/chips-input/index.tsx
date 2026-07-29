@@ -85,6 +85,11 @@ export const ChipsInput = ({
       } else if (allowCustom && inputValue.trim()) {
         e.preventDefault();
         addChip(inputValue);
+      } else if (e.key === 'Enter' && inputValue.trim()) {
+        // Nothing to add (e.g. allowCustom={false} with an unmatched token) but
+        // the user is mid-token: swallow the Enter so it doesn't bubble up and
+        // submit the surrounding form. Tab still falls through to move focus.
+        e.preventDefault();
       }
     } else if (e.key === 'Backspace' && inputValue === '' && value.length > 0) {
       removeChip(value[value.length - 1]!);

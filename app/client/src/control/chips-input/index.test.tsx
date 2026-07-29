@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { FormEvent } from 'react';
 
 import { renderWithProviders } from '~/test-utils';
 
@@ -51,6 +52,19 @@ it('allowCustom={false}: typing text matching no suggestion and pressing Enter d
   );
   await user.type(screen.getByRole('textbox'), 'Nonexistent{Enter}');
   expect(onChange).not.toHaveBeenCalled();
+});
+
+it('does not submit the surrounding form when Enter is pressed on an unmatched token', async () => {
+  const user = userEvent.setup();
+  const onSubmit = vi.fn((e: FormEvent) => e.preventDefault());
+  renderWithProviders(
+    <form onSubmit={onSubmit}>
+      <ChipsInput value={[]} suggestions={['Fiction']} onChange={vi.fn()} allowCustom={false} />
+      <button type="submit">Submit</button>
+    </form>
+  );
+  await user.type(screen.getByRole('textbox'), 'Nonexistent{Enter}');
+  expect(onSubmit).not.toHaveBeenCalled();
 });
 
 it('allowCustom={false}: a real suggestion can still be added via Enter when highlighted', async () => {

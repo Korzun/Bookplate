@@ -351,9 +351,12 @@ describe('DeviceForm', () => {
       expect(screen.getByLabelText('Remove bob')).toBeInTheDocument();
 
       // allowCustom is false, so a name that doesn't match a known user must
-      // not be added even when Enter is pressed.
+      // not be added even when Enter is pressed — and that stray Enter must not
+      // submit the form (which would race the explicit "Add device" click below
+      // by flipping its label to "Adding…").
       await user.type(usersInput, 'nonexistent{Enter}');
       expect(screen.queryByLabelText('Remove nonexistent')).not.toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
 
       await user.click(screen.getByRole('button', { name: /add device/i }));
 
