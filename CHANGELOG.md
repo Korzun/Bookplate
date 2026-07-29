@@ -1,3 +1,7 @@
+## 0.8.1
+
+- Validation: severity coloring + gate Replace on triaged fixes
+
 ## 0.8.0
 
 - docs: document the release process
