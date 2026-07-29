@@ -1,3 +1,7 @@
+## 0.8.2
+
+- Fix EPUB 2 metadata-write validation bugs (dc:title opf:file-as, NCX dtb:uid)
+
 ## 0.8.1
 
 - Validation: severity coloring + gate Replace on triaged fixes
