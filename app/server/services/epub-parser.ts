@@ -454,7 +454,9 @@ export function parseEpub(filePath: string): EpubMeta {
   const series = calibreSeries || pickLang(collectionCandidates);
   const seriesIndex = calibreSeriesIndex || groupPosition;
 
-  // titleSort: dc:title file-as only; EPUB 3 <meta refines> fallback for the title element
+  // titleSort: dc:title file-as attribute, then an EPUB 3 <meta refines>
+  // fallback, then the EPUB 2 <meta name="calibre:title_sort"> form (the
+  // schema-valid home for a title sort in a 2.x package — see epub-writer).
   const attrTitleSort = titleCandidate.text ? titleCandidate.fileAs : '';
   const refinesMeta =
     !attrTitleSort && titleCandidate.id
@@ -462,8 +464,14 @@ export function parseEpub(filePath: string): EpubMeta {
           (m) => m['@_property'] === 'file-as' && m['@_refines'] === `#${titleCandidate.id}`
         )
       : undefined;
+  const calibreTitleSortMeta =
+    !attrTitleSort && !refinesMeta
+      ? metas.find((m) => m['@_name'] === 'calibre:title_sort')
+      : undefined;
   const titleSort =
-    attrTitleSort || (refinesMeta ? decodeEntities((refinesMeta['#text'] ?? '').trim()) : '');
+    attrTitleSort ||
+    (refinesMeta ? decodeEntities((refinesMeta['#text'] ?? '').trim()) : '') ||
+    (calibreTitleSortMeta ? decodeEntities((calibreTitleSortMeta['@_content'] ?? '').trim()) : '');
 
   // authorSort: dc:creator file-as attribute, with an EPUB 3 <meta refines>
   // fallback for the creator element (mirrors the titleSort handling above).
