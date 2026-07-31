@@ -4,6 +4,7 @@ import PrismaPlugin from '@pothos/plugin-prisma';
 import RelayPlugin from '@pothos/plugin-relay';
 import ScopeAuthPlugin from '@pothos/plugin-scope-auth';
 import ValidationPlugin from '@pothos/plugin-validation';
+import { GraphQLError } from 'graphql';
 import { DateTimeResolver } from 'graphql-scalars';
 
 import type { Context } from '../context';
@@ -17,6 +18,14 @@ export const builder = new SchemaBuilder<{
     authenticated: boolean;
     admin: boolean;
     ownerOf: string;
+    /**
+     * A signed-in viewer, ignoring a pending forced password change. Only the
+     * change-password mutation may use this — everything else must stay on
+     * `authenticated`, which refuses a viewer whose password change is
+     * outstanding. Mirrors REST's `/api/my/password` exemption from
+     * `passwordChangeGate` (middleware/auth.ts).
+     */
+    passwordChangeAllowed: boolean;
   };
   DefaultInputFieldRequiredness: true;
   // Pothos v4 defaults output fields to nullable unless told otherwise. Both
@@ -28,18 +37,52 @@ export const builder = new SchemaBuilder<{
     DateTime: { Input: Date; Output: Date };
   };
 }>({
-  // ScopeAuthPlugin must come first so its field wrapping runs outermost —
-  // authorization has to reject before any other plugin's resolver logic runs.
-  plugins: [ScopeAuthPlugin, PrismaPlugin, RelayPlugin, ErrorsPlugin, ValidationPlugin],
+  // Pothos wraps resolvers in plugin order — the first plugin listed is the
+  // outermost wrapper. Two documented constraints fix this ordering; don't
+  // reshuffle it without re-reading both READMEs:
+  //
+  //  1. RelayPlugin before ScopeAuthPlugin. @pothos/plugin-scope-auth's README
+  //     ("putting the relay plugin before the scope-auth plugin") — otherwise
+  //     `authScopes` functions receive the *raw* base64 global ID while the
+  //     resolver receives the parsed one, so an id-taking scope such as
+  //     `ownerOf` compares a global ID against a database id and fails closed.
+  //  2. ErrorsPlugin before PrismaPlugin. @pothos/plugin-errors' README: "To
+  //     use this in combination with the prisma plugin, ensure that the errors
+  //     plugin is listed BEFORE the prisma plugin" — required for `errors` to
+  //     work on prisma field-builder methods.
+  //
+  // ScopeAuthPlugin still sits ahead of Errors/Prisma/Validation so authorization
+  // rejects before any resolver logic runs and an auth failure is never swallowed
+  // into an errors-plugin union member.
+  plugins: [RelayPlugin, ScopeAuthPlugin, ErrorsPlugin, PrismaPlugin, ValidationPlugin],
   defaultInputFieldRequiredness: true,
   defaultFieldNullability: false,
   scopeAuth: {
     authScopes: (context: Context) => ({
-      authenticated: context.viewer !== null,
+      // A viewer with a forced password change pending is treated as not
+      // authenticated for every field but the change-password mutation, which
+      // uses `passwordChangeAllowed`. REST enforces the same rule through
+      // `passwordChangeGate`; GraphQL is mounted outside that router, so the
+      // control has to live here or it does not exist.
+      authenticated: context.viewer !== null && !context.viewer.mustChangePassword,
+      passwordChangeAllowed: context.viewer !== null,
       admin: context.viewer?.isAdmin === true,
       ownerOf: (userId: string) =>
         context.viewer?.isAdmin === true || context.viewer?.userId === userId,
     }),
+    // Give auth failures a machine-readable code and an HTTP status, so a
+    // client can tell "token expired, refresh it" from "you may not do this"
+    // without string-matching Pothos's English. Yoga honours
+    // `extensions.http.status` (graphql-yoga/cjs/error.js), matching the REST
+    // client's existing 401-triggers-refresh behaviour.
+    unauthorizedError: (_parent, context: Context) =>
+      context.viewer === null
+        ? new GraphQLError('Not authenticated', {
+            extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } },
+          })
+        : new GraphQLError('Not authorized', {
+            extensions: { code: 'FORBIDDEN', http: { status: 403 } },
+          }),
   },
   // `prisma.client` is a context function (not a client instance), so the
   // plugin can't introspect a live client for its DMMF at schema-build time.
