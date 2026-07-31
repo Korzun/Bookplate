@@ -41,6 +41,7 @@ svg/
   bookplate-icon-flat.svg       app tile, flat #1777FF (crisper tiny)
   bookplate-icon-crest.svg      app tile, blue + ornate crest (store/splash)
   bookplate-icon-maskable.svg   full-bleed, safe-zone padded (Android/PWA)
+  bookplate-logo.svg            horizontal lockup, icon tile + blue wordmark
 png/
   icon-{16..1024}.png           app tile raster (everyday mark)
   icon-crest-512.png            app tile raster (crest)
@@ -48,6 +49,7 @@ png/
   icon-maskable-512.png
   ha-icon-256.png               crest tile — rename to icon.png for HA add-on
   ha-icon-simple-256.png        everyday-mark tile alt
+  ha-logo-720x200.png           horizontal lockup — rename to logo.png for HA add-on
   mark-ink-*.png / mark-paper-*.png     line mark (transparent), ink & paper
   crest-ink-*.png / crest-paper-*.png   line crest (transparent)
   splash-dark-1600x1000.png / splash-light-1600x1000.png
@@ -69,8 +71,17 @@ site.webmanifest                PWA icons 192/512 + maskable
 
 ## Home Assistant add-on
 
-Use a 256×256 `icon.png` at the add-on root — `png/ha-icon-256.png` (crest) for a
-premium look, or `png/ha-icon-simple-256.png` if you prefer the plain mark.
+The add-on root needs **two different shapes**, and they are not interchangeable:
+
+| File | Source | Shape |
+| ---- | ------ | ----- |
+| `icon.png` | `png/ha-icon-256.png` (crest) or `png/ha-icon-simple-256.png` | square tile, shown in the add-on list |
+| `logo.png` | `png/ha-logo-720x200.png` | wide lockup, shown on the add-on page |
+
+`logo.png` is the **banner**, not a big icon — Home Assistant recommends roughly a
+250×100 shape, so the square tile does not belong there. The lockup ships at 720×200
+(3.6∶1) for retina, on transparent, with the wordmark in brand blue so it holds up on
+both the light and dark HA themes.
 
 ## Inline SVG
 
