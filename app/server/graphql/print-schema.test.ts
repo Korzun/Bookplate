@@ -16,6 +16,16 @@ describe('printSchemaToString', () => {
     expect(printed.indexOf('a: String')).toBeLessThan(printed.indexOf('b: String'));
   });
 
+  it('starts with a do-not-edit banner', () => {
+    const schema = buildSchema('type Query { a: String }');
+
+    const printed = printSchemaToString(schema);
+
+    // Part of the printed string rather than something the writer prepends, so
+    // the --check comparison stays an exact equality against the artifact.
+    expect(printed.startsWith('# GENERATED FILE — DO NOT EDIT.')).toBe(true);
+  });
+
   it('ends with exactly one trailing newline', () => {
     const schema = buildSchema('type Query { a: String }');
 

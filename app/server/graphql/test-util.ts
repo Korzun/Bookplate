@@ -114,15 +114,21 @@ export const createHarness = async (): Promise<Harness> => {
     });
   };
 
+  // Every step is independent and best-effort: a failing $disconnect() must not
+  // skip the directory removals, or a test run leaks temp dirs into /tmp.
   const cleanup = async (): Promise<void> => {
-    await prisma.$disconnect();
     try {
-      fs.unlinkSync(dbPath);
+      await prisma.$disconnect();
     } catch {
       /* best-effort cleanup */
     }
-    fs.rmSync(booksDir, { recursive: true });
-    fs.rmSync(dataDir, { recursive: true });
+    for (const target of [dbPath, booksDir, dataDir]) {
+      try {
+        fs.rmSync(target, { recursive: true, force: true });
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
   };
 
   return {

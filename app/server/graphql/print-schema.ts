@@ -5,8 +5,19 @@ import { lexicographicSortSchema, printSchema, type GraphQLSchema } from 'graphq
 
 export const ARTIFACT_PATH = path.join(__dirname, 'schema.generated.graphql');
 
+/**
+ * Prefixed to the artifact so a reader who opens it knows not to hand-edit it.
+ * Part of the printed string rather than something the writer tacks on, so the
+ * `--check` comparison stays an exact string equality.
+ */
+const BANNER = [
+  '# GENERATED FILE — DO NOT EDIT.',
+  '# Produced from the Pothos schema by `npm run graphql:schema -w app/server`.',
+  '# `npm run lint` fails when this file and the built schema disagree.',
+].join('\n');
+
 export const printSchemaToString = (schema: GraphQLSchema): string =>
-  `${printSchema(lexicographicSortSchema(schema)).trimEnd()}\n`;
+  `${BANNER}\n\n${printSchema(lexicographicSortSchema(schema)).trimEnd()}\n`;
 
 /**
  * CLI entry point. With --check it exits non-zero when the committed artifact
