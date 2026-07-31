@@ -6,6 +6,7 @@ type PendingLookup = {
   userId: string;
   document: string;
   resolve: (row: Progress | null) => void;
+  reject: (err: unknown) => void;
 };
 
 /**
@@ -29,6 +30,16 @@ type PendingLookup = {
  * pending/resolved *promise*, not the resolved value, so concurrent
  * sibling-field resolution for the same key shares one query instead of
  * racing two.
+ *
+ * Every pending lookup's `resolve` *and* `reject` are captured up front and
+ * both are guaranteed to be called exactly once by `flush`: unlike
+ * `createOwnerLoader`, which just returns a Prisma promise chain and lets a
+ * rejection propagate on its own, this loader owns the settling of each
+ * batched caller's promise once it takes over via `new Promise`. If
+ * `findMany` (or the grouping/matching that follows it) throws, every lookup
+ * in that batch is rejected instead of being left permanently unsettled —
+ * an unsettled resolver promise never surfaces as a GraphQL error, it just
+ * hangs the request.
  */
 export const createProgressLoader = (prisma: PrismaClient): ProgressLoader => {
   const cache = new Map<string, Map<string, Promise<Progress | null>>>();
@@ -40,18 +51,22 @@ export const createProgressLoader = (prisma: PrismaClient): ProgressLoader => {
     pending = [];
     flushScheduled = false;
 
-    const rows = await prisma.progress.findMany({
-      where: { OR: batch.map(({ userId, document }) => ({ userId, document })) },
-    });
-    const byUser = new Map<string, Map<string, Progress>>();
-    for (const row of rows) {
-      const byDocument = byUser.get(row.userId) ?? new Map<string, Progress>();
-      byDocument.set(row.document, row);
-      byUser.set(row.userId, byDocument);
-    }
+    try {
+      const rows = await prisma.progress.findMany({
+        where: { OR: batch.map(({ userId, document }) => ({ userId, document })) },
+      });
+      const byUser = new Map<string, Map<string, Progress>>();
+      for (const row of rows) {
+        const byDocument = byUser.get(row.userId) ?? new Map<string, Progress>();
+        byDocument.set(row.document, row);
+        byUser.set(row.userId, byDocument);
+      }
 
-    for (const lookup of batch) {
-      lookup.resolve(byUser.get(lookup.userId)?.get(lookup.document) ?? null);
+      for (const lookup of batch) {
+        lookup.resolve(byUser.get(lookup.userId)?.get(lookup.document) ?? null);
+      }
+    } catch (err) {
+      for (const lookup of batch) lookup.reject(err);
     }
   };
 
@@ -62,8 +77,8 @@ export const createProgressLoader = (prisma: PrismaClient): ProgressLoader => {
     const cached = byDocument.get(document);
     if (cached !== undefined) return cached;
 
-    const result = new Promise<Progress | null>((resolve) => {
-      pending.push({ userId, document, resolve });
+    const result = new Promise<Progress | null>((resolve, reject) => {
+      pending.push({ userId, document, resolve, reject });
       if (!flushScheduled) {
         flushScheduled = true;
         queueMicrotask(() => void flush());

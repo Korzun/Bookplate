@@ -39,6 +39,14 @@ export const model = builder.prismaObject('Progress', {
  * measured as N separate `findUnique` calls (see `progress-loader.ts`), so
  * this goes through the request-scoped batching loader instead, the same way
  * `Library.user`/`Viewer.library` go through `context.loadOwner`.
+ *
+ * `t.field`, not `t.prismaField`: the loader's `findMany` fetches whole rows
+ * for the batch regardless of which `Progress` sub-fields the query actually
+ * selected — there is no per-field `query.select` to merge into a batched
+ * call the way `t.prismaField` merges one into a single-row lookup, and
+ * `progress` has no relations to avoid over-fetching, so trading that
+ * optimization away for a single request-wide query is deliberate, not an
+ * oversight.
  */
 builder.objectField(book.model, 'progress', (t) =>
   t.field({

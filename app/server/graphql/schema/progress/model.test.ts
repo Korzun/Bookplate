@@ -171,4 +171,24 @@ describe('Progress', () => {
     expect(findUniqueSpy).not.toHaveBeenCalled();
     expect(findManySpy).toHaveBeenCalledTimes(1);
   });
+
+  // A prior version of `createProgressLoader` captured only `resolve`, never
+  // `reject`, when it took over settling each batched caller's promise. A
+  // rejected `findMany` (e.g. a transient DB error) then left every in-flight
+  // `Book.progress` lookup in that batch permanently unsettled — the request
+  // would hang forever instead of surfacing a GraphQL error, since nothing
+  // else was watching that promise. This must resolve well inside the test's
+  // own timeout, not merely "eventually" — a regression here should fail
+  // fast, not stall the suite.
+  it('surfaces a GraphQL error instead of hanging when the progress query fails', async () => {
+    vi.spyOn(harness.prisma.progress, 'findMany').mockRejectedValue(new Error('db unavailable'));
+
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${BOOK_ID}") { progress { percentage } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeDefined();
+    expect(result.errors!.length).toBeGreaterThan(0);
+  }, 2000);
 });
