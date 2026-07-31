@@ -1,5 +1,6 @@
 import './book';
 import './library';
+import './series';
 import './user';
 import './viewer';
 import { builder } from './builder';
