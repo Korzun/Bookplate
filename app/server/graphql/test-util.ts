@@ -152,10 +152,22 @@ export const createHarness = async (): Promise<Harness> => {
     // matters for `DateTime`: graphql-scalars' resolver leaves an already-Date
     // value as a `Date` instance from `serialize()` and only becomes an ISO
     // string once something calls `JSON.stringify` on it (`Date.prototype.toJSON`).
-    // Round-tripping here makes every test see exactly what a real client
-    // receives over the wire, instead of a harness-only Date instance no
-    // caller can ever actually get.
-    return JSON.parse(JSON.stringify(result)) as ExecutionResult;
+    // Round-tripping `data` here makes every test see exactly what a real
+    // client receives over the wire, instead of a harness-only Date instance
+    // no caller can ever actually get.
+    //
+    // Deliberately scoped to `data` only, not the whole `ExecutionResult`:
+    // `errors` holds real `GraphQLError` instances, and `JSON.stringify` on a
+    // `GraphQLError` with an empty `extensions` drops the `extensions` key
+    // entirely (its `toJSON()` omits empty objects), plus a full round-trip
+    // would discard `instanceof GraphQLError`, `originalError`, and class
+    // identity for every error in every test using this harness. `data` holds
+    // plain resolved values (or `Date` leaves), so a JSON round-trip there
+    // loses nothing that matters.
+    return {
+      ...result,
+      data: result.data && (JSON.parse(JSON.stringify(result.data)) as typeof result.data),
+    };
   };
 
   // Inserts a minimal row owned by alice for `typeName` and returns its real
