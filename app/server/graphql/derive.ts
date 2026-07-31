@@ -28,7 +28,9 @@ const isIdentifier = (value: unknown): value is Identifier =>
 
 export const parseIdentifiers = (json: string): Identifier[] => {
   const parsed = parseJson(json);
-  return Array.isArray(parsed) ? parsed.filter(isIdentifier) : [];
+  return Array.isArray(parsed)
+    ? parsed.filter(isIdentifier).map(({ scheme, value }) => ({ scheme, value }))
+    : [];
 };
 
 export const parseStringArray = (json: string): string[] => {
