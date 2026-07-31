@@ -1,7 +1,7 @@
 {
   "name": "Bookplate",
   "short_name": "Bookplate",
-  "theme_color": "#1777FF",
+  "theme_color": "#0b1f3a",
   "background_color": "#0E0F11",
   "display": "standalone",
   "icons": [
