@@ -7,6 +7,11 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 """
 scalar DateTime
 
+type Library implements Node {
+  id: ID!
+  user: User!
+}
+
 interface Node {
   id: ID!
 }
@@ -20,12 +25,14 @@ type Query {
 
 type User implements Node {
   id: ID!
+  library: Library!
   mustChangePassword: Boolean!
   username: String!
 }
 
 type Viewer {
   isAdmin: Boolean!
+  library: Library
   mustChangePassword: Boolean!
   username: String!
 }

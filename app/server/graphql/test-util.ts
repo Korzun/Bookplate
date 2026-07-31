@@ -158,6 +158,10 @@ export const createHarness = async (): Promise<Harness> => {
       // sense: it *is* her account.
       case 'User':
         return aliceGlobalId;
+      // Library is 1:1 with User — its global id is alice's userId under a
+      // different type name, so nothing new to insert, only re-encode.
+      case 'Library':
+        return encodeGlobalID('Library', aliceId);
       default:
         throw new Error(
           `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
