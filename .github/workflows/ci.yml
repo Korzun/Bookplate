@@ -113,5 +113,31 @@ jobs:
             exit 1
           fi
           echo "DB check passed (got 401 as expected)"
+          # Production-hardening check: the shipped image must never serve the
+          # GraphiQL console. Nothing sets NODE_ENV in the image, so this is
+          # what catches a regression of the `isProduction` default back to
+          # `=== 'production'` (which would silently enable GraphiQL, verbatim
+          # unmasked errors and introspection for unauthenticated callers).
+          GRAPHIQL_BODY=$(curl -s http://localhost:3000/graphql -H 'Accept: text/html')
+          if echo "$GRAPHIQL_BODY" | grep -qi 'graphiql'; then
+            echo "Hardening check failed: GET /graphql served GraphiQL in the production image. Logs:"
+            docker logs smoke-test
+            docker rm -f smoke-test
+            exit 1
+          fi
+          echo "GraphiQL check passed (console not served)"
+          # Introspection must also be refused for unauthenticated callers.
+          INTROSPECTION_BODY=$(curl -s -X POST http://localhost:3000/graphql \
+            -H 'Content-Type: application/json' \
+            -d '{"query":"{ __schema { types { name } } }"}')
+          # Match on the parsed payload, not the raw text: the refusal message
+          # itself quotes "__schema", so a grep would false-negative.
+          if echo "$INTROSPECTION_BODY" | jq -e '.data.__schema' > /dev/null 2>&1; then
+            echo "Hardening check failed: introspection answered in the production image. Logs:"
+            docker logs smoke-test
+            docker rm -f smoke-test
+            exit 1
+          fi
+          echo "Introspection check passed (refused)"
           docker stop smoke-test
           docker rm smoke-test
