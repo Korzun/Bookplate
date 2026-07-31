@@ -19,6 +19,7 @@ type Book implements Node {
   pageCount: Int!
   publishDate: String!
   publisher: String!
+  series: Series
   seriesIndex: Float!
   size: Int!
   subjects: [String!]!
@@ -40,6 +41,9 @@ type Identifier {
 type Library implements Node {
   book(id: String!): Book
   id: ID!
+  series: [Series!]!
+  seriesByName(name: String!): Series
+  seriesNextIndex(name: String!): Float!
   user: User!
 }
 
@@ -52,6 +56,18 @@ type Query {
   nodes(ids: [ID!]!): [Node]!
   user(id: ID!): User
   viewer: Viewer!
+}
+
+type Series implements Node {
+  author: String!
+  bookCount: Int!
+  books: [Book!]!
+  id: ID!
+  name: String!
+  publisher: String!
+  subjects: [String!]!
+  totalPages: Int!
+  totalSize: Int!
 }
 
 type User implements Node {

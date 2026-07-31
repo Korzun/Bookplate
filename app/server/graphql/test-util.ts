@@ -209,6 +209,29 @@ export const createHarness = async (): Promise<Harness> => {
         }
         return globalId;
       }
+      // Series has a plain `@id`, so its global id IS a plain
+      // `encodeGlobalID('Series', id)` — no compound-id decoding needed. Still
+      // read it back through the schema rather than hand-encoding, to match
+      // every other branch here and catch a drift in how the schema itself
+      // encodes it.
+      case 'Series': {
+        const seriesId = 'seed-series-1';
+        await prisma.series.create({
+          data: { id: seriesId, userId: aliceId, name: 'Seed Series', sortKey: 'seed series' },
+        });
+        const seeded = await execute(
+          `{ viewer { library { seriesByName(name: "Seed Series") { id } } } }`,
+          { viewer: aliceViewer }
+        );
+        const data = seeded.data as {
+          viewer: { library: { seriesByName: { id: string } | null } };
+        } | null;
+        const globalId = data?.viewer.library.seriesByName?.id;
+        if (globalId === undefined) {
+          throw new Error('seedNodeFor("Series") could not read back the seeded series global id');
+        }
+        return globalId;
+      }
       default:
         throw new Error(
           `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
