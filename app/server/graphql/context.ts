@@ -9,6 +9,7 @@ import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { UserStore } from '../services/user-store';
 import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
+import { createOwnerLoader, type OwnerLoader } from './owner';
 
 /**
  * The WHATWG/undici `Request` yoga hands to the context factory — deliberately
@@ -43,6 +44,7 @@ export type Context = {
   prisma: PrismaClient;
   stores: Stores;
   config: AppConfig;
+  loadOwner: OwnerLoader;
 };
 
 export type ContextDeps = {
@@ -84,4 +86,5 @@ export const createContext =
     prisma: deps.prisma,
     stores: deps.stores,
     config: deps.config,
+    loadOwner: createOwnerLoader(deps.prisma),
   });
