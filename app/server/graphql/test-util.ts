@@ -16,6 +16,7 @@ import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
 import type { Context, Stores, Viewer } from './context';
+import { createOwnerLoader } from './owner';
 import { schema } from './schema';
 
 export type ExecuteOptions = {
@@ -105,6 +106,7 @@ export const createHarness = async (): Promise<Harness> => {
       prisma,
       stores,
       config,
+      loadOwner: createOwnerLoader(prisma),
     };
     return graphql({
       schema,
