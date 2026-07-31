@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Korzun/Bookplate/main/brand/png/readme-hero-1200x520.png" alt="Bookplate" width="640" />
-</p>
+![Bookplate](https://raw.githubusercontent.com/Korzun/Bookplate/main/brand/png/readme-hero-1200x520.png)
 
 # Bookplate
 
