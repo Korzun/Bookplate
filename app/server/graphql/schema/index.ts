@@ -1,5 +1,6 @@
 import './book';
 import './library';
+import './progress';
 import './series';
 import './user';
 import './validation';

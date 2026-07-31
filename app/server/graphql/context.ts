@@ -10,6 +10,7 @@ import type { UserStore } from '../services/user-store';
 import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
 import { createOwnerLoader, type OwnerLoader } from './owner';
+import { createProgressLoader, type ProgressLoader } from './progress-loader';
 
 /**
  * The WHATWG/undici `Request` yoga hands to the context factory — deliberately
@@ -45,6 +46,7 @@ export type Context = {
   stores: Stores;
   config: AppConfig;
   loadOwner: OwnerLoader;
+  loadProgress: ProgressLoader;
 };
 
 export type ContextDeps = {
@@ -87,4 +89,5 @@ export const createContext =
     stores: deps.stores,
     config: deps.config,
     loadOwner: createOwnerLoader(deps.prisma),
+    loadProgress: createProgressLoader(deps.prisma),
   });

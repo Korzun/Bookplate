@@ -18,6 +18,7 @@ import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
 import type { Context, Stores, Viewer } from './context';
 import { createOwnerLoader } from './owner';
+import { createProgressLoader } from './progress-loader';
 import { schema } from './schema';
 
 export type ExecuteOptions = {
@@ -140,6 +141,7 @@ export const createHarness = async (): Promise<Harness> => {
       stores,
       config,
       loadOwner: createOwnerLoader(prisma),
+      loadProgress: createProgressLoader(prisma),
     };
     const result = await graphql({
       schema,
