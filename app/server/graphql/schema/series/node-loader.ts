@@ -17,6 +17,19 @@ import { NO_MATCH_USER_ID } from '../node-scope';
  * itself. So `{ id, userId }` typechecks as-is — no cast needed — and at
  * runtime a row whose `id` matches but whose `userId` doesn't returns null,
  * exactly like `ownerScopedFindUnique`'s compound-key denial branch.
+ *
+ * Deliberately does NOT call `isOwnerOrAdmin` (node-scope.ts), unlike every
+ * other node-level guard in this codebase. `isOwnerOrAdmin(viewer, userId)`
+ * answers "may this viewer act on data owned by *this claimed* userId" — it
+ * needs a candidate owner to test against, parsed or read for free before any
+ * database access (`User`'s id IS the userId; `Library`'s too;
+ * `ownerScopedFindUnique` decodes one out of the compound id). `Series`'s
+ * plain `@id` carries no such claim — the only userId available here is the
+ * viewer's own, used to scope the WHERE clause, not to compare against a
+ * claim extracted from the id. Calling `isOwnerOrAdmin(viewer,
+ * viewer.userId)` would be a tautology, not a use of the shared rule, so this
+ * builds the clause directly instead. See node-scope.ts's doc comment on
+ * `isOwnerOrAdmin` for the same note from the other side.
  */
 export const findUnique = (id: string, context: Context): Prisma.SeriesWhereUniqueInput => {
   const viewer = context.viewer;
