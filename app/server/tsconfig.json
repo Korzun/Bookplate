@@ -12,5 +12,17 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["./**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/__mocks__/**"]
+  // Test-only files are excluded so the production build never ships them:
+  // test-util.ts creates temp SQLite databases, and vite.config.ts configures
+  // Vitest. vite.config.ts is additionally an ES module (it uses
+  // `import.meta.url`) that this CommonJS project cannot typecheck; Vite loads
+  // and transpiles it itself, so tsc has no business compiling it.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/test-util.ts",
+    "**/__mocks__/**",
+    "vite.config.ts"
+  ]
 }
