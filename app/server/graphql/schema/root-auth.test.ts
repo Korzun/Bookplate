@@ -1,6 +1,7 @@
 import { execute, parse, type GraphQLObjectType } from 'graphql';
 
 import type { Context } from '../context';
+import { createOwnerLoader } from '../owner';
 import { createHarness, type Harness } from '../test-util';
 import { schema } from './index';
 
@@ -56,6 +57,7 @@ describe('root type authorization', () => {
       prisma: harness.prisma,
       stores: harness.stores,
       config: harness.config,
+      loadOwner: createOwnerLoader(harness.prisma),
     };
 
     const result = await execute({

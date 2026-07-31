@@ -51,4 +51,23 @@ describe('createOwnerLoader', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
+
+  it('issues one query for concurrent lookups of the same userId', async () => {
+    const spy = vi.spyOn(harness.prisma.user, 'findUnique');
+    const load = createOwnerLoader(harness.prisma);
+
+    const results = await Promise.all([
+      load(harness.aliceOwner.userId),
+      load(harness.aliceOwner.userId),
+      load(harness.aliceOwner.userId),
+    ]);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([
+      { userId: harness.aliceOwner.userId, username: 'alice' },
+      { userId: harness.aliceOwner.userId, username: 'alice' },
+      { userId: harness.aliceOwner.userId, username: 'alice' },
+    ]);
+    spy.mockRestore();
+  });
 });
