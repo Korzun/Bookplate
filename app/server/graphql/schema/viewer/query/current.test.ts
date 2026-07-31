@@ -1,3 +1,5 @@
+import { ForbiddenError } from '@pothos/plugin-scope-auth';
+
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -36,5 +38,14 @@ describe('Query.viewer', () => {
 
     expect(result.errors).toBeDefined();
     expect(result.data?.viewer ?? null).toBeNull();
+
+    // Pin the rejection to scope-auth's own ForbiddenError, not just any
+    // thrown error: `requireViewer` inside the resolver would also throw on
+    // a null viewer, so asserting on mere error presence would pass even if
+    // the builder-level `authenticated` scope were misconfigured or removed
+    // — the resolver's redundant null-check would mask the regression.
+    const originalError = result.errors?.[0]?.originalError;
+    expect(originalError).toBeInstanceOf(ForbiddenError);
+    expect((originalError as ForbiddenError | undefined)?.code).toBe('FORBIDDEN');
   });
 });
