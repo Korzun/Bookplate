@@ -1,3 +1,4 @@
+import './book';
 import './library';
 import './user';
 import './viewer';
