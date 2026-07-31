@@ -1,4 +1,4 @@
-import type { Context } from '../context';
+import type { Context, Viewer } from '../context';
 
 /**
  * A userId that cannot exist, used to build a where-clause guaranteed to match
@@ -12,6 +12,15 @@ import type { Context } from '../context';
  * "another user has this exact file".
  */
 export const NO_MATCH_USER_ID = 'no-such-user';
+
+/**
+ * The shared "can this viewer reach this row" rule for every simple-id node
+ * type: an admin, or the row's own owner. `User`'s `findUnique`, `Library`'s
+ * `loadOne`, and `ownerScopedFindUnique`'s compound-key path all defer to this
+ * one expression of the rule rather than each carrying its own copy.
+ */
+export const isOwnerOrAdmin = (viewer: Viewer | null, userId: string): boolean =>
+  viewer !== null && (viewer.isAdmin || viewer.userId === userId);
 
 /**
  * Parses the local id `ownerScopedFindUnique` actually receives at runtime for
@@ -62,8 +71,7 @@ export const ownerScopedFindUnique =
 
     const [userId, id] = parsed;
 
-    const viewer = context.viewer;
-    const allowed = viewer !== null && (viewer.isAdmin || viewer.userId === userId);
+    const allowed = isOwnerOrAdmin(context.viewer, userId);
 
     return allowed ? build(userId, id) : build(NO_MATCH_USER_ID, id);
   };

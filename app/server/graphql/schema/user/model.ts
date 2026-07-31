@@ -1,6 +1,6 @@
 import type { Context } from '../../context';
 import { builder } from '../builder';
-import { NO_MATCH_USER_ID } from '../node-scope';
+import { isOwnerOrAdmin, NO_MATCH_USER_ID } from '../node-scope';
 
 // `Query.node(id:)` is a second door into every registered `Node` type, and it
 // bypasses `Query.user`'s `admin` scope entirely — that scope only guards the
@@ -17,8 +17,7 @@ import { NO_MATCH_USER_ID } from '../node-scope';
 export const model = builder.prismaNode('User', {
   id: { field: 'id' },
   findUnique: (id: string, context: Context) => {
-    const viewer = context.viewer;
-    const allowed = viewer !== null && (viewer.isAdmin || viewer.userId === id);
+    const allowed = isOwnerOrAdmin(context.viewer, id);
     return { id: allowed ? id : NO_MATCH_USER_ID };
   },
   nullable: true,
