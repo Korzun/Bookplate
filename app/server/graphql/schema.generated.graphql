@@ -26,6 +26,7 @@ type Book implements Node {
   thumbnailUrl(width: Int!): String!
   title: String!
   titleSort: String!
+  validation: Validation
 }
 
 """
@@ -75,6 +76,23 @@ type User implements Node {
   library: Library!
   mustChangePassword: Boolean!
   username: String!
+}
+
+type Validation {
+  messages: [ValidationMessage!]!
+  threshold: String!
+  valid: Boolean!
+  validatedAt: DateTime!
+}
+
+type ValidationMessage {
+  code: String!
+  column: Int
+  line: Int
+  message: String!
+  path: String
+  seq: Int!
+  severity: String!
 }
 
 type Viewer {
