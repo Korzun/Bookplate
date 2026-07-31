@@ -18,6 +18,19 @@ export const NO_MATCH_USER_ID = 'no-such-user';
  * type: an admin, or the row's own owner. `User`'s `findUnique`, `Library`'s
  * `loadOne`, and `ownerScopedFindUnique`'s compound-key path all defer to this
  * one expression of the rule rather than each carrying its own copy.
+ *
+ * Intentional exception: `series/node-loader.ts`'s `findUnique`. This
+ * function answers "may this viewer act on data owned by *this claimed*
+ * userId" — it needs a candidate owner to test against, which `User` (the id
+ * IS the userId), `Library` (same), and `ownerScopedFindUnique` (parses one
+ * out of the compound id) all have synchronously, for free, before touching
+ * the database. `Series` has a plain, opaque `@id` with no userId encoded in
+ * it, so there is no claimed owner to hand this function without an extra
+ * lookup first — there is only the viewer's own userId, which the guard uses
+ * to constrain the query rather than to compare against a claim. Forcing that
+ * through `isOwnerOrAdmin(viewer, viewer.userId)` would be a tautology (a
+ * viewer's own userId always equals itself), not a use of the rule. See
+ * `series/node-loader.ts` for the actual logic.
  */
 export const isOwnerOrAdmin = (viewer: Viewer | null, userId: string): boolean =>
   viewer !== null && (viewer.isAdmin || viewer.userId === userId);

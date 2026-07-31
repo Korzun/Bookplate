@@ -110,4 +110,40 @@ describe('Series', () => {
         .seriesByName ?? null
     ).toBeNull();
   });
+
+  it('lists a viewer own series, ordered by sortKey', async () => {
+    // sortKey "aaa first" sorts before "expanse", so a correct `orderBy:
+    // { sortKey: 'asc' }` puts this ahead of "The Expanse" even though it was
+    // inserted second.
+    await harness.prisma.series.create({
+      data: {
+        id: 'series-2',
+        userId: harness.aliceOwner.userId,
+        name: 'A First',
+        sortKey: 'aaa first',
+      },
+    });
+
+    const result = await harness.execute('{ viewer { library { series { name } } } }', {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (
+        result.data as { viewer: { library: { series: { name: string }[] } } }
+      ).viewer.library.series.map((s) => s.name)
+    ).toEqual(['A First', 'The Expanse']);
+  });
+
+  it('does not expose another user series in the list', async () => {
+    const result = await harness.execute('{ viewer { library { series { name } } } }', {
+      viewer: harness.bobViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { series: { name: string }[] } } }).viewer.library.series
+    ).toEqual([]);
+  });
 });
