@@ -14,12 +14,26 @@ export default defineConfig({
     // ... from another module or realm"). Forcing these packages through
     // Vite's transform pipeline (noExternal) makes every consumer resolve
     // the same module instance.
+    //
     // 2026-07-31: Task 3 introduces three more Pothos plugins beyond Task 1's
-    // spike (scope-auth, errors, validation). Each hits the identical dual-
-    // module-instance hazard described above — its module-scope
+    // spike (scope-auth, errors, validation). Each hits the identical
+    // dual-module-instance hazard described above — its module-scope
     // `SchemaBuilder.registerPlugin(...)` call was landing on a different
     // `@pothos/core` instance than the builder imports, so the builder saw
     // "No plugin named scopeAuth was registered". Same root cause, same fix.
+    //
+    // A package-scope pattern (e.g. a `/^@pothos\//` RegExp, or Vitest's
+    // `test.server.deps.inline`) would avoid growing this list on every new
+    // Pothos plugin, and was tried first — see the fix-round-1 entry in
+    // task-3-report.md for the specific variants attempted and why each
+    // failed. In this Vite/Vitest version, a RegExp mixed into `noExternal`
+    // alongside strings is silently never matched (only the string entries
+    // take effect), and moving the same RegExp to `test.server.deps.inline`
+    // instead reintroduces the exact dual-GraphQLSchema-instance failure this
+    // list exists to prevent. Enumerating each plugin by exact string name is
+    // the only variant that has been observed to work reliably, so it stays
+    // enumerated. Add the new plugin's exact package name here when the next
+    // Pothos plugin is introduced.
     noExternal: [
       'graphql',
       '@pothos/core',
