@@ -58,8 +58,14 @@ describe('POST /graphql', () => {
   it('rejects a request with no Authorization header', async () => {
     const response = await request(app).post('/graphql').send({ query: '{ viewer { username } }' });
 
-    expect(response.body.errors).toBeDefined();
     expect(response.body.data?.viewer ?? null).toBeNull();
+    // Pin the rejection to scope-auth's own message, not just any error: a
+    // body-parsing failure, an unrelated resolver exception, or any other
+    // fault would also leave `errors` non-empty, so asserting mere presence
+    // would pass even if the builder-level `authenticated` scope were
+    // misconfigured or removed for an unrelated reason.
+    const message = (response.body.errors?.[0] as { message?: unknown } | undefined)?.message;
+    expect(message).toBe('Not authorized to read fields for Query');
   });
 
   it('rejects a token signed with a different secret', async () => {
@@ -75,7 +81,14 @@ describe('POST /graphql', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ query: '{ viewer { username } }' });
 
-    expect(response.body.errors).toBeDefined();
+    expect(response.body.data?.viewer ?? null).toBeNull();
+    // Same pin as the no-header case above: verifyAccessToken swallows the
+    // signature-mismatch error and returns null (services/jwt.ts), so this
+    // must produce the identical scope-auth rejection, not merely "an error
+    // occurred" — a JWT exception that escaped unswallowed would surface as
+    // a different message (or a 500), and this assertion would catch that.
+    const message = (response.body.errors?.[0] as { message?: unknown } | undefined)?.message;
+    expect(message).toBe('Not authorized to read fields for Query');
   });
 
   it('serves GraphiQL outside production', async () => {
