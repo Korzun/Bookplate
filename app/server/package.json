@@ -9,8 +9,10 @@
     "dev": "nodemon --watch . --ext ts,json --exec tsx index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint && oxfmt --check \"**/*.ts\" && tsc --noEmit",
-    "lint:fix": "oxlint --fix && oxfmt \"**/*.ts\""
+    "lint": "oxlint && oxfmt --check \"**/*.ts\" && tsc --noEmit && npm run graphql:schema:check",
+    "lint:fix": "oxlint --fix && oxfmt \"**/*.ts\"",
+    "graphql:schema": "tsx graphql/print-schema.ts",
+    "graphql:schema:check": "tsx graphql/print-schema.ts --check"
   },
   "dependencies": {
     "@korzun/epubcheck-ts": "^0.1.0-beta.4",
