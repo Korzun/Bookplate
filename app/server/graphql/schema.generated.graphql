@@ -17,6 +17,7 @@ type Book implements Node {
   identifiers: [Identifier!]!
   mtime: DateTime!
   pageCount: Int!
+  pendingFix: PendingFix
   progress: Progress
   publishDate: String!
   publisher: String!
@@ -43,6 +44,7 @@ type Identifier {
 type Library implements Node {
   book(id: String!): Book
   id: ID!
+  pendingFixes: [PendingFixSummary!]!
   progress: [Progress!]!
   series: [Series!]!
   seriesByName(name: String!): Series
@@ -52,6 +54,21 @@ type Library implements Node {
 
 interface Node {
   id: ID!
+}
+
+type PendingFix {
+  createdAt: DateTime!
+  fileName: String!
+  fileSize: Int!
+  state: String!
+  updatedAt: DateTime!
+}
+
+type PendingFixSummary {
+  bookId: String!
+  fileName: String!
+  fileSize: Int!
+  state: String!
 }
 
 type Progress {
