@@ -26,6 +26,12 @@ describe('parseIdentifiers', () => {
       { scheme: 'ISBN', value: '1' },
     ]);
   });
+
+  it('strips extra properties from identifiers', () => {
+    expect(parseIdentifiers('[{"scheme":"ISBN","value":"1","debug":{"extra":"data"}}]')).toEqual([
+      { scheme: 'ISBN', value: '1' },
+    ]);
+  });
 });
 
 describe('parseStringArray', () => {
@@ -49,6 +55,10 @@ describe('parseNumberArray', () => {
 
   it('drops non-finite entries', () => {
     expect(parseNumberArray('[0,"x",null]')).toEqual([0]);
+  });
+
+  it('filters out Infinity from valid JSON overflow literals', () => {
+    expect(parseNumberArray('[1e400]')).toEqual([]);
   });
 });
 
