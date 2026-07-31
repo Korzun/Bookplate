@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { encodeGlobalID } from '@pothos/plugin-relay';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import { graphql, type ExecutionResult } from 'graphql';
@@ -32,15 +33,19 @@ export type Harness = {
   /** A real user row created by the harness, for owner-scoped assertions. */
   aliceOwner: Owner;
   aliceViewer: Viewer;
+  /** Alice's `User` node, encoded the same way the schema itself would. */
+  aliceGlobalId: string;
   /** A second real user, distinct from alice, for cross-tenant assertions. */
   bobOwner: Owner;
   bobViewer: Viewer;
   adminViewer: Viewer;
   /**
    * Inserts a minimal row owned by alice for the given `Node` type name and
-   * returns its real global ID, read back from the schema rather than
-   * hand-encoded — see node-scope.test.ts's generic cross-tenant suite, which
-   * this exists for.
+   * returns its real global ID — encoded with `@pothos/plugin-relay`'s own
+   * `encodeGlobalID`, the same function the schema itself uses (builder.ts's
+   * `relay` config does not override it), rather than a hand-rolled base64
+   * string — see node-scope.test.ts's generic cross-tenant suite, which this
+   * exists for.
    *
    * Throws for a type with no seeding branch below rather than returning a
    * bogus id: a silent skip is how that suite would quietly stop covering a
@@ -99,6 +104,7 @@ export const createHarness = async (): Promise<Harness> => {
 
   await user.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   const aliceId = (await user.getUserIdByUsername('alice'))!;
+  const aliceGlobalId = encodeGlobalID('User', aliceId);
   fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
 
   await user.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
@@ -141,16 +147,22 @@ export const createHarness = async (): Promise<Harness> => {
   };
 
   // Inserts a minimal row owned by alice for `typeName` and returns its real
-  // global ID, read back from the schema via `execute` rather than
-  // hand-encoded — see the Harness type's doc comment for why. No branch below
-  // exists yet: today's schema (see graphql/schema/index.ts) registers no
-  // prismaNode types, so there is nothing to seed. A later task adding a
-  // tenant-owned Node type must add a branch here, or this throws instead of
-  // silently under-covering node-scope.test.ts's generic suite.
+  // global ID, encoded the same way the schema itself would — see the Harness
+  // type's doc comment for why. A later task adding a tenant-owned Node type
+  // must add a branch here, or this throws instead of silently under-covering
+  // node-scope.test.ts's generic suite.
   const seedNodeFor = async (typeName: string): Promise<string> => {
-    throw new Error(
-      `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
-    );
+    switch (typeName) {
+      // `User`'s row already exists (alice herself, created above) — nothing
+      // to insert. Her own `User` global ID is "owned by alice" in the literal
+      // sense: it *is* her account.
+      case 'User':
+        return aliceGlobalId;
+      default:
+        throw new Error(
+          `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
+        );
+    }
   };
 
   // Every step is independent and best-effort: a failing $disconnect() must not
@@ -177,6 +189,7 @@ export const createHarness = async (): Promise<Harness> => {
     config,
     aliceOwner: { userId: aliceId, username: 'alice' },
     aliceViewer,
+    aliceGlobalId,
     bobOwner: { userId: bobId, username: 'bob' },
     bobViewer,
     adminViewer,
