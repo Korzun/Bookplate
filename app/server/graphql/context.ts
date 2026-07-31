@@ -11,6 +11,13 @@ import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
 
 /**
+ * The WHATWG/undici `Request` yoga hands to the context factory — deliberately
+ * NOT Express's `Request`, which server.ts imports under the same identifier
+ * one file away. The alias keeps the two from being read as the same type.
+ */
+type FetchRequest = globalThis.Request;
+
+/**
  * The authenticated identity behind a request. `userId` is null for the
  * config-based admin, which has no row in the users table.
  */
@@ -72,7 +79,7 @@ export const requireViewer = (context: Context): Viewer => {
 
 export const createContext =
   (deps: ContextDeps) =>
-  ({ request }: { request: Request }): Context => ({
+  ({ request }: { request: FetchRequest }): Context => ({
     viewer: viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined),
     prisma: deps.prisma,
     stores: deps.stores,
