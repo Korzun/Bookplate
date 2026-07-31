@@ -1,5 +1,5 @@
 import cookieParser from 'cookie-parser';
-import express, { NextFunction, Request, Response } from 'express';
+import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import { logger } from './logger';
 import { jwtAuth } from './middleware/auth';
@@ -13,7 +13,7 @@ import { createUsersRouter } from './routes/users';
 import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
-import { ScanJobStore } from './services/scan-job-store';
+import type { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
@@ -31,7 +31,9 @@ export function createServer(
   jwtSecret: Buffer,
   deviceStore: DeviceStore,
   editionStore: EditionStore,
-  validationStore: ValidationStore
+  validationStore: ValidationStore,
+  scanJobStore: ScanJobStore,
+  graphqlHandler: RequestHandler
 ): express.Express {
   const server = express();
 
@@ -40,6 +42,14 @@ export function createServer(
 
   // Log method/path/status/duration for every request as it finishes.
   server.use(requestLog());
+
+  // Mounted ahead of express.json(): yoga reads the raw request body itself,
+  // and a body already consumed by a parser upstream would leave it with
+  // nothing to read. requestTimeout and requestLog still apply — they run
+  // before this and do not touch the body. requestTimeout's 503 cannot fire on
+  // a subscription stream, because it bails out once headers are sent and SSE
+  // sends them immediately.
+  server.use('/graphql', graphqlHandler);
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));
@@ -66,7 +76,6 @@ export function createServer(
     '/api/devices',
     createDevicesRouter(deviceStore, editionStore, userStore, jwtAuth(jwtSecret))
   );
-  const scanJobStore = new ScanJobStore();
   server.use(
     '/',
     createUiRouter(

@@ -5,11 +5,13 @@ import packageJson from '../../package.json';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
+import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
 import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
+import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
@@ -44,6 +46,23 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const tokenStore = new TokenStore(prisma);
   const jwtSecret = await tokenStore.getOrCreateJwtSecret();
 
+  const scanJobStore = new ScanJobStore();
+  const graphqlHandler = createGraphqlHandler({
+    prisma,
+    stores: {
+      book: bookStore,
+      user: userStore,
+      device: deviceStore,
+      edition: editionStore,
+      validation: validationStore,
+      scanJob: scanJobStore,
+      thumbnail: thumbnailQueue,
+    },
+    config,
+    jwtSecret,
+    isProduction: process.env.NODE_ENV === 'production',
+  });
+
   const server = createServer(
     config,
     userStore,
@@ -53,7 +72,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     jwtSecret,
     deviceStore,
     editionStore,
-    validationStore
+    validationStore,
+    scanJobStore,
+    graphqlHandler
   );
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
