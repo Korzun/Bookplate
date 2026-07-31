@@ -10,3 +10,4 @@ dev-books/
 /app/client/dist/
 /example-books/
 **/.DS_Store
+/app/server/graphql/generated/

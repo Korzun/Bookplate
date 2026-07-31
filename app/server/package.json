@@ -14,6 +14,12 @@
   },
   "dependencies": {
     "@korzun/epubcheck-ts": "^0.1.0-beta.4",
+    "@pothos/core": "^4.13.1",
+    "@pothos/plugin-errors": "^4.9.1",
+    "@pothos/plugin-prisma": "^4.15.0",
+    "@pothos/plugin-relay": "^4.7.1",
+    "@pothos/plugin-scope-auth": "^4.1.7",
+    "@pothos/plugin-validation": "^4.3.1",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "adm-zip": "^0.6.0",
@@ -23,13 +29,17 @@
     "express": "^4.18.2",
     "fast-xml-parser": "^5.7.1",
     "fflate": "^0.8.3",
+    "graphql": "^16.14.2",
+    "graphql-scalars": "^1.25.0",
+    "graphql-yoga": "^5.21.2",
     "jsonwebtoken": "^9.0.3",
     "mime-types": "^2.1.35",
     "multer": "^2.2.0",
     "nanoid": "^3.3.8",
     "sharp": "^0.35.3",
     "smartcrop": "^2.0.5",
-    "smartcrop-sharp": "^2.0.8"
+    "smartcrop-sharp": "^2.0.8",
+    "zod": "^4.4.3"
   },
   "optionalDependencies": {
     "@img/sharp-linux-arm64": "^0.34.5",

@@ -2,6 +2,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator pothos {
+  provider = "prisma-pothos-types"
+  output   = "../graphql/generated/pothos-types.ts"
+}
+
 datasource db {
   provider = "sqlite"
 }
