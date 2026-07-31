@@ -2,12 +2,43 @@
 # Produced from the Pothos schema by `npm run graphql:schema -w app/server`.
 # `npm run lint` fails when this file and the built schema disagree.
 
+type Book implements Node {
+  addedAt: DateTime!
+  author: String!
+  authorSort: String!
+  chapterCount: Int!
+  chapterNames: [String!]
+  chapterSpineMap: [Int!]!
+  coverUrl: String!
+  description: String!
+  downloadUrl: String!
+  hasCover: Boolean!
+  id: ID!
+  identifiers: [Identifier!]!
+  mtime: DateTime!
+  pageCount: Int!
+  publishDate: String!
+  publisher: String!
+  seriesIndex: Float!
+  size: Int!
+  subjects: [String!]!
+  thumbnailUrl(width: Int!): String!
+  title: String!
+  titleSort: String!
+}
+
 """
 A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
 """
 scalar DateTime
 
+type Identifier {
+  scheme: String!
+  value: String!
+}
+
 type Library implements Node {
+  book(id: String!): Book
   id: ID!
   user: User!
 }

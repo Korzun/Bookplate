@@ -65,9 +65,9 @@ const parseCompoundId = (raw: string): readonly [userId: string, id: string] | n
  */
 export const ownerScopedFindUnique =
   <W>(build: (userId: string, id: string) => W) =>
-  (globalId: string, context: Context): W => {
-    const parsed = parseCompoundId(globalId);
-    if (parsed === null) return build(NO_MATCH_USER_ID, globalId);
+  (localId: string, context: Context): W => {
+    const parsed = parseCompoundId(localId);
+    if (parsed === null) return build(NO_MATCH_USER_ID, localId);
 
     const [userId, id] = parsed;
 

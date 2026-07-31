@@ -130,7 +130,10 @@ export const createHarness = async (): Promise<Harness> => {
     mustChangePassword: false,
   };
 
-  const execute = (document: string, options: ExecuteOptions = {}): Promise<ExecutionResult> => {
+  const execute = async (
+    document: string,
+    options: ExecuteOptions = {}
+  ): Promise<ExecutionResult> => {
     const contextValue: Context = {
       viewer: options.viewer === undefined ? aliceViewer : options.viewer,
       prisma,
@@ -138,12 +141,21 @@ export const createHarness = async (): Promise<Harness> => {
       config,
       loadOwner: createOwnerLoader(prisma),
     };
-    return graphql({
+    const result = await graphql({
       schema,
       source: document,
       contextValue,
       variableValues: options.variables,
     });
+    // `graphql()` completes leaf scalars but does not serialize the response
+    // to JSON the way the real HTTP transport (graphql-yoga) always does. That
+    // matters for `DateTime`: graphql-scalars' resolver leaves an already-Date
+    // value as a `Date` instance from `serialize()` and only becomes an ISO
+    // string once something calls `JSON.stringify` on it (`Date.prototype.toJSON`).
+    // Round-tripping here makes every test see exactly what a real client
+    // receives over the wire, instead of a harness-only Date instance no
+    // caller can ever actually get.
+    return JSON.parse(JSON.stringify(result)) as ExecutionResult;
   };
 
   // Inserts a minimal row owned by alice for `typeName` and returns its real
@@ -162,6 +174,29 @@ export const createHarness = async (): Promise<Harness> => {
       // different type name, so nothing new to insert, only re-encode.
       case 'Library':
         return encodeGlobalID('Library', aliceId);
+      // Book's id is compound (`userId_id`), so its global id is NOT a plain
+      // `encodeGlobalID('Book', bookId)` — Pothos's compound-id serializer
+      // encodes `JSON.stringify([userId, id])` as the local id (see
+      // node-scope.ts's `parseCompoundId` doc comment). Rather than replicate
+      // that encoding by hand here and risk drifting from what the schema
+      // actually produces, read the real id back through the schema itself.
+      case 'Book': {
+        const bookId = 'b'.repeat(32);
+        await prisma.book.create({
+          data: { userId: aliceId, id: bookId, title: 'Seed', size: 1, mtime: 0, addedAt: 0 },
+        });
+        const seeded = await execute(`{ viewer { library { book(id: "${bookId}") { id } } } }`, {
+          viewer: aliceViewer,
+        });
+        const data = seeded.data as {
+          viewer: { library: { book: { id: string } | null } };
+        } | null;
+        const globalId = data?.viewer.library.book?.id;
+        if (globalId === undefined) {
+          throw new Error('seedNodeFor("Book") could not read back the seeded book global id');
+        }
+        return globalId;
+      }
       default:
         throw new Error(
           `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
