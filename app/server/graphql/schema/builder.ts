@@ -10,6 +10,7 @@ import { DateTimeResolver } from 'graphql-scalars';
 import type { Context } from '../context';
 import { getDatamodel } from '../generated/pothos-types';
 import type PrismaTypes from '../generated/pothos-types';
+import { isOwnerOrAdmin } from './node-scope';
 
 export const builder = new SchemaBuilder<{
   Context: Context;
@@ -67,8 +68,7 @@ export const builder = new SchemaBuilder<{
       authenticated: context.viewer !== null && !context.viewer.mustChangePassword,
       passwordChangeAllowed: context.viewer !== null,
       admin: context.viewer?.isAdmin === true,
-      ownerOf: (userId: string) =>
-        context.viewer?.isAdmin === true || context.viewer?.userId === userId,
+      ownerOf: (userId: string) => isOwnerOrAdmin(context.viewer, userId),
     }),
     // Give auth failures a machine-readable code and an HTTP status, so a
     // client can tell "token expired, refresh it" from "you may not do this"
