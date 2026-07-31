@@ -6,7 +6,7 @@
     "postinstall": "npm run prisma:generate || true",
     "build": "npm run prisma:generate && tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --watch . --ext ts,json --exec tsx index.ts",
+    "dev": "NODE_ENV=development nodemon --watch . --ext ts,json --exec tsx index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxfmt --check \"**/*.ts\" && tsc --noEmit && npm run graphql:schema:check",

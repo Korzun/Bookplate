@@ -60,7 +60,13 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     },
     config,
     jwtSecret,
-    isProduction: process.env.NODE_ENV === 'production',
+    // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
+    // the default and insecure mode must be opted into explicitly. Nothing in
+    // the shipped image sets NODE_ENV — run.sh execs node directly and the
+    // Dockerfile sets no env — so a `=== 'production'` test would leave every
+    // real deployment running in dev mode. The server's `dev` npm script sets
+    // NODE_ENV=development explicitly to keep GraphiQL locally.
+    isProduction: process.env.NODE_ENV !== 'development',
   });
 
   const server = createServer(
