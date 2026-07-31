@@ -30,10 +30,28 @@ export default defineConfig({
     // alongside strings is silently never matched (only the string entries
     // take effect), and moving the same RegExp to `test.server.deps.inline`
     // instead reintroduces the exact dual-GraphQLSchema-instance failure this
-    // list exists to prevent. Enumerating each plugin by exact string name is
-    // the only variant that has been observed to work reliably, so it stays
-    // enumerated. Add the new plugin's exact package name here when the next
-    // Pothos plugin is introduced.
+    // list exists to prevent.
+    //
+    // 2026-07-31 (Task 4): re-tried an all-RegExp array —
+    // `[/^graphql/, /^@graphql-tools\//, /^@pothos\//]` — covering `graphql`
+    // itself this time (the earlier attempt above had dropped it, which was
+    // never a fair test). It fixed graphql-yoga's dual-instance hazard, but
+    // regressed 5 previously-passing tests elsewhere in this same workspace
+    // (graphql/prisma-node.spike.test.ts and
+    // graphql/schema/viewer/query/current.test.ts), each failing with the
+    // identical "Cannot use GraphQLSchema ... from another module or realm"
+    // error the regex was supposed to prevent — Vite's noExternal regex
+    // matching in this version is not equivalent to the enumerated string
+    // list even when it does get applied (unlike the mixed-array case, where
+    // it silently no-ops). So the regex approach is not a safe drop-in;
+    // discovered only by running the *full* suite, not just the GraphQL
+    // tests — a narrower check would have looked green. Enumerating each
+    // package by exact string name is the only variant that has been
+    // observed to work reliably across the whole suite, so it stays
+    // enumerated. Add the new dependency's exact package name here whenever
+    // something new imports `graphql` and hits this same hazard (most
+    // recently `graphql-yoga` and its default executor's `@graphql-tools/executor`,
+    // for Task 4's HTTP mount).
     noExternal: [
       'graphql',
       '@pothos/core',
@@ -42,6 +60,8 @@ export default defineConfig({
       '@pothos/plugin-scope-auth',
       '@pothos/plugin-errors',
       '@pothos/plugin-validation',
+      'graphql-yoga',
+      '@graphql-tools/executor',
     ],
   },
   test: {
