@@ -32,7 +32,21 @@ export type Harness = {
   /** A real user row created by the harness, for owner-scoped assertions. */
   aliceOwner: Owner;
   aliceViewer: Viewer;
+  /** A second real user, distinct from alice, for cross-tenant assertions. */
+  bobOwner: Owner;
+  bobViewer: Viewer;
   adminViewer: Viewer;
+  /**
+   * Inserts a minimal row owned by alice for the given `Node` type name and
+   * returns its real global ID, read back from the schema rather than
+   * hand-encoded — see node-scope.test.ts's generic cross-tenant suite, which
+   * this exists for.
+   *
+   * Throws for a type with no seeding branch below rather than returning a
+   * bogus id: a silent skip is how that suite would quietly stop covering a
+   * type someone adds later without also adding a branch here.
+   */
+  seedNodeFor: (typeName: string) => Promise<string>;
   cleanup: () => Promise<void>;
 };
 
@@ -87,9 +101,19 @@ export const createHarness = async (): Promise<Harness> => {
   const aliceId = (await user.getUserIdByUsername('alice'))!;
   fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
 
+  await user.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+  const bobId = (await user.getUserIdByUsername('bob'))!;
+  fs.mkdirSync(path.join(booksDir, 'bob'), { recursive: true });
+
   const aliceViewer: Viewer = {
     userId: aliceId,
     username: 'alice',
+    isAdmin: false,
+    mustChangePassword: false,
+  };
+  const bobViewer: Viewer = {
+    userId: bobId,
+    username: 'bob',
     isAdmin: false,
     mustChangePassword: false,
   };
@@ -116,6 +140,19 @@ export const createHarness = async (): Promise<Harness> => {
     });
   };
 
+  // Inserts a minimal row owned by alice for `typeName` and returns its real
+  // global ID, read back from the schema via `execute` rather than
+  // hand-encoded — see the Harness type's doc comment for why. No branch below
+  // exists yet: today's schema (see graphql/schema/index.ts) registers no
+  // prismaNode types, so there is nothing to seed. A later task adding a
+  // tenant-owned Node type must add a branch here, or this throws instead of
+  // silently under-covering node-scope.test.ts's generic suite.
+  const seedNodeFor = async (typeName: string): Promise<string> => {
+    throw new Error(
+      `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`
+    );
+  };
+
   // Every step is independent and best-effort: a failing $disconnect() must not
   // skip the directory removals, or a test run leaks temp dirs into /tmp.
   const cleanup = async (): Promise<void> => {
@@ -140,7 +177,10 @@ export const createHarness = async (): Promise<Harness> => {
     config,
     aliceOwner: { userId: aliceId, username: 'alice' },
     aliceViewer,
+    bobOwner: { userId: bobId, username: 'bob' },
+    bobViewer,
     adminViewer,
+    seedNodeFor,
     cleanup,
   };
 };
