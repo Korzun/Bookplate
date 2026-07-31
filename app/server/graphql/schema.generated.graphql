@@ -17,6 +17,7 @@ type Book implements Node {
   identifiers: [Identifier!]!
   mtime: DateTime!
   pageCount: Int!
+  progress: Progress
   publishDate: String!
   publisher: String!
   series: Series
@@ -42,6 +43,7 @@ type Identifier {
 type Library implements Node {
   book(id: String!): Book
   id: ID!
+  progress: [Progress!]!
   series: [Series!]!
   seriesByName(name: String!): Series
   seriesNextIndex(name: String!): Float!
@@ -50,6 +52,15 @@ type Library implements Node {
 
 interface Node {
   id: ID!
+}
+
+type Progress {
+  device: String!
+  deviceId: String!
+  document: String!
+  percentage: Float!
+  progress: String!
+  timestamp: Int!
 }
 
 type Query {
