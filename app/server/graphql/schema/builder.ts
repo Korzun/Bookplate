@@ -19,6 +19,11 @@ export const builder = new SchemaBuilder<{
     ownerOf: string;
   };
   DefaultInputFieldRequiredness: true;
+  // Pothos v4 defaults output fields to nullable unless told otherwise. Both
+  // the type param and the runtime option below are required — the type
+  // param governs typechecking, the option governs schema construction — so
+  // don't drop either one as "redundant".
+  DefaultFieldNullability: false;
   Scalars: {
     DateTime: { Input: Date; Output: Date };
   };
@@ -27,6 +32,7 @@ export const builder = new SchemaBuilder<{
   // authorization has to reject before any other plugin's resolver logic runs.
   plugins: [ScopeAuthPlugin, PrismaPlugin, RelayPlugin, ErrorsPlugin, ValidationPlugin],
   defaultInputFieldRequiredness: true,
+  defaultFieldNullability: false,
   scopeAuth: {
     authScopes: (context: Context) => ({
       authenticated: context.viewer !== null,
