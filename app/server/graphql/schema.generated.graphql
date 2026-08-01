@@ -69,6 +69,17 @@ type BookNotValidatedError implements UserError {
   validation: Validation
 }
 
+input BookRegenChaptersInput {
+  bookId: String!
+  userId: ID!
+}
+
+type BookRegenChaptersPayload {
+  book: Book!
+}
+
+union BookRegenChaptersResult = BookHashCollisionError | BookNotValidatedError | BookRegenChaptersPayload | InvalidInputError
+
 input BookUpdateMetadataInput {
   author: String
   authorSort: String
@@ -90,6 +101,17 @@ type BookUpdateMetadataPayload {
 }
 
 union BookUpdateMetadataResult = BookHashCollisionError | BookNotValidatedError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError
+
+input BookValidateInput {
+  bookId: String!
+  userId: ID!
+}
+
+type BookValidatePayload {
+  validation: Validation!
+}
+
+union BookValidateResult = BookValidatePayload | InvalidInputError
 
 type Config {
   libraryName: String!
@@ -289,9 +311,19 @@ type Mutation {
   bookDelete(input: BookDeleteInput!): BookDeleteResult
 
   """
+  Re-parses a book’s EPUB file to regenerate its chapter list. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookRegenChapters(input: BookRegenChaptersInput!): BookRegenChaptersResult
+
+  """
   Updates a book’s metadata fields. Cover uploads stay on `PATCH /api/books/:id/metadata` (binary boundary) — this mutation covers the JSON fields only. Resolves to null when the book does not exist for the resolved owner.
   """
   bookUpdateMetadata(input: BookUpdateMetadataInput!): BookUpdateMetadataResult
+
+  """
+  Re-validates a book against the EPUB checker and persists the report. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookValidate(input: BookValidateInput!): BookValidateResult
 
   """
   Clears one stored reading position. Resolves to null when the user has no stored position for that document.
