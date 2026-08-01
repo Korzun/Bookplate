@@ -15,6 +15,7 @@ type Book implements Node {
   hasCover: Boolean!
   id: ID!
   identifiers: [Identifier!]!
+  lineage: [LinkedDocument!]!
   mtime: DateTime!
   pageCount: Int!
   pendingFix: PendingFix
@@ -84,6 +85,13 @@ input LibraryFilter {
   seriesName: String
   status: LibraryEntryStatus
   subjects: [String!]
+}
+
+type LinkedDocument {
+  newId: String!
+  oldId: String!
+  timestamp: DateTime!
+  type: String!
 }
 
 interface Node {
