@@ -98,6 +98,57 @@ describe('PendingFix', () => {
     });
   });
 
+  // Without this link `Library.pendingFixes` is not navigable — a client
+  // would have to make a second round trip keyed on `bookId` just to render
+  // which book a fix belongs to.
+  it('links each summary to its book', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { pendingFixes { bookId book { bookId title } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const fixes = (
+      result.data as {
+        viewer: {
+          library: {
+            pendingFixes: { bookId: string; book: { bookId: string; title: string } }[];
+          };
+        };
+      }
+    ).viewer.library.pendingFixes;
+    expect(fixes[0]?.book).toEqual({ bookId: BOOK_ID, title: 'Needs Fixing' });
+    // The linked book must be the one the summary names, not merely *a* book.
+    expect(fixes[0]?.book.bookId).toBe(fixes[0]?.bookId);
+  });
+
+  // Book ids are content hashes, so bob can hold a book with the identical id.
+  // The link must resolve the OWNER's copy: the summary carries no userId of
+  // its own, so `Library.pendingFixes` attaches the owner it already holds.
+  it("links to the owner's copy when two users share a book id", async () => {
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.bobOwner.userId,
+        id: BOOK_ID,
+        title: "Bob's Copy",
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+
+    const result = await harness.execute(
+      '{ viewer { library { pendingFixes { book { title } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { pendingFixes: { book: { title: string } }[] } } })
+        .viewer.library.pendingFixes[0]?.book.title
+    ).toBe('Needs Fixing');
+  });
+
   it('is empty for another user', async () => {
     const result = await harness.execute('{ viewer { library { pendingFixes { fileName } } } }', {
       viewer: harness.bobViewer,

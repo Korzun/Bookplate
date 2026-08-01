@@ -45,7 +45,7 @@ afterEach(async () => {
 
 const ENTRIES = `{
   viewer { library { entries(first: 10) {
-    edges { node { __typename ... on Book { title } ... on Series { name } } }
+    edges { cursor node { __typename ... on Book { title } ... on Series { name } } }
     pageInfo { hasNextPage endCursor }
   } } }
 }`;
@@ -64,7 +64,7 @@ type EntriesData = {
   viewer: {
     library: {
       entries: {
-        edges: { node: Node }[];
+        edges: { cursor: string; node: Node }[];
         pageInfo: { hasNextPage: boolean; hasPreviousPage?: boolean; endCursor: string | null };
       };
     };
@@ -114,6 +114,33 @@ describe('Library.entries', () => {
     // The fixture has exactly two top-level entries (one series, one
     // standalone); after consuming both a page at a time, no more remain.
     expect(secondEntries.pageInfo.hasNextPage).toBe(false);
+  });
+
+  // The pagination test above walks `pageInfo.endCursor`, which is the
+  // store's own string forwarded untouched. The per-edge `cursor` values are
+  // the ones this resolver mints itself (`encodeCursor`), and nothing
+  // exercised them as an `after` value — so a mis-encoded edge cursor would
+  // have shipped with a full green suite.
+  it('accepts a per-edge cursor as `after`, not only pageInfo.endCursor', async () => {
+    const all = await harness.execute(ENTRIES, { viewer: harness.aliceViewer });
+    expect(all.errors).toBeUndefined();
+    const allEdges = (all.data as EntriesData).viewer.library.entries.edges;
+    expect(allEdges).toHaveLength(2);
+
+    const after = await harness.execute(ENTRIES_PAGE, {
+      viewer: harness.aliceViewer,
+      variables: { after: allEdges[0].cursor },
+    });
+    expect(after.errors).toBeUndefined();
+    const afterEntries = (after.data as EntriesData).viewer.library.entries;
+
+    // Resuming after the FIRST edge must yield exactly the SECOND entry —
+    // not the first again (cursor ignored) and not nothing (cursor
+    // mis-encoded so it sorts past the end of the list).
+    expect(afterEntries.edges).toHaveLength(1);
+    expect(afterEntries.edges[0].node).toEqual(allEdges[1].node);
+    expect(afterEntries.pageInfo.hasNextPage).toBe(false);
+    expect(afterEntries.pageInfo.hasPreviousPage).toBe(true);
   });
 
   it("does not let one viewer see another viewer's library entries", async () => {

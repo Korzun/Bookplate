@@ -115,4 +115,36 @@ describe('every Node type refuses cross-tenant reads', () => {
       );
     }
   );
+
+  // `Query.nodes` is the plural door onto the same node types. Today both
+  // fields route through the identical loader, so this is expected to pass by
+  // construction — but that is a property of the current implementation, not
+  // of the schema. The value of this suite is covering the node type nobody
+  // has written yet, and a future type guarded on the singular path but not
+  // the plural one would slip past the walk above entirely.
+  it.each(nodeTypes.map((t) => t.name))(
+    '%s is not readable by a non-owner via Query.nodes',
+    async (typeName) => {
+      const globalId = await harness.seedNodeFor(typeName);
+
+      const denied = await harness.execute(
+        'query ($id: ID!) { nodes(ids: [$id]) { __typename } }',
+        {
+          viewer: harness.bobViewer,
+          variables: { id: globalId },
+        }
+      );
+      expect((denied.data as { nodes: unknown[] } | null)?.nodes).toEqual([null]);
+
+      // The same positive control the singular walk carries, for the same
+      // reason: without it a null here proves nothing about a guard.
+      const allowed = await harness.execute(
+        'query ($id: ID!) { nodes(ids: [$id]) { __typename } }',
+        { viewer: harness.aliceViewer, variables: { id: globalId } }
+      );
+      expect((allowed.data as { nodes: unknown[] } | null)?.nodes).toEqual([
+        { __typename: typeName },
+      ]);
+    }
+  );
 });
