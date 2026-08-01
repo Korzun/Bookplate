@@ -60,7 +60,7 @@ export const model = builder.objectRef<PendingFixSummaryRow>('PendingFixSummary'
      * field lives in its value type's directory) because the
      * `PendingFixSummary` ref is local to this type — the two-type split this
      * file's comment explains means there is nothing for `book/` to import.
-     * The same judgement `book/lineage.ts` made: avoiding a defect, not
+     * The same judgement `Book.lineage` made: avoiding a defect, not
      * fragmenting for its own sake.
      */
     book: t.field({

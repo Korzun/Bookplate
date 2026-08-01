@@ -1,10 +1,10 @@
-import { createHarness, type Harness } from '../../../test-util';
+import { createHarness, type Harness } from '../../test-util';
 
-vi.mock('../../../../logger');
+vi.mock('../../../logger');
 
 /**
  * `LibraryFilter` is mapped onto `BookListFilters` field by field, six times,
- * in `get-all.ts`. Every field is optional and three of them are plain
+ * in `library/model.ts`. Every field is optional and three of them are plain
  * strings, so a swapped `author`/`seriesName` pair — adjacent lines, same
  * type — would produce plausible-looking wrong results and pass a suite that
  * only checked that filtering returns *something*.

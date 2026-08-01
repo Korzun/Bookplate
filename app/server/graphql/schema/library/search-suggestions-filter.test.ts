@@ -1,10 +1,10 @@
-import { createHarness, type Harness } from '../../../test-util';
+import { createHarness, type Harness } from '../../test-util';
 
-vi.mock('../../../../logger');
+vi.mock('../../../logger');
 
 /**
  * `SearchSuggestionsFilter`'s three fields are mapped one by one onto
- * `getSearchSuggestions`'s filter in `search-suggestions.ts`, and had no test
+ * `getSearchSuggestions`'s filter in `library/model.ts`, and had no test
  * at all — a swapped `author`/`seriesName` (adjacent lines, both optional
  * strings) would return plausible suggestions and pass everything.
  *
