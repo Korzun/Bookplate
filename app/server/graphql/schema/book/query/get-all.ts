@@ -1,3 +1,5 @@
+import { GraphQLError } from 'graphql';
+
 import type { BookListFilters, PageCursor } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library';
@@ -45,6 +47,26 @@ const decodeCursor = (after: string | null | undefined): PageCursor | null => {
 const encodeCursor = (cursor: PageCursor): string =>
   Buffer.from(JSON.stringify(cursor)).toString('base64');
 
+/**
+ * `t.connection` always adds `last`/`before` to the SDL (they're baked into
+ * Pothos's `DefaultConnectionArguments`), but `BookStore.listBooksPage` only
+ * ever accepts a single forward cursor + `take` — there is no keyset to walk
+ * backward from, and bolting one on would mean changing a store this whole
+ * plan has kept untouched. Silently ignoring `last`/`before` would mean a
+ * client asking for the trailing page instead gets the *leading* page with
+ * no error, which is worse than not offering backward pagination at all — so
+ * both are rejected loudly, in the same `extensions.code` +
+ * `extensions.http.status` shape `builder.ts`'s `unauthorizedError` uses, so
+ * a client can branch on `code` rather than parsing English.
+ */
+const rejectBackwardPagination = (args: { last?: number | null; before?: string | null }): void => {
+  if (args.last == null && args.before == null) return;
+  throw new GraphQLError(
+    'Library.entries only supports forward pagination — use `first`/`after`, not `last`/`before`.',
+    { extensions: { code: 'BACKWARD_PAGINATION_UNSUPPORTED', http: { status: 400 } } }
+  );
+};
+
 const libraryEntryStatus = builder.enumType('LibraryEntryStatus', {
   values: {
     NOT_STARTED: { value: 'not-started' },
@@ -79,6 +101,7 @@ builder.objectField(library, 'entries', (t) =>
       filter: t.arg({ type: libraryFilter, required: false }),
     },
     resolve: async (owner, args, context) => {
+      rejectBackwardPagination(args);
       const cursor = decodeCursor(args.after);
       // Same clamp REST applies to `take` (routes/ui.ts): default 20, 1..100.
       const take = Math.min(Math.max(args.first ?? 20, 1), 100);
