@@ -1,8 +1,8 @@
 import type { Book as BookRow, Series as SeriesRow } from '@prisma/client';
 
-import * as book from './book';
-import { builder } from './builder';
-import * as series from './series';
+import * as book from '../book';
+import { builder } from '../builder';
+import * as series from '../series';
 
 /**
  * The real Prisma row shapes `Library.entries` (book/query/get-all.ts)
@@ -26,7 +26,7 @@ export type LibraryEntryRow = BookRow | SeriesRow;
  */
 const isSeriesRow = (row: LibraryEntryRow): row is SeriesRow => 'sortKey' in row;
 
-export const libraryEntry = builder.unionType('LibraryEntry', {
+export const model = builder.unionType('LibraryEntry', {
   types: [book.model, series.model],
   resolveType: (row) => (isSeriesRow(row) ? 'Series' : 'Book'),
 });

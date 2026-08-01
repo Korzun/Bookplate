@@ -6,14 +6,8 @@ import {
   parseStringArray,
 } from '../../derive';
 import { builder } from '../builder';
+import { model as identifier } from '../identifier';
 import { findUnique } from './node-loader';
-
-const identifier = builder.objectRef<{ scheme: string; value: string }>('Identifier').implement({
-  fields: (t) => ({
-    scheme: t.exposeString('scheme'),
-    value: t.exposeString('value'),
-  }),
-});
 
 export const model = builder.prismaNode('Book', {
   id: { field: 'userId_id' },

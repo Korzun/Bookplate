@@ -1,12 +1,19 @@
 import './book';
 import './config';
 import './device';
+import './identifier';
 import './library';
+import './library-entry';
+import './linked-document';
 import './pending-fix';
+import './pending-fix-summary';
 import './progress';
 import './series';
+import './suggestion';
+import './suggestion-group';
 import './user';
 import './validation';
+import './validation-message';
 import './viewer';
 import { builder } from './builder';
 
