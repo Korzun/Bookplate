@@ -16,6 +16,7 @@ import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookHashCollisionError, BookStore } from '../services/book-store';
 import * as epubWriterModule from '../services/epub-writer';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
+import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
@@ -98,6 +99,7 @@ let bookStore: BookStore;
 let userStore: UserStore;
 let tokenStore: TokenStore;
 let validationStore: ValidationStore;
+let replaceStaging: ReplaceStaging;
 let app: express.Express;
 let dbPath: string;
 let aliceId: string;
@@ -270,6 +272,7 @@ beforeEach(async () => {
   await runMigrations(prisma, booksDir);
   bookStore = new BookStore(booksDir, prisma);
   validationStore = new ValidationStore(prisma);
+  replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
@@ -291,7 +294,8 @@ beforeEach(async () => {
       tokenStore,
       jwtSecret,
       scanJobStore,
-      validationStore
+      validationStore,
+      replaceStaging
     )
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
@@ -2169,6 +2173,49 @@ describe('POST /api/books/:id/validate', () => {
 
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/whatever/validate');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /api/books/replace-staging', () => {
+  it('stages the uploaded file and returns a stagedUploadId, keyed to the caller', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/replace-staging')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'Staged', author: 'A' }), 'staged.epub');
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.stagedUploadId).toBe('string');
+    expect(res.body.stagedUploadId.length).toBeGreaterThan(0);
+    // Actually resolvable back through the same shared instance, for alice
+    // specifically — proves it landed keyed to her, not unkeyed or global.
+    const staged = replaceStaging.resolve(res.body.stagedUploadId as string, aliceId);
+    expect(staged).not.toBeNull();
+    expect(staged?.originalName).toBe('staged.epub');
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app)
+      .post('/api/books/replace-staging')
+      .attach('file', makeEpub({ title: 'X' }), 'x.epub');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 with no file', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/replace-staging')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 for an admin session (no userId to stage against)', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/replace-staging')
+      .set(...bearer(token))
+      .attach('file', makeEpub({ title: 'X' }), 'x.epub');
     expect(res.status).toBe(401);
   });
 });
