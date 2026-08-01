@@ -56,12 +56,12 @@ export const model = builder.objectRef<PendingFixSummaryRow>('PendingFixSummary'
      * gone cannot exist. `findUniqueOrThrow` matches that — if the invariant
      * ever breaks, it surfaces rather than silently nulling.
      *
-     * Registered here rather than in `book/` (the convention being that a
-     * field lives in its value type's directory) because the
-     * `PendingFixSummary` ref is local to this type — the two-type split this
-     * file's comment explains means there is nothing for `book/` to import.
-     * The same judgement `Book.lineage` made: avoiding a defect, not
-     * fragmenting for its own sake.
+     * `t.field` over an explicit lookup, not `t.relation`: `PendingFixSummary`
+     * is an `objectRef` over the store's DTO (see this file's type comment
+     * above), not a `prismaObject` pinned to a row, so there is no Prisma
+     * relation for the plugin to traverse. The book is fetched by the
+     * `(userId, bookId)` pair the row carries — the `userId` half being
+     * exactly what `Library.pendingFixes` attaches for this field's benefit.
      */
     book: t.field({
       type: book.model,
