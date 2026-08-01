@@ -5,8 +5,8 @@ import { builder } from '../builder';
 import * as series from '../series';
 
 /**
- * The real Prisma row shapes `Library.entries` (book/query/get-all.ts)
- * resolves into — never a synthetic wrapper. `book/query/get-all.ts` always
+ * The real Prisma row shapes `Library.entries` (library/model.ts)
+ * resolves into — never a synthetic wrapper. `library/model.ts` always
  * fetches full, unselected `book`/`series` rows (its `context.prisma.book
  * .findMany` / `series.findMany` calls carry no `select`), so every column
  * either table has — including `sortKey`, which `isSeriesRow` below relies on

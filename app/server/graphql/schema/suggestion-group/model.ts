@@ -6,7 +6,7 @@ type SuggestionGroupRow = SearchSuggestionsResponse['groups'][number];
 
 /**
  * `type` is exposed as a plain string, not a Pothos enum (contrast
- * `LibraryEntryStatus`/`LibraryEntryKind` in `book/query/get-all.ts`). Those
+ * `LibraryEntryStatus`/`LibraryEntryKind` in `library/entries-filter.ts`). Those
  * two enums exist only as *input* filters today, so there's no precedent in
  * this codebase for what an enum's wire value looks like on *output*.
  * Standard GraphQL enum serialization returns the enum member's name (e.g.
