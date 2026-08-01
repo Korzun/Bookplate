@@ -34,7 +34,8 @@ describe('Library.searchSuggestions', () => {
     const groups = (
       result.data as { viewer: { library: { searchSuggestions: { type: string }[] } } }
     ).viewer.library.searchSuggestions;
-    expect(groups.some((g) => g.type === 'book')).toBe(true);
+    // Discriminating case for SuggestionType: stored 'book' must serialize as wire 'BOOK'.
+    expect(groups.some((g) => g.type === 'BOOK')).toBe(true);
   });
 
   it('returns no groups for a blank query', async () => {

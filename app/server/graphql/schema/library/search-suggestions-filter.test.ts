@@ -101,11 +101,13 @@ describe('SearchSuggestionsFilter', () => {
     // The baseline every case below must differ from.
     const { types, labels } = await suggest(undefined);
 
-    expect(types.sort()).toEqual(['author', 'book', 'series', 'subject']);
-    expect(labels('author')).toEqual(['Arthur Clarke']);
-    expect(labels('series')).toEqual(['Arcadia']);
-    expect(labels('book').sort()).toEqual(['Arcadia One', 'Arrival']);
-    expect(labels('subject').sort()).toEqual(['Archaeology', 'Astronomy']);
+    // Wire values are the SuggestionType enum's member names (SCREAMING_CASE),
+    // not the stored lowercase values.
+    expect(types.sort()).toEqual(['AUTHOR', 'BOOK', 'SERIES', 'SUBJECT']);
+    expect(labels('AUTHOR')).toEqual(['Arthur Clarke']);
+    expect(labels('SERIES')).toEqual(['Arcadia']);
+    expect(labels('BOOK').sort()).toEqual(['Arcadia One', 'Arrival']);
+    expect(labels('SUBJECT').sort()).toEqual(['Archaeology', 'Astronomy']);
   });
 
   it('author drops the author group and narrows the rest to that author', async () => {
@@ -113,30 +115,30 @@ describe('SearchSuggestionsFilter', () => {
 
     // The AUTHOR group, specifically — a swap with seriesName would drop the
     // series group instead and leave this one standing.
-    expect(types).not.toContain('author');
-    expect(types).toContain('series');
-    expect(labels('book')).toEqual(['Arcadia One']);
-    expect(labels('subject')).toEqual(['Archaeology']);
+    expect(types).not.toContain('AUTHOR');
+    expect(types).toContain('SERIES');
+    expect(labels('BOOK')).toEqual(['Arcadia One']);
+    expect(labels('SUBJECT')).toEqual(['Archaeology']);
   });
 
   it('seriesName drops the series group and narrows the rest to that series', async () => {
     const { types, labels } = await suggest({ seriesName: 'Arcadia' });
 
     // The SERIES group, specifically — the mirror image of the case above.
-    expect(types).not.toContain('series');
-    expect(types).toContain('author');
-    expect(labels('book')).toEqual(['Arcadia One']);
-    expect(labels('subject')).toEqual(['Archaeology']);
+    expect(types).not.toContain('SERIES');
+    expect(types).toContain('AUTHOR');
+    expect(labels('BOOK')).toEqual(['Arcadia One']);
+    expect(labels('SUBJECT')).toEqual(['Archaeology']);
   });
 
   it('does not accept an author as a seriesName, or vice versa', async () => {
     // The explicit anti-swap assertion: each value in the wrong field narrows
     // to nothing, so neither test above could pass on a crossed mapping.
     const asSeries = await suggest({ seriesName: 'Arthur Clarke' });
-    expect(asSeries.labels('book')).toEqual([]);
+    expect(asSeries.labels('BOOK')).toEqual([]);
 
     const asAuthor = await suggest({ author: 'Arcadia' });
-    expect(asAuthor.labels('book')).toEqual([]);
+    expect(asAuthor.labels('BOOK')).toEqual([]);
   });
 
   it('activeSubjects excludes already-selected subjects from the subject group', async () => {
@@ -144,9 +146,9 @@ describe('SearchSuggestionsFilter', () => {
 
     // Only the already-selected one goes; the other stays. A filter that was
     // dropped would return both, one that over-applied would return neither.
-    expect(labels('subject')).toEqual(['Astronomy']);
+    expect(labels('SUBJECT')).toEqual(['Astronomy']);
     // And it must not narrow the book group — activeSubjects is the store's
     // "exclude from suggestions" list, not a filter on entries.
-    expect(labels('book').sort()).toEqual(['Arcadia One', 'Arrival']);
+    expect(labels('BOOK').sort()).toEqual(['Arcadia One', 'Arrival']);
   });
 });

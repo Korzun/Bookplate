@@ -50,10 +50,11 @@ describe('Book.lineage', () => {
       }
     ).viewer.library.book.lineage;
     expect(lineage).toHaveLength(1);
+    // Discriminating case for LineageType: stored 'edit' must serialize as wire 'EDIT'.
     expect(lineage[0]).toEqual({
       oldId: '6'.repeat(32),
       newId: BOOK_ID,
-      type: 'edit',
+      type: 'EDIT',
       timestamp: new Date(1_700_000_000_000).toISOString(),
     });
   });
@@ -122,6 +123,6 @@ describe('Book.lineage', () => {
           viewer: { library: { book: { lineage: { oldId: string; type: string }[] } } };
         }
       ).viewer.library.book.lineage
-    ).toEqual([{ oldId: '9'.repeat(32), type: 'merge' }]);
+    ).toEqual([{ oldId: '9'.repeat(32), type: 'MERGE' }]);
   });
 });

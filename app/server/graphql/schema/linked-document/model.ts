@@ -1,5 +1,8 @@
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
+import { model as lineageType } from '../lineage-type';
+
+type LineageTypeValue = 'edit' | 'merge';
 
 /**
  * One id transition a book has been through — either an organic re-import
@@ -17,7 +20,10 @@ export const model = builder
     fields: (t) => ({
       oldId: t.exposeString('oldId'),
       newId: t.exposeString('newId'),
-      type: t.exposeString('type'),
+      type: t.field({
+        type: lineageType,
+        resolve: (entry) => entry.type as LineageTypeValue,
+      }),
       timestamp: t.field({ type: 'DateTime', resolve: (entry) => epochToDate(entry.timestamp) }),
     }),
   });

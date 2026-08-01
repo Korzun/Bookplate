@@ -37,6 +37,18 @@ describe('Viewer.devices', () => {
     expect(devices[0].name).toBe('Kobo Clara');
   });
 
+  it('serializes coverFit as the enum member name for a stored lowercase value', async () => {
+    const result = await harness.execute('{ viewer { devices { coverFit } } }', {
+      viewer: harness.adminViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    const device = (result.data as { viewer: { devices: { coverFit: string }[] } }).viewer
+      .devices[0];
+    // Discriminating case for CoverFit: stored 'contain' must serialize as wire 'CONTAIN'.
+    expect(device.coverFit).toBe('CONTAIN');
+  });
+
   it('exposes createdAt/updatedAt as DateTime', async () => {
     const result = await harness.execute('{ viewer { devices { createdAt updatedAt } } }', {
       viewer: harness.adminViewer,
