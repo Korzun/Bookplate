@@ -40,6 +40,21 @@ export const model = builder.prismaObject('PendingFix', {
 // callback of `prismaNode` itself, not through the plugin-agnostic
 // `builder.objectField` — see `series/model.ts`/`validation/model.ts` for the
 // same note.
+//
+// Deliberately a bare relation, with none of `getPendingFixes`'s
+// resolved/TTL cleanup applied (see `query/get-all.ts` and `book-store.ts`'s
+// `getPendingFixes`, which deletes a row once its proposals are empty, or
+// once an undo-only row is older than `PENDING_FIX_TTL_MS`). That cleanup is
+// a *side effect of reading the list*, not a property of the row itself, so
+// `Book.pendingFix` and `Library.pendingFixes`/REST's pending-fixes list can
+// disagree for a stale row: a fix applied 7+ days ago with no proposals left
+// is dropped (and deleted) the next time the list is read, but `Book.pendingFix`
+// keeps returning it until something reads the list. This is accepted, not
+// fixed here — replicating a read-triggered deletion inside a field resolver
+// would be worse behaviour than the inconsistency it removes, and duplicating
+// the expiry predicate in a second place trades a visible drift for an
+// invisible one (two copies that can silently diverge later). The visible
+// effect is narrow: a stale badge on one book until the list is next read.
 builder.prismaObjectField(book.model, 'pendingFix', (t) =>
   t.relation('pendingFix', { nullable: true })
 );
