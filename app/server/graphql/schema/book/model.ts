@@ -11,7 +11,14 @@ import { builder } from '../builder';
 import { model as identifier } from '../identifier';
 import { model as linkedDocument } from '../linked-document';
 import { model as pendingFix } from '../pending-fix';
-import { model as progress } from '../progress';
+// `../progress/model`, not `../progress`: the entity index also side-effect-
+// imports `progress/mutation/delete.ts`, which reaches `Library` — and
+// `Library` reaches back here. Importing the defining module rather than the
+// index keeps a model-to-model reference from dragging a whole entity's field
+// registrations into the cycle, which is Pothos's own advice for its
+// "Received undefined as a type ref" error. The rule generalises: model files
+// import `../<entity>/model`; only `schema/index.ts` imports entity indexes.
+import { model as progress } from '../progress/model';
 import { findUnique } from './node-loader';
 
 export const model = builder.prismaNode('Book', {

@@ -34,6 +34,20 @@ type Book implements Node {
   validation: Validation
 }
 
+"""A book with this id is already in the library."""
+type BookAlreadyExistsError implements UserError {
+  existingBook: Book!
+  message: String!
+}
+
+"""
+The edited content hashes to a book that already exists in this library.
+"""
+type BookHashCollisionError implements UserError {
+  collidingBook: Book!
+  message: String!
+}
+
 type Config {
   libraryName: String!
   maxConcurrentUploads: Int!
@@ -65,9 +79,66 @@ type Device {
   updatedAt: DateTime!
 }
 
+"""Another device already uses the slug this name derives to."""
+type DeviceSlugConflictError implements UserError {
+  message: String!
+  slug: String!
+}
+
+"""This document id is already part of another book’s lineage."""
+type DocumentAlreadyLinkedError implements UserError {
+  book: Book!
+  documentId: String!
+  message: String!
+}
+
+"""
+This document id is an existing book — link through that book’s lineage instead.
+"""
+type DocumentIsBookError implements UserError {
+  book: Book!
+  message: String!
+}
+
+"""
+The EPUB failed validation at the configured threshold and was rejected.
+"""
+type EpubValidationError implements UserError {
+  message: String!
+  messages: [EpubValidationMessage!]!
+}
+
+"""
+An epubcheck finding from a validation that rejected the file, so no stored ValidationMessage row exists for it.
+"""
+type EpubValidationMessage {
+  code: String!
+  column: Int
+  line: Int
+  message: String!
+  path: String
+  severity: ValidationSeverity!
+}
+
 type Identifier {
   scheme: String!
   value: String!
+}
+
+"""One rejected input value: where it was, and what was wrong with it."""
+type InputIssue {
+  message: String!
+
+  """
+  Path to the offending value within the mutation input, outermost first.
+  """
+  path: [String!]!
+}
+
+"""The mutation input did not pass validation; nothing was changed."""
+type InvalidInputError implements UserError {
+  issues: [InputIssue!]!
+  message: String!
 }
 
 """
@@ -163,6 +234,13 @@ type MetadataFix {
   toChips: [String!]
 }
 
+type Mutation {
+  """
+  Clears one stored reading position. Resolves to null when the user has no stored position for that document.
+  """
+  progressDelete(input: ProgressDeleteInput!): ProgressDeleteResult
+}
+
 interface Node {
   id: ID!
 }
@@ -202,6 +280,18 @@ type Progress {
   timestamp: DateTime!
 }
 
+input ProgressDeleteInput {
+  document: String!
+  userId: ID!
+}
+
+type ProgressDeletePayload {
+  deletedDocument: String!
+  library: Library!
+}
+
+union ProgressDeleteResult = InvalidInputError | ProgressDeletePayload
+
 type Query {
   config: Config!
   node(id: ID!): Node
@@ -214,6 +304,11 @@ input SearchSuggestionsFilter {
   activeSubjects: [String!]
   author: String
   seriesName: String
+}
+
+"""A book cannot be linked to its own id."""
+type SelfLinkError implements UserError {
+  message: String!
 }
 
 type Series implements Node {
@@ -274,6 +369,13 @@ type User implements Node {
   mustChangePassword: Boolean!
   progressCount: Int!
   username: String!
+}
+
+"""
+A failure a client is expected to render and act on, as opposed to an unexpected server fault, which arrives in the response `errors` array.
+"""
+interface UserError {
+  message: String!
 }
 
 type Validation {
