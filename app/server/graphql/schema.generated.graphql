@@ -47,6 +47,7 @@ type Library implements Node {
   id: ID!
   pendingFixes: [PendingFixSummary!]!
   progress: [Progress!]!
+  searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
   seriesNextIndex(name: String!): Float!
@@ -127,6 +128,12 @@ type Query {
   viewer: Viewer!
 }
 
+input SearchSuggestionsFilter {
+  activeSubjects: [String!]
+  author: String
+  seriesName: String
+}
+
 type Series implements Node {
   author: String!
   bookCount: Int!
@@ -137,6 +144,18 @@ type Series implements Node {
   subjects: [String!]!
   totalPages: Int!
   totalSize: Int!
+}
+
+type Suggestion {
+  label: String!
+  matchLength: Int!
+  matchStart: Int!
+  value: String!
+}
+
+type SuggestionGroup {
+  items: [Suggestion!]!
+  type: String!
 }
 
 type User implements Node {
