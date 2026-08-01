@@ -10,6 +10,7 @@ import {
   type GraphQLObjectType,
 } from 'graphql';
 
+import { createChapterSpineMapLoader } from '../chapter-spine-map-loader';
 import type { Context } from '../context';
 import { createOwnerLoader } from '../owner';
 import { createPendingFixLoader } from '../pending-fix-loader';
@@ -123,6 +124,7 @@ describe('root type authorization', () => {
       loadOwner: createOwnerLoader(harness.prisma),
       loadProgress: createProgressLoader(harness.prisma),
       loadPendingFix: createPendingFixLoader(harness.prisma),
+      loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
     };
 
     const result = await execute({
