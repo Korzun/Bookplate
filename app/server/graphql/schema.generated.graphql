@@ -43,6 +43,7 @@ type Identifier {
 
 type Library implements Node {
   book(id: String!): Book
+  entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
   id: ID!
   pendingFixes: [PendingFixSummary!]!
   progress: [Progress!]!
@@ -52,8 +53,47 @@ type Library implements Node {
   user: User!
 }
 
+type LibraryEntriesConnection {
+  edges: [LibraryEntriesConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type LibraryEntriesConnectionEdge {
+  cursor: String!
+  node: LibraryEntry!
+}
+
+union LibraryEntry = Book | Series
+
+enum LibraryEntryKind {
+  SERIES
+  STANDALONE
+}
+
+enum LibraryEntryStatus {
+  COMPLETED
+  IN_PROGRESS
+  NOT_STARTED
+}
+
+input LibraryFilter {
+  author: String
+  entryType: LibraryEntryKind
+  query: String
+  seriesName: String
+  status: LibraryEntryStatus
+  subjects: [String!]
+}
+
 interface Node {
   id: ID!
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
 }
 
 type PendingFix {
