@@ -37,7 +37,7 @@ export type KnownStoreError =
   | DeviceSlugConflictError
   | EpubValidationError;
 
-export type MutationResult<T> = { ok: T } | { err: KnownStoreError };
+export type MutationResult<T, E extends KnownStoreError = KnownStoreError> = { ok: T } | { err: E };
 
 export const isKnownStoreError = (value: unknown): value is KnownStoreError =>
   KNOWN_STORE_ERROR_CLASSES.some((errorClass) => value instanceof errorClass);
@@ -57,12 +57,28 @@ export const isKnownStoreError = (value: unknown): value is KnownStoreError =>
  * a resolver are to throw (forbidden) or to mislabel it as some error the
  * mutation's result union does happen to contain (worse). `progress/mutation/
  * delete.ts` is the current example and says so at its call site.
+ *
+ * `E` (default `KnownStoreError`, the full seven) lets a call site narrow to
+ * exactly the subset a particular store path can actually throw, e.g.
+ * `toResult<Book, BookHashCollisionError | EpubValidationError>(...)`. That
+ * narrowing is what makes the canonical discharge shape (progress.md's ledger)
+ * type-check without a `never`/`as` escape hatch on its final branch: once `E`
+ * is a closed two-member union, TypeScript narrows `outcome.err` to the second
+ * member by elimination after a single `instanceof` check on the first,
+ * exactly the way it narrows any other closed union. Getting `E` wrong (wider
+ * than what the wrapped call can throw) does not fail at compile time — this
+ * is caller-declared, not inferred from `run` — so it is only as trustworthy
+ * as the trace behind it; see each call site's comment for that trace. This
+ * is unchanged, additive typing: every existing call (`toResult(fn)`, `E`
+ * defaulted to all seven) still compiles and behaves identically.
  */
-export const toResult = async <T>(run: () => Promise<T>): Promise<MutationResult<T>> => {
+export const toResult = async <T, E extends KnownStoreError = KnownStoreError>(
+  run: () => Promise<T>
+): Promise<MutationResult<T, E>> => {
   try {
     return { ok: await run() };
   } catch (error) {
-    if (isKnownStoreError(error)) return { err: error };
+    if (isKnownStoreError(error)) return { err: error as E };
     throw error;
   }
 };

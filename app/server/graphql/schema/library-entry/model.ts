@@ -1,6 +1,13 @@
 import type { Book as BookRow, Series as SeriesRow } from '@prisma/client';
 
-import * as book from '../book';
+// `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
+// `book/mutation/*.ts` (task 2), which reaches `Library` (for the
+// `BookUpdateMetadataPayload`/`BookDeletePayload` `library` field) — and
+// `Library` reaches `LibraryEntry` (this file) for its `entries` connection.
+// Importing the defining module rather than the index keeps that reference
+// from dragging the whole `book` entity's mutation registrations into the
+// cycle. See `book/model.ts`'s note on the identical `progress` situation.
+import * as book from '../book/model';
 import { builder } from '../builder';
 import * as series from '../series';
 
