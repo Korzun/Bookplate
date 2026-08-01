@@ -1,5 +1,4 @@
 import { deriveCurrentChapter, epochSecondsToDate } from '../../derive';
-import * as book from '../book';
 import { builder } from '../builder';
 
 /**
@@ -64,41 +63,3 @@ export const model = builder.prismaObject('Progress', {
     }),
   }),
 });
-
-/**
- * Book -> Progress is not a Prisma relation (`Progress` has no FK to `Book`;
- * it is keyed by KOReader `document` hash, which is *normally* a book's own
- * id). It is looked up by `document = book.id` directly, without consulting
- * `getBookLineage`/`BookIdHistory`, because the store already maintains that
- * invariant: both `reimportBook` (id changes from re-parsing an edited EPUB)
- * and `linkDocument` (manual document merges) migrate any existing progress
- * row onto the book's new/target id inside the same transaction that writes
- * the lineage row, deleting the old-id row unconditionally
- * (see `book-store.ts`'s `reimportBook` and `linkDocument`). KOReader sync
- * writes go through the same normalization (`resolveBookId` before
- * `saveProgress`, in `routes/kosync.ts`). So a live book's progress is never
- * left stranded under a stale id — there is nothing for a lineage-aware
- * lookup to find that this simple lookup would miss, and doing the lookup
- * anyway would just be an extra query on every request.
- *
- * Resolved through `context.loadProgress` rather than a direct
- * `prisma.progress.findUnique`: a page of N books each selecting `progress`
- * measured as N separate `findUnique` calls (see `progress-loader.ts`), so
- * this goes through the request-scoped batching loader instead, the same way
- * `Library.user`/`Viewer.library` go through `context.loadOwner`.
- *
- * `t.field`, not `t.prismaField`: the loader's `findMany` fetches whole rows
- * for the batch regardless of which `Progress` sub-fields the query actually
- * selected — there is no per-field `query.select` to merge into a batched
- * call the way `t.prismaField` merges one into a single-row lookup, and
- * `progress` has no relations to avoid over-fetching, so trading that
- * optimization away for a single request-wide query is deliberate, not an
- * oversight.
- */
-builder.objectField(book.model, 'progress', (t) =>
-  t.field({
-    type: model,
-    nullable: true,
-    resolve: (parent, _args, context) => context.loadProgress(parent.userId, parent.id),
-  })
-);

@@ -1,5 +1,4 @@
 import { parseStringArray } from '../../derive';
-import * as book from '../book';
 import { builder } from '../builder';
 import { findUnique } from './node-loader';
 
@@ -20,10 +19,3 @@ export const model = builder.prismaNode('Series', {
     }),
   }),
 });
-
-// `Book.series` is the relation, not the denormalized `series` string column —
-// that column stays in the database for OPDS and the import pipeline.
-// `t.relation` (a prisma-select-aware field) is only available through
-// `prismaObjectField`/the `fields` callback of `prismaNode` itself, not through
-// the plugin-agnostic `builder.objectField` `book/query/get.ts` uses elsewhere.
-builder.prismaObjectField(book.model, 'series', (t) => t.relation('seriesRel', { nullable: true }));
