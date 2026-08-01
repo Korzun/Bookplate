@@ -10,7 +10,6 @@ import './linked-document';
 import './metadata-fix';
 import './pending-fix';
 import './pending-fix-state';
-import './pending-fix-summary';
 import './progress';
 import './series';
 import './suggestion';

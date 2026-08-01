@@ -53,10 +53,10 @@ describe('Book', () => {
     expect(book.chapterNames).toEqual(['One', 'Two', 'Three']);
   });
 
-  // The raw content hash, alongside the Relay global id. Four sibling fields
-  // carry this same value (Progress.document, PendingFixSummary.bookId,
-  // LinkedDocument.oldId/newId) and Library.book(id:) takes it as an argument,
-  // so without it a client holding a Book cannot join to any of them.
+  // The raw content hash, alongside the Relay global id. Three sibling fields
+  // carry this same value (Progress.document, LinkedDocument.oldId/newId) and
+  // Library.book(id:) takes it as an argument, so without it a client holding
+  // a Book cannot join to any of them.
   it('exposes the raw content-hash id distinctly from the global id', async () => {
     const result = await harness.execute(BOOK, { viewer: harness.aliceViewer });
     const book = (result.data as { viewer: { library: { book: Record<string, unknown> } } }).viewer

@@ -80,7 +80,7 @@ type Library implements Node {
   book(id: String!): Book
   entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
   id: ID!
-  pendingFixes: [PendingFixSummary!]!
+  pendingFixes: [PendingFix!]!
   progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
@@ -167,6 +167,7 @@ type PageInfo {
 }
 
 type PendingFix {
+  book: Book!
   createdAt: DateTime!
   fileName: String!
   fileSize: Int!
@@ -179,14 +180,6 @@ type PendingFixState {
   autoFixes: [MetadataFix!]!
   proposals: [MetadataFix!]!
   undo: UndoSnapshot
-}
-
-type PendingFixSummary {
-  book: Book!
-  bookId: String!
-  fileName: String!
-  fileSize: Int!
-  state: String!
 }
 
 type Progress {
