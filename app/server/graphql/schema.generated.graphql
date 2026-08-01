@@ -85,7 +85,7 @@ type Library implements Node {
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
-  seriesNextIndex(name: String!): Float!
+  seriesNextIndex(name: String!): Int!
   subjects: [String!]!
   user: User!
 }
@@ -188,7 +188,9 @@ type Progress {
   deviceId: String!
   document: String!
   percentage: Float!
-  progress: String!
+
+  """Reader position as a KOReader CFI/xpointer string."""
+  position: String!
   timestamp: DateTime!
 }
 
@@ -209,13 +211,23 @@ input SearchSuggestionsFilter {
 type Series implements Node {
   author: String!
   bookCount: Int!
-  books: [Book!]!
+  books(after: String, before: String, first: Int, last: Int): SeriesBooksConnection!
   id: ID!
   name: String!
   publisher: String!
   subjects: [String!]!
   totalPages: Int!
   totalSize: Int!
+}
+
+type SeriesBooksConnection {
+  edges: [SeriesBooksConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type SeriesBooksConnectionEdge {
+  cursor: String!
+  node: Book!
 }
 
 type Suggestion {
@@ -257,7 +269,7 @@ type User implements Node {
 }
 
 type Validation {
-  messages: [ValidationMessage!]!
+  messages(after: String, before: String, first: Int, last: Int): ValidationMessagesConnection!
   threshold: ValidationThreshold!
   valid: Boolean!
   validatedAt: DateTime!
@@ -271,6 +283,16 @@ type ValidationMessage {
   path: String
   seq: Int!
   severity: ValidationSeverity!
+}
+
+type ValidationMessagesConnection {
+  edges: [ValidationMessagesConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type ValidationMessagesConnectionEdge {
+  cursor: String!
+  node: ValidationMessage!
 }
 
 enum ValidationSeverity {

@@ -21,6 +21,18 @@ export const model = builder.prismaObject('Validation', {
       type: 'DateTime',
       resolve: (validation) => epochToDate(validation.validatedAt),
     }),
-    messages: t.relation('messages', { query: { orderBy: { seq: 'asc' } } }),
+    /**
+     * A connection — validation output for a broken EPUB is the one list in
+     * this schema with realistic hundreds-of-rows growth (cleanup spec,
+     * §"5. Connections for growable lists"). Same backward-pagination
+     * asymmetry as `Series.books`: unlike `Library.entries`/`Library.progress`
+     * (forward-only store cursor, see `rejectBackwardPagination`'s doc
+     * comment in `pagination.ts`), `t.relatedConnection` wraps a genuine
+     * Prisma relation, so `last`/`before` genuinely work here.
+     */
+    messages: t.relatedConnection('messages', {
+      cursor: 'userId_bookId_seq',
+      query: { orderBy: { seq: 'asc' } },
+    }),
   }),
 });

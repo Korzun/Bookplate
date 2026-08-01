@@ -10,7 +10,9 @@ import { builder } from '../builder';
 export const model = builder.prismaObject('Progress', {
   fields: (t) => ({
     document: t.exposeString('document'),
-    progress: t.exposeString('progress'),
+    position: t.exposeString('progress', {
+      description: 'Reader position as a KOReader CFI/xpointer string.',
+    }),
     percentage: t.exposeFloat('percentage'),
     device: t.exposeString('device'),
     deviceId: t.exposeString('deviceId'),

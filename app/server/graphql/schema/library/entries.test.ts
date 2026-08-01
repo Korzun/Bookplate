@@ -183,13 +183,13 @@ describe('Library.entries', () => {
   // The parent `Book`/`Series` rows this connection resolves into are hand-
   // fetched via context.prisma.book.findMany()/series.findMany() outside the
   // Prisma plugin's own query planning, so a nested relation off a union
-  // member (Series.books, itself a `t.relation`) takes the plugin's per-row
-  // fallback path rather than a single planned join. Exercise it for real
-  // rather than assuming the documented fallback behaviour holds here.
+  // member (Series.books, itself a `t.relatedConnection`) takes the plugin's
+  // per-row fallback path rather than a single planned join. Exercise it for
+  // real rather than assuming the documented fallback behaviour holds here.
   it('resolves a nested relation (Series.books) through the union', async () => {
     const result = await harness.execute(
       `{ viewer { library { entries(first: 10) {
-        edges { node { __typename ... on Series { name books { title } } } }
+        edges { node { __typename ... on Series { name books { edges { node { title } } } } } }
       } } } }`,
       { viewer: harness.aliceViewer }
     );
@@ -200,13 +200,19 @@ describe('Library.entries', () => {
         viewer: {
           library: {
             entries: {
-              edges: { node: { __typename: string; name?: string; books?: { title: string }[] } }[];
+              edges: {
+                node: {
+                  __typename: string;
+                  name?: string;
+                  books?: { edges: { node: { title: string } }[] };
+                };
+              }[];
             };
           };
         };
       }
     ).viewer.library.entries.edges;
     const seriesEdge = edges.find((e) => e.node.__typename === 'Series');
-    expect(seriesEdge?.node.books).toEqual([{ title: 'In Series' }]);
+    expect(seriesEdge?.node.books?.edges.map((e) => e.node)).toEqual([{ title: 'In Series' }]);
   });
 });

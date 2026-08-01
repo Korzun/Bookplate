@@ -189,6 +189,10 @@ builder.node(model, {
       },
     }),
 
+    // Deliberately a plain list, not a connection: bounded by the user's shelf
+    // count, and the library UI renders it whole — `entries` already serves
+    // the paginated case. See the cleanup spec, §"5. Connections for growable
+    // lists".
     series: t.prismaField({
       type: [series],
       resolve: (query, owner, _args, context) =>
@@ -210,7 +214,7 @@ builder.node(model, {
         }),
     }),
 
-    seriesNextIndex: t.float({
+    seriesNextIndex: t.int({
       args: { name: t.arg.string({ required: true }) },
       resolve: (owner, args, context) => context.stores.book.getSeriesNextIndex(owner, args.name),
     }),
