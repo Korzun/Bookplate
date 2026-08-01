@@ -1,5 +1,6 @@
 import type { Context } from '../../context';
 import { builder } from '../builder';
+import * as library from '../library';
 import { isOwnerOrAdmin, NO_MATCH_USER_ID } from '../node-scope';
 
 // `Query.node(id:)` is a second door into every registered `Node` type, and it
@@ -39,5 +40,17 @@ export const model = builder.prismaNode('User', {
     // `mustChangePassword`). Same count, same source column, kept on the
     // Prisma row this type is pinned to.
     progressCount: t.relationCount('progresses'),
+
+    // `ownerOf`'s denial branch has no reachable case today: `Query.user` is
+    // admin-gated and `Query.node` for `User` is `isOwnerOrAdmin`-gated, so the
+    // only `User` object a non-admin viewer can ever hold here is their own.
+    // This scope is defense-in-depth, not dead code — it becomes load-bearing
+    // the moment a non-admin-reachable path to another user's `User` object
+    // exists.
+    library: t.field({
+      type: library.model,
+      authScopes: (parent) => ({ ownerOf: parent.id }),
+      resolve: (parent) => ({ userId: parent.id, username: parent.username }),
+    }),
   }),
 });
