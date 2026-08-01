@@ -1,3 +1,4 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
 import { z } from 'zod';
 
 import type { Owner } from '../../../../types';
@@ -26,47 +27,39 @@ const input = builder.inputType('BookDeleteInput', {
 
 type BookDeletePayloadShape = {
   readonly __typename: 'BookDeletePayload';
+  readonly deletedId: string;
   readonly deletedBookId: string;
   readonly owner: Owner;
 };
 
 /**
- * `deletedBookId: String!`, not `deletedId: ID!` — a deliberate reading of
- * the ledger's "deletes of Node-backed entities return `deletedId: ID!`"
- * rule, not a silent substitution:
+ * Carries BOTH `deletedId: ID!` and `deletedBookId: String!`.
  *
- * `Book` *is* a `Node`, and its global ID (`encodeGlobalID('Book',
- * JSON.stringify([owner.userId, id]))`) is mechanically computable from
- * `owner` + the deleted row's raw id even after the row is gone — nothing
- * about "the row no longer exists" actually prevents minting a `deletedId:
- * ID!` the way it would for a type whose id isn't a pure function of already-
- * known values. So the rule's literal form *could* be honoured here.
+ * **Corrected after review** (task-2 review, Adjudication 1 — overturned the
+ * original `deletedBookId`-only shape): `Book` *is* a `Node`, and the
+ * ledger's "deletes of Node-backed entities return `deletedId: ID!`" rule
+ * names its one exception as non-`Node` types (`progressDelete`'s
+ * `deletedDocument`, because `Progress` isn't one). `Book` doesn't qualify
+ * for that exception, and the spec's own reason for the rule —
+ * `deletedId: ID!` is "what Houdini's list-removal directives need" — depends
+ * on the type's *configured cache key*, which for `Book` is `id`, not the raw
+ * hash. A raw-hash-only payload could not drive that directive at all.
  *
- * This mutation deliberately does not, because the raw content-hash id is
- * what every sibling in this schema already keys deletion-adjacent state on:
- * `Progress.document`, `LinkedDocument.oldId`/`newId`, `Library.book(id:)`'s
- * argument, and `Book.bookId` itself all carry this exact value, in this
- * exact (non-global-ID) form — see `book/model.ts`'s doc comment on
- * `bookId` for why a client cannot derive one from the other. REST parity
- * points the same way: `DELETE /api/books/:id` takes and this mutation's
- * brief specifies this raw hash, and Houdini's own list-removal directives
- * (spec 2) need it to evict `Library.progress`/lineage rows keyed the same
- * way, not a `Book`-typed global ID those rows never carried.
- *
- * The real tension this leaves unresolved: a *global* `deletedId: ID!` is
- * what Houdini's own normalized-cache node eviction keys on for free (a
- * `Book` node already in the cache, evicted by its own id, no bespoke
- * client-side mapping) — this schema's other Node-backed deletes, whenever
- * they land, get that for free. `deletedBookId` does not; a client must
- * still know how to turn this raw hash into whatever locally-cached `Book`
- * node it names, the same bespoke work REST-parity clients already do today.
- * Flagged here rather than resolved silently: if a future task needs
- * automatic node eviction more than it needs this hash for non-cache
- * purposes, that tension is the reason to revisit this, not evidence this
- * choice was an oversight.
+ * The original tradeoff (REST/sibling-field parity vs. the binding rule) was
+ * false: nothing forces a choice. `deletedId` is computed the same way the
+ * schema itself would compute it for a still-live row —
+ * `encodeGlobalID('Book', JSON.stringify([owner.userId, id]))`, matching
+ * `node-scope.ts`'s `parseCompoundId` doc comment on Pothos's own compound-id
+ * serializer — and costs nothing extra: no query, since both halves of the
+ * compound key are already in hand. `deletedBookId` stays alongside it for
+ * every reason the original comment gave: `Progress.document`,
+ * `LinkedDocument.oldId`/`newId`, `Library.book(id:)`'s argument, and
+ * `Book.bookId` itself all key on the raw hash, and REST parity does too
+ * (`DELETE /api/books/:id`).
  */
 const payload = builder.objectRef<BookDeletePayloadShape>('BookDeletePayload').implement({
   fields: (t) => ({
+    deletedId: t.exposeID('deletedId'),
     deletedBookId: t.exposeString('deletedBookId'),
     library: t.field({ type: library, resolve: (result) => result.owner }),
   }),
@@ -120,12 +113,12 @@ builder.mutationField('bookDelete', (t) =>
       'Deletes a book from the library — file and DB row both. Resolves to ' +
       'null when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: String(args.input.userId.id) }),
+    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
     resolve: async (_parent, args, context) => {
       const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
@@ -134,6 +127,7 @@ builder.mutationField('bookDelete', (t) =>
 
       return {
         __typename: 'BookDeletePayload' as const,
+        deletedId: encodeGlobalID('Book', JSON.stringify([owner.userId, deleted.id])),
         deletedBookId: deleted.id,
         owner,
       };

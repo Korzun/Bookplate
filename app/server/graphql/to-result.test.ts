@@ -7,7 +7,12 @@ import {
 } from '../services/book-store';
 import { DeviceSlugConflictError } from '../services/device-store';
 import { EpubValidationError } from '../services/epub-validator';
-import { isKnownStoreError, toResult, type KnownStoreError } from './to-result';
+import {
+  assertUnreachableStoreError,
+  isKnownStoreError,
+  toResult,
+  type KnownStoreError,
+} from './to-result';
 
 /**
  * The seven store error classes the spec names as "known", each constructed
@@ -83,6 +88,55 @@ describe('toResult', () => {
         throw impostor;
       })
     ).rejects.toBe(impostor);
+  });
+
+  describe('expected (task-2 review, Important-3)', () => {
+    it('converts a thrown error into an err value when it is in the expected list', async () => {
+      const error = new BookHashCollisionError('c'.repeat(32));
+
+      const result = await toResult(async () => {
+        throw error;
+      }, [BookHashCollisionError, EpubValidationError]);
+
+      expect(result).toEqual({ err: error });
+    });
+
+    it('re-throws a genuinely known store error that is NOT in the caller-declared expected list, instead of silently mislabelling it', async () => {
+      // This is the exact failure mode Important-3 flags: a mis-traced call
+      // site declares a narrower `expected` than what its wrapped call can
+      // really throw. `BookAlreadyExistsError` is a real, `isKnownStoreError`-
+      // recognised class — but it is not in this call's declared subset, so it
+      // must rethrow (reaching yoga's masking, same as a REST 500 fallback)
+      // rather than being coerced into `{ err: ... }` and rendered as
+      // whichever of the two declared types a discharge's last branch
+      // happens to return.
+      const error = new BookAlreadyExistsError('e'.repeat(32));
+      expect(isKnownStoreError(error)).toBe(true); // sanity: it IS a known class
+
+      await expect(
+        toResult(async () => {
+          throw error;
+        }, [BookHashCollisionError, EpubValidationError])
+      ).rejects.toBe(error);
+    });
+
+    it('defaults to all seven known classes when expected is omitted (unchanged behaviour)', async () => {
+      const error = new DeviceSlugConflictError();
+
+      const result = await toResult(async () => {
+        throw error;
+      });
+
+      expect(result).toEqual({ err: error });
+    });
+  });
+});
+
+describe('assertUnreachableStoreError', () => {
+  it('throws — it exists to fail loudly, never to be reached by a live resolver path', () => {
+    expect(() => assertUnreachableStoreError(undefined as never)).toThrow(
+      'Unreachable store error'
+    );
   });
 });
 

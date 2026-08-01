@@ -56,7 +56,12 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight types the spec enumerates', () => {
+  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError', () => {
+    // `BookNotValidatedError` is a ninth member, added by task 2 (review
+    // Important-2) for a REST precondition (`book.valid !== true`) the spec's
+    // original eight-type error model does not mention — scoped to
+    // `BookUpdateMetadataResult` only, not a change to the spec's core seven
+    // plus `InvalidInputError`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -64,6 +69,7 @@ describe('UserError', () => {
     ).toEqual([
       'BookAlreadyExistsError',
       'BookHashCollisionError',
+      'BookNotValidatedError',
       'DeviceSlugConflictError',
       'DocumentAlreadyLinkedError',
       'DocumentIsBookError',
