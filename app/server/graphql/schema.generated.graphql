@@ -11,6 +11,7 @@ type Book implements Node {
   chapterSpineMap: [Int!]!
   coverUrl: String!
   description: String!
+  deviceEditionCount: Int!
   downloadUrl: String!
   hasCover: Boolean!
   id: ID!
@@ -56,6 +57,7 @@ type Identifier {
 }
 
 type Library implements Node {
+  authors: [String!]!
   book(id: String!): Book
   entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
   id: ID!
@@ -65,6 +67,7 @@ type Library implements Node {
   series: [Series!]!
   seriesByName(name: String!): Series
   seriesNextIndex(name: String!): Float!
+  subjects: [String!]!
   user: User!
 }
 
@@ -183,6 +186,7 @@ type User implements Node {
   id: ID!
   library: Library!
   mustChangePassword: Boolean!
+  progressCount: Int!
   username: String!
 }
 
@@ -208,5 +212,8 @@ type Viewer {
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
+  syncPassword: String
+  user: User
   username: String!
+  users: [User!]!
 }

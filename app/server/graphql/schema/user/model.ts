@@ -24,5 +24,20 @@ export const model = builder.prismaNode('User', {
   fields: (t) => ({
     username: t.exposeString('username'),
     mustChangePassword: t.exposeBoolean('mustChangePassword'),
+
+    // The "N books synced" figure the admin user list renders
+    // (`app/client/src/component/user-row/index.tsx`), and the second half of
+    // what `GET /api/users` returns.
+    //
+    // `UserStore.listUsers()` produces it as `_count.progresses` on a
+    // `prisma.user.findMany`. `t.relationCount` compiles to that exact same
+    // `_count` select, merged into whichever query already fetched this row,
+    // rather than a per-user `progress.count()` — so `Viewer.users` stays one
+    // query however many users exist. Deliberately NOT resolved from
+    // `listUsers()`'s `{ username, progressCount }` DTO: that DTO carries no
+    // `id`, so it cannot back a `User` node (no global ID, no `library`, no
+    // `mustChangePassword`). Same count, same source column, kept on the
+    // Prisma row this type is pinned to.
+    progressCount: t.relationCount('progresses'),
   }),
 });

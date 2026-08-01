@@ -35,5 +35,26 @@ builder.node(model, {
       resolve: (owner, _args, context) =>
         context.prisma.user.findUniqueOrThrow({ where: { id: owner.userId } }),
     }),
+
+    // `subjects` and `authors` are the two fields the spec assigns to
+    // `library/model.ts` itself ("it holds only the fields that belong to no
+    // other entity"). Both go through `BookStore` rather than
+    // `context.prisma.book` directly: `getSubjects` is a raw `json_each` query
+    // over the JSON-string `subjects` column that Prisma cannot express, and
+    // `getAuthors` is a `groupBy` with the same empty-value filtering. Reading
+    // them through the store is what keeps this path and OPDS's
+    // (`routes/opds.ts` calls `getAuthors`) from disagreeing about what a
+    // distinct subject or author is.
+    //
+    // Both take `owner` straight off the parent — ownership is decided once,
+    // where the Owner is minted, and never re-derived here.
+    subjects: t.field({
+      type: ['String'],
+      resolve: (owner, _args, context) => context.stores.book.getSubjects(owner),
+    }),
+    authors: t.field({
+      type: ['String'],
+      resolve: (owner, _args, context) => context.stores.book.getAuthors(owner),
+    }),
   }),
 });
