@@ -53,6 +53,10 @@ const MUTATION = `
         message
         collidingBook { bookId title }
       }
+      ... on BookNotValidatedError {
+        message
+        validation { valid messages(first: 10) { edges { node { code severity message } } } }
+      }
       ... on EpubValidationError {
         message
         messages { code severity message }
@@ -111,6 +115,22 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(result.data?.bookUpdateMetadata).toBeNull();
   });
 
+  it('returns InvalidInputError for an empty bookId (consistency with bookDelete, review Minor-2)', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: '', title: 'X' },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookUpdateMetadata).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
+    });
+  });
+
   it('returns InvalidInputError for a malformed publishDate and changes nothing', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
 
@@ -157,9 +177,13 @@ describe('Mutation.bookUpdateMetadata', () => {
       },
     });
 
+    // Victim-row assertion first (review Minor-9): a probe that merely
+    // weakens the auth guard stops at the first failing assertion, so this
+    // must run before the error-code check or the "byte-unchanged" half of
+    // this test's name would never actually execute under that probe.
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     expect(result.data?.bookUpdateMetadata ?? null).toBeNull();
-    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
   });
 
   it('lets an admin edit a named user’s book (content assertion, not just no-error)', async () => {
@@ -183,7 +207,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('After Admin Edit');
   });
 
-  it('returns EpubValidationError (with the book’s stored messages) and changes nothing when the book was never validated', async () => {
+  it('returns BookNotValidatedError with a null validation and changes nothing when the book was never validated', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
       valid: null,
     });
@@ -198,14 +222,17 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookUpdateMetadata as {
       __typename: string;
-      messages: unknown[];
+      validation: unknown;
     };
-    expect(data.__typename).toBe('EpubValidationError');
-    expect(data.messages).toEqual([]);
+    // Distinguishes "never validated" from "failed validation" (review
+    // Important-2): a null `validation` says truthfully that no validation
+    // has ever run — not a fabricated "failed" outcome with no findings.
+    expect(data.__typename).toBe('BookNotValidatedError');
+    expect(data.validation).toBeNull();
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Never Validated');
   });
 
-  it('returns EpubValidationError populated from the stored failure when the book already failed validation', async () => {
+  it('returns BookNotValidatedError populated with the stored failure when the book already failed validation', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Failed Validation', {
       valid: false,
     });
@@ -226,13 +253,48 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookUpdateMetadata as {
       __typename: string;
-      messages: { code: string }[];
+      validation: { valid: boolean; messages: { edges: { node: { code: string } }[] } };
     };
-    expect(data.__typename).toBe('EpubValidationError');
-    expect(data.messages).toEqual([
-      { code: 'RSC-005', severity: 'ERROR', message: 'broken reference' },
+    expect(data.__typename).toBe('BookNotValidatedError');
+    expect(data.validation.valid).toBe(false);
+    expect(data.validation.messages.edges).toEqual([
+      { node: { code: 'RSC-005', severity: 'ERROR', message: 'broken reference' } },
     ]);
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Failed Validation');
+  });
+
+  it('BookNotValidatedError and post-edit EpubValidationError are distinct typenames (REST’s 409 vs 422)', async () => {
+    // Same mutation, same title, two different pre-conditions — proves the
+    // union does not collapse REST's two distinct failure responses into one
+    // indistinguishable member (review Important-2's core complaint about the
+    // original `EpubValidationError` reuse).
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
+      valid: null,
+    });
+    await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Post-Edit Failure');
+    (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new EpubValidationError(
+        [{ id: 'RSC-005', severity: 'FATAL', message: 'unparseable' }],
+        { ...EMPTY_COUNTS, FATAL: 1 },
+        'ERROR'
+      )
+    );
+
+    const preEdit = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'X' } },
+    });
+    const postEdit = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: OTHER_BOOK_ID, title: 'Y' } },
+    });
+
+    expect((preEdit.data?.bookUpdateMetadata as { __typename: string } | null)?.__typename).toBe(
+      'BookNotValidatedError'
+    );
+    expect((postEdit.data?.bookUpdateMetadata as { __typename: string } | null)?.__typename).toBe(
+      'EpubValidationError'
+    );
   });
 
   it('returns BookHashCollisionError, owner-scoped to the target user, when the edited book’s new fingerprint collides', async () => {

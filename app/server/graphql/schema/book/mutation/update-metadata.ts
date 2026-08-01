@@ -5,14 +5,18 @@ import {
   type ApplyEpubChangesDeps,
 } from '../../../../services/apply-epub-changes';
 import { BookHashCollisionError } from '../../../../services/book-store';
-import { EpubValidationError, type Severity } from '../../../../services/epub-validator';
+import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
 import type { Book, Owner } from '../../../../types';
-import { toResult } from '../../../to-result';
+import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import {
   bookHashCollisionError,
   model as bookHashCollisionErrorModel,
 } from '../../book-hash-collision-error/model';
+import {
+  bookNotValidatedError,
+  model as bookNotValidatedErrorModel,
+} from '../../book-not-validated-error/model';
 import { builder } from '../../builder';
 import {
   epubValidationError,
@@ -33,14 +37,6 @@ import { model as bookType } from '../model';
  * the two in sync by hand if the REST rule ever changes.
  */
 const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
-
-const EMPTY_SEVERITY_COUNTS: Record<Severity, number> = {
-  FATAL: 0,
-  ERROR: 0,
-  WARNING: 0,
-  INFO: 0,
-  USAGE: 0,
-};
 
 const identifierInput = builder.inputType('IdentifierInput', {
   fields: (t) => ({
@@ -86,18 +82,27 @@ const input = builder.inputType('BookUpdateMetadataInput', {
 });
 
 /**
- * Only `publishDate` gets a rule, mirroring REST exactly: `routes/ui.ts`
- * trims it and, if non-empty, checks `ISO_8601_RE`; every other field is
- * copied through with no validation at all (`body.title`, `body.author`, …
- * are assigned as-is). `seriesIndex`'s REST check (`parseFloat` + `NaN`
- * rejection) and `identifiers`/`subjects`' REST check (`JSON.parse` success)
- * have no GraphQL analogue to mirror: this input declares them as `Float` and
+ * `publishDate` mirrors REST exactly: `routes/ui.ts` trims it and, if
+ * non-empty, checks `ISO_8601_RE`; every other field is copied through with
+ * no validation at all (`body.title`, `body.author`, … are assigned as-is).
+ * `seriesIndex`'s REST check (`parseFloat` + `NaN` rejection) and
+ * `identifiers`/`subjects`' REST check (`JSON.parse` success) have no
+ * GraphQL analogue to mirror: this input declares them as `Float` and
  * structured list types, so a value that would have failed REST's ad hoc
  * string parsing is rejected by GraphQL's own argument coercion before the
  * resolver runs at all, and a value that reaches the resolver is already the
  * correctly-typed shape REST had to parse strings into.
+ *
+ * `bookId.min(1)` is NOT a REST mirror (REST's `:id` path segment cannot be
+ * empty; a matching `PATCH /api/books//metadata` would 404 at the router
+ * before ever reaching this handler) — it exists for consistency with
+ * `bookDelete`'s identical rule on the same field (review Minor-2): both
+ * mutations now reject an empty `bookId` the same way, rather than one
+ * returning `InvalidInputError` and the other silently treating it as
+ * "book not found".
  */
 const inputSchema = z.object({
+  bookId: z.string().min(1, 'bookId must not be empty'),
   publishDate: z
     .string()
     .refine((value) => {
@@ -152,7 +157,13 @@ const payload = builder
  * `progress/mutation/delete.ts`'s identical note.
  */
 const result = builder.unionType('BookUpdateMetadataResult', {
-  types: [payload, bookHashCollisionErrorModel, epubValidationErrorModel, invalidInputErrorModel],
+  types: [
+    payload,
+    bookHashCollisionErrorModel,
+    bookNotValidatedErrorModel,
+    epubValidationErrorModel,
+    invalidInputErrorModel,
+  ],
 });
 
 /**
@@ -164,6 +175,13 @@ const result = builder.unionType('BookUpdateMetadataResult', {
  * that sends an explicit `null` is treated the same as omission for the same
  * reason REST has no way to express "clear this field" at all: form fields
  * are never `null`, only present-or-absent.
+ *
+ * `publishDate` is deliberately NOT one of `fields`' keys — it is trimmed and
+ * validated separately (`inputSchema`) and passed as its own second argument.
+ * If it is ever added back to the `fields` object type, remove it from here
+ * or it will be handled twice: once untrimmed (via `fields.publishDate`) and
+ * once trimmed (via the second argument), silently favouring whichever
+ * assignment runs last.
  */
 const buildChanges = (
   fields: {
@@ -207,6 +225,14 @@ const buildChanges = (
  * required input field, so GraphQL rejects that request before this resolver
  * (or even `authScopes`) ever runs.
  *
+ * Input is parsed before owner/book resolution (matching `progressDelete`'s
+ * order, not REST's — `routes/ui.ts:1113-1149` checks the 404, then the 409,
+ * then `publishDate`). This does not leak anything an attacker couldn't
+ * already learn: a malformed `publishDate` yields the same `InvalidInputError`
+ * whether or not the book exists or is valid, so the response is identical
+ * either way, and the ordering is arguably safer than REST's (a malformed
+ * request never touches the store at all).
+ *
  * Two REST preconditions run before `applyEpubChanges` is ever called, and
  * both are mirrored here as plain early returns rather than typed union
  * members from the store path (they are not store throws; REST checks them
@@ -221,20 +247,12 @@ const buildChanges = (
  *    task's brief do not mention this precondition at all — it was only
  *    discovered by reading the full route, per the task's escalation
  *    instruction ("mirror REST's exact behaviour and code, and flag it").
- *    Rather than inventing a new `UserError` member (which the task's SDL-diff
- *    constraint — these 2 mutations' Input/Payload/Result types, nothing
- *    else — rules out), this reuses `EpubValidationError`, sourced from the
- *    book's *already-stored* `Validation` row (`context.stores.validation.
- *    getValidation`): the reason `book.valid !== true` is true at all is
- *    always either that row saying so, or (`valid === null`) no row existing
- *    because the book was never validated, in which case `messages` falls
- *    back to `[]` and the union member still carries a truthful top-level
- *    `message` (`EpubValidationError`'s own, computed from the messages it
- *    was given). This is a deliberate, semantically-motivated reuse — "the
- *    EPUB fails validation" is true whether that was discovered just now
- *    (the post-edit path below) or previously (this path) — not a silent
- *    conflation, and it is called out here for review rather than assumed
- *    correct.
+ *    Mirrored as `BookNotValidatedError` (`book-not-validated-error/model.ts`),
+ *    a dedicated union member — not a reuse of `EpubValidationError` (task-2
+ *    review, Adjudication 2, overturned the original reuse: it fabricated a
+ *    "validation failed" message for a book that was simply never validated,
+ *    and collapsed REST's 409/422 distinction into one union member a client
+ *    cannot discriminate).
  *
  * `applyEpubChanges`'s store path can throw exactly two of the seven known
  * store errors, traced from `services/apply-epub-changes.ts`: `assertValidEpub`
@@ -243,13 +261,19 @@ const buildChanges = (
  * content's new fingerprint collides with another book already in the
  * library. (`replaceEpubBytes` also has one path that throws a plain `Error`
  * — "Re-import returned no book after replace" — deliberately NOT one of the
- * seven; it is not wrapped by any `instanceof` check here and is left to
- * `toResult`'s rethrow, reaching yoga's masking as an unexpected failure, same
- * as REST's fallback 500 for anything `applyEpubChanges` throws that isn't one
- * of its two explicitly-caught classes.) `toResult`'s explicit `E` type
- * argument narrows to exactly those two, which is what lets the discharge
- * below type-check without a `never`/`as` fallback — see `to-result.ts`'s
- * updated doc comment.
+ * seven; `toResult`'s `expected` list below does not include it, so it
+ * rethrows, reaching yoga's masking as an unexpected failure, same as REST's
+ * fallback 500 for anything `applyEpubChanges` throws that isn't one of its
+ * two explicitly-caught classes.) `expected` is what makes that boundary
+ * runtime-enforced rather than merely typed — see `to-result.ts`'s doc
+ * comment.
+ *
+ * A successful edit rewrites the EPUB, so the book's content-hash id changes
+ * (partial MD5 of the new bytes) — the returned `Book.bookId` is the *new*
+ * id, not `input.bookId`. The old id's `Book` node is now dangling; a client
+ * must evict it itself (Houdini phase) rather than expect it updated in
+ * place. Written down here because `update-metadata.test.ts`'s admin-edit
+ * test is otherwise the only place this behaviour is visible.
  */
 builder.mutationField('bookUpdateMetadata', (t) =>
   t.field({
@@ -261,27 +285,23 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       'covers the JSON fields only. Resolves to null when the book does not ' +
       'exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: String(args.input.userId.id) }),
+    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ publishDate: args.input.publishDate ?? undefined });
+      const parsed = inputSchema.safeParse({
+        bookId: args.input.bookId,
+        publishDate: args.input.publishDate ?? undefined,
+      });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, args.input.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
       if (targetBook === null) return null;
 
       if (targetBook.valid !== true) {
-        const stored = await context.stores.validation.getValidation(owner, targetBook.id);
-        return epubValidationError(
-          new EpubValidationError(
-            stored?.messages ?? [],
-            stored?.counts ?? EMPTY_SEVERITY_COUNTS,
-            stored?.threshold ?? context.config.validationThreshold
-          )
-        );
+        return bookNotValidatedError(owner, targetBook.id);
       }
 
       const changes = buildChanges(args.input, parsed.data.publishDate?.trim());
@@ -292,14 +312,18 @@ builder.mutationField('bookUpdateMetadata', (t) =>
         validationThreshold: context.config.validationThreshold,
       };
 
-      const outcome = await toResult<Book, BookHashCollisionError | EpubValidationError>(() =>
-        applyEpubChanges(deps, owner, targetBook, changes)
+      const outcome = await toResult<Book, BookHashCollisionError | EpubValidationError>(
+        () => applyEpubChanges(deps, owner, targetBook, changes),
+        [BookHashCollisionError, EpubValidationError]
       );
       if ('err' in outcome) {
         if (outcome.err instanceof BookHashCollisionError) {
           return bookHashCollisionError(outcome.err, owner);
         }
-        return epubValidationError(outcome.err);
+        if (outcome.err instanceof EpubValidationError) {
+          return epubValidationError(outcome.err);
+        }
+        return assertUnreachableStoreError(outcome.err);
       }
 
       return {

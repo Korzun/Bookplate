@@ -47,6 +47,7 @@ input BookDeleteInput {
 
 type BookDeletePayload {
   deletedBookId: String!
+  deletedId: ID!
   library: Library!
 }
 
@@ -58,6 +59,14 @@ The edited content hashes to a book that already exists in this library.
 type BookHashCollisionError implements UserError {
   collidingBook: Book!
   message: String!
+}
+
+"""
+The book has not passed validation (or has never been validated), so its metadata cannot be edited until that is resolved.
+"""
+type BookNotValidatedError implements UserError {
+  message: String!
+  validation: Validation
 }
 
 input BookUpdateMetadataInput {
@@ -80,7 +89,7 @@ type BookUpdateMetadataPayload {
   book: Book!
 }
 
-union BookUpdateMetadataResult = BookHashCollisionError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError
+union BookUpdateMetadataResult = BookHashCollisionError | BookNotValidatedError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError
 
 type Config {
   libraryName: String!

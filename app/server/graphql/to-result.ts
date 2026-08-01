@@ -58,27 +58,58 @@ export const isKnownStoreError = (value: unknown): value is KnownStoreError =>
  * mutation's result union does happen to contain (worse). `progress/mutation/
  * delete.ts` is the current example and says so at its call site.
  *
- * `E` (default `KnownStoreError`, the full seven) lets a call site narrow to
- * exactly the subset a particular store path can actually throw, e.g.
- * `toResult<Book, BookHashCollisionError | EpubValidationError>(...)`. That
- * narrowing is what makes the canonical discharge shape (progress.md's ledger)
- * type-check without a `never`/`as` escape hatch on its final branch: once `E`
- * is a closed two-member union, TypeScript narrows `outcome.err` to the second
- * member by elimination after a single `instanceof` check on the first,
- * exactly the way it narrows any other closed union. Getting `E` wrong (wider
- * than what the wrapped call can throw) does not fail at compile time — this
- * is caller-declared, not inferred from `run` — so it is only as trustworthy
- * as the trace behind it; see each call site's comment for that trace. This
- * is unchanged, additive typing: every existing call (`toResult(fn)`, `E`
- * defaulted to all seven) still compiles and behaves identically.
+ * `E` and `expected` let a call site narrow to exactly the subset a particular
+ * store path can actually throw, e.g. `toResult(fn, [BookHashCollisionError,
+ * EpubValidationError])`. Two things make this trustworthy rather than merely
+ * asserted:
+ *
+ *  1. `expected` is checked at RUNTIME (`expected.some((c) => error instanceof
+ *     c)`), not just typed — a call site that mis-traces its subset (declares
+ *     fewer classes than the wrapped call can really throw) makes the
+ *     untraced error rethrow, landing in yoga's masking exactly like an
+ *     unexpected failure, instead of being silently cast to `E` and rendered
+ *     as whichever declared error the discharge's last branch happens to
+ *     return. Task 2's review (Important-3) is why this replaced the earlier
+ *     `error as E` unchecked cast.
+ *  2. `E` being a closed union (once `expected`'s element type is inferred
+ *     from an array literal) lets TypeScript narrow `outcome.err` all the way
+ *     to `never` after one `instanceof` check per member — which is what
+ *     makes `assertUnreachableStoreError` below compile only when the
+ *     discharge is genuinely exhaustive over `E`.
+ *
+ * Omitting `expected` defaults to all seven (`KNOWN_STORE_ERROR_CLASSES`),
+ * `E` defaults to the full `KnownStoreError` union, and every existing call
+ * (there were none before task 2) keeps compiling and behaving identically —
+ * this is additive.
  */
 export const toResult = async <T, E extends KnownStoreError = KnownStoreError>(
-  run: () => Promise<T>
+  run: () => Promise<T>,
+  expected: readonly (abstract new (...args: never[]) => E)[] = KNOWN_STORE_ERROR_CLASSES as never
 ): Promise<MutationResult<T, E>> => {
   try {
     return { ok: await run() };
   } catch (error) {
-    if (isKnownStoreError(error)) return { err: error as E };
+    if (expected.some((errorClass) => error instanceof errorClass)) return { err: error as E };
     throw error;
   }
 };
+
+/**
+ * The final statement of an exhaustive `err` discharge — one `instanceof`
+ * branch per member of `E`, each returning, then this. Only compiles when
+ * TypeScript has narrowed `outcome.err` to `never` at the call site, i.e. when
+ * every member of the `expected` list passed to `toResult` was actually
+ * checked. Add a member to a call site's `expected` list without adding its
+ * `instanceof` branch to the discharge, and this line stops compiling —
+ * a forgotten branch is a build failure, not a mislabelled runtime value.
+ *
+ * The `throw` here is deliberately not inside a resolver's `resolve` body
+ * (satisfying "resolver bodies: zero try/catch/throw" literally, not just
+ * behaviourally): this function is reachable only if `toResult`'s own runtime
+ * `expected` check above already failed to prevent it, i.e. only as a defense
+ * against a bug in `to-result.ts` or a call site passing an `expected` list
+ * that doesn't match its own discharge — never as a live resolver path.
+ */
+export function assertUnreachableStoreError(error: never): never {
+  throw new Error(`Unreachable store error: ${String(error)}`);
+}

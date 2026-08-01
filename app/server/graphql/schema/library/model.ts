@@ -6,10 +6,13 @@ import {
 } from '../../../utils/progress-pagination';
 import { isLivePendingFix, parsePendingFixState } from '../../derive';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
-// `book/mutation/*.ts` (task 2), which reaches `Library` (this file, for the
-// `BookUpdateMetadataPayload`/`BookDeletePayload` `library` field) — and
-// `Library` reaches back here for `book`. Same reasoning as the `progress`
-// import two lines down.
+// `book/mutation/*.ts` (task 2). `book/mutation/delete.ts` reaches `Library`
+// (this file, for `BookDeletePayload.library`) — and `Library` reaches back
+// here for `book`. (Corrected after review — task-2 review Minor-4: this was
+// previously misattributed to `BookUpdateMetadataPayload`/`update-metadata.ts`,
+// which has no `library` field and never imports this file at all; the real
+// edge is `delete.ts` only.) Same reasoning as the `progress` import two
+// lines down.
 import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry';
