@@ -66,10 +66,20 @@ describe('Book.validation', () => {
     expect(result.errors).toBeUndefined();
     const validation = (
       result.data as {
-        viewer: { library: { book: { validation: { valid: boolean; messages: unknown[] } } } };
+        viewer: {
+          library: {
+            book: { validation: { valid: boolean; threshold: string; messages: unknown[] } };
+          };
+        };
       }
     ).viewer.library.book.validation;
     expect(validation.valid).toBe(false);
+    // Round-trip for ValidationThreshold: stored 'ERROR' -> wire 'ERROR'. Names
+    // and stored values coincide for this enum, so this cannot discriminate a
+    // missed retype — see ValidationSeverity's messages assertion below for the
+    // same non-discriminating shape, and CoverFit/SuggestionType/LineageType
+    // elsewhere for the genuinely discriminating cases.
+    expect(validation.threshold).toBe('ERROR');
     // Seeded with seq 1 inserted before seq 0, so this documents the intended
     // seq order. It does NOT by itself prove the resolver's `orderBy` clause
     // is load-bearing — see the next test and its comment for why, and for

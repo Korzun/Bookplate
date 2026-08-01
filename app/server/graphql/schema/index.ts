@@ -1,9 +1,11 @@
 import './book';
 import './config';
+import './cover-fit';
 import './device';
 import './identifier';
 import './library';
 import './library-entry';
+import './lineage-type';
 import './linked-document';
 import './pending-fix';
 import './pending-fix-summary';
@@ -11,9 +13,12 @@ import './progress';
 import './series';
 import './suggestion';
 import './suggestion-group';
+import './suggestion-type';
 import './user';
 import './validation';
 import './validation-message';
+import './validation-severity';
+import './validation-threshold';
 import './viewer';
 import { builder } from './builder';
 
