@@ -1,9 +1,8 @@
+import type { Device } from '../../../types';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as coverFit } from '../cover-fit';
 import { model as user } from '../user';
-
-type CoverFitValue = 'contain' | 'cover' | 'fill' | 'smart';
 
 /**
  * Deliberately a prismaObject, not a prismaNode — unlike `Series`/`User`/`Book`,
@@ -45,7 +44,7 @@ export const model = builder.prismaObject('Device', {
     coverHeight: t.exposeInt('coverHeight', { nullable: true }),
     coverFit: t.field({
       type: coverFit,
-      resolve: (device) => device.coverFit as CoverFitValue,
+      resolve: (device) => device.coverFit as Device['coverFit'],
     }),
     bwCover: t.exposeBoolean('bwCover'),
     simplify: t.exposeBoolean('simplify'),
