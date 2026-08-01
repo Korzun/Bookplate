@@ -37,6 +37,19 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 """
 scalar DateTime
 
+type Device {
+  bwCover: Boolean!
+  coverFit: String!
+  coverHeight: Int
+  coverWidth: Int
+  createdAt: DateTime!
+  id: ID!
+  name: String!
+  simplify: Boolean!
+  slug: String!
+  updatedAt: DateTime!
+}
+
 type Identifier {
   scheme: String!
   value: String!
@@ -191,6 +204,7 @@ type ValidationMessage {
 }
 
 type Viewer {
+  devices: [Device!]!
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
