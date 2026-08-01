@@ -35,6 +35,44 @@ afterEach(async () => {
 });
 
 describe('Progress', () => {
+  it('exposes the reader position under its new name, `position`', async () => {
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${BOOK_ID}") { progress { position } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { book: { progress: { position: string } } } } }).viewer
+        .library.book.progress.position
+    ).toBe('/body/DocFragment[3]');
+  });
+
+  it('rejects the old field name — `progress` no longer exists on the Progress type', async () => {
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${BOOK_ID}") { progress { progress } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.data).toBeUndefined();
+    expect(result.errors?.length).toBeGreaterThan(0);
+    expect(result.errors?.[0]?.message).toMatch(/progress/i);
+  });
+
+  it('describes `position` as a KOReader CFI/xpointer string', async () => {
+    const result = await harness.execute(
+      '{ __type(name: "Progress") { fields { name description } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const fields = (result.data as { __type: { fields: { name: string; description: string }[] } })
+      .__type.fields;
+    expect(fields.find((f) => f.name === 'position')?.description).toBe(
+      'Reader position as a KOReader CFI/xpointer string.'
+    );
+  });
+
   it('lists the library progress records', async () => {
     const result = await harness.execute(
       '{ viewer { library { progress(first: 10) { edges { node { document percentage device } } } } } }',
