@@ -49,10 +49,20 @@ afterEach(async () => {
   await harness.cleanup();
 });
 
+// The fields selected on every MetadataFix in the assertions below, so a
+// fix's structured reading can be compared field-by-field against `PROPOSAL`
+// without a client-side JSON.parse.
+const METADATA_FIX_FIELDS = 'field kind from to reason fromChips toChips changes';
+
 describe('PendingFix', () => {
   it('exposes a pending fix on its book', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { pendingFix { fileName fileSize state } } } } }`,
+      `{ viewer { library { book(id: "${BOOK_ID}") { pendingFix { fileName fileSize state {
+        autoFixes { ${METADATA_FIX_FIELDS} }
+        appliedFixes { ${METADATA_FIX_FIELDS} }
+        proposals { ${METADATA_FIX_FIELDS} }
+        undo { kind proposals { ${METADATA_FIX_FIELDS} } appliedFixes { ${METADATA_FIX_FIELDS} } }
+      } } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -60,14 +70,38 @@ describe('PendingFix', () => {
     const pendingFix = (
       result.data as {
         viewer: {
-          library: { book: { pendingFix: { fileName: string; fileSize: number; state: string } } };
+          library: {
+            book: {
+              pendingFix: {
+                fileName: string;
+                fileSize: number;
+                state: {
+                  autoFixes: unknown[];
+                  appliedFixes: unknown[];
+                  proposals: unknown[];
+                  undo: unknown;
+                };
+              };
+            };
+          };
         };
       }
     ).viewer.library.book.pendingFix;
     expect(pendingFix).toMatchObject({ fileName: 'needs-fixing.epub', fileSize: 2048 });
-    // `Book.pendingFix.state` is the raw stored column, verbatim — parsing it
-    // yields exactly what was written, no defaulting/normalization applied.
-    expect(JSON.parse(pendingFix.state)).toEqual({ proposals: [PROPOSAL] });
+    // OLD (before this task): `Book.pendingFix.state` was the raw stored
+    // JSON string, and the test parsed it client-side:
+    //   expect(JSON.parse(pendingFix.state)).toEqual({ proposals: [PROPOSAL] });
+    // NEW: `state` is the typed `PendingFixState`, selected field by field —
+    // the same seeded `PROPOSAL` still pins the reading, now with the
+    // parser's defaults (`autoFixes`/`appliedFixes`: `[]`, `undo`: `null`,
+    // `reason`/`fromChips`/`toChips`: `null`) made explicit rather than
+    // implicit in an unparsed string.
+    expect(pendingFix.state).toEqual({
+      autoFixes: [],
+      appliedFixes: [],
+      proposals: [{ ...PROPOSAL, reason: null, fromChips: null, toChips: null }],
+      undo: null,
+    });
   });
 
   it('lists the library pending fixes', async () => {

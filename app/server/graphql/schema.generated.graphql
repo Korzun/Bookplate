@@ -70,6 +70,11 @@ type Identifier {
   value: String!
 }
 
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
 type Library implements Node {
   authors: [String!]!
   book(id: String!): Book
@@ -139,6 +144,17 @@ type LinkedDocument {
   type: LineageType!
 }
 
+type MetadataFix {
+  changes: JSON!
+  field: String!
+  from: String!
+  fromChips: [String!]
+  kind: String!
+  reason: String
+  to: String
+  toChips: [String!]
+}
+
 interface Node {
   id: ID!
 }
@@ -154,8 +170,15 @@ type PendingFix {
   createdAt: DateTime!
   fileName: String!
   fileSize: Int!
-  state: String!
+  state: PendingFixState!
   updatedAt: DateTime!
+}
+
+type PendingFixState {
+  appliedFixes: [MetadataFix!]!
+  autoFixes: [MetadataFix!]!
+  proposals: [MetadataFix!]!
+  undo: UndoSnapshot
 }
 
 type PendingFixSummary {
@@ -219,6 +242,17 @@ enum SuggestionType {
   BOOK
   SERIES
   SUBJECT
+}
+
+enum UndoKind {
+  APPLY
+  DISMISS
+}
+
+type UndoSnapshot {
+  appliedFixes: [MetadataFix!]!
+  kind: UndoKind!
+  proposals: [MetadataFix!]!
 }
 
 type User implements Node {

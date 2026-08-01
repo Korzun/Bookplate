@@ -5,6 +5,7 @@ import {
   parseIdentifiers,
   parseNullableStringArray,
   parseNumberArray,
+  parsePendingFixState,
   parseStringArray,
 } from './derive';
 
@@ -134,5 +135,87 @@ describe('deriveCurrentChapter', () => {
   // than clamping to chapter 1.
   it('is null when the position precedes every chapter start', () => {
     expect(deriveCurrentChapter(cfi(0), [3, 6])).toBeNull();
+  });
+});
+
+describe('parsePendingFixState', () => {
+  const EMPTY = { autoFixes: [], appliedFixes: [], proposals: [], undo: null };
+
+  const FIX = {
+    field: 'title',
+    kind: 'replace',
+    from: 'Old Title',
+    to: 'New Title',
+    changes: { title: 'New Title' },
+  };
+
+  it('parses a well-formed state round-trip', () => {
+    const json = JSON.stringify({
+      autoFixes: [FIX],
+      appliedFixes: [],
+      proposals: [FIX],
+      undo: { kind: 'apply', proposals: [FIX], appliedFixes: [] },
+    });
+    expect(parsePendingFixState(json)).toEqual({
+      autoFixes: [FIX],
+      appliedFixes: [],
+      proposals: [FIX],
+      undo: { kind: 'apply', proposals: [FIX], appliedFixes: [] },
+    });
+  });
+
+  it('defaults every key to empty when the object has none of them', () => {
+    expect(parsePendingFixState('{}')).toEqual(EMPTY);
+  });
+
+  it('returns the empty state rather than throwing on malformed JSON', () => {
+    expect(parsePendingFixState('{not json')).toEqual(EMPTY);
+  });
+
+  it('returns the empty state for the JSON literal null', () => {
+    expect(parsePendingFixState('null')).toEqual(EMPTY);
+  });
+
+  it('returns the empty state for a top-level JSON array', () => {
+    expect(parsePendingFixState('[]')).toEqual(EMPTY);
+  });
+
+  it('drops array entries that are not shaped like a MetadataFix', () => {
+    const json = JSON.stringify({ autoFixes: [FIX, 'nope', 42, null, { field: 'title' }] });
+    expect(parsePendingFixState(json).autoFixes).toEqual([FIX]);
+  });
+
+  it('drops an undo snapshot whose kind is not apply/dismiss', () => {
+    const json = JSON.stringify({ undo: { kind: 'oops', proposals: [], appliedFixes: [] } });
+    expect(parsePendingFixState(json).undo).toBeNull();
+  });
+
+  // Beyond the listed cases: nonsense several levels deep must not throw, and
+  // must degrade field-by-field rather than dropping the whole state.
+  it('is total against deeply nested junk', () => {
+    const json = JSON.stringify({
+      autoFixes: [{ field: 1, kind: {}, from: [] }],
+      proposals: 'not-an-array',
+      undo: { kind: 'apply', proposals: 'nope', appliedFixes: [{ nonsense: true }] },
+    });
+    expect(parsePendingFixState(json)).toEqual({
+      autoFixes: [],
+      appliedFixes: [],
+      proposals: [],
+      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+    });
+  });
+
+  it('defaults to/changes on a fix missing everything but the required strings', () => {
+    const json = JSON.stringify({ autoFixes: [{ field: 'title', kind: 'replace', from: 'Old' }] });
+    expect(parsePendingFixState(json).autoFixes).toEqual([
+      { field: 'title', kind: 'replace', from: 'Old', to: null, changes: {} },
+    ]);
+  });
+
+  it('keeps reason and chips when present and well-typed', () => {
+    const fix = { ...FIX, reason: 'auto-normalized', fromChips: ['Old'], toChips: ['New'] };
+    const json = JSON.stringify({ proposals: [fix] });
+    expect(parsePendingFixState(json).proposals).toEqual([fix]);
   });
 });
