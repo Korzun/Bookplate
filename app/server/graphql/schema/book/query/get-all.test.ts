@@ -127,4 +127,59 @@ describe('Library.entries', () => {
     const bobResult = await harness.execute(ENTRIES, { viewer: harness.bobViewer });
     expect((bobResult.data as EntriesData).viewer.library.entries.edges).toEqual([]);
   });
+
+  // `t.connection` always adds `last`/`before` to the SDL even though
+  // `BookStore.listBooksPage` has no backward keyset to walk. Silently
+  // ignoring them would mean a client asking for the trailing page instead
+  // gets the leading page with no error — worse than not offering backward
+  // pagination at all — so both must be rejected loudly with a coded error.
+  it('rejects `last` instead of silently returning the leading page', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(last: 5) { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+  });
+
+  it('rejects `before` instead of silently returning the leading page', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(before: "some-opaque-cursor") { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+  });
+
+  // The parent `Book`/`Series` rows this connection resolves into are hand-
+  // fetched via context.prisma.book.findMany()/series.findMany() outside the
+  // Prisma plugin's own query planning, so a nested relation off a union
+  // member (Series.books, itself a `t.relation`) takes the plugin's per-row
+  // fallback path rather than a single planned join. Exercise it for real
+  // rather than assuming the documented fallback behaviour holds here.
+  it('resolves a nested relation (Series.books) through the union', async () => {
+    const result = await harness.execute(
+      `{ viewer { library { entries(first: 10) {
+        edges { node { __typename ... on Series { name books { title } } } }
+      } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const edges = (
+      result.data as {
+        viewer: {
+          library: {
+            entries: {
+              edges: { node: { __typename: string; name?: string; books?: { title: string }[] } }[];
+            };
+          };
+        };
+      }
+    ).viewer.library.entries.edges;
+    const seriesEdge = edges.find((e) => e.node.__typename === 'Series');
+    expect(seriesEdge?.node.books).toEqual([{ title: 'In Series' }]);
+  });
 });
