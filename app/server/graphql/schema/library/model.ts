@@ -89,6 +89,9 @@ builder.node(model, {
 
     entries: t.connection({
       type: libraryEntry,
+      description:
+        'Forward pagination only: `last`/`before` are rejected with ' +
+        'BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.',
       args: {
         filter: t.arg({ type: libraryFilter, required: false }),
       },
@@ -257,6 +260,9 @@ builder.node(model, {
      */
     progress: t.connection({
       type: progress,
+      description:
+        'Forward pagination only: `last`/`before` are rejected with ' +
+        'BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.',
       resolve: async (owner, args, context) => {
         rejectBackwardPagination('Library.progress', args);
         const cursor = decodeProgressCursor(args.after);

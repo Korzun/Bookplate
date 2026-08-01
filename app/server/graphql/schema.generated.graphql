@@ -78,9 +78,17 @@ scalar JSON
 type Library implements Node {
   authors: [String!]!
   book(id: String!): Book
+
+  """
+  Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
+  """
   entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
   id: ID!
   pendingFixes: [PendingFix!]!
+
+  """
+  Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
+  """
   progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
