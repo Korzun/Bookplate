@@ -324,4 +324,75 @@ describe('PendingFix', () => {
       ).viewer.library.book.pendingFix
     ).toBeNull();
   });
+
+  // `Book.pendingFix` used to be a plain `prisma.pendingFix.findUnique` per
+  // book, which is a textbook N+1 across a page of books. It now goes
+  // through `context.loadPendingFix`, a request-scoped batching loader (see
+  // `pending-fix-loader.ts`) — this asserts the batching actually happens
+  // rather than merely trusting the loader exists. Mirrors
+  // `progress/model.test.ts`'s identical batching test for `Book.progress`.
+  it('batches Book.pendingFix across a page of books into a single query', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const id = i.toString().padStart(32, '3');
+      ids.push(id);
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id,
+          title: `Book ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      await harness.prisma.pendingFix.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          bookId: id,
+          fileName: `fix-${i}.epub`,
+          fileSize: 1,
+          state: SEEDED_STATE_JSON,
+          updatedAt: 1_700_000_000_000,
+        },
+      });
+    }
+
+    const findUniqueSpy = vi.spyOn(harness.prisma.pendingFix, 'findUnique');
+    const findManySpy = vi.spyOn(harness.prisma.pendingFix, 'findMany');
+
+    const fields = ids
+      .map((id, i) => `b${i}: book(id: "${id}") { pendingFix { fileName } }`)
+      .join(' ');
+    const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(findUniqueSpy).not.toHaveBeenCalled();
+    expect(findManySpy).toHaveBeenCalledTimes(1);
+  });
+
+  // A prior version of `createProgressLoader` (`progress-loader.ts`) captured
+  // only `resolve`, never `reject`, when it took over settling each batched
+  // caller's promise. A rejected `findMany` (e.g. a transient DB error) then
+  // left every in-flight lookup in that batch permanently unsettled — the
+  // request would hang forever instead of surfacing a GraphQL error, since
+  // nothing else was watching that promise. `createPendingFixLoader` is
+  // written with both `resolve` and `reject` captured from the start (see
+  // `pending-fix-loader.ts`), but this regression test pins that behaviour
+  // the same way `progress/model.test.ts` pins it for the progress loader.
+  // This must resolve well inside the test's own timeout, not merely
+  // "eventually" — a regression here should fail fast, not stall the suite.
+  it('surfaces a GraphQL error instead of hanging when the pending-fix query fails', async () => {
+    vi.spyOn(harness.prisma.pendingFix, 'findMany').mockRejectedValue(new Error('db unavailable'));
+
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${BOOK_ID}") { pendingFix { fileName } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeDefined();
+    expect(result.errors!.length).toBeGreaterThan(0);
+  }, 2000);
 });

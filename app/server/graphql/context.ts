@@ -14,6 +14,7 @@ import {
   type ChapterSpineMapLoader,
 } from './chapter-spine-map-loader';
 import { createOwnerLoader, type OwnerLoader } from './owner';
+import { createPendingFixLoader, type PendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader, type ProgressLoader } from './progress-loader';
 
 /**
@@ -51,6 +52,7 @@ export type Context = {
   config: AppConfig;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
+  loadPendingFix: PendingFixLoader;
   loadChapterSpineMap: ChapterSpineMapLoader;
 };
 
@@ -95,5 +97,6 @@ export const createContext =
     config: deps.config,
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),
+    loadPendingFix: createPendingFixLoader(deps.prisma),
     loadChapterSpineMap: createChapterSpineMapLoader(deps.prisma),
   });

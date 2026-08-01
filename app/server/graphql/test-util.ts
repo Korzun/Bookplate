@@ -19,6 +19,7 @@ import type { AppConfig, Owner } from '../types';
 import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
 import type { Context, Stores, Viewer } from './context';
 import { createOwnerLoader } from './owner';
+import { createPendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader } from './progress-loader';
 import { schema } from './schema';
 
@@ -143,6 +144,7 @@ export const createHarness = async (): Promise<Harness> => {
       config,
       loadOwner: createOwnerLoader(prisma),
       loadProgress: createProgressLoader(prisma),
+      loadPendingFix: createPendingFixLoader(prisma),
       loadChapterSpineMap: createChapterSpineMapLoader(prisma),
     };
     const result = await graphql({
