@@ -1,27 +1,6 @@
-import { epochToDate } from '../../derive';
 import { builder } from '../builder';
+import { model as linkedDocument } from '../linked-document';
 import { model } from './model';
-
-/**
- * One id transition a book has been through — either an organic re-import
- * (`type: 'edit'`, written by `reimportBook` when re-parsing an edited EPUB
- * changes its content hash) or a manual KOReader document merge (`type:
- * 'merge'`, written by `linkDocument`). Mirrors one entry of REST's `GET
- * /api/books/:id/lineage` response (`routes/ui.ts`), minus the `currentId`
- * that response also carries at the top level — every entry's `newId` chains
- * to the next, and the last one's `newId` is the book's own (current) id, so
- * nothing here is lost by dropping it.
- */
-const linkedDocument = builder
-  .objectRef<{ oldId: string; newId: string; timestamp: number; type: string }>('LinkedDocument')
-  .implement({
-    fields: (t) => ({
-      oldId: t.exposeString('oldId'),
-      newId: t.exposeString('newId'),
-      type: t.exposeString('type'),
-      timestamp: t.field({ type: 'DateTime', resolve: (entry) => epochToDate(entry.timestamp) }),
-    }),
-  });
 
 /**
  * `Book.lineage` is not a Prisma relation (`BookIdHistory` is keyed by

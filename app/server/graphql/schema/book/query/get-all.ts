@@ -1,7 +1,7 @@
 import type { BookListFilters, PageCursor } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library';
-import { libraryEntry, type LibraryEntryRow } from '../../library-entry';
+import { model as libraryEntry, type LibraryEntryRow } from '../../library-entry';
 import { rejectBackwardPagination } from '../../pagination';
 
 /** One connection edge — annotated explicitly so both branches of the `flatMap` below (`Book` rows, `Series` rows) unify on the union `LibraryEntryRow` rather than TypeScript inferring two incompatible edge-array types. */

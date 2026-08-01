@@ -2,18 +2,6 @@ import { epochToDate } from '../../derive';
 import * as book from '../book';
 import { builder } from '../builder';
 
-const _message = builder.prismaObject('ValidationMessage', {
-  fields: (t) => ({
-    seq: t.exposeInt('seq'),
-    code: t.exposeString('code'),
-    severity: t.exposeString('severity'),
-    message: t.exposeString('message'),
-    path: t.exposeString('path', { nullable: true }),
-    line: t.exposeInt('line', { nullable: true }),
-    column: t.exposeInt('column', { nullable: true }),
-  }),
-});
-
 /**
  * Deliberately a prismaObject, not a prismaNode. A Validation is only ever
  * reached through its Book, so giving it a global ID would add a second,
