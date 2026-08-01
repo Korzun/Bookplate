@@ -1,5 +1,4 @@
 import { epochToDate } from '../../derive';
-import * as book from '../book';
 import { builder } from '../builder';
 
 /**
@@ -19,10 +18,3 @@ export const model = builder.prismaObject('Validation', {
     messages: t.relation('messages', { query: { orderBy: { seq: 'asc' } } }),
   }),
 });
-
-// `t.relation` is only available through `prismaObjectField`/the `fields`
-// callback of `prismaNode` itself, not through the plugin-agnostic
-// `builder.objectField` — see `series/model.ts` for the same note.
-builder.prismaObjectField(book.model, 'validation', (t) =>
-  t.relation('validation', { nullable: true })
-);
