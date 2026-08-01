@@ -5,7 +5,7 @@ import RelayPlugin from '@pothos/plugin-relay';
 import ScopeAuthPlugin from '@pothos/plugin-scope-auth';
 import ValidationPlugin from '@pothos/plugin-validation';
 import { GraphQLError } from 'graphql';
-import { DateTimeResolver } from 'graphql-scalars';
+import { DateTimeResolver, JSONResolver } from 'graphql-scalars';
 
 import type { Context } from '../context';
 import { getDatamodel } from '../generated/pothos-types';
@@ -36,6 +36,12 @@ export const builder = new SchemaBuilder<{
   DefaultFieldNullability: false;
   Scalars: {
     DateTime: { Input: Date; Output: Date };
+    // The single heterogeneous leaf in the schema: `MetadataFix.changes`
+    // (`Record<string, string | string[]>`, see `types.ts`) has no natural
+    // GraphQL representation short of a union that would fight codegen — see
+    // the cleanup spec, §"2. Typed PendingFixState". Every field around it is
+    // typed; this scalar exists for that one leaf.
+    JSON: { Input: unknown; Output: unknown };
   };
 }>({
   // Pothos wraps resolvers in plugin order — the first plugin listed is the
@@ -93,6 +99,7 @@ export const builder = new SchemaBuilder<{
 });
 
 builder.addScalarType('DateTime', DateTimeResolver);
+builder.addScalarType('JSON', JSONResolver);
 
 // Every field requires an authenticated viewer, with no exceptions: login,
 // token refresh and public-config all stay on REST, so no unauthenticated

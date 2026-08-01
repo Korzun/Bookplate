@@ -10,6 +10,7 @@
  * than throwing, so one bad row cannot fail an entire query.
  */
 
+import type { MetadataFix, PendingFixState, UndoSnapshot } from '../types';
 import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 
 const parseJson = (json: string): unknown => {
@@ -89,4 +90,89 @@ export const deriveCurrentChapter = (
   const spineIndex = parseCfiSpineIndex(progressCfi);
   if (spineIndex === null) return null;
   return spineIndexToChapter(spineIndex, chapterSpineMap);
+};
+
+const EMPTY_PENDING_FIX_STATE: PendingFixState = {
+  autoFixes: [],
+  appliedFixes: [],
+  proposals: [],
+  undo: null,
+};
+
+const isChangesRecord = (value: unknown): value is MetadataFix['changes'] =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every(
+    (entry) =>
+      typeof entry === 'string' ||
+      (Array.isArray(entry) && entry.every((item): item is string => typeof item === 'string'))
+  );
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item): item is string => typeof item === 'string');
+
+/**
+ * `field`/`kind`/`from` are the only members whose absence makes an entry
+ * unusable as a `MetadataFix` (they are non-null in the GraphQL type); every
+ * other member is defaulted below rather than used to reject the entry.
+ */
+const isMetadataFixCandidate = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.field === 'string' && typeof v.kind === 'string' && typeof v.from === 'string';
+};
+
+const toMetadataFix = (v: Record<string, unknown>): MetadataFix => {
+  const fix: MetadataFix = {
+    field: v.field as string,
+    kind: v.kind as string,
+    from: v.from as string,
+    to: typeof v.to === 'string' ? v.to : null,
+    changes: isChangesRecord(v.changes) ? v.changes : {},
+  };
+  if (typeof v.reason === 'string') fix.reason = v.reason;
+  if (isStringArray(v.fromChips)) fix.fromChips = v.fromChips;
+  if (isStringArray(v.toChips)) fix.toChips = v.toChips;
+  return fix;
+};
+
+const parseMetadataFixArray = (value: unknown): MetadataFix[] =>
+  Array.isArray(value) ? value.filter(isMetadataFixCandidate).map(toMetadataFix) : [];
+
+const isUndoKind = (value: unknown): value is UndoSnapshot['kind'] =>
+  value === 'apply' || value === 'dismiss';
+
+const parseUndoSnapshot = (value: unknown): UndoSnapshot | null => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (!isUndoKind(v.kind)) return null;
+  return {
+    kind: v.kind,
+    proposals: parseMetadataFixArray(v.proposals),
+    appliedFixes: parseMetadataFixArray(v.appliedFixes),
+  };
+};
+
+/**
+ * Parses `PendingFix.state` (and `PendingFixDto`'s reconstructed JSON) into
+ * the typed `PendingFixState` shape both GraphQL readings serve. Total like
+ * every other parser in this module: malformed JSON, a non-object top level
+ * (including the JSON literal `null` or a top-level array), and missing keys
+ * all degrade to the empty state — mirroring the store's own
+ * `state.autoFixes ?? []` defaulting in `getPendingFixes` (book-store.ts) —
+ * rather than throwing.
+ */
+export const parsePendingFixState = (json: string): PendingFixState => {
+  const parsed = parseJson(json);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return EMPTY_PENDING_FIX_STATE;
+  }
+  const v = parsed as Record<string, unknown>;
+  return {
+    autoFixes: parseMetadataFixArray(v.autoFixes),
+    appliedFixes: parseMetadataFixArray(v.appliedFixes),
+    proposals: parseMetadataFixArray(v.proposals),
+    undo: parseUndoSnapshot(v.undo),
+  };
 };
