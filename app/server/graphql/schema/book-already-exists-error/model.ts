@@ -1,6 +1,9 @@
 import type { BookAlreadyExistsError as StoreError } from '../../../services/book-store';
 import type { Owner } from '../../../types';
-import { model as book } from '../book';
+// `../book/model`, not `../book`: see `book-hash-collision-error/model.ts`'s
+// note — `book/index.ts` now also side-effect-imports `book/mutation/*.ts`
+// (task 2).
+import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 

@@ -1,6 +1,12 @@
 import type { BookHashCollisionError as StoreError } from '../../../services/book-store';
 import type { Owner } from '../../../types';
-import { model as book } from '../book';
+// `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
+// `book/mutation/update-metadata.ts` (task 2), which reaches this file for its
+// `BookHashCollisionError` union member — and this file reaches back to
+// `book` for `collidingBook`. Importing the defining module rather than the
+// index keeps that reference from dragging the whole `book` entity's mutation
+// registrations into the cycle.
+import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 

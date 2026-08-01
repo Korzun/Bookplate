@@ -5,7 +5,12 @@ import {
   encodeProgressCursor,
 } from '../../../utils/progress-pagination';
 import { isLivePendingFix, parsePendingFixState } from '../../derive';
-import { model as book } from '../book';
+// `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
+// `book/mutation/*.ts` (task 2), which reaches `Library` (this file, for the
+// `BookUpdateMetadataPayload`/`BookDeletePayload` `library` field) — and
+// `Library` reaches back here for `book`. Same reasoning as the `progress`
+// import two lines down.
+import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry';
 import { isOwnerOrAdmin } from '../node-scope';

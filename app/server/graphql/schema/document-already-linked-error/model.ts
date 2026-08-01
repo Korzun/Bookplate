@@ -1,6 +1,12 @@
 import type { DocumentAlreadyLinkedError as StoreError } from '../../../services/book-store';
 import type { Owner } from '../../../types';
-import { model as book } from '../book';
+// `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
+// `book/mutation/*.ts` (task 2). Not currently reached from those files, but
+// importing the defining module rather than the index keeps this from
+// becoming a latent cycle the moment something under `book/mutation/` needs
+// this error type too. See `book-hash-collision-error/model.ts` for the case
+// that is currently reached.
+import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
