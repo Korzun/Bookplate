@@ -11,7 +11,9 @@ import { model as libraryEntry, type LibraryEntryRow } from '../library-entry';
 import { isOwnerOrAdmin } from '../node-scope';
 import { rejectBackwardPagination } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
-import { model as progress } from '../progress';
+// `../progress/model`, not `../progress` — see book/model.ts's note on the
+// same import for why an entity index must not be pulled in from a model file.
+import { model as progress } from '../progress/model';
 import { model as series } from '../series';
 import { model as suggestionGroup } from '../suggestion-group';
 import * as user from '../user';

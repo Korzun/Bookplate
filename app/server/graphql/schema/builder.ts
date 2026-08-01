@@ -105,3 +105,19 @@ builder.addScalarType('JSON', JSONResolver);
 // token refresh and public-config all stay on REST, so no unauthenticated
 // GraphQL field exists.
 builder.queryType({ authScopes: { authenticated: true } });
+
+// Same rule for writes, and it has to be declared here rather than left to
+// Pothos: `builder.mutationField` auto-creates `Mutation` *without options* on
+// first use, so a mutation added without this line would simply be
+// unauthenticated. `root-auth.test.ts` walks whatever root types the built
+// schema has and fails if one gains an ungated field.
+//
+// Pothos ANDs type-level and field-level scopes, so a field needing a
+// different rule adds its own on top (`ownerOf` on progressDelete) — with one
+// coming exception: `userChangePassword` exists precisely for a viewer whose
+// pending password change makes `authenticated` false, so it must opt out with
+// `skipTypeScopes` and use `passwordChangeAllowed` instead.
+//
+// GraphQL forbids an object type with no fields, so this cannot land alone;
+// `progress/mutation/delete.ts` is the field that carries it.
+builder.mutationType({ authScopes: { authenticated: true } });

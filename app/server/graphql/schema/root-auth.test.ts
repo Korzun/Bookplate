@@ -1,6 +1,7 @@
 import {
   execute,
   getNamedType,
+  isInputObjectType,
   isLeafType,
   isListType,
   isNonNullType,
@@ -83,6 +84,18 @@ describe('root type authorization', () => {
   const placeholderLiteral = (type: GraphQLInputType, aliceGlobalId: string): string => {
     if (isNonNullType(type)) return placeholderLiteral(type.ofType, aliceGlobalId);
     if (isListType(type)) return `[${placeholderLiteral(type.ofType, aliceGlobalId)}]`;
+    // Mutations take a single `input:` object argument, so probing them means
+    // building an object literal, recursively, from the input type's own
+    // required fields — omitting one is a validation error before the resolver
+    // (and so before the auth scope) runs, exactly as an omitted argument
+    // would be. Optional fields are left out: fewer values is fewer ways for
+    // this guard to fail for a reason other than the one it tests.
+    if (isInputObjectType(type)) {
+      const fields = Object.values(type.getFields()).filter((field) => isNonNullType(field.type));
+      return `{ ${fields
+        .map((field) => `${field.name}: ${placeholderLiteral(field.type, aliceGlobalId)}`)
+        .join(', ')} }`;
+    }
     switch (type.name) {
       case 'ID':
         return JSON.stringify(aliceGlobalId);
