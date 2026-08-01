@@ -16,6 +16,7 @@ import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
+import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
 import type { Context, Stores, Viewer } from './context';
 import { createOwnerLoader } from './owner';
 import { createProgressLoader } from './progress-loader';
@@ -142,6 +143,7 @@ export const createHarness = async (): Promise<Harness> => {
       config,
       loadOwner: createOwnerLoader(prisma),
       loadProgress: createProgressLoader(prisma),
+      loadChapterSpineMap: createChapterSpineMapLoader(prisma),
     };
     const result = await graphql({
       schema,

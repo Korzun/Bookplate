@@ -33,6 +33,11 @@ type Book implements Node {
   validation: Validation
 }
 
+type Config {
+  libraryName: String!
+  maxConcurrentUploads: Int!
+}
+
 """
 A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
 """
@@ -44,6 +49,7 @@ type Device {
   coverHeight: Int
   coverWidth: Int
   createdAt: DateTime!
+  enabledUsers: [User!]!
   id: ID!
   name: String!
   simplify: Boolean!
@@ -62,7 +68,7 @@ type Library implements Node {
   entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
   id: ID!
   pendingFixes: [PendingFixSummary!]!
-  progress: [Progress!]!
+  progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
@@ -83,24 +89,34 @@ type LibraryEntriesConnectionEdge {
 
 union LibraryEntry = Book | Series
 
-enum LibraryEntryKind {
-  SERIES
-  STANDALONE
-}
-
 enum LibraryEntryStatus {
   COMPLETED
   IN_PROGRESS
   NOT_STARTED
 }
 
+enum LibraryEntryType {
+  SERIES
+  STANDALONE
+}
+
 input LibraryFilter {
   author: String
-  entryType: LibraryEntryKind
+  entryType: LibraryEntryType
   query: String
   seriesName: String
   status: LibraryEntryStatus
   subjects: [String!]
+}
+
+type LibraryProgressConnection {
+  edges: [LibraryProgressConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type LibraryProgressConnectionEdge {
+  cursor: String!
+  node: Progress!
 }
 
 type LinkedDocument {
@@ -137,15 +153,17 @@ type PendingFixSummary {
 }
 
 type Progress {
+  currentChapter: Int
   device: String!
   deviceId: String!
   document: String!
   percentage: Float!
   progress: String!
-  timestamp: Int!
+  timestamp: DateTime!
 }
 
 type Query {
+  config: Config!
   node(id: ID!): Node
   nodes(ids: [ID!]!): [Node]!
   user(id: ID!): User
