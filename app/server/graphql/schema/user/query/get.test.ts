@@ -43,4 +43,27 @@ describe('Query.user', () => {
 
     expect(result.errors?.[0].extensions?.code).toBe('UNAUTHENTICATED');
   });
+
+  // `t.arg.globalID` without `for:` accepts ANY type's global ID and hands the
+  // resolver its local half, so a Book id would be looked up in the users
+  // table and resolve to null — indistinguishable from "no such user". With
+  // `for: model` the wrong type is a coercion error instead.
+  it("rejects another type's global ID rather than silently resolving null", async () => {
+    const bookGlobalId = await harness.seedNodeFor('Book');
+
+    const result = await harness.execute(USER_QUERY, {
+      viewer: harness.adminViewer,
+      variables: { id: bookGlobalId },
+    });
+
+    expect(result.errors).toBeDefined();
+    expect(result.errors?.[0]?.message).toMatch(/User/);
+    // The positive control: the same query with the RIGHT type of id works,
+    // so this is proving type-checking and not merely that something failed.
+    const ok = await harness.execute(USER_QUERY, {
+      viewer: harness.adminViewer,
+      variables: { id: harness.aliceGlobalId },
+    });
+    expect(ok.errors).toBeUndefined();
+  });
 });

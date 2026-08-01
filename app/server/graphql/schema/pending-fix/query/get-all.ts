@@ -1,6 +1,16 @@
 import type { PendingFixDto } from '../../../../services/book-store';
+import * as book from '../../book';
 import { builder } from '../../builder';
 import { model as library } from '../../library';
+
+/**
+ * The DTO plus the owner it was read for. `getPendingFixes` returns rows with
+ * no `userId` (see the type comment below), but `PendingFixSummary.book` needs
+ * one to look the book up — and a resolver only ever receives its own parent,
+ * never the `Library` above it. So `Library.pendingFixes` attaches the owner
+ * it already holds, building new objects rather than mutating the store's.
+ */
+type PendingFixSummaryRow = PendingFixDto & { userId: string };
 
 /**
  * `Library.pendingFixes` cannot reuse the `PendingFix` prismaObject from
@@ -20,7 +30,7 @@ import { model as library } from '../../library';
  * way — the two readings agree on content, they just can't share a
  * GraphQL type given the DTO's structural difference from the raw row.
  */
-const summary = builder.objectRef<PendingFixDto>('PendingFixSummary').implement({
+const summary = builder.objectRef<PendingFixSummaryRow>('PendingFixSummary').implement({
   fields: (t) => ({
     bookId: t.exposeString('bookId'),
     fileName: t.exposeString('fileName'),
@@ -34,12 +44,41 @@ const summary = builder.objectRef<PendingFixDto>('PendingFixSummary').implement(
           undo: pendingFix.undo,
         }),
     }),
+
+    /**
+     * The book this fix belongs to, so `Library.pendingFixes` is navigable —
+     * rendering "a pending fix on *Dune*" no longer needs a second round trip
+     * keyed on `bookId`.
+     *
+     * Non-null: `PendingFix` has a foreign key onto `Book` with
+     * `onDelete: Cascade` (`prisma/schema.prisma`), so a fix whose book is
+     * gone cannot exist. `findUniqueOrThrow` matches that — if the invariant
+     * ever breaks, it surfaces rather than silently nulling.
+     *
+     * Registered here rather than in `book/` (the convention being that a
+     * field lives in its value type's directory) because the
+     * `PendingFixSummary` ref is local to this file — the two-type split this
+     * file's comment explains means there is nothing for `book/` to import.
+     * The same judgement `book/lineage.ts` made: avoiding a defect, not
+     * fragmenting for its own sake.
+     */
+    book: t.field({
+      type: book.model,
+      resolve: (pendingFix, _args, context) =>
+        context.prisma.book.findUniqueOrThrow({
+          where: { userId_id: { userId: pendingFix.userId, id: pendingFix.bookId } },
+        }),
+    }),
   }),
 });
 
 builder.objectField(library, 'pendingFixes', (t) =>
   t.field({
     type: [summary],
-    resolve: (owner, _args, context) => context.stores.book.getPendingFixes(owner),
+    resolve: async (owner, _args, context) => {
+      const fixes = await context.stores.book.getPendingFixes(owner);
+      // New objects, never a mutation of the store's rows.
+      return fixes.map((fix) => ({ ...fix, userId: owner.userId }));
+    },
   })
 );
