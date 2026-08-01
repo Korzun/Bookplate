@@ -1,0 +1,209 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
+import { BookHashCollisionError } from '../../../../services/book-store';
+import { createHarness, type Harness } from '../../../test-util';
+import { seedEditableBook } from './test-helpers';
+
+vi.mock('../../../../logger');
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.cleanup();
+  vi.clearAllMocks();
+});
+
+const BOOK_ID = 'a'.repeat(32);
+const OTHER_BOOK_ID = 'b'.repeat(32);
+
+const MUTATION = `
+  mutation RegenChapters($input: BookRegenChaptersInput!) {
+    bookRegenChapters(input: $input) {
+      __typename
+      ... on BookRegenChaptersPayload {
+        book { bookId title }
+      }
+      ... on BookNotValidatedError {
+        message
+        validation { valid }
+      }
+      ... on BookHashCollisionError {
+        message
+        collidingBook { bookId title }
+      }
+      ... on InvalidInputError {
+        message
+        issues { path message }
+      }
+    }
+  }
+`;
+
+const titleOf = async (userId: string, id: string): Promise<string | null> =>
+  (await harness.prisma.book.findUnique({ where: { userId_id: { userId, id } } }))?.title ?? null;
+
+describe('Mutation.bookRegenChapters', () => {
+  it('regenerates chapters for the viewer’s own valid book and returns the updated Book', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Regen Me');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookRegenChapters as { __typename: string; book: { title: string } };
+    expect(data.__typename).toBe('BookRegenChaptersPayload');
+    expect(data.book.title).toBe('Regen Me');
+  });
+
+  it('returns BookNotValidatedError and does not re-import when the book has never been validated', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
+      valid: null,
+    });
+    const spy = vi.spyOn(harness.stores.book, 'reimportBook');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookRegenChapters as { __typename: string; validation: unknown };
+    expect(data.__typename).toBe('BookNotValidatedError');
+    expect(data.validation).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns BookNotValidatedError and does not re-import when the book failed validation', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Failed Validation', {
+      valid: false,
+    });
+    const spy = vi.spyOn(harness.stores.book, 'reimportBook');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookRegenChapters as { __typename: string };
+    expect(data.__typename).toBe('BookNotValidatedError');
+    expect(spy).not.toHaveBeenCalled();
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Failed Validation');
+  });
+
+  it('resolves to null when the book does not exist for the resolved owner', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: 'no-such-book' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookRegenChapters).toBeNull();
+  });
+
+  it('returns InvalidInputError for an empty bookId', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: '' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookRegenChapters).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
+    });
+  });
+
+  it('refuses one user regenerating another user’s book, and leaves the row unchanged', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.bobViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    // Victim-row assertion first — see update-metadata.test.ts's identical
+    // ordering rationale (a probe that merely weakens the auth guard stops
+    // at the first failing assertion).
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.data?.bookRegenChapters ?? null).toBeNull();
+  });
+
+  it('lets an admin regenerate a named user’s book (content assertion, not just no-error)', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Admin Target');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookRegenChapters as {
+      book: { bookId: string; title: string };
+    };
+    expect(data.book.title).toBe('Admin Target');
+    // Content assertion, read directly off alice's row under her own userId
+    // (never the admin's, which has no library/userId at all) — proves the
+    // write landed in her library rather than being lost or misfiled.
+    expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('Admin Target');
+  });
+
+  it('returns BookHashCollisionError, owner-scoped to the target user, when the new fingerprint collides', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice Book A');
+    await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Alice Book B');
+
+    vi.spyOn(harness.stores.book, 'reimportBook').mockRejectedValueOnce(
+      new BookHashCollisionError(OTHER_BOOK_ID)
+    );
+
+    // Admin-driven, deliberately — same rationale as update-metadata.test.ts's
+    // identical case: an admin viewer has no library of its own, so a
+    // re-derived-from-viewer owner bug would fail outright here instead of
+    // quietly resolving the wrong user's book.
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookRegenChapters as {
+      __typename: string;
+      collidingBook: { bookId: string; title: string };
+    };
+    expect(data.__typename).toBe('BookHashCollisionError');
+    expect(data.collidingBook).toEqual({ bookId: OTHER_BOOK_ID, title: 'Alice Book B' });
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice Book A');
+  });
+
+  it('refuses a User global ID that names no user', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: encodeGlobalID('User', 'no-such-user'), bookId: BOOK_ID },
+      },
+    });
+
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+
+  it('surfaces the untyped re-import failure and leaves the row unchanged when the store returns no book', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched On Failure');
+    vi.spyOn(harness.stores.book, 'reimportBook').mockResolvedValueOnce(null);
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+    });
+
+    expect(result.errors?.[0]?.message).toMatch(/Failed to re-import book/);
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched On Failure');
+  });
+});
