@@ -40,6 +40,21 @@ type BookAlreadyExistsError implements UserError {
   message: String!
 }
 
+input BookAnalyzeReplaceInput {
+  bookId: String!
+  stagedUploadId: String!
+  userId: ID
+}
+
+type BookAnalyzeReplacePayload {
+  autoFixes: [MetadataFix!]!
+  messages: [EpubValidationMessage!]!
+  proposals: [MetadataFix!]!
+  valid: Boolean!
+}
+
+union BookAnalyzeReplaceResult = BookAnalyzeReplacePayload | InvalidInputError | StagedUploadNotFoundError
+
 input BookDeleteInput {
   bookId: String!
   userId: ID!
@@ -79,6 +94,19 @@ type BookRegenChaptersPayload {
 }
 
 union BookRegenChaptersResult = BookHashCollisionError | BookNotValidatedError | BookRegenChaptersPayload | InvalidInputError
+
+input BookReplaceInput {
+  acceptedFixKeys: [String!]!
+  bookId: String!
+  stagedUploadId: String!
+  userId: ID
+}
+
+type BookReplacePayload {
+  book: Book!
+}
+
+union BookReplaceResult = BookHashCollisionError | BookReplacePayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
 
 input BookUpdateMetadataInput {
   author: String
@@ -306,6 +334,11 @@ type MetadataFix {
 
 type Mutation {
   """
+  Analyzes a staged EPUB as a candidate replacement for an existing book: validity, epubcheck findings, and detected metadata fixes. Read-only — the staged upload is not consumed. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookAnalyzeReplace(input: BookAnalyzeReplaceInput!): BookAnalyzeReplaceResult
+
+  """
   Deletes a book from the library — file and DB row both. Resolves to null when the book does not exist for the resolved owner.
   """
   bookDelete(input: BookDeleteInput!): BookDeleteResult
@@ -314,6 +347,11 @@ type Mutation {
   Re-parses a book’s EPUB file to regenerate its chapter list. Resolves to null when the book does not exist for the resolved owner.
   """
   bookRegenChapters(input: BookRegenChaptersInput!): BookRegenChaptersResult
+
+  """
+  Replaces a book’s EPUB file with a previously staged upload, applying auto-fixes and any accepted proposals. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookReplace(input: BookReplaceInput!): BookReplaceResult
 
   """
   Updates a book’s metadata fields. Cover uploads stay on `PATCH /api/books/:id/metadata` (binary boundary) — this mutation covers the JSON fields only. Resolves to null when the book does not exist for the resolved owner.
@@ -421,6 +459,13 @@ type SeriesBooksConnection {
 type SeriesBooksConnectionEdge {
   cursor: String!
   node: Book!
+}
+
+"""
+The given stagedUploadId does not resolve to a usable staged file — unknown, expired, or staged by a different user (indistinguishable).
+"""
+type StagedUploadNotFoundError implements UserError {
+  message: String!
 }
 
 type Suggestion {

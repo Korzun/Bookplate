@@ -18,12 +18,19 @@ export const EMPTY_COUNTS: Record<Severity, number> = {
 
 /**
  * The smallest EPUB `epub-parser`/`epub-writer` will round-trip: a container
- * pointing at one OPF with a `dc:title`, one manifest item, an empty spine.
- * Mirrors `apply-epub-changes.test.ts`'s `epub()` fixture exactly — same
- * shape, proven to survive a real (unmocked) `reimportBook`/`buildUpdatedEpub`
- * round trip there.
+ * pointing at one OPF with a `dc:title` (and, when `author` is given, a
+ * `dc:creator`), one manifest item, an empty spine. Mirrors `apply-epub-
+ * changes.test.ts`'s `epub()` fixture exactly — same shape, proven to
+ * survive a real (unmocked) `reimportBook`/`buildUpdatedEpub` round trip
+ * there.
+ *
+ * `author` is optional (existing callers passing one argument are
+ * unaffected) — pass it whenever a test exercises an author-sort fix:
+ * `epub-writer.ts`'s `writeSortedField` attaches `opf:file-as` to the
+ * `dc:creator` element itself, so an author-less candidate has no element
+ * for the sort key to attach to and the write silently has nothing to do.
  */
-export function fixtureEpub(title: string): Buffer {
+export function fixtureEpub(title: string, author?: string): Buffer {
   const zip = new AdmZip();
   zip.addFile(
     'META-INF/container.xml',
@@ -31,10 +38,11 @@ export function fixtureEpub(title: string): Buffer {
       `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`
     )
   );
+  const creator = author !== undefined ? `<dc:creator>${author}</dc:creator>` : '';
   zip.addFile(
     'OEBPS/content.opf',
     Buffer.from(
-      `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"/></package>`
+      `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title>${creator}</metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"/></package>`
     )
   );
   return zip.toBuffer();

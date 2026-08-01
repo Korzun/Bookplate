@@ -4,6 +4,7 @@ import type { BookStore } from '../services/book-store';
 import type { DeviceStore } from '../services/device-store';
 import type { EditionStore } from '../services/edition-store';
 import { verifyAccessToken } from '../services/jwt';
+import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { UserStore } from '../services/user-store';
@@ -43,6 +44,16 @@ export type Stores = {
   validation: ValidationStore;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;
+  /**
+   * The same instance `routes/ui.ts`'s `POST /api/books/replace-staging`
+   * writes into — constructed once in `index.ts` and passed to both
+   * `createUiRouter` and `createGraphqlHandler`'s `stores`, never one
+   * instance per transport. Two separate instances would each hold their own
+   * empty in-memory registry, so a `stagedUploadId` minted by the REST route
+   * would never resolve here — see `replace-staging.ts`'s doc comment for why
+   * the registry is in-memory and per-process to begin with.
+   */
+  replaceStaging: ReplaceStaging;
 };
 
 export type Context = {

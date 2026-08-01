@@ -13,6 +13,7 @@ import { createUsersRouter } from './routes/users';
 import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
+import type { ReplaceStaging } from './services/replace-staging';
 import type { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
@@ -33,7 +34,8 @@ export function createServer(
   editionStore: EditionStore,
   validationStore: ValidationStore,
   scanJobStore: ScanJobStore,
-  graphqlHandler: RequestHandler
+  graphqlHandler: RequestHandler,
+  replaceStaging: ReplaceStaging
 ): express.Express {
   const server = express();
 
@@ -86,7 +88,8 @@ export function createServer(
       tokenStore,
       jwtSecret,
       scanJobStore,
-      validationStore
+      validationStore,
+      replaceStaging
     )
   );
 

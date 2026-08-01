@@ -11,6 +11,7 @@ import { createServer } from './server';
 import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
+import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
@@ -47,6 +48,11 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const jwtSecret = await tokenStore.getOrCreateJwtSecret();
 
   const scanJobStore = new ScanJobStore();
+  // One instance shared by the REST staging route and the two GraphQL
+  // mutations that consume it — see `graphql/context.ts`'s `Stores.
+  // replaceStaging` doc comment for why a second instance would never see
+  // the first one's staged files.
+  const replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
   const graphqlHandler = createGraphqlHandler({
     prisma,
     stores: {
@@ -57,6 +63,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       validation: validationStore,
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
+      replaceStaging,
     },
     config,
     jwtSecret,
@@ -80,7 +87,8 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     editionStore,
     validationStore,
     scanJobStore,
-    graphqlHandler
+    graphqlHandler,
+    replaceStaging
   );
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,

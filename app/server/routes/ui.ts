@@ -21,6 +21,7 @@ import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { EpubValidationError } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
+import type { ReplaceStaging } from '../services/replace-staging';
 import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -71,7 +72,8 @@ export function createUiRouter(
   tokenStore: TokenStore,
   jwtSecret: Buffer,
   scanJobStore: ScanJobStore,
-  validationStore: ValidationStore
+  validationStore: ValidationStore,
+  replaceStaging: ReplaceStaging
 ): Router {
   const router = Router();
 
@@ -1310,6 +1312,40 @@ export function createUiRouter(
       );
       log.info(`Book validated: "${book.filename}" (valid=${report.valid})`);
       res.json(report);
+    })
+  );
+
+  /**
+   * Adjudicated 2026-08-01 (spec, §"Seams that stay REST" → "Replace
+   * staging"): the GraphQL `bookAnalyzeReplace`/`bookReplace` mutations
+   * cannot carry EPUB bytes themselves (binary boundary), and the legacy
+   * `/replace/analyze`/`/replace` routes below are pure multer uploads with
+   * no separable JSON-only leg. This route is the one exception to "REST
+   * routes stay untouched" this migration otherwise holds to: it is new, not
+   * a change to an existing route, and exists solely so the two GraphQL
+   * mutations have bytes to operate on.
+   *
+   * Deliberately `requireUserId`, not `resolveOwner`: the staged file is
+   * keyed to the *authenticated* caller, never a `?user=`-named target — an
+   * admin session (no row in the users table, `req.user.userId` unset) gets
+   * the same 401 `requireUserId` gives any other route it gates, and so can
+   * never stage a file at all. `bookAnalyzeReplace`/`bookReplace` read this
+   * back the same way, off `context.viewer.userId`, never the resolved book
+   * owner — see those mutations' doc comments.
+   */
+  router.post(
+    '/api/books/replace-staging',
+    requireAuth,
+    epubUpload.single('file'),
+    asyncHandler(async (req: Request, res: Response) => {
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      const stagedUploadId = replaceStaging.stage(req.file.buffer, userId, req.file.originalname);
+      res.json({ stagedUploadId });
     })
   );
 

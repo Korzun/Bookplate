@@ -11,6 +11,7 @@ import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
 import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
+import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { UserStore } from '../services/user-store';
@@ -103,6 +104,7 @@ export const createHarness = async (): Promise<Harness> => {
     // Constructed but never started: no test in this plan enqueues thumbnails,
     // and start() would leave a timer running past the test.
     thumbnail: new ThumbnailQueue(book, config.thumbnailWidths),
+    replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
   };
 
   await user.createUser('alice', await UserStore.hashLoginPassword('alicepass'));

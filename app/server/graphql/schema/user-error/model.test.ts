@@ -56,12 +56,19 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError', () => {
+  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError and StagedUploadNotFoundError', () => {
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's
     // original eight-type error model does not mention — scoped to
     // `BookUpdateMetadataResult` only, not a change to the spec's core seven
     // plus `InvalidInputError`.
+    //
+    // `StagedUploadNotFoundError` is a tenth member, added by task 3's
+    // staged-upload adjudication (2026-08-01, spec's "Replace staging"
+    // paragraph): `bookAnalyzeReplace`/`bookReplace`'s `stagedUploadId` names
+    // a resource with no store class of its own (a `ReplaceStaging` registry
+    // entry, not a Prisma row), so there is no store throw to map — the error
+    // is produced directly by the resolver, same as `InvalidInputError`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -76,6 +83,7 @@ describe('UserError', () => {
       'EpubValidationError',
       'InvalidInputError',
       'SelfLinkError',
+      'StagedUploadNotFoundError',
     ]);
   });
 
