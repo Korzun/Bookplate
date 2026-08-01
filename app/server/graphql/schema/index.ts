@@ -1,4 +1,5 @@
 import './book';
+import './device';
 import './library';
 import './pending-fix';
 import './progress';
