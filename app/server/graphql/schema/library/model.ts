@@ -4,12 +4,13 @@ import {
   decodeProgressCursor,
   encodeProgressCursor,
 } from '../../../utils/progress-pagination';
+import { isLivePendingFix, parsePendingFixState } from '../../derive';
 import { model as book } from '../book';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry';
 import { isOwnerOrAdmin } from '../node-scope';
 import { rejectBackwardPagination } from '../pagination';
-import { model as pendingFixSummary } from '../pending-fix-summary';
+import { model as pendingFix } from '../pending-fix';
 import { model as progress } from '../progress';
 import { model as series } from '../series';
 import { model as suggestionGroup } from '../suggestion-group';
@@ -303,12 +304,34 @@ builder.node(model, {
       },
     }),
 
-    pendingFixes: t.field({
-      type: [pendingFixSummary],
-      resolve: async (owner, _args, context) => {
-        const fixes = await context.stores.book.getPendingFixes(owner);
-        // New objects, never a mutation of the store's rows.
-        return fixes.map((fix) => ({ ...fix, userId: owner.userId }));
+    /**
+     * Resolves `PendingFix` rows directly, rather than `context.stores.book
+     * .getPendingFixes`'s DTO — the summary type that DTO existed for
+     * (`PendingFixSummary`) is deleted; see the cleanup spec, §"3. One
+     * PendingFix type".
+     *
+     * DELIBERATELY FILTERS, NEVER DELETES: `getPendingFixes` deletes expired
+     * rows as a side effect of reading (`book-store.ts:685-717`) — REST keeps
+     * that behaviour untouched (this migration does not modify `routes/` or
+     * `book-store.ts`). A read resolver that mutates was the thing the read
+     * model declined to replicate elsewhere in this schema, and this field
+     * keeps that stance: it excludes not-live rows from the list it returns,
+     * but leaves them in the database for REST (or a future phase-3 sweep) to
+     * clean up. The net effect for a client is the same list either way — a
+     * not-live row is invisible here whether or not REST has gotten to it
+     * yet.
+     */
+    pendingFixes: t.prismaField({
+      type: [pendingFix],
+      resolve: async (query, owner, _args, context) => {
+        const rows = await context.prisma.pendingFix.findMany({
+          ...query,
+          where: { userId: owner.userId },
+        });
+        const now = Date.now();
+        return rows.filter((row) =>
+          isLivePendingFix(parsePendingFixState(row.state), row.updatedAt, now)
+        );
       },
     }),
   }),

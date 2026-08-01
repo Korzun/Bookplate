@@ -176,3 +176,40 @@ export const parsePendingFixState = (json: string): PendingFixState => {
     undo: parseUndoSnapshot(v.undo),
   };
 };
+
+/**
+ * 7 days, mirrored from `book-store.ts:31`'s `PENDING_FIX_TTL_MS`. Not
+ * imported from there: the store constant is a private module-level `const`,
+ * and this predicate is meant to be the shared *decision*, not a dependency
+ * on the store module from the GraphQL read path.
+ */
+const PENDING_FIX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a `PendingFix` row should still be visible, mirrored exactly from
+ * the keep/drop decision inside `BookStore.getPendingFixes`
+ * (`book-store.ts:699-705`): live unless (no proposals and no undo) — the fix
+ * is fully resolved — or (no proposals, an undo snapshot present, and
+ * `updatedAt` older than the 7-day TTL) — the undo-only tail has expired.
+ *
+ * A row whose `state` column failed to parse lands here as
+ * `EMPTY_PENDING_FIX_STATE` (`parsePendingFixState`'s total fallback), which
+ * has no proposals and no undo — the first clause classifies it not-live,
+ * matching the store's own delete-on-parse-failure without this predicate
+ * needing to know about parsing at all.
+ *
+ * `now` is a parameter, not `Date.now()` read internally, so this stays a
+ * pure function — the TTL-boundary tests in `derive.test.ts` pin an exact
+ * `now` rather than racing the clock.
+ */
+export const isLivePendingFix = (
+  state: PendingFixState,
+  updatedAt: number,
+  now: number
+): boolean => {
+  const noProposals = state.proposals.length === 0;
+  const noUndo = state.undo === null;
+  if (noProposals && noUndo) return false;
+  const expiredUndo = noProposals && !noUndo && updatedAt < now - PENDING_FIX_TTL_MS;
+  return !expiredUndo;
+};

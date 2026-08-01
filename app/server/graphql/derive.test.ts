@@ -2,6 +2,7 @@ import {
   deriveCurrentChapter,
   epochSecondsToDate,
   epochToDate,
+  isLivePendingFix,
   parseIdentifiers,
   parseNullableStringArray,
   parseNumberArray,
@@ -217,5 +218,50 @@ describe('parsePendingFixState', () => {
     const fix = { ...FIX, reason: 'auto-normalized', fromChips: ['Old'], toChips: ['New'] };
     const json = JSON.stringify({ proposals: [fix] });
     expect(parsePendingFixState(json).proposals).toEqual([fix]);
+  });
+});
+
+// Mirrors book-store.ts:699-705's keep/drop decision inside `getPendingFixes`
+// exactly, so REST's delete-on-read and GraphQL's filter-on-read never
+// disagree about which rows are live. TTL is book-store.ts:31's
+// `PENDING_FIX_TTL_MS` (7 days), inlined here as a literal so this test does
+// not import a private store constant.
+describe('isLivePendingFix', () => {
+  const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const NOW = 1_700_000_000_000;
+
+  const FIX = {
+    field: 'title',
+    kind: 'replace',
+    from: 'Old Title',
+    to: 'New Title',
+    changes: {},
+  };
+  const UNDO = { kind: 'apply' as const, proposals: [], appliedFixes: [] };
+
+  const EMPTY = { autoFixes: [], appliedFixes: [], proposals: [], undo: null };
+  const withProposalsNoUndo = { ...EMPTY, proposals: [FIX] };
+  const withProposalsAndUndo = { ...EMPTY, proposals: [FIX], undo: UNDO };
+  const undoOnly = { ...EMPTY, undo: UNDO };
+
+  it.each([
+    ['no proposals, no undo — resolved', EMPTY, NOW, false],
+    ['no proposals, undo present, not expired — live', undoOnly, NOW, true],
+    ['proposals present, no undo — live', withProposalsNoUndo, NOW, true],
+    ['proposals present, undo present — live', withProposalsAndUndo, NOW, true],
+  ])('%s', (_name, state, updatedAt, expected) => {
+    expect(isLivePendingFix(state, updatedAt, NOW)).toBe(expected);
+  });
+
+  it('is live when undo-only and updatedAt is exactly at the TTL boundary', () => {
+    expect(isLivePendingFix(undoOnly, NOW - TTL_MS, NOW)).toBe(true);
+  });
+
+  it('is not live when undo-only and updatedAt is one ms past the TTL boundary', () => {
+    expect(isLivePendingFix(undoOnly, NOW - TTL_MS - 1, NOW)).toBe(false);
+  });
+
+  it('is not live for a row whose state failed to parse (degrades to the empty state)', () => {
+    expect(isLivePendingFix(parsePendingFixState('{not json'), NOW, NOW)).toBe(false);
   });
 });

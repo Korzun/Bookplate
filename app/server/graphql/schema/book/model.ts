@@ -1,13 +1,16 @@
 import {
   epochToDate,
+  isLivePendingFix,
   parseIdentifiers,
   parseNullableStringArray,
   parseNumberArray,
+  parsePendingFixState,
   parseStringArray,
 } from '../../derive';
 import { builder } from '../builder';
 import { model as identifier } from '../identifier';
 import { model as linkedDocument } from '../linked-document';
+import { model as pendingFix } from '../pending-fix';
 import { model as progress } from '../progress';
 import { findUnique } from './node-loader';
 
@@ -18,13 +21,13 @@ export const model = builder.prismaNode('Book', {
   fields: (t) => ({
     // The raw content-hash id, alongside the Relay global `id`.
     //
-    // Not redundant with `id`: four sibling fields in this schema already
+    // Not redundant with `id`: three sibling fields in this schema already
     // carry this exact value as an opaque string — `Progress.document`,
-    // `PendingFixSummary.bookId`, `LinkedDocument.oldId`/`newId` — and
-    // `Library.book(id:)` takes it as an argument. Without this field a
-    // client holding a `Book` cannot join to any of them, cannot re-fetch
-    // itself through `Library.book(id:)`, and cannot build the cover,
-    // thumbnail or download URLs (which are `/api/books/<this>/...`).
+    // `LinkedDocument.oldId`/`newId` — and `Library.book(id:)` takes it as an
+    // argument. Without this field a client holding a `Book` cannot join to
+    // any of them, cannot re-fetch itself through `Library.book(id:)`, and
+    // cannot build the cover, thumbnail or download URLs (which are
+    // `/api/books/<this>/...`).
     //
     // `Book.id` cannot serve that purpose: it is a base64 global ID over
     // `JSON.stringify([userId, id])`, so extracting the hash from it client-
@@ -77,23 +80,41 @@ export const model = builder.prismaNode('Book', {
 
     validation: t.relation('validation', { nullable: true }),
 
-    // Deliberately a bare relation, with none of `getPendingFixes`'s
-    // resolved/TTL cleanup applied (see `Library.pendingFixes` in
-    // `library/model.ts` and `book-store.ts`'s `getPendingFixes`, which deletes
-    // a row once its proposals are empty, or once an undo-only row is older
-    // than `PENDING_FIX_TTL_MS`). That cleanup is a *side effect of reading the
-    // list*, not a property of the row itself, so `Book.pendingFix` and
-    // `Library.pendingFixes`/REST's pending-fixes list can disagree for a stale
-    // row: a fix applied 7+ days ago with no proposals left is dropped (and
-    // deleted) the next time the list is read, but `Book.pendingFix` keeps
-    // returning it until something reads the list. This is accepted, not fixed
-    // here — replicating a read-triggered deletion inside a field resolver
-    // would be worse behaviour than the inconsistency it removes, and
-    // duplicating the expiry predicate in a second place trades a visible drift
-    // for an invisible one (two copies that can silently diverge later). The
-    // visible effect is narrow: a stale badge on one book until the list is
-    // next read.
-    pendingFix: t.relation('pendingFix', { nullable: true }),
+    // Gated by the same `isLivePendingFix` predicate as `Library.pendingFixes`
+    // (cleanup spec, §"3. One PendingFix type") — the relation resolves, then
+    // a not-live row is nulled out here rather than returned. This closes a
+    // previously-accepted drift: before this predicate existed, this field
+    // was a bare relation with no expiry check, so a fix applied 7+ days ago
+    // with no proposals left would vanish from `Library.pendingFixes` (which
+    // ran `getPendingFixes`'s TTL cleanup) while still showing here as a
+    // stale badge, until something else happened to read the list and
+    // trigger REST's delete-on-read. Both GraphQL readings now apply the
+    // identical predicate, so that gap cannot reopen from this side. Read
+    // cleanup (deleting the expired row, as REST's `getPendingFixes` still
+    // does) is deliberately NOT replicated here — see `Library.pendingFixes`'s
+    // doc comment in `library/model.ts` for why a read resolver filters
+    // rather than mutates.
+    //
+    // `t.field`, not `t.relation`: `t.relation`'s `resolve` option is only a
+    // *fallback*, used solely when the plugin's own query-merging optimizer
+    // did not already eagerly select the relation onto the parent `Book` row
+    // — and `Library.book` (`library/model.ts`) fetches `Book` through
+    // `t.prismaField`, whose smart-select machinery does exactly that, so a
+    // `t.relation` gate here would silently never run. A plain `t.field` with
+    // its own `context.prisma.pendingFix.findUnique` always executes.
+    pendingFix: t.field({
+      type: pendingFix,
+      nullable: true,
+      resolve: async (book, _args, context) => {
+        const row = await context.prisma.pendingFix.findUnique({
+          where: { userId_bookId: { userId: book.userId, bookId: book.id } },
+        });
+        if (!row) return null;
+        return isLivePendingFix(parsePendingFixState(row.state), row.updatedAt, Date.now())
+          ? row
+          : null;
+      },
+    }),
 
     /**
      * Book -> Progress is not a Prisma relation (`Progress` has no FK to
