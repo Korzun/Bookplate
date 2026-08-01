@@ -1,4 +1,5 @@
 import './book';
+import './config';
 import './device';
 import './library';
 import './pending-fix';

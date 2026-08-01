@@ -37,13 +37,15 @@ afterEach(async () => {
 describe('Progress', () => {
   it('lists the library progress records', async () => {
     const result = await harness.execute(
-      '{ viewer { library { progress { document percentage device } } } }',
+      '{ viewer { library { progress(first: 10) { edges { node { document percentage device } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toBeUndefined();
     expect(
-      (result.data as { viewer: { library: { progress: unknown[] } } }).viewer.library.progress
+      (
+        result.data as { viewer: { library: { progress: { edges: { node: unknown }[] } } } }
+      ).viewer.library.progress.edges.map((e) => e.node)
     ).toEqual([{ document: BOOK_ID, percentage: 0.42, device: 'Kobo' }]);
   });
 
@@ -85,13 +87,15 @@ describe('Progress', () => {
   });
 
   it('does not leak another user progress', async () => {
-    const result = await harness.execute('{ viewer { library { progress { document } } } }', {
-      viewer: harness.bobViewer,
-    });
+    const result = await harness.execute(
+      '{ viewer { library { progress(first: 10) { edges { node { document } } } } } }',
+      { viewer: harness.bobViewer }
+    );
 
     expect(result.errors).toBeUndefined();
     expect(
-      (result.data as { viewer: { library: { progress: unknown[] } } }).viewer.library.progress
+      (result.data as { viewer: { library: { progress: { edges: unknown[] } } } }).viewer.library
+        .progress.edges
     ).toEqual([]);
   });
 

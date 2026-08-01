@@ -9,6 +9,10 @@ import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { UserStore } from '../services/user-store';
 import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
+import {
+  createChapterSpineMapLoader,
+  type ChapterSpineMapLoader,
+} from './chapter-spine-map-loader';
 import { createOwnerLoader, type OwnerLoader } from './owner';
 import { createProgressLoader, type ProgressLoader } from './progress-loader';
 
@@ -47,6 +51,7 @@ export type Context = {
   config: AppConfig;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
+  loadChapterSpineMap: ChapterSpineMapLoader;
 };
 
 export type ContextDeps = {
@@ -90,4 +95,5 @@ export const createContext =
     config: deps.config,
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),
+    loadChapterSpineMap: createChapterSpineMapLoader(deps.prisma),
   });
