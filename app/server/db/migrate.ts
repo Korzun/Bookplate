@@ -492,6 +492,13 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
     await prisma.$executeRawUnsafe(`ALTER TABLE "books_new" RENAME TO "books"`);
     await prisma.$executeRawUnsafe(`DROP TABLE "book_id_history"`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "book_id_history_new" RENAME TO "book_id_history"`);
+    // Recreate the lineage-read index dropped along with the pre-rebuild table above.
+    // See 20260801000000_book_id_history_current_id_index for why this DDL pass
+    // (which runs before this data migration) can't be relied on alone.
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "book_id_history_user_id_current_id_idx"
+        ON "book_id_history"("user_id", "current_id")
+    `);
 
     await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
 

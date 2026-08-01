@@ -1,0 +1,12 @@
+-- `getBookLineage` (services/book-store.ts) does `WHERE user_id = ? AND
+-- current_id = ?`; the table's primary key is (user_id, old_id), so that read
+-- scans without this index.
+--
+-- This statement only benefits databases where data_v11_per_user_libraries
+-- (db/migrate.ts) has already run, since that data migration rebuilds
+-- "book_id_history" from scratch (DROP + recreate under a composite primary
+-- key) and this DDL pass always applies before any data migration — on a
+-- brand-new database the index created here would be dropped along with the
+-- pre-rebuild table. data_v11_per_user_libraries itself also creates this
+-- index right after the rebuild, so every database ends up with it either way.
+CREATE INDEX "book_id_history_user_id_current_id_idx" ON "book_id_history"("user_id", "current_id");

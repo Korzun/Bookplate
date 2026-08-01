@@ -147,6 +147,7 @@ model BookIdHistory {
   type      String @default("edit")
 
   @@id([userId, oldId])
+  @@index([userId, currentId])
   @@map("book_id_history")
 }
 
