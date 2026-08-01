@@ -1,8 +1,8 @@
+import type { ValidationThreshold } from '@korzun/epubcheck-ts';
+
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as validationThreshold } from '../validation-threshold';
-
-type ValidationThresholdValue = 'NONE' | 'FATAL' | 'ERROR' | 'WARNING' | 'INFO' | 'USAGE';
 
 /**
  * Deliberately a prismaObject, not a prismaNode. A Validation is only ever
@@ -15,7 +15,7 @@ export const model = builder.prismaObject('Validation', {
     valid: t.exposeBoolean('valid'),
     threshold: t.field({
       type: validationThreshold,
-      resolve: (validation) => validation.threshold as ValidationThresholdValue,
+      resolve: (validation) => validation.threshold as ValidationThreshold,
     }),
     validatedAt: t.field({
       type: 'DateTime',
