@@ -12,6 +12,7 @@ import {
 
 import type { Context } from '../context';
 import { createOwnerLoader } from '../owner';
+import { createPendingFixLoader } from '../pending-fix-loader';
 import { createProgressLoader } from '../progress-loader';
 import { createHarness, type Harness } from '../test-util';
 import { schema } from './index';
@@ -121,6 +122,7 @@ describe('root type authorization', () => {
       config: harness.config,
       loadOwner: createOwnerLoader(harness.prisma),
       loadProgress: createProgressLoader(harness.prisma),
+      loadPendingFix: createPendingFixLoader(harness.prisma),
     };
 
     const result = await execute({

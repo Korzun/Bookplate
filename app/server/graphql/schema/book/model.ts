@@ -100,15 +100,26 @@ export const model = builder.prismaNode('Book', {
     // did not already eagerly select the relation onto the parent `Book` row
     // — and `Library.book` (`library/model.ts`) fetches `Book` through
     // `t.prismaField`, whose smart-select machinery does exactly that, so a
-    // `t.relation` gate here would silently never run. A plain `t.field` with
-    // its own `context.prisma.pendingFix.findUnique` always executes.
+    // `t.relation` gate here would silently never run.
+    //
+    // Resolved through `context.loadPendingFix` rather than a direct
+    // `prisma.pendingFix.findUnique`, for exactly the reason `Book.progress`
+    // (below) goes through `context.loadProgress`: `PendingFix` has the same
+    // shape for this purpose — non-relation from Pothos's perspective (once a
+    // custom resolver replaces `t.relation`), compound-keyed
+    // (`@@id([userId, bookId])`), one per-book lookup reached from `Book` —
+    // and `Book` is reachable from a list (`Library.entries`). A plain
+    // `findUnique` here would be N queries for a page of N books; the
+    // request-scoped batching loader (`pending-fix-loader.ts`) collapses that
+    // into one `findMany`. See that file for the loader itself, including why
+    // it batches by an explicit `{userId, bookId}` pair list rather than a
+    // single `userId` + `bookId IN (...)` (book ids are content hashes shared
+    // across users).
     pendingFix: t.field({
       type: pendingFix,
       nullable: true,
       resolve: async (book, _args, context) => {
-        const row = await context.prisma.pendingFix.findUnique({
-          where: { userId_bookId: { userId: book.userId, bookId: book.id } },
-        });
+        const row = await context.loadPendingFix(book.userId, book.id);
         if (!row) return null;
         return isLivePendingFix(parsePendingFixState(row.state), row.updatedAt, Date.now())
           ? row
