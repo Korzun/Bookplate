@@ -24,7 +24,12 @@ export type ScanStatusShape = {
 export const model = builder.objectRef<ScanStatusShape>('ScanStatus').implement({
   description: 'The state of a library scan — in progress, completed, or failed.',
   fields: (t) => ({
-    jobId: t.field({ type: 'ID', resolve: (parent) => parent.job.jobId }),
+    // Renamed from `jobId` (design doc §1, spec 1's B4): a normalizing cache
+    // keys on `id` by default — `Subscription.scanProgress`'s events could
+    // not merge into `Library.scanStatus` under any other field name. Same
+    // underlying value, `parent.job.jobId` (the scan-job store's own field
+    // name, untouched — this is a GraphQL wire rename only).
+    id: t.field({ type: 'ID', resolve: (parent) => parent.job.jobId }),
     state: t.field({ type: scanState, resolve: (parent) => parent.job.status }),
     phase: t.field({ type: scanPhase, resolve: (parent) => parent.job.phase }),
     total: t.int({ resolve: (parent) => parent.job.total }),

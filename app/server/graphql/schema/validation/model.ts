@@ -1,4 +1,5 @@
 import type { ValidationThreshold } from '@korzun/epubcheck-ts';
+import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
@@ -12,6 +13,23 @@ import { model as validationThreshold } from '../validation-threshold';
  */
 export const model = builder.prismaObject('Validation', {
   fields: (t) => ({
+    /**
+     * Byte-identical to the owning `Book`'s global id — same construction
+     * `BookDeletePayload.deletedId` uses (`book/mutation/delete.ts`) and
+     * `PendingFix.id`'s identical field (`pending-fix/model.ts`) — a
+     * `Validation` is 1:1 with its book (`@@id([userId, bookId])`), so
+     * reusing the book's own id lets a normalizing cache place
+     * `bookValidate`'s payload without a second, separately-guarded identity.
+     *
+     * `validation.userId`/`.bookId` read straight off this row, never off
+     * `context.viewer` — see `PendingFix.id`'s doc comment for why that
+     * matters under admin traversal.
+     */
+    id: t.field({
+      type: 'ID',
+      resolve: (validation) =>
+        encodeGlobalID('Book', JSON.stringify([validation.userId, validation.bookId])),
+    }),
     valid: t.exposeBoolean('valid'),
     threshold: t.field({
       type: validationThreshold,

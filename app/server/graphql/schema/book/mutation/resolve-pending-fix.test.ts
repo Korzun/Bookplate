@@ -124,6 +124,7 @@ const MUTATION = `
             }
           }
         }
+        library { user { username } }
       }
       ... on BookNotValidatedError {
         message
@@ -163,6 +164,28 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(data.book.title).toBe('Untouched');
       expect(data.book.pendingFix).toBeNull();
       expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+    });
+
+    // Traced (schema-design review S1): this mutation invalidates
+    // `Library.pendingFixes` (the nav badge), so the payload must carry the
+    // `Library` a cache would otherwise have no way to address (its global id
+    // is keyed on the owner's raw userId — not decodable from `Book` alone).
+    it('carries the resolved owner’s library alongside the book', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'DISMISS' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        library: { user: { username: string } };
+      };
+      expect(data.library.user.username).toBe('alice');
     });
 
     it('is a harmless no-op when no pending fix row exists, mirroring REST’s unconditional DELETE', async () => {

@@ -25,7 +25,7 @@ afterEach(async () => {
 const DOCUMENT = parse(`
   subscription ($libraryId: ID!) {
     scanProgress(libraryId: $libraryId) {
-      jobId
+      id
       state
       phase
       total
@@ -48,7 +48,7 @@ const contextFor = (viewer: Viewer | null): Context => ({
 
 type ScanProgressData = {
   scanProgress: {
-    jobId: string;
+    id: string;
     state: string;
     phase: string;
     total: number;
@@ -86,7 +86,7 @@ describe('Subscription.scanProgress', () => {
     await settle(50);
     const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
-    expect(first.scanProgress.jobId).toBe(started.jobId);
+    expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
     expect(first.scanProgress.phase).toBe('IMPORTING');
     expect(first.scanProgress.total).toBe(0);
@@ -113,7 +113,7 @@ describe('Subscription.scanProgress', () => {
     });
     const third = dataOf(await terminalEvent);
     expect(third.scanProgress.state).toBe('COMPLETED');
-    expect(third.scanProgress.jobId).toBe(started.jobId);
+    expect(third.scanProgress.id).toBe(started.jobId);
 
     await result.return?.();
   });
@@ -149,7 +149,7 @@ describe('Subscription.scanProgress', () => {
    * (`test-util.ts`'s `adminViewer`) — a viewer-derived topic would be
    * `scan:null`, and this subscription could never receive alice's event at
    * all, so establishing a working stream already discriminates the
-   * derivation. Asserting `jobId` (not just `state`) pins CONTENTS, matching
+   * derivation. Asserting `id` (not just `state`) pins CONTENTS, matching
    * the same discipline `scan-status.test.ts`'s admin-traversal row applies.
    */
   it('lets an admin subscribe to a named user’s library, receiving that user’s real job', async () => {
@@ -167,7 +167,7 @@ describe('Subscription.scanProgress', () => {
     await settle(50);
     const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
-    expect(first.scanProgress.jobId).toBe(started.jobId);
+    expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
     await result.return?.();
@@ -203,7 +203,7 @@ describe('Subscription.scanProgress', () => {
     // ever makes are `start` and (via the detached pipeline) `complete`/`fail`.
     const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
-    expect(first.scanProgress.jobId).toBe(started.jobId);
+    expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
     const terminalEvent = result.next();
@@ -213,7 +213,7 @@ describe('Subscription.scanProgress', () => {
     });
     const second = dataOf(await terminalEvent);
     expect(second.scanProgress.state).toBe('COMPLETED');
-    expect(second.scanProgress.jobId).toBe(started.jobId);
+    expect(second.scanProgress.id).toBe(started.jobId);
 
     await result.return?.();
   });

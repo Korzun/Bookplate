@@ -275,6 +275,50 @@ describe('PendingFix', () => {
     ).toEqual([]);
   });
 
+  // `PendingFix.id` must be byte-identical to the sibling `Book.id` in the
+  // SAME selection (design doc §1, `BookDeletePayload.deletedId`'s exact
+  // `encodeGlobalID('Book', JSON.stringify([userId, bookId]))` construction).
+  it("exposes id byte-identical to its owning Book's id", async () => {
+    const result = await harness.execute(
+      '{ viewer { library { pendingFixes { id book { id } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const fixes = (
+      result.data as {
+        viewer: { library: { pendingFixes: { id: string; book: { id: string } }[] } };
+      }
+    ).viewer.library.pendingFixes;
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0]?.id).toBe(fixes[0]?.book.id);
+    expect(fixes[0]?.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
+  });
+
+  // Admin-traversal-discriminating companion to the self-read test above: a
+  // self-read (alice reading her own fix) cannot tell "the resolver reads
+  // `userId`/`bookId` off the `PendingFix` row" apart from "the resolver
+  // substitutes `context.viewer!.userId`" — both produce the same bytes when
+  // the viewer IS the owner. The config-based admin's `userId` is `null`
+  // (`test-util.ts`'s `adminViewer`), so a viewer-derived `id` would encode
+  // `[null, bookId]` and diverge from the sibling `Book.id` (which correctly
+  // reads the decoded target user's id). This is the seen-to-fail test for
+  // this task's report.
+  it('reads userId/bookId off its own row under admin traversal — id still matches the sibling Book.id', async () => {
+    const result = await harness.execute(
+      `query ($id: ID!) { user(id: $id) { library { pendingFixes { id book { id } } } } }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const fixes = (
+      result.data as { user: { library: { pendingFixes: { id: string; book: { id: string } }[] } } }
+    ).user.library.pendingFixes;
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0]?.id).toBe(fixes[0]?.book.id);
+    expect(fixes[0]?.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
+  });
+
   // Discriminate-check: a self-read (the test above) cannot tell "reads the
   // owner off its parent" apart from "re-derives it from the viewer" the way
   // `library/model.test.ts`'s `readAsAdmin` does for `subjects`/`authors` —
