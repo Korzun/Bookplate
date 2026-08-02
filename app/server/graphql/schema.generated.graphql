@@ -180,15 +180,14 @@ type BookUpdateMetadataPayload {
 union BookUpdateMetadataResult = BookHashCollisionError | BookNotValidatedError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
 
 input BookValidateInput {
-  bookId: String!
-  userId: ID!
+  id: ID!
 }
 
 type BookValidatePayload {
   validation: Validation!
 }
 
-union BookValidateResult = BookValidatePayload | InvalidInputError
+union BookValidateResult = BookValidatePayload
 
 type Config {
   libraryName: String!
