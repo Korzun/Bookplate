@@ -106,7 +106,7 @@ const STATE_SELECTION = `state {
 describe('PendingFix', () => {
   it('exposes a pending fix on its book', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { pendingFix { fileName fileSize ${STATE_SELECTION} } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { pendingFix { fileName fileSize ${STATE_SELECTION} } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -366,7 +366,7 @@ describe('PendingFix', () => {
   // too, in the same test run that proved it excluded from the list above.
   it('also nulls a TTL-expired fix on Book.pendingFix, closing the list/relation drift', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${EXPIRED_BOOK_ID}") { pendingFix { fileName } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, EXPIRED_BOOK_ID)}") { pendingFix { fileName } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -417,7 +417,10 @@ describe('PendingFix', () => {
     const findManySpy = vi.spyOn(harness.prisma.pendingFix, 'findMany');
 
     const fields = ids
-      .map((id, i) => `b${i}: book(id: "${id}") { pendingFix { fileName } }`)
+      .map(
+        (id, i) =>
+          `b${i}: book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { pendingFix { fileName } }`
+      )
       .join(' ');
     const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
       viewer: harness.aliceViewer,
@@ -443,7 +446,7 @@ describe('PendingFix', () => {
     vi.spyOn(harness.prisma.pendingFix, 'findMany').mockRejectedValue(new Error('db unavailable'));
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { pendingFix { fileName } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { pendingFix { fileName } } } } }`,
       { viewer: harness.aliceViewer }
     );
 

@@ -1,9 +1,16 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
 
 let harness: Harness;
 const BOOK_ID = 'f'.repeat(32);
+
+// Computed the same way the resolver decodes it — see validate.test.ts's
+// identical `bookGlobalId` helper.
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 
 beforeEach(async () => {
   harness = await createHarness();
@@ -37,7 +44,7 @@ afterEach(async () => {
 describe('Progress', () => {
   it('exposes the reader position under its new name, `position`', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { progress { position } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { progress { position } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -50,7 +57,7 @@ describe('Progress', () => {
 
   it('rejects the old field name — `progress` no longer exists on the Progress type', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { progress { progress } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { progress { progress } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -89,7 +96,7 @@ describe('Progress', () => {
 
   it('resolves a book progress as a field, replacing the client-side join', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { progress { percentage } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { progress { percentage } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -113,7 +120,7 @@ describe('Progress', () => {
     });
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${'0'.repeat(32)}") { progress { percentage } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, '0'.repeat(32))}") { progress { percentage } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -180,7 +187,7 @@ describe('Progress', () => {
     });
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { progress { percentage } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.bobOwner.userId, BOOK_ID)}") { progress { percentage } } } } }`,
       { viewer: harness.bobViewer }
     );
 
@@ -228,7 +235,10 @@ describe('Progress', () => {
     const findManySpy = vi.spyOn(harness.prisma.progress, 'findMany');
 
     const fields = ids
-      .map((id, i) => `b${i}: book(id: "${id}") { progress { percentage } }`)
+      .map(
+        (id, i) =>
+          `b${i}: book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { progress { percentage } }`
+      )
       .join(' ');
     const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
       viewer: harness.aliceViewer,
@@ -251,7 +261,7 @@ describe('Progress', () => {
     vi.spyOn(harness.prisma.progress, 'findMany').mockRejectedValue(new Error('db unavailable'));
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { progress { percentage } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { progress { percentage } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
