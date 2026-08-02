@@ -1,8 +1,8 @@
 import type { Viewer } from '../../context';
 import { builder } from '../builder';
-import { model as device } from '../device';
-import { model as library } from '../library';
-import { model as user } from '../user';
+import { model as device } from '../device/model';
+import { model as library } from '../library/model';
+import { model as user } from '../user/model';
 
 export const model = builder.objectRef<Viewer>('Viewer').implement({
   fields: (t) => ({

@@ -12,7 +12,7 @@ import type { Book as BookRow, Series as SeriesRow } from '@prisma/client';
 // `book/model.ts`'s note on the identical `progress` situation.
 import * as book from '../book/model';
 import { builder } from '../builder';
-import * as series from '../series';
+import * as series from '../series/model';
 
 /**
  * The real Prisma row shapes `Library.entries` (library/model.ts)

@@ -15,7 +15,7 @@ import { isLivePendingFix, parsePendingFixState } from '../../derive';
 // lines down.
 import { model as book } from '../book/model';
 import { builder } from '../builder';
-import { model as libraryEntry, type LibraryEntryRow } from '../library-entry';
+import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
 import { isOwnerOrAdmin } from '../node-scope';
 import { rejectBackwardPagination } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
@@ -23,7 +23,7 @@ import { model as pendingFix } from '../pending-fix';
 // same import for why an entity index must not be pulled in from a model file.
 import { model as progress } from '../progress/model';
 import { model as scanStatus, type ScanStatusShape } from '../scan-status/model';
-import { model as series } from '../series';
+import { model as series } from '../series/model';
 import { model as suggestionGroup } from '../suggestion-group';
 // `../user/model`, not `../user`: `user/index.ts` also side-effect-imports
 // `user/mutation/*.ts`, so importing the index here (rather than the

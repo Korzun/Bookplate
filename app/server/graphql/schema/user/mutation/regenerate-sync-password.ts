@@ -82,7 +82,7 @@ builder.mutationField('userRegenerateSyncPassword', (t) =>
     authScopes: (_parent, args, context) =>
       context.viewer !== null && context.viewer.userId === args.input.userId.id,
     resolve: async (_parent, args, context) => {
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const username = context.viewer!.username;
 
       const syncPassword = UserStore.generateSyncPassword();
