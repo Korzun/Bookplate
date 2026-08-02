@@ -517,6 +517,10 @@ input ProgressSetInput {
   deviceId: String
   document: String!
   percentage: Float!
+
+  """
+  Must be the viewer's own User id: unlike every other user-associated mutation, there is no admin write path for progress (`PUT /api/my/progress/:document` 403s admins, and `routes/users.ts` has no write route for progress at all).
+  """
   userId: ID!
 }
 
