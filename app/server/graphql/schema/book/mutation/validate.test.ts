@@ -165,35 +165,73 @@ describe('Mutation.bookValidate', () => {
     ]);
   });
 
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Covers `validate.ts`'s `if (owner === null) return null;` branch — a
+    // well-formed Book gid whose decoded userId names no real user. Only
+    // reachable past `authScopes` for an admin viewer (a non-admin fails
+    // `ownerOf` first, same as the malformed-id case above), and review
+    // proved it was otherwise untested in this file (replacing the guarded
+    // return with a throw left the suite green). Also restores, in the new
+    // input's terms, the assertion the old two-argument shape's "refuses a
+    // User global ID that names no user" test used to carry.
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { id: bookGlobalId('no-such-user', BOOK_ID) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookValidate).toBeNull();
+  });
+
   // Arg-layer rejection classes (malformed / wrong-type) are exercised ONCE,
   // here, on this representative mutation — per the plan, not duplicated on
   // every book mutation the pattern is later applied to: the relay arg
   // mapper that does the rejecting is shared machinery, not per-field logic.
   it('rejects a wrong-type global id (Series) before the resolver runs', async () => {
-    const seriesGlobalId = await harness.seedNodeFor('Series');
+    // Deliberately a `Series`-typed id whose LOCAL part is otherwise a
+    // well-formed Book compound id (`[alice.userId, BOOK_ID]`) — not
+    // `seedNodeFor('Series')`'s plain `seed-series-1` local id, which
+    // `parseCompoundId` would reject on its own. That earlier version made
+    // this test pass for the wrong reason: authScopes' own
+    // `parseCompoundId(...) === null → NO_MATCH_USER_ID → FORBIDDEN` path
+    // (proven by review: deleting `for: book` from validate.ts still failed
+    // this test, but only via that fallback, not via the arg-layer rejection
+    // under test) would have produced the same observable shape even with no
+    // typename enforcement at all. With a local id that DOES parse, a bypass
+    // of `for: book` would sail through `authScopes` (alice is the decoded
+    // owner) and reach the resolver's `getBookById` call — so the spy below
+    // is now load-bearing, not vacuous.
+    const wrongTypeGlobalId = encodeGlobalID(
+      'Series',
+      JSON.stringify([harness.aliceOwner.userId, BOOK_ID])
+    );
     // Independent proof the resolver body never executes, not just that the
-    // response shape looks like it didn't: if the arg-layer rejection were
-    // somehow bypassed, the resolver's first store call is `loadOwner`
-    // (`context.loadOwner`), so a spy on it catching zero calls is direct
-    // evidence, not an inference from the error message alone.
-    const loadOwnerSpy = vi.spyOn(harness.stores.book, 'getBookById');
+    // response shape looks like it didn't: the resolver's third store call
+    // (after `parseCompoundId` and `loadOwner`) is `getBookById`, so a spy on
+    // it catching zero calls is direct evidence, not an inference from the
+    // error message alone.
+    const getBookByIdSpy = vi.spyOn(harness.stores.book, 'getBookById');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { id: seriesGlobalId } },
+      variables: { input: { id: wrongTypeGlobalId } },
     });
 
-    // Rejected by Pothos's relay plugin decoding the global id against the
-    // arg's `for: book` typename — a top-level error at field-argument
-    // coercion, distinct from any value the resolver could itself return
-    // (confirmed by the exact message shape: "is not of type: Book", the same
-    // class root-auth.test.ts documents for `libraryId`). The field is still
+    // Rejected by Pothos's relay plugin's argMapper, which decodes the global
+    // id against the arg's `for: book` typename before `wrapResolve` (and so
+    // before `ScopeAuthPlugin`'s own wrapper) ever runs (`validate.ts:83-90`
+    // traces the plugin ordering this relies on) — not GraphQL argument
+    // coercion, and distinct from any value the resolver could itself
+    // produce. Arg-layer errors carry no `extensions.code` (a scope-layer
+    // FORBIDDEN would); that, independent of the message's exact wording, is
+    // what proves this happened before `authScopes`. The field is still
     // nullable, so `data.bookValidate` reads back as `null` rather than being
-    // omitted — that alone wouldn't prove the resolver never ran; the error
-    // and the spy both do.
+    // omitted — that alone wouldn't prove the resolver never ran; the
+    // `extensions.code` check and the spy both do.
     expect(result.errors?.[0]?.message).toMatch(/is not of type: Book/);
+    expect(result.errors?.[0]?.extensions?.code).toBeUndefined();
     expect(result.data?.bookValidate ?? null).toBeNull();
-    expect(loadOwnerSpy).not.toHaveBeenCalled();
+    expect(getBookByIdSpy).not.toHaveBeenCalled();
   });
 
   it('refuses a malformed local id for a non-admin viewer (FORBIDDEN)', async () => {
