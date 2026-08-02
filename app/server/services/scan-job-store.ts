@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
 
-import { createScanPubSub, type ScanPubSub } from '../graphql/pubsub';
 import {
   reduceScanJob,
   shouldPublish,
@@ -9,6 +8,7 @@ import {
   type ScanProgress,
   type ScanResult,
 } from './scan-events';
+import { noopScanPublisher, type ScanPublisher } from './scan-publisher';
 
 // Re-exported for backward compatibility: `ScanJob`/`ScanResult`/`ScanJobStatus`
 // used to be defined in this file directly. They now live in `scan-events.ts`
@@ -30,12 +30,12 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * delegated transitions: it mints the job's identity (`jobId`, `startedAt`)
  * fresh, with no prior job to fold onto — see `reduceScanJob`'s doc comment.
  *
- * Task 9 adds the pubsub half: spec §"Scan progress"/"ScanJobStore" — "a yoga
- * `createPubSub()` publishing on a per-user topic from all four transition
- * points (`start`, `progress`, `complete`, `fail`)". `ScanJobStore` is the
- * one shared instance both `POST /api/books/scan` (`routes/ui.ts`, untouched
- * — no `routes/` edit) and `libraryScan`/`scanProgress` traverse (constructed
- * once in `index.ts`, threaded into both `createServer` and
+ * Task 9 adds the publishing half: spec §"Scan progress"/"ScanJobStore" — "a
+ * yoga `createPubSub()` publishing on a per-user topic from all four
+ * transition points (`start`, `progress`, `complete`, `fail`)". `ScanJobStore`
+ * is the one shared instance both `POST /api/books/scan` (`routes/ui.ts`,
+ * untouched — no `routes/` edit) and `libraryScan`/`scanProgress` traverse
+ * (constructed once in `index.ts`, threaded into both `createServer` and
  * `createGraphqlHandler` since phase 1 — see that file), so publishing here,
  * not in the GraphQL mutation's `onProgress` callback, is what makes a
  * REST-started scan visible over the subscription at all: REST's own call
@@ -43,6 +43,15 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * so it only ever reaches this class through `start`/`complete`/`fail` — see
  * `scanProgress`'s own doc comment for the resulting, deliberately narrower,
  * REST-visibility scoping.
+ *
+ * The publisher this class talks to is `ScanPublisher` (`scan-publisher.ts`),
+ * a structural contract declared here in `services/` — NOT `graphql/
+ * pubsub.ts`'s concrete type. Review (task 9, I-1): the first version of this
+ * class imported `graphql/pubsub.ts` directly, making this the codebase's
+ * only `services/` file depending on `graphql/`. `graphql/pubsub.ts`'s
+ * `ScanPubSub` satisfies `ScanPublisher` structurally, so `index.ts`/
+ * `graphql/test-util.ts` inject the exact same real instance as before —
+ * only the declared dependency direction changed.
  */
 export class ScanJobStore {
   private readonly jobs = new Map<string, ScanJob>();
@@ -57,22 +66,22 @@ export class ScanJobStore {
   private readonly lastPublishedAt = new Map<string, number>();
 
   /**
-   * Defaults to a fresh, private pubsub so every pre-task-9 caller
+   * Defaults to `noopScanPublisher` so every pre-task-9 caller
    * (`routes/ui.test.ts`, `scan-job-store.test.ts`'s many `new ScanJobStore()`
-   * call sites) keeps compiling and passing unmodified — a store nobody ever
-   * subscribes to publishing into its own throwaway pubsub is inert, not
-   * wrong. Production (`index.ts`) and the GraphQL test harness
-   * (`graphql/test-util.ts`) both pass the SAME real instance a subscription
-   * resolver also reads from — see `graphql/pubsub.ts`'s doc comment for why
-   * this is the one `services/` file that imports from `graphql/` at all.
+   * call sites) keeps compiling and passing unmodified — a genuine no-op, not
+   * merely a real pubsub nobody happens to subscribe to. Production
+   * (`index.ts`) and the GraphQL test harness (`graphql/test-util.ts`) both
+   * pass the same real `ScanPubSub` instance a subscription resolver also
+   * reads from.
    */
-  constructor(private readonly pubsub: ScanPubSub = createScanPubSub()) {}
+  constructor(private readonly publisher: ScanPublisher = noopScanPublisher) {}
 
   start(userId: string): ScanJob {
+    const now = Date.now();
     const job: ScanJob = {
       jobId: randomUUID(),
       status: 'running',
-      startedAt: Date.now(),
+      startedAt: now,
       total: 0,
       processed: 0,
       phase: 'importing',
@@ -86,9 +95,8 @@ export class ScanJobStore {
     // same "always" `shouldPublish` already gives terminal events, and there
     // is exactly one `start` per job, so this can never itself become the
     // flood the coalescing rule exists to prevent.
-    const now = Date.now();
     this.lastPublishedAt.set(userId, now);
-    this.pubsub.publish('scan', userId, job);
+    this.publisher.publish('scan', userId, job);
     return job;
   }
 
@@ -128,7 +136,7 @@ export class ScanJobStore {
     const now = Date.now();
     if (shouldPublish(this.lastPublishedAt.get(userId) ?? 0, now, event)) {
       this.lastPublishedAt.set(userId, now);
-      this.pubsub.publish('scan', userId, next);
+      this.publisher.publish('scan', userId, next);
     }
   }
 
@@ -144,11 +152,11 @@ export class ScanJobStore {
    * The subscription side of the same per-user topic `start`/`progress`/
    * `complete`/`fail` publish onto — `Subscription.scanProgress`
    * (`graphql/schema/library/subscription/scan-progress.ts`) is the only
-   * caller, and reaches this rather than `graphql/pubsub.ts` directly so
-   * every access to the scan pubsub — publish AND subscribe — goes through
-   * this one class, matching how every other piece of scan state does.
+   * caller, and reaches this rather than the underlying publisher directly so
+   * every access to scan state — publish AND subscribe — goes through this
+   * one class.
    */
   subscribe(userId: string): AsyncIterable<ScanJob> {
-    return this.pubsub.subscribe('scan', userId);
+    return this.publisher.subscribe('scan', userId);
   }
 }

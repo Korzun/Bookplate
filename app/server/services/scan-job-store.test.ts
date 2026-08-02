@@ -1,5 +1,5 @@
-import type { ScanPubSub } from '../graphql/pubsub';
 import { ScanJobStore } from './scan-job-store';
+import type { ScanPublisher } from './scan-publisher';
 
 describe('ScanJobStore', () => {
   it('start() records a running job and returns it', () => {
@@ -156,32 +156,35 @@ describe('ScanJobStore', () => {
   });
 
   /**
-   * Task 9: the store publishes onto its injected `ScanPubSub` from all four
-   * transition points, gated by `shouldPublish`'s 250ms coalesce (always for
-   * `start`/`complete`/`fail`, at most once per window for `progress`) — spec
-   * §"Scan progress"/"ScanJobStore". `shouldPublish` itself is table-tested
-   * against a table of inputs with no fake timers (`scan-events.test.ts`,
-   * task 8); this is the "one integration assertion at the store" the plan's
-   * task 9 line calls for, so fake timers are appropriate here — the thing
-   * under test is `ScanJobStore.apply`'s own `Date.now()` calls, which the
-   * pure predicate doesn't own.
+   * Task 9: the store publishes onto its injected `ScanPublisher` from all
+   * four transition points, gated by `shouldPublish`'s 250ms coalesce (always
+   * for `start`/`complete`/`fail`, at most once per window for `progress`) —
+   * spec §"Scan progress"/"ScanJobStore". `shouldPublish` itself is
+   * table-tested against a table of inputs with no fake timers
+   * (`scan-events.test.ts`, task 8); this is the "one integration assertion
+   * at the store" the plan's task 9 line calls for, so fake timers are
+   * appropriate here — the thing under test is `ScanJobStore.apply`'s own
+   * `Date.now()` calls, which the pure predicate doesn't own.
+   *
+   * The mock below satisfies `ScanPublisher` (`./scan-publisher.ts`)
+   * directly — no `graphql/pubsub.ts` import needed here at all (task 9
+   * review, I-1).
    */
   describe('pubsub publishing', () => {
     let publish: ReturnType<typeof vi.fn>;
-    let pubsub: ScanPubSub;
+    let publisher: ScanPublisher;
 
     beforeEach(() => {
       vi.useFakeTimers();
       publish = vi.fn();
-      pubsub = {
+      publisher = {
         publish,
         // Never exercised in this describe block — `ScanJobStore.subscribe`
-        // (and the pubsub's own `subscribe`) has its own coverage in
-        // `graphql/pubsub.test.ts` and `library/subscription/
-        // scan-progress.test.ts`. Present only so this object satisfies
-        // `ScanPubSub`'s shape.
+        // has its own coverage in `graphql/pubsub.test.ts` and
+        // `library/subscription/scan-progress.test.ts`. Present only so this
+        // object satisfies `ScanPublisher`'s shape.
         subscribe: vi.fn(),
-      } as unknown as ScanPubSub;
+      };
     });
 
     afterEach(() => {
@@ -189,14 +192,14 @@ describe('ScanJobStore', () => {
     });
 
     it('start() always publishes, unconditionally', () => {
-      const store = new ScanJobStore(pubsub);
+      const store = new ScanJobStore(publisher);
       const job = store.start('u1');
       expect(publish).toHaveBeenCalledTimes(1);
       expect(publish).toHaveBeenCalledWith('scan', 'u1', job);
     });
 
     it('a burst of progress() events inside the 250ms window publishes at most once — bounded, not one publish per event', () => {
-      const store = new ScanJobStore(pubsub);
+      const store = new ScanJobStore(publisher);
       store.start('u1');
       publish.mockClear();
 
@@ -216,7 +219,7 @@ describe('ScanJobStore', () => {
     });
 
     it('a progress() event once the window has elapsed publishes again, and complete() always publishes on top regardless of timing', () => {
-      const store = new ScanJobStore(pubsub);
+      const store = new ScanJobStore(publisher);
       store.start('u1');
       publish.mockClear();
 
@@ -242,7 +245,7 @@ describe('ScanJobStore', () => {
     });
 
     it('never publishes for a coalesced-away progress event on a user with no tracked job', () => {
-      const store = new ScanJobStore(pubsub);
+      const store = new ScanJobStore(publisher);
       store.progress('nobody', {
         phase: 'importing',
         total: 1,

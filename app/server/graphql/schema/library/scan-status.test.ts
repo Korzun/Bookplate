@@ -92,4 +92,33 @@ describe('Library.scanStatus', () => {
     // Victim state unchanged — the read did not disturb bob's own job.
     expect(harness.stores.scanJob.get(harness.bobOwner.userId)?.jobId).toBe(job.jobId);
   });
+
+  /**
+   * Review (task 9, I-2): every case above reads through `viewer { library }`,
+   * so `owner` is alice reading her own library — `owner.userId` and
+   * `context.viewer.userId` are the same value in every one of them, which
+   * cannot discriminate "the resolver reads `owner` off its `Library` parent"
+   * from "the resolver re-derives the owner from the viewer instead" (the
+   * standing rule: "a self-read cannot discriminate owner-derivation;
+   * admin-traversal asserts CONTENTS"). The admin's own `userId` is `null`
+   * (`test-util.ts`'s `adminViewer`), so a viewer-derived implementation would
+   * read `scanJob.get(null)` here and return `null` even though alice's job
+   * exists — this test would fail red against that bug. Asserts `jobId`
+   * (CONTENTS), not just non-null.
+   */
+  it('resolves through Query.user(id:).library as the admin, asserting CONTENTS not just presence', async () => {
+    const job = harness.stores.scanJob.start(harness.aliceOwner.userId);
+
+    const result = await harness.execute(
+      `query ($id: ID!) { user(id: $id) { library { scanStatus { jobId state } } } }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data as {
+      user: { library: { scanStatus: { jobId: string; state: string } } };
+    };
+    expect(data.user.library.scanStatus.jobId).toBe(job.jobId);
+    expect(data.user.library.scanStatus.state).toBe('RUNNING');
+  });
 });

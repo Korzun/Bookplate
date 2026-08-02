@@ -18,12 +18,19 @@ import { model as library } from '../model';
  * scope-auth` only gates the field's `resolve` step (run once per emitted
  * event), and a cross-tenant caller could still open a live subscription
  * against another user's topic, denied only after the fact, event by event,
- * rather than at connection time. `args.libraryId.id` arriving already
- * decoded (not the raw base64 global id string) inside `authScopes` is
- * `builder.ts`'s "RelayPlugin before ScopeAuthPlugin" plugin-order
- * requirement — `scan-progress.test.ts` proves it empirically (a same-user
- * subscription succeeds; a cross-tenant one is refused before any event
- * arrives), rather than trusting the ordering comment alone.
+ * rather than at connection time. `args.libraryId.id` arrives already decoded
+ * (not the raw base64 global id string) inside `authScopes` — CORRECTED
+ * attribution (task 9 review, M-3): this is NOT `builder.ts`'s "RelayPlugin
+ * before ScopeAuthPlugin" plugin-order note (that note is about `resolve`-
+ * time ordering between plugins' own wrappers). Verified in
+ * `@pothos/core/lib/plugins/merge-plugins.js`: `fieldConfig.argMappers` (the
+ * relay global-ID decoder) is applied OUTSIDE the entire plugin chain, before
+ * any plugin's `wrapResolve`/`wrapSubscribe` ever runs — so decoding precedes
+ * `authScopes` regardless of plugin order, for every field kind including
+ * `subscribe`. `scan-progress.test.ts` proves the behaviour empirically (a
+ * same-user subscription succeeds; a cross-tenant one is refused before any
+ * event arrives) — that evidence stands; only the mechanism cited here was
+ * wrong.
  */
 builder.subscriptionField('scanProgress', (t) =>
   t.field({
