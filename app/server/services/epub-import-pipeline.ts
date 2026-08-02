@@ -44,7 +44,13 @@ export const fixKey = (f: MetadataFix): string => `${f.field}:${f.kind}:${f.from
 // Mirrors the client upload flow's applySplit (use-upload-queue.ts): a
 // subjects-split fix carries its edit in fromChips/toChips rather than a plain
 // `changes` merge, so it must be folded into the book's CURRENT subjects.
-function applySplit(subjects: string[], compound: string, parts: string[]): string[] {
+//
+// Exported (Task 4, `bookResolvePendingFix`): that mutation folds a
+// `PendingFix`'s STORED proposals into an `EpubChanges` object the same way
+// `applyAutoAndAccepted` folds freshly re-detected ones below — same
+// subjects-split payload shape (`fromChips`/`toChips`, empty `changes`), same
+// fold rule — so it reuses this helper rather than a third copy.
+export function applySplit(subjects: string[], compound: string, parts: string[]): string[] {
   const idx = subjects.findIndex((s) => s.toLowerCase() === compound.toLowerCase());
   const next =
     idx >= 0

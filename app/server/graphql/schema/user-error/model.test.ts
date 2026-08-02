@@ -56,7 +56,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError and StagedUploadNotFoundError', () => {
+  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError and LineageEntryNotFoundError', () => {
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's
     // original eight-type error model does not mention — scoped to
@@ -69,6 +69,15 @@ describe('UserError', () => {
     // a resource with no store class of its own (a `ReplaceStaging` registry
     // entry, not a Prisma row), so there is no store throw to map — the error
     // is produced directly by the resolver, same as `InvalidInputError`.
+    //
+    // `EditLineageEntryError` and `LineageEntryNotFoundError` are an eleventh
+    // and twelfth member, added by task 4 for `bookUnlinkDocument`'s two REST-
+    // mirrored preconditions (`DELETE /api/books/:id/link/:documentId`'s
+    // `'edit_row'`/`'not_found'` results — plain string discriminators, not
+    // store throws, so — like the two members above — the error is produced
+    // directly by the resolver rather than mapped from a caught class. See
+    // `edit-lineage-entry-error/model.ts` and
+    // `lineage-entry-not-found-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -80,8 +89,10 @@ describe('UserError', () => {
       'DeviceSlugConflictError',
       'DocumentAlreadyLinkedError',
       'DocumentIsBookError',
+      'EditLineageEntryError',
       'EpubValidationError',
       'InvalidInputError',
+      'LineageEntryNotFoundError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
     ]);

@@ -55,6 +55,18 @@ type BookAnalyzeReplacePayload {
 
 union BookAnalyzeReplaceResult = BookAnalyzeReplacePayload | InvalidInputError | StagedUploadNotFoundError
 
+input BookClearEditionsInput {
+  bookId: String!
+  userId: ID!
+}
+
+type BookClearEditionsPayload {
+  book: Book!
+  clearedCount: Int!
+}
+
+union BookClearEditionsResult = BookClearEditionsPayload | InvalidInputError
+
 input BookDeleteInput {
   bookId: String!
   userId: ID!
@@ -75,6 +87,18 @@ type BookHashCollisionError implements UserError {
   collidingBook: Book!
   message: String!
 }
+
+input BookLinkDocumentInput {
+  bookId: String!
+  documentId: String!
+  userId: ID!
+}
+
+type BookLinkDocumentPayload {
+  book: Book!
+}
+
+union BookLinkDocumentResult = BookLinkDocumentPayload | DocumentAlreadyLinkedError | DocumentIsBookError | InvalidInputError | SelfLinkError
 
 """
 The book has not passed validation (or has never been validated), so its metadata cannot be edited until that is resolved.
@@ -107,6 +131,30 @@ type BookReplacePayload {
 }
 
 union BookReplaceResult = BookHashCollisionError | BookReplacePayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
+
+input BookResolvePendingFixInput {
+  action: PendingFixResolution!
+  bookId: String!
+  userId: ID!
+}
+
+type BookResolvePendingFixPayload {
+  book: Book!
+}
+
+union BookResolvePendingFixResult = BookHashCollisionError | BookNotValidatedError | BookResolvePendingFixPayload | EpubValidationError | InvalidInputError
+
+input BookUnlinkDocumentInput {
+  bookId: String!
+  documentId: String!
+  userId: ID!
+}
+
+type BookUnlinkDocumentPayload {
+  book: Book!
+}
+
+union BookUnlinkDocumentResult = BookUnlinkDocumentPayload | EditLineageEntryError | InvalidInputError | LineageEntryNotFoundError
 
 input BookUpdateMetadataInput {
   author: String
@@ -191,6 +239,13 @@ This document id is an existing book — link through that book’s lineage inst
 """
 type DocumentIsBookError implements UserError {
   book: Book!
+  message: String!
+}
+
+"""
+This lineage entry was recorded by re-importing an edited EPUB, not a manual link, and cannot be unlinked.
+"""
+type EditLineageEntryError implements UserError {
   message: String!
 }
 
@@ -310,6 +365,11 @@ type LibraryProgressConnectionEdge {
   node: Progress!
 }
 
+"""No lineage entry links this document id to this book."""
+type LineageEntryNotFoundError implements UserError {
+  message: String!
+}
+
 enum LineageType {
   EDIT
   MERGE
@@ -340,9 +400,19 @@ type Mutation {
   bookAnalyzeReplace(input: BookAnalyzeReplaceInput!): BookAnalyzeReplaceResult
 
   """
+  Clears every cached per-device edition of a book (DB rows and on-disk files); they regenerate lazily on next download. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookClearEditions(input: BookClearEditionsInput!): BookClearEditionsResult
+
+  """
   Deletes a book from the library — file and DB row both. Resolves to null when the book does not exist for the resolved owner.
   """
   bookDelete(input: BookDeleteInput!): BookDeleteResult
+
+  """
+  Merges a KOReader document id into a book’s lineage. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookLinkDocument(input: BookLinkDocumentInput!): BookLinkDocumentResult
 
   """
   Re-parses a book’s EPUB file to regenerate its chapter list. Resolves to null when the book does not exist for the resolved owner.
@@ -353,6 +423,16 @@ type Mutation {
   Replaces a book’s EPUB file with a previously staged upload, applying auto-fixes and any accepted proposals. Resolves to null when the book does not exist for the resolved owner.
   """
   bookReplace(input: BookReplaceInput!): BookReplaceResult
+
+  """
+  Accepts (applies) or dismisses (discards) a book’s pending metadata- fix proposals. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookResolvePendingFix(input: BookResolvePendingFixInput!): BookResolvePendingFixResult
+
+  """
+  Removes a manually-linked (merge) lineage entry from a book. Fails with LineageEntryNotFoundError when no such entry exists, and with EditLineageEntryError for an organic edit-history entry, which cannot be unlinked this way.
+  """
+  bookUnlinkDocument(input: BookUnlinkDocumentInput!): BookUnlinkDocumentResult
 
   """
   Updates a book’s metadata fields and, optionally, its cover via a previously staged upload (`stagedCoverId`). The legacy multipart cover branch of `PATCH /api/books/:id/metadata` still exists separately until the client migrates. Resolves to null when the book does not exist for the resolved owner.
@@ -388,6 +468,11 @@ type PendingFix {
   fileSize: Int!
   state: PendingFixState!
   updatedAt: DateTime!
+}
+
+enum PendingFixResolution {
+  ACCEPT
+  DISMISS
 }
 
 type PendingFixState {

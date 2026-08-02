@@ -1,6 +1,7 @@
 import {
   execute,
   getNamedType,
+  isEnumType,
   isInputObjectType,
   isLeafType,
   isListType,
@@ -96,6 +97,9 @@ describe('root type authorization', () => {
         .map((field) => `${field.name}: ${placeholderLiteral(field.type, aliceGlobalId)}`)
         .join(', ')} }`;
     }
+    // Enum literals are bare identifiers (unquoted, unlike String) — any
+    // member works as a placeholder, so the first one declared is enough.
+    if (isEnumType(type)) return type.getValues()[0].name;
     switch (type.name) {
       case 'ID':
         return JSON.stringify(aliceGlobalId);
