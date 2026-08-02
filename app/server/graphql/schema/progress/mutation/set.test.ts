@@ -1,6 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { createHarness, type Harness } from '../../../test-util';
+import { buildOwner } from './set';
 
 vi.mock('../../../../logger');
 
@@ -146,6 +147,93 @@ describe('Mutation.progressSet', () => {
     expect(result.data?.progressSet).toMatchObject({
       __typename: 'ProgressSetPayload',
       progress: { document: 'never-seen.epub', position: '', currentChapter: null },
+    });
+  });
+
+  /**
+   * I-1 (task-5 review): the CFI-synthesis guard
+   * (`book && book.chapterSpineMap.length > 0 && currentChapter <= length`)
+   * was previously pinned only on its first clause (no book at all). This
+   * pins the third clause: a KNOWN book whose spine map is shorter than the
+   * requested chapter. REST (`routes/ui.ts:364-371`) leaves `progress` as
+   * `''` in that case rather than indexing past the array — mirrored here.
+   * Seen-to-fail: collapsing the guard to `if (book)` (the reviewer's
+   * experiment) reproducibly turns this red, persisting the literal string
+   * `EPUB_CFI(/6/NaN!/4/2:0)` instead — reverted after confirming.
+   */
+  it('writes an empty CFI when currentChapter is past a known book’s spine map', async () => {
+    await seedBook(harness.aliceOwner.userId, 'dune.epub', SPINE_MAP); // length 3
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          document: 'dune.epub',
+          currentChapter: 4, // one past SPINE_MAP.length
+          percentage: 0.5,
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressSet).toMatchObject({
+      __typename: 'ProgressSetPayload',
+      progress: { document: 'dune.epub', position: '', currentChapter: null },
+    });
+    const row = await rowFor(harness.aliceOwner.userId, 'dune.epub');
+    expect(row?.progress).toBe('');
+  });
+
+  /**
+   * I-1's second, cheaper-to-add clause: a known book with an empty spine
+   * map (`chapterSpineMap: []`) — `book.chapterSpineMap.length > 0` is the
+   * guard clause this pins. Same REST fallback (`routes/ui.ts:365`): empty
+   * CFI, no indexing attempted at all.
+   */
+  it('writes an empty CFI when a known book has no chapter spine map at all', async () => {
+    await seedBook(harness.aliceOwner.userId, 'no-chapters.epub', []);
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          document: 'no-chapters.epub',
+          currentChapter: 1,
+          percentage: 0.5,
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressSet).toMatchObject({
+      __typename: 'ProgressSetPayload',
+      progress: { document: 'no-chapters.epub', position: '', currentChapter: null },
+    });
+  });
+
+  // M-1 (task-5 review): the `device !== ''` half of the fallback was
+  // previously untested — dropping that clause left all tests green.
+  // REST (`routes/ui.ts:376`) treats an explicit empty string the same as a
+  // missing/non-string device: both fall back to 'Web'.
+  it('falls back to device "Web" when explicitly sent as an empty string', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          document: 'dune.epub',
+          currentChapter: 1,
+          percentage: 0.2,
+          device: '',
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressSet).toMatchObject({
+      progress: { device: 'Web' },
     });
   });
 
@@ -328,5 +416,30 @@ describe('Mutation.progressSet', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+});
+
+/**
+ * M-4 (task-5 review): the resolver's owner construction pairs
+ * `args.input.userId.id` with `context.viewer.username`, and — because every
+ * `Library` field this payload's `library` reaches keys off `owner.userId`
+ * alone (`library/model.ts`: `user`, `subjects`, `authors`, `book` all query
+ * by `userId`) — no integration test through `MUTATION` above can catch a
+ * wrong/hardcoded `username` half of that pair (verified: hardcoding
+ * `username: 'wrong-user'` in the resolver left every test above green).
+ * `buildOwner` is pinned directly instead, at the level where the pairing
+ * actually happens.
+ */
+describe('buildOwner', () => {
+  it('pairs the given userId with the given viewer’s username', () => {
+    expect(buildOwner('user-123', { username: 'alice' })).toEqual({
+      userId: 'user-123',
+      username: 'alice',
+    });
+  });
+
+  it('does not fall back to any fixed or default username', () => {
+    expect(buildOwner('user-456', { username: 'bob' }).username).toBe('bob');
+    expect(buildOwner('user-456', { username: 'bob' }).username).not.toBe('alice');
   });
 });

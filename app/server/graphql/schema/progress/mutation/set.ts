@@ -26,7 +26,15 @@ import { model as progressModel } from '../model';
  */
 const input = builder.inputType('ProgressSetInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
+    userId: t.globalID({
+      required: true,
+      for: user,
+      description:
+        "Must be the viewer's own User id: unlike every other user-associated " +
+        'mutation, there is no admin write path for progress ' +
+        '(`PUT /api/my/progress/:document` 403s admins, and `routes/users.ts` has ' +
+        'no write route for progress at all).',
+    }),
     document: t.string({ required: true }),
     currentChapter: t.int({ required: true }),
     percentage: t.float({ required: true }),
@@ -44,16 +52,18 @@ const input = builder.inputType('ProgressSetInput', {
  * id-like field's rule in this schema (`progressDelete`'s identical field,
  * `bookId` elsewhere) — an empty string is a client bug, not a valid lookup.
  *
+ * No `.int()` on `currentChapter`: GraphQL's `Int!` coercion already rejects
+ * a non-integer before the resolver runs (unlike REST, which parses an
+ * untyped JSON body and needs its own `Number.isInteger` check), so a zod
+ * integer check here would be unreachable dead code, not belt-and-braces.
+ *
  * `device`/`deviceId` are deliberately NOT in this schema: REST never rejects
  * them, it only defaults them (see the resolver), so there is nothing to
  * validate.
  */
 const inputSchema = z.object({
   document: z.string().min(1, 'document must not be empty'),
-  currentChapter: z
-    .number()
-    .int('currentChapter must be an integer')
-    .min(1, 'currentChapter must be at least 1'),
+  currentChapter: z.number().min(1, 'currentChapter must be at least 1'),
   percentage: z
     .number()
     .gt(0, 'percentage must be greater than 0')
@@ -65,6 +75,26 @@ type ProgressSetPayloadShape = {
   readonly owner: Owner;
   readonly document: string;
 };
+
+/**
+ * Pairs the input's `userId` with the caller's own username — sound only
+ * because `authScopes` (below) already proved `userId === context.viewer
+ * .userId`, so this is never asked to pair a foreign `userId` with the
+ * viewer's username. Exported and unit-tested directly (task-5 review,
+ * M-4): no GraphQL field this payload exposes currently discriminates a
+ * wrong username from a correct one — `Library`'s fields (`library/
+ * model.ts`) all key off `owner.userId` alone (`user.findUniqueOrThrow`,
+ * `getSubjects`, `getAuthors`, `book` all query by `userId`; `username` is
+ * carried but never itself queried on), so an integration test asserting
+ * `library.user.username` cannot catch a hardcoded/swapped username here —
+ * it was verified experimentally that hardcoding `username: 'wrong-user'`
+ * left every existing test green. This function is the one place the pair
+ * is assembled, so it is pinned at that level instead.
+ */
+export const buildOwner = (userId: string, viewer: { readonly username: string }): Owner => ({
+  userId,
+  username: viewer.username,
+});
 
 /**
  * `progress` is a fresh read of the row this resolver just wrote, by its
@@ -159,8 +189,9 @@ builder.mutationField('progressSet', (t) =>
       if (!parsed.success) return invalidInputError(parsed.error);
 
       // authScopes already required args.input.userId.id === context.viewer.userId,
-      // so the owner is exactly the caller — see this field's doc comment.
-      const owner: Owner = { userId: args.input.userId.id, username: context.viewer!.username };
+      // so the owner is exactly the caller — see buildOwner's doc comment for
+      // why the pairing is unit-tested separately from this resolver.
+      const owner: Owner = buildOwner(args.input.userId.id, context.viewer!);
 
       // Synthesise a minimal EPUB CFI so currentChapter persists through
       // Progress.currentChapter, exactly like REST's GET /api/my/progress —
@@ -177,9 +208,11 @@ builder.mutationField('progressSet', (t) =>
       }
 
       // REST's exact fallback rules (routes/ui.ts:376-377): an empty or
-      // missing device becomes 'Web'; a missing device_id becomes '' (but an
-      // explicit empty deviceId is kept as-is — only device treats '' as
-      // absent).
+      // missing device becomes 'Web'. deviceId has no such rule — REST keeps
+      // any string value, including '', and only substitutes '' when the
+      // field isn't a string at all; `?? ''` below covers omitted/null the
+      // same way, and an explicit '' is indistinguishable from omission
+      // either way (both produce ''), so there is nothing to discriminate.
       const device =
         args.input.device != null && args.input.device !== '' ? args.input.device : 'Web';
       const deviceId = args.input.deviceId ?? '';
