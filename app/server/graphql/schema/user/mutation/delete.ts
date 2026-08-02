@@ -27,9 +27,11 @@ type UserDeletePayloadShape = {
  * model.ts`: `id: { field: 'id' }`) is a plain, non-compound column, unlike
  * `Book`'s — so `deletedUserId` is the same value `deletedId` decodes to,
  * rather than a second half of a compound key. Still exposed as its own raw
- * field, for the same REST-parity reason `bookDelete`'s `deletedBookId` is:
- * a client that only needs the raw id (e.g. to match it against something
- * REST-sourced) shouldn't have to base64-decode `deletedId` to get it.
+ * field so a client that only needs the raw id (e.g. to match it against
+ * something REST-sourced) needn't base64-decode `deletedId` to get it.
+ * (`bookDelete` once carried a `deletedBookId` twin for the same reason; the
+ * Book-Relay-ID pass removed it — Book clients are GraphQL-only. `User`'s raw
+ * id remains genuinely REST-adjacent, e.g. the admin `?user=` query param.)
  *
  * No `library`/`user` field alongside these, unlike `progressDelete`'s
  * `library` or `bookDelete`'s `library`. **Correction (task-6 review, M-1):**

@@ -21,9 +21,9 @@ import { purgeEditionsQuietly } from './purge-quietly';
 /**
  * `deviceId` is the raw device row id, NOT a `Device` global ID — `Device` is
  * deliberately not a `Node` (`device/model.ts`'s doc comment), so it has no
- * global-id scheme to decode. This is the same "raw id, plain string" shape
- * `bookId` uses everywhere in this schema (`bookDelete`, `bookUpdateMetadata`,
- * …), for the same reason: nothing here needs relay-style opacity.
+ * global-id scheme to decode. (Book mutations once took the same raw-id shape;
+ * the Book-Relay-ID pass moved them to `id: ID!` because Book IS a Node with a
+ * compound key to encode. Device has neither, so the raw id stays honest here.)
  *
  * `PATCH /:id` (`routes/devices.ts`) takes the exact same body shape
  * `POST /` does — REST's `parseBody` is the one function both routes call —
