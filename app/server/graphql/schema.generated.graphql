@@ -9,9 +9,17 @@ type Book implements Node {
   chapterCount: Int!
   chapterNames: [String!]
   chapterSpineMap: [Int!]!
+
+  """
+  REST URL for this book's cover image. Admin viewers get `?user=<owner username>` appended (their session has no library of its own to default to); every viewer gets `v=<mtime epoch>` for cache-busting.
+  """
   coverUrl: String!
   description: String!
   deviceEditionCount: Int!
+
+  """
+  REST URL to download this book's EPUB file. Same `?user=`/`v=` suffix as `coverUrl` — see its description.
+  """
   downloadUrl: String!
   hasCover: Boolean!
   id: ID!
@@ -27,6 +35,10 @@ type Book implements Node {
   seriesIndex: Float!
   size: Int!
   subjects: [String!]!
+
+  """
+  REST URL for a resized cover thumbnail. `width` comes first, then the same `?user=`/`v=` suffix `coverUrl` appends.
+  """
   thumbnailUrl(width: Int!): String!
   title: String!
   titleSort: String!
@@ -364,7 +376,7 @@ scalar JSON
 
 type Library implements Node {
   authors: [String!]!
-  book(id: String!): Book
+  book(id: ID!): Book
 
   """
   Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
@@ -450,7 +462,13 @@ enum LineageType {
 }
 
 type LinkedDocument {
+  newBook: Book
+
+  """Raw content-hash for display; resolve `newBook` to navigate."""
   newId: String!
+  oldBook: Book
+
+  """Raw content-hash for display; resolve `oldBook` to navigate."""
   oldId: String!
   timestamp: DateTime!
   type: LineageType!
@@ -762,6 +780,7 @@ type Subscription {
 }
 
 type Suggestion {
+  book: Book
   label: String!
   matchLength: Int!
   matchStart: Int!

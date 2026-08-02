@@ -66,7 +66,7 @@ afterEach(async () => {
 describe('Book.validation', () => {
   it('exposes the stored validation with its messages', async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { validation { valid threshold validatedAt messages { edges { node { code severity message path line column } } } } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { validation { valid threshold validatedAt messages { edges { node { code severity message path line column } } } } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -143,7 +143,7 @@ describe('Book.validation', () => {
     const findUniqueSpy = vi.spyOn(harness.prisma.book, 'findUnique');
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { validation { messages(first: 10) { edges { node { seq } } } } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { validation { messages(first: 10) { edges { node { seq } } } } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -165,7 +165,7 @@ describe('Book.validation', () => {
   // (design doc §1, `BookDeletePayload.deletedId`'s exact construction).
   it("exposes id byte-identical to its owning Book's id", async () => {
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { id validation { id } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { id validation { id } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -185,7 +185,7 @@ describe('Book.validation', () => {
   // sibling `Book.id`.
   it('reads userId/bookId off its own row under admin traversal — id still matches the sibling Book.id', async () => {
     const result = await harness.execute(
-      `query ($id: ID!) { user(id: $id) { library { book(id: "${BOOK_ID}") { id validation { id } } } } }`,
+      `query ($id: ID!) { user(id: $id) { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, BOOK_ID)}") { id validation { id } } } } }`,
       { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
     );
 
@@ -210,7 +210,7 @@ describe('Book.validation', () => {
     });
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${'e'.repeat(32)}") { validation { valid } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, 'e'.repeat(32))}") { validation { valid } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -232,9 +232,13 @@ describe('Validation.messages connection', () => {
     viewer: { library: { book: { validation: { messages: MessagesPage } } } };
   };
 
-  const PAGE = `
+  // A function, not a module-level constant: the gid embeds `harness.
+  // aliceOwner.userId`, which does not exist until the (module-level)
+  // `beforeEach` above has run — unlike the raw local id this replaced,
+  // which was a fixed literal available at module load time.
+  const pageQuery = (gid: string): string => `
     query ($first: Int, $after: String, $last: Int, $before: String) {
-      viewer { library { book(id: "${MANY_BOOK_ID}") { validation {
+      viewer { library { book(id: "${gid}") { validation {
         messages(first: $first, after: $after, last: $last, before: $before) {
           edges { cursor node { seq } }
           pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
@@ -244,7 +248,11 @@ describe('Validation.messages connection', () => {
   `;
 
   const readMessages = async (variables: Record<string, unknown>) => {
-    const result = await harness.execute(PAGE, { viewer: harness.aliceViewer, variables });
+    const gid = bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID);
+    const result = await harness.execute(pageQuery(gid), {
+      viewer: harness.aliceViewer,
+      variables,
+    });
     expect(result.errors).toBeUndefined();
     return (result.data as MessagesData).viewer.library.book.validation.messages;
   };
@@ -334,7 +342,11 @@ describe('Validation.messages connection', () => {
   });
 
   it('does not leak another user validation messages', async () => {
-    const result = await harness.execute(PAGE, {
+    // The gid decodes to ALICE's userId — deliberately, since bob reading it
+    // through his own `Viewer.library` is exactly the owner-mismatch "not
+    // found" arm `library/model.ts`'s doc comment establishes.
+    const gid = bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID);
+    const result = await harness.execute(pageQuery(gid), {
       viewer: harness.bobViewer,
       variables: { first: 10 },
     });

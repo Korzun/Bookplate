@@ -1,8 +1,15 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
 
 let harness: Harness;
+
+// Computed the same way the resolver decodes it — see validate.test.ts's
+// identical `bookGlobalId` helper.
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 // Book ids are content hashes, so two users legitimately hold the SAME id for
 // the same file (see NO_MATCH_USER_ID's doc comment in node-scope.ts). Using
 // one shared id here is what makes the cross-tenant assertion below able to
@@ -62,9 +69,12 @@ afterEach(async () => {
   await harness.cleanup();
 });
 
+// `viewer.userId!`: every caller here is alice or bob, both real users with a
+// non-null userId — never the config-admin, which has its own `readAsAdmin`.
 const countFor = async (viewer: Harness['aliceViewer'], id = SHARED_ID) => {
+  const gid = bookGlobalId(viewer.userId!, id);
   const result = await harness.execute(
-    `{ viewer { library { book(id: "${id}") { deviceEditionCount } } } }`,
+    `{ viewer { library { book(id: "${gid}") { deviceEditionCount } } } }`,
     { viewer }
   );
   expect(result.errors).toBeUndefined();
@@ -91,8 +101,9 @@ describe('Book.deviceEditionCount', () => {
   it("reports the owner's count when an admin reads through User.library", async () => {
     // The admin has no userId at all, so a resolver reading the count off the
     // *viewer* rather than off the book row would report 0 here.
+    const gid = bookGlobalId(harness.aliceOwner.userId, SHARED_ID);
     const result = await harness.execute(
-      `query ($id: ID!) { user(id: $id) { library { book(id: "${SHARED_ID}") { deviceEditionCount } } } }`,
+      `query ($id: ID!) { user(id: $id) { library { book(id: "${gid}") { deviceEditionCount } } } }`,
       { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
     );
 

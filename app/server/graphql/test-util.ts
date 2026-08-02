@@ -211,16 +211,22 @@ export const createHarness = async (): Promise<Harness> => {
       // `encodeGlobalID('Book', bookId)` — Pothos's compound-id serializer
       // encodes `JSON.stringify([userId, id])` as the local id (see
       // node-scope.ts's `parseCompoundId` doc comment). Rather than replicate
-      // that encoding by hand here and risk drifting from what the schema
-      // actually produces, read the real id back through the schema itself.
+      // that encoding by hand for the RETURNED id, read it back through the
+      // schema itself. `Library.book`'s own `id` arg (task 2's one-ID-dialect
+      // bridge) now takes that same gid shape, so the INPUT side is built
+      // with `encodeGlobalID` directly — the exact construction every book
+      // mutation test already trusts (`bookGlobalId` in e.g.
+      // `book/mutation/validate.test.ts`), not a fresh hand-roll.
       case 'Book': {
         const bookId = 'b'.repeat(32);
         await prisma.book.create({
           data: { userId: aliceId, id: bookId, title: 'Seed', size: 1, mtime: 0, addedAt: 0 },
         });
-        const seeded = await execute(`{ viewer { library { book(id: "${bookId}") { id } } } }`, {
-          viewer: aliceViewer,
-        });
+        const inputGlobalId = encodeGlobalID('Book', JSON.stringify([aliceId, bookId]));
+        const seeded = await execute(
+          `{ viewer { library { book(id: "${inputGlobalId}") { id } } } }`,
+          { viewer: aliceViewer }
+        );
         const data = seeded.data as {
           viewer: { library: { book: { id: string } | null } };
         } | null;

@@ -1,9 +1,16 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
 
 let harness: Harness;
 const BOOK_ID = '5'.repeat(32);
+
+// Computed the same way the resolver decodes it — see validate.test.ts's
+// identical `bookGlobalId` helper.
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 
 beforeEach(async () => {
   harness = await createHarness();
@@ -33,9 +40,10 @@ afterEach(async () => {
 });
 
 describe('Book.lineage', () => {
-  it('lists the ids this book has previously had', async () => {
+  it('lists the ids this book has previously had, with resolvable/null edges', async () => {
+    const gid = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { lineage { oldId newId type timestamp } } } } }`,
+      `{ viewer { library { book(id: "${gid}") { lineage { oldId newId type timestamp oldBook { id } newBook { id } } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -44,7 +52,16 @@ describe('Book.lineage', () => {
       result.data as {
         viewer: {
           library: {
-            book: { lineage: { oldId: string; newId: string; type: string; timestamp: string }[] };
+            book: {
+              lineage: {
+                oldId: string;
+                newId: string;
+                type: string;
+                timestamp: string;
+                oldBook: { id: string } | null;
+                newBook: { id: string } | null;
+              }[];
+            };
           };
         };
       }
@@ -56,6 +73,13 @@ describe('Book.lineage', () => {
       newId: BOOK_ID,
       type: 'EDIT',
       timestamp: new Date(1_700_000_000_000).toISOString(),
+      // `oldId` ('6'.repeat(32)) never got a `Book` row of its own — only a
+      // `BookIdHistory` entry naming it — so `oldBook` is the "unknown/
+      // deleted old id resolves null" arm.
+      oldBook: null,
+      // `newId` IS this book's own current, live id, so `newBook` is the
+      // "resolved edge for a live book" arm.
+      newBook: { id: gid },
     });
   });
 
@@ -72,7 +96,7 @@ describe('Book.lineage', () => {
     });
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${'7'.repeat(32)}") { lineage { oldId } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, '7'.repeat(32))}") { lineage { oldId } } } } }`,
       { viewer: harness.aliceViewer }
     );
 
@@ -112,7 +136,7 @@ describe('Book.lineage', () => {
     });
 
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${BOOK_ID}") { lineage { oldId type } } } } }`,
+      `{ viewer { library { book(id: "${bookGlobalId(harness.bobOwner.userId, BOOK_ID)}") { lineage { oldId type } } } } }`,
       { viewer: harness.bobViewer }
     );
 

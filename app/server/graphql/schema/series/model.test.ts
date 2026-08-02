@@ -1,8 +1,15 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
 
 let harness: Harness;
+
+// Computed the same way the resolver decodes it — see validate.test.ts's
+// identical `bookGlobalId` helper.
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 
 beforeEach(async () => {
   harness = await createHarness();
@@ -62,8 +69,9 @@ describe('Series', () => {
   });
 
   it('links a book back to its series', async () => {
+    const gid = bookGlobalId(harness.aliceOwner.userId, 'b'.repeat(32));
     const result = await harness.execute(
-      `{ viewer { library { book(id: "${'b'.repeat(32)}") { series { name } } } } }`,
+      `{ viewer { library { book(id: "${gid}") { series { name } } } } }`,
       { viewer: harness.aliceViewer }
     );
 

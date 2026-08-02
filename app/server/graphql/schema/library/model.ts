@@ -16,7 +16,7 @@ import { isLivePendingFix, parsePendingFixState } from '../../derive';
 import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
-import { isOwnerOrAdmin } from '../node-scope';
+import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
 import { rejectBackwardPagination } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress` — see book/model.ts's note on the
@@ -97,15 +97,40 @@ builder.node(model, {
       resolve: (owner, _args, context) => context.stores.book.getAuthors(owner),
     }),
 
+    /**
+     * `id` is the `Book` global ID — the same one-dialect bridging every
+     * book mutation already uses (`node-scope.ts`'s `parseCompoundId` doc
+     * comment), replacing the old raw-hash `String!` arg. `t.arg.globalID({
+     * for: book })` rejects a wrong-type global id (e.g. a `Series` id) at
+     * the arg layer, before this resolver ever runs — `validate.test.ts`'s
+     * "rejects a wrong-type global id" test owns that assertion generically,
+     * not duplicated here.
+     *
+     * DENIAL SHAPE: null, not an error — matching this field's pre-existing
+     * "no such row" convention. The decoded gid's userId must MATCH this
+     * Library's own owner; a mismatch is not a permissions failure but a
+     * different-row situation, because book ids are content hashes shared
+     * across tenants (`NO_MATCH_USER_ID`'s doc comment): a gid naming bob's
+     * copy of the same-hash file, asked through alice's library, refers to a
+     * DIFFERENT row than whatever alice's library holds under that same
+     * local id. Returning alice's row for bob's gid (or vice versa) would be
+     * a silent cross-tenant substitution, so a mismatch resolves exactly
+     * like a book that doesn't exist. A malformed local id (decode failure)
+     * resolves null for the same "nothing to look up" reasoning
+     * `bookValidate`'s doc comment gives.
+     */
     book: t.prismaField({
       type: book,
       nullable: true,
-      args: { id: t.arg.string({ required: true }) },
-      resolve: (query, owner, args, context) =>
-        context.prisma.book.findUnique({
+      args: { id: t.arg.globalID({ required: true, for: book }) },
+      resolve: (query, owner, args, context) => {
+        const parsed = parseCompoundId(args.id.id);
+        if (parsed === null || parsed[0] !== owner.userId) return null;
+        return context.prisma.book.findUnique({
           ...query,
-          where: { userId_id: { userId: owner.userId, id: args.id } },
-        }),
+          where: { userId_id: { userId: owner.userId, id: parsed[1] } },
+        });
+      },
     }),
 
     entries: t.connection({
@@ -209,7 +234,18 @@ builder.node(model, {
             activeSubjects: args.filter?.activeSubjects ?? undefined,
           },
         });
-        return response.groups;
+        // A `book`-typed group's items carry the book's own content-hash id
+        // as `value` (`suggestion/model.ts`'s `SuggestionRow` doc comment) —
+        // `userId` is stitched on here, from this resolver's own `owner`,
+        // so `Suggestion.book` can resolve it without re-deriving an owner
+        // from `context.viewer`. Every other group type's `value` isn't a
+        // book id, so its items are returned untouched (`userId` stays
+        // `undefined`, and `Suggestion.book` resolves null for them).
+        return response.groups.map((group) =>
+          group.type === 'book'
+            ? { ...group, items: group.items.map((item) => ({ ...item, userId: owner.userId })) }
+            : group
+        );
       },
     }),
 

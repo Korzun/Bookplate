@@ -1,3 +1,4 @@
+import type { Context } from '../../context';
 import {
   epochToDate,
   isLivePendingFix,
@@ -20,6 +21,44 @@ import { model as pendingFix } from '../pending-fix';
 // import `../<entity>/model`; only `schema/index.ts` imports entity indexes.
 import { model as progress } from '../progress/model';
 import { findUnique } from './node-loader';
+
+/**
+ * Builds the query-string suffix (no leading `?`) shared by `coverUrl`,
+ * `downloadUrl`, and `thumbnailUrl`. Fixes the admin-broken REST URLs those
+ * fields used to emit bare: REST's `resolveOwner` (`routes/ui.ts:150-171`)
+ * 400s an admin session that hits a book route without `?user=<username>`,
+ * since an admin has no library of its own to default to — so a URL minted
+ * for an admin viewer without this param was never actually fetchable.
+ *
+ * `user=` is admin-only and always comes first (ordering is deterministic,
+ * not load-bearing): a self viewer's own session already scopes REST's
+ * `resolveOwner` to their own library, and `?user=` on a self URL would be
+ * dead weight at best — worse, it would be a param a non-admin session isn't
+ * even allowed to pass (REST 403s a regular user who sends `?user=`), so it
+ * must never appear on a self-read's URL. `v=<mtime>` is unconditional: it's
+ * REST's existing cache-busting token (`routes/ui.ts`'s cover route), present
+ * whether or not the viewer is an admin.
+ *
+ * Owner username comes from `context.loadOwner` — request-scoped and
+ * promise-cached (`owner.ts`), so N books on one page share one `User`
+ * lookup rather than issuing one per book. A `null` result (the book row's
+ * own owner has vanished mid-request — a real but narrow race) omits `user=`
+ * and keeps `v=` rather than failing the whole field: the URL degrades to a
+ * self-shaped one instead of erroring out a field that has nothing else
+ * useful to report.
+ */
+const urlSuffix = async (
+  book: { userId: string; mtime: number },
+  context: Context
+): Promise<string> => {
+  const parts: string[] = [];
+  if (context.viewer?.isAdmin === true) {
+    const owner = await context.loadOwner(book.userId);
+    if (owner !== null) parts.push(`user=${encodeURIComponent(owner.username)}`);
+  }
+  parts.push(`v=${book.mtime}`);
+  return parts.join('&');
+};
 
 export const model = builder.prismaNode('Book', {
   id: { field: 'userId_id' },
@@ -57,11 +96,29 @@ export const model = builder.prismaNode('Book', {
     addedAt: t.field({ type: 'DateTime', resolve: (book) => epochToDate(book.addedAt) }),
 
     hasCover: t.boolean({ resolve: (book) => book.coverMime !== null }),
-    coverUrl: t.string({ resolve: (book) => `/api/books/${book.id}/cover` }),
-    downloadUrl: t.string({ resolve: (book) => `/api/books/${book.id}/download` }),
+    coverUrl: t.string({
+      description:
+        "REST URL for this book's cover image. Admin viewers get " +
+        '`?user=<owner username>` appended (their session has no library of ' +
+        'its own to default to); every viewer gets `v=<mtime epoch>` for ' +
+        'cache-busting.',
+      resolve: async (book, _args, context) =>
+        `/api/books/${book.id}/cover?${await urlSuffix(book, context)}`,
+    }),
+    downloadUrl: t.string({
+      description:
+        "REST URL to download this book's EPUB file. Same `?user=`/`v=` " +
+        'suffix as `coverUrl` — see its description.',
+      resolve: async (book, _args, context) =>
+        `/api/books/${book.id}/download?${await urlSuffix(book, context)}`,
+    }),
     thumbnailUrl: t.string({
+      description:
+        'REST URL for a resized cover thumbnail. `width` comes first, then ' +
+        'the same `?user=`/`v=` suffix `coverUrl` appends.',
       args: { width: t.arg.int({ required: true }) },
-      resolve: (book, args) => `/api/books/${book.id}/cover?width=${args.width}`,
+      resolve: async (book, args, context) =>
+        `/api/books/${book.id}/cover?width=${args.width}&${await urlSuffix(book, context)}`,
     }),
 
     // `Book.series` is the relation, not the denormalized `series` string
@@ -179,6 +236,14 @@ export const model = builder.prismaNode('Book', {
      * has nothing else to report, and the owner-scoped `Book` this field hangs
      * off of could only be reached at all because that row already resolved once
      * upstream.
+     *
+     * Each entry is extended with `parent.userId` here — an internal shape
+     * addition, not an SDL field — so `LinkedDocument`'s `oldBook`/`newBook`
+     * resolvers (`linked-document/model.ts`) have an owner to look the
+     * referenced book up under without a second `loadOwner` round trip. Same
+     * "thread the owner the parent already resolved" shape
+     * `Library.searchSuggestions` uses for `Suggestion.book` (`library/
+     * model.ts`), for the identical reason.
      */
     lineage: t.field({
       type: [linkedDocument],
@@ -186,7 +251,7 @@ export const model = builder.prismaNode('Book', {
         const owner = await context.loadOwner(parent.userId);
         if (owner === null) return [];
         const lineage = await context.stores.book.getBookLineage(owner, parent.id);
-        return lineage?.entries ?? [];
+        return (lineage?.entries ?? []).map((entry) => ({ ...entry, userId: parent.userId }));
       },
     }),
 
