@@ -56,7 +56,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError and IncorrectPasswordError', () => {
+  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError and ScanAlreadyRunningError', () => {
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's
     // original eight-type error model does not mention — scoped to
@@ -88,6 +88,13 @@ describe('UserError', () => {
     // store-thrown" shape as the four members above. See
     // `username-already-exists-error/model.ts` and
     // `incorrect-password-error/model.ts`.
+    //
+    // `ScanAlreadyRunningError` is a fifteenth member, added by task 8 for
+    // `libraryScan`'s REST-mirrored 409 (`POST /api/books/scan`'s
+    // `scanJobStore.isRunning` precondition check, before `bookStore.scan` is
+    // ever called) — same "resolver-produced, not store-thrown" shape as
+    // `BookNotValidatedError` above. See
+    // `scan-already-running-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -104,6 +111,7 @@ describe('UserError', () => {
       'IncorrectPasswordError',
       'InvalidInputError',
       'LineageEntryNotFoundError',
+      'ScanAlreadyRunningError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
       'UsernameAlreadyExistsError',

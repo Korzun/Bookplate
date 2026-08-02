@@ -1,6 +1,13 @@
 import type { Context } from '../../context';
 import { builder } from '../builder';
-import * as library from '../library';
+// `../library/model`, not `../library`: `library/index.ts` now also
+// side-effect-imports `library/mutation/scan.ts` (task 8), which itself
+// imports this file (`../../user/model`) for `libraryScan`'s `userId` input
+// field — importing the index here instead would close that into a real
+// require cycle (`user/model.ts` -> `library/index.ts` -> `library/mutation/
+// scan.ts` -> `user/model.ts`). Same rule task 2 already applied to six other
+// spots — see `book-hash-collision-error/model.ts`'s identical note.
+import { model as library } from '../library/model';
 import { isOwnerOrAdmin, NO_MATCH_USER_ID } from '../node-scope';
 
 // `Query.node(id:)` is a second door into every registered `Node` type, and it
@@ -48,7 +55,7 @@ export const model = builder.prismaNode('User', {
     // the moment a non-admin-reachable path to another user's `User` object
     // exists.
     library: t.field({
-      type: library.model,
+      type: library,
       authScopes: (parent) => ({ ownerOf: parent.id }),
       resolve: (parent) => ({ userId: parent.id, username: parent.username }),
     }),

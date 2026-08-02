@@ -25,6 +25,7 @@ import {
 } from '../utils/fuzzy-search';
 import { seriesSortKey } from '../utils/series-sort-key';
 import { parseEpub, partialMD5 } from './epub-parser';
+import type { ScanProgress } from './scan-events';
 
 const log = logger('BookStore');
 
@@ -1119,7 +1120,8 @@ export class BookStore {
 
   async scan(
     owner: Owner,
-    importer: ScanImporter = defaultImporter
+    importer: ScanImporter = defaultImporter,
+    onProgress?: (progress: ScanProgress) => void
   ): Promise<{ imported: string[]; removed: string[] }> {
     const imported: string[] = [];
     const removed: string[] = [];
@@ -1134,13 +1136,35 @@ export class BookStore {
     const diskFilenames: string[] = fs.existsSync(userDir)
       ? fs.readdirSync(userDir).filter((f) => path.extname(f).toLowerCase() === '.epub')
       : [];
+    const totalImporting = diskFilenames.length;
 
-    for (const filename of diskFilenames) {
+    for (const [index, filename] of diskFilenames.entries()) {
+      const processed = index + 1;
+      // Reports the one outcome the branch below is about to take for this
+      // file, at the exact point the loop already decides it — no branch is
+      // added or reordered to make this possible. `bookId` is included only
+      // when the branch has one in hand (`undefined` is dropped, never sent
+      // as an explicit `bookId: undefined`).
+      const emit = (
+        outcome: 'imported' | 'renamed' | 'already-imported' | 'skipped',
+        bookId?: string
+      ): void => {
+        onProgress?.({
+          phase: 'importing',
+          total: totalImporting,
+          processed,
+          filename,
+          outcome,
+          ...(bookId !== undefined ? { bookId } : {}),
+        });
+      };
+
       const filePath = path.join(userDir, filename);
       const stem = path.basename(filename, '.epub');
 
       // Fast path: file already at <id>.epub and that id is imported.
       if (/^[0-9a-f]{32}$/.test(stem) && dbIds.has(stem)) {
+        emit('already-imported', stem);
         continue;
       }
 
@@ -1153,6 +1177,7 @@ export class BookStore {
         log.warn(
           `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
         );
+        emit('skipped');
         continue;
       }
 
@@ -1160,6 +1185,7 @@ export class BookStore {
       if (filePath !== canonicalPath) {
         if (fs.existsSync(canonicalPath)) {
           log.warn(`scan: skipping "${filename}" — canonical path ${id}.epub already occupied`);
+          emit('skipped', id);
           continue;
         }
         fs.renameSync(filePath, canonicalPath);
@@ -1167,6 +1193,7 @@ export class BookStore {
 
       if (dbIds.has(id)) {
         // Rename above was the only thing to do.
+        emit('renamed', id);
         continue;
       }
 
@@ -1175,10 +1202,12 @@ export class BookStore {
         await this.addBook(owner, id, canonicalPath, { ...meta, title: titleFallback });
         dbIds.add(id);
         imported.push(filename);
+        emit('imported', id);
       } catch (err: unknown) {
         log.warn(
           `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
         );
+        emit('skipped', id);
       }
     }
 
@@ -1187,11 +1216,13 @@ export class BookStore {
       where: { userId: owner.userId },
       select: { id: true },
     });
-    for (const { id } of allIdRows) {
+    const totalPruning = allIdRows.length;
+    for (const [index, { id }] of allIdRows.entries()) {
       if (!fs.existsSync(this.bookPath(owner, id))) {
         await this.removeStaleBook(owner.userId, id);
         removed.push(id + '.epub');
       }
+      onProgress?.({ phase: 'pruning', total: totalPruning, processed: index + 1, bookId: id });
     }
 
     return { imported, removed };
