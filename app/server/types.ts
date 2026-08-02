@@ -128,6 +128,26 @@ export interface AppConfig {
   maxConcurrentUploads: number;
   thumbnailWidths: number[];
   validationThreshold: ValidationThreshold;
+  /**
+   * How many reverse-proxy hops in front of this process to trust when
+   * resolving a request's real client IP — used ONLY by `routes/ui.ts`'s
+   * login rate limiter (`resolveLoginClientIp`), never as Express's own
+   * `trust proxy` setting (deliberately not touched — that setting also
+   * changes `req.secure`/cookie semantics app-wide, a strictly bigger
+   * change than this one control needs). `0` (the default when unset,
+   * including every existing `AppConfig` literal in the test suite, which
+   * is why this is optional rather than required) means "trust nothing":
+   * the limiter keys on the raw TCP peer address, ignoring
+   * `X-Forwarded-For` entirely — safe, if wrong, behind an untrusted-proxy
+   * or no-proxy deployment. Set to `1` for a single reverse proxy or
+   * Cloudflare Tunnel directly in front of this process (the deployment
+   * `README.md` documents); higher values trust that many chained hops.
+   * NEVER set this higher than the actual number of proxies you control —
+   * an unfilled/over-counted hop lets a client forge its own
+   * `X-Forwarded-For` entry and pick an arbitrary rate-limit bucket,
+   * defeating the limiter entirely.
+   */
+  trustProxyHops?: number;
 }
 
 export interface Device {

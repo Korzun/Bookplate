@@ -50,9 +50,10 @@ const result = builder.unionType('ProgressDeleteResult', {
 });
 
 /**
- * Validated inside the resolver, after auth, never through
- * `@pothos/plugin-validation`'s declarative arg option — see
- * `invalid-input-error/model.ts` for why that option is off limits.
+ * Validated inside the resolver, after auth, never through a declarative
+ * arg-validation plugin's option (`@pothos/plugin-validation`, removed from
+ * this schema as of Task 4 — `builder.ts`'s plugin-list comment) — see
+ * `invalid-input-error/model.ts` for why that approach is off limits.
  *
  * `min(1)` and nothing more, deliberately: REST's `DELETE
  * /api/my/progress/:document` applies no validation at all, and an empty

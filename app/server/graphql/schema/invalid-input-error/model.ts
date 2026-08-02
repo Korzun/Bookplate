@@ -8,15 +8,18 @@ import { model as userError } from '../user-error';
  * The one error type in this family that no store throws: it is produced by a
  * resolver's own zod parse of its input.
  *
- * WHY A UNION MEMBER RATHER THAN THE VALIDATION PLUGIN'S ARG OPTION: surfacing
- * `@pothos/plugin-validation` failures through the errors plugin needs
- * `unsafelyHandleInputErrors`, which that plugin's own README says bypasses
+ * WHY A UNION MEMBER RATHER THAN A DECLARATIVE VALIDATION PLUGIN'S ARG
+ * OPTION: `@pothos/plugin-validation` (removed from this schema entirely as
+ * of Task 4, pre-client-polish plan — see `builder.ts`'s plugin-list
+ * comment for why) surfaced failures through an errors plugin that needed
+ * `unsafelyHandleInputErrors`, which that plugin's own README said bypasses
  * other plugins' hooks — scope-auth's included. That would mean input errors
  * are computed and returned for requests that were never authorized. So every
  * mutation parses its input INSIDE the resolver, after auth, and returns this
  * as an ordinary member of its result union (spec, phase-1 outcome, resolved
  * open question #2). Do not "simplify" this back to declarative arg
- * validation.
+ * validation — the plugin that would require isn't even a dependency
+ * anymore.
  *
  * `message` is a fixed summary rather than zod's flattened prose: the detail
  * belongs in `issues`, addressed by `path`, so a client can attach each one to

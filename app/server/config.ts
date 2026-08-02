@@ -36,6 +36,20 @@ interface Options {
   validation_threshold: string;
 }
 
+/**
+ * `TRUST_PROXY_HOPS` — see `AppConfig.trustProxyHops`'s doc comment
+ * (`types.ts`) for what this does and doesn't affect. Defaults to `0`
+ * (trust nothing) on any missing/malformed/negative value — the same
+ * conservative-default requirement that field's doc comment states,
+ * enforced here so a typo'd env var can only ever fail SAFE (toward
+ * "don't trust the header"), never open the limiter up to spoofing.
+ */
+function parseTrustProxyHops(raw: string | undefined): number {
+  if (raw === undefined) return 0;
+  const parsed = parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function parseThreshold(raw: string): ValidationThreshold {
   switch (raw.trim().toLowerCase()) {
     case 'fatal':
@@ -97,5 +111,6 @@ export function loadConfig(): AppConfig {
     validationThreshold: parseThreshold(
       process.env.VALIDATION_THRESHOLD ?? options.validation_threshold
     ),
+    trustProxyHops: parseTrustProxyHops(process.env.TRUST_PROXY_HOPS),
   };
 }
