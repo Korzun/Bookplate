@@ -1,10 +1,10 @@
 import type { RequestHandler } from 'express';
-import { GraphQLError, NoSchemaIntrospectionCustomRule } from 'graphql';
-import { createYoga, type Plugin } from 'graphql-yoga';
+import { createYoga } from 'graphql-yoga';
 
 import { logger } from '../logger';
 import { createContext, type ContextDeps } from './context';
 import { schema } from './schema';
+import { useDepthLimit, useOperationLogging, useSchemaConcealment } from './yoga-plugins';
 
 const log = logger('GraphQL');
 
@@ -20,40 +20,6 @@ const formatLogArg = (arg: unknown): string =>
 
 const formatLogArgs = (args: unknown[]): string => args.map(formatLogArg).join(' ');
 
-/** graphql-js appends `Did you mean "…"?` to unknown field/type/argument errors. */
-const SUGGESTION_PATTERN = /\s*Did you mean[\s\S]*$/;
-
-const stripSuggestion = (error: unknown): unknown => {
-  if (!(error instanceof GraphQLError) || !SUGGESTION_PATTERN.test(error.message)) return error;
-  return new GraphQLError(error.message.replace(SUGGESTION_PATTERN, ''), {
-    nodes: error.nodes,
-    source: error.source,
-    positions: error.positions,
-    path: error.path,
-    originalError: error.originalError,
-    extensions: error.extensions,
-  });
-};
-
-/**
- * Closes the two ways an unauthenticated caller could still read the schema.
- * Pothos's field wrapping cannot gate graphql-js meta-fields, so
- * `{ __schema { … } }` answers in full despite every field carrying the
- * `authenticated` scope; and a misspelled field name leaks real field names
- * back through validation's "Did you mean" suggestions. Installed only when
- * `isProduction` — dev keeps both so GraphiQL works.
- */
-const useSchemaConcealment = (): Plugin => ({
-  onValidate: ({ addValidationRule }) => {
-    addValidationRule(NoSchemaIntrospectionCustomRule);
-    return ({ result, setResult }) => {
-      const errors: readonly unknown[] = result;
-      const stripped = errors.map(stripSuggestion);
-      if (stripped.some((error, index) => error !== errors[index])) setResult(stripped);
-    };
-  },
-});
-
 /**
  * Builds the yoga handler. Returned as an Express-compatible request handler
  * so server.ts can mount it without knowing anything about yoga or Prisma.
@@ -63,6 +29,10 @@ const useSchemaConcealment = (): Plugin => ({
  * declarations do not line up nominally. Drop the cast if it typechecks
  * without it on the installed version; do NOT reach for `any`, which is a
  * lint error in this workspace.
+ *
+ * Plugin implementations (schema concealment, depth limiting, per-operation
+ * logging) live in `yoga-plugins.ts` — this file's own size otherwise grows
+ * past the point a single-glance read stays useful.
  */
 export const createGraphqlHandler = ({
   isProduction,
@@ -75,7 +45,21 @@ export const createGraphqlHandler = ({
     graphiql: !isProduction,
     maskedErrors: isProduction,
     landingPage: false,
-    plugins: isProduction ? [useSchemaConcealment()] : [],
+    // The SPA is same-origin only (vite's dev proxy and the production build
+    // both serve `/graphql` from the same host the page loaded from — see
+    // vite.config.ts's `/graphql` proxy entry). Yoga's default CORS plugin
+    // reflects whatever `Origin` a request sends back in
+    // `Access-Control-Allow-Origin` (plus `Access-Control-Allow-Credentials:
+    // true`) — fine for a public API, wrong for one gated entirely by a
+    // bearer token this schema trusts. `false` turns the plugin off
+    // entirely, so a foreign Origin gets no CORS headers at all and the
+    // browser's own same-origin policy is what protects the endpoint.
+    cors: false,
+    plugins: [
+      useDepthLimit(),
+      useOperationLogging(),
+      ...(isProduction ? [useSchemaConcealment()] : []),
+    ],
     logging: {
       debug: (...args: unknown[]) => log.debug(formatLogArgs(args)),
       info: (...args: unknown[]) => log.info(formatLogArgs(args)),

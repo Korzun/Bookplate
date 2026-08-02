@@ -53,9 +53,20 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * `User` node. `User.progressCount` (see `user/model.ts`) exposes the same
      * `_count.progresses` the DTO carried, so nothing from the REST payload is
      * lost.
+     *
+     * `nullable: true` (pre-client hardening spec, §4 "Nullability ruling"):
+     * a scope denial on a NON-nullable list here would null-propagate all
+     * the way up through `Viewer` (also non-null — `query/current.ts`) to
+     * the whole operation, discarding every other field the same request
+     * asked for. Apollo's default `errorPolicy` ("none") already drops the
+     * whole response on ANY error, but the client migration's own errorLink
+     * plan (content-negotiation contract, yoga.ts) distinguishes
+     * auth-shaped failures from data-shaped ones — a denial should read as
+     * "this one field is inaccessible", not "the request failed".
      */
     users: t.prismaField({
       type: [user],
+      nullable: true,
       authScopes: { admin: true },
       resolve: (query, _viewer, _args, context) =>
         context.prisma.user.findMany({ ...query, orderBy: { username: 'asc' } }),

@@ -3,6 +3,7 @@ import express, { NextFunction, Request, RequestHandler, Response } from 'expres
 
 import { logger } from './logger';
 import { jwtAuth } from './middleware/auth';
+import { graphqlBodyLimit } from './middleware/graphql-body-limit';
 import { requestLog } from './middleware/request-log';
 import { requestTimeout } from './middleware/timeout';
 import { createDevicesRouter } from './routes/devices';
@@ -51,7 +52,16 @@ export function createServer(
   // before this and do not touch the body. requestTimeout's 503 cannot fire on
   // a subscription stream, because it bails out once headers are sent and SSE
   // sends them immediately.
-  server.use('/graphql', graphqlHandler);
+  //
+  // `graphqlBodyLimit` runs ahead of `graphqlHandler` for the same reason:
+  // it reads only the `Content-Length` header (never the body), so it can
+  // reject an oversized request before yoga's own body read — and so before
+  // any resolver — without disturbing the raw-body contract above. 100kb
+  // matches `express.json()`'s own default `limit` (body-parser's default,
+  // applied below to every REST route); the largest legitimate GraphQL
+  // operation is text-only (query + variables), never a file upload — those
+  // go through REST's multer routes instead.
+  server.use('/graphql', graphqlBodyLimit(100 * 1024), graphqlHandler);
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));

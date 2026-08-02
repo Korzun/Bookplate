@@ -215,7 +215,7 @@ type Device {
   coverHeight: Int
   coverWidth: Int
   createdAt: DateTime!
-  enabledUsers: [User!]!
+  enabledUsers: [User!]
   id: ID!
   name: String!
   simplify: Boolean!
@@ -942,5 +942,5 @@ type Viewer {
   syncPassword: String
   user: User
   username: String!
-  users: [User!]!
+  users: [User!]
 }

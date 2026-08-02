@@ -1,0 +1,171 @@
+import {
+  DocumentNode,
+  GraphQLError,
+  Kind,
+  NoSchemaIntrospectionCustomRule,
+  OperationDefinitionNode,
+} from 'graphql';
+import { isAsyncIterable, type Plugin } from 'graphql-yoga';
+
+import { logger } from '../logger';
+import type { Context } from './context';
+import { depthLimitRule, MAX_DEPTH } from './depth-limit';
+
+// A distinct namespace from yoga.ts's own `logger('GraphQL')` (used there
+// only to bridge yoga's internal diagnostic messages) — matches the
+// sub-namespacing precedent `library/mutation/scan.ts` already sets with
+// `logger('GraphQL:libraryScan')`, and keeps the two log streams
+// unambiguous to grep (and, incidentally, to a test spying on one without
+// the other).
+const log = logger('GraphQL:operations');
+
+/** graphql-js appends `Did you mean "…"?` to unknown field/type/argument errors. */
+const SUGGESTION_PATTERN = /\s*Did you mean[\s\S]*$/;
+
+const stripSuggestion = (error: unknown): unknown => {
+  if (!(error instanceof GraphQLError) || !SUGGESTION_PATTERN.test(error.message)) return error;
+  return new GraphQLError(error.message.replace(SUGGESTION_PATTERN, ''), {
+    nodes: error.nodes,
+    source: error.source,
+    positions: error.positions,
+    path: error.path,
+    originalError: error.originalError,
+    extensions: error.extensions,
+  });
+};
+
+/**
+ * Closes the two ways an unauthenticated caller could still read the schema.
+ * Pothos's field wrapping cannot gate graphql-js meta-fields, so
+ * `{ __schema { … } }` answers in full despite every field carrying the
+ * `authenticated` scope; and a misspelled field name leaks real field names
+ * back through validation's "Did you mean" suggestions. Installed only when
+ * `isProduction` (yoga.ts) — dev keeps both so GraphiQL works.
+ */
+export const useSchemaConcealment = (): Plugin => ({
+  onValidate: ({ addValidationRule }) => {
+    addValidationRule(NoSchemaIntrospectionCustomRule);
+    return ({ result, setResult }) => {
+      const errors: readonly unknown[] = result;
+      const stripped = errors.map(stripSuggestion);
+      if (stripped.some((error, index) => error !== errors[index])) setResult(stripped);
+    };
+  },
+});
+
+/**
+ * Rejects a query nested past `MAX_DEPTH` at validation time, before any
+ * resolver runs — see depth-limit.ts's doc comment for the calibration
+ * (measured against the library-grid screen query) and the amplification
+ * cycle (`Book.series ↔ Series.books`) this exists to stop.
+ *
+ * Installed unconditionally, unlike `useSchemaConcealment`: this guards
+ * against query-cost amplification, not information disclosure, so
+ * GraphiQL's own queries in dev are exactly as capable of triggering it as
+ * production traffic, and should be.
+ */
+export const useDepthLimit = (): Plugin => ({
+  onValidate: ({ addValidationRule }) => addValidationRule(depthLimitRule(MAX_DEPTH)),
+});
+
+/**
+ * Resolves the operation's name for logging. Falls back to `'anonymous'` for
+ * an unnamed operation (`{ viewer { … } }` — the shape most of this schema's
+ * own test corpus uses) rather than `undefined`, so every log line has the
+ * same shape regardless of whether the caller named their operation.
+ */
+const operationNameOf = (document: DocumentNode, requested: string | null | undefined): string => {
+  const match = document.definitions.find(
+    (definition): definition is OperationDefinitionNode =>
+      definition.kind === Kind.OPERATION_DEFINITION &&
+      (requested == null || definition.name?.value === requested)
+  );
+  return match?.name?.value ?? 'anonymous';
+};
+
+/**
+ * `'anon'` for a request with no viewer at all. The config-based admin's own
+ * `userId` is null (it has no row in the users table — the same condition
+ * `Viewer.library`/`Viewer.user` branch on, viewer/model.ts), so an
+ * authenticated admin session logs under its username instead of falling
+ * through to `'anon'` — a real, identifiable session should never read as
+ * anonymous in an operator's logs.
+ */
+const viewerIdOf = (context: Context): string =>
+  context.viewer === null ? 'anon' : (context.viewer.userId ?? context.viewer.username);
+
+const logOperation = (
+  operationName: string,
+  viewerId: string,
+  durationMs: number,
+  errorCount: number
+): void => {
+  const line = JSON.stringify({ operationName, viewerId, durationMs, errorCount });
+  if (errorCount > 0) log.warn(line);
+  else log.info(line);
+};
+
+/**
+ * Per-operation completion logging: `{operationName, viewerId, durationMs,
+ * errorCount}`, info for a clean result, warn once `errorCount > 0` (today
+ * those demote to `requestLog`'s debug line, because every GraphQL response
+ * is HTTP 200 to it — see server.ts's `requestLog`). NEVER the query text or
+ * variables — either may carry user data (a search filter, a future
+ * password-bearing mutation's input) that has no business in server logs.
+ *
+ * Installed unconditionally, same reasoning as `useDepthLimit`: this is
+ * operator visibility, not an information-disclosure guard.
+ *
+ * `onExecute` covers every query and mutation. For the schema's one
+ * subscription field (`scanProgress`), `onSubscribe`'s `onSubscribeResult`
+ * splits in two:
+ *   - a subscribe-time auth denial (`authorizeOnSubscribe: true`,
+ *     builder.ts's own doc comment) is a single `ExecutionResult`, not a
+ *     live stream — logged immediately, exactly like a query, in the
+ *     `!isAsyncIterable` branch below.
+ *   - a LIVE stream (subscribe succeeded) logs exactly ONCE, at completion
+ *     (`onEnd`) — never per emitted event. A single scan can publish dozens
+ *     of progress events over its lifetime; a log line per event would be
+ *     noise, not signal, and would turn one long-lived operation into an
+ *     unbounded number of log lines for no operator benefit. `errorCount`
+ *     for that one line accumulates every event that carried an error, and
+ *     `durationMs` spans the whole subscription's lifetime, not one event.
+ */
+export const useOperationLogging = (): Plugin<Context> => ({
+  onExecute: ({ args }) => {
+    const start = Date.now();
+    return {
+      onExecuteDone: ({ result }) => {
+        if (isAsyncIterable(result)) return; // defer/stream — unused by this schema
+        logOperation(
+          operationNameOf(args.document, args.operationName),
+          viewerIdOf(args.contextValue),
+          Date.now() - start,
+          result.errors?.length ?? 0
+        );
+      },
+    };
+  },
+  onSubscribe: ({ args }) => {
+    const start = Date.now();
+    const operationName = operationNameOf(args.document, args.operationName);
+    const viewerId = viewerIdOf(args.contextValue);
+    return {
+      onSubscribeResult: ({ result }) => {
+        if (!isAsyncIterable(result)) {
+          logOperation(operationName, viewerId, Date.now() - start, result.errors?.length ?? 0);
+          return;
+        }
+        let errorCount = 0;
+        return {
+          onNext: ({ result: eventResult }) => {
+            errorCount += eventResult.errors?.length ?? 0;
+          },
+          onEnd: () => {
+            logOperation(operationName, viewerId, Date.now() - start, errorCount);
+          },
+        };
+      },
+    };
+  },
+});
