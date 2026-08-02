@@ -126,14 +126,31 @@ const result = builder.unionType('UserChangePasswordResult', {
  * immediately carry `mustChangePassword: false` — this resolver does NOT
  * reproduce that half: yoga's context (`graphql/context.ts`'s `createContext`)
  * only ever sees the fetch `Request`, never a `Response` to set cookies on,
- * so there is no channel to reissue tokens from here. A caller's own
- * already-decoded access token keeps its stale claim until it next refreshes
- * through REST's `/api/auth/refresh` (which rebuilds claims from current DB
- * state) — the same architectural split `builder.ts` documents for login and
- * refresh staying on REST entirely. Revocation, the security-relevant half,
- * is fully mirrored; only the convenience of an immediately-fresh token is
- * not, and REST's own doc trail (spec's "Seams that stay REST") already
- * draws this line for auth issuance in general.
+ * so there is no channel to reissue tokens from here.
+ *
+ * **Corrected (task-6 review, I-3) — the caller does NOT recover via
+ * `/api/auth/refresh`.** `revokeAllForUsername` two lines above deletes
+ * EVERY refresh-token row for this username (`TokenStore.
+ * revokeAllForUsername`, `services/token-store.ts:71-73`) — including the one
+ * the current session's own refresh cookie names. `POST /api/auth/refresh`
+ * (`routes/ui.ts:222-262`) therefore finds nothing to consume and 401s
+ * (`reject()`, clearing the cookie), it does not "rebuild claims from
+ * current DB state" for a caller in this position — that only happens for a
+ * refresh token that still exists. The real sequence: the mutation succeeds,
+ * the refresh cookie is dead the instant it does, and the caller's *access*
+ * token (a stateless JWT, `ACCESS_TOKEN_TTL_SECONDS = 15 * 60`,
+ * `services/jwt.ts:3`) keeps its stale `mustChangePassword: true` claim for
+ * up to the rest of its 15-minute life — gated out of every `authenticated`-
+ * scoped GraphQL field and every REST route behind `passwordChangeGate` for
+ * that window, with no path back except logging in again with the new
+ * password. This fails CLOSED (strictly more restrictive than staying
+ * logged in with a stale claim would be) and is not a security divergence
+ * from REST (REST's own reissued cookie is equally unable to invalidate an
+ * already-stolen access token) — but it is a real UX one: a client driving
+ * password change through this mutation must treat success as "now log the
+ * user out and send them to `/login`", not as "silently continue the
+ * session." This constraint belongs in Task 10's doc sync for the client's
+ * GraphQL change-password flow.
  */
 builder.mutationField('userChangePassword', (t) =>
   t.field({

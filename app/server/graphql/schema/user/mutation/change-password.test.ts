@@ -33,7 +33,10 @@ const MUTATION = `
 
 const REGEN_SYNC_MUTATION = `
   mutation Regen($input: UserRegenerateSyncPasswordInput!) {
-    userRegenerateSyncPassword(input: $input) { syncPassword }
+    userRegenerateSyncPassword(input: $input) {
+      __typename
+      ... on UserRegenerateSyncPasswordPayload { syncPassword }
+    }
   }
 `;
 

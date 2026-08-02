@@ -33,10 +33,20 @@ const payload = builder
   });
 
 /**
- * No union — same reasoning as `userDelete`/`userResetPassword`'s identical
- * note: `input` has exactly one field, a `User` global ID, already
+ * No `resolveType`: the value carries its own `__typename` — see
+ * `progress/mutation/delete.ts`'s identical note.
+ */
+const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [payload] });
+
+/**
+ * Single-member union — same reasoning as `userDelete`/`userResetPassword`'s
+ * identical note: `input` has exactly one field, a `User` global ID, already
  * format-checked by the relay plugin before this resolver runs, so there is
- * no reachable `InvalidInputError` case.
+ * no reachable `InvalidInputError` case. Still declared as a `<Name>Result`
+ * union rather than a bare payload type — fabricates nothing, satisfies
+ * Task 1's binding rule, keeps a future member non-breaking; see
+ * `userDelete`'s doc comment for the full reasoning (task-6 review
+ * adjudication).
  *
  * Mirrors `POST /api/my/sync-password/regenerate` (`routes/ui.ts:447-464`) —
  * self-service, viewer-only: `req.user!.isAdmin` gets a flat 403
@@ -63,7 +73,7 @@ const payload = builder
  */
 builder.mutationField('userRegenerateSyncPassword', (t) =>
   t.field({
-    type: payload,
+    type: result,
     nullable: true,
     description:
       'Regenerates the viewer’s own KOReader/OPDS sync password. Resolves to ' +
