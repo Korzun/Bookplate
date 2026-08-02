@@ -37,11 +37,20 @@ const payload = builder
   });
 
 /**
- * No union — same reasoning as `userDelete`'s identical note: `input` has
- * exactly one field, a `User` global ID, already format-checked by the relay
- * plugin before this resolver runs, so there is no string field for a zod
- * schema to reject and no reachable `InvalidInputError` case. Flagged
- * alongside `userDelete` for reviewer attention.
+ * No `resolveType`: the value carries its own `__typename` — see
+ * `progress/mutation/delete.ts`'s identical note.
+ */
+const result = builder.unionType('UserResetPasswordResult', { types: [payload] });
+
+/**
+ * Single-member union — same reasoning as `userDelete`'s identical note:
+ * `input` has exactly one field, a `User` global ID, already format-checked
+ * by the relay plugin before this resolver runs, so there is no string field
+ * for a zod schema to reject and no reachable `InvalidInputError` case. A
+ * one-member union is still the right shape (fabricates nothing, satisfies
+ * Task 1's binding `<Name>Result` rule, keeps a future member non-breaking)
+ * — see `userDelete`'s doc comment for the full reasoning; task-6 review
+ * adjudicated this ruling for all three single-field-input mutations.
  *
  * Mirrors `POST /api/users/:username/reset-password` (`routes/users.ts:94-113`)
  * — admin-only (`router.use(adminAuth)` gates the whole router), no
@@ -72,7 +81,7 @@ const payload = builder
  */
 builder.mutationField('userResetPassword', (t) =>
   t.field({
-    type: payload,
+    type: result,
     nullable: true,
     description:
       'Resets a user’s login password to a freshly generated one and forces a ' +

@@ -469,12 +469,12 @@ type Mutation {
   """
   Deletes a user account — DB row and on-disk library folder both. Resolves to null when the user does not exist.
   """
-  userDelete(input: UserDeleteInput!): UserDeletePayload
+  userDelete(input: UserDeleteInput!): UserDeleteResult
 
   """
   Regenerates the viewer’s own KOReader/OPDS sync password. Resolves to null in the unlikely case the account was deleted mid-request.
   """
-  userRegenerateSyncPassword(input: UserRegenerateSyncPasswordInput!): UserRegenerateSyncPasswordPayload
+  userRegenerateSyncPassword(input: UserRegenerateSyncPasswordInput!): UserRegenerateSyncPasswordResult
 
   """Creates a new user account with a generated login password."""
   userRegister(input: UserRegisterInput!): UserRegisterResult!
@@ -482,7 +482,7 @@ type Mutation {
   """
   Resets a user’s login password to a freshly generated one and forces a change on next login. Resolves to null when the user does not exist.
   """
-  userResetPassword(input: UserResetPasswordInput!): UserResetPasswordPayload
+  userResetPassword(input: UserResetPasswordInput!): UserResetPasswordResult
 }
 
 interface Node {
@@ -668,6 +668,8 @@ type UserDeletePayload {
   deletedUserId: String!
 }
 
+union UserDeleteResult = UserDeletePayload
+
 """
 A failure a client is expected to render and act on, as opposed to an unexpected server fault, which arrives in the response `errors` array.
 """
@@ -683,6 +685,8 @@ type UserRegenerateSyncPasswordPayload {
   syncPassword: String!
   user: User!
 }
+
+union UserRegenerateSyncPasswordResult = UserRegenerateSyncPasswordPayload
 
 input UserRegisterInput {
   username: String!
@@ -703,6 +707,8 @@ type UserResetPasswordPayload {
   password: String!
   user: User!
 }
+
+union UserResetPasswordResult = UserResetPasswordPayload
 
 """
 A user with this username already exists, or the name is reserved for the built-in admin account.

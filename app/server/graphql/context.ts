@@ -66,9 +66,15 @@ export type Stores = {
    * here too — same "one instance, never a second one" rule as
    * `replaceStaging` above. GraphQL cannot reproduce REST's *cookie* reissue
    * half of that flow (no response object reaches this context — see
-   * `createContext` below), so a caller's own already-issued access token
-   * keeps its stale `mustChangePassword` claim until it refreshes via REST;
-   * revocation is what actually matters for security and is fully mirrored.
+   * `createContext` below): a `userResetPassword`/`userChangePassword` caller
+   * does NOT recover a fresh token via REST's `/api/auth/refresh` afterward —
+   * `revokeAllForUsername` deletes the very refresh-token row that endpoint
+   * would need, so it 401s instead. The caller's already-issued *access*
+   * token (a stateless JWT) simply keeps its stale claim for the rest of its
+   * short life, gated out of everything, until they log in again — see
+   * `user/mutation/change-password.ts`'s doc comment for the full trace.
+   * Revocation, the security-relevant half, is fully mirrored; only the
+   * convenience of an immediately-fresh token is not.
    */
   token: TokenStore;
 };

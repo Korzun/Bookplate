@@ -15,8 +15,11 @@ afterEach(async () => {
 const MUTATION = `
   mutation Regen($input: UserRegenerateSyncPasswordInput!) {
     userRegenerateSyncPassword(input: $input) {
-      user { username }
-      syncPassword
+      __typename
+      ... on UserRegenerateSyncPasswordPayload {
+        user { username }
+        syncPassword
+      }
     }
   }
 `;

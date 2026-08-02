@@ -32,9 +32,16 @@ type UserDeletePayloadShape = {
  * REST-sourced) shouldn't have to base64-decode `deletedId` to get it.
  *
  * No `library`/`user` field alongside these, unlike `progressDelete`'s
- * `library` or `bookDelete`'s `library`: the parent those fields update a
- * cache against is the row that just stopped existing along with the user
- * itself — there is nothing left to resolve it into.
+ * `library` or `bookDelete`'s `library`. **Correction (task-6 review, M-1):**
+ * this is NOT because "nothing is left to resolve" — `Viewer.users:
+ * [User!]!` (`viewer/model.ts`), the admin user list, still exists and is
+ * exactly the collection a client would want to evict the deleted row from.
+ * The real reason is a Houdini-cache one: `deletedId` alone is what that
+ * list's list-removal directive keys on (same convention `progressDelete`/
+ * `bookDelete` already rely on for their own parent field), so returning
+ * `Viewer` here would add a query with no additional cache-invalidation
+ * power over `deletedId` by itself — unlike `progressDelete`'s `library`,
+ * which supplies data (`owner`) the deleted row's id alone cannot.
  */
 const payload = builder.objectRef<UserDeletePayloadShape>('UserDeletePayload').implement({
   fields: (t) => ({
@@ -44,18 +51,39 @@ const payload = builder.objectRef<UserDeletePayloadShape>('UserDeletePayload').i
 });
 
 /**
- * No union, unlike every other mutation in this schema: `input` has exactly
- * one field, a `User` global ID, whose format is already enforced by the
- * relay plugin before this resolver ever runs (see `builder.ts`'s
- * plugin-ordering comment — RelayPlugin sits outside ScopeAuthPlugin, which
- * itself sits outside this resolver). There is no string field left for a
- * zod schema to check, so an `InvalidInputError` member would be a
- * permanently unreachable branch — declaring one anyway would be exactly the
- * kind of dishonest union member the "never fabricate an error value for a
- * state that isn't that error" rule warns against, just at the schema level
- * instead of the value level. Flagged for reviewer attention: every sibling
- * mutation built so far returns a `<Name>Result` union, so this is the first
- * departure from that shape.
+ * No `resolveType`: the value carries its own `__typename` — see
+ * `progress/mutation/delete.ts`'s identical note. See the doc comment below
+ * for why a one-member union is the right shape here rather than a bare
+ * payload type.
+ */
+const result = builder.unionType('UserDeleteResult', { types: [payload] });
+
+/**
+ * Single-member union — `input` has exactly one field, a `User` global ID,
+ * whose format is already enforced by the relay plugin before this resolver
+ * ever runs (see `builder.ts`'s plugin-ordering comment — RelayPlugin sits
+ * outside ScopeAuthPlugin, which itself sits outside this resolver). There is
+ * no string field left for a zod schema to check, so an `InvalidInputError`
+ * member would be a permanently unreachable branch — adding one would be
+ * exactly the kind of dishonest union member the "never fabricate an error
+ * value for a state that isn't that error" rule warns against, just at the
+ * schema level instead of the value level.
+ *
+ * A one-member union is still the right shape, not a compromise: it declares
+ * no error that cannot happen (nothing fabricated), it satisfies Task 1's
+ * binding rule ("`builder.mutationField` + explicit `<Name>Input` + explicit
+ * `<Name>Result` union") literally rather than as an exception, and — the
+ * decisive reason — it keeps the door open for a real future member without
+ * a breaking change. Changing a field's return type from an object to a
+ * union later would break every existing `userDelete { deletedId }`
+ * selection; adding a member to an already-declared union does not. A
+ * concrete future candidate already exists structurally: REST's
+ * target-specific 403 ("Cannot reset the built-in admin password") is only
+ * unreachable today because the config admin happens to own no `User` row
+ * (see the note below) — a per-row admin flag or a "last admin" precondition
+ * would each need a member here. Task 6's review adjudicated this ruling;
+ * every mutation in this schema returns `<Name>Result`, even when the union
+ * has exactly one member today.
  *
  * Mirrors `DELETE /api/users/:username` (`routes/users.ts:76-92`) —
  * `router.use(adminAuth)` gates the whole router, so this is admin-only with
@@ -96,7 +124,7 @@ const payload = builder.objectRef<UserDeletePayloadShape>('UserDeletePayload').i
  */
 builder.mutationField('userDelete', (t) =>
   t.field({
-    type: payload,
+    type: result,
     nullable: true,
     description:
       'Deletes a user account — DB row and on-disk library folder both. ' +

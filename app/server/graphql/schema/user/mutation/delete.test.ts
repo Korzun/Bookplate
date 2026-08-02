@@ -19,7 +19,10 @@ afterEach(async () => {
 
 const MUTATION = `
   mutation Delete($input: UserDeleteInput!) {
-    userDelete(input: $input) { deletedId deletedUserId }
+    userDelete(input: $input) {
+      __typename
+      ... on UserDeletePayload { deletedId deletedUserId }
+    }
   }
 `;
 
@@ -35,6 +38,7 @@ describe('Mutation.userDelete', () => {
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.userDelete).toEqual({
+      __typename: 'UserDeletePayload',
       deletedId: encodeGlobalID('User', harness.bobOwner.userId),
       deletedUserId: harness.bobOwner.userId,
     });
