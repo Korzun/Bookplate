@@ -162,11 +162,21 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     itemsRef.current = items;
   });
 
-  // Fetch server config on mount
+  // Fetch server config on mount. This runs at app boot, racing AuthProvider's
+  // bootstrap refresh, so a stale access token can make it come back 401 —
+  // whose body (`{ error: 'Unauthorized' }`) is valid JSON and therefore never
+  // reaches the .catch. Only adopt a usable positive limit; anything else keeps
+  // the default, because a non-numeric limit poisons every slot computation
+  // below into NaN and strands the entire queue at 'queued' for the session.
   useEffect(() => {
     void apiFetch('/api/config')
-      .then((r) => r.json() as Promise<{ maxConcurrentUploads: number }>)
-      .then((cfg) => setMaxConcurrent(cfg.maxConcurrentUploads))
+      .then((r) => (r.ok ? (r.json() as Promise<{ maxConcurrentUploads?: unknown }>) : null))
+      .then((cfg) => {
+        const limit = cfg?.maxConcurrentUploads;
+        if (typeof limit === 'number' && Number.isFinite(limit) && limit >= 1) {
+          setMaxConcurrent(Math.floor(limit));
+        }
+      })
       .catch(() => {
         // keep default of 3 on failure
       });
@@ -231,7 +241,11 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // Rolling concurrency: start uploads whenever a slot is free
   useEffect(() => {
     const inFlight = startedRef.current.size;
-    const slots = maxConcurrent - inFlight;
+    // Defence in depth: a NaN limit would make `slots` NaN, which passes the
+    // `<= 0` bail-out and then silently truncates `slice` to zero items — a
+    // permanently frozen queue. Never let the limit drop below one.
+    const limit = Number.isFinite(maxConcurrent) && maxConcurrent >= 1 ? maxConcurrent : 1;
+    const slots = limit - inFlight;
     if (slots <= 0) return;
 
     const toStart = items
@@ -314,16 +328,35 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
         );
       };
 
+      // Everything up to `send` happens outside the XHR's own event handlers,
+      // so a throw here (a rejected token refresh, a rejected open/send) would
+      // otherwise strand the item: no onload/onerror can fire for a request
+      // that was never sent, leaving its slot held in startedRef forever and
+      // shrinking the queue's capacity for the rest of the session. Fail the
+      // item explicitly and give the slot back.
       void (async () => {
-        if (!item.file) return; // rehydrated items are never 'queued', but keep TS honest
-        const token = await ensureFreshToken();
-        // The XHR may have been aborted (unmount) while we awaited the refresh.
-        if (xhrMapRef.current.get(item.id) !== xhr) return;
-        xhr.open('POST', withTargetUserRef.current('/api/books/upload'));
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        const formData = new FormData();
-        formData.append('files', item.file);
-        xhr.send(formData);
+        try {
+          if (!item.file) throw new Error('missing file'); // filtered out above; keeps TS honest
+          const token = await ensureFreshToken();
+          // The XHR may have been replaced while we awaited the refresh.
+          if (xhrMapRef.current.get(item.id) !== xhr) return;
+          xhr.open('POST', withTargetUserRef.current('/api/books/upload'));
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          const formData = new FormData();
+          formData.append('files', item.file);
+          xhr.send(formData);
+        } catch {
+          if (xhrMapRef.current.get(item.id) !== xhr) return;
+          startedRef.current.delete(item.id);
+          xhrMapRef.current.delete(item.id);
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? { ...i, status: 'error' as const, errorMessage: "Couldn't start upload" }
+                : i
+            )
+          );
+        }
       })();
     }
   }, [items, maxConcurrent]);
