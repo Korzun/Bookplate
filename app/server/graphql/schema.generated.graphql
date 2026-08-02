@@ -463,7 +463,7 @@ type SeriesBooksConnectionEdge {
 }
 
 """
-The given stagedUploadId does not resolve to a usable staged file — unknown, expired, or staged by a different user (indistinguishable).
+The given staged-upload reference (stagedUploadId or stagedCoverId) does not resolve to a usable staged file — unknown, expired, staged by a different user, or staged for a different purpose (indistinguishable).
 """
 type StagedUploadNotFoundError implements UserError {
   message: String!

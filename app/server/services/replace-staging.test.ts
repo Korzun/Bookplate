@@ -233,6 +233,56 @@ describe('createReplaceStaging', () => {
       expect(staging.resolve(id, 'alice', 'epub')).not.toBeNull();
     });
 
+    it('maps a known image MIME type to its matching fixed extension (M-4 allowlist, positive case)', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(Buffer.from('bytes'), 'alice', 'x.svg', 'cover', 'image/svg+xml');
+
+      const resolved = staging.resolve(id, 'alice', 'cover');
+
+      expect(resolved!.path.endsWith('.svg')).toBe(true);
+    });
+
+    it('sanitizes a hostile MIME type into the safe ".bin" fallback, never letting it reach the filename (review M-4)', () => {
+      // A `Content-Type` a client fully controls (only checked for an
+      // `image/` prefix by `coverUpload`'s fileFilter, routes/ui.ts:131-133).
+      // Before the M-4 fix, `.split('/')[1]` would have carried `..\..\evil`
+      // straight into `path.join`'s filename argument — a Windows traversal
+      // vector. The fixed allowlist makes that structurally impossible: the
+      // returned extension is always one of the map's literal values.
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(
+        Buffer.from('bytes'),
+        'alice',
+        'evil.png',
+        'cover',
+        'image/..\\..\\evil'
+      );
+
+      const resolved = staging.resolve(id, 'alice', 'cover');
+
+      expect(resolved).not.toBeNull();
+      expect(path.dirname(resolved!.path)).toBe(stagingDir);
+      expect(resolved!.path.endsWith('.bin')).toBe(true);
+      expect(resolved!.path).not.toContain('..');
+      expect(fs.existsSync(resolved!.path)).toBe(true);
+    });
+
+    it('falls back to ".bin" for an absurdly long MIME subtype instead of risking ENAMETOOLONG (review M-4)', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(
+        Buffer.from('bytes'),
+        'alice',
+        'huge.png',
+        'cover',
+        `image/${'a'.repeat(3000)}`
+      );
+
+      const resolved = staging.resolve(id, 'alice', 'cover');
+
+      expect(resolved!.path.endsWith('.bin')).toBe(true);
+      expect(fs.existsSync(resolved!.path)).toBe(true);
+    });
+
     it('keeps "epub" and "cover" entries independently staged, resolved, and consumed under the same shared registry', () => {
       const staging = createReplaceStaging({ stagingDir });
       const epubId = staging.stage(Buffer.from('epub-bytes'), 'alice', 'book.epub', 'epub');
