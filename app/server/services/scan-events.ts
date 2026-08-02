@@ -25,17 +25,22 @@
  */
 export type ScanProgress =
   | {
-      phase: 'importing';
-      total: number;
-      processed: number;
-      filename: string;
-      outcome: 'imported' | 'renamed' | 'already-imported' | 'skipped';
-      bookId?: string;
+      readonly phase: 'importing';
+      readonly total: number;
+      readonly processed: number;
+      readonly filename: string;
+      readonly outcome: 'imported' | 'renamed' | 'already-imported' | 'skipped';
+      readonly bookId?: string;
     }
-  | { phase: 'pruning'; total: number; processed: number; bookId: string };
+  | {
+      readonly phase: 'pruning';
+      readonly total: number;
+      readonly processed: number;
+      readonly bookId: string;
+    };
 
 /** `BookStore.scan()`'s own return shape — unchanged by this task, spec §"Scan progress". */
-export type ScanResult = { imported: string[]; removed: string[] };
+export type ScanResult = { readonly imported: string[]; readonly removed: string[] };
 
 export type ScanJobStatus = 'running' | 'completed' | 'failed';
 
@@ -58,16 +63,16 @@ export type ScanPhase = ScanProgress['phase'];
  * fires without a second pass over the result.
  */
 export type ScanJob = {
-  jobId: string;
-  status: ScanJobStatus;
-  startedAt: number;
-  total: number;
-  processed: number;
-  phase: ScanPhase;
-  currentFile: string | null;
-  importedBookIds: string[];
-  result?: ScanResult;
-  error?: string;
+  readonly jobId: string;
+  readonly status: ScanJobStatus;
+  readonly startedAt: number;
+  readonly total: number;
+  readonly processed: number;
+  readonly phase: ScanPhase;
+  readonly currentFile: string | null;
+  readonly importedBookIds: string[];
+  readonly result?: ScanResult;
+  readonly error?: string;
 };
 
 /**
@@ -78,9 +83,9 @@ export type ScanJob = {
  * did) — `reduceScanJob` only ever evolves a job that already exists.
  */
 export type ScanEvent =
-  | { type: 'progress'; progress: ScanProgress }
-  | { type: 'complete'; result: ScanResult }
-  | { type: 'fail'; error: string };
+  | { readonly type: 'progress'; readonly progress: ScanProgress }
+  | { readonly type: 'complete'; readonly result: ScanResult }
+  | { readonly type: 'fail'; readonly error: string };
 
 /**
  * Folds one `ScanEvent` onto a `ScanJob`, returning a new job — no mutation.
@@ -100,19 +105,22 @@ export const reduceScanJob = (job: ScanJob, event: ScanEvent): ScanJob => {
   switch (event.type) {
     case 'progress': {
       const { progress } = event;
-      const isNewImport =
-        progress.phase === 'importing' &&
-        progress.outcome === 'imported' &&
-        progress.bookId !== undefined;
       return {
         ...job,
         total: progress.total,
         processed: progress.processed,
         phase: progress.phase,
         currentFile: progress.phase === 'importing' ? progress.filename : null,
-        importedBookIds: isNewImport
-          ? [...job.importedBookIds, progress.bookId as string]
-          : job.importedBookIds,
+        // Inlined directly in the ternary's condition (not hoisted into a
+        // separately-computed boolean) so TypeScript narrows `progress.bookId`
+        // to `string` in the true branch on its own — no `as string` cast
+        // needed (task 8 review, M-1).
+        importedBookIds:
+          progress.phase === 'importing' &&
+          progress.outcome === 'imported' &&
+          progress.bookId !== undefined
+            ? [...job.importedBookIds, progress.bookId]
+            : job.importedBookIds,
       };
     }
     case 'complete':
