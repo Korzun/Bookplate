@@ -2220,6 +2220,67 @@ describe('POST /api/books/replace-staging', () => {
   });
 });
 
+describe('POST /api/books/cover-staging', () => {
+  it('stages the uploaded image and returns a stagedUploadId, keyed to the caller', async () => {
+    const token = await loginAlice();
+    const coverBytes = Buffer.from('fake-png-cover');
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .set(...bearer(token))
+      .attach('cover', coverBytes, { filename: 'cover.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.stagedUploadId).toBe('string');
+    expect(res.body.stagedUploadId.length).toBeGreaterThan(0);
+    // Resolvable back through the shared instance, for alice specifically,
+    // and only under the 'cover' kind — same shared registry the EPUB
+    // staging route above writes into, just a different kind tag.
+    const staged = replaceStaging.resolve(res.body.stagedUploadId as string, aliceId, 'cover');
+    expect(staged).not.toBeNull();
+    expect(staged?.originalName).toBe('cover.png');
+    expect(staged?.mimeType).toBe('image/png');
+    expect(replaceStaging.resolve(res.body.stagedUploadId as string, aliceId, 'epub')).toBeNull();
+  });
+
+  it('rejects a non-image file (coverUpload’s MIME filter, same as the metadata route’s cover field)', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .set(...bearer(token))
+      .attach('cover', Buffer.from('not an image'), {
+        filename: 'notes.txt',
+        contentType: 'text/plain',
+      });
+    // multer's fileFilter silently drops the file rather than erroring —
+    // same behaviour `coverUpload` already has on the metadata route.
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .attach('cover', Buffer.from('x'), { filename: 'x.png', contentType: 'image/png' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 with no file', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .set(...bearer(token));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 for an admin session (no userId to stage against)', async () => {
+    const token = await loginAdmin();
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .set(...bearer(token))
+      .attach('cover', Buffer.from('x'), { filename: 'x.png', contentType: 'image/png' });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('replace routes', () => {
   it('analyze returns the report plus autoFixes/proposals without modifying the book', async () => {
     await bookStore.addBook(

@@ -182,10 +182,14 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       if (targetBook === null) return null;
 
       const callerUserId = context.viewer!.userId;
+      // `'epub'` explicit (Task 3b generalized the registry to also hold
+      // `'cover'`-kind entries): a `stagedUploadId` that names a staged
+      // cover must fail here exactly like an unknown/foreign/expired id,
+      // never be read as an EPUB candidate.
       const staged =
         callerUserId === null
           ? null
-          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId);
+          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId, 'epub');
       if (staged === null) return stagedUploadNotFoundError();
 
       const analysis = await analyzeEpub(staged.path, {

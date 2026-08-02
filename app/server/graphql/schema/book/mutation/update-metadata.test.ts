@@ -1,7 +1,9 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { BookHashCollisionError } from '../../../../services/book-store';
+import { createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
+import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { EMPTY_COUNTS, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
@@ -38,6 +40,11 @@ afterEach(async () => {
 const BOOK_ID = 'a'.repeat(32);
 const OTHER_BOOK_ID = 'b'.repeat(32);
 
+// The factory, not a hand-typed string literal — so this constant can never
+// drift from what the resolver actually returns (matches replace.test.ts's
+// identical pattern).
+const UNKNOWN_STAGED_UPLOAD_MESSAGE = stagedUploadNotFoundError().message;
+
 const MUTATION = `
   mutation Update($input: BookUpdateMetadataInput!) {
     bookUpdateMetadata(input: $input) {
@@ -61,6 +68,7 @@ const MUTATION = `
         message
         messages { code severity message }
       }
+      ... on StagedUploadNotFoundError { message }
     }
   }
 `;
@@ -369,5 +377,250 @@ describe('Mutation.bookUpdateMetadata', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+
+  describe('stagedCoverId (Task 3b)', () => {
+    const stageCover = (
+      owner: Harness['aliceOwner'],
+      bytes: Buffer,
+      name = 'cover.png',
+      mime = 'image/png'
+    ): string => harness.stores.replaceStaging.stage(bytes, owner.userId, name, 'cover', mime);
+
+    it('applies the staged cover: the stored cover BYTES actually change, and metadata lands in the same call', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      const coverBytes = Buffer.from('brand-new-cover-bytes');
+      const stagedCoverId = stageCover(harness.aliceOwner, coverBytes);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'New Title',
+            stagedCoverId,
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as {
+        __typename: string;
+        book: { bookId: string; title: string };
+      };
+      expect(data.__typename).toBe('BookUpdateMetadataPayload');
+      expect(data.book.title).toBe('New Title');
+      const cover = await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId);
+      expect(cover).not.toBeNull();
+      expect(Buffer.from(cover!.data)).toEqual(coverBytes);
+      expect(cover!.mime).toBe('image/png');
+      // Consumed on success — no longer resolvable.
+      expect(
+        harness.stores.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
+      ).toBeNull();
+    });
+
+    it('applies a staged cover with no metadata fields at all (cover-only edit)', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Kept Title');
+      const coverBytes = Buffer.from('cover-only-bytes');
+      const stagedCoverId = stageCover(harness.aliceOwner, coverBytes);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as {
+        __typename: string;
+        book: { bookId: string; title: string };
+      };
+      expect(data.__typename).toBe('BookUpdateMetadataPayload');
+      expect(data.book.title).toBe('Kept Title');
+      const cover = await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId);
+      expect(Buffer.from(cover!.data)).toEqual(coverBytes);
+    });
+
+    it('returns StagedUploadNotFoundError for an unknown stagedCoverId, and applies NEITHER the metadata NOR any cover (REST’s atomic single-write semantics)', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched Title');
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'Should Not Land',
+            stagedCoverId: 'no-such-id',
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+      // Neither the title NOR a cover landed — applyEpubChanges never ran.
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched Title');
+      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+    });
+
+    it('returns StagedUploadNotFoundError for an EXPIRED stagedCoverId, with the identical message unknown/foreign get, and applies nothing', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched Title');
+      let now = 0;
+      const shortLivedStaging = createReplaceStaging({
+        stagingDir: harness.stores.book.getStagingDir(),
+        ttlMs: 1000,
+        now: () => now,
+      });
+      harness.stores.replaceStaging = shortLivedStaging;
+      const stagedCoverId = shortLivedStaging.stage(
+        Buffer.from('expired-cover'),
+        harness.aliceOwner.userId,
+        'cover.png',
+        'cover',
+        'image/png'
+      );
+      now = 999_999_999; // far past the TTL
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'Should Not Land',
+            stagedCoverId,
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched Title');
+    });
+
+    it('cross-tenant: bob’s staged cover used against alice’s own book is denied, and alice’s book/cover are unchanged', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
+      const bobsStagedCoverId = stageCover(harness.bobOwner, Buffer.from('bobs-cover'));
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'Hijacked Via Cover',
+            stagedCoverId: bobsStagedCoverId,
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
+      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+      // Bob's own stage was never even reached — untouched.
+      expect(
+        harness.stores.replaceStaging.resolve(bobsStagedCoverId, harness.bobOwner.userId, 'cover')
+      ).not.toBeNull();
+    });
+
+    it('kind-mismatch: a stagedUploadId staged as an EPUB (bookReplace’s flow) is rejected as stagedCoverId, indistinguishably from unknown', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched Title');
+      // Staged via the EPUB path (default kind), NOT the cover path.
+      const epubStagedId = harness.stores.replaceStaging.stage(
+        Buffer.from('not-a-cover-its-an-epub'),
+        harness.aliceOwner.userId,
+        'candidate.epub'
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'Should Not Land',
+            stagedCoverId: epubStagedId,
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched Title');
+      // The EPUB-kind entry itself is untouched — still resolvable under its
+      // real kind, proving the denial was about kind, not that the id burned.
+      expect(
+        harness.stores.replaceStaging.resolve(epubStagedId, harness.aliceOwner.userId, 'epub')
+      ).not.toBeNull();
+    });
+
+    it('does NOT consume the staged cover when the write fails post-edit validation (retryable without re-uploading)', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
+      (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new EpubValidationError(
+          [{ id: 'RSC-005', severity: 'FATAL', message: 'unparseable' }],
+          { ...EMPTY_COUNTS, FATAL: 1 },
+          'ERROR'
+        )
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            bookId: BOOK_ID,
+            title: 'Should Not Land',
+            stagedCoverId,
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as { __typename: string };
+      expect(data.__typename).toBe('EpubValidationError');
+      // Neither metadata nor cover landed — same single atomic write REST uses.
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
+      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+      // NOT consumed — retryable without re-uploading the image.
+      expect(
+        harness.stores.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
+      ).not.toBeNull();
+    });
+
+    it('metadata-only calls (no stagedCoverId) are unaffected — regression check', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'New Title Only' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookUpdateMetadata as {
+        __typename: string;
+        book: { bookId: string; title: string };
+      };
+      expect(data.__typename).toBe('BookUpdateMetadataPayload');
+      expect(data.book.title).toBe('New Title Only');
+      expect(
+        await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId)
+      ).toBeNull();
+    });
   });
 });

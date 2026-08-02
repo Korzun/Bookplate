@@ -211,10 +211,12 @@ builder.mutationField('bookReplace', (t) =>
       if (targetBook === null) return null;
 
       const callerUserId = context.viewer!.userId;
+      // `'epub'` explicit — see `bookAnalyzeReplace`'s identical note (Task
+      // 3b generalized the registry to also hold `'cover'`-kind entries).
       const staged =
         callerUserId === null
           ? null
-          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId);
+          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId, 'epub');
       if (staged === null) return stagedUploadNotFoundError();
 
       const repairedBytes = repairBestEffort(staged.path, staged.originalName);
@@ -243,7 +245,7 @@ builder.mutationField('bookReplace', (t) =>
         acceptedKeys: [...args.input.acceptedFixKeys],
       });
 
-      context.stores.replaceStaging.consume(parsed.data.stagedUploadId, callerUserId!);
+      context.stores.replaceStaging.consume(parsed.data.stagedUploadId, callerUserId!, 'epub');
 
       return {
         __typename: 'BookReplacePayload' as const,

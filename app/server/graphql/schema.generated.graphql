@@ -118,6 +118,7 @@ input BookUpdateMetadataInput {
   publisher: String
   series: String
   seriesIndex: Float
+  stagedCoverId: String
   subjects: [String!]
   title: String
   titleSort: String
@@ -128,7 +129,7 @@ type BookUpdateMetadataPayload {
   book: Book!
 }
 
-union BookUpdateMetadataResult = BookHashCollisionError | BookNotValidatedError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError
+union BookUpdateMetadataResult = BookHashCollisionError | BookNotValidatedError | BookUpdateMetadataPayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
 
 input BookValidateInput {
   bookId: String!
@@ -354,7 +355,7 @@ type Mutation {
   bookReplace(input: BookReplaceInput!): BookReplaceResult
 
   """
-  Updates a book’s metadata fields. Cover uploads stay on `PATCH /api/books/:id/metadata` (binary boundary) — this mutation covers the JSON fields only. Resolves to null when the book does not exist for the resolved owner.
+  Updates a book’s metadata fields and, optionally, its cover via a previously staged upload (`stagedCoverId`). The legacy multipart cover branch of `PATCH /api/books/:id/metadata` still exists separately until the client migrates. Resolves to null when the book does not exist for the resolved owner.
   """
   bookUpdateMetadata(input: BookUpdateMetadataInput!): BookUpdateMetadataResult
 
