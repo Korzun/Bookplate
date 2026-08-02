@@ -7,7 +7,7 @@ import * as epubWriterModule from '../../../../services/epub-writer';
 import { createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
-import { EMPTY_COUNTS, fixtureEpub, seedEditableBook } from './test-helpers';
+import { EMPTY_COUNTS, fixtureEpub, rawBookId, seedEditableBook } from './test-helpers';
 
 // A bare `vi.mock('../../../../logger')` auto-mock hands back a FRESH mocked
 // object on every `logger(namespace)` call — proven by inspection — so a
@@ -80,7 +80,7 @@ const MUTATION = `
     bookReplace(input: $input) {
       __typename
       ... on BookReplacePayload {
-        book { bookId title titleSort authorSort }
+        book { id title titleSort authorSort }
       }
       ... on EpubValidationError {
         message
@@ -88,7 +88,7 @@ const MUTATION = `
       }
       ... on BookHashCollisionError {
         message
-        collidingBook { bookId title }
+        collidingBook { id title }
       }
       ... on StagedUploadNotFoundError { message }
       ... on InvalidInputError { message issues { path message } }
@@ -127,14 +127,17 @@ describe('Mutation.bookReplace', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookReplace as {
       __typename: string;
-      book: { bookId: string; title: string };
+      book: { id: string; title: string };
     };
     expect(data.__typename).toBe('BookReplacePayload');
     expect(data.book.title).toBe('New Title');
-    expect(data.book.bookId).not.toBe(BOOK_ID);
+    // Decoded via `rawBookId`, not compared to a same-object `bookId` field
+    // (removed): the replace re-fingerprints the file, so the response's own
+    // id — not the input id — identifies the post-replace row.
+    expect(rawBookId(data.book.id)).not.toBe(BOOK_ID);
     // Old id gone, new id present, under alice specifically.
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
-    expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('New Title');
+    expect(await titleOf(harness.aliceOwner.userId, rawBookId(data.book.id))).toBe('New Title');
     // Consumed — no longer resolvable.
     expect(harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).toBeNull();
   });
@@ -370,10 +373,15 @@ describe('Mutation.bookReplace', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookReplace as {
       __typename: string;
-      collidingBook: { bookId: string; title: string };
+      collidingBook: { id: string; title: string };
     };
     expect(data.__typename).toBe('BookHashCollisionError');
-    expect(data.collidingBook).toEqual({ bookId: OTHER_BOOK_ID, title: 'Alice Book B' });
+    // The colliding book is an existing, untouched row, so its id is exactly
+    // the raw `OTHER_BOOK_ID` it was seeded under.
+    expect(data.collidingBook).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID),
+      title: 'Alice Book B',
+    });
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice Book A');
     expect(
       harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)

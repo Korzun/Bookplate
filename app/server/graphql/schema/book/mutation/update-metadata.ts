@@ -292,11 +292,13 @@ const buildChanges = (
  * comment.
  *
  * A successful edit rewrites the EPUB, so the book's content-hash id changes
- * (partial MD5 of the new bytes) — the returned `Book.bookId` is the *new*
- * id, not the decoded `id`'s local part. The old id's `Book` node is now
- * dangling; a client must evict it itself (Houdini phase) rather than expect
- * it updated in place. Written down here because `update-metadata.test.ts`'s
- * admin-edit test is otherwise the only place this behaviour is visible.
+ * (partial MD5 of the new bytes) — the returned `Book.id` decodes to the
+ * *new* raw id, not the input `id`'s local part (see `test-helpers.ts`'s
+ * `rawBookId`, the decode helper `update-metadata.test.ts`'s admin-edit test
+ * uses to observe this). The old id's `Book` node is now dangling; a client
+ * must evict it itself (Houdini phase) rather than expect it updated in
+ * place. Written down here because that test is otherwise the only place
+ * this behaviour is visible.
  *
  * `stagedCoverId` (Task 3b, 2026-08-01): traced end to end against REST's
  * multipart-cover branch (`routes/ui.ts:1106-1244`), which merges

@@ -1,7 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { createHarness, type Harness } from '../../../test-util';
-import { seedEditableBook } from './test-helpers';
+import { rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
 // See update-metadata.test.ts's identical mock: this test seeds an "edit"
@@ -39,7 +39,7 @@ const MUTATION = `
     bookUnlinkDocument(input: $input) {
       __typename
       ... on BookUnlinkDocumentPayload {
-        book { bookId lineage { oldId newId type } }
+        book { id lineage { oldId newId type } }
       }
       ... on InvalidInputError {
         message
@@ -111,7 +111,7 @@ describe('Mutation.bookUnlinkDocument', () => {
       mutation Update($input: BookUpdateMetadataInput!) {
         bookUpdateMetadata(input: $input) {
           __typename
-          ... on BookUpdateMetadataPayload { book { bookId } }
+          ... on BookUpdateMetadataPayload { book { id } }
         }
       }
     `;
@@ -121,8 +121,10 @@ describe('Mutation.bookUnlinkDocument', () => {
         input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), title: 'Edited Title' },
       },
     });
-    const editedData = edited.data?.bookUpdateMetadata as { book: { bookId: string } };
-    const newBookId = editedData.book.bookId;
+    const editedData = edited.data?.bookUpdateMetadata as { book: { id: string } };
+    // Decoded via `rawBookId`, not a same-object `bookId` field (removed):
+    // the metadata edit re-fingerprints the file.
+    const newBookId = rawBookId(editedData.book.id);
     const editEntries = (await lineageOf(harness.aliceOwner.userId, newBookId))?.entries ?? [];
     expect(editEntries).toEqual([
       { oldId: BOOK_ID, newId: newBookId, timestamp: expect.any(Number), type: 'edit' },

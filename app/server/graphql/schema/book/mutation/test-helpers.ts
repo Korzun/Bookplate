@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { decodeGlobalID } from '@pothos/plugin-relay';
 import AdmZip from 'adm-zip';
 
 import type { Severity } from '../../../../services/epub-validator';
 import type { EpubMeta, Owner } from '../../../../types';
 import type { Harness } from '../../../test-util';
+import { parseCompoundId } from '../../node-scope';
 
 /** Every severity at zero — the shape `Validation.counts`/`EpubValidationError` require. */
 export const EMPTY_COUNTS: Record<Severity, number> = {
@@ -101,3 +103,21 @@ export async function seedEditableBook(
     });
   }
 }
+
+/**
+ * Decodes a `Book` global ID back to its raw content-hash id — the inverse of
+ * `encodeGlobalID('Book', JSON.stringify([userId, id]))`, which every book
+ * mutation test uses to build the mutation's `id` input. Tests that need to
+ * look up a post-mutation row by the id the RESPONSE actually reports (rather
+ * than the id they sent — content-hash mutations like `bookRegenChapters`/
+ * `bookUpdateMetadata`/`bookReplace`/`bookResolvePendingFix`'s auto-fix
+ * branch may re-fingerprint the file and return a DIFFERENT id than the
+ * input) decode the response's `id` this way, mirroring exactly what the
+ * resolvers themselves do with `parseCompoundId` — rather than trusting a
+ * same-object `bookId` selection (removed, `book/model.ts`).
+ */
+export const rawBookId = (globalId: string): string => {
+  const parsed = parseCompoundId(decodeGlobalID(globalId).id);
+  if (parsed === null) throw new Error(`not a Book global id: ${globalId}`);
+  return parsed[1];
+};

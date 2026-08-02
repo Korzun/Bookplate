@@ -2,7 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { BookHashCollisionError } from '../../../../services/book-store';
 import { createHarness, type Harness } from '../../../test-util';
-import { EMPTY_COUNTS, seedEditableBook } from './test-helpers';
+import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
 // assertValidEpub: pass by default — see update-metadata.test.ts's identical
@@ -112,7 +112,7 @@ const MUTATION = `
       __typename
       ... on BookResolvePendingFixPayload {
         book {
-          bookId
+          id
           title
           subjects
           pendingFix {
@@ -131,7 +131,7 @@ const MUTATION = `
       }
       ... on BookHashCollisionError {
         message
-        collidingBook { bookId title }
+        collidingBook { id title }
       }
       ... on EpubValidationError {
         message
@@ -203,7 +203,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const data = result.data?.bookResolvePendingFix as {
         __typename: string;
         book: {
-          bookId: string;
+          id: string;
           title: string;
           pendingFix: {
             fileName: string;
@@ -230,8 +230,9 @@ describe('Mutation.bookResolvePendingFix', () => {
         appliedFixes: [],
       });
       // Cascaded onto the new id; the old id is dangling (no row left behind
-      // under it — the FK moved the SAME row, not left a stale copy).
-      const persisted = await pendingFixRowFor(data.book.bookId);
+      // under it — the FK moved the SAME row, not left a stale copy). Decoded
+      // via `rawBookId`, not a same-object `bookId` field (removed).
+      const persisted = await pendingFixRowFor(rawBookId(data.book.id));
       expect(persisted).not.toBeNull();
       expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
     });
@@ -284,9 +285,9 @@ describe('Mutation.bookResolvePendingFix', () => {
 
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookResolvePendingFix as {
-        book: { bookId: string; title: string };
+        book: { id: string; title: string };
       };
-      expect(data.book.bookId).toBe(BOOK_ID);
+      expect(data.book.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
       expect(data.book.title).toBe('Advisory Only');
       expect(reimportSpy).not.toHaveBeenCalled();
       // The row is left completely untouched — no write of any kind, not
@@ -436,10 +437,15 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookResolvePendingFix as {
         __typename: string;
-        collidingBook: { bookId: string; title: string };
+        collidingBook: { id: string; title: string };
       };
       expect(data.__typename).toBe('BookHashCollisionError');
-      expect(data.collidingBook).toEqual({ bookId: OTHER_BOOK_ID, title: 'Book B' });
+      // The colliding book is an existing, untouched row, so its id is
+      // exactly the raw `OTHER_BOOK_ID` it was seeded under.
+      expect(data.collidingBook).toEqual({
+        id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID),
+        title: 'Book B',
+      });
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Book A');
       expect(await pendingFixRowFor(BOOK_ID)).not.toBeNull();
     });
@@ -513,11 +519,13 @@ describe('Mutation.bookResolvePendingFix', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    const data = result.data?.bookResolvePendingFix as { book: { bookId: string; title: string } };
+    const data = result.data?.bookResolvePendingFix as { book: { id: string; title: string } };
     expect(data.book.title).toBe('New Title');
     // Content assertion of correct owner-scoping: read directly off alice's
     // own userId (never the admin's, which has no library/userId at all).
-    expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('New Title');
+    // Decoded via `rawBookId`, not a same-object `bookId` field (removed):
+    // ACCEPT can re-fingerprint the file.
+    expect(await titleOf(harness.aliceOwner.userId, rawBookId(data.book.id))).toBe('New Title');
   });
 
   it('resolves to null for an admin when the encoded owner does not exist', async () => {

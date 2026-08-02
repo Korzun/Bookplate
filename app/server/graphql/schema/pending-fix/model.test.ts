@@ -1,3 +1,5 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -5,6 +7,12 @@ vi.mock('../../../logger');
 let harness: Harness;
 const BOOK_ID = '1'.repeat(32);
 const EXPIRED_BOOK_ID = '2'.repeat(32);
+
+// Computed the same way the resolver decodes it — the independent check that
+// a `Book.id` selection is a real, dereferenceable global ID (mirrors
+// `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 
 // Mirrored from book-store.ts:31's PENDING_FIX_TTL_MS (7 days) — inlined as a
 // literal so this file does not import a private store constant, same as
@@ -194,21 +202,21 @@ describe('PendingFix', () => {
   });
 
   // Without this link `Library.pendingFixes` is not navigable — a client
-  // would have to make a second round trip keyed on `bookId` just to render
-  // which book a fix belongs to.
+  // would have to make a second round trip keyed on the book's raw id just to
+  // render which book a fix belongs to.
   it('links each fix to its book', async () => {
-    // OLD (before this task, against the deleted `PendingFixSummary`, which
+    // OLD (before task 2, against the deleted `PendingFixSummary`, which
     // carried its own `bookId: String!` field):
     //   '{ viewer { library { pendingFixes { bookId book { bookId title } } } } }'
     //   ...
     //   expect(fixes[0]?.book.bookId).toBe(fixes[0]?.bookId);
-    // NEW: the merged `PendingFix` gained `book: Book!` (a plain Prisma
-    // relation) but did NOT gain a `bookId` field of its own — the review
-    // gate for this task is that `PendingFix` gains exactly `book: Book!` and
-    // nothing else. So the assertion below anchors on the seeded `BOOK_ID`
-    // constant directly rather than a same-object `bookId` selection.
+    // The merged `PendingFix` gained `book: Book!` (a plain Prisma relation)
+    // — and `Book.bookId` itself is gone too now (task 4's output removal
+    // #1), so the assertion below anchors on the seeded `BOOK_ID` constant,
+    // encoded the same way the resolver does, rather than a same-object
+    // `bookId` selection.
     const result = await harness.execute(
-      '{ viewer { library { pendingFixes { book { bookId title } } } } }',
+      '{ viewer { library { pendingFixes { book { id title } } } } }',
       { viewer: harness.aliceViewer }
     );
 
@@ -217,12 +225,15 @@ describe('PendingFix', () => {
       result.data as {
         viewer: {
           library: {
-            pendingFixes: { book: { bookId: string; title: string } }[];
+            pendingFixes: { book: { id: string; title: string } }[];
           };
         };
       }
     ).viewer.library.pendingFixes;
-    expect(fixes[0]?.book).toEqual({ bookId: BOOK_ID, title: 'Needs Fixing' });
+    expect(fixes[0]?.book).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+      title: 'Needs Fixing',
+    });
   });
 
   // Book ids are content hashes, so bob can hold a book with the identical id.
