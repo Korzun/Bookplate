@@ -44,14 +44,30 @@ const TITLE_PROPOSAL = {
   changes: { title: 'New Title' },
 };
 
+// `to` is a real joined string (`dedupedParts.join(', ')`,
+// `metadata-issues.ts:412`), not `null` (review M-3: the original fixture's
+// `to: null` was unfaithful to a real `subjects-split` issue and would have
+// hidden I-2's missing `p.to !== null` filter — a subjects-split proposal IS
+// actionable and must survive that filter).
 const SUBJECTS_SPLIT_PROPOSAL = {
   field: 'subjects',
   kind: 'subjects-split',
   from: 'Fiction/Fantasy',
-  to: null,
+  to: 'Fiction, Fantasy',
   changes: {},
   fromChips: ['Fiction/Fantasy'],
   toChips: ['Fiction', 'Fantasy'],
+};
+
+// Advisory-only: `html-entity`/`title-is-filename` issues carry `to: null`
+// and an empty `changes` (`metadata-issues.ts:229-236`, `:373-382`) — review
+// I-2's "nothing actionable" case.
+const ADVISORY_PROPOSAL = {
+  field: 'title',
+  kind: 'title-is-filename',
+  from: 'book',
+  to: null,
+  changes: {},
 };
 
 const seedPendingFix = (
@@ -89,7 +105,19 @@ const MUTATION = `
     bookResolvePendingFix(input: $input) {
       __typename
       ... on BookResolvePendingFixPayload {
-        book { bookId title subjects pendingFix { fileName } }
+        book {
+          bookId
+          title
+          subjects
+          pendingFix {
+            fileName
+            state {
+              proposals { field kind from to }
+              appliedFixes { field kind from to }
+              undo { kind proposals { field kind from to } appliedFixes { field kind from to } }
+            }
+          }
+        }
       }
       ... on InvalidInputError {
         message
@@ -152,7 +180,13 @@ describe('Mutation.bookResolvePendingFix', () => {
   });
 
   describe('ACCEPT', () => {
-    it('applies a live proposal’s stored changes and clears the pending fix (under the NEW post-edit book id)', async () => {
+    // Review I-1: REST's client (`applyAllProposals` + the sync effect,
+    // `use-upload-queue.ts:356-447`) leaves the `PendingFix` row ALIVE after
+    // an accept — `proposals: []`, an appended `appliedFixes`, and an `undo`
+    // snapshot — never deletes it. Deleting (the original, pre-review
+    // behaviour) destroys a server-persisted undo affordance the client still
+    // relies on. This is the seen-to-fail target for I-1 (see below).
+    it('applies an actionable proposal’s stored changes (under the NEW post-edit book id) and PERSISTS a live PendingFix row — proposals cleared, appliedFixes appended, undo armed', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
       await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
 
@@ -166,12 +200,37 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookResolvePendingFix as {
         __typename: string;
-        book: { bookId: string; title: string; pendingFix: unknown };
+        book: {
+          bookId: string;
+          title: string;
+          pendingFix: {
+            fileName: string;
+            state: {
+              proposals: unknown[];
+              appliedFixes: { field: string; kind: string; from: string; to: string }[];
+              undo: { kind: string; proposals: unknown[]; appliedFixes: unknown[] };
+            };
+          } | null;
+        };
       };
       expect(data.__typename).toBe('BookResolvePendingFixPayload');
       expect(data.book.title).toBe('New Title');
-      expect(data.book.pendingFix).toBeNull();
-      expect(await pendingFixRowFor(data.book.bookId)).toBeNull();
+      // The row survives — `Book.pendingFix` (TTL-gated) still sees it as
+      // live, i.e. non-null, because `undo` is now set.
+      expect(data.book.pendingFix).not.toBeNull();
+      expect(data.book.pendingFix?.state.proposals).toEqual([]);
+      expect(data.book.pendingFix?.state.appliedFixes).toEqual([
+        { field: 'title', kind: 'replace', from: 'Old Title', to: 'New Title' },
+      ]);
+      expect(data.book.pendingFix?.state.undo).toEqual({
+        kind: 'APPLY',
+        proposals: [{ field: 'title', kind: 'replace', from: 'Old Title', to: 'New Title' }],
+        appliedFixes: [],
+      });
+      // Cascaded onto the new id; the old id is dangling (no row left behind
+      // under it — the FK moved the SAME row, not left a stale copy).
+      const persisted = await pendingFixRowFor(data.book.bookId);
+      expect(persisted).not.toBeNull();
       expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
     });
 
@@ -202,10 +261,77 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(data.book.subjects.sort()).toEqual(['Adventure', 'Fantasy', 'Fiction']);
     });
 
-    it('is a no-op (and cleans up a stale row) when the pending fix has no proposals and no undo', async () => {
+    // Review I-2. Probe-confirmed regression this guards: an advisory-only
+    // proposal (`to: null`) used to still reach `applyEpubChanges` with an
+    // EMPTY `EpubChanges`, which still rebuilds/revalidates/re-imports the
+    // EPUB — minting a pointless new content-hash book id for a semantic
+    // no-op (the review's probe: book id churned from `aaaa…` to `0c90dab2…`
+    // with no actual content change). This test pins the book id UNCHANGED.
+    it('is a no-op for an advisory-only proposal (`to: null`): no EPUB rewrite, book id unchanged, row untouched', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Advisory Only');
+      await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
+      const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const before = await pendingFixRowFor(BOOK_ID);
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: { bookId: string; title: string };
+      };
+      expect(data.book.bookId).toBe(BOOK_ID);
+      expect(data.book.title).toBe('Advisory Only');
+      expect(reimportSpy).not.toHaveBeenCalled();
+      // The row is left completely untouched — no write of any kind, not
+      // even a re-persisted copy of the same content.
+      expect(await pendingFixRowFor(BOOK_ID)).toEqual(before);
+    });
+
+    // Review I-1's mixed-batch case: an advisory-only proposal alongside an
+    // actionable one. REST's client applies only the actionable one and
+    // leaves the advisory one sitting in `proposals` (`applyPatch` only
+    // removes the KEYS of the fixes it actually applied,
+    // `use-upload-queue.ts:384-396`) — it is not silently dropped.
+    it('applies only the actionable proposal in a mixed batch, leaving the advisory-only one in `proposals`', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL, ADVISORY_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        book: {
+          title: string;
+          pendingFix: { state: { proposals: { field: string; kind: string }[] } } | null;
+        };
+      };
+      expect(data.book.title).toBe('New Title');
+      expect(data.book.pendingFix?.state.proposals).toEqual([
+        { field: 'title', kind: 'title-is-filename', from: 'book', to: null },
+      ]);
+    });
+
+    // No store write of any kind (M-7: this happens before the `valid`
+    // gate too, since there is nothing to write either way) — matches REST's
+    // client, which does not issue a request when nothing survives its own
+    // `p.to !== null` filter, and equally does not delete an
+    // already-resolved or expired-undo-only row merely because ACCEPT was
+    // invoked on it (only DISMISS ever deletes).
+    it('is a no-op and leaves the row untouched when the pending fix has no proposals and no undo', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'No Proposals');
       await seedPendingFix(BOOK_ID, {});
       const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const before = await pendingFixRowFor(BOOK_ID);
 
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
@@ -218,10 +344,16 @@ describe('Mutation.bookResolvePendingFix', () => {
       const data = result.data?.bookResolvePendingFix as { book: { title: string } };
       expect(data.book.title).toBe('No Proposals');
       expect(reimportSpy).not.toHaveBeenCalled();
-      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+      expect(await pendingFixRowFor(BOOK_ID)).toEqual(before);
     });
 
-    it('treats an EXPIRED (TTL-past) undo-only pending fix as not-live: no-op, and the stale row is cleaned up', async () => {
+    // Review M-2: renamed — the original title claimed this exercised TTL
+    // behaviour, but the assertions are identical for a NON-expired
+    // undo-only row (proposals: [] is why this is a no-op, not the TTL
+    // predicate — see the resolver's own doc comment for the proof). This
+    // still seeds an expired `updatedAt` so the fixture stays realistic, but
+    // the test no longer claims TTL is what it is pinning.
+    it('is a no-op for an undo-only pending fix with no proposals, regardless of TTL, and leaves the row untouched', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Expired');
       await seedPendingFix(
         BOOK_ID,
@@ -229,6 +361,7 @@ describe('Mutation.bookResolvePendingFix', () => {
         Date.now() - TTL_MS - 1
       );
       const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const before = await pendingFixRowFor(BOOK_ID);
 
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
@@ -239,7 +372,7 @@ describe('Mutation.bookResolvePendingFix', () => {
 
       expect(result.errors).toBeUndefined();
       expect(reimportSpy).not.toHaveBeenCalled();
-      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+      expect(await pendingFixRowFor(BOOK_ID)).toEqual(before);
     });
 
     it('is a no-op when no pending fix row exists at all', async () => {

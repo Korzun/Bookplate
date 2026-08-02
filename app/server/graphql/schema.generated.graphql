@@ -425,7 +425,7 @@ type Mutation {
   bookReplace(input: BookReplaceInput!): BookReplaceResult
 
   """
-  Accepts (applies) or dismisses (discards) a book’s pending metadata- fix proposals. Resolves to null when the book does not exist for the resolved owner.
+  Accepts (applies) or dismisses (discards) a book’s pending metadata-fix proposals. Resolves to null when the book does not exist for the resolved owner.
   """
   bookResolvePendingFix(input: BookResolvePendingFixInput!): BookResolvePendingFixResult
 
