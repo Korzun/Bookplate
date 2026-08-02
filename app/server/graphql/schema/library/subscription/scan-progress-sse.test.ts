@@ -75,6 +75,46 @@ const firstSseEvent = async (body: ReadableStream<Uint8Array>): Promise<unknown>
 };
 
 /**
+ * Reads the WHOLE body until the stream naturally closes (`reader.read()`
+ * reports `done`), racing a `timeoutMs` sentinel so a stream that never
+ * closes fails this helper promptly and legibly — a clear assertion, not
+ * vitest's default 5s/10s test/hook timeout (task 9 review, M-2: the
+ * previous cross-tenant SSE test only proved *refusal*, reading one frame and
+ * cancelling; it never pinned that the connection actually closes, which
+ * `authorizeOnSubscribe: true` exists to guarantee for a denied caller — see
+ * `builder.ts`'s doc comment, and the seen-to-fail run in the task 9 report
+ * where, with that flag off, this exact scenario timed out instead of
+ * closing).
+ */
+const readUntilClosed = async (
+  body: ReadableStream<Uint8Array>,
+  timeoutMs = 2000
+): Promise<string> => {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const readToEnd = async (): Promise<string> => {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return buffer;
+      buffer += decoder.decode(value, { stream: true });
+    }
+  };
+  const timeout = new Promise<string>((_resolve, reject) => {
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `SSE stream did not close within ${timeoutMs}ms — buffer so far: ${JSON.stringify(buffer)}`
+          )
+        ),
+      timeoutMs
+    );
+  });
+  return Promise.race([readToEnd(), timeout]);
+};
+
+/**
  * Spec §"Auth and transport": "Transport is SSE on the existing `/graphql`
  * endpoint via `Accept: text/event-stream`." These are HTTP-level tests
  * (real Express app on a real listening port, real `fetch`) — the only layer
@@ -121,7 +161,7 @@ describe('scanProgress over SSE', () => {
     controller.abort();
   });
 
-  it('refuses a non-owner subscription — denied in the very first SSE frame, no live event ever sent', async () => {
+  it('refuses a non-owner subscription — denied AND the connection closes promptly, no standing stream', async () => {
     const bobToken = tokenFor(harness.bobOwner.userId, 'bob', false);
 
     const response = await fetch(`${baseUrl}/graphql`, {
@@ -141,8 +181,17 @@ describe('scanProgress over SSE', () => {
     // `builder.ts`) is a single `ExecutionResult`, not a live stream — the
     // SSE processor (`graphql-yoga`'s `getSSEProcessor`) frames that
     // identically to a live event: one `event: next` carrying the error,
-    // immediately followed by `event: complete`.
-    const payload = (await firstSseEvent(response.body!)) as {
+    // immediately followed by `event: complete`, then the stream ends. Read
+    // the WHOLE body (not just the first frame) so this pins CLOSURE, not
+    // merely refusal — `readUntilClosed` fails this test directly if the
+    // stream stays open, rather than that only showing up as vitest's
+    // generic hook-timeout failure later.
+    const buffer = await readUntilClosed(response.body!);
+    expect(buffer).toContain('event: complete');
+
+    const dataLine = buffer.split('\n').find((line) => line.startsWith('data: {'));
+    if (dataLine === undefined) throw new Error(`no error data: line in SSE body: ${buffer}`);
+    const payload = JSON.parse(dataLine.slice('data: '.length)) as {
       errors?: { extensions?: { code?: string } }[];
     };
     expect(payload.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');

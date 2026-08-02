@@ -141,7 +141,18 @@ describe('Subscription.scanProgress', () => {
     expect(errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
   });
 
-  it('lets an admin subscribe to a named user’s library', async () => {
+  /**
+   * Review (task 9, M-1): the topic `scanProgress`'s `subscribe` generator
+   * reads from is derived from the DECODED `libraryId`'s owner
+   * (`context.loadOwner(args.libraryId.id).userId`), never from
+   * `context.viewer`. The admin's own `userId` is `null`
+   * (`test-util.ts`'s `adminViewer`) — a viewer-derived topic would be
+   * `scan:null`, and this subscription could never receive alice's event at
+   * all, so establishing a working stream already discriminates the
+   * derivation. Asserting `jobId` (not just `state`) pins CONTENTS, matching
+   * the same discipline `scan-status.test.ts`'s admin-traversal row applies.
+   */
+  it('lets an admin subscribe to a named user’s library, receiving that user’s real job', async () => {
     const result = await subscribe({
       schema,
       document: DOCUMENT,
@@ -154,8 +165,9 @@ describe('Subscription.scanProgress', () => {
 
     const startEvent = result.next();
     await settle(50);
-    harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
+    expect(first.scanProgress.jobId).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
     await result.return?.();
