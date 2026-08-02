@@ -139,6 +139,73 @@ describe('Mutation.deviceUpdate', () => {
     expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'InvalidInputError' });
   });
 
+  /**
+   * Mirror of `create.test.ts`'s 4 `name`/dimension validation tests
+   * (review, task 7, I-1): before the extraction, `update.ts` carried its
+   * own verbatim copy of this zod block with zero test coverage of its own —
+   * REST cannot drift the two (`PATCH`/`POST` share one `parseBody`), but two
+   * independent GraphQL copies could have. These pin the SHARED
+   * `deviceFieldsSchema` fragment from the update side too, so a future
+   * change to it is caught from both call sites, not just `create.test.ts`.
+   */
+  describe('shared name/dimension validation (mirrors create.test.ts)', () => {
+    it('returns InvalidInputError for a blank name', async () => {
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: { input: validInput({ name: '   ' }) },
+      });
+
+      expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'InvalidInputError' });
+    });
+
+    it('returns InvalidInputError for a name over 50 characters', async () => {
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: { input: validInput({ name: 'x'.repeat(51) }) },
+      });
+
+      expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'InvalidInputError' });
+    });
+
+    it('returns InvalidInputError for a symbol-only name (empty derived slug)', async () => {
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: { input: validInput({ name: '!!!' }) },
+      });
+
+      expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'InvalidInputError' });
+    });
+
+    it('returns InvalidInputError for a non-positive coverWidth', async () => {
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: { input: validInput({ coverWidth: 0 }) },
+      });
+
+      expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'InvalidInputError' });
+    });
+  });
+
+  /**
+   * Review, task 7, M-2: REST's `PATCH /:id` checks existence (`getById` →
+   * 404) BEFORE parsing the body (`parseBody` → 400) — `routes/devices.ts:
+   * 111-119`. For an input that fails both (an unknown `deviceId` AND a
+   * blank `name`), REST answers 404, never 400. This resolver reorders to
+   * match: `deviceId` is validated and looked up first, and the
+   * `name`/dimension fields are only parsed once the device is confirmed to
+   * exist — so this must resolve to `null` (REST's 404-equivalent), not
+   * `InvalidInputError`, even though the name is also invalid.
+   */
+  it('resolves to null (not InvalidInputError) for an unknown device with an invalid body', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: validInput({ deviceId: 'no-such-device', name: '   ' }) },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.deviceUpdate).toBeNull();
+  });
+
   it('purges the edition cache for the device on success', async () => {
     await harness.prisma.deviceEdition.create({
       data: {
@@ -172,7 +239,9 @@ describe('Mutation.deviceUpdate', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data?.deviceUpdate).toMatchObject({ __typename: 'DeviceUpdatePayload' });
     expect(logger('graphql-device-mutation').warn).toHaveBeenCalledWith(
-      expect.stringContaining('deviceUpdate — edition-cache purge failed — disk full')
+      expect.stringContaining(
+        'deviceUpdate — edition-cache purge failed for device "dev-1" — disk full'
+      )
     );
   });
 

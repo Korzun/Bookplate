@@ -134,7 +134,9 @@ describe('Mutation.deviceDisableUser', () => {
       __typename: 'DeviceDisableUserPayload',
     });
     expect(logger('graphql-device-mutation').warn).toHaveBeenCalledWith(
-      expect.stringContaining('deviceDisableUser — edition-cache purge failed — disk full')
+      expect.stringContaining(
+        `deviceDisableUser — edition-cache purge failed for device "dev-1" user "${harness.bobOwner.userId}" — disk full`
+      )
     );
   });
 

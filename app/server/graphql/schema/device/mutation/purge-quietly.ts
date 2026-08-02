@@ -26,16 +26,32 @@ const log = logger('graphql-device-mutation');
  * DRY helper, not a REST/GraphQL shared helper (`routes/devices.ts` itself
  * is untouched; this file has no REST counterpart).
  *
- * `label` matches the calling mutation's own name, so the log line stays
- * easy to correlate with which GraphQL operation triggered it (REST's own
- * warn lines are similarly prefixed with the route, e.g. `"PATCH /:id — ..."`).
+ * **`label` and `detail` together reproduce REST's full warn text (review,
+ * task 7, M-1 — the original version dropped the ids entirely; the doc
+ * comment here used to claim the two log lines were "similarly prefixed",
+ * which was true but silently omitted that REST's warns also carry the
+ * id(s) — this fixes both the code and the overclaiming comment).** REST's
+ * three warns are:
+ *   - `` `PATCH /:id — edition-cache purge failed for device "${existing.id}" — …` ``
+ *   - `` `DELETE /:id — edition-cache purge failed for device "${existing.id}" — …` ``
+ *   - `` `DELETE /:id/users/:username — edition purge failed for device
+ *     "${device.id}" user "${userId}" — …` ``
+ * `label` supplies the mutation-name prefix (REST's route), and `detail`
+ * supplies the id(s) — `` `device "${id}"` `` or `` `device "${id}" user
+ * "${userId}"` `` — so an operator reading a GraphQL warn can tell exactly
+ * which device's (and, for the pair case, which user's) cache is now stale,
+ * the same as reading REST's own log line would.
  */
-export async function purgeEditionsQuietly(label: string, run: () => Promise<void>): Promise<void> {
+export async function purgeEditionsQuietly(
+  label: string,
+  detail: string,
+  run: () => Promise<void>
+): Promise<void> {
   try {
     await run();
   } catch (err) {
     log.warn(
-      `${label} — edition-cache purge failed — ${err instanceof Error ? err.message : String(err)}`
+      `${label} — edition-cache purge failed for ${detail} — ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }
