@@ -26,21 +26,6 @@ export const model = builder.prismaNode('Book', {
   findUnique,
   nullable: true,
   fields: (t) => ({
-    // The raw content-hash id, alongside the Relay global `id`.
-    //
-    // Not redundant with `id`: three sibling fields in this schema already
-    // carry this exact value as an opaque string — `Progress.document`,
-    // `LinkedDocument.oldId`/`newId` — and `Library.book(id:)` takes it as an
-    // argument. Without this field a client holding a `Book` cannot join to
-    // any of them, cannot re-fetch itself through `Library.book(id:)`, and
-    // cannot build the cover, thumbnail or download URLs (which are
-    // `/api/books/<this>/...`).
-    //
-    // `Book.id` cannot serve that purpose: it is a base64 global ID over
-    // `JSON.stringify([userId, id])`, so extracting the hash from it client-
-    // side would mean re-implementing Pothos's compound-id encoding.
-    bookId: t.exposeString('id'),
-
     title: t.exposeString('title'),
     titleSort: t.exposeString('titleSort'),
     author: t.exposeString('author'),

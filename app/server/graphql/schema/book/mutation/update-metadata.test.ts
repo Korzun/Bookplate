@@ -4,7 +4,7 @@ import { BookHashCollisionError } from '../../../../services/book-store';
 import { createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
-import { EMPTY_COUNTS, seedEditableBook } from './test-helpers';
+import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
 // assertValidEpub: pass by default, so the happy-path edits don't need real
@@ -50,7 +50,7 @@ const MUTATION = `
     bookUpdateMetadata(input: $input) {
       __typename
       ... on BookUpdateMetadataPayload {
-        book { bookId title author publishDate }
+        book { id title author publishDate }
       }
       ... on InvalidInputError {
         message
@@ -58,7 +58,7 @@ const MUTATION = `
       }
       ... on BookHashCollisionError {
         message
-        collidingBook { bookId title }
+        collidingBook { id title }
       }
       ... on BookNotValidatedError {
         message
@@ -201,14 +201,18 @@ describe('Mutation.bookUpdateMetadata', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    const data = result.data?.bookUpdateMetadata as { book: { bookId: string; title: string } };
+    const data = result.data?.bookUpdateMetadata as { book: { id: string; title: string } };
     expect(data.book.title).toBe('After Admin Edit');
     // Content assertion of correct owner-scoping, not just "no error": the
     // rewritten EPUB's content hash changes with its content, so the edited
     // row now lives under a new id — re-read it under ALICE's userId
     // specifically (never the admin's, which has no library/userId at all)
-    // to prove the write landed in her library, not lost or misfiled.
-    expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('After Admin Edit');
+    // to prove the write landed in her library, not lost or misfiled. Decoded
+    // via `rawBookId`, not a same-object `bookId` field (removed): the
+    // response's own id is what identifies the post-edit row.
+    expect(await titleOf(harness.aliceOwner.userId, rawBookId(data.book.id))).toBe(
+      'After Admin Edit'
+    );
   });
 
   it('returns BookNotValidatedError with a null validation and changes nothing when the book was never validated', async () => {
@@ -339,10 +343,15 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookUpdateMetadata as {
       __typename: string;
-      collidingBook: { bookId: string; title: string };
+      collidingBook: { id: string; title: string };
     };
     expect(data.__typename).toBe('BookHashCollisionError');
-    expect(data.collidingBook).toEqual({ bookId: OTHER_BOOK_ID, title: 'Alice Book B' });
+    // The colliding book is an existing, untouched row, so its id is exactly
+    // the raw `OTHER_BOOK_ID` it was seeded under.
+    expect(data.collidingBook).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID),
+      title: 'Alice Book B',
+    });
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice Book A');
   });
 
@@ -422,11 +431,14 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookUpdateMetadata as {
         __typename: string;
-        book: { bookId: string; title: string };
+        book: { id: string; title: string };
       };
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('New Title');
-      const cover = await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId);
+      const cover = await harness.stores.book.getCover(
+        harness.aliceOwner.userId,
+        rawBookId(data.book.id)
+      );
       expect(cover).not.toBeNull();
       expect(Buffer.from(cover!.data)).toEqual(coverBytes);
       expect(cover!.mime).toBe('image/png');
@@ -451,11 +463,14 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookUpdateMetadata as {
         __typename: string;
-        book: { bookId: string; title: string };
+        book: { id: string; title: string };
       };
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('Kept Title');
-      const cover = await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId);
+      const cover = await harness.stores.book.getCover(
+        harness.aliceOwner.userId,
+        rawBookId(data.book.id)
+      );
       expect(Buffer.from(cover!.data)).toEqual(coverBytes);
     });
 
@@ -627,12 +642,12 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookUpdateMetadata as {
         __typename: string;
-        book: { bookId: string; title: string };
+        book: { id: string; title: string };
       };
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('New Title Only');
       expect(
-        await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId)
+        await harness.stores.book.getCover(harness.aliceOwner.userId, rawBookId(data.book.id))
       ).toBeNull();
     });
 
@@ -657,9 +672,9 @@ describe('Mutation.bookUpdateMetadata', () => {
         });
 
         expect(result.errors).toBeUndefined();
-        const data = result.data?.bookUpdateMetadata as { book: { bookId: string } };
+        const data = result.data?.bookUpdateMetadata as { book: { id: string } };
         expect(enqueueSpy).toHaveBeenCalledTimes(1);
-        expect(enqueueSpy).toHaveBeenCalledWith(harness.aliceOwner.userId, data.book.bookId);
+        expect(enqueueSpy).toHaveBeenCalledWith(harness.aliceOwner.userId, rawBookId(data.book.id));
       });
 
       it('does NOT enqueue on a metadata-only edit (no stagedCoverId) — REST parity for ui.test.ts:2858', async () => {

@@ -6,7 +6,6 @@ type Book implements Node {
   addedAt: DateTime!
   author: String!
   authorSort: String!
-  bookId: String!
   chapterCount: Int!
   chapterNames: [String!]
   chapterSpineMap: [Int!]!

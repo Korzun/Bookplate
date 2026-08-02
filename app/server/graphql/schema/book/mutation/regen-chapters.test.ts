@@ -2,7 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { BookHashCollisionError } from '../../../../services/book-store';
 import { createHarness, type Harness } from '../../../test-util';
-import { seedEditableBook } from './test-helpers';
+import { rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
 
@@ -25,7 +25,7 @@ const MUTATION = `
     bookRegenChapters(input: $input) {
       __typename
       ... on BookRegenChaptersPayload {
-        book { bookId title }
+        book { id title }
       }
       ... on BookNotValidatedError {
         message
@@ -33,7 +33,7 @@ const MUTATION = `
       }
       ... on BookHashCollisionError {
         message
-        collidingBook { bookId title }
+        collidingBook { id title }
       }
     }
   }
@@ -135,13 +135,17 @@ describe('Mutation.bookRegenChapters', () => {
 
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookRegenChapters as {
-      book: { bookId: string; title: string };
+      book: { id: string; title: string };
     };
     expect(data.book.title).toBe('Admin Target');
     // Content assertion, read directly off alice's row under her own userId
     // (never the admin's, which has no library/userId at all) — proves the
-    // write landed in her library rather than being lost or misfiled.
-    expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('Admin Target');
+    // write landed in her library rather than being lost or misfiled. Decoded
+    // via `rawBookId`, not compared to the input `BOOK_ID` constant directly:
+    // `reimportBook` can re-fingerprint the file (see `regen-chapters.ts`'s
+    // doc comment on `BookRegenChaptersPayload.book`), so the response's own
+    // id — not the id sent — is what identifies the row to look up.
+    expect(await titleOf(harness.aliceOwner.userId, rawBookId(data.book.id))).toBe('Admin Target');
   });
 
   it('returns BookHashCollisionError, owner-scoped to the target user, when the new fingerprint collides', async () => {
@@ -164,10 +168,16 @@ describe('Mutation.bookRegenChapters', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookRegenChapters as {
       __typename: string;
-      collidingBook: { bookId: string; title: string };
+      collidingBook: { id: string; title: string };
     };
     expect(data.__typename).toBe('BookHashCollisionError');
-    expect(data.collidingBook).toEqual({ bookId: OTHER_BOOK_ID, title: 'Alice Book B' });
+    // The colliding book is an existing, untouched row (never re-imported),
+    // so its id is exactly the raw `OTHER_BOOK_ID` it was seeded under —
+    // asserted via the encoded global id, not a same-object `bookId` field.
+    expect(data.collidingBook).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID),
+      title: 'Alice Book B',
+    });
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice Book A');
   });
 

@@ -24,7 +24,7 @@ const MUTATION = `
       __typename
       ... on BookClearEditionsPayload {
         clearedCount
-        book { bookId deviceEditionCount }
+        book { id deviceEditionCount }
       }
     }
   }
@@ -65,7 +65,7 @@ describe('Mutation.bookClearEditions', () => {
     const data = result.data?.bookClearEditions as {
       __typename: string;
       clearedCount: number;
-      book: { bookId: string; deviceEditionCount: number };
+      book: { id: string; deviceEditionCount: number };
     };
     expect(data.__typename).toBe('BookClearEditionsPayload');
     expect(data.clearedCount).toBe(2);

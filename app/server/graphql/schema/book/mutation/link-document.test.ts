@@ -25,15 +25,15 @@ const MUTATION = `
     bookLinkDocument(input: $input) {
       __typename
       ... on BookLinkDocumentPayload {
-        book { bookId lineage { oldId newId type } }
+        book { id lineage { oldId newId type } }
       }
       ... on InvalidInputError {
         message
         issues { path message }
       }
       ... on SelfLinkError { message }
-      ... on DocumentAlreadyLinkedError { message documentId book { bookId title } }
-      ... on DocumentIsBookError { message book { bookId title } }
+      ... on DocumentAlreadyLinkedError { message documentId book { id title } }
+      ... on DocumentIsBookError { message book { id title } }
     }
   }
 `;
@@ -61,10 +61,10 @@ describe('Mutation.bookLinkDocument', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookLinkDocument as {
       __typename: string;
-      book: { bookId: string; lineage: { oldId: string; newId: string; type: string }[] };
+      book: { id: string; lineage: { oldId: string; newId: string; type: string }[] };
     };
     expect(data.__typename).toBe('BookLinkDocumentPayload');
-    expect(data.book.bookId).toBe(BOOK_ID);
+    expect(data.book.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
     expect(data.book.lineage).toEqual([{ oldId: DOCUMENT_ID, newId: BOOK_ID, type: 'MERGE' }]);
   });
 
@@ -165,11 +165,14 @@ describe('Mutation.bookLinkDocument', () => {
     const data = result.data?.bookLinkDocument as {
       __typename: string;
       documentId: string;
-      book: { bookId: string; title: string };
+      book: { id: string; title: string };
     };
     expect(data.__typename).toBe('DocumentAlreadyLinkedError');
     expect(data.documentId).toBe(DOCUMENT_ID);
-    expect(data.book).toEqual({ bookId: BOOK_ID, title: 'First Owner' });
+    expect(data.book).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+      title: 'First Owner',
+    });
     expect((await lineageOf(harness.aliceOwner.userId, OTHER_BOOK_ID))?.entries).toEqual([]);
   });
 
@@ -190,10 +193,13 @@ describe('Mutation.bookLinkDocument', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookLinkDocument as {
       __typename: string;
-      book: { bookId: string; title: string };
+      book: { id: string; title: string };
     };
     expect(data.__typename).toBe('DocumentIsBookError');
-    expect(data.book).toEqual({ bookId: OTHER_BOOK_ID, title: 'The Document Itself' });
+    expect(data.book).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID),
+      title: 'The Document Itself',
+    });
     expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
   });
 
@@ -271,8 +277,8 @@ describe('Mutation.bookLinkDocument', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    const data = result.data?.bookLinkDocument as { book: { bookId: string } };
-    expect(data.book.bookId).toBe(BOOK_ID);
+    const data = result.data?.bookLinkDocument as { book: { id: string } };
+    expect(data.book.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
     // Content assertion of correct owner-scoping: read directly off alice's
     // own userId (never the admin's, which has no library of its own).
     expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([

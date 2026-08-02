@@ -32,7 +32,7 @@ afterEach(async () => {
 
 const BOOK = `{
   viewer { library { book(id: "${'a'.repeat(32)}") {
-    id bookId title author size pageCount
+    id title author size pageCount
     subjects identifiers { scheme value }
     chapterSpineMap chapterNames
     hasCover coverUrl downloadUrl thumbnailUrl(width: 200)
@@ -51,30 +51,6 @@ describe('Book', () => {
     expect(book.identifiers).toEqual([{ scheme: 'ISBN', value: '9780441013593' }]);
     expect(book.chapterSpineMap).toEqual([0, 3, 7]);
     expect(book.chapterNames).toEqual(['One', 'Two', 'Three']);
-  });
-
-  // The raw content hash, alongside the Relay global id. Three sibling fields
-  // carry this same value (Progress.document, LinkedDocument.oldId/newId) and
-  // Library.book(id:) takes it as an argument, so without it a client holding
-  // a Book cannot join to any of them.
-  it('exposes the raw content-hash id distinctly from the global id', async () => {
-    const result = await harness.execute(BOOK, { viewer: harness.aliceViewer });
-    const book = (result.data as { viewer: { library: { book: Record<string, unknown> } } }).viewer
-      .library.book;
-
-    expect(book.bookId).toBe('a'.repeat(32));
-    // Must not be the global id — that is base64 over JSON.stringify([userId,
-    // id]) and cannot be turned back into this hash client-side.
-    expect(book.id).not.toBe(book.bookId);
-    // And it must be the value Library.book(id:) accepts, round-tripped.
-    const roundTrip = await harness.execute(
-      `{ viewer { library { book(id: "${'a'.repeat(32)}") { title } } } }`,
-      { viewer: harness.aliceViewer }
-    );
-    expect(
-      (roundTrip.data as { viewer: { library: { book: { title: string } | null } } }).viewer.library
-        .book?.title
-    ).toBe('Dune');
   });
 
   it('derives hasCover from the stored mime type and exposes REST URLs', async () => {
