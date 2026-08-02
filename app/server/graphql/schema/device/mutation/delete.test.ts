@@ -109,7 +109,9 @@ describe('Mutation.deviceDelete', () => {
       deletedDeviceId: 'dev-1',
     });
     expect(logger('graphql-device-mutation').warn).toHaveBeenCalledWith(
-      expect.stringContaining('deviceDelete — edition-cache purge failed — disk full')
+      expect.stringContaining(
+        'deviceDelete — edition-cache purge failed for device "dev-1" — disk full'
+      )
     );
   });
 

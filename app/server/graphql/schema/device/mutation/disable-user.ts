@@ -100,8 +100,10 @@ builder.mutationField('deviceDisableUser', (t) =>
 
       await context.stores.device.disableUser(device.id, owner.userId);
 
-      await purgeEditionsQuietly('deviceDisableUser', () =>
-        context.stores.edition.purgeForDeviceAndUser(device.id, owner.userId)
+      await purgeEditionsQuietly(
+        'deviceDisableUser',
+        `device "${device.id}" user "${owner.userId}"`,
+        () => context.stores.edition.purgeForDeviceAndUser(device.id, owner.userId)
       );
 
       return {

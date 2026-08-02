@@ -94,7 +94,7 @@ builder.mutationField('deviceDelete', (t) =>
       const deleted = await context.stores.device.delete(parsed.data.deviceId);
       if (!deleted) return null;
 
-      await purgeEditionsQuietly('deviceDelete', () =>
+      await purgeEditionsQuietly('deviceDelete', `device "${parsed.data.deviceId}"`, () =>
         context.stores.edition.purgeForDevice(parsed.data.deviceId)
       );
 

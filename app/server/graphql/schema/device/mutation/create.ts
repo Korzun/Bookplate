@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device-store';
 import type { Device } from '../../../../types';
 import { generateSlug } from '../../../../utils/slug';
@@ -15,6 +13,7 @@ import {
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
 import { model as deviceModel } from '../model';
+import { deviceFieldsSchema } from './device-fields-schema';
 
 /**
  * Every field `POST /api/devices` (`routes/devices.ts`'s `parseBody`)
@@ -37,32 +36,6 @@ const input = builder.inputType('DeviceCreateInput', {
     bwCover: t.boolean({ required: true }),
     simplify: t.boolean({ required: true }),
   }),
-});
-
-/**
- * Mirrors `parseBody`'s checks on `name` exactly, in the same order:
- * required-after-trim, then the 50-character ceiling, then the "must derive
- * a non-empty slug" rule (a symbol-only name such as `"!!!"` would otherwise
- * break the unique `slug` column and the `/devices/:slug/download` URL).
- * `coverWidth`/`coverHeight` mirror `parseBody`'s `dim` helper: omitted or
- * explicit `null` both mean "no cap" (`DeviceInput`'s `number | null`), and a
- * provided value must be a positive integer. No `.int()` check — GraphQL's
- * `Int` coercion already rejects a non-integer before the resolver runs (see
- * `progressSet`'s identical note on `currentChapter`), so only positivity is
- * left to check.
- */
-const inputSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'name is required')
-    .max(50, 'name must be 50 characters or fewer')
-    .refine(
-      (value) => generateSlug(value).length > 0,
-      'name must contain at least one letter or number'
-    ),
-  coverWidth: z.number().positive('coverWidth must be a positive integer').nullable(),
-  coverHeight: z.number().positive('coverHeight must be a positive integer').nullable(),
 });
 
 type DeviceCreatePayloadShape = {
@@ -123,6 +96,17 @@ const result = builder.unionType('DeviceCreateResult', {
  * class has a zero-arg constructor) — the SDL's `slug` field is filled in
  * from `generateSlug(parsed.data.name)`, the same derivation the store
  * itself would have applied, per the ledger's binding rule for this type.
+ *
+ * `message` deliberately carries the STORE's own text ("A device with this
+ * name already exists", `device-store.ts:20`), not either of REST's two
+ * per-route strings ("A device with this name/slug already exists" on
+ * `POST /`, "Slug already in use" on `PATCH /:id`) — this is the same
+ * "factories carry the store error's own message" convention every other
+ * typed error in this schema follows (`user-error/model.test.ts`'s
+ * dedicated assertion), and the typed `slug` field alongside it already
+ * carries strictly more than either REST string does. Flagged for Task 10's
+ * doc sync in case any client copy is derived from REST's exact text
+ * (review, task 7, M-6).
  */
 builder.mutationField('deviceCreate', (t) =>
   t.field({
@@ -131,7 +115,7 @@ builder.mutationField('deviceCreate', (t) =>
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: { admin: true },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({
+      const parsed = deviceFieldsSchema.safeParse({
         name: args.input.name,
         coverWidth: args.input.coverWidth ?? null,
         coverHeight: args.input.coverHeight ?? null,
