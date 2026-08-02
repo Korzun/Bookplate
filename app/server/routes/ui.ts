@@ -2,9 +2,10 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import express, { Router, Request, Response } from 'express';
+import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
+import { deriveCurrentChapter } from '../graphql/derive';
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { applyEpubChanges, replaceEpubBytes } from '../services/apply-epub-changes';
@@ -21,7 +22,7 @@ import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { EpubValidationError } from '../services/epub-validator';
 import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import type { ReplaceStaging } from '../services/replace-staging';
+import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -38,12 +39,28 @@ import {
   SearchSuggestionsResponse,
 } from '../types';
 import { asyncHandler } from '../utils/async-handler';
-import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 
 const log = logger('UI');
 
 const ALLOWED_EXTENSIONS = new Set(['.epub']);
+
+/**
+ * Shared multer `fileSize` caps (Task 4, pre-client-polish plan §5): EPUB
+ * uploads (bulk `/api/books/upload` and staged-EPUB `/api/books/replace-
+ * staging`) at 200MB, covers (`/api/books/cover-staging` and the legacy
+ * multipart-cover branch of `PATCH /api/books/:id/metadata`) at 20MB.
+ * `epubUpload` already carried the 200MB figure pre-Task-4 (bumped up from
+ * the plain `upload` instance's previous UNBOUNDED limit — see `upload`
+ * below); `coverUpload` is raised here from its previous 10MB. One constant
+ * per size, not a hand-typed number at each of the three `multer({...})`
+ * call sites, so "align, don't duplicate" (plan wording) holds literally:
+ * `coverUpload` is the single multer instance both cover routes share
+ * already, and both EPUB routes share `epubUpload`/`upload`'s own limit is
+ * set from the same constant `epubUpload` uses.
+ */
+const EPUB_UPLOAD_MAX_BYTES = 200 * 1024 * 1024;
+const COVER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
 
@@ -62,7 +79,102 @@ function requireUserId(req: Request, res: Response): string | null {
   return userId;
 }
 
+/**
+ * The authenticated caller's staging-registry identity — `requireUserId`'s
+ * sibling for the two staging routes, `POST /api/books/replace-staging` and
+ * `POST /api/books/cover-staging`, only. Unlike `requireUserId`, an admin
+ * session (`req.user.userId` unset) is ACCEPTED here (Task 4): it resolves
+ * to `ADMIN_STAGING_ID`, the same sentinel `stagingIdentityOf`
+ * (`services/replace-staging.ts`) is documented to return for admin
+ * callers — the GraphQL staged mutations (`bookAnalyzeReplace`/`bookReplace`/
+ * `bookUpdateMetadata`) resolve staged files with the identical helper, so
+ * an admin who stages here can consume it there. Only returns null (and
+ * 401s, same message/shape as `requireUserId`) for a request that reached
+ * this route with neither a userId nor `isAdmin` set — `requireAuth`
+ * already rules that out in practice; this is defense-in-depth, matching
+ * `requireUserId`'s own belt-and-suspenders shape.
+ */
+function requireStagingIdentity(req: Request, res: Response): string | null {
+  const identity = stagingIdentityOf(req.user!);
+  if (identity === null) {
+    log.warn(`Token missing userId for "${req.user?.username ?? 'unknown'}"`);
+    res.status(401).json({ error: 'Session expired. Please log in again.' });
+    return null;
+  }
+  return identity;
+}
+
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
+
+const LOGIN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
+
+type LoginRateLimitWindow = { count: number; windowStart: number };
+
+/**
+ * Fixed-window rate limiter for `POST /api/login` only (Task 4): 10 attempts
+ * per minute per IP, 429 + `Retry-After` on the 11th. Deliberately NOT
+ * applied to the OPDS (`routes/opds.ts`) or KOReader sync-password
+ * (`routes/kosync.ts`) auth endpoints — those are separate routers with
+ * their own `opdsAuth`/`kosyncAuth` middleware (`middleware/auth.ts`), never
+ * routed through this function at all. That's deliberate, not an oversight:
+ * e-reader/sync clients retry aggressively and automatically on transient
+ * network failures (device-side retry storms), or a client typo would lock
+ * the DEVICE out of syncing for a window with no user present to notice or
+ * retry manually the way a browser login form's user would; the existing
+ * mitigation for those endpoints is bcrypt's own cost factor on every
+ * attempt, not a request-count limiter.
+ *
+ * `createReplaceStaging`'s lazy-TTL-sweep precedent: window state lives in
+ * one `Map<ip, LoginRateLimitWindow>`, swept lazily (expired entries dropped
+ * on the next request that touches them) rather than on a timer — no
+ * `setInterval` for a single-process server to leak or need cleanup on
+ * shutdown. `now` is injected as a `() => number` parameter, same shape as
+ * `ReplaceStagingDeps.now` — production omits it (defaults to `Date.now`),
+ * tests supply a controllable clock so "window expiry admits again" needs
+ * no fake timers.
+ *
+ * A successful login does NOT reset the counter: simpler (one code path for
+ * every attempt, success or failure) and safer (a compromised or leaked
+ * password being tried successfully 11 times in a minute is exactly the
+ * pattern worth throttling too, not a signal to open the window back up).
+ *
+ * Factory shape mirrors `graphqlBodyLimit` (`middleware/graphql-body-
+ * limit.ts`): called once per router build (`createUiRouter`, below), so
+ * each test's fresh `createUiRouter(...)` call gets its own isolated Map —
+ * no state leaks between tests the way one process-lifetime singleton would.
+ */
+export function createLoginRateLimit(now: () => number = Date.now) {
+  const windows = new Map<string, LoginRateLimitWindow>();
+
+  return function loginRateLimit(req: Request, res: Response, next: express.NextFunction): void {
+    const current = now();
+    const ip = req.ip ?? 'unknown';
+
+    let window = windows.get(ip);
+    if (window === undefined || current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
+      // Lazy sweep: a stale/absent window for THIS ip is simply replaced —
+      // there is no separate sweep pass over the whole Map, matching
+      // replace-staging.ts's "checked on each call, not a timer" precedent.
+      window = { count: 0, windowStart: current };
+      windows.set(ip, window);
+    }
+    window.count += 1;
+
+    if (window.count > LOGIN_RATE_LIMIT_MAX_ATTEMPTS) {
+      const retryAfterSeconds = Math.ceil(
+        (window.windowStart + LOGIN_RATE_LIMIT_WINDOW_MS - current) / 1000
+      );
+      log.warn(`Login rate limit exceeded for ${ip}`);
+      res
+        .status(429)
+        .set('Retry-After', String(Math.max(retryAfterSeconds, 1)))
+        .json({ error: 'Too many login attempts. Please try again later.' });
+      return;
+    }
+    next();
+  };
+}
 
 export function createUiRouter(
   bookStore: BookStore,
@@ -73,11 +185,13 @@ export function createUiRouter(
   jwtSecret: Buffer,
   scanJobStore: ScanJobStore,
   validationStore: ValidationStore,
-  replaceStaging: ReplaceStaging
+  replaceStaging: ReplaceStaging,
+  loginRateLimitNow: () => number = Date.now
 ): Router {
   const router = Router();
 
   const requireAuth = jwtAuth(jwtSecret);
+  const loginRateLimit = createLoginRateLimit(loginRateLimitNow);
 
   const REFRESH_COOKIE = 'refresh_token';
   const REFRESH_COOKIE_PATH = '/api/auth';
@@ -119,6 +233,7 @@ export function createUiRouter(
 
   const upload = multer({
     storage,
+    limits: { fileSize: EPUB_UPLOAD_MAX_BYTES },
     fileFilter: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       cb(null, ALLOWED_EXTENSIONS.has(ext));
@@ -127,7 +242,7 @@ export function createUiRouter(
 
   const coverUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
+    limits: { fileSize: COVER_UPLOAD_MAX_BYTES },
     fileFilter: (_req, file, cb) => {
       cb(null, file.mimetype.startsWith('image/'));
     },
@@ -135,11 +250,37 @@ export function createUiRouter(
 
   const epubUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: EPUB_UPLOAD_MAX_BYTES },
     fileFilter: (_req, file, cb) => {
       cb(null, ALLOWED_EXTENSIONS.has(path.extname(file.originalname).toLowerCase()));
     },
   });
+
+  /**
+   * Wraps a multer middleware so exceeding its `fileSize` limit surfaces as
+   * an ordinary 413 JSON response, instead of falling through to server.ts's
+   * generic "Internal server error" 500 catch-all (Task 4). Multer reports
+   * its own errors (`MulterError`, `code: 'LIMIT_FILE_SIZE'` here) via
+   * `next(err)`, called from INSIDE multer's own middleware function, before
+   * this route's `asyncHandler`-wrapped handler ever runs — `asyncHandler`
+   * only catches a rejected promise from the handler it wraps, so it cannot
+   * intercept an error multer raises one middleware earlier. Any other
+   * multer error (a `fileFilter` rejection never reaches here — it resolves
+   * `req.file` to `undefined` instead of erroring, per multer's own
+   * contract) is forwarded to `next(err)` unchanged, preserving whatever the
+   * app's top-level error middleware already does with it.
+   */
+  function withUploadLimit(mw: RequestHandler): RequestHandler {
+    return (req, res, next) => {
+      mw(req, res, (err: unknown) => {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: 'File too large' });
+          return;
+        }
+        next(err);
+      });
+    };
+  }
 
   /**
    * Resolves which library this request operates on. Regular users always get
@@ -186,6 +327,7 @@ export function createUiRouter(
 
   router.post(
     '/api/login',
+    loginRateLimit,
     asyncHandler(async (req: Request, res: Response) => {
       const { username, password } = req.body as { username?: string; password?: string };
       if (typeof username !== 'string' || typeof password !== 'string') {
@@ -302,11 +444,7 @@ export function createUiRouter(
       );
       const items = page.items.map((p) => {
         const spineMap = spineMaps.get(p.document);
-        const spineIndex = parseCfiSpineIndex(p.progress);
-        const currentChapter =
-          spineIndex !== null && spineMap && spineMap.length > 0
-            ? (spineIndexToChapter(spineIndex, spineMap) ?? undefined)
-            : undefined;
+        const currentChapter = deriveCurrentChapter(p.progress, spineMap) ?? undefined;
         return {
           ...p,
           ...(currentChapter !== undefined ? { currentChapter } : {}),
@@ -603,7 +741,7 @@ export function createUiRouter(
   router.post(
     '/api/books/upload',
     requireAuth,
-    upload.array('files'),
+    withUploadLimit(upload.array('files')),
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
@@ -1103,7 +1241,7 @@ export function createUiRouter(
   router.patch(
     '/api/books/:id/metadata',
     requireAuth,
-    coverUpload.single('cover'),
+    withUploadLimit(coverUpload.single('cover')),
     asyncHandler(async (req: Request, res: Response) => {
       log.info(
         `Metadata edit requested: book=${req.params.id} ` +
@@ -1325,21 +1463,23 @@ export function createUiRouter(
    * a change to an existing route, and exists solely so the two GraphQL
    * mutations have bytes to operate on.
    *
-   * Deliberately `requireUserId`, not `resolveOwner`: the staged file is
-   * keyed to the *authenticated* caller, never a `?user=`-named target — an
-   * admin session (no row in the users table, `req.user.userId` unset) gets
-   * the same 401 `requireUserId` gives any other route it gates, and so can
-   * never stage a file at all. `bookAnalyzeReplace`/`bookReplace` read this
-   * back the same way, off `context.viewer.userId`, never the resolved book
-   * owner — see those mutations' doc comments.
+   * Deliberately `requireStagingIdentity`, not `resolveOwner`: the staged
+   * file is keyed to the *authenticated* caller's staging identity, never a
+   * `?user=`-named target. Since Task 4, that includes admin sessions (no
+   * row in the users table, `req.user.userId` unset) — they stage under
+   * `ADMIN_STAGING_ID` rather than 401ing, so a config admin can stage a
+   * replacement candidate too, same as any user. `bookAnalyzeReplace`/
+   * `bookReplace` read this back the same way, via `stagingIdentityOf
+   * (context.viewer)`, never the resolved book owner — see those mutations'
+   * doc comments.
    */
   router.post(
     '/api/books/replace-staging',
     requireAuth,
-    epubUpload.single('file'),
+    withUploadLimit(epubUpload.single('file')),
     asyncHandler(async (req: Request, res: Response) => {
-      const userId = requireUserId(req, res);
-      if (!userId) return;
+      const identity = requireStagingIdentity(req, res);
+      if (!identity) return;
       if (!req.file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
@@ -1348,7 +1488,7 @@ export function createUiRouter(
       // now that a second kind exists, see `/api/books/cover-staging` below.
       const stagedUploadId = replaceStaging.stage(
         req.file.buffer,
-        userId,
+        identity,
         req.file.originalname,
         'epub'
       );
@@ -1366,34 +1506,34 @@ export function createUiRouter(
    * declared above), before any request body — including a hypothetical
    * `kind` field — has been parsed, so one endpoint cannot dispatch to two
    * different multer configs. Uses `coverUpload` (memory storage, `image/*`
-   * MIME filter, 10MB limit — the exact config `PATCH /api/books/:id/
-   * metadata`'s multipart-cover branch uses, `coverUpload.single('cover')`
+   * MIME filter, `COVER_UPLOAD_MAX_BYTES` (20MB) limit — the exact config
+   * `PATCH /api/books/:id/metadata`'s multipart-cover branch uses,
+   * `coverUpload.single('cover')`
    * at this file's top and again on that route below) with the SAME field
    * name, `cover`, for the same reason: this route stages bytes for that
    * exact same cover-write path, just deferred into a later
    * `bookUpdateMetadata` call instead of applied inline.
    *
-   * `requireUserId`, not `resolveOwner`, matching `/replace-staging`
-   * exactly: the staged file is keyed to the *authenticated* caller, never a
-   * `?user=`-named target (see `replace-staging.ts`'s doc comment) — an
-   * admin session 401s here the same way it does on that route, and so can
-   * never stage a cover either (the same known limitation the spec records
-   * for staged EPUB replace).
+   * `requireStagingIdentity`, not `resolveOwner`, matching `/replace-staging`
+   * exactly: the staged file is keyed to the *authenticated* caller's
+   * staging identity, never a `?user=`-named target (see
+   * `replace-staging.ts`'s doc comment) — an admin session stages under
+   * `ADMIN_STAGING_ID` here the same way it does on that route (Task 4).
    */
   router.post(
     '/api/books/cover-staging',
     requireAuth,
-    coverUpload.single('cover'),
+    withUploadLimit(coverUpload.single('cover')),
     asyncHandler(async (req: Request, res: Response) => {
-      const userId = requireUserId(req, res);
-      if (!userId) return;
+      const identity = requireStagingIdentity(req, res);
+      if (!identity) return;
       if (!req.file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
       const stagedUploadId = replaceStaging.stage(
         req.file.buffer,
-        userId,
+        identity,
         req.file.originalname,
         'cover',
         req.file.mimetype
@@ -1405,7 +1545,7 @@ export function createUiRouter(
   router.post(
     '/api/books/:id/replace/analyze',
     requireAuth,
-    epubUpload.single('file'),
+    withUploadLimit(epubUpload.single('file')),
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
@@ -1445,7 +1585,7 @@ export function createUiRouter(
   router.post(
     '/api/books/:id/replace',
     requireAuth,
-    epubUpload.single('file'),
+    withUploadLimit(epubUpload.single('file')),
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;

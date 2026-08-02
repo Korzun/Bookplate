@@ -1,9 +1,7 @@
 import SchemaBuilder from '@pothos/core';
-import ErrorsPlugin from '@pothos/plugin-errors';
 import PrismaPlugin from '@pothos/plugin-prisma';
 import RelayPlugin from '@pothos/plugin-relay';
 import ScopeAuthPlugin from '@pothos/plugin-scope-auth';
-import ValidationPlugin from '@pothos/plugin-validation';
 import { GraphQLError } from 'graphql';
 import { DateTimeResolver, JSONResolver } from 'graphql-scalars';
 
@@ -45,27 +43,39 @@ export const builder = new SchemaBuilder<{
   };
 }>({
   // Pothos wraps resolvers in plugin order — the first plugin listed is the
-  // outermost wrapper. Two documented constraints fix this ordering; don't
-  // reshuffle it without re-reading both READMEs:
+  // outermost wrapper. One documented constraint fixes this ordering; don't
+  // reshuffle it without re-reading its README:
   //
   //  1. RelayPlugin before ScopeAuthPlugin. @pothos/plugin-scope-auth's README
   //     ("putting the relay plugin before the scope-auth plugin") — otherwise
   //     `authScopes` functions receive the *raw* base64 global ID while the
   //     resolver receives the parsed one, so an id-taking scope such as
   //     `ownerOf` compares a global ID against a database id and fails closed.
-  //  2. ErrorsPlugin is registered but deliberately unused, and its position
-  //     in the list is inert. @pothos/plugin-errors' `extractAndSortErrorTypes`
-  //     only accepts error *classes*; every error type in this schema is a
-  //     plain data shape carrying a readonly `owner: Owner` field (see
-  //     `user-error/model.ts`), not a class, so no field anywhere declares an
-  //     `errors:` option and the plugin never activates. It is kept in the
-  //     plugin list only because removing it is out of scope for a comment
-  //     fix — its ordering relative to PrismaPlugin governs nothing.
   //
-  // ScopeAuthPlugin still sits ahead of Errors/Prisma/Validation so authorization
-  // rejects before any resolver logic runs and an auth failure is never swallowed
-  // into an errors-plugin union member.
-  plugins: [RelayPlugin, ScopeAuthPlugin, ErrorsPlugin, PrismaPlugin, ValidationPlugin],
+  // ScopeAuthPlugin still sits ahead of Prisma so authorization rejects
+  // before any resolver logic runs.
+  //
+  // Two plugins deliberately NOT here (Task 4, pre-client-polish plan §5 —
+  // removed rather than left inert, so nobody "helpfully" re-adds them):
+  //
+  //  - `@pothos/plugin-errors`: its `extractAndSortErrorTypes` only accepts
+  //    error *classes*. Every error type in this schema is a plain data
+  //    shape carrying a readonly `owner: Owner` field (see
+  //    `user-error/model.ts`), not a class, so no field anywhere could ever
+  //    declare an `errors:` option — the plugin can never activate here.
+  //  - `@pothos/plugin-validation`: its declarative per-field `validate:`
+  //    option runs INSIDE the resolver, after `authScopes` has already
+  //    decided access — using it would put input validation on a path that
+  //    bypasses the ordering this schema depends on (auth rejects first,
+  //    unconditionally, before any field-level logic). zod runs inside
+  //    resolver bodies instead (every mutation's own `inputSchema.safeParse`
+  //    call), which keeps validation strictly after auth with no plugin seam
+  //    that could invert that order by accident.
+  //
+  // SDL is byte-identical with both plugins removed (`graphql:schema:check`
+  // — neither ever contributed anything to it); the schema-build/test/lint
+  // suite passing with them gone is the proof nothing consumed them.
+  plugins: [RelayPlugin, ScopeAuthPlugin, PrismaPlugin],
   defaultInputFieldRequiredness: true,
   defaultFieldNullability: false,
   scopeAuth: {

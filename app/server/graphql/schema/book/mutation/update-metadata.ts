@@ -9,6 +9,7 @@ import {
 import { BookHashCollisionError } from '../../../../services/book-store';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
+import { stagingIdentityOf } from '../../../../services/replace-staging';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import {
@@ -325,14 +326,16 @@ const buildChanges = (
  * uses for its two REST-derived preconditions, and the one `bookReplace`
  * uses for the identical `StagedUploadNotFoundError` case on the EPUB side.
  *
- * The staged cover is resolved/consumed by `context.viewer.userId` — the
- * *authenticated caller* — never by the decoded owner of `id`. Same split
- * `bookAnalyzeReplace`/`bookReplace` use for `stagedUploadId` (see that
- * file's doc comment): an admin session's `viewer.userId` is always `null`,
- * so it can never resolve any staged cover, including one staged by the
- * very user the decoded id names — the same "config admin cannot stage"
- * limitation the spec records for replace, now also true for covers.
- * `resolve`/`consume` are called with `kind: 'cover'` explicitly, so a
+ * The staged cover is resolved/consumed by `stagingIdentityOf(context.
+ * viewer)` — the *authenticated caller's* staging identity — never by the
+ * decoded owner of `id`. Same split `bookAnalyzeReplace`/`bookReplace` use
+ * for `stagedUploadId` (see that file's doc comment): an admin session maps
+ * to `ADMIN_STAGING_ID`, a bucket distinct from every real userId (Task 4),
+ * so an admin CAN now stage and resolve its own cover — including applying
+ * it to any user's book via `id`, the end-to-end this task exists to enable
+ * — but still can never resolve a cover staged by the user the decoded id
+ * names, or by any other user. `resolve`/`consume` are called with
+ * `kind: 'cover'` explicitly, so a
  * `stagedUploadId` from `bookReplace`'s EPUB-staging flow is rejected here
  * exactly like an unknown id — see `replace-staging.ts`'s `StagedKind` doc
  * comment.
@@ -388,14 +391,14 @@ builder.mutationField('bookUpdateMetadata', (t) =>
 
       const changes = buildChanges(args.input, parsedInput.data.publishDate?.trim());
 
-      const callerUserId = context.viewer!.userId;
+      const stagingIdentity = stagingIdentityOf(context.viewer!);
       if (parsedInput.data.stagedCoverId !== undefined) {
         const staged =
-          callerUserId === null
+          stagingIdentity === null
             ? null
             : context.stores.replaceStaging.resolve(
                 parsedInput.data.stagedCoverId,
-                callerUserId,
+                stagingIdentity,
                 'cover'
               );
         if (staged === null) return stagedUploadNotFoundError();
@@ -425,11 +428,11 @@ builder.mutationField('bookUpdateMetadata', (t) =>
 
       if (parsedInput.data.stagedCoverId !== undefined) {
         context.stores.thumbnail.enqueue(owner.userId, outcome.ok.id);
-        // callerUserId is non-null here — the resolve() above already
+        // stagingIdentity is non-null here — the resolve() above already
         // required it to be non-null to reach a success outcome.
         context.stores.replaceStaging.consume(
           parsedInput.data.stagedCoverId,
-          callerUserId!,
+          stagingIdentity!,
           'cover'
         );
       }

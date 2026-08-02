@@ -1,7 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 import type { MockedFunction } from 'vitest';
 
-import { createReplaceStaging } from '../../../../services/replace-staging';
+import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { fixtureEpub, seedEditableBook } from './test-helpers';
@@ -295,11 +295,12 @@ describe('Mutation.bookAnalyzeReplace', () => {
     expect(result.data?.bookAnalyzeReplace ?? null).toBeNull();
   });
 
-  it('denies an admin session even when it correctly names the staging user’s own book — admin gets no staging bypass', async () => {
+  it('denies an admin session even when it correctly names the staging user’s own book — admin has its own staging bucket, not a bypass onto alice’s (Task 4)', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
     // A real, valid, alice-owned staged upload — proving the denial is about
-    // WHO is asking (the admin session's own null viewer.userId), not about
-    // the stagedUploadId being bogus.
+    // WHO is asking (the admin session's own ADMIN_STAGING_ID identity,
+    // distinct from alice's userId — see `stagingIdentityOf`), not about the
+    // stagedUploadId being bogus.
     const aliceStagedId = harness.stores.replaceStaging.stage(
       fixtureEpub('New Candidate'),
       harness.aliceOwner.userId,
@@ -323,6 +324,32 @@ describe('Mutation.bookAnalyzeReplace', () => {
     expect(
       harness.stores.replaceStaging.resolve(aliceStagedId, harness.aliceOwner.userId)
     ).not.toBeNull();
+  });
+
+  it('admin CAN analyze against its own admin-staged upload, targeting any user’s book (Task 4)', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+    const adminStagedId = harness.stores.replaceStaging.stage(
+      fixtureEpub('Admin Candidate', 'Admin Author'),
+      ADMIN_STAGING_ID,
+      'admin-candidate.epub'
+    );
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: {
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: adminStagedId,
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookAnalyzeReplace as { __typename: string; valid: boolean };
+    expect(data.__typename).toBe('BookAnalyzeReplacePayload');
+    expect(data.valid).toBe(true);
+    // Read-only (resolve, not consume) — still resolvable afterward.
+    expect(harness.stores.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).not.toBeNull();
   });
 
   it('resolves to null for an admin when the encoded owner does not exist', async () => {

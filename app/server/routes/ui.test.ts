@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
@@ -12,16 +13,22 @@ import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
+import { deriveCurrentChapter } from '../graphql/derive';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookHashCollisionError, BookStore } from '../services/book-store';
 import * as epubWriterModule from '../services/epub-writer';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
-import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
+import {
+  ADMIN_STAGING_ID,
+  createReplaceStaging,
+  type ReplaceStaging,
+} from '../services/replace-staging';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
 import { AppConfig, EpubMeta, Owner } from '../types';
-import { createUiRouter } from './ui';
+import { parseCfiSpineIndex, spineIndexToChapter } from '../utils/cfi';
+import { createLoginRateLimit, createUiRouter } from './ui';
 
 vi.mock('../logger');
 // Wrap (not replace) the real implementation so every other upload test in
@@ -159,6 +166,29 @@ function stage(id: string, content: string | Buffer = 'x'): string {
   const p = path.join(booksDir, `staged-${id}.epub`);
   fs.writeFileSync(p, content);
   return p;
+}
+
+/**
+ * A readable stream emitting exactly `totalBytes`, generated one 1MB chunk
+ * at a time rather than materialized as a single Buffer up front — so the
+ * 200MB/20MB upload-cap tests below don't need to hold a 200MB+ Buffer in
+ * memory just to prove multer's `fileSize` limit actually rejects a request
+ * that large. superagent's `.attach()` accepts any readable stream.
+ */
+function oversizedStream(totalBytes: number): Readable {
+  const CHUNK_BYTES = 1024 * 1024;
+  let sent = 0;
+  return new Readable({
+    read() {
+      if (sent >= totalBytes) {
+        this.push(null);
+        return;
+      }
+      const size = Math.min(CHUNK_BYTES, totalBytes - sent);
+      this.push(Buffer.alloc(size, 'x'));
+      sent += size;
+    },
+  });
 }
 
 async function seedProgress(userId: string, bookId: string, percentage: number): Promise<void> {
@@ -375,6 +405,154 @@ describe('POST /api/login', () => {
       .send('username=nopass&password=anything')
       .set('Content-Type', 'application/x-www-form-urlencoded');
     expect(res.status).toBe(403);
+  });
+
+  describe('rate limiting (Task 4)', () => {
+    it('the 11th attempt within a minute gets 429 + Retry-After, and successful logins do NOT reset the window', async () => {
+      // All ten SUCCEED — proving success doesn't reset the counter (if it
+      // did, this loop would never exhaust the window and the 11th call
+      // below would also succeed).
+      for (let i = 0; i < 10; i++) {
+        const res = await request(app)
+          .post('/api/login')
+          .send('username=admin&password=pass')
+          .set('Content-Type', 'application/x-www-form-urlencoded');
+        expect(res.status).toBe(200);
+      }
+      const res11 = await request(app)
+        .post('/api/login')
+        .send('username=admin&password=pass')
+        .set('Content-Type', 'application/x-www-form-urlencoded');
+      expect(res11.status).toBe(429);
+      expect(res11.headers['retry-after']).toBeDefined();
+      expect(res11.body).toEqual({ error: 'Too many login attempts. Please try again later.' });
+    });
+
+    it('window expiry admits again (injected clock via createUiRouter’s optional now parameter — no fake timers)', async () => {
+      let now = 0;
+      const clockedApp = express();
+      clockedApp.use(express.json());
+      clockedApp.use(express.urlencoded({ extended: false }));
+      clockedApp.use(cookieParser());
+      clockedApp.use(
+        '/',
+        createUiRouter(
+          bookStore,
+          userStore,
+          { ...config, booksDir },
+          mockThumbnailQueue,
+          tokenStore,
+          jwtSecret,
+          scanJobStore,
+          validationStore,
+          replaceStaging,
+          () => now
+        )
+      );
+
+      for (let i = 0; i < 11; i++) {
+        await request(clockedApp)
+          .post('/api/login')
+          .send('username=admin&password=pass')
+          .set('Content-Type', 'application/x-www-form-urlencoded');
+      }
+      // Window exhausted (11 attempts, all at now=0 — same window).
+      const stillDenied = await request(clockedApp)
+        .post('/api/login')
+        .send('username=admin&password=pass')
+        .set('Content-Type', 'application/x-www-form-urlencoded');
+      expect(stillDenied.status).toBe(429);
+
+      now = 60_001; // just past the 60s window
+      const admittedAgain = await request(clockedApp)
+        .post('/api/login')
+        .send('username=admin&password=pass')
+        .set('Content-Type', 'application/x-www-form-urlencoded');
+      expect(admittedAgain.status).toBe(200);
+    });
+  });
+});
+
+describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit’s direct-call tests)', () => {
+  function mockRes(): {
+    res: Response;
+    state: { status?: number; headers: Record<string, string>; body?: unknown };
+  } {
+    const state: { status?: number; headers: Record<string, string>; body?: unknown } = {
+      headers: {},
+    };
+    const res = {
+      status(code: number) {
+        state.status = code;
+        return res;
+      },
+      set(name: string, value: string) {
+        state.headers[name] = value;
+        return res;
+      },
+      json(payload: unknown) {
+        state.body = payload;
+        return res;
+      },
+    } as unknown as Response;
+    return { res, state };
+  }
+
+  it('allows the first 10 attempts for one IP, denies the 11th with 429 + Retry-After', () => {
+    const limiter = createLoginRateLimit(() => 1_000);
+    for (let i = 0; i < 10; i++) {
+      const next = vi.fn();
+      const { res, state } = mockRes();
+      limiter({ ip: '1.2.3.4' } as unknown as Request, res, next);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(state.status).toBeUndefined();
+    }
+
+    const next = vi.fn();
+    const { res, state } = mockRes();
+    limiter({ ip: '1.2.3.4' } as unknown as Request, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(state.status).toBe(429);
+    expect(state.headers['Retry-After']).toBeDefined();
+    expect(state.body).toEqual({ error: 'Too many login attempts. Please try again later.' });
+  });
+
+  it('a different IP is unaffected by another IP’s exhausted window', () => {
+    const limiter = createLoginRateLimit(() => 1_000);
+    for (let i = 0; i < 11; i++) {
+      const { res } = mockRes();
+      limiter({ ip: '1.2.3.4' } as unknown as Request, res, vi.fn());
+    }
+    // 1.2.3.4's window is now exhausted (11th above was denied) — a
+    // never-before-seen IP still gets through on its first attempt.
+    const next = vi.fn();
+    const { res, state } = mockRes();
+    limiter({ ip: '5.6.7.8' } as unknown as Request, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(state.status).toBeUndefined();
+  });
+
+  it('admits again once the window has expired, via the injected clock alone', () => {
+    let now = 0;
+    const limiter = createLoginRateLimit(() => now);
+    for (let i = 0; i < 11; i++) {
+      const { res } = mockRes();
+      limiter({ ip: '9.9.9.9' } as unknown as Request, res, vi.fn());
+    }
+    // The 11th call above (still at now=0) was denied — confirm, then
+    // advance the clock past the window and confirm admission resumes.
+    const deniedNext = vi.fn();
+    const { res: deniedRes, state: deniedState } = mockRes();
+    limiter({ ip: '9.9.9.9' } as unknown as Request, deniedRes, deniedNext);
+    expect(deniedNext).not.toHaveBeenCalled();
+    expect(deniedState.status).toBe(429);
+
+    now = 60_001;
+    const next = vi.fn();
+    const { res, state } = mockRes();
+    limiter({ ip: '9.9.9.9' } as unknown as Request, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(state.status).toBeUndefined();
   });
 });
 
@@ -675,6 +853,25 @@ describe('POST /api/books/upload', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Failed to parse EPUB/);
   });
+
+  // Task 4: `upload` (this route's multer instance) previously carried NO
+  // `fileSize` limit at all — an unbounded sink. Now capped at 200MB,
+  // matching `epubUpload`'s existing figure. `withUploadLimit` (routes/ui.ts)
+  // maps multer's own `LIMIT_FILE_SIZE` error to a 413 JSON response — read
+  // via a real 200MB+1-byte upload (streamed, not buffered) rather than
+  // assumed, since without that wrapper this would 500 via the generic
+  // catch-all instead (multer's error reaches `next(err)` from INSIDE the
+  // multer middleware, one step before this route's `asyncHandler` even
+  // starts, so `asyncHandler`'s own promise-rejection catch can never see it).
+  it('rejects a file over the 200MB cap with 413, not the generic 500', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .set(...bearer(token))
+      .attach('files', oversizedStream(200 * 1024 * 1024 + 1), 'huge.epub');
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'File too large' });
+  }, 30000);
 
   it('accepts a valid .epub, parses metadata, and stores it', async () => {
     const epubBuf = makeEpub({
@@ -2087,6 +2284,72 @@ describe('GET /api/my/progress', () => {
   });
 });
 
+/**
+ * Task 4, stop-on-drift rule (plan §5 "REST progress derivation"): before
+ * swapping `GET /api/my/progress`'s inline `currentChapter` computation over
+ * to the shared `deriveCurrentChapter` (`graphql/derive.ts`), prove the two
+ * are behaviourally identical on the route's own fixtures PLUS the edge rows
+ * the spec calls out (empty spine, out-of-range chapter, null/non-CFI
+ * progress) — written and run BEFORE the swap, per the spec's explicit
+ * ordering. `restInline` is a byte-for-byte copy of the expression the route
+ * handler evaluates today (routes/ui.ts, pre-swap) — not a paraphrase —
+ * specifically so this test cannot pass by accident if the two diverge.
+ *
+ * IDENTICAL across every row below (see the swap immediately following this
+ * describe block): the route now calls `deriveCurrentChapter` directly, and
+ * this comparison stays in the suite as the drift guard the spec asks for —
+ * a future edit to either function that silently diverges the two turns
+ * this red before it ever reaches production.
+ */
+describe('progress derivation: deriveCurrentChapter vs REST’s inline computation (Task 4, stop-on-drift)', () => {
+  function restInline(progressCfi: string, spineMap: number[] | undefined): number | undefined {
+    const spineIndex = parseCfiSpineIndex(progressCfi);
+    return spineIndex !== null && spineMap && spineMap.length > 0
+      ? (spineIndexToChapter(spineIndex, spineMap) ?? undefined)
+      : undefined;
+  }
+
+  const rows: readonly {
+    readonly name: string;
+    readonly progress: string;
+    readonly spineMap: number[] | undefined;
+  }[] = [
+    {
+      name: 'normal CFI landing mid-book, matching spine map (route fixture: doc-with-chapters)',
+      progress: 'EPUB_CFI(/6/6[ch2]!/4/1:0)',
+      spineMap: [1, 2, 3],
+    },
+    {
+      name: 'KoReader’s own non-CFI DocFragment form (route fixture: doc-bad-cfi)',
+      progress: '/p[1]',
+      spineMap: [1, 2, 3],
+    },
+    {
+      name: 'book not in the DB — no spine map at all (route fixture: unknown-book-id)',
+      progress: 'EPUB_CFI(/6/4!/4/1:0)',
+      spineMap: undefined,
+    },
+    { name: 'empty spine map (edge row)', progress: 'EPUB_CFI(/6/4!/4/1:0)', spineMap: [] },
+    {
+      name: 'spine index past every chapter boundary (edge row: out-of-range high)',
+      progress: 'EPUB_CFI(/6/9999998!/4/1:0)',
+      spineMap: [1, 2, 3],
+    },
+    {
+      name: 'spine index before the first chapter boundary (edge row: out-of-range low)',
+      progress: 'EPUB_CFI(/6/2!/4/1:0)',
+      spineMap: [1, 2, 3],
+    },
+    { name: 'empty progress string (edge row)', progress: '', spineMap: [1, 2, 3] },
+  ];
+
+  it.each(rows)('$name', ({ progress, spineMap }) => {
+    const inline = restInline(progress, spineMap);
+    const shared = deriveCurrentChapter(progress, spineMap) ?? undefined;
+    expect(shared).toBe(inline);
+  });
+});
+
 describe('POST /api/books/:id/regen-chapters', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/any/regen-chapters');
@@ -2210,14 +2473,34 @@ describe('POST /api/books/replace-staging', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 401 for an admin session (no userId to stage against)', async () => {
+  it('accepts an admin session, staging under ADMIN_STAGING_ID (Task 4)', async () => {
     const token = await loginAdmin();
     const res = await request(app)
       .post('/api/books/replace-staging')
       .set(...bearer(token))
       .attach('file', makeEpub({ title: 'X' }), 'x.epub');
-    expect(res.status).toBe(401);
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.stagedUploadId).toBe('string');
+    // Resolvable under the admin sentinel, not under alice's userId.
+    expect(
+      replaceStaging.resolve(res.body.stagedUploadId as string, ADMIN_STAGING_ID)
+    ).not.toBeNull();
+    expect(replaceStaging.resolve(res.body.stagedUploadId as string, aliceId)).toBeNull();
   });
+
+  // Task 4: `epubUpload` (shared with the legacy replace/analyze routes)
+  // caps at 200MB. Same `withUploadLimit` wrapper and 413 shape as
+  // `/api/books/upload`'s identical test above.
+  it('rejects a file over the 200MB cap with 413, not the generic 500', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/replace-staging')
+      .set(...bearer(token))
+      .attach('file', oversizedStream(200 * 1024 * 1024 + 1), 'huge.epub');
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'File too large' });
+  }, 30000);
 });
 
 describe('POST /api/books/cover-staging', () => {
@@ -2271,14 +2554,35 @@ describe('POST /api/books/cover-staging', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 401 for an admin session (no userId to stage against)', async () => {
+  it('accepts an admin session, staging under ADMIN_STAGING_ID (Task 4)', async () => {
     const token = await loginAdmin();
     const res = await request(app)
       .post('/api/books/cover-staging')
       .set(...bearer(token))
       .attach('cover', Buffer.from('x'), { filename: 'x.png', contentType: 'image/png' });
-    expect(res.status).toBe(401);
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.stagedUploadId).toBe('string');
+    expect(
+      replaceStaging.resolve(res.body.stagedUploadId as string, ADMIN_STAGING_ID, 'cover')
+    ).not.toBeNull();
+    expect(replaceStaging.resolve(res.body.stagedUploadId as string, aliceId, 'cover')).toBeNull();
   });
+
+  // Task 4: `coverUpload` (shared with `PATCH /api/books/:id/metadata`'s
+  // multipart-cover branch) is raised from its previous 10MB to 20MB here.
+  it('rejects a file over the 20MB cap with 413, not the generic 500', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/cover-staging')
+      .set(...bearer(token))
+      .attach('cover', oversizedStream(20 * 1024 * 1024 + 1), {
+        filename: 'huge.png',
+        contentType: 'image/png',
+      });
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'File too large' });
+  }, 30000);
 });
 
 describe('replace routes', () => {

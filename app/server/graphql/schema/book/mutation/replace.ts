@@ -11,6 +11,7 @@ import { BookHashCollisionError } from '../../../../services/book-store';
 import { applyAutoAndAccepted } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import { repairPackageDocument } from '../../../../services/epub-writer';
+import { stagingIdentityOf } from '../../../../services/replace-staging';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import {
@@ -140,10 +141,10 @@ const result = builder.unionType('BookReplaceResult', {
  * Mirrors `POST /api/books/:id/replace` (`routes/ui.ts:1356-1439`), minus
  * the multipart upload half — see `replace-staging.ts`'s doc comment for the
  * staged-upload design, and `bookAnalyzeReplace`'s doc comment for the
- * owner-vs-caller identity split this mutation shares with it verbatim
- * (the decoded `id` resolves whose `Book` is targeted; `context.viewer.
- * userId` — never the decoded owner — is what the staged file is keyed to).
- * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * owner-vs-staging identity split this mutation shares with it verbatim
+ * (the decoded `id` resolves whose `Book` is targeted; `stagingIdentityOf
+ * (context.viewer)` — never the decoded owner — is what the staged file is
+ * keyed to). Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
  * convention `bookValidate` established — see that file's resolver doc
  * comment for the full malformed-id / wrong-type-id reasoning, which applies
@@ -208,15 +209,15 @@ builder.mutationField('bookReplace', (t) =>
       const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
-      const callerUserId = context.viewer!.userId;
+      const stagingIdentity = stagingIdentityOf(context.viewer!);
       // `'epub'` explicit — see `bookAnalyzeReplace`'s identical note (Task
       // 3b generalized the registry to also hold `'cover'`-kind entries).
       const staged =
-        callerUserId === null
+        stagingIdentity === null
           ? null
           : context.stores.replaceStaging.resolve(
               parsedInput.data.stagedUploadId,
-              callerUserId,
+              stagingIdentity,
               'epub'
             );
       if (staged === null) return stagedUploadNotFoundError();
@@ -247,7 +248,11 @@ builder.mutationField('bookReplace', (t) =>
         acceptedKeys: [...args.input.acceptedFixKeys],
       });
 
-      context.stores.replaceStaging.consume(parsedInput.data.stagedUploadId, callerUserId!, 'epub');
+      context.stores.replaceStaging.consume(
+        parsedInput.data.stagedUploadId,
+        stagingIdentity!,
+        'epub'
+      );
 
       return {
         __typename: 'BookReplacePayload' as const,

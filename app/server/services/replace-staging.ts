@@ -3,6 +3,55 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * The staging-registry identity for the config-based admin (no row in the
+ * `users` table — `Viewer.userId`/`AuthUser.userId` is `null`/`undefined` for
+ * every admin session, see `graphql/context.ts`'s `Viewer` doc comment).
+ * There is exactly one config admin, so every admin session — REST or
+ * GraphQL, any tab, any login — shares this one bucket in the registry; two
+ * concurrent admin sessions staging at the same time behave exactly like one
+ * user staging twice from two tabs already does (last stage wins for a given
+ * `kind`'s next `resolve`/`consume` unless the caller keeps the returned id),
+ * not a new hazard this sentinel introduces.
+ *
+ * Cannot collide with a real userId: `generateUserId` (`utils/id.ts`) draws
+ * every real userId from `nanoid`'s `customAlphabet`, a fixed 62-character
+ * alphabet (`A-Z`, `a-z`, `0-9`) that contains neither `_` nor `-` — so no
+ * real userId can ever contain either character, regardless of length,
+ * making `'__admin-staging__'` (four underscores and a hyphen) unrepresentable
+ * by any real id. Same collision argument `graphql/schema/node-scope.ts`'s
+ * `NO_MATCH_USER_ID` doc comment makes for its own guaranteed-absent
+ * sentinel (a hyphenated literal no real userId can equal) — cited here
+ * rather than re-derived.
+ */
+export const ADMIN_STAGING_ID = '__admin-staging__';
+
+/**
+ * The staging-registry identity for an authenticated caller: their own
+ * userId when they have one, `ADMIN_STAGING_ID` for an admin session
+ * (`isAdmin` true, no userId), or `null` for a caller with neither — which
+ * means genuinely unauthenticated, not "admin". Every real call site
+ * (REST's `requireAuth`-gated staging routes, GraphQL's `authenticated`/
+ * `ownerOf` scopes on the staged mutations) already rules an unauthenticated
+ * caller out before this runs, so the `null` arm is defensive, not a
+ * reachable production path — callers still handle it explicitly (see
+ * `routes/ui.ts`'s staging routes and `bookAnalyzeReplace`/`bookReplace`/
+ * `bookUpdateMetadata`'s resolvers) the same way they handled a bare
+ * `callerUserId === null` check before this helper existed.
+ *
+ * Structurally typed rather than importing a `Viewer`/`AuthUser` type from
+ * the GraphQL or REST layers: this is a service-layer helper, and both
+ * GraphQL's `context.viewer` (`userId: string | null`) and REST's
+ * `req.user` (`AuthUser`, `userId?: string`) satisfy this shape without
+ * either layer's type importing the other's.
+ */
+export function stagingIdentityOf(viewer: {
+  readonly userId?: string | null;
+  readonly isAdmin: boolean;
+}): string | null {
+  return viewer.userId ?? (viewer.isAdmin ? ADMIN_STAGING_ID : null);
+}
+
+/**
  * Filename prefix for every file this service writes into `stagingDir`,
  * distinct from the legacy `analyze-*`/`replace-*` throwaway tmp files
  * `routes/ui.ts`'s `/replace/analyze` and `/replace` write into the same
@@ -170,6 +219,14 @@ function extensionFor(kind: StagedKind, mimeType: string | null): string {
  * as the other kind" — the same reasoning `node-scope.ts`'s `NO_MATCH_USER_ID`
  * doc comment gives for node lookups: confirming *which* of these is true
  * would leak information a denied caller has no business learning.
+ *
+ * "A different user" includes the config admin (since Task 4): callers pass
+ * `stagingIdentityOf(viewer)` rather than a raw `userId`, so an admin session
+ * stages/resolves/consumes under `ADMIN_STAGING_ID` — this function never
+ * special-cases that string, it is just another opaque identity to compare,
+ * which is exactly what makes the three-way isolation (bob/alice/admin, each
+ * a distinct bucket) fall out of the existing `entry.userId !== userId`
+ * check for free rather than needing a new branch.
  *
  * TTL sweep is lazy (spec: "checked on each staging call", i.e. `stage()`,
  * never a timer): `sweep()` first drops any in-memory entry whose
