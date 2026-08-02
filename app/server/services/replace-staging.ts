@@ -13,33 +13,78 @@ const STAGED_PREFIX = 'replace-staged-';
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
+/**
+ * `'epub'` is the original replace-staging design (bookAnalyzeReplace/
+ * bookReplace). `'cover'` is Task 3b's generalization (bookUpdateMetadata's
+ * `stagedCoverId`) — same registry, same TTL/eviction rules, same file, just
+ * a second axis `findOwned` matches on. A staged entry's `kind` is fixed at
+ * `stage()` time and is checked exactly like `userId`: a mismatch is folded
+ * into the same indistinguishable `null`/`false` denial as unknown/expired/
+ * foreign, not a distinct outcome — see `findOwned`'s doc comment. This is
+ * what makes "a replace-staged EPUB used as `stagedCoverId`" fail exactly
+ * like a foreign or expired id, rather than some third, more informative
+ * shape a caller could use to fingerprint valid ids by kind.
+ */
+export type StagedKind = 'epub' | 'cover';
+
 export type StagedFile = {
   readonly path: string;
   readonly originalName: string;
+  /**
+   * The uploaded MIME type, as multer reported it (`req.file.mimetype`).
+   * `null` for `'epub'`-kind entries, which have never needed one — the
+   * `stage()` callers on that path (`POST /api/books/replace-staging`) don't
+   * pass one. `'cover'`-kind entries always carry one:
+   * `bookUpdateMetadata`'s `stagedCoverId` branch needs it to populate
+   * `EpubChanges.coverMime`, exactly as REST's multipart branch reads
+   * `req.file.mimetype` for the same field.
+   */
+  readonly mimeType: string | null;
 };
 
 type StagedEntry = StagedFile & {
   readonly userId: string;
   readonly createdAt: number;
+  readonly kind: StagedKind;
 };
 
 export type ReplaceStaging = {
-  /** Persists `bytes` under a fresh id, owned by `userId`. Runs the lazy TTL sweep first. */
-  stage: (bytes: Buffer, userId: string, originalName: string) => string;
-  /** Reads back a staged file without consuming it. `null` for unknown, expired, or foreign. */
-  resolve: (id: string, userId: string) => StagedFile | null;
+  /**
+   * Persists `bytes` under a fresh id, owned by `userId`, tagged `kind`.
+   * Runs the lazy TTL sweep first. `kind` defaults to `'epub'` — every call
+   * site that predates Task 3b (the replace-staging route, `bookAnalyzeReplace`,
+   * `bookReplace`, and their tests) keeps compiling and behaving identically
+   * without being touched; only the new cover-staging path passes `'cover'`
+   * explicitly. `mimeType` defaults to `null` for the same reason.
+   */
+  stage: (
+    bytes: Buffer,
+    userId: string,
+    originalName: string,
+    kind?: StagedKind,
+    mimeType?: string | null
+  ) => string;
+  /**
+   * Reads back a staged file without consuming it. `null` for unknown,
+   * expired, foreign, OR kind-mismatched (a `'cover'` lookup against an
+   * `'epub'`-staged id, or vice versa) — see `StagedKind`'s doc comment for
+   * why the mismatch case is folded into the same denial rather than
+   * surfaced distinctly. `kind` defaults to `'epub'`, matching `stage()`'s
+   * default and keeping every pre-3b call site unchanged.
+   */
+  resolve: (id: string, userId: string, kind?: StagedKind) => StagedFile | null;
   /**
    * Deletes a staged file (registry entry + disk file) and reports whether
    * there was one to delete. `true` on success, `false` for unknown,
-   * expired, or foreign — in the `false` case the file (if any, and if not
-   * the caller's) is left untouched. Deliberately not `StagedFile`: by the
-   * time this returns, the path it would carry has already been unlinked,
-   * so a caller that tried to read from it would get ENOENT — callers that
-   * need the bytes/path must `resolve()` first, then `consume()` once done
-   * (see `bookReplace`'s doc comment for why the two calls are split that
-   * way).
+   * expired, foreign, or kind-mismatched — in the `false` case the file (if
+   * any, and if not the caller's) is left untouched. Deliberately not
+   * `StagedFile`: by the time this returns, the path it would carry has
+   * already been unlinked, so a caller that tried to read from it would get
+   * ENOENT — callers that need the bytes/path must `resolve()` first, then
+   * `consume()` once done (see `bookReplace`'s doc comment for why the two
+   * calls are split that way). `kind` defaults to `'epub'`, same as `resolve`.
    */
-  consume: (id: string, userId: string) => boolean;
+  consume: (id: string, userId: string, kind?: StagedKind) => boolean;
 };
 
 export type ReplaceStagingDeps = {
@@ -51,6 +96,25 @@ export type ReplaceStagingDeps = {
 };
 
 /**
+ * On-disk extension for a staged file. `'epub'` keeps the original fixed
+ * `.epub` (unchanged from pre-3b behaviour — `sweep()`'s orphan scan matches
+ * by `STAGED_PREFIX` alone, never by extension, so this was always cosmetic
+ * for that path and stays that way). `'cover'` derives one from the uploaded
+ * MIME type the same way `epub-writer.ts`'s cover-replacement step does
+ * (`mimeType.split('/')[1].split('+')[0]`, e.g. `image/svg+xml` → `svg`),
+ * falling back to `.bin` for a missing or malformed MIME type — cosmetic
+ * only here too, since `resolve`/`consume` read the path the registry
+ * recorded, never re-derive it from the filename.
+ */
+function extensionFor(kind: StagedKind, mimeType: string | null): string {
+  if (kind === 'epub') return '.epub';
+  if (mimeType !== null && mimeType.includes('/')) {
+    return `.${mimeType.split('/')[1]?.split('+')[0]}`;
+  }
+  return '.bin';
+}
+
+/**
  * The staged-upload half of the `bookAnalyzeReplace`/`bookReplace` design
  * (spec, §"Seams that stay REST" → "Replace staging"): `POST
  * /api/books/replace-staging` writes the uploaded EPUB here, keyed to the
@@ -59,7 +123,8 @@ export type ReplaceStagingDeps = {
  * reads it via `resolve` (repeatable, non-destructive); `bookReplace` reads
  * it via `consume` (one-time, deletes on success) so a client uploads once
  * and can run both GraphQL steps against the same bytes, where REST uploaded
- * the file twice.
+ * the file twice. Task 3b's `POST /api/books/cover-staging` writes into the
+ * same registry, tagged `kind: 'cover'` — see `StagedKind`'s doc comment.
  *
  * Functional, not a class: `stage`/`resolve`/`consume` close over one
  * `Map<id, StagedEntry>` and the `stagingDir`/`ttlMs`/`now` this factory was
@@ -68,10 +133,10 @@ export type ReplaceStagingDeps = {
  * service in this codebase, and it predates this instruction.
  *
  * Denial (`null`) is deliberately indistinguishable across "no such id",
- * "TTL-expired", and "staged by a different user" — the same reasoning
- * `node-scope.ts`'s `NO_MATCH_USER_ID` doc comment gives for node lookups:
- * confirming *which* of the three is true would leak information a denied
- * caller has no business learning.
+ * "TTL-expired", "staged by a different user", AND (since Task 3b) "staged
+ * as the other kind" — the same reasoning `node-scope.ts`'s `NO_MATCH_USER_ID`
+ * doc comment gives for node lookups: confirming *which* of these is true
+ * would leak information a denied caller has no business learning.
  *
  * TTL sweep is lazy (spec: "checked on each staging call", i.e. `stage()`,
  * never a timer): `sweep()` first drops any in-memory entry whose
@@ -125,13 +190,19 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     }
   }
 
-  function stage(bytes: Buffer, userId: string, originalName: string): string {
+  function stage(
+    bytes: Buffer,
+    userId: string,
+    originalName: string,
+    kind: StagedKind = 'epub',
+    mimeType: string | null = null
+  ): string {
     sweep();
     fs.mkdirSync(stagingDir, { recursive: true });
     const id = randomUUID();
-    const filePath = path.join(stagingDir, `${STAGED_PREFIX}${id}.epub`);
+    const filePath = path.join(stagingDir, `${STAGED_PREFIX}${id}${extensionFor(kind, mimeType)}`);
     fs.writeFileSync(filePath, bytes);
-    entries.set(id, { userId, path: filePath, originalName, createdAt: now() });
+    entries.set(id, { userId, path: filePath, originalName, mimeType, createdAt: now(), kind });
     return id;
   }
 
@@ -151,10 +222,14 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
    * cutoff` is expired, so `createdAt === cutoff` — exactly `ttlMs` old — is
    * NOT expired): one shared definition of "expired," not two that could
    * drift apart.
+   *
+   * `kind` is checked alongside `userId`, not after the age check: it is the
+   * same kind of identity mismatch (wrong caller / wrong kind of upload),
+   * folded into the identical `null` denial — see `StagedKind`'s doc comment.
    */
-  function findOwned(id: string, userId: string): StagedEntry | null {
+  function findOwned(id: string, userId: string, kind: StagedKind): StagedEntry | null {
     const entry = entries.get(id);
-    if (entry === undefined || entry.userId !== userId) return null;
+    if (entry === undefined || entry.userId !== userId || entry.kind !== kind) return null;
     if (entry.createdAt < now() - ttlMs) {
       entries.delete(id);
       unlinkQuiet(entry.path);
@@ -163,13 +238,15 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     return entry;
   }
 
-  function resolve(id: string, userId: string): StagedFile | null {
-    const entry = findOwned(id, userId);
-    return entry === null ? null : { path: entry.path, originalName: entry.originalName };
+  function resolve(id: string, userId: string, kind: StagedKind = 'epub'): StagedFile | null {
+    const entry = findOwned(id, userId, kind);
+    return entry === null
+      ? null
+      : { path: entry.path, originalName: entry.originalName, mimeType: entry.mimeType };
   }
 
-  function consume(id: string, userId: string): boolean {
-    const entry = findOwned(id, userId);
+  function consume(id: string, userId: string, kind: StagedKind = 'epub'): boolean {
+    const entry = findOwned(id, userId, kind);
     if (entry === null) return false;
     // No `await` anywhere between the lookup above and the delete below —
     // `consume` is a single synchronous function, so two "concurrent" async

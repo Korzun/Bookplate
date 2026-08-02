@@ -176,4 +176,78 @@ describe('createReplaceStaging', () => {
 
     expect(fs.existsSync(unrelated)).toBe(true);
   });
+
+  describe('kind (Task 3b: generalized to cover uploads)', () => {
+    it('defaults stage/resolve/consume to "epub", so every pre-3b call site keeps behaving identically', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(Buffer.from('epub-bytes'), 'alice', 'book.epub');
+
+      const resolved = staging.resolve(id, 'alice');
+
+      expect(resolved).not.toBeNull();
+      expect(resolved?.mimeType).toBeNull();
+      expect(staging.consume(id, 'alice')).toBe(true);
+    });
+
+    it('stages a "cover" entry and resolves it back with its mimeType, only under the "cover" kind', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(
+        Buffer.from('png-bytes'),
+        'alice',
+        'cover.png',
+        'cover',
+        'image/png'
+      );
+
+      const resolved = staging.resolve(id, 'alice', 'cover');
+
+      expect(resolved).not.toBeNull();
+      expect(resolved?.originalName).toBe('cover.png');
+      expect(resolved?.mimeType).toBe('image/png');
+      expect(fs.readFileSync(resolved!.path)).toEqual(Buffer.from('png-bytes'));
+    });
+
+    it('denies resolve/consume of a "cover"-staged entry under the "epub" kind, indistinguishably from unknown', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(
+        Buffer.from('png-bytes'),
+        'alice',
+        'cover.png',
+        'cover',
+        'image/png'
+      );
+
+      expect(staging.resolve(id, 'alice', 'epub')).toBeNull();
+      expect(staging.consume(id, 'alice', 'epub')).toBe(false);
+      // The right kind still works — proves the denial is genuinely about
+      // kind, not that the entry silently vanished.
+      expect(staging.resolve(id, 'alice', 'cover')).not.toBeNull();
+    });
+
+    it('denies resolve/consume of an "epub"-staged entry under the "cover" kind, indistinguishably from unknown', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const id = staging.stage(Buffer.from('epub-bytes'), 'alice', 'book.epub', 'epub');
+
+      expect(staging.resolve(id, 'alice', 'cover')).toBeNull();
+      expect(staging.consume(id, 'alice', 'cover')).toBe(false);
+      expect(staging.resolve(id, 'alice', 'epub')).not.toBeNull();
+    });
+
+    it('keeps "epub" and "cover" entries independently staged, resolved, and consumed under the same shared registry', () => {
+      const staging = createReplaceStaging({ stagingDir });
+      const epubId = staging.stage(Buffer.from('epub-bytes'), 'alice', 'book.epub', 'epub');
+      const coverId = staging.stage(
+        Buffer.from('cover-bytes'),
+        'alice',
+        'cover.png',
+        'cover',
+        'image/png'
+      );
+
+      expect(staging.consume(coverId, 'alice', 'cover')).toBe(true);
+      // Consuming the cover entry did not disturb the unrelated epub entry.
+      expect(staging.resolve(epubId, 'alice', 'epub')).not.toBeNull();
+      expect(staging.resolve(coverId, 'alice', 'cover')).toBeNull();
+    });
+  });
 });

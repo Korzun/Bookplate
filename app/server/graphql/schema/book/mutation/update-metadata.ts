@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+
 import { z } from 'zod';
 
 import {
@@ -26,6 +28,10 @@ import {
   invalidInputError,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
+import {
+  model as stagedUploadNotFoundErrorModel,
+  stagedUploadNotFoundError,
+} from '../../staged-upload-not-found-error/model';
 import { model as user } from '../../user/model';
 import { model as bookType } from '../model';
 
@@ -46,22 +52,32 @@ const identifierInput = builder.inputType('IdentifierInput', {
 });
 
 /**
- * JSON metadata fields only — mirrors `PATCH /api/books/:id/metadata`
- * (`routes/ui.ts:1101`) minus its `coverUpload.single('cover')` multipart
- * field. The cover stays REST (spec's binary boundary: image bytes do not
- * belong in a GraphQL mutation), so a client editing both title/author *and*
- * the cover still issues two requests, exactly as REST itself required two
- * conceptually separate things (`multer` field vs body fields) inside one
- * route. A field here left absent (`undefined`, not sent) leaves that column
+ * JSON metadata fields, plus an optional staged-cover reference — mirrors
+ * `PATCH /api/books/:id/metadata` (`routes/ui.ts:1101`), whose multipart
+ * `coverUpload.single('cover')` field this input's `stagedCoverId` now
+ * covers via the staging seam instead (spec §"Seams that stay REST" →
+ * "Upload", amended 2026-08-01: "`bookUpdateMetadata` takes an optional
+ * `stagedCoverId` so metadata and cover land in one mutation"). The REST
+ * multipart-cover branch itself is untouched and stays live until the
+ * client migrates — this is an addition, not a replacement.
+ *
+ * A field here left absent (`undefined`, not sent) leaves that column
  * unchanged, the same way `body.title !== undefined` gates each REST branch —
  * see the resolver's `buildChanges` for how that distinction is preserved.
+ * `stagedCoverId` follows the identical convention: absent means "no cover
+ * change", exactly like REST's `req.file` being unset when no `cover` part
+ * was attached.
  *
  * `bookId` is the raw content-hash id (`Book.bookId`), not a `Book` global
  * ID: book ids are partial MD5s of file content, so two users can legitimately
  * hold the same one, and `Library.book(id:)` already takes the same raw string
  * for the same reason (see that field's doc comment). `userId` is the `User`
  * global ID that resolves which library owns the edit — see the resolver's
- * `authScopes` note.
+ * `authScopes` note. `stagedCoverId` is a plain opaque string, not a `Book`-
+ * scoped or global id: it names an entry in `services/replace-staging.ts`'s
+ * registry, keyed to the *authenticated caller* (`context.viewer.userId`),
+ * never to `userId`/the resolved book owner — see the resolver's doc comment
+ * for why those two identities can differ and what happens when they do.
  */
 const input = builder.inputType('BookUpdateMetadataInput', {
   fields: (t) => ({
@@ -78,6 +94,7 @@ const input = builder.inputType('BookUpdateMetadataInput', {
     seriesIndex: t.float({ required: false }),
     identifiers: t.field({ type: [identifierInput], required: false }),
     subjects: t.stringList({ required: false }),
+    stagedCoverId: t.string({ required: false }),
   }),
 });
 
@@ -100,6 +117,11 @@ const input = builder.inputType('BookUpdateMetadataInput', {
  * mutations now reject an empty `bookId` the same way, rather than one
  * returning `InvalidInputError` and the other silently treating it as
  * "book not found".
+ *
+ * `stagedCoverId.min(1)` has no REST analogue at all (the field itself is
+ * new) but follows the same "empty string is a client bug, not a valid
+ * lookup" rule every other id-like field in this mutation set follows
+ * (`bookId` here, `stagedUploadId` in `bookAnalyzeReplace`/`bookReplace`).
  */
 const inputSchema = z.object({
   bookId: z.string().min(1, 'bookId must not be empty'),
@@ -110,6 +132,7 @@ const inputSchema = z.object({
       return trimmed === '' || ISO_8601_RE.test(trimmed);
     }, 'publishDate must be a valid ISO 8601 date string')
     .optional(),
+  stagedCoverId: z.string().min(1, 'stagedCoverId must not be empty').optional(),
 });
 
 type BookUpdateMetadataPayloadShape = {
@@ -163,6 +186,7 @@ const result = builder.unionType('BookUpdateMetadataResult', {
     bookNotValidatedErrorModel,
     epubValidationErrorModel,
     invalidInputErrorModel,
+    stagedUploadNotFoundErrorModel,
   ],
 });
 
@@ -274,22 +298,74 @@ const buildChanges = (
  * must evict it itself (Houdini phase) rather than expect it updated in
  * place. Written down here because `update-metadata.test.ts`'s admin-edit
  * test is otherwise the only place this behaviour is visible.
+ *
+ * `stagedCoverId` (Task 3b, 2026-08-01): traced end to end against REST's
+ * multipart-cover branch (`routes/ui.ts:1106-1244`), which merges
+ * `changes.coverData`/`changes.coverMime` into the SAME `changes` object as
+ * every metadata field and calls `applyEpubChanges` exactly ONCE
+ * (`routes/ui.ts:1185-1201`) — there is no REST code path where metadata and
+ * cover are written separately or one can land without the other. This
+ * resolver mirrors that atomicity literally, not just in spirit: when
+ * `stagedCoverId` is present, the resolved cover's bytes/mime are folded
+ * into the SAME `changes` object `buildChanges` already produced, and
+ * `applyEpubChanges` still runs exactly once below — a validation failure or
+ * hash collision on that single write rejects metadata and cover together,
+ * precisely as it always has for metadata alone (no new partial-application
+ * behaviour is introduced).
+ *
+ * `stagedCoverId` resolution itself happens BEFORE that write, as one more
+ * early return alongside the two existing REST-mirrored preconditions
+ * (book-not-found, book-not-valid) above: an unknown/expired/foreign/kind-
+ * mismatched id returns `StagedUploadNotFoundError` immediately, without
+ * calling `applyEpubChanges` at all, so metadata is NOT applied in that case
+ * either. REST has no literal precedent for this exact failure (the field is
+ * new — nothing in `PATCH .../metadata` can fail this way), but the pattern
+ * — reject early, touch nothing — is the same one this very resolver already
+ * uses for its two REST-derived preconditions, and the one `bookReplace`
+ * uses for the identical `StagedUploadNotFoundError` case on the EPUB side.
+ *
+ * The staged cover is resolved/consumed by `context.viewer.userId` — the
+ * *authenticated caller* — never by `userId`/the resolved book owner. Same
+ * split `bookAnalyzeReplace`/`bookReplace` use for `stagedUploadId` (see
+ * that file's doc comment): an admin session's `viewer.userId` is always
+ * `null`, so it can never resolve any staged cover, including one staged by
+ * the very user `userId` names — the same "config admin cannot stage"
+ * limitation the spec records for replace, now also true for covers.
+ * `resolve`/`consume` are called with `kind: 'cover'` explicitly, so a
+ * `stagedUploadId` from `bookReplace`'s EPUB-staging flow is rejected here
+ * exactly like an unknown id — see `replace-staging.ts`'s `StagedKind` doc
+ * comment.
+ *
+ * Consumed on SUCCESS ONLY, matching `bookReplace`'s "consume-on-success-
+ * only" rule verbatim: a typed failure (`BookHashCollisionError`,
+ * `EpubValidationError`) or an input-validation failure leaves the staged
+ * cover alone, so a client can retry with the same `stagedCoverId` without
+ * re-uploading the image.
+ *
+ * Also mirrors REST's thumbnail side effect (`routes/ui.ts:1242-1244`,
+ * `if (req.file) thumbnailQueue.enqueue(...)`): a successful cover
+ * application enqueues thumbnail regeneration for the (new, post-edit)
+ * book id, the same way REST does for its own `req.file` branch — dropping
+ * this would leave OPDS/UI thumbnails stale after a GraphQL-driven cover
+ * change with no REST request ever having touched the book again.
  */
 builder.mutationField('bookUpdateMetadata', (t) =>
   t.field({
     type: result,
     nullable: true,
     description:
-      'Updates a book’s metadata fields. Cover uploads stay on ' +
-      '`PATCH /api/books/:id/metadata` (binary boundary) — this mutation ' +
-      'covers the JSON fields only. Resolves to null when the book does not ' +
-      'exist for the resolved owner.',
+      'Updates a book’s metadata fields and, optionally, its cover via a ' +
+      'previously staged upload (`stagedCoverId`). The legacy multipart ' +
+      'cover branch of `PATCH /api/books/:id/metadata` still exists ' +
+      'separately until the client migrates. Resolves to null when the ' +
+      'book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
     resolve: async (_parent, args, context) => {
       const parsed = inputSchema.safeParse({
         bookId: args.input.bookId,
         publishDate: args.input.publishDate ?? undefined,
+        stagedCoverId: args.input.stagedCoverId ?? undefined,
       });
       if (!parsed.success) return invalidInputError(parsed.error);
 
@@ -305,6 +381,21 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       }
 
       const changes = buildChanges(args.input, parsed.data.publishDate?.trim());
+
+      const callerUserId = context.viewer!.userId;
+      if (parsed.data.stagedCoverId !== undefined) {
+        const staged =
+          callerUserId === null
+            ? null
+            : context.stores.replaceStaging.resolve(
+                parsed.data.stagedCoverId,
+                callerUserId,
+                'cover'
+              );
+        if (staged === null) return stagedUploadNotFoundError();
+        changes.coverData = fs.readFileSync(staged.path);
+        changes.coverMime = staged.mimeType ?? 'application/octet-stream';
+      }
 
       const deps: ApplyEpubChangesDeps = {
         bookStore: context.stores.book,
@@ -324,6 +415,13 @@ builder.mutationField('bookUpdateMetadata', (t) =>
           return epubValidationError(outcome.err);
         }
         return assertUnreachableStoreError(outcome.err);
+      }
+
+      if (parsed.data.stagedCoverId !== undefined) {
+        context.stores.thumbnail.enqueue(owner.userId, outcome.ok.id);
+        // callerUserId is non-null here — the resolve() above already
+        // required it to be non-null to reach a success outcome.
+        context.stores.replaceStaging.consume(parsed.data.stagedCoverId, callerUserId!, 'cover');
       }
 
       return {

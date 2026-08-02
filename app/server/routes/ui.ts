@@ -1344,7 +1344,60 @@ export function createUiRouter(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      const stagedUploadId = replaceStaging.stage(req.file.buffer, userId, req.file.originalname);
+      // `'epub'` explicit (matches `stage()`'s own default) — self-documenting
+      // now that a second kind exists, see `/api/books/cover-staging` below.
+      const stagedUploadId = replaceStaging.stage(
+        req.file.buffer,
+        userId,
+        req.file.originalname,
+        'epub'
+      );
+      res.json({ stagedUploadId });
+    })
+  );
+
+  /**
+   * Task 3b (2026-08-01): the image-kind sibling of `/api/books/replace-
+   * staging` above, generalizing the same staging seam
+   * (`services/replace-staging.ts`) to cover bytes so `bookUpdateMetadata`'s
+   * optional `stagedCoverId` has something to resolve. A SIBLING route, not
+   * a `kind` field on the existing one: multer's `fileFilter`/`limits` are
+   * chosen per-route at router-setup time (`coverUpload` vs `epubUpload`,
+   * declared above), before any request body — including a hypothetical
+   * `kind` field — has been parsed, so one endpoint cannot dispatch to two
+   * different multer configs. Uses `coverUpload` (memory storage, `image/*`
+   * MIME filter, 10MB limit — the exact config `PATCH /api/books/:id/
+   * metadata`'s multipart-cover branch uses, `coverUpload.single('cover')`
+   * at this file's top and again on that route below) with the SAME field
+   * name, `cover`, for the same reason: this route stages bytes for that
+   * exact same cover-write path, just deferred into a later
+   * `bookUpdateMetadata` call instead of applied inline.
+   *
+   * `requireUserId`, not `resolveOwner`, matching `/replace-staging`
+   * exactly: the staged file is keyed to the *authenticated* caller, never a
+   * `?user=`-named target (see `replace-staging.ts`'s doc comment) — an
+   * admin session 401s here the same way it does on that route, and so can
+   * never stage a cover either (the same known limitation the spec records
+   * for staged EPUB replace).
+   */
+  router.post(
+    '/api/books/cover-staging',
+    requireAuth,
+    coverUpload.single('cover'),
+    asyncHandler(async (req: Request, res: Response) => {
+      const userId = requireUserId(req, res);
+      if (!userId) return;
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      const stagedUploadId = replaceStaging.stage(
+        req.file.buffer,
+        userId,
+        req.file.originalname,
+        'cover',
+        req.file.mimetype
+      );
       res.json({ stagedUploadId });
     })
   );
