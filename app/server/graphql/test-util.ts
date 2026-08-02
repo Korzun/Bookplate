@@ -14,6 +14,7 @@ import { EditionStore } from '../services/edition-store';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
@@ -109,6 +110,7 @@ export const createHarness = async (): Promise<Harness> => {
     // with `vi.spyOn` — safe precisely because it's inert here.
     thumbnail: new ThumbnailQueue(book, config.thumbnailWidths),
     replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
+    token: new TokenStore(prisma),
   };
 
   await user.createUser('alice', await UserStore.hashLoginPassword('alicepass'));

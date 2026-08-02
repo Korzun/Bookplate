@@ -56,7 +56,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError and LineageEntryNotFoundError', () => {
+  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError and IncorrectPasswordError', () => {
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's
     // original eight-type error model does not mention — scoped to
@@ -78,6 +78,16 @@ describe('UserError', () => {
     // directly by the resolver rather than mapped from a caught class. See
     // `edit-lineage-entry-error/model.ts` and
     // `lineage-entry-not-found-error/model.ts`.
+    //
+    // `UsernameAlreadyExistsError` and `IncorrectPasswordError` are a
+    // thirteenth and fourteenth member, added by task 6 for `userRegister`'s
+    // two 409 branches (reserved name / genuine duplicate — REST checks
+    // both itself, `UserStore.createUser` returns `false` rather than
+    // throwing) and `userChangePassword`'s 401 (`UserStore.validateUser`
+    // also returns `false`, never throws) — same "resolver-produced, not
+    // store-thrown" shape as the four members above. See
+    // `username-already-exists-error/model.ts` and
+    // `incorrect-password-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -91,10 +101,12 @@ describe('UserError', () => {
       'DocumentIsBookError',
       'EditLineageEntryError',
       'EpubValidationError',
+      'IncorrectPasswordError',
       'InvalidInputError',
       'LineageEntryNotFoundError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
+      'UsernameAlreadyExistsError',
     ]);
   });
 

@@ -10,6 +10,7 @@ import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
 import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
+import { removeUserBooksDir } from '../utils/user-books-dir';
 import { isValidUsername, MIN_USERNAME_LENGTH } from '../utils/username';
 
 const log = logger('Users');
@@ -83,9 +84,7 @@ export function createUsersRouter(
         res.status(404).json({ error: 'User not found' });
         return;
       }
-      if (isValidUsername(username)) {
-        fs.rmSync(path.join(booksRoot, username), { recursive: true, force: true });
-      }
+      removeUserBooksDir(booksRoot, username);
       log.info(`User "${username}" deleted`);
       res.status(204).send();
     })

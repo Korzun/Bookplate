@@ -64,6 +64,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
+      token: tokenStore,
     },
     config,
     jwtSecret,
