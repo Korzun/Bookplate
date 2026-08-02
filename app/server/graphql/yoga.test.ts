@@ -1,4 +1,5 @@
 import express from 'express';
+import { getIntrospectionQuery } from 'graphql';
 import request from 'supertest';
 
 import { signAccessToken } from '../services/jwt';
@@ -57,6 +58,72 @@ describe('CORS', () => {
 
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
     expect(response.headers['access-control-allow-credentials']).toBeUndefined();
+  });
+
+  // Task-3 review, M-1: the spec's own wording ("an OPTIONS/POST with a
+  // foreign Origin gets no Access-Control-Allow-Origin") names OPTIONS
+  // explicitly — the browser's actual preflight request — which the POST-only
+  // test above never exercises. With `cors: false`, yoga has no CORS plugin
+  // at all, so the OPTIONS method itself falls back to whatever the
+  // underlying router answers for a method it doesn't handle — verified this
+  // comes back 405, not 204, and with no CORS headers either way.
+  it('answers a preflight OPTIONS from a foreign Origin with no CORS headers', async () => {
+    const response = await request(app).options('/graphql').set('Origin', 'https://evil.example');
+
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(response.headers['access-control-allow-credentials']).toBeUndefined();
+    expect(response.status).not.toBe(204);
+  });
+});
+
+/**
+ * Task-3 review, I-1: `MAX_DEPTH` alone rejects the standard introspection
+ * query (it measures depth 14 under `depth-limit.ts`'s algorithm), which
+ * would otherwise defeat `graphiql: !isProduction` above — GraphiQL loads
+ * but can never fetch the schema. `depth-limit.ts`'s `isIntrospectionOnly`
+ * exemption is what keeps this working; these are the "runs the real
+ * `getIntrospectionQuery()` through the dev handler" tests the review asked
+ * for (unit-level algorithmic coverage lives in `depth-limit.test.ts`).
+ */
+describe('depth limit vs introspection', () => {
+  it('the standard introspection query succeeds in dev, despite measuring past MAX_DEPTH', async () => {
+    const response = await request(app).post('/graphql').send({ query: getIntrospectionQuery() });
+
+    expect(response.status).toBe(200);
+    expect(response.body.errors).toBeUndefined();
+    expect(response.body.data?.__schema?.queryType?.name).toBe('Query');
+  });
+
+  it('is still rejected in production — by schema concealment, not by depth', async () => {
+    const response = await request(buildApp(true))
+      .post('/graphql')
+      .send({ query: getIntrospectionQuery() });
+
+    expect(response.body.data ?? null).toBeNull();
+    expect(errorMessage(response.body)).toContain('introspection has been disabled');
+    // NOT the depth-limit rejection — proves the exemption isn't what's
+    // blocking it in production; concealment is.
+    expect(errorMessage(response.body)).not.toContain('nested too deeply');
+  });
+
+  it('does not exempt a real query that merely mixes in __schema alongside deep fields', async () => {
+    // The `Book.series ↔ Series.books` two-hop amplification shape
+    // (`depth-limit-integration.test.ts` pins it in isolation at depth 11),
+    // with `__schema` mixed in alongside it — the exemption is
+    // "introspection-ONLY operations", not "any operation that touches a
+    // meta-field", so this must still be rejected on depth.
+    const deepPlusIntrospection = `{
+      __schema { queryType { name } }
+      viewer { library { entries(first: 1) { edges { node { ... on Book {
+        series { books(first: 1) { edges { node {
+          series { books(first: 1) { edges { node { id } } } }
+        } } } }
+      } } } } } }
+    }`;
+
+    const response = await request(app).post('/graphql').send({ query: deepPlusIntrospection });
+
+    expect(response.body.errors?.[0]?.message).toContain('nested too deeply');
   });
 });
 

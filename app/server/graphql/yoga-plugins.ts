@@ -90,9 +90,19 @@ const operationNameOf = (document: DocumentNode, requested: string | null | unde
  * authenticated admin session logs under its username instead of falling
  * through to `'anon'` — a real, identifiable session should never read as
  * anonymous in an operator's logs.
+ *
+ * `== null` (not `=== null`), deliberately: at `onValidate` time (the
+ * `onValidate` hook below), envelop has not yet run `createContext` — the
+ * `context` payload there is the bare yoga-internal context, where `viewer`
+ * is `undefined` (the property doesn't exist yet), not `null` (the
+ * post-`createContext` "no bearer token" value `onExecute`/`onSubscribe`
+ * see). A strict `=== null` check left this throwing `Cannot read
+ * properties of undefined (reading 'userId')` from INSIDE the validation
+ * pipeline for every rejected query — caught the hard way, by running the
+ * M-4 regression test against this exact bug.
  */
 const viewerIdOf = (context: Context): string =>
-  context.viewer === null ? 'anon' : (context.viewer.userId ?? context.viewer.username);
+  context.viewer == null ? 'anon' : (context.viewer.userId ?? context.viewer.username);
 
 const logOperation = (
   operationName: string,
@@ -130,8 +140,30 @@ const logOperation = (
  *     unbounded number of log lines for no operator benefit. `errorCount`
  *     for that one line accumulates every event that carried an error, and
  *     `durationMs` spans the whole subscription's lifetime, not one event.
+ *
+ * `onValidate` covers the stage BEFORE either of those: a query rejected by
+ * `useDepthLimit` or `useSchemaConcealment` never reaches `onExecute` at all
+ * (yoga does not execute past a failed validation), so without this an
+ * operator watching logs would see nothing while an attacker probed the
+ * depth limit or introspection concealment — task-3 review, M-4: "one warn
+ * line per validation rejection [is] the cheapest attack signal available."
+ * `durationMs` here is the validation phase's own duration, not execution's.
  */
 export const useOperationLogging = (): Plugin<Context> => ({
+  onValidate: ({ context, params }) => {
+    const start = Date.now();
+    return ({ valid, result }) => {
+      if (valid) return; // a clean validation logs nothing here — the
+      // eventual onExecute/onSubscribe call (if the operation goes on to
+      // run at all) is the one line for a successful operation.
+      logOperation(
+        operationNameOf(params.documentAST, undefined),
+        viewerIdOf(context),
+        Date.now() - start,
+        result.length
+      );
+    };
+  },
   onExecute: ({ args }) => {
     const start = Date.now();
     return {

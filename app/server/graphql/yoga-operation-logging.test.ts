@@ -112,6 +112,40 @@ describe('operation logging — over real HTTP', () => {
     expect(line['operationName']).toBe('anonymous');
   });
 
+  // Task-3 review, M-4: without an `onValidate` hook, a query rejected at
+  // validation (never reaches `onExecute`) logged NOTHING — an operator
+  // watching logs would see zero lines while an attacker probed the depth
+  // limit (the exact class of abuse C-1/C-2 exploited). This is the
+  // regression test for that gap.
+  it('logs one warn line for a validation-stage rejection (depth limit), even though execute never runs', async () => {
+    // Real schema fields throughout (the `Book.series ↔ Series.books`
+    // two-hop amplification shape, same as `depth-limit-integration.test.ts`
+    // and `yoga.test.ts`'s introspection-exemption tests) — deliberately
+    // NOT a made-up field name, which would additionally trip graphql-js's
+    // own field-existence validation and pollute `errorCount`/the message
+    // assertion below with an unrelated error.
+    const deepQuery = `{
+      viewer { library { entries(first: 1) { edges { node { ... on Book {
+        series { books(first: 1) { edges { node {
+          series { books(first: 1) { edges { node { id } } } }
+        } } } }
+      } } } } } }
+    }`;
+
+    const response = await request(app)
+      .post('/graphql')
+      .set('Authorization', `Bearer ${aliceToken()}`)
+      .send({ query: deepQuery });
+
+    expect(response.body.errors?.[0]?.message).toContain('nested too deeply');
+    expect(spies.warn).toHaveBeenCalledTimes(1);
+    expect(spies.info).not.toHaveBeenCalled();
+
+    const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ operationName: 'anonymous', errorCount: 1 });
+    expect(typeof line['durationMs']).toBe('number');
+  });
+
   it("logs the admin session's username, not 'anon' — a real session must not read as anonymous", async () => {
     // No `userId` at all — `AuthUser.userId` is `string | undefined`
     // (services/jwt.ts), never `null`; this IS the config-based admin's
