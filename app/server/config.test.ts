@@ -99,3 +99,25 @@ describe('loadConfig validation threshold', () => {
     expect(loadConfig().validationThreshold).toBe('INFO');
   });
 });
+
+// Review I-2's contained trust-proxy fix: the config knob's own conservative-
+// default requirement, enforced at the parse boundary so a malformed env var
+// can only ever fail SAFE (toward "trust nothing").
+describe('loadConfig trustProxyHops', () => {
+  it('defaults to 0 when TRUST_PROXY_HOPS is unset', () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    expect(loadConfig().trustProxyHops).toBe(0);
+  });
+
+  it('parses a positive integer', () => {
+    process.env.TRUST_PROXY_HOPS = '2';
+    expect(loadConfig().trustProxyHops).toBe(2);
+  });
+
+  it('falls back to 0 for zero, negative, or non-numeric values (never trust by accident)', () => {
+    for (const raw of ['0', '-1', 'nope', '']) {
+      process.env.TRUST_PROXY_HOPS = raw;
+      expect(loadConfig().trustProxyHops).toBe(0);
+    }
+  });
+});

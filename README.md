@@ -176,6 +176,7 @@ variables:
 | `DATA_DIR`      | `/data`        | Path for the SQLite DB and thumbnails.       |
 | `PORT`          | `3000`         | HTTP listen port.                            |
 | `LOG_LEVEL`     | `info`         | Log verbosity.                               |
+| `TRUST_PROXY_HOPS` | `0`         | Reverse-proxy hops to trust for the login rate limiter's client-IP resolution only (e.g. `1` for a single reverse proxy or Cloudflare Tunnel in front of Bookplate). Leave at `0` unless you run one — trusting a hop you don't control lets a client bypass the limiter. |
 
 ## Release channels
 

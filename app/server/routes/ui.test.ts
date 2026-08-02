@@ -470,6 +470,54 @@ describe('POST /api/login', () => {
         .set('Content-Type', 'application/x-www-form-urlencoded');
       expect(admittedAgain.status).toBe(200);
     });
+
+    // I-2: proves config.trustProxyHops actually threads from AppConfig
+    // through createUiRouter into the limiter (the unit-level tests below
+    // exercise resolveLoginClientIp/createLoginRateLimit directly, which
+    // doesn't prove this wiring). All requests below share ONE real TCP
+    // connection to the test app — X-Forwarded-For is the only thing that
+    // varies, so distinct outcomes can only come from the header being read.
+    it('config.trustProxyHops threads through createUiRouter — two X-Forwarded-For clients behind one trusted proxy are limited independently', async () => {
+      const proxyApp = express();
+      proxyApp.use(express.json());
+      proxyApp.use(express.urlencoded({ extended: false }));
+      proxyApp.use(cookieParser());
+      proxyApp.use(
+        '/',
+        createUiRouter(
+          bookStore,
+          userStore,
+          { ...config, booksDir, trustProxyHops: 1 },
+          mockThumbnailQueue,
+          tokenStore,
+          jwtSecret,
+          scanJobStore,
+          validationStore,
+          replaceStaging
+        )
+      );
+
+      for (let i = 0; i < 10; i++) {
+        await request(proxyApp)
+          .post('/api/login')
+          .set('X-Forwarded-For', 'client-a')
+          .send('username=admin&password=pass')
+          .set('Content-Type', 'application/x-www-form-urlencoded');
+      }
+      const aRes = await request(proxyApp)
+        .post('/api/login')
+        .set('X-Forwarded-For', 'client-a')
+        .send('username=admin&password=pass')
+        .set('Content-Type', 'application/x-www-form-urlencoded');
+      expect(aRes.status).toBe(429);
+
+      const bRes = await request(proxyApp)
+        .post('/api/login')
+        .set('X-Forwarded-For', 'client-b')
+        .send('username=admin&password=pass')
+        .set('Content-Type', 'application/x-www-form-urlencoded');
+      expect(bRes.status).toBe(200);
+    });
   });
 });
 
@@ -498,19 +546,30 @@ describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit�
     return { res, state };
   }
 
+  // `resolveLoginClientIp` (review I-2) reads `req.socket.remoteAddress` and
+  // `req.headers['x-forwarded-for']` directly — never Express's own `req.ip`
+  // — so the fake request needs both, not the `{ ip }` shape the pre-review
+  // version of these tests used.
+  function fakeReq(remoteAddress: string, forwardedFor?: string): Request {
+    return {
+      socket: { remoteAddress },
+      headers: forwardedFor !== undefined ? { 'x-forwarded-for': forwardedFor } : {},
+    } as unknown as Request;
+  }
+
   it('allows the first 10 attempts for one IP, denies the 11th with 429 + Retry-After', () => {
     const limiter = createLoginRateLimit(() => 1_000);
     for (let i = 0; i < 10; i++) {
       const next = vi.fn();
       const { res, state } = mockRes();
-      limiter({ ip: '1.2.3.4' } as unknown as Request, res, next);
+      limiter(fakeReq('1.2.3.4'), res, next);
       expect(next).toHaveBeenCalledTimes(1);
       expect(state.status).toBeUndefined();
     }
 
     const next = vi.fn();
     const { res, state } = mockRes();
-    limiter({ ip: '1.2.3.4' } as unknown as Request, res, next);
+    limiter(fakeReq('1.2.3.4'), res, next);
     expect(next).not.toHaveBeenCalled();
     expect(state.status).toBe(429);
     expect(state.headers['Retry-After']).toBeDefined();
@@ -521,13 +580,13 @@ describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit�
     const limiter = createLoginRateLimit(() => 1_000);
     for (let i = 0; i < 11; i++) {
       const { res } = mockRes();
-      limiter({ ip: '1.2.3.4' } as unknown as Request, res, vi.fn());
+      limiter(fakeReq('1.2.3.4'), res, vi.fn());
     }
     // 1.2.3.4's window is now exhausted (11th above was denied) — a
     // never-before-seen IP still gets through on its first attempt.
     const next = vi.fn();
     const { res, state } = mockRes();
-    limiter({ ip: '5.6.7.8' } as unknown as Request, res, next);
+    limiter(fakeReq('5.6.7.8'), res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(state.status).toBeUndefined();
   });
@@ -537,22 +596,130 @@ describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit�
     const limiter = createLoginRateLimit(() => now);
     for (let i = 0; i < 11; i++) {
       const { res } = mockRes();
-      limiter({ ip: '9.9.9.9' } as unknown as Request, res, vi.fn());
+      limiter(fakeReq('9.9.9.9'), res, vi.fn());
     }
     // The 11th call above (still at now=0) was denied — confirm, then
     // advance the clock past the window and confirm admission resumes.
     const deniedNext = vi.fn();
     const { res: deniedRes, state: deniedState } = mockRes();
-    limiter({ ip: '9.9.9.9' } as unknown as Request, deniedRes, deniedNext);
+    limiter(fakeReq('9.9.9.9'), deniedRes, deniedNext);
     expect(deniedNext).not.toHaveBeenCalled();
     expect(deniedState.status).toBe(429);
 
     now = 60_001;
     const next = vi.fn();
     const { res, state } = mockRes();
-    limiter({ ip: '9.9.9.9' } as unknown as Request, res, next);
+    limiter(fakeReq('9.9.9.9'), res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(state.status).toBeUndefined();
+  });
+
+  // N-2: pin the exact window-boundary instant. `>=` means `now === windowStart
+  // + WINDOW_MS` is already a NEW window (admitted) — a future `>` typo would
+  // keep the old window alive one tick too long and this test would redden.
+  it('at exactly the window boundary (now === windowStart + 60000), a fresh window has already started', () => {
+    let now = 0;
+    const limiter = createLoginRateLimit(() => now);
+    for (let i = 0; i < 11; i++) {
+      const { res } = mockRes();
+      limiter(fakeReq('4.4.4.4'), res, vi.fn());
+    }
+    // 11th above (at now=0) was denied.
+    now = 60_000; // exactly WINDOW_MS later, not 60_001
+    const next = vi.fn();
+    const { res, state } = mockRes();
+    limiter(fakeReq('4.4.4.4'), res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(state.status).toBeUndefined();
+  });
+
+  // I-1 fix: the Map must not grow without bound. `sweep()` runs on every
+  // call and deletes every entry whose window has aged out — assert
+  // directly on the Map's size (via the exported `.size()` accessor) rather
+  // than only inferring reclamation from request/response behavior, which
+  // is exactly the gap the review named ("a sweep test needs to observe the
+  // Map's size").
+  it('sweeps expired entries out of the Map on the next call, bounding memory (I-1)', () => {
+    let now = 0;
+    const limiter = createLoginRateLimit(() => now);
+
+    for (let i = 0; i < 50; i++) {
+      const { res } = mockRes();
+      limiter(fakeReq(`10.0.0.${i}`), res, vi.fn());
+    }
+    expect(limiter.size()).toBe(50);
+
+    // Every one of those 50 windows is now stale; a single new request from
+    // an unrelated IP should sweep all 50 away, leaving only itself.
+    now = 60_001;
+    const { res } = mockRes();
+    limiter(fakeReq('255.255.255.255'), res, vi.fn());
+    expect(limiter.size()).toBe(1);
+  });
+
+  describe('resolveLoginClientIp / trustProxyHops (I-2 — contained fix, no Express trust-proxy setting touched)', () => {
+    it('direct-connection behavior is unchanged: with trustProxyHops unset (0), the TCP peer is used even if a header is present', () => {
+      const limiter = createLoginRateLimit(() => 1_000); // trustProxyHops defaults to 0
+      for (let i = 0; i < 10; i++) {
+        const { res } = mockRes();
+        limiter(fakeReq('203.0.113.9', 'attacker-forged-value'), res, vi.fn());
+      }
+      // Exhausted 203.0.113.9's window (the real peer) regardless of the
+      // forged header — the 11th, still from that same peer with a
+      // DIFFERENT forged header value, is still denied because the header
+      // was never consulted.
+      const next = vi.fn();
+      const { res, state } = mockRes();
+      limiter(fakeReq('203.0.113.9', 'different-forged-value'), res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(state.status).toBe(429);
+    });
+
+    it('a forged X-Forwarded-For does NOT influence the key when trustProxyHops is 0 — two different headers from the same peer share one window', () => {
+      const limiter = createLoginRateLimit(() => 1_000, 0);
+      const { res: res1, state: state1 } = mockRes();
+      limiter(fakeReq('203.0.113.9', '1.1.1.1'), res1, vi.fn());
+      const { res: res2, state: state2 } = mockRes();
+      limiter(fakeReq('203.0.113.9', '2.2.2.2'), res2, vi.fn());
+      expect(state1.status).toBeUndefined();
+      expect(state2.status).toBeUndefined();
+      // Both counted against the SAME (peer-keyed) window — a 9-more burst
+      // from either forged identity exhausts it.
+      for (let i = 0; i < 9; i++) {
+        const { res } = mockRes();
+        limiter(fakeReq('203.0.113.9', `spoofed-${i}`), res, vi.fn());
+      }
+      const { res: res11, state: state11 } = mockRes();
+      limiter(fakeReq('203.0.113.9', 'yet-another-spoof'), res11, vi.fn());
+      expect(state11.status).toBe(429);
+    });
+
+    it('with trustProxyHops=1, two distinct clients behind the same one trusted proxy are limited INDEPENDENTLY', () => {
+      const limiter = createLoginRateLimit(() => 1_000, 1);
+      const proxyAddress = '10.10.10.10'; // the one trusted hop's own address
+      for (let i = 0; i < 10; i++) {
+        const { res } = mockRes();
+        limiter(fakeReq(proxyAddress, '198.51.100.1'), res, vi.fn());
+      }
+      // Client A (198.51.100.1) is now exhausted...
+      const { res: aRes, state: aState } = mockRes();
+      limiter(fakeReq(proxyAddress, '198.51.100.1'), aRes, vi.fn());
+      expect(aState.status).toBe(429);
+      // ...but client B, behind the SAME proxy (identical direct peer
+      // address), is unaffected — the limiter keyed on the header's client
+      // entry, not the shared proxy address.
+      const { res: bRes, state: bState } = mockRes();
+      limiter(fakeReq(proxyAddress, '198.51.100.2'), bRes, vi.fn());
+      expect(bState.status).toBeUndefined();
+    });
+
+    it('with trustProxyHops=1, a missing X-Forwarded-For falls back to the direct peer (fail-safe, not a crash)', () => {
+      const limiter = createLoginRateLimit(() => 1_000, 1);
+      const { res, state } = mockRes();
+      limiter(fakeReq('10.10.10.10'), res, vi.fn());
+      expect(state.status).toBeUndefined();
+      expect(limiter.size()).toBe(1);
+    });
   });
 });
 

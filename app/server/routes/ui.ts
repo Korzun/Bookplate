@@ -58,9 +58,47 @@ const ALLOWED_EXTENSIONS = new Set(['.epub']);
  * `coverUpload` is the single multer instance both cover routes share
  * already, and both EPUB routes share `epubUpload`/`upload`'s own limit is
  * set from the same constant `epubUpload` uses.
+ *
+ * Both caps are EXCLUSIVE, not inclusive maxima (review M-2, confirmed by
+ * probe): multer/busboy reject a file at EXACTLY the configured `fileSize`,
+ * so the largest file either cap actually admits is `LIMIT - 1` bytes, not
+ * `LIMIT`. Pre-existing multer semantics (the old 10MB `coverUpload` figure
+ * behaved identically), one byte, no practical effect — noted here rather
+ * than silently read as "up to and including 20MB".
  */
 const EPUB_UPLOAD_MAX_BYTES = 200 * 1024 * 1024;
 const COVER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Wraps a multer middleware so exceeding its `fileSize` limit surfaces as
+ * an ordinary 413 JSON response, instead of falling through to server.ts's
+ * generic "Internal server error" 500 catch-all (Task 4). Multer reports
+ * its own errors (`MulterError`, `code: 'LIMIT_FILE_SIZE'` here) via
+ * `next(err)`, called from INSIDE multer's own middleware function, before
+ * the route's `asyncHandler`-wrapped handler ever runs — `asyncHandler`
+ * only catches a rejected promise from the handler it wraps, so it cannot
+ * intercept an error multer raises one middleware earlier. Any other
+ * multer error (a `fileFilter` rejection never reaches here — it resolves
+ * `req.file` to `undefined` instead of erroring, per multer's own
+ * contract) is forwarded to `next(err)` unchanged, preserving whatever the
+ * app's top-level error middleware already does with it.
+ *
+ * Module scope (review N-1: an earlier version was declared inside
+ * `createUiRouter`, but closes over nothing router-scoped — only the
+ * `multer` import — so there was no reason to rebuild it per router
+ * instance).
+ */
+function withUploadLimit(mw: RequestHandler): RequestHandler {
+  return (req, res, next) => {
+    mw(req, res, (err: unknown) => {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).json({ error: 'File too large' });
+        return;
+      }
+      next(err);
+    });
+  };
+}
 
 const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
 
@@ -112,6 +150,47 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
 type LoginRateLimitWindow = { count: number; windowStart: number };
 
 /**
+ * Resolves the client IP the login limiter should key on — used ONLY here,
+ * never as Express's own `req.ip`/`trust proxy` setting (review I-2:
+ * deliberately not touched globally — that setting also changes
+ * `req.secure`/cookie semantics app-wide, a strictly bigger change than
+ * this one control needs, and this app already special-cases Cloudflare-
+ * proxy behavior in several places — `server.ts`, `middleware/timeout.ts`
+ * — without ever setting it).
+ *
+ * `trustProxyHops` (see `AppConfig.trustProxyHops`'s doc comment, `types.ts`,
+ * for the full contract): `0` (or unset — the conservative default) returns
+ * `req.socket.remoteAddress` unconditionally, ignoring `X-Forwarded-For`
+ * entirely — a spoofed header cannot influence the key. `N > 0` trusts the
+ * last `N` hops: build the chain `[client, proxy1, ..., proxyK]` from the
+ * header (left-to-right, closest-to-client first — the standard
+ * `X-Forwarded-For` convention), then walk back `N` positions from the end
+ * to find the address the Nth-trusted-hop-back added — the same algorithm
+ * Express's own `trust proxy: n` numeric mode uses internally (`proxy-addr`),
+ * just computed by hand here so it affects only this function. If the header
+ * is absent, empty, or shorter than `N` entries, falls back to the direct
+ * peer rather than guessing — under-trusting fails safe, over-trusting (a
+ * misconfigured `trustProxyHops` higher than the real hop count) does not:
+ * that is an operator error this function cannot detect, which is why
+ * `AppConfig.trustProxyHops`'s doc comment warns against it explicitly.
+ */
+function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
+  const direct = req.socket.remoteAddress ?? 'unknown';
+  if (trustProxyHops <= 0) return direct;
+
+  const header = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (typeof raw !== 'string' || raw.trim() === '') return direct;
+
+  const chain = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const clientIndex = chain.length - trustProxyHops;
+  return clientIndex >= 0 ? chain[clientIndex] : direct;
+}
+
+/**
  * Fixed-window rate limiter for `POST /api/login` only (Task 4): 10 attempts
  * per minute per IP, 429 + `Retry-After` on the 11th. Deliberately NOT
  * applied to the OPDS (`routes/opds.ts`) or KOReader sync-password
@@ -125,11 +204,19 @@ type LoginRateLimitWindow = { count: number; windowStart: number };
  * mitigation for those endpoints is bcrypt's own cost factor on every
  * attempt, not a request-count limiter.
  *
- * `createReplaceStaging`'s lazy-TTL-sweep precedent: window state lives in
- * one `Map<ip, LoginRateLimitWindow>`, swept lazily (expired entries dropped
- * on the next request that touches them) rather than on a timer — no
- * `setInterval` for a single-process server to leak or need cleanup on
- * shutdown. `now` is injected as a `() => number` parameter, same shape as
+ * `createReplaceStaging`'s TTL-sweep precedent, followed literally (review
+ * I-1: an earlier version of this function only replaced the CURRENT ip's
+ * window when stale, which is a per-key reset, not a sweep — every other
+ * ip's window lived for the lifetime of the process; a 500k-distinct-IP
+ * probe retained 48.3MB never reclaimed). `sweep()` below iterates the
+ * whole `windows` Map and deletes every entry whose `windowStart` has aged
+ * out, on every call — the exact shape `replace-staging.ts`'s own
+ * `sweep()` uses (iterate-and-delete, called from the one place new state
+ * gets written, no timer). `size()` is exposed so a test can pin the sweep
+ * directly (observing the Map's size) rather than only inferring it from
+ * request-response behavior.
+ *
+ * `now` is injected as a `() => number` parameter, same shape as
  * `ReplaceStagingDeps.now` — production omits it (defaults to `Date.now`),
  * tests supply a controllable clock so "window expiry admits again" needs
  * no fake timers.
@@ -143,19 +230,32 @@ type LoginRateLimitWindow = { count: number; windowStart: number };
  * limit.ts`): called once per router build (`createUiRouter`, below), so
  * each test's fresh `createUiRouter(...)` call gets its own isolated Map —
  * no state leaks between tests the way one process-lifetime singleton would.
+ *
+ * `trustProxyHops` (review I-2) is forwarded to `resolveLoginClientIp` — see
+ * that function's doc comment for the full contract; `0` (the default) keys
+ * on the raw TCP peer, matching this function's pre-fix behavior exactly.
  */
-export function createLoginRateLimit(now: () => number = Date.now) {
+export function createLoginRateLimit(now: () => number = Date.now, trustProxyHops = 0) {
   const windows = new Map<string, LoginRateLimitWindow>();
 
-  return function loginRateLimit(req: Request, res: Response, next: express.NextFunction): void {
-    const current = now();
-    const ip = req.ip ?? 'unknown';
+  function sweep(current: number): void {
+    for (const [ip, window] of windows) {
+      if (current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
+        windows.delete(ip);
+      }
+    }
+  }
 
+  function loginRateLimit(req: Request, res: Response, next: express.NextFunction): void {
+    const current = now();
+    sweep(current);
+    const ip = resolveLoginClientIp(req, trustProxyHops);
+
+    // Sweep already dropped any stale window for THIS ip too, so a plain
+    // `undefined` check is sufficient here — there is no longer a separate
+    // "found but stale" branch to also handle.
     let window = windows.get(ip);
-    if (window === undefined || current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
-      // Lazy sweep: a stale/absent window for THIS ip is simply replaced —
-      // there is no separate sweep pass over the whole Map, matching
-      // replace-staging.ts's "checked on each call, not a timer" precedent.
+    if (window === undefined) {
       window = { count: 0, windowStart: current };
       windows.set(ip, window);
     }
@@ -173,7 +273,10 @@ export function createLoginRateLimit(now: () => number = Date.now) {
       return;
     }
     next();
-  };
+  }
+
+  loginRateLimit.size = (): number => windows.size;
+  return loginRateLimit;
 }
 
 export function createUiRouter(
@@ -191,7 +294,7 @@ export function createUiRouter(
   const router = Router();
 
   const requireAuth = jwtAuth(jwtSecret);
-  const loginRateLimit = createLoginRateLimit(loginRateLimitNow);
+  const loginRateLimit = createLoginRateLimit(loginRateLimitNow, config.trustProxyHops ?? 0);
 
   const REFRESH_COOKIE = 'refresh_token';
   const REFRESH_COOKIE_PATH = '/api/auth';
@@ -255,32 +358,6 @@ export function createUiRouter(
       cb(null, ALLOWED_EXTENSIONS.has(path.extname(file.originalname).toLowerCase()));
     },
   });
-
-  /**
-   * Wraps a multer middleware so exceeding its `fileSize` limit surfaces as
-   * an ordinary 413 JSON response, instead of falling through to server.ts's
-   * generic "Internal server error" 500 catch-all (Task 4). Multer reports
-   * its own errors (`MulterError`, `code: 'LIMIT_FILE_SIZE'` here) via
-   * `next(err)`, called from INSIDE multer's own middleware function, before
-   * this route's `asyncHandler`-wrapped handler ever runs — `asyncHandler`
-   * only catches a rejected promise from the handler it wraps, so it cannot
-   * intercept an error multer raises one middleware earlier. Any other
-   * multer error (a `fileFilter` rejection never reaches here — it resolves
-   * `req.file` to `undefined` instead of erroring, per multer's own
-   * contract) is forwarded to `next(err)` unchanged, preserving whatever the
-   * app's top-level error middleware already does with it.
-   */
-  function withUploadLimit(mw: RequestHandler): RequestHandler {
-    return (req, res, next) => {
-      mw(req, res, (err: unknown) => {
-        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-          res.status(413).json({ error: 'File too large' });
-          return;
-        }
-        next(err);
-      });
-    };
-  }
 
   /**
    * Resolves which library this request operates on. Regular users always get

@@ -7,11 +7,17 @@ import * as path from 'path';
  * `users` table — `Viewer.userId`/`AuthUser.userId` is `null`/`undefined` for
  * every admin session, see `graphql/context.ts`'s `Viewer` doc comment).
  * There is exactly one config admin, so every admin session — REST or
- * GraphQL, any tab, any login — shares this one bucket in the registry; two
- * concurrent admin sessions staging at the same time behave exactly like one
- * user staging twice from two tabs already does (last stage wins for a given
- * `kind`'s next `resolve`/`consume` unless the caller keeps the returned id),
- * not a new hazard this sentinel introduces.
+ * GraphQL, any tab, any login — shares this one bucket in the registry.
+ * Corrected (review M-1 — the mechanism, not the conclusion, was wrong):
+ * entries are keyed by `randomUUID()` (`stage()`, below), never by
+ * `(userId, kind)`, so two concurrent admin stages do NOT clobber each
+ * other — there is no "last stage wins". Each produces its own independent,
+ * simultaneously-resolvable entry, exactly as two stages from the same
+ * regular user already do. The only consequence of sharing the bucket is
+ * that admin session A could `resolve`/`consume` session B's staged entry
+ * if it somehow learned B's random id — both are the same principal (the
+ * one config admin) acting, so that is not a tenancy violation, not a new
+ * hazard this sentinel introduces.
  *
  * Cannot collide with a real userId: `generateUserId` (`utils/id.ts`) draws
  * every real userId from `nanoid`'s `customAlphabet`, a fixed 62-character
