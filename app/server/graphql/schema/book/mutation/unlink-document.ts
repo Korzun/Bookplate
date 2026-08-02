@@ -14,32 +14,43 @@ import {
   lineageEntryNotFoundError,
   model as lineageEntryNotFoundErrorModel,
 } from '../../lineage-entry-not-found-error/model';
-import { model as user } from '../../user/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as bookType } from '../model';
 
 /**
  * Mirrors `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts:897`) —
- * both `bookId` and `documentId` are REST path segments there, so neither is
- * trimmed here (an empty path segment can't reach REST in the first place;
- * see `inputSchema`'s doc comment for why this mutation still rejects one
- * explicitly).
+ * both `bookId` and `documentId` are REST path segments there, so
+ * `documentId` is not trimmed here (an empty path segment can't reach REST
+ * in the first place; see `inputSchema`'s doc comment for why this mutation
+ * still rejects one explicitly). The `Book` global ID IS the input's `id`
+ * field — no separate `userId`/`bookId` pair. Same shape as `bookValidate`'s
+ * `BookValidateInput` (see that file's doc comment for the full rationale):
+ * the id's compound-key local part already carries the owner, so decoding it
+ * at the resolver boundary yields both halves the old two-argument shape
+ * used to require. `documentId` stays a raw string, not a `Book`-scoped or
+ * global id: it names a KOReader document, which has no `Node` type of its
+ * own in this schema.
  */
 const input = builder.inputType('BookUnlinkDocumentInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: bookType }),
     documentId: t.string({ required: true }),
   }),
 });
 
 /**
- * `min(1)` on both, for the same reason `bookDelete`'s `bookId` gets it:
- * REST's path segments cannot structurally be empty, so this is the one
- * input REST never had to reject — this mutation rejects it explicitly
- * instead, since GraphQL has no equivalent route-matching floor.
+ * `min(1)` on `documentId`, for the same reason `bookDelete`'s `bookId` used
+ * to get it: REST's path segments cannot structurally be empty, so this is
+ * the one input REST never had to reject — this mutation rejects it
+ * explicitly instead, since GraphQL has no equivalent route-matching floor.
+ * `bookId` itself has no zod rule here any more — it is no longer a plain
+ * string field at all, having been absorbed into the `id` global ID's
+ * compound-key local part (`InvalidInputError` for an empty `bookId` is
+ * unreachable now the same way it became unreachable for `bookDelete`'s
+ * identical field in task 2: an id that doesn't parse is the
+ * `parsed === null` early return below, not a zod issue).
  */
 const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
   documentId: z.string().min(1, 'documentId must not be empty'),
 });
 
@@ -51,8 +62,8 @@ type BookUnlinkDocumentPayloadShape = {
 
 /**
  * `book` is a fresh lookup — see `BookLinkDocumentPayload`'s identical note.
- * Unlinking never renames the book, so `bookId` here is always the caller's
- * own `input.bookId`.
+ * Unlinking never renames the book, so `bookId` here is always the decoded
+ * `id`'s local part.
  */
 const payload = builder
   .objectRef<BookUnlinkDocumentPayloadShape>('BookUnlinkDocumentPayload')
@@ -99,8 +110,13 @@ const result = builder.unionType('BookUnlinkDocumentResult', {
 
 /**
  * Mirrors `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts:897-914`).
- * Owner resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s
- * doc comment.
+ * Input is the `Book` global ID alone plus `documentId` (design doc's
+ * 10-mutation input collapse), decoded with the same
+ * `parseCompoundId`/`NO_MATCH_USER_ID` convention `bookValidate` established
+ * — see that file's resolver doc comment for the full malformed-id /
+ * wrong-type-id reasoning, which applies here unchanged. `authScopes` runs
+ * `ownerOf` on the decoded userId, the same way REST's `resolveOwner` lets a
+ * regular viewer act only on their own library and an admin target any.
  *
  * `BookStore.unlinkDocument` is NOT wrapped in `toResult`: traced end to end
  * (`book-store.ts:616-637`), it never throws any of the seven known store
@@ -128,22 +144,25 @@ builder.mutationField('bookUnlinkDocument', (t) =>
       'EditLineageEntryError for an organic edit-history entry, which cannot ' +
       'be unlinked this way.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({
-        bookId: args.input.bookId,
-        documentId: args.input.documentId,
-      });
-      if (!parsed.success) return invalidInputError(parsed.error);
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
 
-      const userId = args.input.userId.id;
+      const parsedInput = inputSchema.safeParse({ documentId: args.input.documentId });
+      if (!parsedInput.success) return invalidInputError(parsedInput.error);
+
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
       const outcome = await context.stores.book.unlinkDocument(
         owner,
-        parsed.data.bookId,
-        parsed.data.documentId
+        bookId,
+        parsedInput.data.documentId
       );
       switch (outcome) {
         case 'not_found':
@@ -154,7 +173,7 @@ builder.mutationField('bookUnlinkDocument', (t) =>
           return {
             __typename: 'BookUnlinkDocumentPayload' as const,
             owner,
-            bookId: parsed.data.bookId,
+            bookId,
           };
         default:
           return assertUnreachableUnlinkOutcome(outcome);

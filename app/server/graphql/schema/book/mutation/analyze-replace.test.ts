@@ -75,6 +75,12 @@ const MUTATION = `
 const titleOf = async (userId: string, id: string): Promise<string | null> =>
   (await harness.prisma.book.findUnique({ where: { userId_id: { userId, id } } }))?.title ?? null;
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
+// string (mirrors `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookAnalyzeReplace', () => {
   it('analyzes a staged candidate for the viewer’s own book without consuming it or changing the book', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
@@ -87,7 +93,7 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: stagedId },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedUploadId: stagedId },
       },
     });
 
@@ -133,7 +139,7 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: stagedId },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedUploadId: stagedId },
       },
     });
 
@@ -146,24 +152,6 @@ describe('Mutation.bookAnalyzeReplace', () => {
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
   });
 
-  it('defaults to the viewer’s own library when userId is omitted', async () => {
-    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Self Service');
-    const stagedId = harness.stores.replaceStaging.stage(
-      fixtureEpub('New Candidate'),
-      harness.aliceOwner.userId,
-      'candidate.epub'
-    );
-
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { bookId: BOOK_ID, stagedUploadId: stagedId } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    const data = result.data?.bookAnalyzeReplace as { __typename: string };
-    expect(data.__typename).toBe('BookAnalyzeReplacePayload');
-  });
-
   it('resolves to null when the book does not exist for the resolved owner', async () => {
     const stagedId = harness.stores.replaceStaging.stage(
       fixtureEpub('New Candidate'),
@@ -174,7 +162,10 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: 'no-such-book', stagedUploadId: stagedId },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book'),
+          stagedUploadId: stagedId,
+        },
       },
     });
 
@@ -188,7 +179,10 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: 'no-such-id' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: 'no-such-id',
+        },
       },
     });
 
@@ -221,7 +215,7 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: stagedId },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedUploadId: stagedId },
       },
     });
 
@@ -245,7 +239,10 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: bobsStagedId },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: bobsStagedId,
+        },
       },
     });
 
@@ -259,27 +256,11 @@ describe('Mutation.bookAnalyzeReplace', () => {
     ).not.toBeNull();
   });
 
-  it('returns InvalidInputError for an empty bookId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: {
-        input: { userId: harness.aliceGlobalId, bookId: '', stagedUploadId: 'x' },
-      },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookAnalyzeReplace).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
-  });
-
   it('returns InvalidInputError for an empty stagedUploadId', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: '' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedUploadId: '' },
       },
     });
 
@@ -288,20 +269,6 @@ describe('Mutation.bookAnalyzeReplace', () => {
       __typename: 'InvalidInputError',
       message: 'Invalid input',
       issues: [{ path: ['stagedUploadId'], message: 'stagedUploadId must not be empty' }],
-    });
-  });
-
-  it('returns InvalidInputError when an admin session omits userId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.adminViewer,
-      variables: { input: { bookId: BOOK_ID, stagedUploadId: 'whatever' } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookAnalyzeReplace).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['userId'], message: 'userId is required for admin sessions' }],
     });
   });
 
@@ -316,7 +283,10 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: bobsStagedId },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: bobsStagedId,
+        },
       },
     });
 
@@ -339,7 +309,10 @@ describe('Mutation.bookAnalyzeReplace', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: aliceStagedId },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: aliceStagedId,
+        },
       },
     });
 
@@ -352,18 +325,21 @@ describe('Mutation.bookAnalyzeReplace', () => {
     ).not.toBeNull();
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Covers `analyze-replace.ts`'s `if (owner === null) return null;` branch
+    // — a well-formed Book gid whose decoded userId names no real user. Only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case. Also restores, in the new input's terms, the
+    // assertion the old separate-`userId`-field shape's "refuses a User
+    // global ID that names no user" test used to carry.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
+      viewer: harness.adminViewer,
       variables: {
-        input: {
-          userId: encodeGlobalID('User', 'no-such-user'),
-          bookId: BOOK_ID,
-          stagedUploadId: 'whatever',
-        },
+        input: { id: bookGlobalId('no-such-user', BOOK_ID), stagedUploadId: 'whatever' },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookAnalyzeReplace).toBeNull();
   });
 });

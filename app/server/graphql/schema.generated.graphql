@@ -41,9 +41,8 @@ type BookAlreadyExistsError implements UserError {
 }
 
 input BookAnalyzeReplaceInput {
-  bookId: String!
+  id: ID!
   stagedUploadId: String!
-  userId: ID
 }
 
 type BookAnalyzeReplacePayload {
@@ -86,9 +85,8 @@ type BookHashCollisionError implements UserError {
 }
 
 input BookLinkDocumentInput {
-  bookId: String!
   documentId: String!
-  userId: ID!
+  id: ID!
 }
 
 type BookLinkDocumentPayload {
@@ -117,9 +115,8 @@ union BookRegenChaptersResult = BookHashCollisionError | BookNotValidatedError |
 
 input BookReplaceInput {
   acceptedFixKeys: [String!]!
-  bookId: String!
+  id: ID!
   stagedUploadId: String!
-  userId: ID
 }
 
 type BookReplacePayload {
@@ -140,9 +137,8 @@ type BookResolvePendingFixPayload {
 union BookResolvePendingFixResult = BookHashCollisionError | BookNotValidatedError | BookResolvePendingFixPayload | EpubValidationError
 
 input BookUnlinkDocumentInput {
-  bookId: String!
   documentId: String!
-  userId: ID!
+  id: ID!
 }
 
 type BookUnlinkDocumentPayload {
@@ -154,8 +150,8 @@ union BookUnlinkDocumentResult = BookUnlinkDocumentPayload | EditLineageEntryErr
 input BookUpdateMetadataInput {
   author: String
   authorSort: String
-  bookId: String!
   description: String
+  id: ID!
   identifiers: [IdentifierInput!]
   publishDate: String
   publisher: String
@@ -165,7 +161,6 @@ input BookUpdateMetadataInput {
   subjects: [String!]
   title: String
   titleSort: String
-  userId: ID!
 }
 
 type BookUpdateMetadataPayload {

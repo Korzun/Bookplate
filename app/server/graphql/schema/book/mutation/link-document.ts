@@ -20,38 +20,43 @@ import {
   invalidInputError,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as selfLinkErrorModel, selfLinkError } from '../../self-link-error/model';
-import { model as user } from '../../user/model';
 import { model as bookType } from '../model';
 
 /**
- * `bookId` is the raw content-hash id, `documentId` the KOReader document id
- * to merge into its lineage — mirrors `POST /api/books/:id/link`
- * (`routes/ui.ts:861`), whose body is `{ documentId: string }`. `userId`
- * follows the same `ownerOf`-scoped shape every other book mutation in this
- * file uses (see `bookUpdateMetadata`'s doc comment).
+ * `documentId` is the KOReader document id to merge into the book's lineage
+ * — mirrors `POST /api/books/:id/link` (`routes/ui.ts:861`), whose body is
+ * `{ documentId: string }`. The `Book` global ID IS the input's `id` field —
+ * no separate `userId`/`bookId` pair. Same shape as `bookValidate`'s
+ * `BookValidateInput` (see that file's doc comment for the full rationale):
+ * the id's compound-key local part already carries the owner, so decoding it
+ * at the resolver boundary yields both halves the old two-argument shape
+ * used to require. `documentId` stays a raw string, not a `Book`-scoped or
+ * global id: it names a KOReader document, which has no `Node` type of its
+ * own in this schema.
  */
 const input = builder.inputType('BookLinkDocumentInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: bookType }),
     documentId: t.string({ required: true }),
   }),
 });
 
 /**
- * `bookId.min(1)` mirrors `bookDelete`/`bookUpdateMetadata`'s identical rule
- * (empty path segments can't reach REST; this mutation rejects them
- * explicitly instead — see those files' doc comments).
- *
  * `documentId` is trimmed and rejected when blank, mirroring REST's own
  * check byte-for-byte: `typeof documentId !== 'string' || !documentId.trim()`
  * → 400 `{ error: 'documentId is required' }` (`routes/ui.ts:867-871`). The
  * TRIMMED value is what gets passed to the store below, exactly like REST
- * passes `documentId.trim()` to `linkDocument`.
+ * passes `documentId.trim()` to `linkDocument`. `bookId` has no zod rule
+ * here any more — it is no longer a plain string field at all, having been
+ * absorbed into the `id` global ID's compound-key local part
+ * (`InvalidInputError` for an empty `bookId` is unreachable now the same way
+ * it became unreachable for `bookDelete`'s identical field in task 2: an id
+ * that doesn't parse is the `parsed === null` early return below, not a zod
+ * issue).
  */
 const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
   documentId: z.string().trim().min(1, 'documentId must not be empty'),
 });
 
@@ -66,7 +71,7 @@ type BookLinkDocumentPayloadShape = {
  * `BookUpdateMetadataPayload.book` (`update-metadata.ts`'s doc comment):
  * `linkDocument` returns a bare `true`, not a `Book`, and `Book`'s field
  * resolvers need the raw Prisma row anyway. Linking never renames the book
- * (unlike an edit), so `bookId` here is always the caller's own `input.bookId`.
+ * (unlike an edit), so `bookId` here is always the decoded `id`'s local part.
  */
 const payload = builder
   .objectRef<BookLinkDocumentPayloadShape>('BookLinkDocumentPayload')
@@ -98,8 +103,14 @@ const result = builder.unionType('BookLinkDocumentResult', {
 });
 
 /**
- * Mirrors `POST /api/books/:id/link` (`routes/ui.ts:861`). Owner resolution
- * mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc comment.
+ * Mirrors `POST /api/books/:id/link` (`routes/ui.ts:861`). Input is the
+ * `Book` global ID alone plus `documentId` (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged. `authScopes` runs `ownerOf` on the decoded userId, the
+ * same way REST's `resolveOwner` lets a regular viewer act only on their own
+ * library and an admin target any.
  *
  * `BookStore.linkDocument` throws exactly three of the seven known store
  * errors, traced end to end (`book-store.ts:560-614`): `SelfLinkError`
@@ -124,15 +135,18 @@ builder.mutationField('bookLinkDocument', (t) =>
       'Merges a KOReader document id into a book’s lineage. Resolves to null ' +
       'when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({
-        bookId: args.input.bookId,
-        documentId: args.input.documentId,
-      });
-      if (!parsed.success) return invalidInputError(parsed.error);
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
 
-      const userId = args.input.userId.id;
+      const parsedInput = inputSchema.safeParse({ documentId: args.input.documentId });
+      if (!parsedInput.success) return invalidInputError(parsedInput.error);
+
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
@@ -140,7 +154,7 @@ builder.mutationField('bookLinkDocument', (t) =>
         true | null,
         SelfLinkError | DocumentAlreadyLinkedError | DocumentIsBookError
       >(
-        () => context.stores.book.linkDocument(owner, parsed.data.bookId, parsed.data.documentId),
+        () => context.stores.book.linkDocument(owner, bookId, parsedInput.data.documentId),
         [SelfLinkError, DocumentAlreadyLinkedError, DocumentIsBookError]
       );
       if ('err' in outcome) {
@@ -158,7 +172,7 @@ builder.mutationField('bookLinkDocument', (t) =>
       return {
         __typename: 'BookLinkDocumentPayload' as const,
         owner,
-        bookId: parsed.data.bookId,
+        bookId,
       };
     },
   })

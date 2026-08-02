@@ -10,57 +10,34 @@ import {
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
 import { model as metadataFix } from '../../metadata-fix';
-import { NO_MATCH_USER_ID } from '../../node-scope';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import {
   model as stagedUploadNotFoundErrorModel,
   stagedUploadNotFoundError,
 } from '../../staged-upload-not-found-error/model';
-import { model as user } from '../../user/model';
+import { model as book } from '../model';
 
 /**
- * `userId` is optional, unlike every other book mutation's required
- * `userId: ID!` — adjudicated 2026-08-01 alongside the staged-upload design
- * (see `replace-staging.ts`'s doc comment). It resolves which library's book
- * is being replaced (`ownerOf`-scoped, same admin-targeting shape as every
- * sibling), which is independent of who may consume the staged upload named
- * by `stagedUploadId` — that identity is always `context.viewer.userId`, the
- * literal authenticated caller, never this field. See the resolver's doc
- * comment for why the two can differ and what happens when they do.
+ * The `Book` global ID IS the input's `id` field — no separate `userId`/
+ * `bookId` pair. Same shape as `bookValidate`'s `BookValidateInput` (see that
+ * file's doc comment for the full rationale): the id's compound-key local
+ * part already carries the owner, so decoding it at the resolver boundary
+ * yields both halves the old two-argument shape used to require. This is
+ * independent of who may consume the staged upload named by
+ * `stagedUploadId` — that identity is always `context.viewer.userId`, the
+ * literal authenticated caller, never the decoded owner. See the resolver's
+ * doc comment for why the two can differ and what happens when they do.
  */
 const input = builder.inputType('BookAnalyzeReplaceInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: false, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: book }),
     stagedUploadId: t.string({ required: true }),
   }),
 });
 
-/**
- * `userId` is validated here too (not just typed as an optional `ID`):
- * REST's `resolveOwner` 400s an admin session that names no target
- * (`routes/ui.ts:148-169`, "user query parameter is required for admin
- * sessions") — mirrored as an honest `InvalidInputError` rather than
- * silently falling back to some default, since an admin viewer has no
- * library of its own to fall back to. A non-admin session never trips this:
- * its `userId` defaults to its own, always a real string (`Viewer.userId` is
- * only ever `null` for the config-based admin — `context.ts`'s doc comment).
- */
-const buildInputSchema = (viewerIsAdmin: boolean) =>
-  z
-    .object({
-      bookId: z.string().min(1, 'bookId must not be empty'),
-      stagedUploadId: z.string().min(1, 'stagedUploadId must not be empty'),
-      userId: z.string().nullable(),
-    })
-    .superRefine((value, ctx) => {
-      if (viewerIsAdmin && value.userId === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['userId'],
-          message: 'userId is required for admin sessions',
-        });
-      }
-    });
+const inputSchema = z.object({
+  stagedUploadId: z.string().min(1, 'stagedUploadId must not be empty'),
+});
 
 type BookAnalyzeReplacePayloadShape = {
   readonly __typename: 'BookAnalyzeReplacePayload';
@@ -113,26 +90,26 @@ const result = builder.unionType('BookAnalyzeReplaceResult', {
  * for the staged-upload design this and `bookReplace` share, adjudicated
  * 2026-08-01 to resolve the spec's binary-boundary self-conflict.
  *
- * Owner resolution (which library's `Book` this targets) mirrors every
- * sibling book mutation's `ownerOf`-scoped shape, except `userId` is
- * optional: a viewer who omits it edits their own library (`context.viewer.
- * userId`), and an admin MUST name one (`buildInputSchema`'s `superRefine`)
- * — REST's `resolveOwner` 400, otherwise unreachable here since `ownerOf`
- * itself never blocks an admin regardless of what (or whether) `userId` was
- * supplied (`isOwnerOrAdmin` short-circuits on `viewer.isAdmin` — see
- * `node-scope.ts`).
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged. `authScopes` runs `ownerOf` on the decoded userId, the
+ * same way every sibling book mutation does; REST's "admin without a
+ * target" 400 cannot occur here, since the decoded id always names a
+ * specific owner rather than leaving one to be supplied separately.
  *
  * The staged file is resolved by a DIFFERENT identity — `context.viewer.
- * userId`, the literal authenticated caller — never the resolved book
- * owner. This is the spec's own rule ("keyed to the *authenticated* user,
+ * userId`, the literal authenticated caller — never the decoded owner of
+ * `id`. This is the spec's own rule ("keyed to the *authenticated* user,
  * not the `?user=` target") applied at the GraphQL boundary: an admin
  * session's `viewer.userId` is always `null` (`context.ts`), and
  * `ReplaceStaging.resolve` never has a `null`-keyed entry to find (nothing
  * can stage one — `POST /api/books/replace-staging` 401s an admin session
  * outright, see that route's doc comment), so an admin can never
  * successfully resolve ANY staged upload, including one staged by the very
- * user it names as `userId`. That is intentional, not a gap: staging
- * ownership and book ownership are deliberately different axes.
+ * user `id` decodes to. That is intentional, not a gap: staging ownership
+ * and book ownership are deliberately different axes.
  *
  * `analyzeEpub` (`services/epub-import-pipeline.ts`) never throws one of the
  * seven known store errors on this path: its own internal `assertValidEpub`
@@ -163,22 +140,22 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       'Read-only — the staged upload is not consumed. Resolves to null when ' +
       'the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args, context) => ({
-      ownerOf: args.input.userId?.id ?? context.viewer?.userId ?? NO_MATCH_USER_ID,
-    }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = buildInputSchema(context.viewer?.isAdmin === true).safeParse({
-        bookId: args.input.bookId,
-        stagedUploadId: args.input.stagedUploadId,
-        userId: args.input.userId?.id ?? null,
-      });
-      if (!parsed.success) return invalidInputError(parsed.error);
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
 
-      const targetUserId = parsed.data.userId ?? context.viewer!.userId!;
-      const owner = await context.loadOwner(targetUserId);
+      const parsedInput = inputSchema.safeParse({ stagedUploadId: args.input.stagedUploadId });
+      if (!parsedInput.success) return invalidInputError(parsedInput.error);
+
+      const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       const callerUserId = context.viewer!.userId;
@@ -189,7 +166,11 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       const staged =
         callerUserId === null
           ? null
-          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId, 'epub');
+          : context.stores.replaceStaging.resolve(
+              parsedInput.data.stagedUploadId,
+              callerUserId,
+              'epub'
+            );
       if (staged === null) return stagedUploadNotFoundError();
 
       const analysis = await analyzeEpub(staged.path, {
