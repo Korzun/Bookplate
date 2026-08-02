@@ -132,7 +132,7 @@ builder.mutationField('userDelete', (t) =>
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: { admin: true },
     resolve: async (_parent, args, context) => {
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 

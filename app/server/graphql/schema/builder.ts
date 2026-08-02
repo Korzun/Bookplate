@@ -53,10 +53,14 @@ export const builder = new SchemaBuilder<{
   //     `authScopes` functions receive the *raw* base64 global ID while the
   //     resolver receives the parsed one, so an id-taking scope such as
   //     `ownerOf` compares a global ID against a database id and fails closed.
-  //  2. ErrorsPlugin before PrismaPlugin. @pothos/plugin-errors' README: "To
-  //     use this in combination with the prisma plugin, ensure that the errors
-  //     plugin is listed BEFORE the prisma plugin" — required for `errors` to
-  //     work on prisma field-builder methods.
+  //  2. ErrorsPlugin is registered but deliberately unused, and its position
+  //     in the list is inert. @pothos/plugin-errors' `extractAndSortErrorTypes`
+  //     only accepts error *classes*; every error type in this schema is a
+  //     plain data shape carrying a readonly `owner: Owner` field (see
+  //     `user-error/model.ts`), not a class, so no field anywhere declares an
+  //     `errors:` option and the plugin never activates. It is kept in the
+  //     plugin list only because removing it is out of scope for a comment
+  //     fix — its ordering relative to PrismaPlugin governs nothing.
   //
   // ScopeAuthPlugin still sits ahead of Errors/Prisma/Validation so authorization
   // rejects before any resolver logic runs and an auth failure is never swallowed

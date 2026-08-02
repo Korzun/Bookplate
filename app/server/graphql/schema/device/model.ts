@@ -2,7 +2,7 @@ import type { Device } from '../../../types';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as coverFit } from '../cover-fit';
-import { model as user } from '../user';
+import { model as user } from '../user/model';
 
 /**
  * Deliberately a prismaObject, not a prismaNode — unlike `Series`/`User`/`Book`,

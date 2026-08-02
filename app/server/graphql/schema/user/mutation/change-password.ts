@@ -173,7 +173,7 @@ builder.mutationField('userChangePassword', (t) =>
 
       // authScopes already required args.input.userId.id === context.viewer.userId,
       // so this names exactly the caller's own account.
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const username = context.viewer!.username;
 
       const valid = await context.stores.user.validateUser(username, parsed.data.currentPassword);

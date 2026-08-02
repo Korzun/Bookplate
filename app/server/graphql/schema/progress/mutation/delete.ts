@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { invalidInputError, model as invalidInputErrorModel } from '../../invalid-input-error';
-import { model as library } from '../../library';
-import * as user from '../../user';
+import { model as library } from '../../library/model';
+import * as user from '../../user/model';
 
 /**
  * Takes a `User` global ID rather than a username, per the spec's rule for
@@ -104,12 +104,12 @@ builder.mutationField('progressDelete', (t) =>
     args: { input: t.arg({ type: input, required: true }) },
     // Relay sits outside scope-auth in the plugin order (see builder.ts), so
     // the global ID is already parsed by the time this runs.
-    authScopes: (_parent, args) => ({ ownerOf: String(args.input.userId.id) }),
+    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
     resolve: async (_parent, args, context) => {
       const parsed = inputSchema.safeParse({ document: args.input.document });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      const userId = String(args.input.userId.id);
+      const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
