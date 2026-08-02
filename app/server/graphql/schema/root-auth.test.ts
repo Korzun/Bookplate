@@ -129,10 +129,18 @@ describe('root type authorization', () => {
   // `idFor`) — it plays no other part in building the literal. At the top
   // level it is the bare argument name (`ID_ARG_TYPE_NAMES`'s keying); once
   // recursion enters an input object's fields (below), it becomes
-  // `${InputTypeName}.${fieldName}` (`INPUT_FIELD_ID_TYPE_NAMES`'s keying) —
-  // `idFor` tries the qualified lookup first and falls back to the bare-name
-  // one, so a nested field whose name happens to collide with a top-level
-  // arg's default (`User`) still resolves correctly without an entry here.
+  // `${InputTypeName}.${fieldName}` (`INPUT_FIELD_ID_TYPE_NAMES`'s keying).
+  // `idFor` looks the SAME `key` up in both maps (`INPUT_FIELD_ID_TYPE_NAMES
+  // [key] ?? ID_ARG_TYPE_NAMES[key]`) — this is not a qualified-then-bare-name
+  // fallback: a nested field's key is always the qualified form, so it can
+  // only ever hit `INPUT_FIELD_ID_TYPE_NAMES` (whose keys are always
+  // qualified) and never `ID_ARG_TYPE_NAMES` (whose keys are always bare).
+  // It works today only because no nested `ID` input field happens to share
+  // a bare name with an `ID_ARG_TYPE_NAMES` entry (`libraryId` is a top-level
+  // arg, never a nested field) — a future nested field named `libraryId`
+  // would silently default to `User` rather than resolving to `Library`. Add
+  // a qualified `INPUT_FIELD_ID_TYPE_NAMES` entry for it rather than relying
+  // on any fallback.
   const placeholderLiteral = (
     type: GraphQLInputType,
     key: string,
@@ -215,11 +223,14 @@ describe('root type authorization', () => {
     // (one insert), and only paid once per test regardless of whether the
     // field under test actually has a `Book`-typed id anywhere in its args.
     const aliceBookGlobalId = await harness.seedNodeFor('Book');
-    // Qualified key first (`INPUT_FIELD_ID_TYPE_NAMES`, e.g.
-    // `BookValidateInput.id` -> Book), then bare-name fallback
-    // (`ID_ARG_TYPE_NAMES`, e.g. `libraryId` -> Library), then the `User`
-    // default every other `ID` arg/field in this schema wants — see both
-    // maps' doc comments for why a single flat lookup can't express this.
+    // Same `key` looked up in both maps, NOT a qualified-then-bare-name
+    // fallback (see `placeholderLiteral`'s `key` doc comment for why that
+    // reading is wrong): a top-level arg's bare key only ever matches
+    // `ID_ARG_TYPE_NAMES` (e.g. `libraryId` -> Library); a nested input
+    // field's qualified key only ever matches `INPUT_FIELD_ID_TYPE_NAMES`
+    // (e.g. `BookValidateInput.id` -> Book). Anything neither map has an
+    // entry for defaults to the `User` id every other `ID` arg/field in this
+    // schema wants.
     const idFor = (key: string): string => {
       const typeName = INPUT_FIELD_ID_TYPE_NAMES[key] ?? ID_ARG_TYPE_NAMES[key];
       if (typeName === 'Book') return aliceBookGlobalId;
