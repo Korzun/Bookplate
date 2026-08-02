@@ -10,7 +10,15 @@ import {
 } from '../../derive';
 import { builder } from '../builder';
 import { model as identifier } from '../identifier';
-import { model as linkedDocument } from '../linked-document';
+// `../linked-document/model`, not `../linked-document`: this file's own rule
+// two lines down ("model files import `../<entity>/model`; only `schema/
+// index.ts` imports entity indexes") applies here too — the index is
+// currently a pure re-export, so this was benign, but task 2 made this edge
+// one leg of a real `book`↔`linkedDocument` type cycle (`linked-document/
+// model.ts` now imports `../book/model` back), and a future mutation file
+// added under `linked-document/` would turn "benign" into another instance
+// of the exact hazard this rule exists to prevent.
+import { model as linkedDocument } from '../linked-document/model';
 import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress`: the entity index also side-effect-
 // imports `progress/mutation/delete.ts`, which reaches `Library` — and
@@ -45,7 +53,21 @@ import { findUnique } from './node-loader';
  * own owner has vanished mid-request — a real but narrow race) omits `user=`
  * and keeps `v=` rather than failing the whole field: the URL degrades to a
  * self-shaped one instead of erroring out a field that has nothing else
- * useful to report.
+ * useful to report. For an admin viewer specifically, that degraded URL is
+ * knowingly unfetchable — REST's `resolveOwner` 400s an admin session with no
+ * `?user=` (same branch this helper mirrors) — not merely a plainer URL; a
+ * field with nothing else useful to report still can't do better than that
+ * without failing outright, so the degradation is accepted as-is rather than
+ * chased with a test (the race itself is unraceable in-process).
+ *
+ * `Math.floor` on `mtime`: the Prisma column is a `Float` holding
+ * `stat.mtimeMs` (`services/book-store.ts`), so an unfloored value like
+ * `1785702915092.761` would diverge, byte for byte, from the REST client's
+ * own cache-busting token (`app/client/src/lib/cover-url.ts`'s
+ * `versionToken`, which floors) — two different `?v=` strings for the same
+ * cover under an `immutable` cache policy, and so two cache entries and a
+ * duplicate download for as long as both URL builders coexist during the
+ * Apollo migration.
  */
 const urlSuffix = async (
   book: { userId: string; mtime: number },
@@ -56,7 +78,7 @@ const urlSuffix = async (
     const owner = await context.loadOwner(book.userId);
     if (owner !== null) parts.push(`user=${encodeURIComponent(owner.username)}`);
   }
-  parts.push(`v=${book.mtime}`);
+  parts.push(`v=${Math.floor(book.mtime)}`);
   return parts.join('&');
 };
 

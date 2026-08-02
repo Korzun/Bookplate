@@ -83,6 +83,53 @@ describe('Book.lineage', () => {
     });
   });
 
+  // Task-2 review, I-2: admin-traversal-asserting-CONTENTS discriminator for
+  // `oldBook`/`newBook`'s owner source. `Book.lineage` (book/model.ts)
+  // threads `entry.userId` from `parent.userId` (the target book's real
+  // owner) — if that were substituted with `context.viewer?.userId` instead,
+  // this breaks specifically for an admin viewer: the config-admin's own
+  // `userId` is `null` (test-util.ts's `adminViewer`), so the `newBook`
+  // lookup would run under a non-existent owner and resolve null instead of
+  // alice's real, live row. A self-read (the first test above) cannot
+  // discriminate this — alice's own `context.viewer.userId` and the row's
+  // real `userId` are the same value.
+  it("resolves newBook to the target owner's real row under admin traversal, not the viewer's", async () => {
+    const gid = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
+    const result = await harness.execute(
+      `query ($id: ID!) {
+        user(id: $id) {
+          library {
+            book(id: "${gid}") {
+              lineage { oldId newId oldBook { id } newBook { id title } }
+            }
+          }
+        }
+      }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const lineage = (
+      result.data as {
+        user: {
+          library: {
+            book: {
+              lineage: {
+                oldId: string;
+                newId: string;
+                oldBook: unknown;
+                newBook: { id: string; title: string } | null;
+              }[];
+            };
+          };
+        };
+      }
+    ).user.library.book.lineage;
+    expect(lineage).toHaveLength(1);
+    expect(lineage[0]?.oldBook).toBeNull();
+    expect(lineage[0]?.newBook).toEqual({ id: gid, title: 'Edited' });
+  });
+
   it('is empty for a book that has never been re-imported', async () => {
     await harness.prisma.book.create({
       data: {
