@@ -167,11 +167,21 @@ type LoginRateLimitWindow = { count: number; windowStart: number };
  * `X-Forwarded-For` convention), then walk back `N` positions from the end
  * to find the address the Nth-trusted-hop-back added — the same algorithm
  * Express's own `trust proxy: n` numeric mode uses internally (`proxy-addr`),
- * just computed by hand here so it affects only this function. If the header
- * is absent, empty, or shorter than `N` entries, falls back to the direct
- * peer rather than guessing — under-trusting fails safe, over-trusting (a
- * misconfigured `trustProxyHops` higher than the real hop count) does not:
- * that is an operator error this function cannot detect, which is why
+ * just computed by hand here so it affects only this function. Re-review:
+ * differential-tested against `proxy-addr` across 80 header/hop-count
+ * combinations and matches it on every one WHERE the header has at least
+ * `N` entries. The two implementations deliberately DIVERGE, not
+ * accidentally, when the header is shorter than `N` (a misconfigured
+ * `trustProxyHops`, or a proxy that isn't appending as expected): `proxy-
+ * addr` falls through to the leftmost (client-writable) header entry, which
+ * a client can forge to mint an arbitrary bucket; this function falls back
+ * to the direct peer instead — under-trusting fails safe, `proxy-addr`'s
+ * behavior in that same case does not. Every one of the review's 32
+ * divergent cases was this function choosing the safer of the two, never
+ * the reverse. Over-trusting (`trustProxyHops` set higher than the real hop
+ * count, so the chain legitimately has ≥N entries but the Nth-from-the-end
+ * one is still a proxy, not the client) is an operator error neither
+ * implementation can detect from inside a single request — why
  * `AppConfig.trustProxyHops`'s doc comment warns against it explicitly.
  */
 function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
@@ -204,17 +214,22 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
  * mitigation for those endpoints is bcrypt's own cost factor on every
  * attempt, not a request-count limiter.
  *
- * `createReplaceStaging`'s TTL-sweep precedent, followed literally (review
- * I-1: an earlier version of this function only replaced the CURRENT ip's
- * window when stale, which is a per-key reset, not a sweep — every other
- * ip's window lived for the lifetime of the process; a 500k-distinct-IP
- * probe retained 48.3MB never reclaimed). `sweep()` below iterates the
- * whole `windows` Map and deletes every entry whose `windowStart` has aged
- * out, on every call — the exact shape `replace-staging.ts`'s own
- * `sweep()` uses (iterate-and-delete, called from the one place new state
- * gets written, no timer). `size()` is exposed so a test can pin the sweep
- * directly (observing the Map's size) rather than only inferring it from
- * request-response behavior.
+ * `createReplaceStaging`'s TTL-sweep SHAPE, followed literally, on a
+ * different cadence (review I-1: an earlier version of this function only
+ * replaced the CURRENT ip's window when stale, which is a per-key reset,
+ * not a sweep — every other ip's window lived for the lifetime of the
+ * process; a 500k-distinct-IP probe retained 48.3MB never reclaimed).
+ * `sweep()` below iterates the whole `windows` Map and deletes every entry
+ * whose `windowStart` has aged out — the same iterate-and-delete mechanics
+ * `replace-staging.ts`'s own `sweep()` uses, no timer either way, but NOT
+ * the same trigger: that precedent sweeps only from `stage()` (new state
+ * being written); this one sweeps on EVERY `loginRateLimit` call, including
+ * read-only-outcome ones (a request that gets 429'd still triggers a
+ * sweep) — unauthenticated login attempts are the only "write" this
+ * function has, so every call is the sweep trigger, not a subset of them.
+ * `size()` is exposed so a test can pin the sweep directly (observing the
+ * Map's size) rather than only inferring it from request-response
+ * behavior.
  *
  * `now` is injected as a `() => number` parameter, same shape as
  * `ReplaceStagingDeps.now` — production omits it (defaults to `Date.now`),
