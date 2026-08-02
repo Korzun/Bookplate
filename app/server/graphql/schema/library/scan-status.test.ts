@@ -15,7 +15,7 @@ afterEach(async () => {
 const QUERY = `
   query {
     viewer { library { scanStatus {
-      jobId state phase total processed currentFile startedAt error
+      id state phase total processed currentFile startedAt error
       result { importedFilenames removed imported { id } }
     } } }
   }
@@ -45,7 +45,7 @@ describe('Library.scanStatus', () => {
       viewer: {
         library: {
           scanStatus: {
-            jobId: string;
+            id: string;
             state: string;
             phase: string;
             total: number;
@@ -56,7 +56,7 @@ describe('Library.scanStatus', () => {
         };
       };
     };
-    expect(data.viewer.library.scanStatus.jobId).toBe(job.jobId);
+    expect(data.viewer.library.scanStatus.id).toBe(job.jobId);
     expect(data.viewer.library.scanStatus.state).toBe('RUNNING');
     expect(data.viewer.library.scanStatus.phase).toBe('IMPORTING');
     expect(data.viewer.library.scanStatus.total).toBe(3);
@@ -103,22 +103,34 @@ describe('Library.scanStatus', () => {
    * admin-traversal asserts CONTENTS"). The admin's own `userId` is `null`
    * (`test-util.ts`'s `adminViewer`), so a viewer-derived implementation would
    * read `scanJob.get(null)` here and return `null` even though alice's job
-   * exists — this test would fail red against that bug. Asserts `jobId`
+   * exists — this test would fail red against that bug. Asserts `id`
    * (CONTENTS), not just non-null.
    */
   it('resolves through Query.user(id:).library as the admin, asserting CONTENTS not just presence', async () => {
     const job = harness.stores.scanJob.start(harness.aliceOwner.userId);
 
     const result = await harness.execute(
-      `query ($id: ID!) { user(id: $id) { library { scanStatus { jobId state } } } }`,
+      `query ($id: ID!) { user(id: $id) { library { scanStatus { id state } } } }`,
       { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
     );
 
     expect(result.errors).toBeUndefined();
     const data = result.data as {
-      user: { library: { scanStatus: { jobId: string; state: string } } };
+      user: { library: { scanStatus: { id: string; state: string } } };
     };
-    expect(data.user.library.scanStatus.jobId).toBe(job.jobId);
+    expect(data.user.library.scanStatus.id).toBe(job.jobId);
     expect(data.user.library.scanStatus.state).toBe('RUNNING');
+  });
+
+  // Schema-level assertion: `jobId` is GONE, not merely superseded by `id`
+  // returning the same value under a different name.
+  it('rejects the old field name — jobId no longer exists on ScanStatus', async () => {
+    const result = await harness.execute('{ viewer { library { scanStatus { jobId } } } }', {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.data).toBeUndefined();
+    expect(result.errors?.length).toBeGreaterThan(0);
+    expect(result.errors?.[0]?.message).toMatch(/jobId/i);
   });
 });

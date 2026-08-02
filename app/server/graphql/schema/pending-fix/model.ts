@@ -1,3 +1,5 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { epochToDate, parsePendingFixState } from '../../derive';
 import { builder } from '../builder';
 import { model as pendingFixState } from '../pending-fix-state';
@@ -26,6 +28,30 @@ import { model as pendingFixState } from '../pending-fix-state';
  */
 export const model = builder.prismaObject('PendingFix', {
   fields: (t) => ({
+    /**
+     * Byte-identical to the owning `Book`'s global id — `encodeGlobalID(
+     * 'Book', JSON.stringify([userId, bookId]))`, the exact construction
+     * `BookDeletePayload.deletedId` uses (`book/mutation/delete.ts`).
+     * Deliberately NOT a `Book`-typed global id of `PendingFix`'s own (it
+     * still has no `Node` registration — see this type's doc comment above),
+     * just a plain `ID!` scalar a normalizing cache can key on: a
+     * `PendingFix` is 1:1 with its book, so reusing the book's own id as this
+     * type's cache key means a client's `bookResolvePendingFix` response
+     * normalizes into the exact same cache entry the sibling `Book.id`
+     * selection already occupies — no separate identity to reconcile.
+     *
+     * `pendingFix.userId`/`.bookId` are read straight off this row (the
+     * compound `@@id([userId, bookId])`, `prisma/schema.prisma`), never off
+     * `context.viewer` — the row's owner and the requesting viewer differ for
+     * every admin-traversal read (`Query.user(id:).library.pendingFixes`),
+     * exactly the case `Book.progress`'s doc comment (`progress/model.ts`)
+     * warns the same class of bug against.
+     */
+    id: t.field({
+      type: 'ID',
+      resolve: (pendingFix) =>
+        encodeGlobalID('Book', JSON.stringify([pendingFix.userId, pendingFix.bookId])),
+    }),
     fileName: t.exposeString('fileName'),
     fileSize: t.exposeInt('fileSize'),
     state: t.field({

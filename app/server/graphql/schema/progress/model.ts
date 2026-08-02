@@ -9,6 +9,17 @@ import { builder } from '../builder';
  */
 export const model = builder.prismaObject('Progress', {
   fields: (t) => ({
+    /**
+     * The PK's other half (`@@id([userId, document])`, `document` is a
+     * content-hash-derived string that COLLIDES across users in admin
+     * traversal — the same reason `Book.progress`'s doc comment above reads
+     * `parent.userId` off the row rather than the document alone). Exposes
+     * the raw column, not a `User` global ID: a normalizing cache keys
+     * `Progress` on `["userId", "document"]` together (design doc §1), and
+     * neither half alone is a `Node` id here — see this type's own doc
+     * comment on why `Progress` stays a plain `prismaObject`.
+     */
+    userId: t.exposeID('userId'),
     document: t.exposeString('document'),
     position: t.exposeString('progress', {
       description: 'Reader position as a KOReader CFI/xpointer string.',

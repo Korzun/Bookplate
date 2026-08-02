@@ -1,9 +1,16 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
 
 let harness: Harness;
 const BOOK_ID = 'd'.repeat(32);
+
+// Computed the same way the resolver decodes/re-encodes it — mirrors
+// `pending-fix/model.test.ts`'s identical helper.
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
 
 beforeEach(async () => {
   harness = await createHarness();
@@ -152,6 +159,42 @@ describe('Book.validation', () => {
         }),
       })
     );
+  });
+
+  // `Validation.id` byte-identical to the sibling `Book.id` in one selection
+  // (design doc §1, `BookDeletePayload.deletedId`'s exact construction).
+  it("exposes id byte-identical to its owning Book's id", async () => {
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${BOOK_ID}") { id validation { id } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const bookField = (
+      result.data as { viewer: { library: { book: { id: string; validation: { id: string } } } } }
+    ).viewer.library.book;
+    expect(bookField.validation.id).toBe(bookField.id);
+    expect(bookField.validation.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
+  });
+
+  // Admin-traversal-discriminating: same reasoning as `pending-fix/model.
+  // test.ts`'s identical test — a self-read cannot tell "reads userId/bookId
+  // off the row" apart from "substitutes context.viewer!.userId", since alice
+  // reading her own validation makes both readings equal. The admin's
+  // `userId` is `null`, so a viewer-derived `id` would diverge from the
+  // sibling `Book.id`.
+  it('reads userId/bookId off its own row under admin traversal — id still matches the sibling Book.id', async () => {
+    const result = await harness.execute(
+      `query ($id: ID!) { user(id: $id) { library { book(id: "${BOOK_ID}") { id validation { id } } } } }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const bookField = (
+      result.data as { user: { library: { book: { id: string; validation: { id: string } } } } }
+    ).user.library.book;
+    expect(bookField.validation.id).toBe(bookField.id);
+    expect(bookField.validation.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
   });
 
   it('is null for a book that has never been validated', async () => {

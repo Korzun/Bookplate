@@ -32,6 +32,15 @@ type BookValidatePayloadShape = {
  * (`validation/model.ts`) that a plain report object has no relation to
  * satisfy. `findUniqueOrThrow` is safe: `revalidateBook` just persisted this
  * exact row, in the same request, before this payload is built.
+ *
+ * `book` (design doc §1, schema-design review S1 — the near-blocker: this was
+ * the one payload in the schema returning an object the cache was
+ * structurally incapable of placing, since `Validation` had no cache key at
+ * all before this same task added `Validation.id`). Fresh `t.prismaField`
+ * lookup, exactly `BookUpdateMetadataPayload.book`'s shape
+ * (`update-metadata.ts`) copied verbatim: `findUniqueOrThrow` keyed on
+ * `owner.userId` + `bookId`, both already in hand on this payload's own
+ * shape — no new store call, no new data the resolver didn't already have.
  */
 const payload = builder.objectRef<BookValidatePayloadShape>('BookValidatePayload').implement({
   fields: (t) => ({
@@ -41,6 +50,14 @@ const payload = builder.objectRef<BookValidatePayloadShape>('BookValidatePayload
         context.prisma.validation.findUniqueOrThrow({
           ...query,
           where: { userId_bookId: { userId: parent.owner.userId, bookId: parent.bookId } },
+        }),
+    }),
+    book: t.prismaField({
+      type: book,
+      resolve: (query, parent, _args, context) =>
+        context.prisma.book.findUniqueOrThrow({
+          ...query,
+          where: { userId_id: { userId: parent.owner.userId, id: parent.bookId } },
         }),
     }),
   }),

@@ -45,7 +45,7 @@ const MUTATION = `
       __typename
       ... on LibraryScanPayload {
         scanStatus {
-          jobId
+          id
           state
           phase
           total
@@ -59,7 +59,7 @@ const MUTATION = `
       }
       ... on ScanAlreadyRunningError {
         message
-        scanStatus { jobId state }
+        scanStatus { id state }
       }
     }
   }
@@ -89,7 +89,7 @@ describe('Mutation.libraryScan', () => {
     const data = result.data?.libraryScan as {
       __typename: string;
       scanStatus: {
-        jobId: string;
+        id: string;
         state: string;
         phase: string;
         total: number;
@@ -110,8 +110,8 @@ describe('Mutation.libraryScan', () => {
     expect(data.scanStatus.currentFile).toBeNull();
     expect(data.scanStatus.result).toBeNull();
     expect(data.scanStatus.error).toBeNull();
-    expect(typeof data.scanStatus.jobId).toBe('string');
-    expect(data.scanStatus.jobId).not.toHaveLength(0);
+    expect(typeof data.scanStatus.id).toBe('string');
+    expect(data.scanStatus.id).not.toHaveLength(0);
     expect(new Date(data.scanStatus.startedAt).toString()).not.toBe('Invalid Date');
     expect(data.library.user.username).toBe('alice');
 
@@ -173,7 +173,7 @@ describe('Mutation.libraryScan', () => {
     expect(result.data?.libraryScan).toEqual({
       __typename: 'ScanAlreadyRunningError',
       message: 'A scan is already running for this library.',
-      scanStatus: { jobId: running.jobId, state: 'RUNNING' },
+      scanStatus: { id: running.jobId, state: 'RUNNING' },
     });
     // No second job was started — the tracked job is still the original one.
     expect(harness.stores.scanJob.get(harness.aliceOwner.userId)?.jobId).toBe(running.jobId);

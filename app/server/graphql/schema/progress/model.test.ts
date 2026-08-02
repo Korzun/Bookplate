@@ -124,6 +124,31 @@ describe('Progress', () => {
     ).toBeNull();
   });
 
+  // Admin-traversal-discriminating: the config-based admin has no `userId`
+  // of its own (`test-util.ts`'s `adminViewer`, `viewer.userId === null`), so
+  // a resolver that read `context.viewer!.userId` instead of the row's own
+  // `userId` would return `null` here, not alice's real id — a self-read
+  // (alice reading her own progress) cannot discriminate the two, since her
+  // own `context.viewer.userId` and the row's `userId` are the same value.
+  it('exposes the owning userId — admin traversal proves it reads the row, not the viewer', async () => {
+    const result = await harness.execute(
+      `query ($id: ID!) { user(id: $id) { library { progress(first: 10) { edges { node { userId document } } } } } }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const edges = (
+      result.data as {
+        user: {
+          library: { progress: { edges: { node: { userId: string; document: string } }[] } };
+        };
+      }
+    ).user.library.progress.edges;
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.node.userId).toBe(harness.aliceOwner.userId);
+    expect(edges[0]?.node.document).toBe(BOOK_ID);
+  });
+
   it('does not leak another user progress', async () => {
     const result = await harness.execute(
       '{ viewer { library { progress(first: 10) { edges { node { document } } } } } }',

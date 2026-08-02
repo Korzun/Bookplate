@@ -22,6 +22,12 @@ import {
   epubValidationError,
   model as epubValidationErrorModel,
 } from '../../epub-validation-error/model';
+// `../../library/model`, not `../../library` — same "entity index must not be
+// pulled in from a model file" reason `library/model.ts`'s own note gives for
+// its `../book/model`/`../progress/model` imports. `book/mutation/delete.ts`
+// is the precedent for this exact cross-directory import (`BookDeletePayload.
+// library`).
+import { model as library } from '../../library/model';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as resolution } from '../../pending-fix-resolution';
 import { model as bookType } from '../model';
@@ -66,6 +72,21 @@ const payload = builder
             where: { userId_id: { userId: parent.owner.userId, id: parent.bookId } },
           }),
       }),
+      /**
+       * Traced (schema-design review S1): this mutation resolves or discards
+       * the book's `PendingFix` row, which is exactly what `Library.
+       * pendingFixes` (the nav badge) reads. Without this field a cache has
+       * no way to update that list in place — `Library`'s global id is keyed
+       * on its owner's raw `userId` (`library/model.ts`), which is NOT
+       * decodable from `book` alone without re-parsing `Book`'s own compound
+       * id, so unlike the four Viewer-touching gaps this task's report
+       * records as honest no-ops (`Viewer` is a fixed, keyFields-less
+       * singleton a client can always address without help), a per-tenant
+       * `Library` genuinely needs to be handed over. Same construction
+       * `BookDeletePayload.library` uses (`delete.ts`) — `owner` is already
+       * on this payload's own shape, so this costs nothing extra to resolve.
+       */
+      library: t.field({ type: library, resolve: (result) => result.owner }),
     }),
   });
 

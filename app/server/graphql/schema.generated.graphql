@@ -131,6 +131,7 @@ input BookResolvePendingFixInput {
 
 type BookResolvePendingFixPayload {
   book: Book!
+  library: Library!
 }
 
 union BookResolvePendingFixResult = BookHashCollisionError | BookNotValidatedError | BookResolvePendingFixPayload | EpubValidationError
@@ -173,6 +174,7 @@ input BookValidateInput {
 }
 
 type BookValidatePayload {
+  book: Book!
   validation: Validation!
 }
 
@@ -594,6 +596,7 @@ type PendingFix {
   createdAt: DateTime!
   fileName: String!
   fileSize: Int!
+  id: ID!
   state: PendingFixState!
   updatedAt: DateTime!
 }
@@ -620,6 +623,7 @@ type Progress {
   """Reader position as a KOReader CFI/xpointer string."""
   position: String!
   timestamp: DateTime!
+  userId: ID!
 }
 
 input ProgressDeleteInput {
@@ -701,7 +705,7 @@ enum ScanState {
 type ScanStatus {
   currentFile: String
   error: String
-  jobId: ID!
+  id: ID!
   phase: ScanPhase!
   processed: Int!
   result: ScanResult
@@ -867,6 +871,7 @@ type UsernameAlreadyExistsError implements UserError {
 }
 
 type Validation {
+  id: ID!
   messages(after: String, before: String, first: Int, last: Int): ValidationMessagesConnection!
   threshold: ValidationThreshold!
   valid: Boolean!

@@ -41,6 +41,7 @@ const MUTATION = `
     bookValidate(input: $input) {
       __typename
       ... on BookValidatePayload {
+        book { id title }
         validation {
           valid
           threshold
@@ -77,9 +78,17 @@ describe('Mutation.bookValidate', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookValidate as {
       __typename: string;
+      book: { id: string; title: string };
       validation: { valid: boolean; threshold: string; messages: { edges: unknown[] } };
     };
     expect(data.__typename).toBe('BookValidatePayload');
+    // `book` (design doc §1, S1's near-blocker): the payload's own book,
+    // matching `bookGlobalId`'s construction — the cache-placeable field this
+    // task adds.
+    expect(data.book).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+      title: 'Never Validated',
+    });
     expect(data.validation.valid).toBe(true);
     expect(data.validation.threshold).toBe('ERROR');
     expect(data.validation.messages.edges).toEqual([]);

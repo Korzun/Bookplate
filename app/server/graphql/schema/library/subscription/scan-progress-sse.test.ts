@@ -21,7 +21,7 @@ const tokenFor = (userId: string | null, username: string, isAdmin: boolean): st
 
 const SUBSCRIPTION = `
   subscription ($libraryId: ID!) {
-    scanProgress(libraryId: $libraryId) { jobId state }
+    scanProgress(libraryId: $libraryId) { id state }
   }
 `;
 
@@ -153,9 +153,9 @@ describe('scanProgress over SSE', () => {
     expect(response.headers.get('content-type')).toContain('text/event-stream');
 
     const payload = (await firstSseEvent(response.body!)) as {
-      data?: { scanProgress?: { jobId: string; state: string } };
+      data?: { scanProgress?: { id: string; state: string } };
     };
-    expect(payload.data?.scanProgress?.jobId).toBe(started.jobId);
+    expect(payload.data?.scanProgress?.id).toBe(started.jobId);
     expect(payload.data?.scanProgress?.state).toBe('RUNNING');
 
     controller.abort();
