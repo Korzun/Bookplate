@@ -49,7 +49,7 @@ export const isOwnerOrAdmin = (viewer: Viewer | null, userId: string): boolean =
  * and logging the `id` a custom `findUnique` received for a real encoded
  * global id: `["<userId>","<bookId>"]`, not `<userId>:<bookId>`.
  */
-const parseCompoundId = (raw: string): readonly [userId: string, id: string] | null => {
+export const parseCompoundId = (raw: string): readonly [userId: string, id: string] | null => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

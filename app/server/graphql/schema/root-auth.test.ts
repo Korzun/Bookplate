@@ -68,6 +68,16 @@ afterEach(async () => {
  * wants a `Library` one instead, and got `"ID: User:… is not of type:
  * Library"` here until `ID_ARG_TYPE_NAMES` below was added — a real failure
  * this guard caught, not a hypothetical one.
+ *
+ * Book-relay-id task 1 added a second wrinkle: `bookValidate`'s nested
+ * `input.id` field ALSO wants a `Book` id under the argument name `id`,
+ * which `Query.user(id: ID!)`'s top-level `id` argument already maps (by
+ * default, with no `ID_ARG_TYPE_NAMES` entry) to a `User` id — the same bare
+ * name `id` needs two different typenames depending on whether it is a
+ * top-level argument or an input-object field. `INPUT_FIELD_ID_TYPE_NAMES`
+ * below disambiguates by qualifying nested input fields with their
+ * declaring input type's own name (`BookValidateInput.id`), which
+ * `ID_ARG_TYPE_NAMES`'s flat argument-name keying cannot express.
  */
 describe('root type authorization', () => {
   const roots: [string, GraphQLObjectType][] = (
@@ -84,13 +94,25 @@ describe('root type authorization', () => {
     expect(roots.length).toBeGreaterThan(0);
   });
 
-  // Per-argument-name override for which Node type's global id an `ID` arg
-  // wants — see the describe-block doc comment. Every top-level `ID` arg in
-  // this schema takes a `User` id EXCEPT `scanProgress`'s `libraryId`; add a
-  // name here (not a type-based lookup — the schema's own `ID` scalar carries
-  // no typename) whenever a future field's arg needs a third kind.
+  // Per-argument-name override for which Node type's global id a TOP-LEVEL
+  // `ID` arg wants — see the describe-block doc comment. Every top-level `ID`
+  // arg in this schema takes a `User` id EXCEPT `scanProgress`'s `libraryId`;
+  // add a name here (not a type-based lookup — the schema's own `ID` scalar
+  // carries no typename) whenever a future field's arg needs a third kind.
   const ID_ARG_TYPE_NAMES: Record<string, 'User' | 'Library'> = {
     libraryId: 'Library',
+  };
+
+  // Per-input-object-field override, keyed by `${InputTypeName}.${fieldName}`
+  // rather than by bare field name: `id` alone is ambiguous once more than
+  // one input object declares a required `id` field wanting a different Node
+  // type (`BookValidateInput.id` wants `Book`; `ID_ARG_TYPE_NAMES`'s flat
+  // argument-name keying — correct for top-level args, which this schema
+  // never overloads with two different types — cannot express that
+  // disambiguation). Add an entry here for every future book-mutation input's
+  // `id` field this task's reshape pattern gets applied to.
+  const INPUT_FIELD_ID_TYPE_NAMES: Record<string, 'Book'> = {
+    'BookValidateInput.id': 'Book',
   };
 
   // Produces a syntactically valid GraphQL literal for a required argument's
@@ -102,16 +124,22 @@ describe('root type authorization', () => {
   // future required arg of an unhandled kind fails loudly instead of being
   // silently skipped by this guard.
   //
-  // `argName` rides along purely to resolve an `ID` arg to the right
-  // typename via `ID_ARG_TYPE_NAMES` (via `idFor`) — it plays no other part
-  // in building the literal.
+  // `key` rides along purely to resolve an `ID` arg/field to the right
+  // typename via `ID_ARG_TYPE_NAMES`/`INPUT_FIELD_ID_TYPE_NAMES` (via
+  // `idFor`) — it plays no other part in building the literal. At the top
+  // level it is the bare argument name (`ID_ARG_TYPE_NAMES`'s keying); once
+  // recursion enters an input object's fields (below), it becomes
+  // `${InputTypeName}.${fieldName}` (`INPUT_FIELD_ID_TYPE_NAMES`'s keying) —
+  // `idFor` tries the qualified lookup first and falls back to the bare-name
+  // one, so a nested field whose name happens to collide with a top-level
+  // arg's default (`User`) still resolves correctly without an entry here.
   const placeholderLiteral = (
     type: GraphQLInputType,
-    argName: string,
-    idFor: (name: string) => string
+    key: string,
+    idFor: (key: string) => string
   ): string => {
-    if (isNonNullType(type)) return placeholderLiteral(type.ofType, argName, idFor);
-    if (isListType(type)) return `[${placeholderLiteral(type.ofType, argName, idFor)}]`;
+    if (isNonNullType(type)) return placeholderLiteral(type.ofType, key, idFor);
+    if (isListType(type)) return `[${placeholderLiteral(type.ofType, key, idFor)}]`;
     // Mutations take a single `input:` object argument, so probing them means
     // building an object literal, recursively, from the input type's own
     // required fields — omitting one is a validation error before the resolver
@@ -121,7 +149,10 @@ describe('root type authorization', () => {
     if (isInputObjectType(type)) {
       const fields = Object.values(type.getFields()).filter((field) => isNonNullType(field.type));
       return `{ ${fields
-        .map((field) => `${field.name}: ${placeholderLiteral(field.type, field.name, idFor)}`)
+        .map(
+          (field) =>
+            `${field.name}: ${placeholderLiteral(field.type, `${type.name}.${field.name}`, idFor)}`
+        )
         .join(', ')} }`;
     }
     // Enum literals are bare identifiers (unquoted, unlike String) — any
@@ -129,7 +160,7 @@ describe('root type authorization', () => {
     if (isEnumType(type)) return type.getValues()[0].name;
     switch (type.name) {
       case 'ID':
-        return JSON.stringify(idFor(argName));
+        return JSON.stringify(idFor(key));
       case 'String':
         return '"placeholder"';
       case 'Int':
@@ -179,8 +210,22 @@ describe('root type authorization', () => {
     // just re-encodes alice's userId under the `Library` typename, so this is
     // as cheap as the plain `aliceGlobalId` it sits beside.
     const aliceLibraryGlobalId = await harness.seedNodeFor('Library');
-    const idFor = (argName: string): string =>
-      ID_ARG_TYPE_NAMES[argName] === 'Library' ? aliceLibraryGlobalId : harness.aliceGlobalId;
+    // Unlike `Library`, `seedNodeFor('Book')` does insert a real row (Book's
+    // id is compound, not a re-encoding of an existing id) — still cheap
+    // (one insert), and only paid once per test regardless of whether the
+    // field under test actually has a `Book`-typed id anywhere in its args.
+    const aliceBookGlobalId = await harness.seedNodeFor('Book');
+    // Qualified key first (`INPUT_FIELD_ID_TYPE_NAMES`, e.g.
+    // `BookValidateInput.id` -> Book), then bare-name fallback
+    // (`ID_ARG_TYPE_NAMES`, e.g. `libraryId` -> Library), then the `User`
+    // default every other `ID` arg/field in this schema wants — see both
+    // maps' doc comments for why a single flat lookup can't express this.
+    const idFor = (key: string): string => {
+      const typeName = INPUT_FIELD_ID_TYPE_NAMES[key] ?? ID_ARG_TYPE_NAMES[key];
+      if (typeName === 'Book') return aliceBookGlobalId;
+      if (typeName === 'Library') return aliceLibraryGlobalId;
+      return harness.aliceGlobalId;
+    };
 
     const document = parse(`${operation} { ${selectionFor(field, idFor)} }`);
 

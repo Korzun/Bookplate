@@ -47,10 +47,6 @@ const MUTATION = `
           messages(first: 10) { edges { node { code severity message } } }
         }
       }
-      ... on InvalidInputError {
-        message
-        issues { path message }
-      }
     }
   }
 `;
@@ -61,6 +57,12 @@ const storedValidity = async (
 ): Promise<boolean | null> =>
   (await harness.stores.validation.getValidation(owner, bookId))?.valid ?? null;
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
+// string (mirrors `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookValidate', () => {
   it('validates the viewer’s own book, persists the report, and returns it', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
@@ -69,7 +71,7 @@ describe('Mutation.bookValidate', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -95,7 +97,7 @@ describe('Mutation.bookValidate', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -114,25 +116,11 @@ describe('Mutation.bookValidate', () => {
   it('resolves to null when the book does not exist for the resolved owner', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: 'no-such-book' } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookValidate).toBeNull();
-  });
-
-  it('returns InvalidInputError for an empty bookId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: '' } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookValidate).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
   });
 
   it('refuses one user validating another user’s book, and leaves the stored report unchanged', async () => {
@@ -140,7 +128,7 @@ describe('Mutation.bookValidate', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     // Victim-row assertion first (a probe that merely weakens the auth guard
@@ -162,7 +150,7 @@ describe('Mutation.bookValidate', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -177,14 +165,54 @@ describe('Mutation.bookValidate', () => {
     ]);
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  // Arg-layer rejection classes (malformed / wrong-type) are exercised ONCE,
+  // here, on this representative mutation — per the plan, not duplicated on
+  // every book mutation the pattern is later applied to: the relay arg
+  // mapper that does the rejecting is shared machinery, not per-field logic.
+  it('rejects a wrong-type global id (Series) before the resolver runs', async () => {
+    const seriesGlobalId = await harness.seedNodeFor('Series');
+    // Independent proof the resolver body never executes, not just that the
+    // response shape looks like it didn't: if the arg-layer rejection were
+    // somehow bypassed, the resolver's first store call is `loadOwner`
+    // (`context.loadOwner`), so a spy on it catching zero calls is direct
+    // evidence, not an inference from the error message alone.
+    const loadOwnerSpy = vi.spyOn(harness.stores.book, 'getBookById');
+
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: {
-        input: { userId: encodeGlobalID('User', 'no-such-user'), bookId: BOOK_ID },
-      },
+      variables: { input: { id: seriesGlobalId } },
+    });
+
+    // Rejected by Pothos's relay plugin decoding the global id against the
+    // arg's `for: book` typename — a top-level error at field-argument
+    // coercion, distinct from any value the resolver could itself return
+    // (confirmed by the exact message shape: "is not of type: Book", the same
+    // class root-auth.test.ts documents for `libraryId`). The field is still
+    // nullable, so `data.bookValidate` reads back as `null` rather than being
+    // omitted — that alone wouldn't prove the resolver never ran; the error
+    // and the spy both do.
+    expect(result.errors?.[0]?.message).toMatch(/is not of type: Book/);
+    expect(result.data?.bookValidate ?? null).toBeNull();
+    expect(loadOwnerSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses a malformed local id for a non-admin viewer (FORBIDDEN)', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { id: encodeGlobalID('Book', 'not-json') } },
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.data?.bookValidate ?? null).toBeNull();
+  });
+
+  it('resolves a malformed local id to null for an admin (no such row, not a throw)', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { id: encodeGlobalID('Book', 'not-json') } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookValidate).toBeNull();
   });
 });

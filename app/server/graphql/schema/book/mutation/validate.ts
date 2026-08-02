@@ -1,28 +1,20 @@
-import { z } from 'zod';
-
 import { revalidateBook } from '../../../../services/revalidate-library';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
-import {
-  invalidInputError,
-  model as invalidInputErrorModel,
-} from '../../invalid-input-error/model';
-import { model as user } from '../../user/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as validation } from '../../validation/model';
+import { model as book } from '../model';
 
 /**
- * `bookId` is the raw content-hash id, not a `Book` global ID — same reason
- * as `bookUpdateMetadataInput.bookId` (see that file's doc comment).
+ * The `Book` global ID IS the input — no separate `userId` arg. The id's
+ * compound-key local part (`node-scope.ts`'s `parseCompoundId` doc comment)
+ * already carries the owner, so decoding it at the resolver boundary yields
+ * both halves the old two-argument shape used to require: `{userId, bookId}`.
  */
 const input = builder.inputType('BookValidateInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: book }),
   }),
-});
-
-const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
 });
 
 type BookValidatePayloadShape = {
@@ -55,11 +47,20 @@ const payload = builder.objectRef<BookValidatePayloadShape>('BookValidatePayload
 });
 
 /**
- * No `resolveType`: every member value carries its own `__typename` — see
+ * Single-member union, not a bare payload type: additive-safe if a future
+ * error case needs a member (spec 1's single-member-union precedent). No
+ * `InvalidInputError` member — this mutation's only input, the `Book` global
+ * ID, is validated entirely by the relay arg layer (malformed/wrong-type
+ * rejection happens before the resolver runs — see the field doc comment
+ * below); there is no zod schema left in this file to make that member
+ * reachable, so the traced-union-drop rule (design doc's "Discovered
+ * consequence") requires dropping it.
+ *
+ * No `resolveType`: the one member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
  */
 const result = builder.unionType('BookValidateResult', {
-  types: [payload, invalidInputErrorModel],
+  types: [payload],
 });
 
 /**
@@ -67,6 +68,32 @@ const result = builder.unionType('BookValidateResult', {
  * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
  * comment for the same `ownerOf`-scoped shape and why REST's "admin without a
  * target" 400 cannot occur here.
+ *
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse): `args.input.id.id` is the compound local id Pothos's own
+ * serializer produced for a `prismaNode('Book', { id: { field: 'userId_id' } })`
+ * registration, decoded here with the same `parseCompoundId` `node-scope.ts`
+ * uses for read paths, rather than trusting a caller-supplied `userId` arg
+ * the old shape took separately. `authScopes` runs `ownerOf` on the decoded
+ * userId — bob passing alice's id is FORBIDDEN, admin passing it is allowed,
+ * exactly as the two-argument shape behaved. A malformed local id (decode
+ * failure) maps to `NO_MATCH_USER_ID`: non-admin gets FORBIDDEN (no owner to
+ * compare against, so no other reading), admin's `ownerOf` check still passes
+ * (isOwnerOrAdmin short-circuits on `isAdmin`) and falls through to the
+ * resolver, which re-decodes, gets `null`, and returns the resolver's own
+ * `null` — same "no such row" convention a well-formed id naming no book
+ * already uses; there is nothing to look up for an id that doesn't parse, so
+ * treating it as not-found rather than a distinct error is the only reading
+ * that doesn't leak more than a genuinely-missing book does.
+ *
+ * A wrong-type global id (e.g. a `Series` id passed here) never reaches
+ * `authScopes` or the resolver at all: `t.globalID({ for: book })` decodes
+ * and typename-checks the id in Pothos's relay plugin, outside
+ * `ScopeAuthPlugin`'s wrapper (`root-auth.test.ts`'s describe-block doc
+ * comment traces the plugin order), so it top-level-errors before either one
+ * runs — confirmed for a `Book`-scoped arg specifically by this file's own
+ * "rejects a wrong-type global id" test, not assumed from the `libraryId`
+ * precedent alone.
  *
  * `revalidateBook` (`services/revalidate-library.ts`) is NOT wrapped in
  * `toResult`: traced end to end, it throws only by letting
@@ -96,16 +123,18 @@ builder.mutationField('bookValidate', (t) =>
       'Re-validates a book against the EPUB checker and persists the report. ' +
       'Resolves to null when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       await revalidateBook(
