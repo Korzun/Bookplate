@@ -1,95 +1,79 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
-import { z } from 'zod';
 
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
-import {
-  invalidInputError,
-  model as invalidInputErrorModel,
-} from '../../invalid-input-error/model';
 import { model as library } from '../../library/model';
-import { model as user } from '../../user/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
+import { model as book } from '../model';
 
 /**
- * `bookId` is the raw content-hash id (`Book.bookId`), not a `Book` global
- * ID — same reason as `bookUpdateMetadataInput.bookId` (see that file's doc
- * comment): book ids are partial MD5s of file content, shared across users,
- * so a global ID would need owner-scoped decoding this mutation would then
- * have to duplicate. `userId` mirrors `progressDelete`'s `userId` — see that
- * file's doc comment for the REST routes this owner-resolution shape covers.
+ * The `Book` global ID IS the input — no separate `userId`/`bookId` pair.
+ * Same shape as `bookValidate`'s `BookValidateInput` (see that file's doc
+ * comment for the full rationale): the id's compound-key local part already
+ * carries the owner, so decoding it at the resolver boundary yields both
+ * halves the old two-argument shape used to require.
  */
 const input = builder.inputType('BookDeleteInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: book }),
   }),
 });
 
 type BookDeletePayloadShape = {
   readonly __typename: 'BookDeletePayload';
   readonly deletedId: string;
-  readonly deletedBookId: string;
   readonly owner: Owner;
 };
 
 /**
- * Carries BOTH `deletedId: ID!` and `deletedBookId: String!`.
- *
- * **Corrected after review** (task-2 review, Adjudication 1 — overturned the
- * original `deletedBookId`-only shape): `Book` *is* a `Node`, and the
- * ledger's "deletes of Node-backed entities return `deletedId: ID!`" rule
- * names its one exception as non-`Node` types (`progressDelete`'s
- * `deletedDocument`, because `Progress` isn't one). `Book` doesn't qualify
- * for that exception, and the spec's own reason for the rule —
- * `deletedId: ID!` is "what Houdini's list-removal directives need" — depends
- * on the type's *configured cache key*, which for `Book` is `id`, not the raw
- * hash. A raw-hash-only payload could not drive that directive at all.
- *
- * The original tradeoff (REST/sibling-field parity vs. the binding rule) was
- * false: nothing forces a choice. `deletedId` is computed the same way the
- * schema itself would compute it for a still-live row —
- * `encodeGlobalID('Book', JSON.stringify([owner.userId, id]))`, matching
- * `node-scope.ts`'s `parseCompoundId` doc comment on Pothos's own compound-id
- * serializer — and costs nothing extra: no query, since both halves of the
- * compound key are already in hand. `deletedBookId` stays alongside it for
- * every reason the original comment gave: `Progress.document`,
- * `LinkedDocument.oldId`/`newId`, `Library.book(id:)`'s argument, and
- * `Book.bookId` itself all key on the raw hash, and REST parity does too
- * (`DELETE /api/books/:id`).
+ * `deletedBookId: String!` is gone (spec output-removal #2, task 2) — it
+ * duplicated `deletedId` for no reason once the input itself became the
+ * `Book` global ID: any caller that already had a `deletedId`-shaped id to
+ * pass in can decode `deletedId` back out the same way. `deletedId: ID!`
+ * alone stays, per the ledger's "deletes of Node-backed entities return
+ * `deletedId: ID!`" rule — `Book` is a `Node`, so it does not fall under that
+ * rule's one exception (`progressDelete`'s `deletedDocument`, for the non-
+ * `Node` `Progress` type). Computed the same way the schema itself computes
+ * it for a still-live row — `encodeGlobalID('Book', JSON.stringify([owner.
+ * userId, id]))`, matching `node-scope.ts`'s `parseCompoundId` doc comment on
+ * Pothos's own compound-id serializer — and costs nothing extra: both halves
+ * of the compound key are already in hand from the resolver's own decode.
  */
 const payload = builder.objectRef<BookDeletePayloadShape>('BookDeletePayload').implement({
   fields: (t) => ({
     deletedId: t.exposeID('deletedId'),
-    deletedBookId: t.exposeString('deletedBookId'),
     library: t.field({ type: library, resolve: (result) => result.owner }),
   }),
 });
 
 /**
- * No `resolveType`: every member value carries its own `__typename` — see
+ * Single-member union, not a bare payload type: additive-safe if a future
+ * error case needs a member (spec 1's single-member-union precedent). No
+ * `InvalidInputError` member — this mutation's only input, the `Book` global
+ * ID, is validated entirely by the relay arg layer (malformed/wrong-type
+ * rejection happens before the resolver runs, exactly like `bookValidate` —
+ * see that file's field doc comment); there is no zod schema left in this
+ * file to make that member reachable, so the traced-union-drop rule (design
+ * doc's "Discovered consequence") requires dropping it.
+ *
+ * No `resolveType`: the one member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
  */
 const result = builder.unionType('BookDeleteResult', {
-  types: [payload, invalidInputErrorModel],
-});
-
-/**
- * `min(1)` and nothing more, for the same reason `progressDelete`'s
- * `document` gets no more: REST's `DELETE /api/books/:id` cannot structurally
- * receive an empty `:id` path segment (Express would not match the route), so
- * an empty `bookId` is the one input REST never had to reject — this mutation
- * rejects it explicitly instead, since GraphQL has no equivalent route-
- * matching floor.
- */
-const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
+  types: [payload],
 });
 
 /**
  * Mirrors `DELETE /api/books/:id` (`routes/ui.ts:1021`). Owner resolution
  * mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc comment for
- * the same `ownerOf`-scoped shape and why REST's "admin without a target"
- * 400 cannot occur here.
+ * the same `ownerOf`-scoped shape and why REST's "admin without a target" 400
+ * cannot occur here.
+ *
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged.
  *
  * `BookStore.deleteBook` is NOT wrapped in `toResult`: traced end to end
  * (`book-store.ts`'s `deleteBook`), it only ever throws by letting a Prisma
@@ -113,22 +97,23 @@ builder.mutationField('bookDelete', (t) =>
       'Deletes a book from the library — file and DB row both. Resolves to ' +
       'null when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const deleted = await context.stores.book.deleteBook(owner, parsed.data.bookId);
+      const deleted = await context.stores.book.deleteBook(owner, bookId);
       if (deleted === null) return null;
 
       return {
         __typename: 'BookDeletePayload' as const,
         deletedId: encodeGlobalID('Book', JSON.stringify([owner.userId, deleted.id])),
-        deletedBookId: deleted.id,
         owner,
       };
     },

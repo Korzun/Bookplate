@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 import { BookHashCollisionError } from '../../../../services/book-store';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
@@ -12,26 +10,20 @@ import {
   model as bookNotValidatedErrorModel,
 } from '../../book-not-validated-error/model';
 import { builder } from '../../builder';
-import {
-  invalidInputError,
-  model as invalidInputErrorModel,
-} from '../../invalid-input-error/model';
-import { model as user } from '../../user/model';
-import { model as bookType } from '../model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
+import { model as book } from '../model';
 
 /**
- * `bookId` is the raw content-hash id, not a `Book` global ID — same reason
- * as `bookUpdateMetadataInput.bookId` (see that file's doc comment).
+ * The `Book` global ID IS the input — no separate `userId`/`bookId` pair.
+ * Same shape as `bookValidate`'s `BookValidateInput` (see that file's doc
+ * comment for the full rationale): the id's compound-key local part already
+ * carries the owner, so decoding it at the resolver boundary yields both
+ * halves the old two-argument shape used to require.
  */
 const input = builder.inputType('BookRegenChaptersInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: book }),
   }),
-});
-
-const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
 });
 
 type BookRegenChaptersPayloadShape = {
@@ -47,14 +39,14 @@ type BookRegenChaptersPayloadShape = {
  * match what `book/model.ts`'s field resolvers expect off their parent).
  * `reimportBook` can change the book's id (its content-hash fingerprint is
  * recomputed from the re-parsed file), so this must re-read by the id the
- * store call actually returned, never `input.bookId`.
+ * store call actually returned, never the input id.
  */
 const payload = builder
   .objectRef<BookRegenChaptersPayloadShape>('BookRegenChaptersPayload')
   .implement({
     fields: (t) => ({
       book: t.prismaField({
-        type: bookType,
+        type: book,
         resolve: (query, parent, _args, context) =>
           context.prisma.book.findUniqueOrThrow({
             ...query,
@@ -67,9 +59,17 @@ const payload = builder
 /**
  * No `resolveType`: every member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
+ *
+ * No `InvalidInputError` member: this mutation's only input, the `Book`
+ * global ID, is validated entirely by the relay arg layer (malformed/wrong-
+ * type rejection happens before the resolver runs, exactly like
+ * `bookValidate` — see that file's field doc comment); there is no zod
+ * schema left in this file to make that member reachable, so the traced-
+ * union-drop rule (design doc's "Discovered consequence") requires dropping
+ * it.
  */
 const result = builder.unionType('BookRegenChaptersResult', {
-  types: [payload, bookHashCollisionErrorModel, bookNotValidatedErrorModel, invalidInputErrorModel],
+  types: [payload, bookHashCollisionErrorModel, bookNotValidatedErrorModel],
 });
 
 /**
@@ -95,6 +95,12 @@ function assertReimportSucceeded(reimported: Book | null): asserts reimported is
  * comment for the same `ownerOf`-scoped shape and why REST's "admin without a
  * target" 400 cannot occur here.
  *
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged.
+ *
  * REST's `book.valid !== true` precondition (409, "This book must pass
  * validation before it can be edited.") is checked before `reimportBook` is
  * ever called — mirrored here exactly like `bookUpdateMetadata` mirrors its
@@ -117,16 +123,18 @@ builder.mutationField('bookRegenChapters', (t) =>
       'Re-parses a book’s EPUB file to regenerate its chapter list. Resolves ' +
       'to null when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       if (targetBook.valid !== true) {

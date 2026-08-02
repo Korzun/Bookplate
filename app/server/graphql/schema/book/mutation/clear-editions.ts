@@ -1,34 +1,19 @@
-import { z } from 'zod';
-
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
-import {
-  invalidInputError,
-  model as invalidInputErrorModel,
-} from '../../invalid-input-error/model';
-import { model as user } from '../../user/model';
-import { model as bookType } from '../model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
+import { model as book } from '../model';
 
 /**
- * `bookId` is the raw content-hash id. `userId` follows the same
- * `ownerOf`-scoped shape every other book mutation in this file uses (see
- * `bookUpdateMetadata`'s doc comment) — REST's own route
- * (`DELETE /api/books/:id/editions`) has no equivalent, since it resolves
- * the owner from `?user=`/session instead.
+ * The `Book` global ID IS the input — no separate `userId`/`bookId` pair.
+ * Same shape as `bookValidate`'s `BookValidateInput` (see that file's doc
+ * comment for the full rationale): the id's compound-key local part already
+ * carries the owner, so decoding it at the resolver boundary yields both
+ * halves the old two-argument shape used to require.
  */
 const input = builder.inputType('BookClearEditionsInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: book }),
   }),
-});
-
-/**
- * `min(1)` mirrors `bookDelete`/`bookUpdateMetadata`'s identical rule — see
- * those files' doc comments.
- */
-const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
 });
 
 type BookClearEditionsPayloadShape = {
@@ -48,7 +33,7 @@ const payload = builder
     fields: (t) => ({
       clearedCount: t.exposeInt('clearedCount'),
       book: t.prismaField({
-        type: bookType,
+        type: book,
         resolve: (query, parent, _args, context) =>
           context.prisma.book.findUniqueOrThrow({
             ...query,
@@ -59,17 +44,32 @@ const payload = builder
   });
 
 /**
- * No `resolveType`: every member value carries its own `__typename` — see
+ * Single-member union, not a bare payload type: additive-safe if a future
+ * error case needs a member (spec 1's single-member-union precedent). No
+ * `InvalidInputError` member — this mutation's only input, the `Book` global
+ * ID, is validated entirely by the relay arg layer (malformed/wrong-type
+ * rejection happens before the resolver runs, exactly like `bookValidate` —
+ * see that file's field doc comment); there is no zod schema left in this
+ * file to make that member reachable, so the traced-union-drop rule (design
+ * doc's "Discovered consequence") requires dropping it.
+ *
+ * No `resolveType`: the one member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
  */
 const result = builder.unionType('BookClearEditionsResult', {
-  types: [payload, invalidInputErrorModel],
+  types: [payload],
 });
 
 /**
  * Mirrors `DELETE /api/books/:id/editions` (`routes/ui.ts:1039-1054`). Owner
  * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
  * comment.
+ *
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged.
  *
  * `BookStore.clearDeviceEditions` is NOT wrapped in `toResult`: traced end to
  * end (`book-store.ts:776-784`), it only ever calls `getBookById` (a plain
@@ -92,22 +92,24 @@ builder.mutationField('bookClearEditions', (t) =>
       'files); they regenerate lazily on next download. Resolves to null when ' +
       'the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const cleared = await context.stores.book.clearDeviceEditions(owner, parsed.data.bookId);
+      const cleared = await context.stores.book.clearDeviceEditions(owner, bookId);
       if (cleared === null) return null;
 
       return {
         __typename: 'BookClearEditionsPayload' as const,
         owner,
-        bookId: parsed.data.bookId,
+        bookId,
         clearedCount: cleared,
       };
     },

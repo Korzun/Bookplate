@@ -26,10 +26,6 @@ const MUTATION = `
         clearedCount
         book { bookId deviceEditionCount }
       }
-      ... on InvalidInputError {
-        message
-        issues { path message }
-      }
     }
   }
 `;
@@ -48,6 +44,12 @@ const seedEdition = async (userId: string, originalBookId: string, deviceId: str
 const editionCountOf = async (userId: string, bookId: string) =>
   harness.prisma.deviceEdition.count({ where: { userId, originalBookId: bookId } });
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID (mirrors
+// `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookClearEditions', () => {
   it('clears every cached device edition for the viewer’s own book and returns the count', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Has Editions');
@@ -56,7 +58,7 @@ describe('Mutation.bookClearEditions', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -76,7 +78,7 @@ describe('Mutation.bookClearEditions', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -87,25 +89,11 @@ describe('Mutation.bookClearEditions', () => {
   it('resolves to null when the book does not exist for the resolved owner', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: 'no-such-book' } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookClearEditions).toBeNull();
-  });
-
-  it('returns InvalidInputError for an empty bookId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: '' } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookClearEditions).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
   });
 
   it('refuses one user clearing another user’s book editions, and leaves the victim’s editions unchanged', async () => {
@@ -114,7 +102,7 @@ describe('Mutation.bookClearEditions', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     // Victim-row assertion first — see update-metadata.test.ts's identical
@@ -130,7 +118,7 @@ describe('Mutation.bookClearEditions', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -141,14 +129,16 @@ describe('Mutation.bookClearEditions', () => {
     expect(await editionCountOf(harness.aliceOwner.userId, BOOK_ID)).toBe(0);
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Well-formed Book gid whose decoded userId names no real user, only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: {
-        input: { userId: encodeGlobalID('User', 'no-such-user'), bookId: BOOK_ID },
-      },
+      viewer: harness.adminViewer,
+      variables: { input: { id: bookGlobalId('no-such-user', BOOK_ID) } },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookClearEditions).toBeNull();
   });
 });

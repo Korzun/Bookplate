@@ -100,6 +100,12 @@ const pendingFixRowFor = (bookId: string) =>
 const titleOf = async (userId: string, id: string): Promise<string | null> =>
   (await harness.prisma.book.findUnique({ where: { userId_id: { userId, id } } }))?.title ?? null;
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID (mirrors
+// `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 const MUTATION = `
   mutation ResolvePendingFix($input: BookResolvePendingFixInput!) {
     bookResolvePendingFix(input: $input) {
@@ -118,10 +124,6 @@ const MUTATION = `
             }
           }
         }
-      }
-      ... on InvalidInputError {
-        message
-        issues { path message }
       }
       ... on BookNotValidatedError {
         message
@@ -148,7 +150,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'DISMISS' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'DISMISS' },
         },
       });
 
@@ -169,7 +171,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'DISMISS' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'DISMISS' },
         },
       });
 
@@ -193,7 +195,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -245,7 +247,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -276,7 +278,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -304,7 +306,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -336,7 +338,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -366,7 +368,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -382,7 +384,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -401,7 +403,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -427,7 +429,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -456,7 +458,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
         },
       });
 
@@ -472,26 +474,12 @@ describe('Mutation.bookResolvePendingFix', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: 'no-such-book', action: 'DISMISS' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book'), action: 'DISMISS' },
       },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookResolvePendingFix).toBeNull();
-  });
-
-  it('returns InvalidInputError for an empty bookId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: '', action: 'DISMISS' } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookResolvePendingFix).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
   });
 
   it('refuses one user resolving another user’s pending fix, and leaves it unchanged', async () => {
@@ -501,7 +489,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
       },
     });
 
@@ -520,7 +508,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, action: 'ACCEPT' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
       },
     });
 
@@ -532,18 +520,18 @@ describe('Mutation.bookResolvePendingFix', () => {
     expect(await titleOf(harness.aliceOwner.userId, data.book.bookId)).toBe('New Title');
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Well-formed Book gid whose decoded userId names no real user, only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
+      viewer: harness.adminViewer,
       variables: {
-        input: {
-          userId: encodeGlobalID('User', 'no-such-user'),
-          bookId: BOOK_ID,
-          action: 'DISMISS',
-        },
+        input: { id: bookGlobalId('no-such-user', BOOK_ID), action: 'DISMISS' },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookResolvePendingFix).toBeNull();
   });
 });

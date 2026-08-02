@@ -113,6 +113,10 @@ describe('root type authorization', () => {
   // `id` field this task's reshape pattern gets applied to.
   const INPUT_FIELD_ID_TYPE_NAMES: Record<string, 'Book'> = {
     'BookValidateInput.id': 'Book',
+    'BookDeleteInput.id': 'Book',
+    'BookRegenChaptersInput.id': 'Book',
+    'BookClearEditionsInput.id': 'Book',
+    'BookResolvePendingFixInput.id': 'Book',
   };
 
   // Produces a syntactically valid GraphQL literal for a required argument's
