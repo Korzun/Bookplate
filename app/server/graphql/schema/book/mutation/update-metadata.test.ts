@@ -622,5 +622,93 @@ describe('Mutation.bookUpdateMetadata', () => {
         await harness.stores.book.getCover(harness.aliceOwner.userId, data.book.bookId)
       ).toBeNull();
     });
+
+    // Review I-1: REST pins this side effect both ways (`ui.test.ts:2858`
+    // "does not enqueue thumbnails when no cover is uploaded", `:2868`
+    // "enqueues thumbnails when a new cover is uploaded") — this mutation's
+    // own thumbnail-enqueue call (`update-metadata.ts`, cover-success branch)
+    // had zero coverage before this fix. `harness.stores.thumbnail` is a
+    // real, never-started `ThumbnailQueue` (`test-util.ts`'s doc comment),
+    // so `enqueue` is inert and safe to spy on directly.
+    describe('thumbnail enqueue on cover success (review I-1)', () => {
+      it('enqueues thumbnail regeneration with (owner.userId, the NEW post-edit book id) — REST parity for ui.test.ts:2868', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+        const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
+        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.aliceViewer,
+          variables: {
+            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        const data = result.data?.bookUpdateMetadata as { book: { bookId: string } };
+        expect(enqueueSpy).toHaveBeenCalledTimes(1);
+        expect(enqueueSpy).toHaveBeenCalledWith(harness.aliceOwner.userId, data.book.bookId);
+      });
+
+      it('does NOT enqueue on a metadata-only edit (no stagedCoverId) — REST parity for ui.test.ts:2858', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.aliceViewer,
+          variables: {
+            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'New Title' },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        expect(enqueueSpy).not.toHaveBeenCalled();
+      });
+
+      it('does NOT enqueue when the staged-cover write fails post-edit validation (nothing was actually applied)', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+        const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
+        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+        (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+          new EpubValidationError(
+            [{ id: 'RSC-005', severity: 'FATAL', message: 'unparseable' }],
+            { ...EMPTY_COUNTS, FATAL: 1 },
+            'ERROR'
+          )
+        );
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.aliceViewer,
+          variables: {
+            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        const data = result.data?.bookUpdateMetadata as { __typename: string };
+        expect(data.__typename).toBe('EpubValidationError');
+        expect(enqueueSpy).not.toHaveBeenCalled();
+      });
+
+      it('does NOT enqueue when stagedCoverId is unknown (rejected before any write)', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.aliceViewer,
+          variables: {
+            input: {
+              userId: harness.aliceGlobalId,
+              bookId: BOOK_ID,
+              stagedCoverId: 'no-such-id',
+            },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        const data = result.data?.bookUpdateMetadata as { __typename: string };
+        expect(data.__typename).toBe('StagedUploadNotFoundError');
+        expect(enqueueSpy).not.toHaveBeenCalled();
+      });
+    });
   });
 });

@@ -101,8 +101,12 @@ export const createHarness = async (): Promise<Harness> => {
     edition,
     validation: new ValidationStore(prisma),
     scanJob: new ScanJobStore(),
-    // Constructed but never started: no test in this plan enqueues thumbnails,
-    // and start() would leave a timer running past the test.
+    // Constructed but never started: start() would leave a timer running past
+    // the test. `enqueue()` itself is inert either way — it only pushes onto
+    // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads
+    // that array without a running `processLoop`. Task 3b's staged-cover
+    // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
+    // with `vi.spyOn` — safe precisely because it's inert here.
     thumbnail: new ThumbnailQueue(book, config.thumbnailWidths),
     replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
   };

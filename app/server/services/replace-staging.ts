@@ -96,21 +96,54 @@ export type ReplaceStagingDeps = {
 };
 
 /**
+ * Fixed allowlist, `'cover'`-kind MIME type → on-disk extension. Every value
+ * here is a literal, never derived from the input string — the map is keyed
+ * on `mimeType`, but nothing in the returned extension is built FROM it, so
+ * there is no substring of a hostile `mimeType` that can end up inside a
+ * filename. Covers the MIME types `coverUpload`'s own `image/*` `fileFilter`
+ * (`routes/ui.ts:128-134`) actually admits in practice; anything else
+ * (unrecognised, or not even a real MIME string) falls back to `.bin` in
+ * `extensionFor` below.
+ */
+const COVER_EXTENSIONS: Readonly<Record<string, string>> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'image/bmp': '.bmp',
+  'image/avif': '.avif',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+  'image/tiff': '.tiff',
+  'image/x-icon': '.ico',
+};
+
+/**
  * On-disk extension for a staged file. `'epub'` keeps the original fixed
  * `.epub` (unchanged from pre-3b behaviour — `sweep()`'s orphan scan matches
  * by `STAGED_PREFIX` alone, never by extension, so this was always cosmetic
- * for that path and stays that way). `'cover'` derives one from the uploaded
- * MIME type the same way `epub-writer.ts`'s cover-replacement step does
- * (`mimeType.split('/')[1].split('+')[0]`, e.g. `image/svg+xml` → `svg`),
- * falling back to `.bin` for a missing or malformed MIME type — cosmetic
- * only here too, since `resolve`/`consume` read the path the registry
- * recorded, never re-derive it from the filename.
+ * for that path and stays that way).
+ *
+ * `'cover'` looks `mimeType` up in `COVER_EXTENSIONS` above and falls back to
+ * `.bin` for anything not in that fixed set — review finding M-4: an earlier
+ * version derived the extension directly from `mimeType`'s substring after
+ * the `/` (e.g. `.split('/')[1]`), which is `req.file.mimetype`, i.e. the
+ * `Content-Type` of a client-supplied multipart part, only checked for an
+ * `image/` prefix (`routes/ui.ts:131-133`) — attacker-controlled beyond that.
+ * `/` cannot appear in the derived substring (it's the split delimiter), so
+ * traversal via `/` was never possible, but on Windows `\` is also a path
+ * separator, and a hostile `Content-Type: image/..\..\evil` would have
+ * produced a `path.join` argument containing `..\..`; an absurdly long
+ * subtype also risked `ENAMETOOLONG` (a masked 500). The allowlist closes
+ * both: every possible return value is one of the fixed literals above, so
+ * neither the mimeType's length nor its characters can ever reach the
+ * filename.
  */
 function extensionFor(kind: StagedKind, mimeType: string | null): string {
   if (kind === 'epub') return '.epub';
-  if (mimeType !== null && mimeType.includes('/')) {
-    return `.${mimeType.split('/')[1]?.split('+')[0]}`;
-  }
+  if (mimeType !== null && mimeType in COVER_EXTENSIONS) return COVER_EXTENSIONS[mimeType];
   return '.bin';
 }
 
