@@ -66,11 +66,20 @@ describe('Viewer.users', () => {
   // `viewer` itself becomes null instead (a non-null field forced null by a
   // non-null child's denial propagates to the nearest nullable ancestor,
   // which is `Query.viewer`'s own root data, not `Viewer.users`).
-  it('refuses a non-admin — nulls only `users`, the operation stays alive', async () => {
-    const result = await harness.execute(USERS, { viewer: harness.aliceViewer });
+  //
+  // Task-3 review, M-2: a SIBLING field alongside `users` — asserting only
+  // `{ viewer: { users: null } }` proves the operation didn't die, but not
+  // that anything else actually still resolves; `username`/`isAdmin` here
+  // are what makes "the operation stays alive" mean something concrete
+  // (`device/enabled-users.test.ts` already does this — `name` survives
+  // next to `enabledUsers: null`).
+  it('refuses a non-admin — nulls only `users`, siblings still resolve', async () => {
+    const result = await harness.execute('{ viewer { username isAdmin users { username } } }', {
+      viewer: harness.aliceViewer,
+    });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(result.data).toEqual({ viewer: { users: null } });
+    expect(result.data).toEqual({ viewer: { username: 'alice', isAdmin: false, users: null } });
   });
 
   it('exposes each user as a real node whose library is reachable by an admin', async () => {
