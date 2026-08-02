@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
@@ -24,28 +22,22 @@ import {
   epubValidationError,
   model as epubValidationErrorModel,
 } from '../../epub-validation-error/model';
-import {
-  invalidInputError,
-  model as invalidInputErrorModel,
-} from '../../invalid-input-error/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as resolution } from '../../pending-fix-resolution';
-import { model as user } from '../../user/model';
 import { model as bookType } from '../model';
 
+/**
+ * The `Book` global ID IS the input, alongside `action` — no separate
+ * `userId`/`bookId` pair. Same shape as `bookValidate`'s `BookValidateInput`
+ * (see that file's doc comment for the full rationale): the id's compound-key
+ * local part already carries the owner, so decoding it at the resolver
+ * boundary yields both halves the old two-argument shape used to require.
+ */
 const input = builder.inputType('BookResolvePendingFixInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: bookType }),
     action: t.field({ type: resolution, required: true }),
   }),
-});
-
-/**
- * `min(1)` mirrors `bookDelete`/`bookUpdateMetadata`'s identical rule — see
- * those files' doc comments.
- */
-const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
 });
 
 type BookResolvePendingFixPayloadShape = {
@@ -57,10 +49,10 @@ type BookResolvePendingFixPayloadShape = {
 /**
  * `book` is a fresh lookup, not a store-returned DTO — same reasoning as
  * `BookLinkDocumentPayload.book`. `bookId` here is the id AFTER resolution:
- * `DISMISS` never touches the book, so it is always `input.bookId`; `ACCEPT`
- * may rewrite the EPUB (when it has live proposals to apply), which can mint
- * a new content-hash id exactly like `bookUpdateMetadata` — see this file's
- * resolver doc comment.
+ * `DISMISS` never touches the book, so it is always the decoded input id's
+ * local part; `ACCEPT` may rewrite the EPUB (when it has live proposals to
+ * apply), which can mint a new content-hash id exactly like
+ * `bookUpdateMetadata` — see this file's resolver doc comment.
  */
 const payload = builder
   .objectRef<BookResolvePendingFixPayloadShape>('BookResolvePendingFixPayload')
@@ -80,11 +72,21 @@ const payload = builder
 /**
  * No `resolveType`: every member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
+ *
+ * No `InvalidInputError` member: `bookId` was this file's only zod-validated
+ * field, and it is gone now that the id arrives pre-decoded from the `Book`
+ * global ID — malformed/wrong-type rejection of THAT happens entirely at the
+ * relay arg layer, exactly like `bookValidate` (see that file's field doc
+ * comment). `action` needs no zod either: it is a GraphQL enum
+ * (`pending-fix-resolution.ts`'s `resolution` type), so an invalid value is
+ * rejected by GraphQL's own argument coercion before the resolver runs, the
+ * same way any other enum-typed arg in this schema is. With no zod schema
+ * left in this file to make `InvalidInputError` reachable, the traced-union-
+ * drop rule (design doc's "Discovered consequence") requires dropping it.
  */
 const result = builder.unionType('BookResolvePendingFixResult', {
   types: [
     payload,
-    invalidInputErrorModel,
     bookNotValidatedErrorModel,
     bookHashCollisionErrorModel,
     epubValidationErrorModel,
@@ -246,6 +248,12 @@ function foldProposalsIntoChanges(
  * later read of `Book.pendingFix` on the same id within this request — an
  * unbatched, one-off mutation read has no batching benefit to lose by going
  * straight to Prisma instead.
+ *
+ * Input is the `Book` global ID plus `action` (design doc's 10-mutation
+ * input collapse), the id decoded with the same `parseCompoundId`/
+ * `NO_MATCH_USER_ID` convention `bookValidate` established — see that file's
+ * resolver doc comment for the full malformed-id / wrong-type-id reasoning,
+ * which applies here unchanged.
  */
 builder.mutationField('bookResolvePendingFix', (t) =>
   t.field({
@@ -256,16 +264,18 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       'proposals. Resolves to null when the book does not exist for the ' +
       'resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ bookId: args.input.bookId });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       if (args.input.action === 'dismiss') {

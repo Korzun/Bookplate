@@ -25,12 +25,7 @@ const MUTATION = `
       __typename
       ... on BookDeletePayload {
         deletedId
-        deletedBookId
         library { user { username } }
-      }
-      ... on InvalidInputError {
-        message
-        issues { path message }
       }
     }
   }
@@ -52,16 +47,18 @@ describe('Mutation.bookDelete', () => {
     const book = (await harness.stores.book.getBookById(harness.aliceOwner, BOOK_ID))!;
     expect(fs.existsSync(book.path)).toBe(true);
 
+    const inputId = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: inputId } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookDelete).toEqual({
       __typename: 'BookDeletePayload',
-      deletedId: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
-      deletedBookId: BOOK_ID,
+      // Same compound encode as the input — proves the payload doesn't
+      // silently mint a different id from a different owner/book pair.
+      deletedId: inputId,
       library: { user: { username: 'alice' } },
     });
     expect(await bookExists(harness.aliceOwner.userId, BOOK_ID)).toBe(false);
@@ -71,28 +68,11 @@ describe('Mutation.bookDelete', () => {
   it('resolves to null when no such book exists, mirroring REST’s 404', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: 'no-such-book' } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookDelete).toBeNull();
-  });
-
-  it('returns InvalidInputError for an empty bookId and deletes nothing', async () => {
-    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
-
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: '' } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookDelete).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
-    expect(await bookExists(harness.aliceOwner.userId, BOOK_ID)).toBe(true);
   });
 
   it('refuses one user deleting another user’s book, and leaves the row in place', async () => {
@@ -100,7 +80,7 @@ describe('Mutation.bookDelete', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID) } },
     });
 
     // Victim-row assertion first (review Minor-9): a probe that merely
@@ -122,9 +102,10 @@ describe('Mutation.bookDelete', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Copy');
     await seedEditableBook(harness, harness.bobOwner, BOOK_ID, 'Bob’s Copy');
 
+    const inputId = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID } },
+      variables: { input: { id: inputId } },
     });
 
     expect(result.errors).toBeUndefined();
@@ -133,22 +114,23 @@ describe('Mutation.bookDelete', () => {
       // Owner-scoped to ALICE, never the admin (who has no userId at all) —
       // the same owner-derivation property the admin test exists to check,
       // now also proven of `deletedId`.
-      deletedId: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
-      deletedBookId: BOOK_ID,
+      deletedId: inputId,
       library: { user: { username: 'alice' } },
     });
     expect(await bookExists(harness.aliceOwner.userId, BOOK_ID)).toBe(false);
     expect(await bookExists(harness.bobOwner.userId, BOOK_ID)).toBe(true);
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Well-formed Book gid whose decoded userId names no real user, only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case for why a non-admin never reaches this branch.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: {
-        input: { userId: encodeGlobalID('User', 'no-such-user'), bookId: BOOK_ID },
-      },
+      viewer: harness.adminViewer,
+      variables: { input: { id: bookGlobalId('no-such-user', BOOK_ID) } },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookDelete).toBeNull();
   });
 });
