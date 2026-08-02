@@ -26,17 +26,24 @@ import {
   invalidInputError,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
-import { NO_MATCH_USER_ID } from '../../node-scope';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import {
   model as stagedUploadNotFoundErrorModel,
   stagedUploadNotFoundError,
 } from '../../staged-upload-not-found-error/model';
-import { model as user } from '../../user/model';
 import { model as bookType } from '../model';
 
 /**
- * `userId` optional, `acceptedFixKeys` mirrors REST's `acceptedFixKeys` body
- * field — already a real `[String!]!` list here, so (unlike REST's
+ * The `Book` global ID IS the input's `id` field — no separate `userId`/
+ * `bookId` pair. Same shape as `bookValidate`'s `BookValidateInput` (see that
+ * file's doc comment for the full rationale): the id's compound-key local
+ * part already carries the owner, so decoding it at the resolver boundary
+ * yields both halves the old two-argument shape used to require. This is
+ * independent of who may consume the staged upload named by
+ * `stagedUploadId` — that identity is always `context.viewer.userId`, the
+ * literal authenticated caller, never the decoded owner. `acceptedFixKeys`
+ * mirrors REST's `acceptedFixKeys` body field — already a real
+ * `[String!]!` list here, so (unlike REST's
  * `JSON.parse(req.body.acceptedFixKeys ?? '[]')` with a malformed-JSON
  * fallback to `[]`) there is no parse failure this input can ever hit: a
  * value that reaches the resolver is already the correctly-typed shape REST
@@ -45,30 +52,15 @@ import { model as bookType } from '../model';
  */
 const input = builder.inputType('BookReplaceInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: false, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: bookType }),
     stagedUploadId: t.string({ required: true }),
     acceptedFixKeys: t.stringList({ required: true }),
   }),
 });
 
-/** Same admin-requires-userId rule as `bookAnalyzeReplace` — see that file's doc comment. */
-const buildInputSchema = (viewerIsAdmin: boolean) =>
-  z
-    .object({
-      bookId: z.string().min(1, 'bookId must not be empty'),
-      stagedUploadId: z.string().min(1, 'stagedUploadId must not be empty'),
-      userId: z.string().nullable(),
-    })
-    .superRefine((value, ctx) => {
-      if (viewerIsAdmin && value.userId === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['userId'],
-          message: 'userId is required for admin sessions',
-        });
-      }
-    });
+const inputSchema = z.object({
+  stagedUploadId: z.string().min(1, 'stagedUploadId must not be empty'),
+});
 
 type BookReplacePayloadShape = {
   readonly __typename: 'BookReplacePayload';
@@ -82,7 +74,8 @@ type BookReplacePayloadShape = {
  * book` — see the former's doc comment for why the store's `Book` DTO cannot
  * back this type's field resolvers directly. A successful replace always
  * changes the book's id (the new content's fingerprint), so this must
- * re-read by the id the store call actually returned, never `input.bookId`.
+ * re-read by the id the store call actually returned, never the decoded
+ * `id`'s local part.
  */
 const payload = builder.objectRef<BookReplacePayloadShape>('BookReplacePayload').implement({
   fields: (t) => ({
@@ -148,8 +141,13 @@ const result = builder.unionType('BookReplaceResult', {
  * the multipart upload half — see `replace-staging.ts`'s doc comment for the
  * staged-upload design, and `bookAnalyzeReplace`'s doc comment for the
  * owner-vs-caller identity split this mutation shares with it verbatim
- * (`userId` resolves whose `Book` is targeted; `context.viewer.userId` —
- * never `userId` — is what the staged file is keyed to).
+ * (the decoded `id` resolves whose `Book` is targeted; `context.viewer.
+ * userId` — never the decoded owner — is what the staged file is keyed to).
+ * Input is the `Book` global ID alone (design doc's 10-mutation input
+ * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc
+ * comment for the full malformed-id / wrong-type-id reasoning, which applies
+ * here unchanged.
  *
  * `repairPackageDocument` runs the same warn-and-continue best-effort guard
  * REST's route runs (`routes/ui.ts:1392-1403`): on failure, fall through to
@@ -192,22 +190,22 @@ builder.mutationField('bookReplace', (t) =>
       'auto-fixes and any accepted proposals. Resolves to null when the book ' +
       'does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args, context) => ({
-      ownerOf: args.input.userId?.id ?? context.viewer?.userId ?? NO_MATCH_USER_ID,
-    }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = buildInputSchema(context.viewer?.isAdmin === true).safeParse({
-        bookId: args.input.bookId,
-        stagedUploadId: args.input.stagedUploadId,
-        userId: args.input.userId?.id ?? null,
-      });
-      if (!parsed.success) return invalidInputError(parsed.error);
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
 
-      const targetUserId = parsed.data.userId ?? context.viewer!.userId!;
-      const owner = await context.loadOwner(targetUserId);
+      const parsedInput = inputSchema.safeParse({ stagedUploadId: args.input.stagedUploadId });
+      if (!parsedInput.success) return invalidInputError(parsedInput.error);
+
+      const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       const callerUserId = context.viewer!.userId;
@@ -216,7 +214,11 @@ builder.mutationField('bookReplace', (t) =>
       const staged =
         callerUserId === null
           ? null
-          : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId, 'epub');
+          : context.stores.replaceStaging.resolve(
+              parsedInput.data.stagedUploadId,
+              callerUserId,
+              'epub'
+            );
       if (staged === null) return stagedUploadNotFoundError();
 
       const repairedBytes = repairBestEffort(staged.path, staged.originalName);
@@ -245,7 +247,7 @@ builder.mutationField('bookReplace', (t) =>
         acceptedKeys: [...args.input.acceptedFixKeys],
       });
 
-      context.stores.replaceStaging.consume(parsed.data.stagedUploadId, callerUserId!, 'epub');
+      context.stores.replaceStaging.consume(parsedInput.data.stagedUploadId, callerUserId!, 'epub');
 
       return {
         __typename: 'BookReplacePayload' as const,

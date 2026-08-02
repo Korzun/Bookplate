@@ -58,6 +58,12 @@ const link = async (owner: Harness['aliceOwner'], bookId: string, documentId: st
   await harness.stores.book.linkDocument(owner, bookId, documentId);
 };
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
+// string (mirrors `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookUnlinkDocument', () => {
   it('removes a manually-linked (merge) entry from the viewer’s own book', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Unlink Me');
@@ -66,7 +72,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), documentId: DOCUMENT_ID },
       },
     });
 
@@ -85,7 +91,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), documentId: DOCUMENT_ID },
       },
     });
 
@@ -112,7 +118,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const edited = await harness.execute(UPDATE, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Edited Title' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), title: 'Edited Title' },
       },
     });
     const editedData = edited.data?.bookUpdateMetadata as { book: { bookId: string } };
@@ -125,7 +131,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: newBookId, documentId: BOOK_ID },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, newBookId), documentId: BOOK_ID },
       },
     });
 
@@ -137,26 +143,14 @@ describe('Mutation.bookUnlinkDocument', () => {
     expect((await lineageOf(harness.aliceOwner.userId, newBookId))?.entries).toEqual(editEntries);
   });
 
-  it('returns InvalidInputError for an empty bookId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: '', documentId: DOCUMENT_ID } },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookUnlinkDocument).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
-  });
-
   it('returns InvalidInputError for an empty documentId', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'X');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: '' } },
+      variables: {
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), documentId: '' },
+      },
     });
 
     expect(result.errors).toBeUndefined();
@@ -174,7 +168,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), documentId: DOCUMENT_ID },
       },
     });
 
@@ -192,7 +186,7 @@ describe('Mutation.bookUnlinkDocument', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), documentId: DOCUMENT_ID },
       },
     });
 
@@ -204,18 +198,21 @@ describe('Mutation.bookUnlinkDocument', () => {
     expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Covers `unlink-document.ts`'s `if (owner === null) return null;` branch
+    // — a well-formed Book gid whose decoded userId names no real user. Only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case. Also restores, in the new input's terms, the
+    // assertion the old separate-`userId`-field shape's "refuses a User
+    // global ID that names no user" test used to carry.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
+      viewer: harness.adminViewer,
       variables: {
-        input: {
-          userId: encodeGlobalID('User', 'no-such-user'),
-          bookId: BOOK_ID,
-          documentId: DOCUMENT_ID,
-        },
+        input: { id: bookGlobalId('no-such-user', BOOK_ID), documentId: DOCUMENT_ID },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookUnlinkDocument).toBeNull();
   });
 });

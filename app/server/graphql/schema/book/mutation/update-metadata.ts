@@ -28,11 +28,11 @@ import {
   invalidInputError,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import {
   model as stagedUploadNotFoundErrorModel,
   stagedUploadNotFoundError,
 } from '../../staged-upload-not-found-error/model';
-import { model as user } from '../../user/model';
 import { model as bookType } from '../model';
 
 /**
@@ -68,21 +68,20 @@ const identifierInput = builder.inputType('IdentifierInput', {
  * change", exactly like REST's `req.file` being unset when no `cover` part
  * was attached.
  *
- * `bookId` is the raw content-hash id (`Book.bookId`), not a `Book` global
- * ID: book ids are partial MD5s of file content, so two users can legitimately
- * hold the same one, and `Library.book(id:)` already takes the same raw string
- * for the same reason (see that field's doc comment). `userId` is the `User`
- * global ID that resolves which library owns the edit — see the resolver's
- * `authScopes` note. `stagedCoverId` is a plain opaque string, not a `Book`-
- * scoped or global id: it names an entry in `services/replace-staging.ts`'s
- * registry, keyed to the *authenticated caller* (`context.viewer.userId`),
- * never to `userId`/the resolved book owner — see the resolver's doc comment
- * for why those two identities can differ and what happens when they do.
+ * The `Book` global ID IS the input's `id` field — no separate `userId`/
+ * `bookId` pair. Same shape as `bookValidate`'s `BookValidateInput` (see that
+ * file's doc comment for the full rationale): the id's compound-key local
+ * part already carries the owner, so decoding it at the resolver boundary
+ * yields both halves the old two-argument shape used to require.
+ * `stagedCoverId` is a plain opaque string, not a `Book`-scoped or global id:
+ * it names an entry in `services/replace-staging.ts`'s registry, keyed to the
+ * *authenticated caller* (`context.viewer.userId`), never to the decoded
+ * owner — see the resolver's doc comment for why those two identities can
+ * differ and what happens when they do.
  */
 const input = builder.inputType('BookUpdateMetadataInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user }),
-    bookId: t.string({ required: true }),
+    id: t.globalID({ required: true, for: bookType }),
     title: t.string({ required: false }),
     titleSort: t.string({ required: false }),
     author: t.string({ required: false }),
@@ -110,21 +109,19 @@ const input = builder.inputType('BookUpdateMetadataInput', {
  * resolver runs at all, and a value that reaches the resolver is already the
  * correctly-typed shape REST had to parse strings into.
  *
- * `bookId.min(1)` is NOT a REST mirror (REST's `:id` path segment cannot be
- * empty; a matching `PATCH /api/books//metadata` would 404 at the router
- * before ever reaching this handler) — it exists for consistency with
- * `bookDelete`'s identical rule on the same field (review Minor-2): both
- * mutations now reject an empty `bookId` the same way, rather than one
- * returning `InvalidInputError` and the other silently treating it as
- * "book not found".
+ * `bookId` has no zod rule here — it is no longer a plain string field at
+ * all, having been absorbed into the `id` global ID's compound-key local
+ * part (`InvalidInputError` for an empty `bookId` is unreachable now the
+ * same way it became unreachable for `bookDelete`'s identical field in task
+ * 2: an id that doesn't parse is the `parsed === null` early return below,
+ * not a zod issue).
  *
  * `stagedCoverId.min(1)` has no REST analogue at all (the field itself is
  * new) but follows the same "empty string is a client bug, not a valid
  * lookup" rule every other id-like field in this mutation set follows
- * (`bookId` here, `stagedUploadId` in `bookAnalyzeReplace`/`bookReplace`).
+ * (`stagedUploadId` in `bookAnalyzeReplace`/`bookReplace`).
  */
 const inputSchema = z.object({
-  bookId: z.string().min(1, 'bookId must not be empty'),
   publishDate: z
     .string()
     .refine((value) => {
@@ -240,22 +237,24 @@ const buildChanges = (
 };
 
 /**
- * Mirrors `PATCH /api/books/:id/metadata` (`routes/ui.ts:1101`). Owner
- * resolution mirrors REST's `resolveOwner`: a regular viewer always edits
- * their own library, an admin must name a target — expressed here the same
- * way `progressDelete` expresses it, as a `userId` global ID gated by the
- * `ownerOf` scope (`isOwnerOrAdmin`), rather than REST's `?user=` query
- * param. REST's "admin without `?user=`" 400 cannot occur here: `userId` is a
- * required input field, so GraphQL rejects that request before this resolver
- * (or even `authScopes`) ever runs.
+ * Mirrors `PATCH /api/books/:id/metadata` (`routes/ui.ts:1101`). Input is
+ * the `Book` global ID alone (design doc's 10-mutation input collapse),
+ * decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID` convention
+ * `bookValidate` established — see that file's resolver doc comment for the
+ * full malformed-id / wrong-type-id reasoning, which applies here unchanged.
+ * `authScopes` runs `ownerOf` on the decoded userId, the same way REST's
+ * `resolveOwner` lets a regular viewer edit only their own library and an
+ * admin target any; REST's "admin without a target" 400 cannot occur here,
+ * since the decoded id always names a specific owner rather than leaving one
+ * to be supplied separately.
  *
- * Input is parsed before owner/book resolution (matching `progressDelete`'s
- * order, not REST's — `routes/ui.ts:1113-1149` checks the 404, then the 409,
- * then `publishDate`). This does not leak anything an attacker couldn't
- * already learn: a malformed `publishDate` yields the same `InvalidInputError`
- * whether or not the book exists or is valid, so the response is identical
- * either way, and the ordering is arguably safer than REST's (a malformed
- * request never touches the store at all).
+ * The decoded id's malformed-local-id early return (`parsed === null`) runs
+ * before the remaining fields' zod parse, matching `progressDelete`'s
+ * "input parsed before owner/book resolution" order in spirit: both checks
+ * are pure/local, run before any store call, and this does not leak anything
+ * an attacker couldn't already learn — a malformed `publishDate` yields the
+ * same `InvalidInputError` whether or not the book exists or is valid, so
+ * the response is identical either way.
  *
  * Two REST preconditions run before `applyEpubChanges` is ever called, and
  * both are mirrored here as plain early returns rather than typed union
@@ -294,10 +293,10 @@ const buildChanges = (
  *
  * A successful edit rewrites the EPUB, so the book's content-hash id changes
  * (partial MD5 of the new bytes) — the returned `Book.bookId` is the *new*
- * id, not `input.bookId`. The old id's `Book` node is now dangling; a client
- * must evict it itself (Houdini phase) rather than expect it updated in
- * place. Written down here because `update-metadata.test.ts`'s admin-edit
- * test is otherwise the only place this behaviour is visible.
+ * id, not the decoded `id`'s local part. The old id's `Book` node is now
+ * dangling; a client must evict it itself (Houdini phase) rather than expect
+ * it updated in place. Written down here because `update-metadata.test.ts`'s
+ * admin-edit test is otherwise the only place this behaviour is visible.
  *
  * `stagedCoverId` (Task 3b, 2026-08-01): traced end to end against REST's
  * multipart-cover branch (`routes/ui.ts:1106-1244`), which merges
@@ -325,11 +324,11 @@ const buildChanges = (
  * uses for the identical `StagedUploadNotFoundError` case on the EPUB side.
  *
  * The staged cover is resolved/consumed by `context.viewer.userId` — the
- * *authenticated caller* — never by `userId`/the resolved book owner. Same
- * split `bookAnalyzeReplace`/`bookReplace` use for `stagedUploadId` (see
- * that file's doc comment): an admin session's `viewer.userId` is always
- * `null`, so it can never resolve any staged cover, including one staged by
- * the very user `userId` names — the same "config admin cannot stage"
+ * *authenticated caller* — never by the decoded owner of `id`. Same split
+ * `bookAnalyzeReplace`/`bookReplace` use for `stagedUploadId` (see that
+ * file's doc comment): an admin session's `viewer.userId` is always `null`,
+ * so it can never resolve any staged cover, including one staged by the
+ * very user the decoded id names — the same "config admin cannot stage"
  * limitation the spec records for replace, now also true for covers.
  * `resolve`/`consume` are called with `kind: 'cover'` explicitly, so a
  * `stagedUploadId` from `bookReplace`'s EPUB-staging flow is rejected here
@@ -360,35 +359,40 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       'separately until the client migrates. Resolves to null when the ' +
       'book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = parseCompoundId(args.input.id.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({
-        bookId: args.input.bookId,
+      const parsed = parseCompoundId(args.input.id.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, bookId] = parsed;
+
+      const parsedInput = inputSchema.safeParse({
         publishDate: args.input.publishDate ?? undefined,
         stagedCoverId: args.input.stagedCoverId ?? undefined,
       });
-      if (!parsed.success) return invalidInputError(parsed.error);
+      if (!parsedInput.success) return invalidInputError(parsedInput.error);
 
-      const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, parsed.data.bookId);
+      const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
       if (targetBook.valid !== true) {
         return bookNotValidatedError(owner, targetBook.id);
       }
 
-      const changes = buildChanges(args.input, parsed.data.publishDate?.trim());
+      const changes = buildChanges(args.input, parsedInput.data.publishDate?.trim());
 
       const callerUserId = context.viewer!.userId;
-      if (parsed.data.stagedCoverId !== undefined) {
+      if (parsedInput.data.stagedCoverId !== undefined) {
         const staged =
           callerUserId === null
             ? null
             : context.stores.replaceStaging.resolve(
-                parsed.data.stagedCoverId,
+                parsedInput.data.stagedCoverId,
                 callerUserId,
                 'cover'
               );
@@ -417,11 +421,15 @@ builder.mutationField('bookUpdateMetadata', (t) =>
         return assertUnreachableStoreError(outcome.err);
       }
 
-      if (parsed.data.stagedCoverId !== undefined) {
+      if (parsedInput.data.stagedCoverId !== undefined) {
         context.stores.thumbnail.enqueue(owner.userId, outcome.ok.id);
         // callerUserId is non-null here — the resolve() above already
         // required it to be non-null to reach a success outcome.
-        context.stores.replaceStaging.consume(parsed.data.stagedCoverId, callerUserId!, 'cover');
+        context.stores.replaceStaging.consume(
+          parsedInput.data.stagedCoverId,
+          callerUserId!,
+          'cover'
+        );
       }
 
       return {

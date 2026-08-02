@@ -76,6 +76,12 @@ const MUTATION = `
 const titleOf = async (userId: string, id: string): Promise<string | null> =>
   (await harness.prisma.book.findUnique({ where: { userId_id: { userId, id } } }))?.title ?? null;
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
+// string (mirrors `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookUpdateMetadata', () => {
   it('updates the viewer’s own book and returns the updated Book', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
@@ -83,7 +89,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'New Title' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), title: 'New Title' },
       },
     });
 
@@ -99,7 +105,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, author: 'New Author' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), author: 'New Author' },
       },
     });
 
@@ -115,28 +121,12 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: 'no-such-book', title: 'X' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book'), title: 'X' },
       },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.bookUpdateMetadata).toBeNull();
-  });
-
-  it('returns InvalidInputError for an empty bookId (consistency with bookDelete, review Minor-2)', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: {
-        input: { userId: harness.aliceGlobalId, bookId: '', title: 'X' },
-      },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookUpdateMetadata).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
   });
 
   it('returns InvalidInputError for a malformed publishDate and changes nothing', async () => {
@@ -145,7 +135,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, publishDate: 'not-a-date' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          publishDate: 'not-a-date',
+        },
       },
     });
 
@@ -166,7 +159,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, publishDate: '  ' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), publishDate: '  ' },
       },
     });
 
@@ -181,7 +174,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Hijacked' },
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), title: 'Hijacked' },
       },
     });
 
@@ -200,7 +193,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'After Admin Edit' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          title: 'After Admin Edit',
+        },
       },
     });
 
@@ -223,7 +219,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Should Not Land' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          title: 'Should Not Land',
+        },
       },
     });
 
@@ -254,7 +253,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Should Not Land' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          title: 'Should Not Land',
+        },
       },
     });
 
@@ -290,11 +292,15 @@ describe('Mutation.bookUpdateMetadata', () => {
 
     const preEdit = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'X' } },
+      variables: {
+        input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), title: 'X' },
+      },
     });
     const postEdit = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, bookId: OTHER_BOOK_ID, title: 'Y' } },
+      variables: {
+        input: { id: bookGlobalId(harness.aliceOwner.userId, OTHER_BOOK_ID), title: 'Y' },
+      },
     });
 
     expect((preEdit.data?.bookUpdateMetadata as { __typename: string } | null)?.__typename).toBe(
@@ -323,7 +329,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Trigger Collision' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          title: 'Trigger Collision',
+        },
       },
     });
 
@@ -350,7 +359,10 @@ describe('Mutation.bookUpdateMetadata', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'Should Not Land' },
+        input: {
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          title: 'Should Not Land',
+        },
       },
     });
 
@@ -364,19 +376,23 @@ describe('Mutation.bookUpdateMetadata', () => {
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Still Valid Pre-Edit');
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Covers `update-metadata.ts`'s `if (owner === null) return null;` branch
+    // — a well-formed Book gid whose decoded userId names no real user. Only
+    // reachable past `authScopes` for an admin viewer (a non-admin fails
+    // `ownerOf` first) — see `validate.test.ts`'s identical case. Also
+    // restores, in the new input's terms, the assertion the old separate-
+    // `userId`-field shape's "refuses a User global ID that names no user"
+    // test used to carry.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
+      viewer: harness.adminViewer,
       variables: {
-        input: {
-          userId: encodeGlobalID('User', 'no-such-user'),
-          bookId: BOOK_ID,
-          title: 'X',
-        },
+        input: { id: bookGlobalId('no-such-user', BOOK_ID), title: 'X' },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookUpdateMetadata).toBeNull();
   });
 
   describe('stagedCoverId (Task 3b)', () => {
@@ -396,8 +412,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'New Title',
             stagedCoverId,
           },
@@ -429,7 +444,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedCoverId },
         },
       });
 
@@ -451,8 +466,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'Should Not Land',
             stagedCoverId: 'no-such-id',
           },
@@ -490,8 +504,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'Should Not Land',
             stagedCoverId,
           },
@@ -513,8 +526,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'Hijacked Via Cover',
             stagedCoverId: bobsStagedCoverId,
           },
@@ -546,8 +558,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'Should Not Land',
             stagedCoverId: epubStagedId,
           },
@@ -581,8 +592,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             title: 'Should Not Land',
             stagedCoverId,
           },
@@ -607,7 +617,10 @@ describe('Mutation.bookUpdateMetadata', () => {
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
         variables: {
-          input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'New Title Only' },
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            title: 'New Title Only',
+          },
         },
       });
 
@@ -639,7 +652,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
           variables: {
-            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+            input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedCoverId },
           },
         });
 
@@ -656,7 +669,10 @@ describe('Mutation.bookUpdateMetadata', () => {
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
           variables: {
-            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, title: 'New Title' },
+            input: {
+              id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+              title: 'New Title',
+            },
           },
         });
 
@@ -679,7 +695,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
           variables: {
-            input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedCoverId },
+            input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedCoverId },
           },
         });
 
@@ -697,8 +713,7 @@ describe('Mutation.bookUpdateMetadata', () => {
           viewer: harness.aliceViewer,
           variables: {
             input: {
-              userId: harness.aliceGlobalId,
-              bookId: BOOK_ID,
+              id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
               stagedCoverId: 'no-such-id',
             },
           },

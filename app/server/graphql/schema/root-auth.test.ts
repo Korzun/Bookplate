@@ -117,6 +117,11 @@ describe('root type authorization', () => {
     'BookRegenChaptersInput.id': 'Book',
     'BookClearEditionsInput.id': 'Book',
     'BookResolvePendingFixInput.id': 'Book',
+    'BookUpdateMetadataInput.id': 'Book',
+    'BookAnalyzeReplaceInput.id': 'Book',
+    'BookReplaceInput.id': 'Book',
+    'BookLinkDocumentInput.id': 'Book',
+    'BookUnlinkDocumentInput.id': 'Book',
   };
 
   // Produces a syntactically valid GraphQL literal for a required argument's

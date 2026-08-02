@@ -102,6 +102,12 @@ const titleOf = async (userId: string, id: string): Promise<string | null> =>
 const stageFor = (owner: Harness['aliceOwner'], title: string): string =>
   harness.stores.replaceStaging.stage(fixtureEpub(title), owner.userId, `${title}.epub`);
 
+// Computed the same way the resolver decodes it — the independent check that
+// the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
+// string (mirrors `delete.test.ts`'s `bookGlobalId`).
+const bookGlobalId = (userId: string, id: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, id]));
+
 describe('Mutation.bookReplace', () => {
   it('replaces the book with the staged upload, changes its id, and consumes the staged upload', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
@@ -111,8 +117,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -134,22 +139,6 @@ describe('Mutation.bookReplace', () => {
     expect(harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).toBeNull();
   });
 
-  it('defaults to the viewer’s own library when userId is omitted', async () => {
-    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
-    const stagedId = stageFor(harness.aliceOwner, 'New Title');
-
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
-      variables: {
-        input: { bookId: BOOK_ID, stagedUploadId: stagedId, acceptedFixKeys: [] },
-      },
-    });
-
-    expect(result.errors).toBeUndefined();
-    const data = result.data?.bookReplace as { __typename: string };
-    expect(data.__typename).toBe('BookReplacePayload');
-  });
-
   it('resolves to null when the book does not exist for the resolved owner', async () => {
     const stagedId = stageFor(harness.aliceOwner, 'New Title');
 
@@ -157,8 +146,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: 'no-such-book',
+          id: bookGlobalId(harness.aliceOwner.userId, 'no-such-book'),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -176,8 +164,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: 'no-such-id',
           acceptedFixKeys: [],
         },
@@ -214,8 +201,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -229,14 +215,13 @@ describe('Mutation.bookReplace', () => {
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
   });
 
-  it('returns InvalidInputError for an empty bookId', async () => {
+  it('returns InvalidInputError for an empty stagedUploadId', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: '',
-          stagedUploadId: 'x',
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+          stagedUploadId: '',
           acceptedFixKeys: [],
         },
       },
@@ -246,23 +231,7 @@ describe('Mutation.bookReplace', () => {
     expect(result.data?.bookReplace).toEqual({
       __typename: 'InvalidInputError',
       message: 'Invalid input',
-      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
-    });
-  });
-
-  it('returns InvalidInputError when an admin session omits userId', async () => {
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.adminViewer,
-      variables: {
-        input: { bookId: BOOK_ID, stagedUploadId: 'whatever', acceptedFixKeys: [] },
-      },
-    });
-
-    expect(result.errors).toBeUndefined();
-    expect(result.data?.bookReplace).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['userId'], message: 'userId is required for admin sessions' }],
+      issues: [{ path: ['stagedUploadId'], message: 'stagedUploadId must not be empty' }],
     });
   });
 
@@ -301,8 +270,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [acceptedKey],
         },
@@ -335,8 +303,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -363,8 +330,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -394,8 +360,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: stagedId,
           acceptedFixKeys: [],
         },
@@ -429,8 +394,7 @@ describe('Mutation.bookReplace', () => {
         viewer: harness.aliceViewer,
         variables: {
           input: {
-            userId: harness.aliceGlobalId,
-            bookId: BOOK_ID,
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
             stagedUploadId: stagedId,
             acceptedFixKeys: [],
           },
@@ -461,8 +425,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.bobViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: bobsStagedId,
           acceptedFixKeys: [],
         },
@@ -486,8 +449,7 @@ describe('Mutation.bookReplace', () => {
       viewer: harness.adminViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
-          bookId: BOOK_ID,
+          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
           stagedUploadId: aliceStagedId,
           acceptedFixKeys: [],
         },
@@ -503,19 +465,25 @@ describe('Mutation.bookReplace', () => {
     ).not.toBeNull();
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('resolves to null for an admin when the encoded owner does not exist', async () => {
+    // Covers `replace.ts`'s `if (owner === null) return null;` branch — a
+    // well-formed Book gid whose decoded userId names no real user. Only
+    // reachable past `authScopes` for an admin viewer — see `validate.test.
+    // ts`'s identical case. Also restores, in the new input's terms, the
+    // assertion the old separate-`userId`-field shape's "refuses a User
+    // global ID that names no user" test used to carry.
     const result = await harness.execute(MUTATION, {
-      viewer: harness.aliceViewer,
+      viewer: harness.adminViewer,
       variables: {
         input: {
-          userId: encodeGlobalID('User', 'no-such-user'),
-          bookId: BOOK_ID,
+          id: bookGlobalId('no-such-user', BOOK_ID),
           stagedUploadId: 'whatever',
           acceptedFixKeys: [],
         },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookReplace).toBeNull();
   });
 });
