@@ -104,20 +104,47 @@ describe('loadConfig validation threshold', () => {
 // default requirement, enforced at the parse boundary so a malformed env var
 // can only ever fail SAFE (toward "trust nothing").
 describe('loadConfig trustProxyHops', () => {
-  it('defaults to 0 when TRUST_PROXY_HOPS is unset', () => {
+  it('defaults to 0 when neither TRUST_PROXY_HOPS nor the add-on option is set', () => {
     delete process.env.TRUST_PROXY_HOPS;
     expect(loadConfig().trustProxyHops).toBe(0);
   });
 
-  it('parses a positive integer', () => {
+  it('parses a positive integer from the TRUST_PROXY_HOPS env var (bare-metal/dev path)', () => {
     process.env.TRUST_PROXY_HOPS = '2';
     expect(loadConfig().trustProxyHops).toBe(2);
   });
 
-  it('falls back to 0 for zero, negative, or non-numeric values (never trust by accident)', () => {
+  it('falls back to 0 for zero, negative, or non-numeric env var values (never trust by accident)', () => {
     for (const raw of ['0', '-1', 'nope', '']) {
       process.env.TRUST_PROXY_HOPS = raw;
       expect(loadConfig().trustProxyHops).toBe(0);
     }
+  });
+
+  // Review D-1: the Home Assistant add-on has no env-var surface at all
+  // (`run.sh` execs `node` with no arguments) — `options.json`, sourced
+  // from `config.yaml`'s `trust_proxy_hops` schema entry, is the ONLY path
+  // an add-on user can reach this knob through. Mirrors
+  // `validation_threshold`'s options.json test pattern immediately above,
+  // the closest sibling knob that (like this one, post-fix) is readable
+  // from both an env var and an add-on option.
+  it('reads trust_proxy_hops from options.json (Home Assistant add-on path)', () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    writeOptions({ trust_proxy_hops: 1 });
+    expect(loadConfig().trustProxyHops).toBe(1);
+  });
+
+  it('falls back to 0 for a zero, negative, or malformed options.json value', () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    for (const raw of [0, -1, 'not-a-number']) {
+      writeOptions({ trust_proxy_hops: raw });
+      expect(loadConfig().trustProxyHops).toBe(0);
+    }
+  });
+
+  it('lets TRUST_PROXY_HOPS env var override the add-on option, same precedence as validationThreshold', () => {
+    process.env.TRUST_PROXY_HOPS = '3';
+    writeOptions({ trust_proxy_hops: 1 });
+    expect(loadConfig().trustProxyHops).toBe(3);
   });
 });

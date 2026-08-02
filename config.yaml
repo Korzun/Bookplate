@@ -23,6 +23,7 @@ options:
   password: changeme
   max_concurrent_uploads: 3
   validation_threshold: Error
+  trust_proxy_hops: 0
 schema:
   library_name: str
   library_dir: str
@@ -30,3 +31,4 @@ schema:
   password: str
   max_concurrent_uploads: int
   validation_threshold: "list(Fatal|Error|Warning|Info)"
+  trust_proxy_hops: int

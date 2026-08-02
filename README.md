@@ -56,6 +56,7 @@ Add-on options (set in the **Configuration** tab):
 | `password`               | string | `changeme`  | Admin account password. **Change this before starting.**          |
 | `max_concurrent_uploads` | int    | `3`         | Maximum number of simultaneous uploads processed by the server.   |
 | `validation_threshold`   | list   | `Error`     | Strictness of EPUB upload validation. `Fatal` rejects only unreadable files; `Error` (default) also rejects structural errors; `Warning` and `Info` reject progressively more. |
+| `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP for the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard). Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
 
 Example:
 
@@ -174,7 +175,7 @@ variables:
 | `DATA_DIR`      | `/data`        | Path for the SQLite DB and thumbnails.       |
 | `PORT`          | `3000`         | HTTP listen port.                            |
 | `LOG_LEVEL`     | `info`         | Log verbosity.                               |
-| `TRUST_PROXY_HOPS` | `0`         | Reverse-proxy hops to trust for the login rate limiter's client-IP resolution only (e.g. `1` for a single reverse proxy or Cloudflare Tunnel in front of Bookplate). Leave at `0` unless you run one — trusting a hop you don't control lets a client bypass the limiter. |
+| `TRUST_PROXY_HOPS` | `0`         | Same as the add-on's `trust_proxy_hops` option above — reverse-proxy hops to trust for the login rate limiter's client-IP resolution only. Overrides the add-on option if both are somehow set. Leave at `0` unless you run one; trusting a hop you don't control lets a client bypass the limiter. |
 
 ## Release channels
 
