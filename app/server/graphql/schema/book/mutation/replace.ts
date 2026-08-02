@@ -2,6 +2,7 @@ import * as fs from 'fs';
 
 import { z } from 'zod';
 
+import { logger } from '../../../../logger';
 import {
   type ApplyEpubChangesDeps,
   replaceEpubBytes,
@@ -96,6 +97,8 @@ const payload = builder.objectRef<BookReplacePayloadShape>('BookReplacePayload')
   }),
 });
 
+const log = logger('bookReplace');
+
 /**
  * Best-effort structural repair, mirroring REST's identical guard
  * (`routes/ui.ts:1392-1403`, warn-and-continue): on failure, fall back to the
@@ -108,11 +111,20 @@ const payload = builder.objectRef<BookReplacePayloadShape>('BookReplacePayload')
  * them (REST's own guard is not a `catch`-a-declared-error site either — it
  * only ever swallows `repairPackageDocument`'s own possible throw, never
  * calls `toResult`, and doesn't discharge anything the union declares).
+ *
+ * Logs on failure with the exact message shape REST's own guard produces
+ * (`routes/ui.ts:1397-1399`, `Package repair skipped for "<name>": <message>`)
+ * — review finding M-2: the first draft swallowed this silently, making a
+ * systematically unrepairable candidate invisible in the logs on the
+ * GraphQL path even though `analyzeEpub`'s own internal guard still logs.
  */
-function repairBestEffort(stagedPath: string): Buffer {
+function repairBestEffort(stagedPath: string, originalName: string): Buffer {
   try {
     return repairPackageDocument(stagedPath).bytes;
-  } catch {
+  } catch (err: unknown) {
+    log.warn(
+      `Package repair skipped for "${originalName}": ${err instanceof Error ? err.message : String(err)}`
+    );
     return fs.readFileSync(stagedPath);
   }
 }
@@ -205,7 +217,7 @@ builder.mutationField('bookReplace', (t) =>
           : context.stores.replaceStaging.resolve(parsed.data.stagedUploadId, callerUserId);
       if (staged === null) return stagedUploadNotFoundError();
 
-      const repairedBytes = repairBestEffort(staged.path);
+      const repairedBytes = repairBestEffort(staged.path, staged.originalName);
 
       const deps: ApplyEpubChangesDeps = {
         bookStore: context.stores.book,

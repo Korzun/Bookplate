@@ -28,8 +28,18 @@ export type ReplaceStaging = {
   stage: (bytes: Buffer, userId: string, originalName: string) => string;
   /** Reads back a staged file without consuming it. `null` for unknown, expired, or foreign. */
   resolve: (id: string, userId: string) => StagedFile | null;
-  /** Reads back and deletes a staged file (registry entry + disk file). `null` for unknown, expired, or foreign — leaves the file untouched in that case. */
-  consume: (id: string, userId: string) => StagedFile | null;
+  /**
+   * Deletes a staged file (registry entry + disk file) and reports whether
+   * there was one to delete. `true` on success, `false` for unknown,
+   * expired, or foreign — in the `false` case the file (if any, and if not
+   * the caller's) is left untouched. Deliberately not `StagedFile`: by the
+   * time this returns, the path it would carry has already been unlinked,
+   * so a caller that tried to read from it would get ENOENT — callers that
+   * need the bytes/path must `resolve()` first, then `consume()` once done
+   * (see `bookReplace`'s doc comment for why the two calls are split that
+   * way).
+   */
+  consume: (id: string, userId: string) => boolean;
 };
 
 export type ReplaceStagingDeps = {
@@ -125,9 +135,32 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     return id;
   }
 
+  /**
+   * The single lookup both `resolve` and `consume` build on — id match, then
+   * owner match, then age. Age-checked HERE, not only in `sweep()`: `sweep()`
+   * runs exclusively from `stage()` (the spec's "checked on each staging
+   * call"), so on a server where nobody stages a new file an expired entry
+   * would otherwise stay fully resolvable/consumable indefinitely — reviewer
+   * finding I-1, reproduced with a `now` past `ttlMs` and no intervening
+   * `stage()` call. An expired entry found here is evicted immediately
+   * (registry entry removed, file unlinked) rather than left for some future
+   * sweep to find — the same cleanup `sweep()` itself would eventually do,
+   * just not deferred.
+   *
+   * The boundary matches `sweep()`'s own comparison exactly (`createdAt <
+   * cutoff` is expired, so `createdAt === cutoff` — exactly `ttlMs` old — is
+   * NOT expired): one shared definition of "expired," not two that could
+   * drift apart.
+   */
   function findOwned(id: string, userId: string): StagedEntry | null {
     const entry = entries.get(id);
-    return entry !== undefined && entry.userId === userId ? entry : null;
+    if (entry === undefined || entry.userId !== userId) return null;
+    if (entry.createdAt < now() - ttlMs) {
+      entries.delete(id);
+      unlinkQuiet(entry.path);
+      return null;
+    }
+    return entry;
   }
 
   function resolve(id: string, userId: string): StagedFile | null {
@@ -135,12 +168,19 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     return entry === null ? null : { path: entry.path, originalName: entry.originalName };
   }
 
-  function consume(id: string, userId: string): StagedFile | null {
+  function consume(id: string, userId: string): boolean {
     const entry = findOwned(id, userId);
-    if (entry === null) return null;
+    if (entry === null) return false;
+    // No `await` anywhere between the lookup above and the delete below —
+    // `consume` is a single synchronous function, so two "concurrent" async
+    // callers racing to finalize the same id can never interleave mid-call:
+    // whichever one the event loop runs first completes entirely (registry
+    // entry gone, file unlinked) before the other one's `entries.get` ever
+    // runs, so the second call's `findOwned` genuinely finds nothing rather
+    // than merely tolerating a double-delete.
     entries.delete(id);
     unlinkQuiet(entry.path);
-    return { path: entry.path, originalName: entry.originalName };
+    return true;
   }
 
   return { stage, resolve, consume };

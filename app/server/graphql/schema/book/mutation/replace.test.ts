@@ -1,12 +1,38 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 import type { MockedFunction } from 'vitest';
 
+import { logger } from '../../../../logger';
 import { BookHashCollisionError } from '../../../../services/book-store';
 import * as epubWriterModule from '../../../../services/epub-writer';
+import { createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
+import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { EMPTY_COUNTS, fixtureEpub, seedEditableBook } from './test-helpers';
 
-vi.mock('../../../../logger');
+// A bare `vi.mock('../../../../logger')` auto-mock hands back a FRESH mocked
+// object on every `logger(namespace)` call — proven by inspection — so a
+// test could never get a handle on the exact object `replace.ts`'s
+// module-scope `const log = logger('bookReplace')` captured once at import
+// time. This factory memoizes one mock object per namespace instead, so
+// `logger('bookReplace')` called again from a test returns the identical
+// object production code is using, letting the M-2 regression test below
+// assert on its `warn` calls directly.
+vi.mock('../../../../logger', () => {
+  const loggers = new Map<
+    string,
+    Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>>
+  >();
+  return {
+    logger: (namespace: string) => {
+      let entry = loggers.get(namespace);
+      if (entry === undefined) {
+        entry = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        loggers.set(namespace, entry);
+      }
+      return entry;
+    },
+  };
+});
 vi.mock('../../../../services/epub-validator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../services/epub-validator')>();
   return {
@@ -44,6 +70,10 @@ afterEach(async () => {
 
 const BOOK_ID = 'a'.repeat(32);
 const OTHER_BOOK_ID = 'b'.repeat(32);
+
+// The factory, not a hand-typed string literal — so this constant can never
+// drift from what the resolver actually returns.
+const UNKNOWN_STAGED_UPLOAD_MESSAGE = stagedUploadNotFoundError().message;
 
 const MUTATION = `
   mutation Replace($input: BookReplaceInput!) {
@@ -155,8 +185,47 @@ describe('Mutation.bookReplace', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    const data = result.data?.bookReplace as { __typename: string };
+    const data = result.data?.bookReplace as { __typename: string; message: string };
     expect(data.__typename).toBe('StagedUploadNotFoundError');
+    expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
+  });
+
+  it('returns StagedUploadNotFoundError for an EXPIRED stagedUploadId, with the identical message unknown/foreign get, and does not touch the book', async () => {
+    // Review finding I-1 / M-5: the GraphQL-level expired-arm regression the
+    // reviewer flagged as missing, now that replace-staging.ts's findOwned()
+    // is age-aware rather than relying solely on stage()'s sweep.
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+    let now = 0;
+    const shortLivedStaging = createReplaceStaging({
+      stagingDir: harness.stores.book.getStagingDir(),
+      ttlMs: 1000,
+      now: () => now,
+    });
+    harness.stores.replaceStaging = shortLivedStaging;
+    const stagedId = shortLivedStaging.stage(
+      fixtureEpub('Expired Candidate'),
+      harness.aliceOwner.userId,
+      'candidate.epub'
+    );
+    now = 999_999_999; // far past the TTL
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          bookId: BOOK_ID,
+          stagedUploadId: stagedId,
+          acceptedFixKeys: [],
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookReplace as { __typename: string; message: string };
+    expect(data.__typename).toBe('StagedUploadNotFoundError');
+    expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
   });
 
@@ -372,6 +441,13 @@ describe('Mutation.bookReplace', () => {
       const data = result.data?.bookReplace as { __typename: string; book: { title: string } };
       expect(data.__typename).toBe('BookReplacePayload');
       expect(data.book.title).toBe('Fixed Title');
+      // M-2: REST logs `Package repair skipped for "<name>": <message>` on
+      // this exact failure (`routes/ui.ts:1397-1399`) — the GraphQL path
+      // must not silently swallow it just because the request still
+      // succeeds via the byte fallback.
+      expect(logger('bookReplace').warn).toHaveBeenCalledWith(
+        'Package repair skipped for "Fixed Title.epub": bad opf'
+      );
     } finally {
       repairSpy.mockRestore();
     }

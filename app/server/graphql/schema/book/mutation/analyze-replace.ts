@@ -76,9 +76,17 @@ type BookAnalyzeReplacePayloadShape = {
  * modifies a `Book` row (its own doc comment); this mirrors
  * `POST /api/books/:id/replace/analyze`'s response body field-for-field,
  * minus `counts`/`threshold`, which `EpubValidationError` already
- * established as droppable — derivable from `messages`, and the threshold
- * already readable as `Config` (see that type's doc comment for the same
- * reasoning applied here).
+ * established as droppable — `counts` is derivable from `messages`.
+ * `threshold` genuinely has no other reachable home for a candidate under
+ * analysis: `Validation.threshold` only exists for an already-persisted
+ * row (this candidate isn't one), and `Config` exposes only
+ * `libraryName`/`maxConcurrentUploads` (corrected — an earlier draft of
+ * this comment claimed the threshold was "already readable as `Config`",
+ * which is false; review finding M-3). Dropped anyway, following the same
+ * precedent `EpubValidationError` set: the single configured
+ * `validationThreshold` rarely varies per request, so a client rendering
+ * this payload doesn't lose anything actionable by not seeing it echoed
+ * back.
  */
 const payload = builder
   .objectRef<BookAnalyzeReplacePayloadShape>('BookAnalyzeReplacePayload')
