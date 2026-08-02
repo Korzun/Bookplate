@@ -7,6 +7,7 @@ import {
   isListType,
   isNonNullType,
   parse,
+  subscribe,
   type GraphQLField,
   type GraphQLInputType,
   type GraphQLObjectType,
@@ -57,7 +58,16 @@ afterEach(async () => {
  * plugin-order comment) sits OUTSIDE ScopeAuthPlugin's wrapper, so even a
  * syntactically-arbitrary string such as `"placeholder"` throws
  * "Invalid global ID" before the auth scope runs. `harness.aliceGlobalId` is a
- * real encoded global ID, so `ID` args use that instead.
+ * real encoded global ID, so `ID` args use that instead — EXCEPT that a
+ * global ID also encodes a Node TYPE NAME (`"User:…"`, `"Library:…"`, …),
+ * which Relay's decoder checks against the `for:` type the field declared
+ * (`internalDecodeGlobalID`) — a schema-level `ID` scalar carries no trace of
+ * that expected typename, so this generic walker cannot infer it from `type`
+ * alone. Every `ID` arg before task 9 happened to want a `User` id
+ * (`aliceGlobalId` alone was sufficient); `scanProgress(libraryId: ID!)`
+ * wants a `Library` one instead, and got `"ID: User:… is not of type:
+ * Library"` here until `ID_ARG_TYPE_NAMES` below was added — a real failure
+ * this guard caught, not a hypothetical one.
  */
 describe('root type authorization', () => {
   const roots: [string, GraphQLObjectType][] = (
@@ -74,6 +84,15 @@ describe('root type authorization', () => {
     expect(roots.length).toBeGreaterThan(0);
   });
 
+  // Per-argument-name override for which Node type's global id an `ID` arg
+  // wants — see the describe-block doc comment. Every top-level `ID` arg in
+  // this schema takes a `User` id EXCEPT `scanProgress`'s `libraryId`; add a
+  // name here (not a type-based lookup — the schema's own `ID` scalar carries
+  // no typename) whenever a future field's arg needs a third kind.
+  const ID_ARG_TYPE_NAMES: Record<string, 'User' | 'Library'> = {
+    libraryId: 'Library',
+  };
+
   // Produces a syntactically valid GraphQL literal for a required argument's
   // type, so a field like `user(id: ID!)` can still be probed without
   // omitting the argument entirely (see the describe-block doc comment for
@@ -82,9 +101,17 @@ describe('root type authorization', () => {
   // actually use today — throws rather than guessing for anything else, so a
   // future required arg of an unhandled kind fails loudly instead of being
   // silently skipped by this guard.
-  const placeholderLiteral = (type: GraphQLInputType, aliceGlobalId: string): string => {
-    if (isNonNullType(type)) return placeholderLiteral(type.ofType, aliceGlobalId);
-    if (isListType(type)) return `[${placeholderLiteral(type.ofType, aliceGlobalId)}]`;
+  //
+  // `argName` rides along purely to resolve an `ID` arg to the right
+  // typename via `ID_ARG_TYPE_NAMES` (via `idFor`) — it plays no other part
+  // in building the literal.
+  const placeholderLiteral = (
+    type: GraphQLInputType,
+    argName: string,
+    idFor: (name: string) => string
+  ): string => {
+    if (isNonNullType(type)) return placeholderLiteral(type.ofType, argName, idFor);
+    if (isListType(type)) return `[${placeholderLiteral(type.ofType, argName, idFor)}]`;
     // Mutations take a single `input:` object argument, so probing them means
     // building an object literal, recursively, from the input type's own
     // required fields — omitting one is a validation error before the resolver
@@ -94,7 +121,7 @@ describe('root type authorization', () => {
     if (isInputObjectType(type)) {
       const fields = Object.values(type.getFields()).filter((field) => isNonNullType(field.type));
       return `{ ${fields
-        .map((field) => `${field.name}: ${placeholderLiteral(field.type, aliceGlobalId)}`)
+        .map((field) => `${field.name}: ${placeholderLiteral(field.type, field.name, idFor)}`)
         .join(', ')} }`;
     }
     // Enum literals are bare identifiers (unquoted, unlike String) — any
@@ -102,7 +129,7 @@ describe('root type authorization', () => {
     if (isEnumType(type)) return type.getValues()[0].name;
     switch (type.name) {
       case 'ID':
-        return JSON.stringify(aliceGlobalId);
+        return JSON.stringify(idFor(argName));
       case 'String':
         return '"placeholder"';
       case 'Int':
@@ -117,10 +144,13 @@ describe('root type authorization', () => {
     }
   };
 
-  const selectionFor = (field: GraphQLField<unknown, unknown>, aliceGlobalId: string): string => {
+  const selectionFor = (
+    field: GraphQLField<unknown, unknown>,
+    idFor: (name: string) => string
+  ): string => {
     const requiredArgs = field.args.filter((arg) => isNonNullType(arg.type));
     const args = requiredArgs.length
-      ? `(${requiredArgs.map((arg) => `${arg.name}: ${placeholderLiteral(arg.type, aliceGlobalId)}`).join(', ')})`
+      ? `(${requiredArgs.map((arg) => `${arg.name}: ${placeholderLiteral(arg.type, arg.name, idFor)}`).join(', ')})`
       : '';
     // `node`/`nodes` return the `Node` interface, which — like any composite
     // type — is invalid GraphQL without a subselection.
@@ -144,12 +174,42 @@ describe('root type authorization', () => {
       loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
     };
 
-    const result = await execute({
-      schema,
-      document: parse(`${operation} { ${selectionFor(field, harness.aliceGlobalId)} }`),
-      contextValue: context,
-    });
+    // `seedNodeFor('Library')` inserts nothing (Library is 1:1 with the
+    // already-created `User` row — see that function's own doc comment) and
+    // just re-encodes alice's userId under the `Library` typename, so this is
+    // as cheap as the plain `aliceGlobalId` it sits beside.
+    const aliceLibraryGlobalId = await harness.seedNodeFor('Library');
+    const idFor = (argName: string): string =>
+      ID_ARG_TYPE_NAMES[argName] === 'Library' ? aliceLibraryGlobalId : harness.aliceGlobalId;
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+    const document = parse(`${operation} { ${selectionFor(field, idFor)} }`);
+
+    // Subscription fields need `graphql`'s own `subscribe()`, not `execute()`
+    // — verified by running this walk against `scanProgress` before adding
+    // this branch, which failed (`expected undefined to be 'UNAUTHENTICATED'`):
+    // `builder.ts` sets `scopeAuth.authorizeOnSubscribe: true` (required for
+    // `Subscription.scanProgress`'s `ownerOf` check to run once, at
+    // subscribe-time, rather than once per emitted event — see that field's
+    // own doc comment), and `@pothos/plugin-scope-auth`'s `wrapResolve`
+    // (`createResolveSteps`) deliberately SKIPS both the type- and
+    // field-level scope steps whenever `authorizedOnSubscribe` is true — by
+    // design, the check now lives entirely in `wrapSubscribe`. `execute()`
+    // always calls a subscription field's `resolve`, never its `subscribe`
+    // (graphql-js `execute.js`'s `executeOperation`, `SUBSCRIPTION` case is a
+    // `// TODO: deprecate subscribe and move all logic here` stopgap that
+    // still only runs `executeFields`/`resolve`), so it can never observe an
+    // auth failure gated this way. `subscribe()` calls `createSourceEventStream`,
+    // which DOES invoke the field's own `subscribe` — and per graphql-js's
+    // own contract, a `GraphQLError` thrown from there (which is exactly what
+    // `unauthorizedError` produces) comes back as a plain `{ errors: [...] }`
+    // `ExecutionResult`, not an `AsyncIterable`, so this assertion still works
+    // unchanged against `result.errors`.
+    const result =
+      operation === 'subscription'
+        ? await subscribe({ schema, document, contextValue: context })
+        : await execute({ schema, document, contextValue: context });
+
+    const errors = 'errors' in result ? result.errors : undefined;
+    expect(errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
   });
 });
