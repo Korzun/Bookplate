@@ -221,11 +221,76 @@ type Device {
   updatedAt: DateTime!
 }
 
+input DeviceCreateInput {
+  bwCover: Boolean!
+  coverFit: CoverFit!
+  coverHeight: Int
+  coverWidth: Int
+  name: String!
+  simplify: Boolean!
+}
+
+type DeviceCreatePayload {
+  device: Device!
+}
+
+union DeviceCreateResult = DeviceCreatePayload | DeviceSlugConflictError | InvalidInputError
+
+input DeviceDeleteInput {
+  deviceId: String!
+}
+
+type DeviceDeletePayload {
+  deletedDeviceId: String!
+}
+
+union DeviceDeleteResult = DeviceDeletePayload | InvalidInputError
+
+input DeviceDisableUserInput {
+  deviceId: String!
+  userId: ID!
+}
+
+type DeviceDisableUserPayload {
+  device: Device!
+  user: User!
+}
+
+union DeviceDisableUserResult = DeviceDisableUserPayload | InvalidInputError
+
+input DeviceEnableUserInput {
+  deviceId: String!
+  userId: ID!
+}
+
+type DeviceEnableUserPayload {
+  device: Device!
+  user: User!
+}
+
+union DeviceEnableUserResult = DeviceEnableUserPayload | InvalidInputError
+
 """Another device already uses the slug this name derives to."""
 type DeviceSlugConflictError implements UserError {
   message: String!
   slug: String!
 }
+
+input DeviceUpdateInput {
+  bwCover: Boolean!
+  coverFit: CoverFit!
+  coverHeight: Int
+  coverWidth: Int
+  deviceId: String!
+  name: String!
+  simplify: Boolean!
+}
+
+type DeviceUpdatePayload {
+  device: Device!
+}
+
+union DeviceUpdateResult = DeviceSlugConflictError | DeviceUpdatePayload | InvalidInputError
 
 """This document id is already part of another book’s lineage."""
 type DocumentAlreadyLinkedError implements UserError {
@@ -450,6 +515,29 @@ type Mutation {
   Re-validates a book against the EPUB checker and persists the report. Resolves to null when the book does not exist for the resolved owner.
   """
   bookValidate(input: BookValidateInput!): BookValidateResult
+
+  """Registers a new device profile (KOReader/OPDS cover transforms)."""
+  deviceCreate(input: DeviceCreateInput!): DeviceCreateResult!
+
+  """
+  Deletes a device profile. Resolves to null when the device does not exist.
+  """
+  deviceDelete(input: DeviceDeleteInput!): DeviceDeleteResult
+
+  """
+  Revokes a user’s access to a device. Resolves to null when the device or user does not exist.
+  """
+  deviceDisableUser(input: DeviceDisableUserInput!): DeviceDisableUserResult
+
+  """
+  Grants a user access to a device. Resolves to null when the device or user does not exist.
+  """
+  deviceEnableUser(input: DeviceEnableUserInput!): DeviceEnableUserResult
+
+  """
+  Replaces a device profile’s settings. Resolves to null when the device does not exist.
+  """
+  deviceUpdate(input: DeviceUpdateInput!): DeviceUpdateResult
 
   """
   Clears one stored reading position. Resolves to null when the user has no stored position for that document.
