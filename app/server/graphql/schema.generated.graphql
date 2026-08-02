@@ -387,6 +387,7 @@ type Library implements Node {
   Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
   """
   progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
+  scanStatus: ScanStatus
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
@@ -759,6 +760,13 @@ The given staged-upload reference (stagedUploadId or stagedCoverId) does not res
 """
 type StagedUploadNotFoundError implements UserError {
   message: String!
+}
+
+type Subscription {
+  """
+  Streams live progress for a running or just-finished library scan. A scan started through REST is visible here too (the shared ScanJobStore instance publishes from both transports), but only at start/terminal granularity — REST passes no onProgress callback, so per-file progress only ever exists for a scan started through `libraryScan`. `Library.scanStatus` is the reconnect/current-state read for a client joining mid-scan.
+  """
+  scanProgress(libraryId: ID!): ScanStatus!
 }
 
 type Suggestion {

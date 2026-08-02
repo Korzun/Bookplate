@@ -5,6 +5,7 @@ import packageJson from '../../package.json';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
+import { createScanPubSub } from './graphql/pubsub';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
@@ -47,7 +48,13 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const tokenStore = new TokenStore(prisma);
   const jwtSecret = await tokenStore.getOrCreateJwtSecret();
 
-  const scanJobStore = new ScanJobStore();
+  // Shared by REST's `POST /api/books/scan` and every GraphQL scan resolver
+  // (`libraryScan`, `Subscription.scanProgress`, `Library.scanStatus`) — one
+  // pubsub instance, handed to `ScanJobStore` below so a scan started through
+  // either transport publishes onto the same per-user topic a GraphQL
+  // subscriber reads. See `graphql/pubsub.ts`'s doc comment.
+  const scanPubSub = createScanPubSub();
+  const scanJobStore = new ScanJobStore(scanPubSub);
   // One instance shared by the REST staging route and the two GraphQL
   // mutations that consume it — see `graphql/context.ts`'s `Stores.
   // replaceStaging` doc comment for why a second instance would never see

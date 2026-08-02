@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto';
 
+import { createScanPubSub, type ScanPubSub } from '../graphql/pubsub';
 import {
   reduceScanJob,
+  shouldPublish,
   type ScanEvent,
   type ScanJob,
   type ScanProgress,
@@ -27,9 +29,44 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * through this `Map`-and-wall-clock holder. `start()` is NOT one of those
  * delegated transitions: it mints the job's identity (`jobId`, `startedAt`)
  * fresh, with no prior job to fold onto — see `reduceScanJob`'s doc comment.
+ *
+ * Task 9 adds the pubsub half: spec §"Scan progress"/"ScanJobStore" — "a yoga
+ * `createPubSub()` publishing on a per-user topic from all four transition
+ * points (`start`, `progress`, `complete`, `fail`)". `ScanJobStore` is the
+ * one shared instance both `POST /api/books/scan` (`routes/ui.ts`, untouched
+ * — no `routes/` edit) and `libraryScan`/`scanProgress` traverse (constructed
+ * once in `index.ts`, threaded into both `createServer` and
+ * `createGraphqlHandler` since phase 1 — see that file), so publishing here,
+ * not in the GraphQL mutation's `onProgress` callback, is what makes a
+ * REST-started scan visible over the subscription at all: REST's own call
+ * site (`routes/ui.ts:1071`, `bookStore.scan(owner)`) passes no `onProgress`,
+ * so it only ever reaches this class through `start`/`complete`/`fail` — see
+ * `scanProgress`'s own doc comment for the resulting, deliberately narrower,
+ * REST-visibility scoping.
  */
 export class ScanJobStore {
   private readonly jobs = new Map<string, ScanJob>();
+
+  /**
+   * The wall-clock timestamp (`Date.now()`) of the last publish actually sent
+   * for a user's current job — the `lastPublishedAt` `shouldPublish`
+   * (`scan-events.ts`) compares `now` against. Keyed by `userId`, same as
+   * `jobs`; reset (via `start`'s own unconditional publish, below) at the
+   * start of every job rather than carried over from a prior one.
+   */
+  private readonly lastPublishedAt = new Map<string, number>();
+
+  /**
+   * Defaults to a fresh, private pubsub so every pre-task-9 caller
+   * (`routes/ui.test.ts`, `scan-job-store.test.ts`'s many `new ScanJobStore()`
+   * call sites) keeps compiling and passing unmodified — a store nobody ever
+   * subscribes to publishing into its own throwaway pubsub is inert, not
+   * wrong. Production (`index.ts`) and the GraphQL test harness
+   * (`graphql/test-util.ts`) both pass the SAME real instance a subscription
+   * resolver also reads from — see `graphql/pubsub.ts`'s doc comment for why
+   * this is the one `services/` file that imports from `graphql/` at all.
+   */
+  constructor(private readonly pubsub: ScanPubSub = createScanPubSub()) {}
 
   start(userId: string): ScanJob {
     const job: ScanJob = {
@@ -43,6 +80,15 @@ export class ScanJobStore {
       importedBookIds: [],
     };
     this.jobs.set(userId, job);
+    // Not one of `reduceScanJob`'s three `ScanEvent`s (see the class doc
+    // comment), so it never goes through `shouldPublish` either — a fresh job
+    // starting is always worth telling a subscriber about immediately, the
+    // same "always" `shouldPublish` already gives terminal events, and there
+    // is exactly one `start` per job, so this can never itself become the
+    // flood the coalescing rule exists to prevent.
+    const now = Date.now();
+    this.lastPublishedAt.set(userId, now);
+    this.pubsub.publish('scan', userId, job);
     return job;
   }
 
@@ -52,10 +98,6 @@ export class ScanJobStore {
    * no-op when no job is tracked for `userId` — mirrors `complete`/`fail`
    * below, and protects against a stray progress event outliving its job
    * (e.g. a caller that never called `start`).
-   *
-   * Does NOT publish to a pubsub: `shouldPublish`'s predicate and the actual
-   * `createPubSub()` wiring are task 9's — this only keeps the job's own
-   * state current, which `Library.scanStatus` (also task 9) will read.
    */
   progress(userId: string, progress: ScanProgress): void {
     this.apply(userId, { type: 'progress', progress });
@@ -69,10 +111,25 @@ export class ScanJobStore {
     this.apply(userId, { type: 'fail', error });
   }
 
+  /**
+   * Folds `event` onto the tracked job via `reduceScanJob`, then publishes the
+   * new job exactly when `shouldPublish` (`scan-events.ts`) says to — the
+   * 250ms coalesce for `'progress'`, always for the terminal `'complete'`/
+   * `'fail'` events. `lastPublishedAt` only advances on an actual publish, not
+   * on every fold, so a coalesced-away `'progress'` event doesn't push the
+   * window out further than the last real publish already did.
+   */
   private apply(userId: string, event: ScanEvent): void {
     const job = this.jobs.get(userId);
     if (job === undefined) return;
-    this.jobs.set(userId, reduceScanJob(job, event));
+    const next = reduceScanJob(job, event);
+    this.jobs.set(userId, next);
+
+    const now = Date.now();
+    if (shouldPublish(this.lastPublishedAt.get(userId) ?? 0, now, event)) {
+      this.lastPublishedAt.set(userId, now);
+      this.pubsub.publish('scan', userId, next);
+    }
   }
 
   get(userId: string): ScanJob | undefined {
@@ -81,5 +138,17 @@ export class ScanJobStore {
 
   isRunning(userId: string): boolean {
     return this.jobs.get(userId)?.status === 'running';
+  }
+
+  /**
+   * The subscription side of the same per-user topic `start`/`progress`/
+   * `complete`/`fail` publish onto — `Subscription.scanProgress`
+   * (`graphql/schema/library/subscription/scan-progress.ts`) is the only
+   * caller, and reaches this rather than `graphql/pubsub.ts` directly so
+   * every access to the scan pubsub — publish AND subscribe — goes through
+   * this one class, matching how every other piece of scan state does.
+   */
+  subscribe(userId: string): AsyncIterable<ScanJob> {
+    return this.pubsub.subscribe('scan', userId);
   }
 }

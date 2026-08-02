@@ -1,3 +1,4 @@
+import type { ScanPubSub } from '../graphql/pubsub';
 import { ScanJobStore } from './scan-job-store';
 
 describe('ScanJobStore', () => {
@@ -152,5 +153,104 @@ describe('ScanJobStore', () => {
     // to reduceScanJob (no in-place `job.status = 'completed'`) reached all
     // the way through the class, not just internally.
     expect(started.status).toBe('running');
+  });
+
+  /**
+   * Task 9: the store publishes onto its injected `ScanPubSub` from all four
+   * transition points, gated by `shouldPublish`'s 250ms coalesce (always for
+   * `start`/`complete`/`fail`, at most once per window for `progress`) — spec
+   * §"Scan progress"/"ScanJobStore". `shouldPublish` itself is table-tested
+   * against a table of inputs with no fake timers (`scan-events.test.ts`,
+   * task 8); this is the "one integration assertion at the store" the plan's
+   * task 9 line calls for, so fake timers are appropriate here — the thing
+   * under test is `ScanJobStore.apply`'s own `Date.now()` calls, which the
+   * pure predicate doesn't own.
+   */
+  describe('pubsub publishing', () => {
+    let publish: ReturnType<typeof vi.fn>;
+    let pubsub: ScanPubSub;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      publish = vi.fn();
+      pubsub = {
+        publish,
+        // Never exercised in this describe block — `ScanJobStore.subscribe`
+        // (and the pubsub's own `subscribe`) has its own coverage in
+        // `graphql/pubsub.test.ts` and `library/subscription/
+        // scan-progress.test.ts`. Present only so this object satisfies
+        // `ScanPubSub`'s shape.
+        subscribe: vi.fn(),
+      } as unknown as ScanPubSub;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('start() always publishes, unconditionally', () => {
+      const store = new ScanJobStore(pubsub);
+      const job = store.start('u1');
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish).toHaveBeenCalledWith('scan', 'u1', job);
+    });
+
+    it('a burst of progress() events inside the 250ms window publishes at most once — bounded, not one publish per event', () => {
+      const store = new ScanJobStore(pubsub);
+      store.start('u1');
+      publish.mockClear();
+
+      for (let i = 0; i < 50; i++) {
+        store.progress('u1', {
+          phase: 'importing',
+          total: 50,
+          processed: i + 1,
+          filename: `f${i}.epub`,
+          outcome: 'skipped',
+        });
+      }
+
+      // All 50 landed at the same fake-clock instant as `start()`'s own
+      // publish — none crosses the coalescing window, so none published.
+      expect(publish).not.toHaveBeenCalled();
+    });
+
+    it('a progress() event once the window has elapsed publishes again, and complete() always publishes on top regardless of timing', () => {
+      const store = new ScanJobStore(pubsub);
+      store.start('u1');
+      publish.mockClear();
+
+      vi.advanceTimersByTime(300);
+      store.progress('u1', {
+        phase: 'importing',
+        total: 2,
+        processed: 1,
+        filename: 'a.epub',
+        outcome: 'skipped',
+      });
+      expect(publish).toHaveBeenCalledTimes(1);
+
+      // Well inside the window since the progress publish above — a terminal
+      // event still always publishes.
+      store.complete('u1', { imported: [], removed: [] });
+      expect(publish).toHaveBeenCalledTimes(2);
+      expect(publish).toHaveBeenLastCalledWith(
+        'scan',
+        'u1',
+        expect.objectContaining({ status: 'completed' })
+      );
+    });
+
+    it('never publishes for a coalesced-away progress event on a user with no tracked job', () => {
+      const store = new ScanJobStore(pubsub);
+      store.progress('nobody', {
+        phase: 'importing',
+        total: 1,
+        processed: 1,
+        filename: 'x.epub',
+        outcome: 'skipped',
+      });
+      expect(publish).not.toHaveBeenCalled();
+    });
   });
 });

@@ -23,6 +23,7 @@ import type { Context, Stores, Viewer } from './context';
 import { createOwnerLoader } from './owner';
 import { createPendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader } from './progress-loader';
+import { createScanPubSub } from './pubsub';
 import { schema } from './schema';
 
 export type ExecuteOptions = {
@@ -101,7 +102,13 @@ export const createHarness = async (): Promise<Harness> => {
     device: new DeviceStore(prisma),
     edition,
     validation: new ValidationStore(prisma),
-    scanJob: new ScanJobStore(),
+    // Same real `ScanPubSub` a subscription resolver reads from
+    // (`schema/library/subscription/scan-progress.ts`, via
+    // `context.stores.scanJob.subscribe`) — not the class's own default,
+    // throwaway instance, or a test starting/completing a job through this
+    // store would never be observed by a `subscribe()` call against `schema`
+    // in the same test. Mirrors `index.ts`'s identical wiring.
+    scanJob: new ScanJobStore(createScanPubSub()),
     // Constructed but never started: start() would leave a timer running past
     // the test. `enqueue()` itself is inert either way — it only pushes onto
     // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads
