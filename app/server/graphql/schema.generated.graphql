@@ -448,6 +448,11 @@ type Mutation {
   Clears one stored reading position. Resolves to null when the user has no stored position for that document.
   """
   progressDelete(input: ProgressDeleteInput!): ProgressDeleteResult
+
+  """
+  Creates or updates the viewer’s stored reading position for one document.
+  """
+  progressSet(input: ProgressSetInput!): ProgressSetResult!
 }
 
 interface Node {
@@ -505,6 +510,22 @@ type ProgressDeletePayload {
 }
 
 union ProgressDeleteResult = InvalidInputError | ProgressDeletePayload
+
+input ProgressSetInput {
+  currentChapter: Int!
+  device: String
+  deviceId: String
+  document: String!
+  percentage: Float!
+  userId: ID!
+}
+
+type ProgressSetPayload {
+  library: Library!
+  progress: Progress!
+}
+
+union ProgressSetResult = InvalidInputError | ProgressSetPayload
 
 type Query {
   config: Config!
