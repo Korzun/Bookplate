@@ -7,6 +7,7 @@ import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
+import type { TokenStore } from '../services/token-store';
 import type { UserStore } from '../services/user-store';
 import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
@@ -54,6 +55,22 @@ export type Stores = {
    * the registry is in-memory and per-process to begin with.
    */
   replaceStaging: ReplaceStaging;
+  /**
+   * Wired in for task 6 (`userResetPassword`/`userChangePassword`): REST
+   * revokes every outstanding refresh token for the affected username right
+   * after either write (`routes/users.ts`'s `POST /:username/reset-password`,
+   * `routes/ui.ts`'s `PATCH /api/my/password`) so a stolen/old refresh token
+   * cannot outlive a password change. GraphQL is mounted outside those route
+   * handlers and cannot reach the `tokenStore` instance `server.ts` builds
+   * for them any other way, so the same shared instance is threaded through
+   * here too — same "one instance, never a second one" rule as
+   * `replaceStaging` above. GraphQL cannot reproduce REST's *cookie* reissue
+   * half of that flow (no response object reaches this context — see
+   * `createContext` below), so a caller's own already-issued access token
+   * keeps its stale `mustChangePassword` claim until it refreshes via REST;
+   * revocation is what actually matters for security and is fully mirrored.
+   */
+  token: TokenStore;
 };
 
 export type Context = {

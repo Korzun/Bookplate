@@ -279,6 +279,13 @@ input IdentifierInput {
   value: String!
 }
 
+"""
+The current password provided does not match the account’s stored password.
+"""
+type IncorrectPasswordError implements UserError {
+  message: String!
+}
+
 """One rejected input value: where it was, and what was wrong with it."""
 type InputIssue {
   message: String!
@@ -453,6 +460,29 @@ type Mutation {
   Creates or updates the viewer’s stored reading position for one document.
   """
   progressSet(input: ProgressSetInput!): ProgressSetResult!
+
+  """
+  Changes the viewer’s own login password. Requires the current password and works even when a forced password change is pending. Resolves to null in the unlikely case the account was deleted mid-request.
+  """
+  userChangePassword(input: UserChangePasswordInput!): UserChangePasswordResult
+
+  """
+  Deletes a user account — DB row and on-disk library folder both. Resolves to null when the user does not exist.
+  """
+  userDelete(input: UserDeleteInput!): UserDeletePayload
+
+  """
+  Regenerates the viewer’s own KOReader/OPDS sync password. Resolves to null in the unlikely case the account was deleted mid-request.
+  """
+  userRegenerateSyncPassword(input: UserRegenerateSyncPasswordInput!): UserRegenerateSyncPasswordPayload
+
+  """Creates a new user account with a generated login password."""
+  userRegister(input: UserRegisterInput!): UserRegisterResult!
+
+  """
+  Resets a user’s login password to a freshly generated one and forces a change on next login. Resolves to null when the user does not exist.
+  """
+  userResetPassword(input: UserResetPasswordInput!): UserResetPasswordPayload
 }
 
 interface Node {
@@ -617,11 +647,69 @@ type User implements Node {
   username: String!
 }
 
+input UserChangePasswordInput {
+  currentPassword: String!
+  newPassword: String!
+  userId: ID!
+}
+
+type UserChangePasswordPayload {
+  user: User!
+}
+
+union UserChangePasswordResult = IncorrectPasswordError | InvalidInputError | UserChangePasswordPayload
+
+input UserDeleteInput {
+  userId: ID!
+}
+
+type UserDeletePayload {
+  deletedId: ID!
+  deletedUserId: String!
+}
+
 """
 A failure a client is expected to render and act on, as opposed to an unexpected server fault, which arrives in the response `errors` array.
 """
 interface UserError {
   message: String!
+}
+
+input UserRegenerateSyncPasswordInput {
+  userId: ID!
+}
+
+type UserRegenerateSyncPasswordPayload {
+  syncPassword: String!
+  user: User!
+}
+
+input UserRegisterInput {
+  username: String!
+}
+
+type UserRegisterPayload {
+  password: String!
+  user: User!
+}
+
+union UserRegisterResult = InvalidInputError | UserRegisterPayload | UsernameAlreadyExistsError
+
+input UserResetPasswordInput {
+  userId: ID!
+}
+
+type UserResetPasswordPayload {
+  password: String!
+  user: User!
+}
+
+"""
+A user with this username already exists, or the name is reserved for the built-in admin account.
+"""
+type UsernameAlreadyExistsError implements UserError {
+  message: String!
+  username: String!
 }
 
 type Validation {
