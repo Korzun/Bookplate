@@ -32,12 +32,17 @@ export const model = builder.objectRef<ScanResultShape>('ScanResult').implement(
     imported: t.prismaField({
       type: [book],
       description: 'The books newly added to the library by this scan.',
+      // `orderBy: addedAt` — deterministic (task 8 review, M-4): `findMany`
+      // with an `id: { in: [...] }` filter has no defined order on its own,
+      // and `addedAt` is set once, at insert time, so books sort in the
+      // order this scan actually imported them.
       resolve: (query, parent, _args, context) =>
         parent.importedBookIds.length === 0
           ? []
           : context.prisma.book.findMany({
               ...query,
               where: { userId: parent.owner.userId, id: { in: parent.importedBookIds } },
+              orderBy: { addedAt: 'asc' },
             }),
     }),
     importedFilenames: t.field({

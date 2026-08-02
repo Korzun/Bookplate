@@ -24,7 +24,17 @@ import { model as pendingFix } from '../pending-fix';
 import { model as progress } from '../progress/model';
 import { model as series } from '../series';
 import { model as suggestionGroup } from '../suggestion-group';
-import * as user from '../user';
+// `../user/model`, not `../user`: `user/index.ts` also side-effect-imports
+// `user/mutation/*.ts`, so importing the index here (rather than the
+// defining module) closes a require cycle — `user/model.ts` imports
+// `../library/model` (this file) for `User.library`, and this file imports
+// back for `Library.user`. Same rule every other entity-directory import in
+// this schema follows; see `book-hash-collision-error/model.ts`'s identical
+// note. (Task 8 review, I-2: this file, not `user/model.ts`, is the actual
+// head of the six pre-existing cycles the review's static analysis found —
+// `user/model.ts`'s own import was fixed in the same task for the same
+// reason but did not itself close anything.)
+import { model as user } from '../user/model';
 import { decodeCursor, encodeCursor } from './entries-cursor';
 import { libraryFilter } from './entries-filter';
 import { searchSuggestionsFilter } from './search-suggestions-filter';
@@ -60,7 +70,7 @@ builder.node(model, {
   },
   fields: (t) => ({
     user: t.field({
-      type: user.model,
+      type: user,
       resolve: (owner, _args, context) =>
         context.prisma.user.findUniqueOrThrow({ where: { id: owner.userId } }),
     }),

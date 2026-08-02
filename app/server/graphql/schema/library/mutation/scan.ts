@@ -1,6 +1,10 @@
 import { logger } from '../../../../logger';
-import { revalidateLibrary } from '../../../../services/revalidate-library';
+import type { BookStore } from '../../../../services/book-store';
+import { revalidateLibrary, type RevalidateDeps } from '../../../../services/revalidate-library';
 import type { ScanJob } from '../../../../services/scan-events';
+import type { ScanJobStore } from '../../../../services/scan-job-store';
+import type { ThumbnailQueue } from '../../../../services/thumbnail-queue';
+import type { ValidationStore } from '../../../../services/validation-store';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import {
@@ -43,6 +47,59 @@ const payload = builder.objectRef<LibraryScanPayloadShape>('LibraryScanPayload')
 const result = builder.unionType('LibraryScanResult', {
   types: [payload, scanAlreadyRunningErrorModel],
 });
+
+type ScanBackgroundDeps = {
+  readonly book: BookStore;
+  readonly scanJob: ScanJobStore;
+  readonly validation: ValidationStore;
+  readonly thumbnail: ThumbnailQueue;
+  readonly validationThreshold: RevalidateDeps['validationThreshold'];
+};
+
+/**
+ * The detached scan/revalidate/reconcile pipeline `libraryScan` fires without
+ * awaiting — lifted to module scope, exactly the shape `book/mutation/
+ * replace.ts`'s `repairBestEffort` and `device/mutation/purge-quietly.ts` use
+ * for the same reason (task 8 review, I-1): the standing rule ("Resolver
+ * bodies: zero try/catch/throw; `toResult` is the single boundary") is
+ * grep-verified, and a `try`/`catch` inlined in an IIFE inside `resolve` is
+ * still a `try`/`catch` inside `resolve` for that purpose. `resolve` itself
+ * now only calls `void runScanInBackground(...)` — no behaviour change, this
+ * function's own body is character-identical to the block it replaces.
+ *
+ * Mirrors `POST /api/books/scan`'s detached body (`routes/ui.ts:1069-1087`)
+ * line for line: `bookStore.scan(owner)` → `revalidateLibrary({bookStore,
+ * validationStore, validationThreshold}, owner)` → `await thumbnailQueue.
+ * reconcile()` → the same `log.info`/`log.error` wording → `scanJobStore.
+ * complete`/`fail`. See `libraryScan`'s own doc comment below for why this
+ * full pipeline — not just `bookStore.scan` — is replicated rather than
+ * trimmed to the task's narrower brief wording.
+ */
+async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Promise<void> {
+  try {
+    const scanResult = await deps.book.scan(owner, undefined, (progress) => {
+      deps.scanJob.progress(owner.userId, progress);
+    });
+    const val = await revalidateLibrary(
+      {
+        bookStore: deps.book,
+        validationStore: deps.validation,
+        validationThreshold: deps.validationThreshold,
+      },
+      owner
+    );
+    await deps.thumbnail.reconcile();
+    log.info(
+      `Scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed, ` +
+        `${val.validated} validated (${val.failed} failed)`
+    );
+    deps.scanJob.complete(owner.userId, scanResult);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error(`Scan failed for "${owner.username}": ${message}`);
+    deps.scanJob.fail(owner.userId, message);
+  }
+}
 
 /**
  * Mirrors `POST /api/books/scan` (`routes/ui.ts:1057-1090`).
@@ -101,40 +158,27 @@ builder.mutationField('libraryScan', (t) =>
 
       const { scanJob, book, validation, thumbnail } = context.stores;
 
-      if (scanJob.isRunning(owner.userId)) {
-        const running = scanJob.get(owner.userId);
-        // isRunning() being true guarantees get() is defined — both read the
-        // same Map entry, with nothing async between them to race.
-        return scanAlreadyRunningError(owner, running as ScanJob);
+      // Read before start(), not via `isRunning` + a second `get()` cast: a
+      // single read either has a running job (409) or doesn't (proceed to
+      // start one) — no "isRunning implies get is defined" comment needed to
+      // justify a cast (task 8 review, M-1).
+      const running = scanJob.get(owner.userId);
+      if (running !== undefined && running.status === 'running') {
+        return scanAlreadyRunningError(owner, running);
       }
 
       const job = scanJob.start(owner.userId);
 
-      void (async () => {
-        try {
-          const scanResult = await book.scan(owner, undefined, (progress) => {
-            scanJob.progress(owner.userId, progress);
-          });
-          const val = await revalidateLibrary(
-            {
-              bookStore: book,
-              validationStore: validation,
-              validationThreshold: context.config.validationThreshold,
-            },
-            owner
-          );
-          await thumbnail.reconcile();
-          log.info(
-            `Scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed, ` +
-              `${val.validated} validated (${val.failed} failed)`
-          );
-          scanJob.complete(owner.userId, scanResult);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          log.error(`Scan failed for "${owner.username}": ${message}`);
-          scanJob.fail(owner.userId, message);
-        }
-      })();
+      void runScanInBackground(
+        {
+          book,
+          scanJob,
+          validation,
+          thumbnail,
+          validationThreshold: context.config.validationThreshold,
+        },
+        owner
+      );
 
       return {
         __typename: 'LibraryScanPayload' as const,
