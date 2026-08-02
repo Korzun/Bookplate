@@ -97,10 +97,15 @@ describe('Book', () => {
   // The gid decodes to alice's userId, but this Library.book field resolves
   // under BOB's own `Viewer.library` — an owner-mismatched gid, the "not
   // found" convention library/model.ts's doc comment establishes, not a
-  // permissions error. Also the seen-to-fail-worthy discriminator for
-  // task 2's `Library.book` arg change: a resolver that dropped the owner
-  // check (or substituted the viewer's own userId) would resolve this to
-  // alice's row instead of null.
+  // permissions error.
+  //
+  // CORRECTED (task-2 review, I-1): this test does NOT discriminate the
+  // owner-mismatch guard (`library/model.ts`'s `parsed[0] !== owner.userId`).
+  // Bob owns no row under `BOOK_ID` at all, so dropping the guard only
+  // changes "denied before the query runs" into "queried and not found" —
+  // both null either way. The guard is only observable when a row ALSO
+  // exists under the parent owner's own userId for that same raw id; see
+  // the discriminating test below, which the review names directly.
   it('returns null for a book in another user library', async () => {
     const result = await harness.execute(
       bookQuery(bookGlobalId(harness.aliceOwner.userId, BOOK_ID)),
@@ -110,6 +115,40 @@ describe('Book', () => {
     expect(result.errors).toBeUndefined();
     expect(
       (result.data as { viewer: { library: { book: unknown } } }).viewer.library.book ?? null
+    ).toBeNull();
+  });
+
+  // The actual discriminator for the owner-mismatch guard (task-2 review,
+  // I-1): book ids are content hashes, so two users routinely hold a row
+  // under the identical id. Alice already has one under `BOOK_ID`
+  // (`beforeEach`); this seeds bob under the SAME id too, then asks for
+  // ALICE's library with BOB's gid for that shared hash. A resolver that
+  // dropped `parsed[0] !== owner.userId` would fall back to `{userId:
+  // owner.userId (alice), id: parsed[1] (BOOK_ID)}` — a row that genuinely
+  // exists — and silently resolve ALICE's own book for a gid that names
+  // bob's copy, instead of null. Run via admin traversal so it also
+  // discriminates "reads the parent Library's own owner" from any
+  // viewer-derived substitution.
+  it("returns null for another user's gid naming the same content hash a row exists under for the queried owner", async () => {
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.bobOwner.userId,
+        id: BOOK_ID,
+        title: "Bob's Copy",
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+
+    const result = await harness.execute(
+      `query ($id: ID!) { user(id: $id) { library { book(id: "${bookGlobalId(harness.bobOwner.userId, BOOK_ID)}") { id } } } }`,
+      { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { user: { library: { book: unknown } } }).user.library.book ?? null
     ).toBeNull();
   });
 
@@ -171,5 +210,38 @@ describe('Book URL fields', () => {
     expect(book.thumbnailUrl).toMatch(
       /^\/api\/books\/.+\/cover\?width=200&user=alice&v=1700000000000$/
     );
+  });
+
+  // Task-2 review, I-3: `mtime` is a Prisma `Float` holding `stat.mtimeMs`
+  // (services/book-store.ts), so a real book's mtime is routinely fractional
+  // (e.g. `1785702915092.761`). The pre-fix `v=${book.mtime}` emitted that
+  // fraction verbatim, diverging byte-for-byte from the REST client's own
+  // cache-busting token (`app/client/src/lib/cover-url.ts`'s `versionToken`,
+  // which floors) — two different `?v=` strings, and so two immutable-cache
+  // entries, for the identical cover. Every other fixture in this file uses
+  // an integer literal mtime and so could not have caught this.
+  it('floors a fractional mtime in the v= cache token', async () => {
+    const fractionalId = 'b'.repeat(32);
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id: fractionalId,
+        title: 'Fractional Mtime',
+        size: 1,
+        mtime: 1_700_000_000_123.789,
+        addedAt: 1,
+      },
+    });
+
+    const result = await harness.execute(
+      bookQuery(bookGlobalId(harness.aliceOwner.userId, fractionalId)),
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const book = (result.data as { viewer: { library: { book: Record<string, string> } } }).viewer
+      .library.book;
+    expect(book.coverUrl).toContain('v=1700000000123');
+    expect(book.coverUrl).not.toContain('.');
   });
 });
