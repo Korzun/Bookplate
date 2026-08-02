@@ -4,7 +4,7 @@ import type { MockedFunction } from 'vitest';
 import { logger } from '../../../../logger';
 import { BookHashCollisionError } from '../../../../services/book-store';
 import * as epubWriterModule from '../../../../services/epub-writer';
-import { createReplaceStaging } from '../../../../services/replace-staging';
+import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { EMPTY_COUNTS, fixtureEpub, rawBookId, seedEditableBook } from './test-helpers';
@@ -449,28 +449,123 @@ describe('Mutation.bookReplace', () => {
     ).not.toBeNull();
   });
 
-  it('denies an admin session even when it correctly names the staging user’s own book — admin gets no staging bypass', async () => {
-    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
-    const aliceStagedId = stageFor(harness.aliceOwner, 'New Title');
+  describe('admin staging identity (Task 4, three-way isolation, each seen-to-fail)', () => {
+    // Each arm below reproduces red if `stagingIdentityOf`'s admin branch is
+    // reverted to the pre-Task-4 behaviour (raw `context.viewer.userId`,
+    // always `null` for an admin) — the resolver's own
+    // `stagingIdentity === null ? null : resolve(...)` guard then makes
+    // EVERY admin attempt (own upload included) a `StagedUploadNotFoundError`
+    // rather than isolating admin from bob/alice specifically. Confirmed by
+    // temporarily reverting `stagingIdentityOf` to `viewer.userId` and
+    // re-running this file: the two positive-path assertions below (bob
+    // consuming his own upload; admin consuming its own) both go red,
+    // proving these arms actually discriminate the sentinel rather than
+    // merely restating "staging is cross-tenant-safe" in new words.
 
-    const result = await harness.execute(MUTATION, {
-      viewer: harness.adminViewer,
-      variables: {
-        input: {
-          id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
-          stagedUploadId: aliceStagedId,
-          acceptedFixKeys: [],
+    it('bob cannot consume alice’s staged upload, even against his own book', async () => {
+      await seedEditableBook(harness, harness.bobOwner, BOOK_ID, 'Bob’s Title');
+      const alicesStagedId = stageFor(harness.aliceOwner, 'Alice’s Candidate');
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.bobViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.bobOwner.userId, BOOK_ID),
+            stagedUploadId: alicesStagedId,
+            acceptedFixKeys: [],
+          },
         },
-      },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookReplace as { __typename: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(await titleOf(harness.bobOwner.userId, BOOK_ID)).toBe('Bob’s Title');
+      // Alice's own stage was never even reached — untouched.
+      expect(
+        harness.stores.replaceStaging.resolve(alicesStagedId, harness.aliceOwner.userId)
+      ).not.toBeNull();
     });
 
-    expect(result.errors).toBeUndefined();
-    const data = result.data?.bookReplace as { __typename: string };
-    expect(data.__typename).toBe('StagedUploadNotFoundError');
-    expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
-    expect(
-      harness.stores.replaceStaging.resolve(aliceStagedId, harness.aliceOwner.userId)
-    ).not.toBeNull();
+    it('alice cannot consume an admin-staged upload, even against her own book', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
+      const adminStagedId = harness.stores.replaceStaging.stage(
+        fixtureEpub('Admin’s Candidate'),
+        ADMIN_STAGING_ID,
+        'admin-candidate.epub'
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            stagedUploadId: adminStagedId,
+            acceptedFixKeys: [],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookReplace as { __typename: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
+      expect(harness.stores.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).not.toBeNull();
+    });
+
+    it('admin cannot consume bob’s staged upload, even naming bob’s own book (admin has no staging bypass onto another identity)', async () => {
+      await seedEditableBook(harness, harness.bobOwner, BOOK_ID, 'Old Title');
+      const bobsStagedId = stageFor(harness.bobOwner, 'New Title');
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.bobOwner.userId, BOOK_ID),
+            stagedUploadId: bobsStagedId,
+            acceptedFixKeys: [],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookReplace as { __typename: string };
+      expect(data.__typename).toBe('StagedUploadNotFoundError');
+      expect(await titleOf(harness.bobOwner.userId, BOOK_ID)).toBe('Old Title');
+      expect(
+        harness.stores.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)
+      ).not.toBeNull();
+    });
+
+    it('admin CAN consume its own admin-staged upload, against any user’s book (the capability Task 4 adds)', async () => {
+      await seedEditableBook(harness, harness.bobOwner, BOOK_ID, 'Old Title');
+      const adminStagedId = harness.stores.replaceStaging.stage(
+        fixtureEpub('Admin’s New Title'),
+        ADMIN_STAGING_ID,
+        'admin-candidate.epub'
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.adminViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.bobOwner.userId, BOOK_ID),
+            stagedUploadId: adminStagedId,
+            acceptedFixKeys: [],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookReplace as {
+        __typename: string;
+        book: { title: string };
+      };
+      expect(data.__typename).toBe('BookReplacePayload');
+      expect(data.book.title).toBe('Admin’s New Title');
+      // Consumed on success, same as any other caller's staged upload.
+      expect(harness.stores.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).toBeNull();
+    });
   });
 
   it('resolves to null for an admin when the encoded owner does not exist', async () => {

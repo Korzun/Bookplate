@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { createReplaceStaging } from './replace-staging';
+import { ADMIN_STAGING_ID, createReplaceStaging, stagingIdentityOf } from './replace-staging';
 
 let stagingDir: string;
 
@@ -299,5 +299,72 @@ describe('createReplaceStaging', () => {
       expect(staging.resolve(epubId, 'alice', 'epub')).not.toBeNull();
       expect(staging.resolve(coverId, 'alice', 'cover')).toBeNull();
     });
+  });
+});
+
+describe('stagingIdentityOf (Task 4)', () => {
+  it("returns the viewer's own userId when they have one, admin or not", () => {
+    expect(stagingIdentityOf({ userId: 'alice-id', isAdmin: false })).toBe('alice-id');
+    // A real user row is never isAdmin, but the helper reads userId first
+    // regardless — there is no real caller shaped this way, this just pins
+    // that userId wins the `??` before isAdmin is even consulted.
+    expect(stagingIdentityOf({ userId: 'alice-id', isAdmin: true })).toBe('alice-id');
+  });
+
+  it('returns ADMIN_STAGING_ID for an admin session with no userId (both null and undefined, matching Viewer and AuthUser’s shapes)', () => {
+    expect(stagingIdentityOf({ userId: null, isAdmin: true })).toBe(ADMIN_STAGING_ID);
+    expect(stagingIdentityOf({ userId: undefined, isAdmin: true })).toBe(ADMIN_STAGING_ID);
+  });
+
+  it('returns null for neither a userId nor isAdmin (defensive — no real caller reaches this)', () => {
+    expect(stagingIdentityOf({ userId: null, isAdmin: false })).toBeNull();
+    expect(stagingIdentityOf({ userId: undefined, isAdmin: false })).toBeNull();
+  });
+
+  it("ADMIN_STAGING_ID cannot collide with a real generated userId — it contains characters outside generateUserId's alphabet", () => {
+    // Mirrors utils/id.ts's customAlphabet exactly, rather than importing
+    // it, so this test also catches the alphabet itself ever growing to
+    // include '_' or '-' (which would silently void the sentinel's
+    // collision-freedom argument).
+    const realIdAlphabet = /^[A-Za-z0-9]+$/;
+    expect(realIdAlphabet.test(ADMIN_STAGING_ID)).toBe(false);
+  });
+});
+
+describe('three-way staging isolation (Task 4, seen-to-fail each arm)', () => {
+  // Each arm below would go red if `findOwned` ever special-cased
+  // `ADMIN_STAGING_ID` (e.g. treating it as "matches any owner") instead of
+  // comparing it as an opaque identity like any other — reverting
+  // `stagingIdentityOf`'s admin branch to return the caller's raw `userId`
+  // unchanged (i.e. `null` for admin, never `ADMIN_STAGING_ID`) reproduces
+  // exactly this class of bug one level up, at the REST/GraphQL call sites
+  // that use this helper (see routes/ui.ts and the three staged GraphQL
+  // mutations' own three-way tests for that integration-level proof).
+  it("bob cannot consume alice's staged file", () => {
+    const staging = createReplaceStaging({ stagingDir });
+    const id = staging.stage(Buffer.from('alices-bytes'), 'alice', 'a.epub');
+
+    expect(staging.resolve(id, 'bob')).toBeNull();
+    expect(staging.consume(id, 'bob')).toBe(false);
+    // Untouched — alice can still consume her own.
+    expect(staging.resolve(id, 'alice')).not.toBeNull();
+  });
+
+  it('alice cannot consume admin-staged', () => {
+    const staging = createReplaceStaging({ stagingDir });
+    const id = staging.stage(Buffer.from('admins-bytes'), ADMIN_STAGING_ID, 'a.epub');
+
+    expect(staging.resolve(id, 'alice')).toBeNull();
+    expect(staging.consume(id, 'alice')).toBe(false);
+    expect(staging.resolve(id, ADMIN_STAGING_ID)).not.toBeNull();
+  });
+
+  it("admin cannot consume bob's", () => {
+    const staging = createReplaceStaging({ stagingDir });
+    const id = staging.stage(Buffer.from('bobs-bytes'), 'bob', 'a.epub');
+
+    expect(staging.resolve(id, ADMIN_STAGING_ID)).toBeNull();
+    expect(staging.consume(id, ADMIN_STAGING_ID)).toBe(false);
+    expect(staging.resolve(id, 'bob')).not.toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { BookHashCollisionError } from '../../../../services/book-store';
-import { createReplaceStaging } from '../../../../services/replace-staging';
+import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
@@ -738,6 +738,75 @@ describe('Mutation.bookUpdateMetadata', () => {
         const data = result.data?.bookUpdateMetadata as { __typename: string };
         expect(data.__typename).toBe('StagedUploadNotFoundError');
         expect(enqueueSpy).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('admin staging identity (Task 4)', () => {
+      const stageCoverAs = (identity: string, bytes: Buffer, mime = 'image/png'): string =>
+        harness.stores.replaceStaging.stage(bytes, identity, 'cover.png', 'cover', mime);
+
+      // The end-to-end that was impossible before Task 4: a config admin
+      // (no library/userId of its own) stages a cover, then applies it to a
+      // NAMED user's book via `id` — proving the cover's BYTES actually
+      // change on ALICE's row, not merely that the mutation returned
+      // success. Seen-to-fail: reverting `stagingIdentityOf`'s admin branch
+      // to `context.viewer.userId` (always null for admin) turns this red —
+      // `StagedUploadNotFoundError`, no bytes touched — the exact gap spec
+      // 1's admin-replace decision gate recorded as open.
+      it('admin stages a cover, then applies it to ALICE’s book via bookUpdateMetadata — alice’s cover bytes change', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
+        const coverBytes = Buffer.from('admin-supplied-cover-bytes');
+        const stagedCoverId = stageCoverAs(ADMIN_STAGING_ID, coverBytes);
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.adminViewer,
+          variables: {
+            input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), stagedCoverId },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        const data = result.data?.bookUpdateMetadata as {
+          __typename: string;
+          book: { id: string; title: string };
+        };
+        expect(data.__typename).toBe('BookUpdateMetadataPayload');
+        expect(data.book.title).toBe('Alice’s Title'); // unchanged — cover-only edit
+        const cover = await harness.stores.book.getCover(
+          harness.aliceOwner.userId,
+          rawBookId(data.book.id)
+        );
+        expect(cover).not.toBeNull();
+        expect(Buffer.from(cover!.data)).toEqual(coverBytes);
+        // Consumed on success, same as any other caller's staged cover.
+        expect(
+          harness.stores.replaceStaging.resolve(stagedCoverId, ADMIN_STAGING_ID, 'cover')
+        ).toBeNull();
+      });
+
+      it('alice cannot consume an admin-staged cover, even against her own book', async () => {
+        await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
+        const adminStagedCoverId = stageCoverAs(ADMIN_STAGING_ID, Buffer.from('admins-cover'));
+
+        const result = await harness.execute(MUTATION, {
+          viewer: harness.aliceViewer,
+          variables: {
+            input: {
+              id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+              stagedCoverId: adminStagedCoverId,
+            },
+          },
+        });
+
+        expect(result.errors).toBeUndefined();
+        const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
+        expect(data.__typename).toBe('StagedUploadNotFoundError');
+        expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+        expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+        // The admin's own stage was never even reached — untouched.
+        expect(
+          harness.stores.replaceStaging.resolve(adminStagedCoverId, ADMIN_STAGING_ID, 'cover')
+        ).not.toBeNull();
       });
     });
   });

@@ -73,14 +73,21 @@ export const epochSecondsToDate = (seconds: number): Date => new Date(seconds * 
  * — KOReader also writes its own `/body/DocFragment[...]` form, which carries
  * no spine index).
  *
- * This is the derivation `GET /api/my/progress` performs inline in its route
- * handler (`routes/ui.ts`), lifted out so the GraphQL and REST readings of the
- * same two columns cannot drift — the same reason this module exists for the
- * JSON-string columns. The three branches are REST's, in REST's order:
- * an absent or empty spine map yields nothing, a non-CFI `progress` yields
- * nothing, and `spineIndexToChapter` is the only thing that decides the rest.
- * REST's handler is deliberately left as it is (this migration does not touch
- * `routes/`); it can adopt this function whenever it is next edited.
+ * This is the derivation `GET /api/my/progress` used to perform inline in its
+ * own route handler (`routes/ui.ts`), lifted out so the GraphQL and REST
+ * readings of the same two columns cannot drift — the same reason this
+ * module exists for the JSON-string columns. The three branches are REST's
+ * original ones, in REST's original order: an absent or empty spine map
+ * yields nothing, a non-CFI `progress` yields nothing, and
+ * `spineIndexToChapter` is the only thing that decides the rest.
+ *
+ * Task 4 (pre-client-polish plan §5, stop-on-drift rule): a comparison test
+ * (`routes/ui.test.ts`) ran both implementations over the route's own
+ * fixtures plus edge rows (empty spine, out-of-range chapter, non-CFI/empty
+ * progress) BEFORE the swap and found them identical, so `routes/ui.ts` now
+ * calls this function directly instead of re-deriving the same three
+ * branches inline — the comparison test stays in the suite afterward as a
+ * drift guard.
  */
 export const deriveCurrentChapter = (
   progressCfi: string,

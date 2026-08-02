@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { analyzeEpub } from '../../../../services/epub-import-pipeline';
 import type { ValidationMessage } from '../../../../services/epub-validator';
+import { stagingIdentityOf } from '../../../../services/replace-staging';
 import type { MetadataFix } from '../../../../types';
 import { builder } from '../../builder';
 import { model as epubValidationMessage } from '../../epub-validation-message';
@@ -99,17 +100,17 @@ const result = builder.unionType('BookAnalyzeReplaceResult', {
  * target" 400 cannot occur here, since the decoded id always names a
  * specific owner rather than leaving one to be supplied separately.
  *
- * The staged file is resolved by a DIFFERENT identity — `context.viewer.
- * userId`, the literal authenticated caller — never the decoded owner of
- * `id`. This is the spec's own rule ("keyed to the *authenticated* user,
- * not the `?user=` target") applied at the GraphQL boundary: an admin
- * session's `viewer.userId` is always `null` (`context.ts`), and
- * `ReplaceStaging.resolve` never has a `null`-keyed entry to find (nothing
- * can stage one — `POST /api/books/replace-staging` 401s an admin session
- * outright, see that route's doc comment), so an admin can never
- * successfully resolve ANY staged upload, including one staged by the very
- * user `id` decodes to. That is intentional, not a gap: staging ownership
- * and book ownership are deliberately different axes.
+ * The staged file is resolved by a DIFFERENT identity —
+ * `stagingIdentityOf(context.viewer)` (`services/replace-staging.ts`), never
+ * the decoded owner of `id`. This is the spec's own rule ("keyed to the
+ * *authenticated* user, not the `?user=` target") applied at the GraphQL
+ * boundary: an admin session's `viewer.userId` is always `null`
+ * (`context.ts`), so `stagingIdentityOf` maps it to `ADMIN_STAGING_ID`
+ * instead — a distinct bucket from every real userId (Task 4), so an admin
+ * CAN now stage and resolve its own upload, but still can never resolve one
+ * staged by the very user `id` decodes to (or by any other user): staging
+ * identity and book-targeting identity are deliberately different axes, and
+ * this only widens the FIRST one to include admins, not merges the two.
  *
  * `analyzeEpub` (`services/epub-import-pipeline.ts`) never throws one of the
  * seven known store errors on this path: its own internal `assertValidEpub`
@@ -158,17 +159,17 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
-      const callerUserId = context.viewer!.userId;
+      const stagingIdentity = stagingIdentityOf(context.viewer!);
       // `'epub'` explicit (Task 3b generalized the registry to also hold
       // `'cover'`-kind entries): a `stagedUploadId` that names a staged
       // cover must fail here exactly like an unknown/foreign/expired id,
       // never be read as an EPUB candidate.
       const staged =
-        callerUserId === null
+        stagingIdentity === null
           ? null
           : context.stores.replaceStaging.resolve(
               parsedInput.data.stagedUploadId,
-              callerUserId,
+              stagingIdentity,
               'epub'
             );
       if (staged === null) return stagedUploadNotFoundError();
