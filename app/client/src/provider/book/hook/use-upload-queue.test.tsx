@@ -352,6 +352,82 @@ describe('useUploadQueueEngine', () => {
     expect(result.current.items.filter((i) => i.status === 'queued')).toHaveLength(1);
   });
 
+  // /api/config is fetched once at app boot, racing AuthProvider's bootstrap
+  // refresh. When the access token has gone stale (the "first upload in a
+  // while") the request can come back 401, and apiFetch hands that response
+  // straight through if its refresh-and-retry fails. Its body is valid JSON —
+  // `{ error: 'Unauthorized' }` — so the read yields `undefined` rather than
+  // throwing into the .catch. An unvalidated `undefined` limit made every
+  // slot computation NaN and silently stranded the whole queue at 'queued'
+  // for the rest of the page session, so the limit must fall back instead.
+  it.each([
+    ['a 401 error body', { ok: false, body: { error: 'Unauthorized' } }],
+    ['a body missing the field', { ok: true, body: { libraryName: 'Bookplate' } }],
+    ['a non-numeric value', { ok: true, body: { maxConcurrentUploads: null } }],
+    ['a zero value', { ok: true, body: { maxConcurrentUploads: 0 } }],
+  ])('still starts uploads when /api/config returns %s', async (_label, response) => {
+    vi.mocked(fetch).mockImplementation((url: unknown) => {
+      if (String(url) === '/api/config') {
+        return Promise.resolve({
+          ok: response.ok,
+          json: () => Promise.resolve(response.body),
+        }) as unknown as Promise<Response>;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      }) as unknown as Promise<Response>;
+    });
+
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    expect(result.current.items[0].status).toBe('uploading');
+    expect(xhrInstances).toHaveLength(1);
+  });
+
+  // The pre-send token refresh is the other half of the "first upload in a
+  // while" path. It runs outside the XHR, so if it throws neither onload nor
+  // onerror ever fires: the item hangs at 'uploading' and — worse — its
+  // concurrency slot is never released, permanently shrinking the queue's
+  // capacity until nothing starts at all.
+  it('releases the concurrency slot when the pre-send token refresh throws', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: { request: () => Promise.reject(new Error('lock unavailable')) },
+    });
+
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The doomed upload must surface as a failure, not hang silently.
+    expect(result.current.items[0].status).toBe('error');
+    expect(xhrInstances[0].send).not.toHaveBeenCalled();
+
+    // …and its slot must be back, so the next file still uploads.
+    act(() => {
+      result.current.addFiles(makeFileList('b.epub'));
+    });
+    expect(result.current.items[1].status).toBe('uploading');
+  });
+
   it('updates bytesUploaded on progress events', async () => {
     const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
