@@ -1,8 +1,14 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 import type { MockedFunction } from 'vitest';
 
+import { createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
+import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { fixtureEpub, seedEditableBook } from './test-helpers';
+
+// The factory, not a hand-typed string literal — so this constant can never
+// drift from what the resolver actually returns.
+const UNKNOWN_STAGED_UPLOAD_MESSAGE = stagedUploadNotFoundError().message;
 
 vi.mock('../../../../logger');
 // assertValidEpub: pass by default — analyzeEpub's own epubcheck call, not
@@ -189,6 +195,43 @@ describe('Mutation.bookAnalyzeReplace', () => {
     expect(result.errors).toBeUndefined();
     const data = result.data?.bookAnalyzeReplace as { __typename: string; message: string };
     expect(data.__typename).toBe('StagedUploadNotFoundError');
+    expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
+  });
+
+  it('returns StagedUploadNotFoundError for an EXPIRED stagedUploadId, with the identical message unknown/foreign get', async () => {
+    // Review finding I-1: TTL was previously enforced only inside sweep(),
+    // which only runs from stage() — an expired id kept resolving. This test
+    // is the GraphQL-level regression the reviewer flagged as missing (M-5),
+    // now that replace-staging.ts's findOwned() is age-aware.
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+    let now = 0;
+    const shortLivedStaging = createReplaceStaging({
+      stagingDir: harness.stores.book.getStagingDir(),
+      ttlMs: 1000,
+      now: () => now,
+    });
+    harness.stores.replaceStaging = shortLivedStaging;
+    const stagedId = shortLivedStaging.stage(
+      fixtureEpub('Expired Candidate'),
+      harness.aliceOwner.userId,
+      'candidate.epub'
+    );
+    now = 999_999_999; // far past the TTL
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, stagedUploadId: stagedId },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookAnalyzeReplace as { __typename: string; message: string };
+    expect(data.__typename).toBe('StagedUploadNotFoundError');
+    // Same fixed, zero-argument message as the unknown-id case — the type
+    // carries no other fields, so there is nothing else that could leak
+    // "expired" specifically to the caller.
+    expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
   });
 
   it('returns StagedUploadNotFoundError when the stagedUploadId belongs to a different user, and leaves it usable by its real owner', async () => {
@@ -207,8 +250,9 @@ describe('Mutation.bookAnalyzeReplace', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    const data = result.data?.bookAnalyzeReplace as { __typename: string };
+    const data = result.data?.bookAnalyzeReplace as { __typename: string; message: string };
     expect(data.__typename).toBe('StagedUploadNotFoundError');
+    expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
     // Bob's own stage was not disturbed by alice's denied attempt.
     expect(
       harness.stores.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)

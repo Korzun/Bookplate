@@ -33,7 +33,7 @@ describe('createReplaceStaging', () => {
     const staging = createReplaceStaging({ stagingDir });
 
     expect(staging.resolve('no-such-id', 'alice')).toBeNull();
-    expect(staging.consume('no-such-id', 'alice')).toBeNull();
+    expect(staging.consume('no-such-id', 'alice')).toBe(false);
   });
 
   it('denies resolve to a user who did not stage the file (foreign), indistinguishably from unknown', () => {
@@ -55,11 +55,11 @@ describe('createReplaceStaging', () => {
 
     const asBob = staging.consume(id, 'bob');
 
-    expect(asBob).toBeNull();
+    expect(asBob).toBe(false);
     expect(fs.existsSync(alicePath)).toBe(true);
     // Alice can still consume it afterwards — bob's denied attempt did not
     // burn her one-time use.
-    expect(staging.consume(id, 'alice')).not.toBeNull();
+    expect(staging.consume(id, 'alice')).toBe(true);
   });
 
   it('consume deletes the file and unregisters the id — a second consume or resolve then returns null', () => {
@@ -69,10 +69,57 @@ describe('createReplaceStaging', () => {
 
     const consumed = staging.consume(id, 'alice');
 
-    expect(consumed?.path).toBe(filePath);
+    expect(consumed).toBe(true);
     expect(fs.existsSync(filePath)).toBe(false);
     expect(staging.resolve(id, 'alice')).toBeNull();
-    expect(staging.consume(id, 'alice')).toBeNull();
+    expect(staging.consume(id, 'alice')).toBe(false);
+  });
+
+  it('a second concurrent consume of the same id is denied — consume is atomic, not merely non-throwing', () => {
+    // Simulates two in-flight bookReplace calls racing to finalize the same
+    // stagedUploadId: whichever consume() runs first wins; the second must
+    // see the entry already gone, not double-succeed. `consume` has no
+    // internal `await`, so two synchronous calls (even from two "concurrent"
+    // async callers) can never interleave mid-function — the second call's
+    // `entries.get` always observes the first call's `entries.delete`.
+    const staging = createReplaceStaging({ stagingDir });
+    const id = staging.stage(Buffer.from('epub-bytes'), 'alice', 'book.epub');
+
+    const first = staging.consume(id, 'alice');
+    const second = staging.consume(id, 'alice');
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+  });
+
+  it('resolve and consume deny an entry past its TTL even with no intervening stage() call', () => {
+    // Regression for the gap sweep()-only enforcement left: `sweep()` only
+    // runs from `stage()`, so on a server where nobody stages a new file, a
+    // long-expired entry stayed fully resolvable and consumable forever.
+    let now = 0;
+    const staging = createReplaceStaging({ stagingDir, ttlMs: 1000, now: () => now });
+    const id = staging.stage(Buffer.from('old'), 'alice', 'old.epub');
+    const filePath = staging.resolve(id, 'alice')!.path;
+
+    now = 999_999_999; // far past TTL — no stage() call in between
+
+    expect(staging.resolve(id, 'alice')).toBeNull();
+    expect(staging.consume(id, 'alice')).toBe(false);
+    // Evicted as a side effect of being read past its TTL, not left to leak
+    // until some future stage() call's sweep happens to find it.
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  it('pins the TTL boundary: exactly-ttlMs-old still resolves, one unit older does not', () => {
+    let now = 0;
+    const staging = createReplaceStaging({ stagingDir, ttlMs: 1000, now: () => now });
+    const id = staging.stage(Buffer.from('boundary'), 'alice', 'boundary.epub');
+
+    now = 1000; // age === ttlMs exactly
+    expect(staging.resolve(id, 'alice')).not.toBeNull();
+
+    now = 1001; // one unit past
+    expect(staging.resolve(id, 'alice')).toBeNull();
   });
 
   it('sweeps an expired entry on the next stage() call: resolve returns null and the file is removed', () => {
