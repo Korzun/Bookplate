@@ -1,0 +1,247 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
+import { createHarness, type Harness } from '../../../test-util';
+import { seedEditableBook } from './test-helpers';
+
+vi.mock('../../../../logger');
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.cleanup();
+  vi.clearAllMocks();
+});
+
+const BOOK_ID = 'a'.repeat(32);
+const OTHER_BOOK_ID = 'b'.repeat(32);
+const DOCUMENT_ID = 'doc-1234567890abcdef';
+
+const MUTATION = `
+  mutation LinkDocument($input: BookLinkDocumentInput!) {
+    bookLinkDocument(input: $input) {
+      __typename
+      ... on BookLinkDocumentPayload {
+        book { bookId lineage { oldId newId type } }
+      }
+      ... on InvalidInputError {
+        message
+        issues { path message }
+      }
+      ... on SelfLinkError { message }
+      ... on DocumentAlreadyLinkedError { message documentId book { bookId title } }
+      ... on DocumentIsBookError { message book { bookId title } }
+    }
+  }
+`;
+
+const lineageOf = async (userId: string, id: string) =>
+  harness.stores.book.getBookLineage({ userId, username: '' }, id);
+
+describe('Mutation.bookLinkDocument', () => {
+  it('merges a document id into the viewer’s own book’s lineage', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Merge Target');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as {
+      __typename: string;
+      book: { bookId: string; lineage: { oldId: string; newId: string; type: string }[] };
+    };
+    expect(data.__typename).toBe('BookLinkDocumentPayload');
+    expect(data.book.bookId).toBe(BOOK_ID);
+    expect(data.book.lineage).toEqual([{ oldId: DOCUMENT_ID, newId: BOOK_ID, type: 'MERGE' }]);
+  });
+
+  it('trims documentId before linking, matching REST’s documentId.trim()', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Trim Me');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          bookId: BOOK_ID,
+          documentId: `  ${DOCUMENT_ID}  `,
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as {
+      book: { lineage: { oldId: string }[] };
+    };
+    expect(data.book.lineage).toEqual([{ oldId: DOCUMENT_ID, newId: BOOK_ID, type: 'MERGE' }]);
+  });
+
+  it('resolves to null when the book does not exist for the resolved owner', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: 'no-such-book', documentId: DOCUMENT_ID },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookLinkDocument).toBeNull();
+  });
+
+  it('returns InvalidInputError for an empty bookId', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: '', documentId: DOCUMENT_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookLinkDocument).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['bookId'], message: 'bookId must not be empty' }],
+    });
+  });
+
+  it('returns InvalidInputError for a blank (whitespace-only) documentId, matching REST’s "documentId is required"', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: '   ' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookLinkDocument).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['documentId'], message: 'documentId must not be empty' }],
+    });
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
+  });
+
+  it('returns SelfLinkError when documentId equals bookId, and leaves lineage unchanged', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'No Self Link');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: BOOK_ID } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.bookLinkDocument).toEqual({
+      __typename: 'SelfLinkError',
+      message: expect.any(String),
+    });
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
+  });
+
+  it('returns DocumentAlreadyLinkedError, resolving `book` to the book it is already linked to, and leaves lineage unchanged', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'First Owner');
+    await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Second Owner');
+    const first = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+      },
+    });
+    expect(first.errors).toBeUndefined();
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: OTHER_BOOK_ID, documentId: DOCUMENT_ID },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as {
+      __typename: string;
+      documentId: string;
+      book: { bookId: string; title: string };
+    };
+    expect(data.__typename).toBe('DocumentAlreadyLinkedError');
+    expect(data.documentId).toBe(DOCUMENT_ID);
+    expect(data.book).toEqual({ bookId: BOOK_ID, title: 'First Owner' });
+    expect((await lineageOf(harness.aliceOwner.userId, OTHER_BOOK_ID))?.entries).toEqual([]);
+  });
+
+  it('returns DocumentIsBookError when documentId names an existing book, resolving `book` to it, and leaves lineage unchanged', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Target');
+    await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'The Document Itself');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: OTHER_BOOK_ID },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as {
+      __typename: string;
+      book: { bookId: string; title: string };
+    };
+    expect(data.__typename).toBe('DocumentIsBookError');
+    expect(data.book).toEqual({ bookId: OTHER_BOOK_ID, title: 'The Document Itself' });
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
+  });
+
+  it('refuses one user linking a document into another user’s book, and leaves lineage unchanged', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Book');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.bobViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+      },
+    });
+
+    // Victim-row assertion first — see update-metadata.test.ts's identical
+    // ordering rationale.
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    expect(result.data?.bookLinkDocument ?? null).toBeNull();
+  });
+
+  it('lets an admin link a document into a named user’s book (content assertion, not just no-error)', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Admin Target');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: {
+        input: { userId: harness.aliceGlobalId, bookId: BOOK_ID, documentId: DOCUMENT_ID },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as { book: { bookId: string } };
+    expect(data.book.bookId).toBe(BOOK_ID);
+    // Content assertion of correct owner-scoping: read directly off alice's
+    // own userId (never the admin's, which has no library of its own).
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([
+      { oldId: DOCUMENT_ID, newId: BOOK_ID, timestamp: expect.any(Number), type: 'merge' },
+    ]);
+  });
+
+  it('refuses a User global ID that names no user', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: encodeGlobalID('User', 'no-such-user'),
+          bookId: BOOK_ID,
+          documentId: DOCUMENT_ID,
+        },
+      },
+    });
+
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+});
