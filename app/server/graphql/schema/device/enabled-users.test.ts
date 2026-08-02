@@ -65,9 +65,27 @@ describe('Device.enabledUsers', () => {
   // `GET /api/devices/:id/users` carries `adminAuth`, unlike that router's
   // `GET /`. The two must not be conflated: `Viewer.devices` is open to every
   // authenticated user and this field is not.
-  it('refuses a non-admin, while the device list itself stays open to them', async () => {
+  //
+  // `enabledUsers` is nullable (pre-client hardening spec, §4 "Nullability
+  // ruling"): a denial nulls JUST that field on EACH device, not the whole
+  // operation — `Viewer.devices` (itself a non-null list of non-null
+  // `Device`) stays populated with every device, each carrying
+  // `enabledUsers: null`. Seen-to-fail: reverting `Device.enabledUsers`'s
+  // `nullable: true` (device/model.ts) turns this red — a denied non-null
+  // field on a list ITEM nulls the whole non-null list, and that propagates
+  // all the way to root `data: null`, exactly like `Viewer.users` did before
+  // its own fix (see users.test.ts).
+  it('refuses a non-admin — nulls only `enabledUsers` per device, the list stays alive', async () => {
     const denied = await harness.execute(DEVICES, { viewer: harness.aliceViewer });
+
     expect(denied.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    // Alice is a non-admin, so `Viewer.devices` itself already scopes her to
+    // only the devices she is enabled on (dev-1) — same scoping as the
+    // "allowed" call below. This is `enabledUsers`'s own denial, not a
+    // second, different restriction.
+    expect((denied.data as DevicesData).viewer.devices).toEqual([
+      { name: 'Device dev-1', enabledUsers: null },
+    ]);
 
     const allowed = await harness.execute('{ viewer { devices { name } } }', {
       viewer: harness.aliceViewer,

@@ -41,6 +41,25 @@ afterEach(async () => {
   await harness.cleanup();
 });
 
+// `cors: false` (yoga.ts) turns off yoga's default reflect-any-origin
+// behaviour. The SPA is same-origin (served + proxied from the same host —
+// see vite.config.ts's `/graphql` proxy entry), so there is no legitimate
+// cross-origin caller to accommodate; a foreign Origin should see no CORS
+// headers at all, not a reflected allow. Seen-to-fail: removing `cors: false`
+// from yoga.ts turns this red — yoga's default CORS plugin reflects whatever
+// `Origin` the request sends back in `Access-Control-Allow-Origin`.
+describe('CORS', () => {
+  it('does not grant a foreign Origin any CORS headers', async () => {
+    const response = await request(app)
+      .post('/graphql')
+      .set('Origin', 'https://evil.example')
+      .send({ query: '{ __typename }' });
+
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(response.headers['access-control-allow-credentials']).toBeUndefined();
+  });
+});
+
 describe('POST /graphql', () => {
   it('answers a viewer query for a valid bearer token', async () => {
     const token = signAccessToken(jwtSecret, {

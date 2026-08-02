@@ -78,8 +78,15 @@ export const model = builder.prismaObject('Device', {
      * its `deviceUser.findMany({ where: { deviceId } })` join, read from the User
      * side so the rows are `User`s.
      */
+    // `nullable: true` (pre-client hardening spec, §4 "Nullability
+    // ruling") — same reasoning as `Viewer.users` (viewer/model.ts): a
+    // non-null list here would null-propagate a denial past `Device` and
+    // up through `Viewer.devices` (itself a list), discarding every OTHER
+    // device the same request asked for, not just this one field on this
+    // one device.
     enabledUsers: t.prismaField({
       type: [user],
+      nullable: true,
       authScopes: { admin: true },
       resolve: (query, deviceRow, _args, context) =>
         context.prisma.user.findMany({

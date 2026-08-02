@@ -57,11 +57,20 @@ describe('Viewer.users', () => {
   // `routes/users.ts` applies `router.use(adminAuth)` to the whole router, so
   // `GET /api/users` is admin-only. This must match it exactly — the plan
   // asserted the opposite of REST for `Viewer.devices` once already.
-  it('refuses a non-admin', async () => {
+  //
+  // `users` is nullable (pre-client hardening spec, §4 "Nullability
+  // ruling"): a denial nulls JUST this field, not the whole operation — the
+  // operation stays alive with `viewer` populated, `users: null`, and the
+  // FORBIDDEN error still present in `errors`. Seen-to-fail: reverting
+  // `Viewer.users`'s `nullable: true` (viewer/model.ts) turns this red —
+  // `viewer` itself becomes null instead (a non-null field forced null by a
+  // non-null child's denial propagates to the nearest nullable ancestor,
+  // which is `Query.viewer`'s own root data, not `Viewer.users`).
+  it('refuses a non-admin — nulls only `users`, the operation stays alive', async () => {
     const result = await harness.execute(USERS, { viewer: harness.aliceViewer });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(result.data?.viewer ?? null).toBeNull();
+    expect(result.data).toEqual({ viewer: { users: null } });
   });
 
   it('exposes each user as a real node whose library is reachable by an admin', async () => {
