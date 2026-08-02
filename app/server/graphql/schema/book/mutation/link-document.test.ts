@@ -210,6 +210,53 @@ describe('Mutation.bookLinkDocument', () => {
     expect(result.data?.bookLinkDocument ?? null).toBeNull();
   });
 
+  // Review M-6: the reverse direction — bob names ALICE's book id as the
+  // `documentId` to merge into HIS OWN book. Adjudicated safe by
+  // construction (`linkDocument`'s `book_id_history` writes and progress
+  // migration are both `user_id`-scoped, `book-store.ts:560-614`), but
+  // previously untested. Succeeds for bob (writing only into his own
+  // namespace) and leaves alice's book row and progress untouched.
+  it('lets bob merge a documentId that names alice’s own book into HIS OWN book, leaving alice’s book and progress untouched', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Book');
+    await harness.prisma.progress.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        document: BOOK_ID,
+        progress: 'epubcfi(/6/2!)',
+        percentage: 0.5,
+        device: 'Alice’s Device',
+        deviceId: 'alice-device',
+        timestamp: 1_700_000_000,
+      },
+    });
+    await seedEditableBook(harness, harness.bobOwner, OTHER_BOOK_ID, 'Bob’s Book');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.bobViewer,
+      variables: {
+        input: {
+          userId: encodeGlobalID('User', harness.bobOwner.userId),
+          bookId: OTHER_BOOK_ID,
+          documentId: BOOK_ID,
+        },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data?.bookLinkDocument as { __typename: string };
+    expect(data.__typename).toBe('BookLinkDocumentPayload');
+    // Bob's own lineage gained the entry, scoped to his namespace only.
+    expect((await lineageOf(harness.bobOwner.userId, OTHER_BOOK_ID))?.entries).toEqual([
+      { oldId: BOOK_ID, newId: OTHER_BOOK_ID, timestamp: expect.any(Number), type: 'merge' },
+    ]);
+    // Alice's own book/lineage/progress are all untouched.
+    expect((await lineageOf(harness.aliceOwner.userId, BOOK_ID))?.entries).toEqual([]);
+    const aliceProgress = await harness.prisma.progress.findUnique({
+      where: { userId_document: { userId: harness.aliceOwner.userId, document: BOOK_ID } },
+    });
+    expect(aliceProgress?.percentage).toBe(0.5);
+  });
+
   it('lets an admin link a document into a named user’s book (content assertion, not just no-error)', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Admin Target');
 

@@ -112,9 +112,9 @@ const result = builder.unionType('BookResolvePendingFixResult', {
 });
 
 /**
- * Folds a live `PendingFix`'s stored `proposals` into an `EpubChanges` object,
- * exactly the way `applyAutoAndAccepted` (`epub-import-pipeline.ts`) folds a
- * freshly re-detected accepted set — same two cases per fix: a
+ * Folds a set of ACTIONABLE `MetadataFix` proposals into an `EpubChanges`
+ * object, exactly the way `applyAutoAndAccepted` (`epub-import-pipeline.ts`)
+ * folds a freshly re-detected accepted set — same two cases per fix: a
  * `subjects-split` fix carries its edit in `fromChips`/`toChips` (its
  * `changes` is empty — see `metadata-issues.ts`'s `subjects-split` branch)
  * and must be folded into the running subjects array via the SAME shared
@@ -122,6 +122,10 @@ const result = builder.unionType('BookResolvePendingFixResult', {
  * directly via `Object.assign`, since `MetadataFix.changes` already carries
  * the exact `EpubChanges` field/value shape (both are produced from the same
  * `detectMetadataIssues` vocabulary — `metadata-issues.ts`).
+ *
+ * "Actionable" is the caller's job, not this function's: see the resolver's
+ * `actionable` filter below (`fix.to !== null`, review I-2) — this function
+ * assumes it has already been applied and folds whatever it is given.
  *
  * Deliberately reads the STORED `MetadataFix` objects from the `PendingFix`
  * row rather than re-running `detectMetadataIssues` against the book's
@@ -164,64 +168,112 @@ function foldProposalsIntoChanges(
  * itself resolves.
  *
  * **ACCEPT is NOT a literal REST mirror — flagged, per the task's escalation
- * instruction.** Traced end to end: no REST route atomically "accepts" a
- * pending fix. `PUT /api/books/:id/pending-fixes` only ever WRITES whatever
- * state the client sends (`routes/ui.ts:776-800`); the client
- * (`use-upload-queue.ts`'s `applyAllProposals`/`applyPatch`) actually applies
- * fixes itself, via a separate `PATCH /api/books/:id/metadata` call, then
- * syncs the resulting (reduced) proposal list back via this same `PUT`. That
- * multi-request, client-orchestrated flow includes an `undo` snapshot this
- * mutation does not attempt to reproduce (undo is client-session state, never
- * persisted by any REST route on the server's behalf beyond the raw `PUT`
- * body). Given the brief's own description ("the accept path applies fixes
- * via the `upsertPendingFix`/apply flow") and that the spec names exactly one
- * mutation, ACCEPT here means: apply every live proposal in one atomic write
- * via `applyEpubChanges` — the same underlying operation
- * `bookUpdateMetadata` uses — then clear the (now-resolved) `PendingFix` row.
+ * instruction — but IS designed to be behaviourally EQUIVALENT to what REST's
+ * client actually persists**, traced end to end
+ * (`app/client/src/provider/book/hook/use-upload-queue.ts:356-447`) after a
+ * review round (task-4-review.md, findings I-1/I-2) found the first version
+ * diverged from it in two ways. No REST route atomically "accepts" a pending
+ * fix: `PUT /api/books/:id/pending-fixes` only ever WRITES whatever state the
+ * client sends (`routes/ui.ts:776-800`); the client's `applyAllProposals` /
+ * `applyPatch` actually applies fixes itself via a separate `PATCH
+ * /api/books/:id/metadata` call, then a separate sync effect PUTs the
+ * resulting reduced state back. Given the brief's own description ("the
+ * accept path applies fixes via the `upsertPendingFix`/apply flow") and that
+ * the spec names exactly one mutation, ACCEPT here means: apply every
+ * ACTIONABLE proposal in one atomic write via `applyEpubChanges` — the same
+ * underlying operation `bookUpdateMetadata` uses — then persist the same
+ * post-accept `PendingFix` state the client's flow would have left behind.
  * This is a genuine, honest design choice, not a REST citation; see the task
  * report for the full alternative designs considered.
  *
- * `applyEpubChanges` can only run when there is at least one live proposal:
- * with none (no row, an expired row, or a resolved one),  ACCEPT is a no-op
- * that clears a stale row if one exists and returns the book unchanged —
- * mirroring REST's own permissiveness (neither write route ever checks
- * whether a `PendingFix` exists before acting) rather than fabricating an
- * error for "nothing to accept".
+ * **Actionable, not merely present (review I-2).** REST's client filters
+ * `proposals.filter(p => p.to !== null)` before applying
+ * (`use-upload-queue.ts:421`) and returns early — no PATCH at all — when that
+ * filtered set is empty (`:422`). Two detected issue kinds are advisory-only
+ * (`html-entity`, `title-is-filename` — `metadata-issues.ts`): they carry
+ * `to: null` and an empty `changes`, so folding them changes nothing, yet
+ * `applyEpubChanges` would still rebuild/revalidate/re-import the EPUB for
+ * that no-op, minting a pointless new content-hash id. This resolver filters
+ * to `actionable = proposals.filter(fix => fix.to !== null)` for the exact
+ * same reason, BEFORE deciding whether there is anything to do.
+ *
+ * **No actionable proposals (no row, a resolved row, an expired undo-only
+ * row, or a row whose only proposals are advisory) → ACCEPT is a strict
+ * no-op**: no `applyEpubChanges` call, no `PendingFix` write of any kind
+ * (neither upsert nor delete) — mirroring REST's client exactly, which does
+ * not even issue a request in this case, rather than fabricating an error for
+ * "nothing to accept". This intentionally happens BEFORE the
+ * `targetBook.valid !== true` gate below (review M-7): since nothing would be
+ * written either way, gating first would only turn a harmless no-op into a
+ * confusing `BookNotValidatedError` for a book whose metadata was never
+ * going to change.
  *
  * `targetBook.valid !== true` gates ACCEPT exactly like `bookUpdateMetadata`
  * gates its own `applyEpubChanges` call (REST's `PATCH .../metadata` 409 —
  * see that file's doc comment): both mutations reach the identical
- * underlying write, so both must respect the identical precondition on it.
- * DISMISS never calls `applyEpubChanges`, so it is not gated.
+ * underlying write, so both must respect the identical precondition on it —
+ * but only once there is at least one actionable proposal to apply. DISMISS
+ * never calls `applyEpubChanges`, so it is not gated.
  *
  * ACCEPT respects the same TTL liveness the read model applies (`Book.
  * pendingFix`, `Library.pendingFixes` — `derive.ts`'s `isLivePendingFix`,
  * schema-cleanup spec §3), but WITHOUT calling that predicate — see the
- * `proposals` read below for the proof that reading `state.proposals`
- * directly already agrees with it for every possible state, TTL included.
- * An expired pending fix behaves, for ACCEPT, exactly like a missing one
- * (nothing to apply), never like a live one whose stale proposals get
- * silently re-applied.
+ * `actionable` computation below for the proof that reading `state.proposals`
+ * directly already agrees with it for the "is there a row worth reading"
+ * question, for every possible state, TTL included: a genuinely expired,
+ * undo-only row already has `proposals: []` by construction, so it falls into
+ * the no-op branch the same as a missing or already-resolved row — whether
+ * any of those proposals turn out to be *actionable* is an orthogonal
+ * question `isLivePendingFix` was never trying to answer.
  *
  * `applyEpubChanges` can throw `BookHashCollisionError` / `EpubValidationError`
  * — the same two `bookUpdateMetadata` traces (`applyEpubChanges`'s own doc
- * comment) — `expected` declares exactly this subset.
+ * comment) — `expected` declares exactly this subset. A typed failure leaves
+ * the `PendingFix` row untouched, same as every other typed-failure branch in
+ * this schema (`bookUpdateMetadata`'s identical rule).
+ *
+ * **Persisted state on success mirrors what the client's `applyAllProposals`
+ * + sync effect actually write (review I-1), not a delete.** The client
+ * removes only the applied (actionable) fixes' keys from `proposals`
+ * (`applyPatch`, `use-upload-queue.ts:384-396`) — any advisory-only proposals
+ * that were never actionable are left behind — appends the applied fixes to
+ * `appliedFixes`, and arms `undo: { kind: 'apply', proposals: <the FULL
+ * pre-accept proposals list>, appliedFixes: <the pre-accept appliedFixes> }`
+ * (`applyAllProposals`, `:427-443`); only THEN does the sync effect PUT that
+ * state (`:207-229`) — it never deletes here, since `undo` is always set.
+ * This resolver reproduces exactly that shape via `upsertPendingFix`, keyed
+ * to `outcome.ok.id` (see below for why). Because `undo` is always non-null
+ * on this path, `upsertPendingFix`'s own "resolved ⟹ delete" rule
+ * (`book-store.ts:661-665`) never fires here — the row survives, live, for
+ * the client's existing undo affordance to keep working after a
+ * GraphQL-driven accept, exactly as it would after REST's.
  *
  * A successful ACCEPT may rewrite the EPUB, changing the book's content-hash
  * id (`bookUpdateMetadata`'s doc comment explains why). The `PendingFix` row
- * (if any) FK-cascades onto the new id in the same transaction
- * (`schema.prisma`'s `onUpdate: Cascade` on `PendingFix`'s `[userId,
- * bookId]` FK), so the cleanup delete below targets `outcome.ok.id` (the NEW
- * id), not the pre-edit `bookId` — the same `outcome.ok.id` convention
- * `bookUpdateMetadata` uses for its own post-success side effects.
+ * (read further above, before the write) FK-cascades onto the new id in the
+ * same transaction (`schema.prisma`'s `onUpdate: Cascade` on `PendingFix`'s
+ * `[userId, bookId]` FK), so the `upsertPendingFix` call below targets
+ * `outcome.ok.id` (the NEW id), not the pre-edit `bookId` — the same
+ * `outcome.ok.id` convention `bookUpdateMetadata` uses for its own
+ * post-success side effects — and lands on the row the cascade already moved
+ * there.
+ *
+ * The pre-write read uses `context.prisma.pendingFix.findUnique` directly,
+ * NOT `context.loadPendingFix` (review M-1): that loader is a request-scoped
+ * DataLoader shared with `Book.pendingFix`'s field resolver, so priming it
+ * here under the pre-accept id and then writing straight to the database
+ * (bypassing the loader) would leave a stale cached value behind for any
+ * later read of `Book.pendingFix` on the same id within this request — an
+ * unbatched, one-off mutation read has no batching benefit to lose by going
+ * straight to Prisma instead.
  */
 builder.mutationField('bookResolvePendingFix', (t) =>
   t.field({
     type: result,
     nullable: true,
     description:
-      'Accepts (applies) or dismisses (discards) a book’s pending metadata- ' +
-      'fix proposals. Resolves to null when the book does not exist for the ' +
+      'Accepts (applies) or dismisses (discards) a book’s pending metadata-fix ' +
+      'proposals. Resolves to null when the book does not exist for the ' +
       'resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
@@ -245,28 +297,25 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         };
       }
 
-      /**
-       * Reads `state.proposals` directly rather than calling the read model's
-       * `isLivePendingFix` predicate — proven equivalent for this purpose, not
-       * merely assumed: `isLivePendingFix` (`derive.ts`) returns `false` ONLY
-       * when `state.proposals.length === 0` (its `noProposals && noUndo` and
-       * `expiredUndo` branches both require `noProposals`); whenever
-       * `proposals.length > 0` it always returns `true`. So "does this row
-       * have live proposals" and "is `state.proposals` non-empty" are the same
-       * question for every possible state, TTL included — a genuinely expired,
-       * undo-only row already has `proposals: []` by construction, the same as
-       * a missing row or an already-resolved one. Calling the predicate here
-       * would be dead weight that looks load-bearing but changes nothing (this
-       * was verified with a seen-to-fail run, not asserted — see the task
-       * report). `Book.pendingFix`/`Library.pendingFixes` still apply the real
-       * predicate for READING a `PendingFix` — this is about this resolver's
-       * own internal "is there anything to accept" decision only.
-       */
-      const row = await context.loadPendingFix(owner.userId, targetBook.id);
-      const proposals = row === null ? [] : parsePendingFixState(row.state).proposals;
+      const row = await context.prisma.pendingFix.findUnique({
+        where: { userId_bookId: { userId: owner.userId, bookId: targetBook.id } },
+      });
+      if (row === null) {
+        return {
+          __typename: 'BookResolvePendingFixPayload' as const,
+          owner,
+          bookId: targetBook.id,
+        };
+      }
 
-      if (proposals.length === 0) {
-        if (row !== null) await context.stores.book.deletePendingFix(owner, targetBook.id);
+      const state = parsePendingFixState(row.state);
+      // Review I-2: only proposals REST's client would itself apply
+      // (`p.to !== null`, `use-upload-queue.ts:421`) — an advisory-only
+      // proposal folds to an empty `EpubChanges` and must not trigger a
+      // pointless rewrite.
+      const actionable = state.proposals.filter((fix) => fix.to !== null);
+
+      if (actionable.length === 0) {
         return {
           __typename: 'BookResolvePendingFixPayload' as const,
           owner,
@@ -278,7 +327,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         return bookNotValidatedError(owner, targetBook.id);
       }
 
-      const changes = foldProposalsIntoChanges(proposals, targetBook.subjects);
+      const changes = foldProposalsIntoChanges(actionable, targetBook.subjects);
 
       const deps: ApplyEpubChangesDeps = {
         bookStore: context.stores.book,
@@ -300,7 +349,18 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         return assertUnreachableStoreError(outcome.err);
       }
 
-      await context.stores.book.deletePendingFix(owner, outcome.ok.id);
+      // Review I-1: mirrors what REST's client's `applyAllProposals` +
+      // sync effect actually persist — the row survives with the applied
+      // (actionable) fixes removed from `proposals` (advisory-only ones left
+      // behind), appended to `appliedFixes`, and a fresh `undo` snapshot
+      // armed from the PRE-accept state. `undo` being non-null means
+      // `upsertPendingFix`'s own "resolved ⟹ delete" rule never fires here.
+      await context.stores.book.upsertPendingFix(owner, outcome.ok.id, row.fileName, row.fileSize, {
+        autoFixes: state.autoFixes,
+        appliedFixes: [...state.appliedFixes, ...actionable],
+        proposals: state.proposals.filter((fix) => fix.to === null),
+        undo: { kind: 'apply', proposals: state.proposals, appliedFixes: state.appliedFixes },
+      });
 
       return {
         __typename: 'BookResolvePendingFixPayload' as const,

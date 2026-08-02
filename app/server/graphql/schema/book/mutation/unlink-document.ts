@@ -70,6 +70,21 @@ const payload = builder
   });
 
 /**
+ * Compile-time exhaustiveness (review M-4) over `BookStore.unlinkDocument`'s
+ * return type, the same `never`-narrowing idiom `assertUnreachableStoreError`
+ * (`to-result.ts`) uses for the seven known store errors: the `switch` below
+ * has one `case` per member of `'deleted' | 'not_found' | 'edit_row'`, so a
+ * fourth discriminator added to that return type fails `outcome` to narrow to
+ * `never` at the `default:` branch — a BUILD failure, not a silently-wrong
+ * "success" fallthrough. Local to this file, not `to-result.ts`: this is not
+ * one of the seven known store errors, and `unlinkDocument` isn't wrapped in
+ * `toResult` at all (see the resolver's own doc comment for why).
+ */
+function assertUnreachableUnlinkOutcome(outcome: never): never {
+  throw new Error(`Unreachable unlinkDocument outcome: ${String(outcome)}`);
+}
+
+/**
  * No `resolveType`: every member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
  */
@@ -130,14 +145,20 @@ builder.mutationField('bookUnlinkDocument', (t) =>
         parsed.data.bookId,
         parsed.data.documentId
       );
-      if (outcome === 'not_found') return lineageEntryNotFoundError();
-      if (outcome === 'edit_row') return editLineageEntryError();
-
-      return {
-        __typename: 'BookUnlinkDocumentPayload' as const,
-        owner,
-        bookId: parsed.data.bookId,
-      };
+      switch (outcome) {
+        case 'not_found':
+          return lineageEntryNotFoundError();
+        case 'edit_row':
+          return editLineageEntryError();
+        case 'deleted':
+          return {
+            __typename: 'BookUnlinkDocumentPayload' as const,
+            owner,
+            bookId: parsed.data.bookId,
+          };
+        default:
+          return assertUnreachableUnlinkOutcome(outcome);
+      }
     },
   })
 );
