@@ -302,9 +302,9 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
   // pass whether or not THIS field's own multiplier fired.
   //
   // Round-3, M-8: `Device.enabledUsers` now shares `INSTANCE_USER_MULTIPLIER`
-  // (50) with `Viewer.users`, not its own `HOUSEHOLD_DEVICE_MULTIPLIER`
-  // (task 3: re-derived 20 -> 100, `cost-limit.ts`'s own doc comment above
-  // that constant) — it prices a SUBSET of the instance's users
+  // (50) with `Viewer.users`, not its own `INSTANCE_DEVICE_MULTIPLIER`
+  // (task 3: re-derived 20 -> 100 and renamed from HOUSEHOLD_DEVICE_MULTIPLIER,
+  // `cost-limit.ts`'s own doc comment above that constant) — it prices a SUBSET of the instance's users
   // (`device/model.ts:87-97`'s `where: {deviceAccess: {some: {deviceId}}}`),
   // which cannot exceed the instance's own user count, so it must never be
   // priced tighter than `Viewer.users` itself.
@@ -341,16 +341,22 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
     );
     // Previously recorded as 882 (id/name/slug only), then 982 (8 fields,
-    // enabledUsers still at the pre-M-8 HOUSEHOLD_DEVICE_MULTIPLIER), then
-    // 2182 (M-8 raised Device.enabledUsers to INSTANCE_USER_MULTIPLIER=50,
-    // devices still at the pre-Task-3 HOUSEHOLD_DEVICE_MULTIPLIER=20) — all
-    // stale now that task 3 re-derived HOUSEHOLD_DEVICE_MULTIPLIER to 100:
+    // enabledUsers still at the pre-M-8 device constant, then named
+    // HOUSEHOLD_DEVICE_MULTIPLIER), then 2182 (M-8 raised Device.enabledUsers
+    // to INSTANCE_USER_MULTIPLIER=50, devices still at the pre-Task-3 value,
+    // 20) — all stale now that task 3 re-derived and renamed the device
+    // constant to INSTANCE_DEVICE_MULTIPLIER=100:
     // enabledUsers{id,username}=2; enabledUsers(50)=1+50*2=101;
     // devices(mult 100){8 leaves + enabledUsers(101)}=1+100*(8+101)=10901;
-    // viewer=1+10901=10902. This fixture's headroom against COMPLEXITY_BUDGET
-    // (not the stale 3823 comparator this test used before task 3) is
-    // asserted permanently by `cost-calibration.test.ts`'s corpus, not here.
+    // viewer=1+10901=10902.
     expect({ breadth, complexity }).toEqual({ breadth: 13, complexity: 10902 });
+    // M-2 (task-3-review.md): a sanity upper bound, replacing the stale
+    // `toBeLessThan(3823)` this test used before Task 3's budget raise moved
+    // this fixture past that comparator — the fixture's REAL headroom
+    // against COMPLEXITY_BUDGET (33.0% at time of writing) is asserted
+    // permanently by `cost-calibration.test.ts`'s corpus, not here; this
+    // guard only confirms the fixture still ADMITS at all, never silently.
+    expect(complexity).toBeLessThan(COMPLEXITY_BUDGET);
   });
 
   it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own, at instance-user scale', () => {

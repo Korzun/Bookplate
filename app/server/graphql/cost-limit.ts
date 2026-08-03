@@ -237,12 +237,15 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * {deviceId}}}})`, a SUBSET of the instance's users, which cannot exceed
  * `Viewer.users`'s own count — so both now share
  * `INSTANCE_USER_MULTIPLIER`. (Previously `Device.enabledUsers` used a
- * separate, tighter `HOUSEHOLD_DEVICE_MULTIPLIER`, with no code, REST, or
- * schema basis for pricing a subset of the instance's users more tightly
- * than the instance's users themselves — on a 50-user instance a single
- * shared device can legally return up to 50 rows.) `Viewer.devices` keeps
- * its own `HOUSEHOLD_DEVICE_MULTIPLIER` — a genuinely different quantity
- * (device count, not user count) — but round-3 also records, for Task 4,
+ * separate, then-tighter device constant (named `HOUSEHOLD_DEVICE_MULTIPLIER`
+ * at the time, value 20 — Task 3 renamed it to `INSTANCE_DEVICE_MULTIPLIER`
+ * and raised it to 100, below, so "tighter" describes round-3's history, not
+ * today's relative sizes), with no code, REST, or schema basis for pricing a
+ * subset of the instance's users more tightly than the instance's users
+ * themselves — on a 50-user instance a single shared device can legally
+ * return up to 50 rows.) `Viewer.devices` keeps its own
+ * `INSTANCE_DEVICE_MULTIPLIER` — a genuinely different quantity (device
+ * count, not user count) — but round-3 also records, for Task 4,
  * that `Viewer.devices` is **NOT household-scoped for an admin caller**:
  * `viewer/model.ts:127-140` runs `device.findMany({orderBy})` with **no
  * `where`** when the viewer is an admin — every device on the instance, not
@@ -271,18 +274,23 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * ~15 real rows either way. No REST endpoint, admin UI, or schema
  * constraint caps device or user count numerically (confirmed:
  * `routes/users.ts`'s own `GET /users` is equally unpaginated), so
- * `HOUSEHOLD_DEVICE_MULTIPLIER`/`INSTANCE_USER_MULTIPLIER` are ASSUMED, not
+ * `INSTANCE_DEVICE_MULTIPLIER`/`INSTANCE_USER_MULTIPLIER` are ASSUMED, not
  * measured or sourced from code — stated as such, not disguised as a real
  * bound — but chosen an order of magnitude below the library-scale 100 to
  * reflect that a self-hosted server's household/instance user count is
  * genuinely a smaller-scale quantity than its book catalog:
- * `HOUSEHOLD_DEVICE_MULTIPLIER` (originally 20, see re-derivation below) for
+ * `INSTANCE_DEVICE_MULTIPLIER` (originally 20, see re-derivation below) for
  * `Viewer.devices`, and `INSTANCE_USER_MULTIPLIER = 50` for
  * `Viewer.users`/`Device.enabledUsers` (headroom for a larger shared
  * instance — e.g. a small book club or extended family).
  *
- * **`HOUSEHOLD_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100
- * (`.superpowers/sdd/2026-08-03-cost-calibration-suite/task-3-report.md`).**
+ * **`INSTANCE_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100, and RENAMED from
+ * `HOUSEHOLD_DEVICE_MULTIPLIER` (task-3-review.md, I-2 — the old name
+ * claimed a household scale this constant's own admin-path reality (below)
+ * never had; the number was right, the name was false, so the identifier is
+ * corrected in place along with the value, per this codebase's
+ * in-place-correction discipline)**
+ * (`.superpowers/sdd/2026-08-03-cost-calibration-suite/task-3-report.md`).
  * The paragraph above already named the defect this fixes: `Viewer.devices`
  * is NOT household-scoped for an admin caller (`viewer/model.ts:127-140`'s
  * `device.findMany({orderBy})`, no `where`) — it returns every device on the
@@ -303,7 +311,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * plausible for an admin-scale instance. Effective value BEFORE this task:
  * 20 (assumed household scale, 2-6 devices × generous headroom — correct
  * for the non-admin branch, under-priced for the admin branch this
- * multiplier actually governs). `HOUSEHOLD_DEVICE_MULTIPLIER = 100` now
+ * multiplier actually governs). `INSTANCE_DEVICE_MULTIPLIER = 100` now
  * matches `UNBOUNDED_LIST_MULTIPLIER`'s own value numerically, but not its
  * derivation — this number comes from instance-user-count × devices-per-user,
  * `UNBOUNDED_LIST_MULTIPLIER` from `CONNECTION_LIMITS.nodesBatch`; the
@@ -312,6 +320,17 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * `INSTANCE_USER_MULTIPLIER`, never used this constant). See
  * `COMPLEXITY_BUDGET`'s own doc comment for the re-measurement this raise
  * required and the resulting budget derivation.
+ *
+ * **Forward-looking (task-3-review.md, (a)): this constant is no longer
+ * floor-neutral by default.** The device-list+`enabledUsers` consolidation
+ * fixture (`cost-calibration.test.ts`) is `1 + INSTANCE_DEVICE_MULTIPLIER ×
+ * 109`; at 100 it measures 10,902, well under the 22,602 floor-setting
+ * anchor (`Viewer.users`-rooted, not device-rooted). It OVERTAKES 22,602 and
+ * becomes the floor-setter itself once `INSTANCE_DEVICE_MULTIPLIER ≥ 208` —
+ * today's 100 leaves roughly 2× of room, but a FUTURE re-derivation of this
+ * constant must re-measure the whole legit/near-future corpus (per the
+ * binding order above `COMPLEXITY_BUDGET`), not assume the floor stays put
+ * the way this task's own raise happened to leave it.
  *
  * **`INSTANCE_USER_MULTIPLIER` re-examined and KEPT at 50 (final-review.md,
  * I-2).** The whole-branch final review measured a REAL admin screen —
@@ -350,10 +369,11 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * exists" disclosure this constant has always carried.
  */
 const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
-// Task 3 re-derivation (20 → 100) — see the dedicated paragraph above,
-// "`HOUSEHOLD_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100", for the device
-// count this now encodes and the reasoning.
-const HOUSEHOLD_DEVICE_MULTIPLIER = 100;
+// Task 3 re-derivation (20 → 100) and rename (from HOUSEHOLD_DEVICE_MULTIPLIER,
+// task-3-review.md I-2) — see the dedicated paragraph above,
+// "`INSTANCE_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100", for the device count
+// this now encodes and the reasoning.
+const INSTANCE_DEVICE_MULTIPLIER = 100;
 const INSTANCE_USER_MULTIPLIER = 50;
 const BOOK_LINEAGE_MULTIPLIER = 20;
 
@@ -365,10 +385,10 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
   },
   'Viewer.users': { maxSize: INSTANCE_USER_MULTIPLIER, defaultSize: INSTANCE_USER_MULTIPLIER },
   'Viewer.devices': {
-    maxSize: HOUSEHOLD_DEVICE_MULTIPLIER,
-    defaultSize: HOUSEHOLD_DEVICE_MULTIPLIER,
+    maxSize: INSTANCE_DEVICE_MULTIPLIER,
+    defaultSize: INSTANCE_DEVICE_MULTIPLIER,
   },
-  // M-8: shares Viewer.users's multiplier, not HOUSEHOLD_DEVICE_MULTIPLIER —
+  // M-8: shares Viewer.users's multiplier, not INSTANCE_DEVICE_MULTIPLIER —
   // enabledUsers is a SUBSET of the instance's users (device/model.ts:87-97's
   // `where: { deviceAccess: { some: { deviceId } } }`), so it cannot exceed
   // Viewer.users's own count and must never be priced tighter than it.
@@ -855,7 +875,7 @@ export const BREADTH_BUDGET = 100;
  * ruling (`docs/superpowers/specs/2026-08-03-cost-calibration-suite-design.md`
  * §3): `COMPLEXITY_BUDGET = worst_legit_complexity / 0.70`, rounded UP to a
  * round number, never from gap-to-attack. The worst measured legit anchor,
- * re-confirmed after Task 3's `HOUSEHOLD_DEVICE_MULTIPLIER` raise (20 → 100,
+ * re-confirmed after Task 3's `INSTANCE_DEVICE_MULTIPLIER` raise (20 → 100,
  * above) moved the device-touching fixtures and left this one unchanged, is
  * still **22,602** — the admin user-list mirror, above. 22,602 / 0.70 =
  * 32,288.57 (worst_legit / HEADROOM_FRACTION), rounded up to the nearest
@@ -876,15 +896,32 @@ export const BREADTH_BUDGET = 100;
  * fixture: an earlier revision of this comment claimed "21.2% below the
  * smallest complexity-only attack (36,367)", which is false. A CONSTRUCTIBLE
  * complexity-only attack sits at 30,103 (`library { series { books(first:
- * 100) … } }`) — at the PRE-Task-3 budget (30,000) this sat ~0.3% ABOVE
- * budget (rejected, barely); at 33,000 it now sits ~9.6% BELOW budget
- * (ADMITTED) — an explicit, acknowledged consequence of this raise, not a
+ * 100) … } }`) — relative to budget in both cases (task-3-review.md, M-1: an
+ * earlier version of this sentence mixed bases, ~0.3% of the OLD budget vs.
+ * ~9.6% of the attack's OWN value, not comparable numbers): at the
+ * PRE-Task-3 budget (30,000) this sat ~0.3% ABOVE budget (rejected, barely);
+ * at 33,000 it now sits ~8.8% BELOW budget (ADMITTED) — an explicit,
+ * acknowledged consequence of this raise, not a
  * silent one (design doc §3: "raising the budget widens the overlap band
  * with bounded-cost attack shapes... it does not create a new one" — this
  * shape was never a committed REJECT-asserting fixture, only a prose
  * example of the overlap band described below, and Task 1's per-hop
  * `CONNECTION_LIMITS` still cap its real row count regardless of verdict).
- * One sat ~0% above the previous 25,000 too (25,003). That is the documented
+ * One sat ~0% above the previous 25,000 too (25,003).
+ *
+ * **Quantified (task-3-review.md, (c)): the 30,000→33,000 raise widens the
+ * overlap band by +3,000 complexity (+10.0% of the old budget) but only
+ * ~+1% in real rows** — the reviewer swept `series → books(first:N)` for
+ * `N: 85…110` and `nodes(k ids) → books(first:100)` for `k: 1…120` and found
+ * complexity SATURATES at 30,103/30,101 respectively (this cost model
+ * already clamps at `CONNECTION_LIMITS.nodesBatch = 100`), so the raise
+ * admits the ENTIRE top of both families, not "some more of" them, while the
+ * real row count they fetch moves only from ~10,000 (`series →
+ * books(first:99)`, 29,803) to ~10,100 (`series → books(first:100)`,
+ * 30,103) — Task 1's per-hop caps saturate first, well before this budget's
+ * own headroom does.
+ *
+ * That is the documented
  * overlap band (see "OVERLAP" below), not a regression introduced by this
  * raise, and it is exactly why gap-to-nearest-attack reasoning was
  * abandoned in Task 4: it measures the fixtures we happened to write, not
@@ -1045,7 +1082,7 @@ export const BREADTH_BUDGET = 100;
  *    richer-grid shape (22,283, 74.3%) both ADMITTED but both over the new
  *    70% line — "admitted" and "admitted with margin" are different
  *    properties, and 30,000 only proved the first for these two. Order
- *    matters here (the plan's own binding rule): `HOUSEHOLD_DEVICE_MULTIPLIER`
+ *    matters here (the plan's own binding rule): `INSTANCE_DEVICE_MULTIPLIER`
  *    was re-derived FIRST (20 → 100, its own doc comment above), the suite
  *    was RE-MEASURED (worst legit anchor unchanged at 22,602 — the device
  *    raise moved the device-touching fixtures but not the worst one), and
@@ -1055,6 +1092,18 @@ export const BREADTH_BUDGET = 100;
  *    block); both deferred headroom assertions (`it.fails()`,
  *    `cost-calibration.test.ts`) now pass and were flipped to plain,
  *    always-enforced assertions.
+ * 6. (task-3-review.md, I-1/I-2) Review of item 5's own commit found two
+ *    documentation/naming residues, no number wrong: (I-1) the
+ *    `deferredToTask3` deferral scaffolding item 5 cleared survived as dead
+ *    code with a stale "TODAY's numbers (`COMPLEXITY_BUDGET = 30_000`)"
+ *    comment — deleted outright (`cost-calibration.test.ts`), not left
+ *    dormant, per this codebase's "a guardrail never seen to fail is not
+ *    known to work" discipline extended to its logical conclusion: scaffolding
+ *    no fixture can ever reach again is not worth keeping either. (I-2) the
+ *    device multiplier's own name, `HOUSEHOLD_DEVICE_MULTIPLIER`, contradicted
+ *    its own re-derivation (item 5: explicitly instance-scale, not household
+ *    scale) — renamed to `INSTANCE_DEVICE_MULTIPLIER` throughout, mechanical,
+ *    number unchanged.
  */
 export const COMPLEXITY_BUDGET = 33_000;
 

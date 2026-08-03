@@ -17,12 +17,7 @@ import { accepts, assertSchemaValid, costOf, runCostLimitRule } from './cost-tes
  *    "accepted with margin" were never distinguished. Crossing 70% FAILS
  *    this suite, so "one more field would land this screen close to the
  *    wall" surfaces on the PR that adds the field, not months later in a
- *    whole-branch review. A DEFERRED fixture (see `deferredToTask3` below)
- *    still gets a plain, ALWAYS-enforced test that it is schema-valid,
- *    admitted, and under breadth headroom — only the ONE complexity
- *    assertion that is known to fail today is deferred, never the whole
- *    fixture (task-2-review.md, C-1: a fixture rejected outright by a
- *    regression must still be caught here, not swallowed by `it.fails()`).
+ *    whole-branch review.
  * 2. **Separation** — every attack fixture still rejects, and each
  *    assertion names WHICH budget caught it (the catch-split) — a
  *    multiplier change that silently moves an attack from
@@ -35,11 +30,23 @@ import { accepts, assertSchemaValid, costOf, runCostLimitRule } from './cost-tes
  *    CI logs (and a reviewer's diff of this file) show `fixture → breadth /
  *    complexity / % of each budget` without anyone re-deriving it by hand.
  *
- * **This task changes NO numbers** — it captures today's measurements as
- * they stand; Task 3 moves numbers. `HEADROOM_FRACTION` (0.70) is a user
- * ruling (not 80%, the design's originally proposed figure), and headroom
- * failures at TODAY's budgets are expected and deliberate — see
- * `deferredToTask3` below, not a bug in this suite.
+ * **History (Task 2 → Task 3):** Task 2 landed this suite capturing its
+ * numbers AS THEY STOOD, deliberately — two legit/near-future fixtures (the
+ * admin user-list mirror, the near-future richer grid) measured over the
+ * new 70% line at the then-shipped `COMPLEXITY_BUDGET = 30,000`, and were
+ * deferred via a per-fixture `it.fails()` on the one complexity-headroom
+ * assertion known to fail, never the whole fixture (task-2-review.md, C-1).
+ * Task 3 re-derived `INSTANCE_DEVICE_MULTIPLIER` (20 → 100, renamed from
+ * `HOUSEHOLD_DEVICE_MULTIPLIER` — task-3-review.md, I-2), re-measured,
+ * and raised `COMPLEXITY_BUDGET` (30,000 → 33,000) off that measurement,
+ * which cleared both deferred fixtures (68.5% and 67.5% respectively) — the
+ * `it.fails()` markers were then REMOVED (not just fixed) per this
+ * codebase's "a guardrail never seen to fail is not known to work"
+ * discipline: the forcing function did its job, so the scaffolding that
+ * only Task 2's transitional state needed is gone, not left dormant. Every
+ * fixture in `LEGIT_FIXTURES` now takes the same plain, always-enforced
+ * headroom assertion. `HEADROOM_FRACTION` (0.70) remains a user ruling (not
+ * 80%, the design's originally proposed figure).
  *
  * Every fixture — ACCEPT or REJECT — is schema-validated
  * (`assertSchemaValid`, `cost-test-support.ts`) before it is ever measured:
@@ -57,21 +64,6 @@ interface AcceptFixture {
   readonly name: string;
   readonly class: FixtureClass;
   readonly source: string;
-  /**
-   * Present ONLY for a legit/near-future fixture that measures OVER 70% of
-   * either budget at TODAY's numbers (`COMPLEXITY_BUDGET = 30_000`,
-   * `BREADTH_BUDGET = 100`) — the ledger's accepted, up-front consequence of
-   * adopting the 70% ruling before Task 3 moves any number. The fixture
-   * itself is NEVER exempted (see the Headroom describe block below): only
-   * the one complexity-headroom assertion known to fail today is deferred,
-   * via a SEPARATE `it.fails()` test that carries nothing else — schema
-   * validity, admission, and breadth headroom are still enforced by a plain,
-   * always-green-unless-regressed `it()` alongside it. RED the moment the
-   * deferred assertion stops failing (i.e. the moment Task 3's budget raise
-   * clears it), which is the forcing function that tells Task 3 to remove
-   * the marker.
-   */
-  readonly deferredToTask3?: string;
 }
 
 interface RejectFixture {
@@ -432,6 +424,17 @@ const ATTACK_FIXTURES: readonly AttackRejectFixture[] = [
  * reject/accept respectively); THE BOUNDARY's own adjacent-value proof is
  * the dedicated
  * test immediately after this array, below.
+ *
+ * **Recorded for the next budget derivation (task-3-review.md, M-3):** THE
+ * BOUNDARY itself measures 24,203 = 73.3% of the current `COMPLEXITY_BUDGET`
+ * (33,000) — ABOVE the 70% headroom line, exempt only because `class:
+ * 'boundary'` excludes it from the Headroom group by construction. This is
+ * pre-existing (Task 2 design), not a Task 3 regression, and is a
+ * deliberate edge-of-model pin, not a screen anyone ships. Flagged so a
+ * future budget derivation doesn't rediscover it as a surprise: if THE
+ * BOUNDARY were ever reclassified `legit-screen`, the floor would become
+ * 24,203 / 0.70 = 34,576 — still inside the ceiling but above today's
+ * 33,000.
  */
 const BOUNDARY_FIXTURES: readonly BoundaryFixture[] = [
   {
@@ -533,51 +536,36 @@ afterAll(() => {
 
 // ---------------------------------------------------------------------------
 // 1. Headroom — every legit/near-future fixture stays under 70% of BOTH
-//    budgets. A DEFERRED fixture (today's known >70% cases) still gets a
-//    plain `it()` enforcing schema-validity, admission, and breadth
-//    headroom UNCONDITIONALLY — only the one complexity-headroom assertion
-//    known to fail today moves into a separate `it.fails()`
-//    (task-2-review.md, C-1: at base, the combined `accepts()` + both
-//    thresholds lived in ONE `it.fails()` body, so a regression that
-//    rejected the fixture OUTRIGHT — e.g. `COMPLEXITY_BUDGET` dropped to
-//    20,000 — still reported "expected fail" and stayed green, and the
-//    plain acceptance assertions these two screens had at base were never
-//    replaced). The `it.fails()` itself goes red the moment Task 3's budget
-//    raise clears it, which is the forcing function to remove the marker.
+//    budgets, via one plain, always-enforced `it()` per fixture. Task 2
+//    shipped this describe block with a per-fixture DEFERRAL branch
+//    (`deferredToTask3`, a separate `it.fails()` on the one
+//    complexity-headroom assertion known to fail at Task 2's then-shipped
+//    budget — task-2-review.md, C-1: schema-validity, admission, and
+//    breadth headroom stayed plain, always-enforced assertions even for a
+//    deferred fixture, so a regression that rejected it OUTRIGHT still
+//    failed loudly rather than reading as "expected fail"). Task 3's budget
+//    raise cleared both deferred fixtures, and the `it.fails()` markers
+//    were REMOVED, not left dormant — the forcing function did its job
+//    (a guardrail never seen to fail is not known to work; one that no
+//    fixture can ever reach again is equally not worth keeping). If a
+//    future fixture ever needs the same transitional treatment, reintroduce
+//    the pattern deliberately at that point rather than resurrecting dead
+//    scaffolding — task-2-review.md and this file's own git history record
+//    exactly what it looked like.
 // ---------------------------------------------------------------------------
 
 describe('Headroom — every legit/near-future fixture stays under 70% of both budgets', () => {
   for (const fixture of LEGIT_FIXTURES) {
-    if (fixture.deferredToTask3) {
-      const deferredReason = fixture.deferredToTask3;
-      it(`${fixture.name} — still schema-valid, admitted, and under breadth headroom`, () => {
-        // Record BEFORE asserting: on a failing run the rows worth reading are
-        // exactly the ones whose assertions failed, and `accepts()` throwing
-        // first would omit them from the table (task-2 re-review, N-1).
-        const cost = costOf(fixture.source);
-        recordRow(fixture, cost, 'accept');
-        accepts(fixture.source); // schema-valid AND admitted by costLimitRule — NEVER deferred
-        expect(cost.breadth).toBeLessThanOrEqual(HEADROOM_FRACTION * BREADTH_BUDGET);
-      });
-      it.fails(`[DEFERRED] ${fixture.name} — ${deferredReason}`, () => {
-        // Deliberately does NOT call `accepts()`/`recordRow` — this test
-        // carries ONLY the one assertion known to fail today; the sibling
-        // `it()` above already proved the fixture is real and admitted, and
-        // already recorded its row.
-        expect(costOf(fixture.source).complexity).toBeLessThanOrEqual(
-          HEADROOM_FRACTION * COMPLEXITY_BUDGET
-        );
-      });
-    } else {
-      it(`${fixture.name} — stays under ${HEADROOM_FRACTION * 100}% of both budgets`, () => {
-        // Record BEFORE asserting — see the deferred branch's note (N-1).
-        const cost = costOf(fixture.source);
-        recordRow(fixture, cost, 'accept');
-        accepts(fixture.source); // schema-valid AND admitted by costLimitRule
-        expect(cost.breadth).toBeLessThanOrEqual(HEADROOM_FRACTION * BREADTH_BUDGET);
-        expect(cost.complexity).toBeLessThanOrEqual(HEADROOM_FRACTION * COMPLEXITY_BUDGET);
-      });
-    }
+    it(`${fixture.name} — stays under ${HEADROOM_FRACTION * 100}% of both budgets`, () => {
+      // Record BEFORE asserting: on a failing run the rows worth reading are
+      // exactly the ones whose assertions failed, and `accepts()` throwing
+      // first would omit them from the table (task-2 re-review, N-1).
+      const cost = costOf(fixture.source);
+      recordRow(fixture, cost, 'accept');
+      accepts(fixture.source); // schema-valid AND admitted by costLimitRule
+      expect(cost.breadth).toBeLessThanOrEqual(HEADROOM_FRACTION * BREADTH_BUDGET);
+      expect(cost.complexity).toBeLessThanOrEqual(HEADROOM_FRACTION * COMPLEXITY_BUDGET);
+    });
   }
 });
 
