@@ -806,10 +806,19 @@ export const BREADTH_BUDGET = 100;
  * **Budget: 30,000** — +57.1% over 19,103, +34.6% over 22,283, +32.8% over
  * the new top anchor (22,602). Clears every schema-valid legit and
  * near-future shape measured for this task, including the four anchors
- * above, while staying 21.2% below the smallest complexity-only attack this
- * rule must still catch (36,367, the single-query suggestions path — see
- * the catch-split table in `cost-limit.test.ts`'s "budget enforcement"
- * describe block, re-verified unchanged by this raise).
+ * above. Every committed attack fixture still rejects (re-verified by this
+ * raise; see the catch-split table in `cost-limit.test.ts`'s "budget
+ * enforcement" describe block).
+ *
+ * Do NOT read a safety margin into the gap to the nearest committed attack
+ * fixture: an earlier revision of this comment claimed "21.2% below the
+ * smallest complexity-only attack (36,367)", which is false. A CONSTRUCTIBLE
+ * complexity-only attack sits at 30,103 (`library { series { books(first:
+ * 100) … } }`), i.e. ~0.3% above this budget — and one sat ~0% above the
+ * previous 25,000 too (25,003). That is the documented overlap band (see
+ * "OVERLAP" below), not a regression introduced by this raise, and it is
+ * exactly why gap-to-nearest-attack reasoning was abandoned in Task 4: it
+ * measures the fixtures we happened to write, not the attack floor.
  *
  * **The principle "no budget may reject a Task-1-permitted shape" (C-2) is
  * satisfiable only loosely, not literally — stated honestly here, not
