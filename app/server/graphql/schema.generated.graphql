@@ -65,6 +65,17 @@ type BookAnalyzeReplacePayload {
 
 union BookAnalyzeReplaceResult = BookAnalyzeReplacePayload | InvalidInputError | StagedUploadNotFoundError
 
+input BookClearEditLineageInput {
+  id: ID!
+}
+
+type BookClearEditLineagePayload {
+  book: Book!
+  clearedCount: Int!
+}
+
+union BookClearEditLineageResult = BookClearEditLineagePayload
+
 input BookClearEditionsInput {
   id: ID!
 }
@@ -490,6 +501,11 @@ type Mutation {
   Analyzes a staged EPUB as a candidate replacement for an existing book: validity, epubcheck findings, and detected metadata fixes. Read-only — the staged upload is not consumed. Resolves to null when the book does not exist for the resolved owner.
   """
   bookAnalyzeReplace(input: BookAnalyzeReplaceInput!): BookAnalyzeReplaceResult
+
+  """
+  Clears a book’s organic edit-lineage history (the ids it has held across re-imports). Manually-linked KOReader document ids (type "merge") are a disjoint row set and are left untouched. Resolves to null when the book does not exist for the resolved owner.
+  """
+  bookClearEditLineage(input: BookClearEditLineageInput!): BookClearEditLineageResult
 
   """
   Clears every cached per-device edition of a book (DB rows and on-disk files); they regenerate lazily on next download. Resolves to null when the book does not exist for the resolved owner.
