@@ -62,6 +62,15 @@ jobs:
       - run: npm ci
       - run: npm run test:scripts
 
+  # NOT a redundancy-free gate: `Server tests` runs `vitest run` over
+  # `**/*.test.ts`, so it already executes cost-calibration.test.ts and would
+  # fail on a headroom regression too (verified empirically). This job exists
+  # for two things that one does not give you: it runs the suite with
+  # `--reporter=verbose`, so the fixture -> breadth/complexity/%-of-budget
+  # drift table is printed on a GREEN run (where drift is still small enough
+  # to act on cheaply), and it is a separately-named required check, so a
+  # budget/multiplier regression is attributable at a glance instead of being
+  # one red line inside 1900+ server tests.
   test-cost-calibration:
     name: Cost calibration
     runs-on: ubuntu-latest
