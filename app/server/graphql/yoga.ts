@@ -57,7 +57,7 @@ export const createGraphqlHandler = ({
     cors: false,
     plugins: [
       useDepthLimit(),
-      useOperationLogging(),
+      useOperationLogging(deps.jwtSecret),
       ...(isProduction ? [useSchemaConcealment()] : []),
     ],
     logging: {

@@ -633,28 +633,55 @@ describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit�
     expect(state.status).toBeUndefined();
   });
 
-  // I-1 fix: the Map must not grow without bound. `sweep()` runs on every
-  // call and deletes every entry whose window has aged out — assert
-  // directly on the Map's size (via the exported `.size()` accessor) rather
-  // than only inferring reclamation from request/response behavior, which
-  // is exactly the gap the review named ("a sweep test needs to observe the
-  // Map's size").
-  it('sweeps expired entries out of the Map on the next call, bounding memory (I-1)', () => {
+  // I-1 fix: the Map must not grow without bound. `sweep()` deletes every
+  // entry whose window has aged out — assert directly on the Map's size
+  // (via the exported `.size()` accessor) rather than only inferring
+  // reclamation from request/response behavior, which is exactly the gap
+  // the review named ("a sweep test needs to observe the Map's size"). Seeds
+  // past `LOGIN_RATE_LIMIT_SWEEP_THRESHOLD` (final-review-wave T4: the sweep
+  // is now size-gated, so a below-threshold seed would never trigger it —
+  // see the next test for that boundary).
+  it('sweeps expired entries out of the Map once past the size threshold, bounding memory (I-1)', () => {
     let now = 0;
     const limiter = createLoginRateLimit(() => now);
+    const seedCount = 300; // > LOGIN_RATE_LIMIT_SWEEP_THRESHOLD (256)
 
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < seedCount; i++) {
       const { res } = mockRes();
-      limiter(fakeReq(`10.0.0.${i}`), res, vi.fn());
+      limiter(fakeReq(`10.0.${Math.floor(i / 256)}.${i % 256}`), res, vi.fn());
     }
-    expect(limiter.size()).toBe(50);
+    expect(limiter.size()).toBe(seedCount);
 
-    // Every one of those 50 windows is now stale; a single new request from
-    // an unrelated IP should sweep all 50 away, leaving only itself.
+    // Every one of those windows is now stale; a single new request from an
+    // unrelated IP crosses the threshold and should sweep all of them away,
+    // leaving only itself.
     now = 60_001;
     const { res } = mockRes();
     limiter(fakeReq('255.255.255.255'), res, vi.fn());
     expect(limiter.size()).toBe(1);
+  });
+
+  // Final-review-wave T4: below the threshold, `loginRateLimit` must NOT pay
+  // for a sweep on every call — the whole point of gating it. Proven here by
+  // seeding stale entries that stay UNDER the threshold and showing they
+  // are NOT reclaimed by a subsequent request (they would be, immediately,
+  // under the old unconditional-sweep behavior the test above used to pin).
+  it('does not sweep below the size threshold, even with stale entries present', () => {
+    let now = 0;
+    const limiter = createLoginRateLimit(() => now);
+    const seedCount = 50; // well under LOGIN_RATE_LIMIT_SWEEP_THRESHOLD (256)
+
+    for (let i = 0; i < seedCount; i++) {
+      const { res } = mockRes();
+      limiter(fakeReq(`10.1.0.${i}`), res, vi.fn());
+    }
+    expect(limiter.size()).toBe(seedCount);
+
+    now = 60_001; // every seeded window is now stale
+    const { res } = mockRes();
+    limiter(fakeReq('255.255.255.255'), res, vi.fn());
+    // No sweep fired — the new entry is simply added alongside the stale ones.
+    expect(limiter.size()).toBe(seedCount + 1);
   });
 
   describe('resolveLoginClientIp / trustProxyHops (I-2 — contained fix, no Express trust-proxy setting touched)', () => {

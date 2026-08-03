@@ -146,6 +146,11 @@ const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
 
 const LOGIN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
+// Final-review-wave T4: below this size, sweeping on every call is cheap
+// enough not to matter; gating the O(n) walk behind it means the common
+// case (a handful of active windows) never pays a per-request Map scan at
+// all — see `createLoginRateLimit`'s doc comment for the full trade-off.
+const LOGIN_RATE_LIMIT_SWEEP_THRESHOLD = 256;
 
 type LoginRateLimitWindow = { count: number; windowStart: number };
 
@@ -223,13 +228,25 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
  * whose `windowStart` has aged out — the same iterate-and-delete mechanics
  * `replace-staging.ts`'s own `sweep()` uses, no timer either way, but NOT
  * the same trigger: that precedent sweeps only from `stage()` (new state
- * being written); this one sweeps on EVERY `loginRateLimit` call, including
- * read-only-outcome ones (a request that gets 429'd still triggers a
- * sweep) — unauthenticated login attempts are the only "write" this
- * function has, so every call is the sweep trigger, not a subset of them.
- * `size()` is exposed so a test can pin the sweep directly (observing the
- * Map's size) rather than only inferring it from request-response
- * behavior.
+ * being written); this one sweeps from every gated `loginRateLimit` call
+ * (see the size gate below), including read-only-outcome ones (a request
+ * that gets 429'd still triggers a sweep once gated) — unauthenticated
+ * login attempts are the only "write" this function has, so every gated
+ * call is the sweep trigger, not a subset of them. `size()` is exposed so a
+ * test can pin the sweep directly (observing the Map's size) rather than
+ * only inferring it from request-response behavior.
+ *
+ * Size-gated (final-review-wave T4): the O(n) bulk `sweep()` walk only RUNS
+ * once `windows.size` exceeds `LOGIN_RATE_LIMIT_SWEEP_THRESHOLD` — bounded
+ * by distinct client IPs within one 60s window, so ordinary traffic (a
+ * handful of concurrently active windows) never pays a Map scan on every
+ * single request, only once the map has grown large enough for a scan to be
+ * worth its own cost. Memory is still bounded exactly as I-1 fixed it: the
+ * gate only changes WHEN the bulk walk runs, never removes it. THIS ip's own
+ * window staleness is still checked separately, at O(1), in
+ * `loginRateLimit` itself below — the gate must not weaken per-key
+ * correctness for the common (small-map) case, only defer the whole-Map
+ * reclamation.
  *
  * `now` is injected as a `() => number` parameter, same shape as
  * `ReplaceStagingDeps.now` — production omits it (defaults to `Date.now`),
@@ -263,14 +280,19 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
 
   function loginRateLimit(req: Request, res: Response, next: express.NextFunction): void {
     const current = now();
-    sweep(current);
+    if (windows.size > LOGIN_RATE_LIMIT_SWEEP_THRESHOLD) sweep(current);
     const ip = resolveLoginClientIp(req, trustProxyHops);
 
-    // Sweep already dropped any stale window for THIS ip too, so a plain
-    // `undefined` check is sufficient here — there is no longer a separate
-    // "found but stale" branch to also handle.
+    // THIS ip's own window is checked for staleness directly (O(1)) rather
+    // than relying on `sweep()` to have dropped it — since the bulk sweep is
+    // now size-gated (final-review-wave T4) it may not have run this call at
+    // all, so a plain `undefined` check alone would let a stale window's
+    // stale count keep accumulating forever below the threshold. This is the
+    // one piece of the pre-I-1 per-key logic the size gate brings back;
+    // sweep's job is now purely bulk memory reclamation for OTHER ips, not
+    // this ip's own correctness.
     let window = windows.get(ip);
-    if (window === undefined) {
+    if (window === undefined || current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
       window = { count: 0, windowStart: current };
       windows.set(ip, window);
     }

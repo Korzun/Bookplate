@@ -3,6 +3,7 @@ import type { AddressInfo } from 'net';
 
 import express from 'express';
 
+import { graphqlBodyLimit } from '../../../../middleware/graphql-body-limit';
 import { signAccessToken } from '../../../../services/jwt';
 import { createHarness, type Harness } from '../../../test-util';
 import { createGraphqlHandler } from '../../../yoga';
@@ -159,6 +160,73 @@ describe('scanProgress over SSE', () => {
     expect(payload.data?.scanProgress?.state).toBe('RUNNING');
 
     controller.abort();
+  });
+
+  // Final-review-wave M-4: `graphqlBodyLimit` is mounted in exactly one
+  // place, `server.ts:64` (`server.use('/graphql', graphqlBodyLimit(100 *
+  // 1024), graphqlHandler)`) — every other SSE/content-negotiation/logging
+  // test in this repo builds its own Express app WITHOUT that middleware.
+  // The final review reasoned through and manually reproduced (200 +
+  // `text/event-stream`, live event delivered) that the combination is
+  // safe — this pins that reproduction as a committed regression test
+  // instead of leaving it as an unrepeated manual check. Reasoning: the
+  // subscription transport here is a POST with `Accept: text/event-stream`
+  // and a JSON body, so `fetch` sets `Content-Length` and never touches the
+  // 411 (missing-Content-Length) arm; a small SSE-subscribe request body is
+  // nowhere near the 100kb cap either.
+  it('delivers a live scanProgress event over SSE THROUGH graphqlBodyLimit, mounted in the same order as server.ts (M-4)', async () => {
+    const bodyLimitedApp = express();
+    bodyLimitedApp.use(
+      '/graphql',
+      graphqlBodyLimit(100 * 1024),
+      createGraphqlHandler({
+        prisma: harness.prisma,
+        stores: harness.stores,
+        config: harness.config,
+        jwtSecret,
+        isProduction: false,
+      })
+    );
+    const bodyLimitedServer = bodyLimitedApp.listen(0);
+    await new Promise<void>((resolve) => bodyLimitedServer.once('listening', resolve));
+    const bodyLimitedBaseUrl = `http://127.0.0.1:${(bodyLimitedServer.address() as AddressInfo).port}`;
+
+    try {
+      const token = tokenFor(harness.aliceOwner.userId, 'alice', false);
+      const controller = new AbortController();
+      const body = JSON.stringify({
+        query: SUBSCRIPTION,
+        variables: { libraryId: aliceLibraryGlobalId },
+      });
+
+      const responsePromise = fetch(`${bodyLimitedBaseUrl}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+        signal: controller.signal,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
+
+      const payload = (await firstSseEvent(response.body!)) as {
+        data?: { scanProgress?: { id: string; state: string } };
+      };
+      expect(payload.data?.scanProgress?.id).toBe(started.jobId);
+      expect(payload.data?.scanProgress?.state).toBe('RUNNING');
+
+      controller.abort();
+    } finally {
+      await new Promise<void>((resolve) => bodyLimitedServer.close(() => resolve()));
+    }
   });
 
   it('refuses a non-owner subscription — denied AND the connection closes promptly, no standing stream', async () => {

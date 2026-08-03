@@ -79,8 +79,8 @@ const payload = builder
        * no way to update that list in place — `Library`'s global id is keyed
        * on its owner's raw `userId` (`library/model.ts`), which is NOT
        * decodable from `book` alone without re-parsing `Book`'s own compound
-       * id, so unlike the four Viewer-touching gaps this task's report
-       * records as honest no-ops (`Viewer` is a fixed, keyFields-less
+       * id, so unlike the four Viewer-touching gaps traced as honest no-ops
+       * elsewhere in this task (`Viewer` is a fixed, keyFields-less
        * singleton a client can always address without help), a per-tenant
        * `Library` genuinely needs to be handed over. Same construction
        * `BookDeletePayload.library` uses (`delete.ts`) — `owner` is already

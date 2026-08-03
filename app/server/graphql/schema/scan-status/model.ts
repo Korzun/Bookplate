@@ -24,7 +24,9 @@ export type ScanStatusShape = {
 export const model = builder.objectRef<ScanStatusShape>('ScanStatus').implement({
   description: 'The state of a library scan — in progress, completed, or failed.',
   fields: (t) => ({
-    // Renamed from `jobId` (design doc §1, spec 1's B4): a normalizing cache
+    // Renamed from `jobId` (design doc §1; B4 in
+    // docs/superpowers/reviews/2026-08-02-schema-design.md, NOT spec 1 —
+    // corrected in place, final-review T1 M-1): a normalizing cache
     // keys on `id` by default — `Subscription.scanProgress`'s events could
     // not merge into `Library.scanStatus` under any other field name. Same
     // underlying value, `parent.job.jobId` (the scan-job store's own field
