@@ -1,5 +1,4 @@
 import './book';
-import './book-already-exists-error';
 import './book-hash-collision-error';
 import './book-not-validated-error';
 import './config';

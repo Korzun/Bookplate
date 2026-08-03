@@ -45,12 +45,6 @@ type Book implements Node {
   validation: Validation
 }
 
-"""A book with this id is already in the library."""
-type BookAlreadyExistsError implements UserError {
-  existingBook: Book!
-  message: String!
-}
-
 input BookAnalyzeReplaceInput {
   id: ID!
   stagedUploadId: String!
