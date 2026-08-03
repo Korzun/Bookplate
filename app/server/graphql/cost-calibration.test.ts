@@ -228,8 +228,11 @@ const LEGIT_FIXTURES: readonly LegitAcceptFixture[] = [
   {
     verdict: 'accept',
     class: 'near-future',
-    deferredToTask3:
-      'TODO(Task 3): measures ~74.3% of COMPLEXITY_BUDGET today (22,283 / 30,000) — over the 70% headroom line. Per the design (docs/superpowers/specs/2026-08-03-cost-calibration-suite-design.md §3) Task 3 raises COMPLEXITY_BUDGET off measured legit anchors, which clears this fixture; remove this marker once it does (breadth stays well under 70% throughout — this is a complexity-only deferral, enforced separately below).',
+    // Task 3: `it.fails()` marker removed — measured 74.3% of the
+    // pre-Task-3 COMPLEXITY_BUDGET (22,283 / 30,000), over the 70% headroom
+    // line; at the re-derived budget (33,000) this is 67.5%, under the
+    // line, so this fixture now takes the plain, always-enforced Headroom
+    // assertion below like every other fixture in this array.
     name: 'near-future shape 2: the richer grid (one more real card field + validation.messages + one more nesting level, task-4-review.md C-1 correction)',
     source: `
       fragment FullCard on Book {
@@ -251,8 +254,14 @@ const LEGIT_FIXTURES: readonly LegitAcceptFixture[] = [
   {
     verdict: 'accept',
     class: 'legit-screen',
-    deferredToTask3:
-      'TODO(Task 3): the REAL admin user-list screen (component/user-progress-row, GET /api/users/:username/progress already ships this over REST) measures ~75.3% of COMPLEXITY_BUDGET today (22,602 / 30,000) — over the 70% headroom line. This is the fixture the design doc and ledger name explicitly: "the admin user list is at 75.3% against a 70% threshold." Per the ruling, the fix is Task 3 RAISING COMPLEXITY_BUDGET off this and the other measured legit anchors (INSTANCE_USER_MULTIPLIER=50 stays — it is the security ceiling, shrinking it is the unsafe direction), not shrinking this fixture. Remove this marker once Task 3 lands (breadth stays well under 70% throughout — this is a complexity-only deferral, enforced separately below).',
+    // Task 3: `it.fails()` marker removed — this is the fixture the design
+    // doc and ledger named explicitly ("the admin user list is at 75.3%
+    // against a 70% threshold", measured 22,602 / 30,000). Fixed per the
+    // ruling by RAISING COMPLEXITY_BUDGET off this and the other measured
+    // legit anchors (INSTANCE_USER_MULTIPLIER=50 stays — the security
+    // ceiling, shrinking it is the unsafe direction), not shrinking this
+    // fixture: at 33,000 this is 68.5%, under the 70% line, so it now takes
+    // the plain, always-enforced Headroom assertion below.
     name: 'the admin user-list mirror (final-review.md, I-2) — a REAL, presently-reachable admin traversal, not a hypothetical',
     source:
       '{ viewer { users { library { progress(first: 50) { edges { node { document percentage device timestamp } } pageInfo { hasNextPage endCursor } } } } } }',
@@ -621,28 +630,33 @@ describe('Boundary — pinned edge-of-model fixtures (not headroom-checked by de
   // ("`first: 14` measures complexity 25,903 and would not [clear]") and
   // was lost entirely in the move. Made executable here, with corrected
   // numbers: DIRECT measurement (not the stale base-repo prose, which
-  // predates the 25,000→30,000 raise) shows `first: 14` measures 25,903 —
-  // UNDER 30,000 — so it does NOT reject; the stale claim was already
-  // flagged, in different words, by `cost-limit.ts`'s own current
-  // `COMPLEXITY_BUDGET` doc comment: "13 was never the exact boundary these
-  // tests claimed to pin, only A value inside the accepted range; the
-  // boundary itself moving from 13→16 is exactly why §Q no longer states a
-  // magic number as if it were fixed." The TRUE current wall, matching that
-  // same doc comment exactly, is between `first: 16` (29,303, admitted) and
-  // `first: 17` (31,003, rejected) — asserted directly below. This is a
-  // correction to the review's own suggested "first:13 accepts AND first:14
-  // rejects" pairing, not a deviation from its intent: the intent (a
-  // falsifiable pin that reds under Task 3's raise) is preserved; only the
-  // adjacent value is corrected to one that is actually true today.
+  // predates the 25,000→30,000 raise, nor the 25,000→30,000-era wall, which
+  // predates Task 3's 30,000→33,000 raise) shows `first: 14` measures
+  // 25,903 — UNDER every budget this project has ever shipped — so it does
+  // NOT reject; the stale claim was already flagged, in different words, by
+  // `cost-limit.ts`'s own current `COMPLEXITY_BUDGET` doc comment: "13 was
+  // never the exact boundary these tests claimed to pin, only A value
+  // inside the accepted range; the boundary itself moving 13→16→18 across
+  // three successive raises is exactly why §Q no longer states a magic
+  // number as if it were fixed." The TRUE current wall, matching that same
+  // doc comment exactly, is between `first: 18` (32,703, admitted) and
+  // `first: 19` (34,403, rejected) — asserted directly below (Task 3 moved
+  // it here from 16/17 when `COMPLEXITY_BUDGET` rose 30,000 → 33,000; the
+  // 25,000→30,000 raise had previously moved it from 13/14 to 16/17). This
+  // is a correction to the review's own suggested "first:13 accepts AND
+  // first:14 rejects" pairing, not a deviation from its intent: the intent
+  // (a falsifiable pin that reds under a future budget raise) is preserved;
+  // only the adjacent value is corrected to one that is actually true
+  // today.
   // NOTE: this test deliberately does NOT call `recordRow` — the two probe
   // queries below are a falsifiable PROOF about the wall's location, not
   // named corpus fixtures, and are intentionally absent from `ALL_FIXTURES`
   // (they'd otherwise fail the "Corpus inventory" describe block's pinned
   // counts and the `afterAll` coverage check, both of which assert the
   // table's rows are exactly the 26 named fixtures, no more).
-  it("THE BOUNDARY adjacency proof: Series-arm books(first:16) accepts AND books(first:17) rejects — the TRUE current wall for entries(first:100)+BookCard, per cost-limit.ts COMPLEXITY_BUDGET's own doc comment", () => {
-    const admitted = entriesMaxWithSeriesBooksAt(16);
-    const rejected = entriesMaxWithSeriesBooksAt(17);
+  it("THE BOUNDARY adjacency proof: Series-arm books(first:18) accepts AND books(first:19) rejects — the TRUE current wall for entries(first:100)+BookCard, per cost-limit.ts COMPLEXITY_BUDGET's own doc comment", () => {
+    const admitted = entriesMaxWithSeriesBooksAt(18);
+    const rejected = entriesMaxWithSeriesBooksAt(19);
     assertSchemaValid(admitted);
     assertSchemaValid(rejected);
 

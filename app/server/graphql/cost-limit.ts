@@ -248,7 +248,9 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * `where`** when the viewer is an admin — every device on the instance, not
  * one household's e-readers; the household framing below holds only for
  * the non-admin branch, and an admin-scale instance (e.g. 60 users × 1-2
- * readers ⇒ 60-120 devices) plausibly exceeds the assumed 20.
+ * readers ⇒ 60-120 devices) plausibly exceeds the assumed 20 — re-derived
+ * by Task 3, see the dedicated paragraph below `INSTANCE_USER_MULTIPLIER`'s
+ * own re-examination for the new value and its reasoning.
  *
  * The `Viewer.devices`/`Device.enabledUsers` compounding shape this task
  * exists to fix — round-3, M-9, correcting an overstated claim in an
@@ -274,10 +276,42 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * bound — but chosen an order of magnitude below the library-scale 100 to
  * reflect that a self-hosted server's household/instance user count is
  * genuinely a smaller-scale quantity than its book catalog:
- * `HOUSEHOLD_DEVICE_MULTIPLIER = 20` for `Viewer.devices` (headroom for a
- * large household's e-reader collection), and `INSTANCE_USER_MULTIPLIER =
- * 50` for `Viewer.users`/`Device.enabledUsers` (headroom for a larger
- * shared instance — e.g. a small book club or extended family).
+ * `HOUSEHOLD_DEVICE_MULTIPLIER` (originally 20, see re-derivation below) for
+ * `Viewer.devices`, and `INSTANCE_USER_MULTIPLIER = 50` for
+ * `Viewer.users`/`Device.enabledUsers` (headroom for a larger shared
+ * instance — e.g. a small book club or extended family).
+ *
+ * **`HOUSEHOLD_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100
+ * (`.superpowers/sdd/2026-08-03-cost-calibration-suite/task-3-report.md`).**
+ * The paragraph above already named the defect this fixes: `Viewer.devices`
+ * is NOT household-scoped for an admin caller (`viewer/model.ts:127-140`'s
+ * `device.findMany({orderBy})`, no `where`) — it returns every device on the
+ * instance, and this codebase has no concept of "instance" smaller than the
+ * 50-user ceiling `INSTANCE_USER_MULTIPLIER` already encodes (that
+ * constant's own doc comment, below: "there is no code, REST, or product
+ * concept of 'more than one Bookplate community' sharing an instance"). The
+ * device count `Viewer.devices` fans out over is bounded by the SAME
+ * instance-user quantity, times how many e-readers one person plausibly
+ * owns — assumed 1-2 (a primary device plus an older or secondary one),
+ * matching the household-scale reasoning `Viewer.devices` used before this
+ * task, just applied at instance scale rather than household scale. 50
+ * users × 2 devices/user = 100, the top of that range and the same
+ * "generous headroom, not a bare minimum" choice `INSTANCE_USER_MULTIPLIER`
+ * itself already makes (its own doc comment: "an order of magnitude above a
+ * typical household, headroom for a genuinely large shared community") —
+ * landing inside the 60-120 range the paragraph above already flagged as
+ * plausible for an admin-scale instance. Effective value BEFORE this task:
+ * 20 (assumed household scale, 2-6 devices × generous headroom — correct
+ * for the non-admin branch, under-priced for the admin branch this
+ * multiplier actually governs). `HOUSEHOLD_DEVICE_MULTIPLIER = 100` now
+ * matches `UNBOUNDED_LIST_MULTIPLIER`'s own value numerically, but not its
+ * derivation — this number comes from instance-user-count × devices-per-user,
+ * `UNBOUNDED_LIST_MULTIPLIER` from `CONNECTION_LIMITS.nodesBatch`; the
+ * coincidence is not load-bearing and neither constant defers to the other.
+ * `Device.enabledUsers` is unaffected (M-8, above: it shares
+ * `INSTANCE_USER_MULTIPLIER`, never used this constant). See
+ * `COMPLEXITY_BUDGET`'s own doc comment for the re-measurement this raise
+ * required and the resulting budget derivation.
  *
  * **`INSTANCE_USER_MULTIPLIER` re-examined and KEPT at 50 (final-review.md,
  * I-2).** The whole-branch final review measured a REAL admin screen —
@@ -316,7 +350,10 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * exists" disclosure this constant has always carried.
  */
 const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
-const HOUSEHOLD_DEVICE_MULTIPLIER = 20;
+// Task 3 re-derivation (20 → 100) — see the dedicated paragraph above,
+// "`HOUSEHOLD_DEVICE_MULTIPLIER` RE-DERIVED, 20 → 100", for the device
+// count this now encodes and the reasoning.
+const HOUSEHOLD_DEVICE_MULTIPLIER = 100;
 const INSTANCE_USER_MULTIPLIER = 50;
 const BOOK_LINEAGE_MULTIPLIER = 20;
 
@@ -754,9 +791,16 @@ export const measureOperationCost = (
 export const BREADTH_BUDGET = 100;
 
 /**
- * **Task 4 — the complexity budget, ENFORCED.** Set at 30,000
- * (final-review.md, I-2 — RAISED a second time, from 25,000, after the
- * whole-branch final review found a REAL shipping screen — the admin
+ * **Task 4 — the complexity budget, ENFORCED.** Set at 33,000 (Task 3,
+ * `.superpowers/sdd/2026-08-03-cost-calibration-suite/task-3-report.md` —
+ * RAISED a third time, from 30,000, after adopting the cost-calibration
+ * suite's 70%-headroom ruling: at 30,000 the admin user-list mirror (22,602)
+ * and the near-future richer-grid shape (22,283) both exceeded 70% of budget
+ * — 75.3% and 74.3% respectively — even though both were already ADMITTED;
+ * "admitted" and "admitted with margin" are different properties, and this
+ * raise is what makes the calibration suite assert the second one. 30,000
+ * was itself RAISED a second time, from 25,000 (final-review.md, I-2), after
+ * the whole-branch final review found a REAL shipping screen — the admin
  * user-list mirror, see "Derivation" below — sitting at 91% of the
  * then-current budget and absent from every calibration table; 25,000 was
  * itself RAISED from an initial 17,000 by task-4-review.md, ruling (b),
@@ -807,22 +851,44 @@ export const BREADTH_BUDGET = 100;
  *   would have rejected it. See `INSTANCE_USER_MULTIPLIER`'s own doc comment
  *   (above) for why the fix is a budget raise, not a multiplier cut.
  *
- * **Budget: 30,000** — +57.1% over 19,103, +34.6% over 22,283, +32.8% over
- * the new top anchor (22,602). Clears every schema-valid legit and
- * near-future shape measured for this task, including the four anchors
- * above. Every committed attack fixture still rejects (re-verified by this
- * raise; see the catch-split table in `cost-limit.test.ts`'s "budget
- * enforcement" describe block).
+ * **Budget: 33,000 (Task 3 derivation).** Per this plan's own headroom
+ * ruling (`docs/superpowers/specs/2026-08-03-cost-calibration-suite-design.md`
+ * §3): `COMPLEXITY_BUDGET = worst_legit_complexity / 0.70`, rounded UP to a
+ * round number, never from gap-to-attack. The worst measured legit anchor,
+ * re-confirmed after Task 3's `HOUSEHOLD_DEVICE_MULTIPLIER` raise (20 → 100,
+ * above) moved the device-touching fixtures and left this one unchanged, is
+ * still **22,602** — the admin user-list mirror, above. 22,602 / 0.70 =
+ * 32,288.57 (worst_legit / HEADROOM_FRACTION), rounded up to the nearest
+ * round thousand: **33,000**. (32,288.57 is also this task's measured FLOOR
+ * of the usable budget window — the cost-calibration-suite ledger's Task 2
+ * block records the full window as [32,289, 36,102], ceiling set by
+ * separation, not headroom; 33,000 sits inside it with room to the ceiling.)
+ * At 33,000: 22,602 is 68.5% of budget, 22,283 is 67.5% — both now clear the
+ * suite's 70% headroom line, which is the whole point of this raise. +72.7%
+ * over 19,103, +48.1% over 22,283, +46.0% over the top anchor (22,602).
+ * Clears every schema-valid legit and near-future shape measured for this
+ * task, including the four anchors above. Every committed attack fixture
+ * still rejects (re-verified by this raise, `task-3-report.md`'s own
+ * separation check; see the catch-split table in `cost-calibration.test.ts`'s
+ * "Separation" describe block, which is where the attack corpus now lives).
  *
  * Do NOT read a safety margin into the gap to the nearest committed attack
  * fixture: an earlier revision of this comment claimed "21.2% below the
  * smallest complexity-only attack (36,367)", which is false. A CONSTRUCTIBLE
  * complexity-only attack sits at 30,103 (`library { series { books(first:
- * 100) … } }`), i.e. ~0.3% above this budget — and one sat ~0% above the
- * previous 25,000 too (25,003). That is the documented overlap band (see
- * "OVERLAP" below), not a regression introduced by this raise, and it is
- * exactly why gap-to-nearest-attack reasoning was abandoned in Task 4: it
- * measures the fixtures we happened to write, not the attack floor.
+ * 100) … } }`) — at the PRE-Task-3 budget (30,000) this sat ~0.3% ABOVE
+ * budget (rejected, barely); at 33,000 it now sits ~9.6% BELOW budget
+ * (ADMITTED) — an explicit, acknowledged consequence of this raise, not a
+ * silent one (design doc §3: "raising the budget widens the overlap band
+ * with bounded-cost attack shapes... it does not create a new one" — this
+ * shape was never a committed REJECT-asserting fixture, only a prose
+ * example of the overlap band described below, and Task 1's per-hop
+ * `CONNECTION_LIMITS` still cap its real row count regardless of verdict).
+ * One sat ~0% above the previous 25,000 too (25,003). That is the documented
+ * overlap band (see "OVERLAP" below), not a regression introduced by this
+ * raise, and it is exactly why gap-to-nearest-attack reasoning was
+ * abandoned in Task 4: it measures the fixtures we happened to write, not
+ * the attack floor.
  *
  * **The principle "no budget may reject a Task-1-permitted shape" (C-2) is
  * satisfiable only loosely, not literally — stated honestly here, not
@@ -839,7 +905,7 @@ export const BREADTH_BUDGET = 100;
  * the ~34,400 an earlier version of this paragraph named (that number
  * belongs to a DIFFERENT, cheaper shape — `entries(first: 20)` + the
  * Series arm's `books(first: 100)`, only ONE connection at its max, not
- * both — a mis-transcription now corrected). 30,000 does not, and by
+ * both — a mis-transcription now corrected). 33,000 does not, and by
  * construction cannot, admit either shape; satisfying the principle
  * literally would require raising the budget to ≥172,103, which would also
  * admit the 2-hop `nodes()` cycle (30,402–40,402) and the single-query
@@ -857,25 +923,31 @@ export const BREADTH_BUDGET = 100;
  * "Query budget" section for the client-facing explanation, corrected by
  * final-review.md I-1 to give the cost MODEL rather than a single magic
  * number).** At `entries(first: 100)`, the `Series` arm's nested `books`
- * connection must stay at `first: 16` or below to clear THIS budget
- * (30,000) with today's shipped `BookCard` (measured: `first: 13` →
- * 24,203, `first: 16` → 29,303, both admitted; `first: 17` → 31,003,
- * rejected — the raise from 25,000 moved this boundary from 13 to 16, a
- * direct, deliberate consequence of I-2, not an oversight) — but
- * `CONNECTION_LIMITS.seriesBooks.defaultSize` is **20**, still ABOVE 16. A
+ * connection must stay at `first: 18` or below to clear THIS budget
+ * (33,000) with today's shipped `BookCard` (measured: `first: 13` →
+ * 24,203, `first: 16` → 29,303, `first: 18` → 32,703, all admitted;
+ * `first: 19` → 34,403, rejected — Task 3's raise from 30,000 moved this
+ * boundary from 16 to 18, a direct, deliberate consequence of the 70%
+ * headroom derivation above, not an oversight; the earlier 25,000 → 30,000
+ * raise had already moved it from 13 to 16) — but
+ * `CONNECTION_LIMITS.seriesBooks.defaultSize` is **20**, still ABOVE 18. A
  * client that pages the grid at the documented maximum and writes the
  * Series arm's `books` with NO argument at all — the single most natural
  * way to write it, taking the server's own default rather than specifying
- * one — measures **36,103** and still gets a 400 (25,000 → 30,000 gave
- * headroom, not a bypass: the no-argument shape sits 6,103 above even the
- * raised budget). Pinned as two committed tests (`cost-limit.test.ts`, next
- * to the `entries(first:100)` ACCEPT case): `books(first: 13)` accepts,
- * `books` with no argument (server default 20) rejects — both still true,
- * unchanged by this budget raise (13 was never the exact boundary these
- * tests claimed to pin, only A value inside the accepted range; the
- * boundary itself moving from 13→16 is exactly why §Q no longer states a
- * magic number as if it were fixed — see I-1's fix there) — so this
- * boundary cannot drift silently the way the ~34,400 number did.
+ * one — measures **36,103** and still gets a 400 (each raise gave
+ * headroom, not a bypass: the no-argument shape sits 3,103 above even this,
+ * the third, raised budget). Pinned as committed tests
+ * (`cost-calibration.test.ts`'s "Boundary" describe block, where the attack
+ * and boundary corpus now lives): `books(first: 13)` accepts (THE
+ * BOUNDARY), `books` with no argument (server default 20) rejects (THE
+ * TRAP), and a dedicated adjacency proof pins the TRUE current wall exactly
+ * (`books(first: 18)` accepts, `books(first: 19)` rejects) — both still
+ * true, unchanged in verdict by this budget raise (13 was never the exact
+ * boundary these tests claimed to pin, only A value inside the accepted
+ * range; the boundary itself moving 13→16→18 across three successive
+ * raises is exactly why §Q no longer states a magic number as if it were
+ * fixed — see I-1's fix there) — so this boundary cannot drift silently the
+ * way the ~34,400 number did.
  *
  * **The overlap band — stated plainly, not implied away.** Complexity-only
  * attack shapes and legitimate paginated traffic overlap CONTINUOUSLY across
@@ -887,10 +959,11 @@ export const BREADTH_BUDGET = 100;
  * books(first: 56)` (breadth 7, complexity 16,903, `S` genuinely uncapped —
  * `UNBOUNDED_LIST_MULTIPLIER`'s own assumed-worst-case 100 is what prices
  * `S`, not a real bound on it) sit in the SAME band as this budget's own
- * legit anchors (19,103 / 22,283 / 22,602) and are ADMITTED at 30,000, same
- * as they were at 25,000 and at 17,000 — raising the budget (either time)
- * does not newly admit this family, it was never excluded by any complexity
- * number in the range this project has ever measured. **No complexity
+ * legit anchors (19,103 / 22,283 / 22,602) and are ADMITTED at 33,000, same
+ * as they were at 30,000, at 25,000, and at 17,000 — raising the budget (any
+ * of the three times) does not newly admit this family, it was never
+ * excluded by any complexity number in the range this project has ever
+ * measured. **No complexity
  * threshold in this band can cleanly
  * separate legit traffic from these bounded-cost attack shapes — that is
  * not a gap in this number, it is a property of the metric on this
@@ -921,7 +994,7 @@ export const BREADTH_BUDGET = 100;
  * (task-3-report.md §5, "Handoff requirement for Task 4") measured this
  * precisely: 200 aliased `viewer { library { authors subjects } }` calls
  * (`Library.subjects`/`Library.authors` are unpaginated scalar lists, no
- * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 2.7% of THIS
+ * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 2.4% of THIS
  * budget, nowhere near rejecting — while breadth (800) clears
  * `BREADTH_BUDGET` (100) 8× over. Neither number is decorative — each is
  * the ONLY defense against one proven attack family (see
@@ -966,8 +1039,24 @@ export const BREADTH_BUDGET = 100;
  *    30,000 (see "Derivation" above for the anchor and margin math), and
  *    the admin user-list mirror added permanently to `cost-limit.test.ts`'s
  *    calibration describe block so it can never again go unmeasured.
+ * 5. (Task 3, `task-3-report.md`) The cost-calibration suite's 70%-headroom
+ *    ruling (`.superpowers/sdd/2026-08-03-cost-calibration-suite`) found the
+ *    admin user-list mirror (22,602, 75.3% of 30,000) and the near-future
+ *    richer-grid shape (22,283, 74.3%) both ADMITTED but both over the new
+ *    70% line — "admitted" and "admitted with margin" are different
+ *    properties, and 30,000 only proved the first for these two. Order
+ *    matters here (the plan's own binding rule): `HOUSEHOLD_DEVICE_MULTIPLIER`
+ *    was re-derived FIRST (20 → 100, its own doc comment above), the suite
+ *    was RE-MEASURED (worst legit anchor unchanged at 22,602 — the device
+ *    raise moved the device-touching fixtures but not the worst one), and
+ *    only THEN was the budget derived from that measurement: 22,602 / 0.70 =
+ *    32,288.57, rounded up to 33,000. Every attack fixture re-verified
+ *    rejecting at 33,000 (`cost-calibration.test.ts`'s "Separation" describe
+ *    block); both deferred headroom assertions (`it.fails()`,
+ *    `cost-calibration.test.ts`) now pass and were flipped to plain,
+ *    always-enforced assertions.
  */
-export const COMPLEXITY_BUDGET = 30_000;
+export const COMPLEXITY_BUDGET = 33_000;
 
 /** `extensions.code`/`extensions.http.status` for a breadth-budget rejection — same shape convention `pagination.ts`'s `PAGE_SIZE_EXCEEDED`/`BACKWARD_PAGINATION_UNSUPPORTED` and `builder.ts`'s `UNAUTHENTICATED`/`FORBIDDEN` already use (`{ code, http: { status } }`), and the same CODE NAMING `@pothos/plugin-complexity`'s own validator seam used (task-2-report.md, probe 6 — `QUERY_DEPTH`/`QUERY_BREADTH`/`QUERY_COMPLEXITY`) — reused here for the naming, not the plugin's behavior (that seam shipped no `http.status` at all, one of the gaps this rule closes). `depth-limit.ts`'s own `GraphQLError` carries NO explicit `extensions` (it relies on graphql-js/yoga's default `GRAPHQL_VALIDATION_FAILED` + content-negotiated status) — this rule sets one explicitly so a client (the eventual Apollo `errorLink`) can distinguish "you asked for too much" from an ordinary validation typo, the same way `PAGE_SIZE_EXCEEDED` already lets it distinguish that from `BACKWARD_PAGINATION_UNSUPPORTED`. */
 const breadthBudgetError = (breadth: number, node: OperationDefinitionNode): GraphQLError =>

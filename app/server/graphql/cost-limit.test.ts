@@ -302,19 +302,21 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
   // pass whether or not THIS field's own multiplier fired.
   //
   // Round-3, M-8: `Device.enabledUsers` now shares `INSTANCE_USER_MULTIPLIER`
-  // (50) with `Viewer.users`, not its own tighter `HOUSEHOLD_DEVICE_MULTIPLIER`
-  // (20) — it prices a SUBSET of the instance's users
+  // (50) with `Viewer.users`, not its own `HOUSEHOLD_DEVICE_MULTIPLIER`
+  // (task 3: re-derived 20 -> 100, `cost-limit.ts`'s own doc comment above
+  // that constant) — it prices a SUBSET of the instance's users
   // (`device/model.ts:87-97`'s `where: {deviceAccess: {some: {deviceId}}}`),
   // which cannot exceed the instance's own user count, so it must never be
   // priced tighter than `Viewer.users` itself.
-  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers (20 x 50 x 100 — household devices x instance users x library series)', () => {
+  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers (100 x 50 x 100 — instance devices x instance users x library series)', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { devices { enabledUsers { library { series { books(first: 100) { edges { node { id } } } } } } } } }'
     );
     // books(first:100){edges{node{id}}}=301; series(mult 100, library-scale, unchanged){books}=1+100*301=30101;
     // library{series}=1+30101=30102; enabledUsers(mult 50){library}=1+50*30102=1505101;
-    // devices(mult 20){enabledUsers}=1+20*1505101=30102021; viewer{devices}=1+30102021=30102022.
-    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 30102022 });
+    // devices(mult 100, task 3 re-derivation){enabledUsers}=1+100*1505101=150510101;
+    // viewer{devices}=1+150510101=150510102.
+    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 150510102 });
   });
 
   // Round-3, M-9 (correcting a prior version of this test, which mislabeled
@@ -329,7 +331,8 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     const { breadth, complexity } = costOf(
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify } } }'
     );
-    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 162 });
+    // devices(mult 100, task 3 re-derivation){8 leaves}=1+100*8=801; viewer{devices}=1+801=802.
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 802 });
     expect(complexity).toBeLessThan(3823);
   });
 
@@ -337,19 +340,24 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     const { breadth, complexity } = costOf(
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
     );
-    // Previously recorded as 882 (id/name/slug only) then 982 (8 fields,
-    // enabledUsers still at HOUSEHOLD_DEVICE_MULTIPLIER=20) — both stale
-    // now that M-8 raised Device.enabledUsers to INSTANCE_USER_MULTIPLIER
-    // (50): enabledUsers{id,username}=2; enabledUsers(50)=1+50*2=101;
-    // devices{8 leaves + enabledUsers(101)}=1+20*(8+101)=2181; viewer=1+2181=2182.
-    expect({ breadth, complexity }).toEqual({ breadth: 13, complexity: 2182 });
-    expect(complexity).toBeLessThan(3823); // still inside the legit envelope (57%), not rejected
+    // Previously recorded as 882 (id/name/slug only), then 982 (8 fields,
+    // enabledUsers still at the pre-M-8 HOUSEHOLD_DEVICE_MULTIPLIER), then
+    // 2182 (M-8 raised Device.enabledUsers to INSTANCE_USER_MULTIPLIER=50,
+    // devices still at the pre-Task-3 HOUSEHOLD_DEVICE_MULTIPLIER=20) — all
+    // stale now that task 3 re-derived HOUSEHOLD_DEVICE_MULTIPLIER to 100:
+    // enabledUsers{id,username}=2; enabledUsers(50)=1+50*2=101;
+    // devices(mult 100){8 leaves + enabledUsers(101)}=1+100*(8+101)=10901;
+    // viewer=1+10901=10902. This fixture's headroom against COMPLEXITY_BUDGET
+    // (not the stale 3823 comparator this test used before task 3) is
+    // asserted permanently by `cost-calibration.test.ts`'s corpus, not here.
+    expect({ breadth, complexity }).toEqual({ breadth: 13, complexity: 10902 });
   });
 
   it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own, at instance-user scale', () => {
     const { breadth, complexity } = costOf('{ viewer { devices { enabledUsers { username } } } }');
-    // username=1; enabledUsers(mult 50){username}=1+50*1=51; devices(mult 20){enabledUsers}=1+20*51=1021; viewer{devices}=1+1021=1022.
-    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 1022 });
+    // username=1; enabledUsers(mult 50){username}=1+50*1=51;
+    // devices(mult 100, task 3 re-derivation){enabledUsers}=1+100*51=5101; viewer{devices}=1+5101=5102.
+    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 5102 });
   });
 
   // Round-3, I-7: `Book.lineage` now uses its own `BOOK_LINEAGE_MULTIPLIER`
