@@ -690,13 +690,26 @@ export const measureOperationCost = (
  *   doc comment) — is the scalar-list alias attack: 200 aliased
  *   `viewer { library { authors subjects } }` calls measure breadth 800 /
  *   complexity **800** (`cost-limit.test.ts` pins this) — complexity clears
- *   it by miles under its own budget, breadth alone rejects it. UNLIKE
- *   complexity (below), breadth's legit/attack ranges genuinely do NOT
- *   overlap — every attack shape in this schema measures breadth ≥120,
- *   every legit shape measured measures breadth ≤56 — so "gap to nearest
- *   attack" is a sound argument on THIS axis specifically (see
- *   `COMPLEXITY_BUDGET`'s own doc comment for why the same argument does
- *   NOT hold on the complexity axis, task-4-review.md I-1).
+ *   it by miles under its own budget, breadth alone rejects it.
+ *
+ *   **Correction (task-4-re-review.md, N-2): an earlier version of this
+ *   sentence claimed "every attack shape in this schema measures breadth
+ *   ≥120" — FALSE, and self-contradicting the paragraph above it, which
+ *   already states the two costliest attacks measure breadth 14. Most
+ *   attack fixtures in `cost-limit.test.ts` measure breadth 5–14 (the
+ *   pagination-cycle family) — complexity, not breadth, is what catches
+ *   them, exactly as this file's own catch-split table documents.** The
+ *   TRUE, narrower claim, which IS sound: of the attacks breadth is the
+ *   SOLE defense against (nothing else in this rule catches them — the
+ *   alias-repetition family: 12-alias `searchSuggestions`, 200-alias grid,
+ *   the scalar-list attack), the smallest measures breadth 120, and every
+ *   legit shape measured tops out at 56 — so "gap to nearest attack" is a
+ *   sound argument for THAT specific family, on THIS axis, not a claim
+ *   about every attack this rule has ever measured. (See
+ *   `COMPLEXITY_BUDGET`'s own doc comment for why the equivalent argument
+ *   does NOT hold on the complexity axis at all, task-4-review.md I-1 —
+ *   complexity-only attacks and legit traffic overlap continuously, there
+ *   is no floor to cite.)
  */
 export const BREADTH_BUDGET = 100;
 
@@ -740,12 +753,50 @@ export const BREADTH_BUDGET = 100;
  * the two the budget exists to protect (task-4-review.md's own recommended
  * number, adopted rather than re-derived independently — the review had
  * already done the anchor analysis and re-deriving a different number
- * without new evidence would just be a second guess). Does NOT admit a
- * shape that simultaneously maxes BOTH `entries(first: 100)` AND the
- * `Series` arm's `books(first: 100)` in the same request (measured ~34,400)
- * — that shape compounds two independent max-page requests at once and was
- * never one of the measured legit anchors; it stays correctly rejected, the
- * same as before this fix.
+ * without new evidence would just be a second guess).
+ *
+ * **The principle "no budget may reject a Task-1-permitted shape" (C-2) is
+ * satisfiable only loosely, not literally — stated honestly here, not
+ * smoothed over (task-4-re-review.md, N-1: an earlier version of this
+ * paragraph got the boundary shape's own number wrong by 5×, the same
+ * defect class as C-1 one round earlier — a false measurement inside the
+ * file the report calls "the source of truth"; corrected in place, not
+ * just noted).** Task 1 caps page size PER HOP (each connection's own
+ * `first`/`last` independently, ≤100); complexity multiplies ACROSS hops —
+ * so the true set of "Task-1-permitted" shapes is unbounded, and no finite
+ * complexity budget admits all of it. The worst such shape this task
+ * measured — `entries(first: 100)` with the `Series` arm's `books` ALSO at
+ * `first: 100`, today's shipped `BookCard` on both — is **172,103**, not
+ * the ~34,400 an earlier version of this paragraph named (that number
+ * belongs to a DIFFERENT, cheaper shape — `entries(first: 20)` + the
+ * Series arm's `books(first: 100)`, only ONE connection at its max, not
+ * both — a mis-transcription now corrected). 25,000 does not, and by
+ * construction cannot, admit either shape; satisfying the principle
+ * literally would require raising the budget to ≥172,103, which would also
+ * admit the 2-hop `nodes()` cycle (30,402–40,402) and the single-query
+ * suggestions attack (36,367) — i.e. it would delete this rule's coverage
+ * of its own named attack family. **The honest restatement: this budget
+ * admits every REALISTIC Task-1-permitted shape measured for this task (the
+ * three anchors above), not every ARITHMETICALLY permitted composition of
+ * independently-maxed connections — the validation layer and Task 1's
+ * per-hop resolver bounds are DELIBERATELY not coextensive, the same way
+ * `MAX_DEPTH` does not admit every depth `rejectOversizePage` would
+ * separately allow.**
+ *
+ * **The nearest counterexample needs no explicit argument at all — a real
+ * client-facing trap, flagged here for Task 5's handoff.** At
+ * `entries(first: 100)`, the `Series` arm's nested `books` connection must
+ * stay at `first: 13` or below to clear this budget (measured: `first: 13`
+ * → 24,203, admitted; `first: 14` → 25,903, rejected) — but
+ * `CONNECTION_LIMITS.seriesBooks.defaultSize` is **20**, and 13 is BELOW
+ * that default. A client that pages the grid at the documented maximum and
+ * writes the Series arm's `books` with NO argument at all — the single most
+ * natural way to write it, taking the server's own default rather than
+ * specifying one — measures **~36,000** and gets a 400. Pinned as two
+ * committed tests (`cost-limit.test.ts`, next to the `entries(first:100)`
+ * ACCEPT case): `books(first: 13)` accepts, `books` with no argument
+ * (server default 20) rejects — so this boundary cannot drift silently the
+ * way the ~34,400 number did.
  *
  * **The overlap band — stated plainly, not implied away.** Complexity-only
  * attack shapes and legitimate paginated traffic overlap CONTINUOUSLY across

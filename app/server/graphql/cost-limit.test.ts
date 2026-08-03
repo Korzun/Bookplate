@@ -846,7 +846,66 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
       } } } }`);
   });
 
-  it('near-future shape 1: BookCard-on-lineage (breadth 40 / complexity 724) — the obvious next UI step for the shipped lineage screen', () => {
+  // task-4-re-review.md, N-1: THE BOUNDARY, pinned so it cannot drift
+  // silently. `entries(first: 100)` (the connection's own max) plus the
+  // Series arm's `books` ALSO paginated is a genuinely different shape from
+  // the C-2 anchor above (which keeps `books(first: 10)`, well under
+  // either connection's max) — complexity multiplies ACROSS these two
+  // independently-maxed hops, so this compounds fast. `first: 13` is the
+  // highest literal value on this inner connection that still clears
+  // `COMPLEXITY_BUDGET` (`first: 14` measures complexity 25,903 and would
+  // not — this exact edge is what the paired "TRAP" test below exists to
+  // warn a client author away from).
+  it('THE BOUNDARY: entries(first:100) + Series-arm books(first:13) — breadth 41 / complexity 24,203 — the highest literal `first` on this inner connection that still clears COMPLEXITY_BUDGET (task-4-re-review.md, N-1)', () => {
+    accepts(`
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 100) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books(first: 13) { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`);
+  });
+
+  // task-4-re-review.md, N-1: the CLIENT-FACING TRAP this budget creates,
+  // pinned as an explicit "this rejects, knowingly" case — carried into
+  // Task 5's handoff as a hard client-guidance item (task-4-report.md §0).
+  // `Series.books`'s own `CONNECTION_LIMITS.seriesBooks.defaultSize` is 20
+  // — ABOVE the 13-item ceiling the test above just pinned — so a client
+  // that pages the grid at `entries(first: 100)` and writes the Series
+  // arm's `books` with NO argument at all (the single most natural way to
+  // write it, taking the server's own default instead of specifying one)
+  // gets a 400, not the accepted shape one might reasonably expect from
+  // "I didn't even ask for a large page." This is not a bug to fix here —
+  // see `COMPLEXITY_BUDGET`'s own doc comment for why the budget cannot
+  // simply be raised to cover it — it is a real API behavior that must be
+  // documented for client authors, which is what this test (and the doc
+  // comment it's pinned against) exists to make impossible to un-notice.
+  it("THE TRAP: entries(first:100) + Series-arm books with NO ARGUMENT (the connection's own default, 20) — REJECTS, even though nothing about the request LOOKS large (task-4-re-review.md, N-1 — Task 5 handoff item)", () => {
+    const errors = runRule(`
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 100) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`);
+    expect(errors.map((error) => String(error.extensions?.['code']))).toEqual(['QUERY_COMPLEXITY']);
+  });
+
+  it('near-future shape 1: BookCard-on-lineage (breadth 38 / complexity 684, corrected label — task-4-re-review.md N-3) — the obvious next UI step for the shipped lineage screen', () => {
     accepts(`
       fragment BookCard on Book {
         series { id name }
