@@ -243,7 +243,11 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
  * envelopes (41 / 3823 / 12) — while fetching `S × 1,200` rows, against the
  * richest calibrated legit screen's ~220 rows at complexity 3823. Fixed via
  * `UNBOUNDED_LIST_FIELD_LIMITS` — see `cost-limit.ts`'s doc comment there
- * for the full inventory (7 fields priced, ~17 ruled safe with reasoning).
+ * for the full inventory: 25 composite-element list fields total, 9 priced
+ * (7 here + `Library.searchSuggestions`/`SuggestionGroup.items`, priced
+ * separately below — round-2 re-review, I-5), 1 priced elsewhere
+ * (`Query.nodes`), 4 are a priced connection's own `edges` (not
+ * double-counted), 11 leaf-terminating (nothing to multiply).
  */
 describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach a priced connection', () => {
   it('Library.series prices its children at the assumed worst case (100), same as a real connection would', () => {
@@ -295,11 +299,20 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     expect(complexity).toBe(3650);
   });
 
-  it('Viewer.users (admin, every user on the instance) reaching User.library.entries is priced, not free', () => {
+  // Round-2 re-review, I-6: `Viewer.users` prices at `INSTANCE_USER_MULTIPLIER`
+  // (50), NOT the shared library-scale `UNBOUNDED_LIST_MULTIPLIER` (100) —
+  // see `cost-limit.ts`'s doc comment for why (Bookplate is a self-hosted,
+  // single-instance app; total user count is a smaller-scale quantity than
+  // a library's book/series count, and the flat 100 was measured to
+  // compound into false rejections of shipping admin screens, below).
+  it('Viewer.users (admin, every user on the instance) reaching User.library.entries is priced at 50, not free and not the library-scale 100', () => {
     const { complexity } = costOf(
       '{ viewer { users { library { entries(first: 100) { edges { node { ... on Book { id } } } } } } } }'
     );
-    expect(complexity).toBeGreaterThan(3823); // clears the legit complexity max
+    // edges{node{...on Book{id}}} = 3; entries(first:100){edges} = 1+100*3 = 301;
+    // library{entries} = 1+301=302; users(mult 50){library} = 1+50*302=15101; viewer{users}=1+15101=15102.
+    expect(complexity).toBe(15102);
+    expect(complexity).toBeGreaterThan(3823); // still clears the legit complexity max
   });
 
   // Tight, seen-to-fail-verified pins for the 4 remaining registered
@@ -314,16 +327,37 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
   // 307 — the exact pins below all clear those numbers by orders of
   // magnitude, so this test can only pass with the multiplier genuinely
   // applied.
-  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds THREE unpriced multipliers at once', () => {
+  //
+  // Round-2, I-6: `Viewer.devices` and `Device.enabledUsers` price at
+  // `HOUSEHOLD_DEVICE_MULTIPLIER` (20 each), not the shared 100 — this
+  // EXACT shape (minus the `edges{node{id}}` vs `edges{cursor}` wording) is
+  // `app/client/src/page/device-list/`'s real screen, which measured
+  // 20,402 at the flat 100×100 (5.3× the legit ceiling for ~15 real rows) —
+  // the F-1 failure this fix closes.
+  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers, now at household scale (20x20), not library scale (100x100)', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { devices { enabledUsers { library { series { books(first: 100) { edges { node { id } } } } } } } } }'
     );
-    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 301020102 });
+    // books(first:100){edges{node{id}}}=301; series(mult 100, library-scale, unchanged){books}=1+100*301=30101;
+    // library{series}=1+30101=30102; enabledUsers(mult 20){library}=1+20*30102=602041;
+    // devices(mult 20){enabledUsers}=1+20*602041=12040821; viewer{devices}=1+12040821=12040822.
+    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 12040822 });
   });
 
-  it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own', () => {
+  it('the REAL admin device-list screen (id/name/slug + enabledUsers{id,username}, no nested connection) now measures well inside the legit range, not 5.3x over it', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { devices { id name slug enabledUsers { id username } } } }'
+    );
+    // enabledUsers{id,username}=2 leaves=2; enabledUsers(mult 20)=1+20*2=41;
+    // devices{id,name,slug,enabledUsers}: id+name+slug=3, +enabledUsers(41)=44; devices(mult 20)=1+20*44=881; viewer{devices}=1+881=882.
+    expect({ breadth, complexity }).toEqual({ breadth: 8, complexity: 882 });
+    expect(complexity).toBeLessThan(3823); // inside the legit envelope, as a real shipping screen must be
+  });
+
+  it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own, at household scale', () => {
     const { breadth, complexity } = costOf('{ viewer { devices { enabledUsers { username } } } }');
-    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 10102 });
+    // username=1; enabledUsers(mult 20){username}=1+20*1=21; devices(mult 20){enabledUsers}=1+20*21=421; viewer{devices}=1+421=422.
+    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 422 });
   });
 
   it('Book.lineage -> newBook.series.books is priced (bounded in practice, but no code-enforced ceiling)', () => {
@@ -338,6 +372,67 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
       '{ viewer { library { scanStatus { result { imported { series { books(first: 100) { edges { node { id } } } } } } } } } }'
     );
     expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 30205 });
+  });
+});
+
+/**
+ * Round-2 re-review, I-5: `Library.searchSuggestions` / `SuggestionGroup.items`
+ * were ruled SAFE (priced at 1) because `getSearchSuggestions`
+ * (`services/book-store.ts:172-265`) caps every branch at `LIMIT 30`
+ * (`book-store.ts:195,227,253,265`), at most 4 groups — but "has a
+ * code-enforced bound" was used as grounds for EXEMPTION, when this file's
+ * own precedent (`Library.entries` etc.) is to price AT a bound, not skip
+ * it. Measured pre-fix: `searchSuggestions { items { book { series {
+ * books(first:100) … } } } }` (138 bytes) scored breadth 10 / complexity
+ * 307 — inside all three calibrated envelopes — for ~3,000 real rows,
+ * while the identical real cost routed through the now-priced
+ * `Library.series` scored 30,103 (98x higher for the same cost).
+ */
+describe('SUGGESTION_FIELD_LIMITS — I-5, "bounded" priced AT its bound, not exempted for having one', () => {
+  it('Library.searchSuggestions prices at its real group-count bound (4), SuggestionGroup.items at its real per-group bound (30)', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } } }'
+    );
+    // books(first:100){edges{node{id}}}=301; series{books}=1+1*301=302; book{series}=1+1*302=303;
+    // items(mult 30){book}=1+30*303=9091; searchSuggestions(mult 4){items}=1+4*9091=36365; library{searchSuggestions}=1+36365=36366; viewer{library}=1+36366=36367.
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 36367 });
+    expect(complexity).toBeGreaterThan(3823 * 9); // clearly outside the legit envelope, not marginally
+  });
+
+  it('the SAME real cost through the now-priced Library.series (a single suggestion-sized S=30) scores in the same order of magnitude — the "two prices for one cost" gap this fix closes', () => {
+    const suggestionsPath = costOf(
+      '{ viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } } }'
+    );
+    const seriesPath = costOf(
+      '{ viewer { library { series { books(first: 100) { edges { node { id } } } } } } }'
+    );
+    // Before this fix these scored 307 vs 30,103 — a 98x gap for identical
+    // real cost. After: both land in the tens of thousands, no longer two
+    // prices for one cost.
+    expect(suggestionsPath.complexity).toBeGreaterThan(seriesPath.complexity / 10);
+    expect(suggestionsPath.complexity).toBeLessThan(seriesPath.complexity * 10);
+  });
+
+  it('a real search-as-you-type screen (one query, label/value only, no nested connection) stays well inside the legit envelope', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { library { searchSuggestions(query: "dune") { type items { label value } } } } }'
+    );
+    expect(complexity).toBeLessThan(3823);
+    expect({ breadth, complexity }).toEqual({ breadth: 7, complexity: 251 });
+  });
+
+  it('aliasing searchSuggestions (a free-text query arg makes aliases trivially distinct) is priced per-alias like every other field — SUMS, does not collapse', () => {
+    const twoAliases = costOf(
+      `{
+        a: viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } }
+        b: viewer { library { searchSuggestions(query: "b") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } }
+      }`
+    );
+    const oneAlias = costOf(
+      '{ viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } } }'
+    );
+    expect(twoAliases.complexity).toBe(oneAlias.complexity * 2);
+    expect(twoAliases.breadth).toBe(oneAlias.breadth * 2);
   });
 });
 

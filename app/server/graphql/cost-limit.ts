@@ -127,30 +127,41 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * `Library.pendingFixes` is the same class (`PendingFix.book.series.books`
  * reaches the identical connection through one more singular hop).
  *
- * The full sweep this finding required (`grep`-level inventory of every
- * non-connection list field returning a non-scalar type, `schema.generated.graphql`):
- * of ~24 such fields, MOST are safe with no code change — their element
- * type is scalar-only (`Book.identifiers` → `Identifier {scheme, value}`,
- * `PendingFixState.autoFixes`/`appliedFixes`/`proposals` → `MetadataFix`,
- * `EpubValidationError.messages`/`BookAnalyzeReplacePayload.messages` →
- * `EpubValidationMessage`, `InvalidInputError.issues` → `InputIssue`,
- * `UndoSnapshot.appliedFixes`/`proposals` → `MetadataFix`,
- * `BookUnlinkDocumentPayload.identifiers` → `IdentifierInput`) — there is
- * nothing further under them to multiply, so pricing them above 1 would
- * inflate the calibration record for no real risk, the same "don't invent
- * a number where there's nothing to multiply" discipline
- * `CONNECTION_FIELD_LIMITS` already follows. One more is safe with EVIDENCE
- * rather than by leaf-type inspection: `Library.searchSuggestions` /
- * `SuggestionGroup.items` reaches `Suggestion.book: Book` (which DOES reach
- * `Book.series.books`) but is genuinely bounded — `getSearchSuggestions`
- * (`services/book-store.ts:188-261`) caps every branch at `LIMIT 30`, at
- * most 4 groups, ≤120 rows total, a real code-enforced ceiling, not an
- * assumption.
+ * **Full inventory (re-review round 2, verified programmatically against the
+ * built schema, not by `grep`): exactly 25 composite-element list fields
+ * exist.** They partition as:
+ *  - 9 priced here (`UNBOUNDED_LIST_FIELD_LIMITS`, below) — the 7 from I-4
+ *    plus 2 more from I-5 (`Library.searchSuggestions`, `SuggestionGroup.items`).
+ *  - 1 priced separately in `multiplierFor` (`Query.nodes`, by `ids.length`).
+ *  - 4 are a priced connection's own `edges` field (`LibraryEntriesConnection.edges`,
+ *    `SeriesBooksConnection.edges`, `LibraryProgressConnection.edges`,
+ *    `ValidationMessagesConnection.edges`) — correctly NOT priced separately:
+ *    each is a child of the already-priced connection FIELD, so the parent's
+ *    multiplier already scales it; pricing them too would double-count.
+ *  - 11 are leaf-terminating — their element type's full reachability
+ *    closure contains ZERO composite-element list fields and ZERO
+ *    `first`/`last`-bearing fields (verified by closure, not by eyeballing
+ *    the immediate fields): `Book.identifiers`,
+ *    `BookAnalyzeReplacePayload.{autoFixes,messages,proposals}`,
+ *    `EpubValidationError.messages`, `InvalidInputError.issues`,
+ *    `PendingFixState.{appliedFixes,autoFixes,proposals}`,
+ *    `UndoSnapshot.{appliedFixes,proposals}`. There is nothing further under
+ *    them to multiply, so pricing them above 1 would inflate the
+ *    calibration record for no real risk — the same "don't invent a number
+ *    where there's nothing to multiply" discipline `CONNECTION_FIELD_LIMITS`
+ *    already follows. (`BookUnlinkDocumentPayload.identifiers` was
+ *    PREVIOUSLY, WRONGLY, listed here in an earlier version of this comment
+ *    — task-3-re-review-2.md, M-6: `identifiers: [IdentifierInput!]` is a
+ *    field on the INPUT type `BookUpdateMetadataInput`, not on
+ *    `BookUnlinkDocumentPayload` — an input type cannot be selected and
+ *    cannot appear in this walk at all, so it was never a real inventory row.)
+ *  - 9 priced below.
  *
- * The seven fields below all reach further amplifiable content AND have no
- * code-enforced ceiling — before this fix, EVERY ONE of them priced at the
- * default multiplier of 1 (i.e. completely unpriced; none of them restates
- * an existing bound the way `CONNECTION_FIELD_LIMITS` does):
+ * (25 = 9 + 1 + 4 + 11.)
+ *
+ * The 9 priced fields, each reaching further amplifiable content with NO
+ * code-enforced ceiling (I-4's original 7) or WITH one that was being used
+ * as a reason to price at 1 instead of pricing AT it (I-5's 2, below):
  *  - `Library.series` — `findMany({where:{userId}})`, no cap
  *    (`library/model.ts:267-275`); reaches `Series.books`.
  *  - `Library.pendingFixes` — `findMany({where:{userId}})`, no cap
@@ -172,17 +183,53 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *    list has no cap and scales with scan size (`scan-result/model.ts:32-47`);
  *    reaches `Book.series.books`. Reachable via `Library.scanStatus`,
  *    `libraryScan`'s mutation payload, and the `scanProgress` subscription.
+ *  - `Library.searchSuggestions` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
+ *  - `SuggestionGroup.items` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
  *
- * None of these has a REST precedent or a measured real-world bound —
- * exactly the position `Query.nodes(ids:)` was in before Task 1
- * (`pagination.ts`'s own doc comment: "NO REST or client precedent... Set
- * to the largest per-page ceiling established for any single connection
- * above"). Reusing that SAME shared reference point (100, `nodesBatch`)
- * here, rather than inventing seven new unmeasured numbers, is the
- * identical choice Task 1 already made for exactly this situation — an
- * assumed worst case, stated as such, not a measured one.
+ * **`UNBOUNDED_LIST_MULTIPLIER` (100, `CONNECTION_LIMITS.nodesBatch`) applies
+ * ONLY to the five fields below that genuinely scale with LIBRARY or SCAN
+ * size** (`Library.series`, `Library.pendingFixes`, `Book.lineage`,
+ * `ScanResult.imported` — plus `Query.nodes(ids:)`, priced separately),
+ * where "unbounded" is a real property of the data (a library can plausibly
+ * hold thousands of series or pending fixes) and no REST precedent or
+ * measured bound exists — the exact position `Query.nodes(ids:)` was in
+ * before Task 1 (`pagination.ts`'s own doc comment: "NO REST or client
+ * precedent... Set to the largest per-page ceiling established for any
+ * single connection above"). Reusing that SAME shared reference number here
+ * is the identical choice Task 1 already made for exactly this situation.
+ *
+ * `Viewer.users`, `Viewer.devices`, and `Device.enabledUsers` do **NOT**
+ * use `UNBOUNDED_LIST_MULTIPLIER` — task-3-re-review-2.md, I-6: Bookplate is
+ * a **self-hosted, single-instance personal library server** (the spec's
+ * own framing, `pagination.ts`'s doc comment: "series lists, subjects,
+ * authors, users, devices... small and unpaginated today"), not a
+ * multi-tenant SaaS — the instance's TOTAL user count and one household's
+ * device count are a fundamentally different scale of "unbounded" than a
+ * library's book/series count. Pricing all three at the shared 100 was
+ * measured to COMPOUND into a false rejection of a screen this app ships
+ * TODAY: `app/client/src/page/device-list/` (REST precedent:
+ * `GET /api/devices/:id/users`, `routes/devices.ts:178`) reads
+ * `devices { … enabledUsers { … } }` — real cardinality on a self-hosted
+ * instance is roughly 2-6 devices × 1-5 users each (a household's
+ * e-readers), but `Viewer.devices` × `Device.enabledUsers` at 100×100
+ * scored complexity 20,402 — 5.3× the (then-stale) legit ceiling — for
+ * ~15 real rows. No REST endpoint, admin UI, or schema constraint caps
+ * either count numerically (confirmed: `routes/users.ts`'s own
+ * `GET /users` is equally unpaginated), so these three numbers are
+ * ASSUMED, not measured or sourced from code — stated as such, not
+ * disguised as a real bound — but chosen an order of magnitude below the
+ * library-scale 100 to reflect that a self-hosted server's household/
+ * instance user count is genuinely a smaller-scale quantity than its book
+ * catalog: `HOUSEHOLD_DEVICE_MULTIPLIER = 20` for `Viewer.devices` and
+ * `Device.enabledUsers` (headroom for a large household's e-reader
+ * collection and everyone who might use any one of them), and
+ * `INSTANCE_USER_MULTIPLIER = 50` for `Viewer.users` (headroom for a larger
+ * shared instance — e.g. a small book club or extended family — above any
+ * single device's own user list).
  */
 const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
+const HOUSEHOLD_DEVICE_MULTIPLIER = 20;
+const INSTANCE_USER_MULTIPLIER = 50;
 
 const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
   'Library.series': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
@@ -190,11 +237,14 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
     maxSize: UNBOUNDED_LIST_MULTIPLIER,
     defaultSize: UNBOUNDED_LIST_MULTIPLIER,
   },
-  'Viewer.users': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
-  'Viewer.devices': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  'Viewer.users': { maxSize: INSTANCE_USER_MULTIPLIER, defaultSize: INSTANCE_USER_MULTIPLIER },
+  'Viewer.devices': {
+    maxSize: HOUSEHOLD_DEVICE_MULTIPLIER,
+    defaultSize: HOUSEHOLD_DEVICE_MULTIPLIER,
+  },
   'Device.enabledUsers': {
-    maxSize: UNBOUNDED_LIST_MULTIPLIER,
-    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+    maxSize: HOUSEHOLD_DEVICE_MULTIPLIER,
+    defaultSize: HOUSEHOLD_DEVICE_MULTIPLIER,
   },
   'Book.lineage': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
   'ScanResult.imported': {
@@ -204,19 +254,64 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
 };
 
 /**
- * The single lookup `multiplierFor` reads — `CONNECTION_FIELD_LIMITS` and
- * `UNBOUNDED_LIST_FIELD_LIMITS` are documented separately (genuine
- * `first`/`last`-bearing connections vs. assumed-worst-case plain lists)
- * because their NUMBERS have different provenance, but they are read
- * through one map so `multiplierFor` doesn't need to know which kind of
- * field it found — `pageSizeMultiplier` already does the right thing for a
- * field with no `first`/`last` argument at all (both read as `undefined`,
- * falling through to `defaultSize`, which for every
- * `UNBOUNDED_LIST_FIELD_LIMITS` entry equals its own `maxSize`).
+ * `Library.searchSuggestions`/`SuggestionGroup.items` — task-3-re-review-2.md,
+ * I-5. Previously ruled SAFE (priced at 1) because `getSearchSuggestions`
+ * (`services/book-store.ts:172-265`) caps every branch at `LIMIT 30`
+ * (4 occurrences: `book-store.ts:195,227,253,265`, one per suggestion
+ * group), ≤4 groups (`author`/`series`/`book`/`subject`). That reasoning
+ * used "has a code-enforced bound" as grounds for EXEMPTION — but this
+ * file's own precedent (`CONNECTION_FIELD_LIMITS`, `Library.entries` etc.)
+ * is the opposite: a field bounded at N is priced AT N, not exempted for
+ * being bounded. Measured: `searchSuggestions { items { book { series {
+ * books(first:100) … } } } }` (138 bytes) scored breadth 10 / complexity
+ * 307 / depth 10 — INSIDE all three calibrated envelopes — while fetching
+ * ~3,000 real rows (30 items × up to 100 books each via `Series.books`);
+ * the SAME real cost routed through the now-priced `Library.series` scores
+ * 30,103 — a 98× gap for identical real cost, the exact "two prices for
+ * one cost" class I-4 named.
+ *
+ * Priced at the SOURCED bounds, not an assumption: `searchSuggestions`
+ * itself returns at most 4 groups (`getSearchSuggestions`'s own four `if`
+ * branches, `book-store.ts:187-267` — `author`, `series`, `book`, `subject`,
+ * each pushed at most once); each group's `items` is capped at `LIMIT 30`.
+ * `Suggestion.book` (`schema/suggestion/model.ts:33-40`) only resolves a
+ * lookup for `BOOK`-typed items (`suggestion.userId === undefined` short-
+ * circuits every other group to `null`, no query at all), so the true
+ * reachable fan-out is narrower than 4×30 — but pricing `items` at 30
+ * uniformly (not conditionally on group type, which `multiplierFor` has no
+ * way to know from the AST alone) is the conservative, not-underpriced
+ * direction, matching every other multiplier in this file.
+ */
+const SUGGESTION_GROUP_COUNT = 4;
+const SUGGESTION_ITEMS_PER_GROUP = 30;
+
+const SUGGESTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
+  'Library.searchSuggestions': {
+    maxSize: SUGGESTION_GROUP_COUNT,
+    defaultSize: SUGGESTION_GROUP_COUNT,
+  },
+  'SuggestionGroup.items': {
+    maxSize: SUGGESTION_ITEMS_PER_GROUP,
+    defaultSize: SUGGESTION_ITEMS_PER_GROUP,
+  },
+};
+
+/**
+ * The single lookup `multiplierFor` reads — `CONNECTION_FIELD_LIMITS`,
+ * `UNBOUNDED_LIST_FIELD_LIMITS`, and `SUGGESTION_FIELD_LIMITS` are
+ * documented separately (genuine `first`/`last`-bearing connections vs.
+ * assumed-worst-case plain lists vs. sourced-bound plain lists) because
+ * their NUMBERS have different provenance, but they are read through one
+ * map so `multiplierFor` doesn't need to know which kind of field it
+ * found — `pageSizeMultiplier` already does the right thing for a field
+ * with no `first`/`last` argument at all (both read as `undefined`,
+ * falling through to `defaultSize`, which for every entry in either of the
+ * latter two maps equals its own `maxSize`).
  */
 const FIELD_MULTIPLIER_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
   ...CONNECTION_FIELD_LIMITS,
   ...UNBOUNDED_LIST_FIELD_LIMITS,
+  ...SUGGESTION_FIELD_LIMITS,
 };
 
 /** Reads a literal `Int` argument's value off a `Field` AST node. `undefined` = argument absent or explicit `null`; `'variable'` = present but not a literal we can read at validation time (a `$variable`) — `multiplierFor` treats both non-literal cases conservatively, never by guessing the runtime value. */
@@ -261,9 +356,13 @@ const pageSizeMultiplier = (
 
 /**
  * The args-aware multiplier for one field occurrence — `1` for every field
- * except the twelve `FIELD_MULTIPLIER_LIMITS` prices: five real,
- * `first`/`last`-bearing connections and seven unbounded plain lists
- * (`UNBOUNDED_LIST_FIELD_LIMITS`, above — task-3-review round 2, I-4).
+ * except the fourteen `FIELD_MULTIPLIER_LIMITS` prices: five real,
+ * `first`/`last`-bearing connections; seven unbounded plain lists
+ * (`UNBOUNDED_LIST_FIELD_LIMITS`, above — round-2 review, I-4); and two
+ * plain lists priced at a sourced (not assumed) bound
+ * (`SUGGESTION_FIELD_LIMITS`, above — round-2 review, I-5) — plus
+ * `Query.nodes(ids:)`, priced separately below by `ids.length` rather than
+ * through this lookup at all (fifteen coordinates total).
  *
  * `Query.nodes(ids:)`: multiplier is `ids.length`, clamped to
  * `CONNECTION_LIMITS.nodesBatch` (100) — same reasoning as a connection's
