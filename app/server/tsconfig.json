@@ -13,7 +13,9 @@
   },
   "include": ["./**/*"],
   // Test-only files are excluded so the production build never ships them:
-  // test-util.ts creates temp SQLite databases, and vite.config.ts configures
+  // test-util.ts creates temp SQLite databases, cost-test-support.ts relies on
+  // vitest's global `expect` (test.globals:true in vite.config.ts, which this
+  // build has no business typechecking against), and vite.config.ts configures
   // Vitest. vite.config.ts is additionally an ES module (it uses
   // `import.meta.url`) that this CommonJS project cannot typecheck; Vite loads
   // and transpiles it itself, so tsc has no business compiling it.
@@ -22,6 +24,7 @@
     "dist",
     "**/*.test.ts",
     "**/test-util.ts",
+    "**/cost-test-support.ts",
     "**/__mocks__/**",
     "vite.config.ts"
   ]
