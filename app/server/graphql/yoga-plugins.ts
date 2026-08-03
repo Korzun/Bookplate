@@ -1,7 +1,6 @@
 import {
   DocumentNode,
   GraphQLError,
-  GraphQLSchema,
   Kind,
   NoSchemaIntrospectionCustomRule,
   OperationDefinitionNode,
@@ -91,15 +90,19 @@ const costLog = logger('GraphQL:cost');
  * purely to run the walk and hand its numbers to `costLog.info` via the
  * callback `costLimitRule` invokes once per operation in the document.
  *
+ * Zero-arg, like its three siblings above — `costLimitRule` reads the
+ * schema off `context.getSchema()` itself (task-3-review, M-2) rather than
+ * this plugin threading one in.
+ *
  * No query text or variables in the log line — same discipline
  * `useOperationLogging` documents for its own line, because either may carry
  * user data (a search filter today, a future password-bearing mutation's
  * input) that has no business in server logs.
  */
-export const useCostLogging = (schema: GraphQLSchema): Plugin => ({
+export const useCostLogging = (): Plugin => ({
   onValidate: ({ addValidationRule }) =>
     addValidationRule(
-      costLimitRule(schema, (operationName, cost) =>
+      costLimitRule((operationName, cost) =>
         costLog.info(
           JSON.stringify({ operationName, breadth: cost.breadth, complexity: cost.complexity })
         )
