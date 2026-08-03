@@ -205,8 +205,9 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
 
   it('a non-connection field with a `first`-shaped argument name is unaffected — the multiplier is keyed by (parent type, field), not by argument name alone', () => {
     // `Book.progress` is a plain field (no `first` arg at all in the SDL) —
-    // sanity check that `multiplierFor` only fires on the 5 registered
-    // coordinates, never generically on "any list-ish field".
+    // sanity check that `multiplierFor` only fires on the 12 registered
+    // coordinates (5 connections + 7 unbounded lists, I-4), never
+    // generically on "any list-ish field".
     const flat = costOf('{ viewer { library { book(id: "x") { progress { percentage } } } } }');
     // progress{percentage}: percentage=1; progress = FIELD_COST(1) + 1*1 = 2;
     // book = 1 + 1*2 = 3; library = 1 + 1*3 = 4; viewer = 1 + 1*4 = 5.
@@ -228,6 +229,115 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
   it('Query.nodes(ids:) with a variable-valued ids list falls back to nodesBatch — same worst-case reasoning as connections', () => {
     const { complexity } = costOf('query Q($ids: [ID!]!) { nodes(ids: $ids) { id } }');
     expect(complexity).toBe(1 + 100 * 1);
+  });
+});
+
+/**
+ * Task-3-review ROUND 2, I-4: `Library.series: [Series!]!` is an unbounded
+ * `findMany` (`library/model.ts:267-275`) that reached `Series.books` (a
+ * priced connection) while itself pricing at the default multiplier of 1 —
+ * a free `×S` (S = the library's series count) handed to anything nested
+ * under it. Measured pre-fix: `{ series { books(first:12) { … }
+ * books(first:100) { … } } }` (132 bytes) scored breadth 11 / complexity
+ * 3,652 / depth 10 — INSIDE every one of this task's own calibrated
+ * envelopes (41 / 3823 / 12) — while fetching `S × 1,200` rows, against the
+ * richest calibrated legit screen's ~220 rows at complexity 3823. Fixed via
+ * `UNBOUNDED_LIST_FIELD_LIMITS` — see `cost-limit.ts`'s doc comment there
+ * for the full inventory (7 fields priced, ~17 ruled safe with reasoning).
+ */
+describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach a priced connection', () => {
+  it('Library.series prices its children at the assumed worst case (100), same as a real connection would', () => {
+    const { complexity } = costOf(
+      '{ viewer { library { series { books(first: 100) { edges { node { id } } } } } } }'
+    );
+    // edges{node{id}} = 3; books(first:100) = 1 + 100*3 = 301;
+    // series (multiplier 100) = 1 + 100*301 = 30101; library = 1+30101=30102; viewer = 1+30102=30103.
+    expect(complexity).toBe(30103);
+  });
+
+  it("Library.pendingFixes gets the SAME class of pricing (PendingFix.book.series.books reaches the identical connection one hop further) — kept as a committed fixture per the review's own instruction", () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { library { pendingFixes { book { series { books(first: 100) { edges { node { id } } } } } } } } }'
+    );
+    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 30303 });
+  });
+
+  it('the I-4 sharpest row (2 hops through Library.series) now measures far OUTSIDE the calibrated legit envelope (41 breadth / 3823 complexity) — it must never again land inside it', () => {
+    const source = `{ viewer { library { series {
+      books(first: 12) { edges { node { series {
+        books(first: 100) { edges { node { id } } }
+      } } } }
+    } } } }`;
+    const { breadth, complexity } = costOf(source);
+    // Pre-fix (task-3-review.md, I-4): breadth 11 / complexity 3,652 — BOTH
+    // inside the legit envelope. Post-fix: complexity clears it by ~95x;
+    // breadth (unaffected by any multiplier, by design — see cost-limit.ts's
+    // own doc comment on why breadth prices repetition, not cardinality)
+    // stays inside the breadth envelope, which is expected and matches the
+    // review's own "breadth CAN be enforced loosely, complexity is the
+    // separator for this family" conclusion (task-3-review.md, I-1(d)).
+    expect(breadth).toBe(11);
+    expect(complexity).toBeGreaterThan(3823 * 10); // clearly outside, not marginally
+    expect(complexity).toBe(364903);
+  });
+
+  it('a control: the IDENTICAL 2-hop shape rooted at nodes() instead of Library.series is UNCHANGED by this fix — proves the fix targets the unbounded field, not the shape', () => {
+    const source = `{ nodes(ids: ["x"]) { ... on Series {
+      books(first: 12) { edges { node { series {
+        books(first: 100) { edges { node { id } } }
+      } } } }
+    } } }`;
+    const { breadth, complexity } = costOf(source);
+    // task-3-review.md's own control measured 3,650 for this exact shape
+    // (its `edges { cursor }` vs this fixture's `edges { node { id } }`
+    // account for the +/-3 in complexity and +2 breadth vs their number).
+    expect(breadth).toBe(9);
+    expect(complexity).toBe(3650);
+  });
+
+  it('Viewer.users (admin, every user on the instance) reaching User.library.entries is priced, not free', () => {
+    const { complexity } = costOf(
+      '{ viewer { users { library { entries(first: 100) { edges { node { ... on Book { id } } } } } } } }'
+    );
+    expect(complexity).toBeGreaterThan(3823); // clears the legit complexity max
+  });
+
+  // Tight, seen-to-fail-verified pins for the 4 remaining registered
+  // coordinates — NOT loose `>N` thresholds. `Viewer.devices`'s and
+  // `Book.lineage`'s and `ScanResult.imported`'s fixtures all also nest
+  // `Series.books` (a connection priced independently of I-4), so a loose
+  // ">10"-style assertion would pass whether or not THIS field's own
+  // multiplier fired — measured directly (temporarily emptying
+  // `UNBOUNDED_LIST_FIELD_LIMITS`, restored immediately after) what each
+  // fixture scores WITHOUT its own fix: `devices` 306, `enabledUsers`
+  // (isolated, no nested connection at all) 4, `lineage` 307, `imported`
+  // 307 — the exact pins below all clear those numbers by orders of
+  // magnitude, so this test can only pass with the multiplier genuinely
+  // applied.
+  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds THREE unpriced multipliers at once', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { devices { enabledUsers { library { series { books(first: 100) { edges { node { id } } } } } } } } }'
+    );
+    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 301020102 });
+  });
+
+  it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own', () => {
+    const { breadth, complexity } = costOf('{ viewer { devices { enabledUsers { username } } } }');
+    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 10102 });
+  });
+
+  it('Book.lineage -> newBook.series.books is priced (bounded in practice, but no code-enforced ceiling)', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { library { book(id: "x") { lineage { newBook { series { books(first: 100) { edges { node { id } } } } } } } } } }'
+    );
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 30304 });
+  });
+
+  it('ScanResult.imported -> series.books is priced — reachable via Library.scanStatus.result', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { library { scanStatus { result { imported { series { books(first: 100) { edges { node { id } } } } } } } } } }'
+    );
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 30205 });
   });
 });
 
