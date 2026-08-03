@@ -5,7 +5,7 @@ import { logger } from '../logger';
 import { createContext, type ContextDeps } from './context';
 import { schema } from './schema';
 import {
-  useCostLogging,
+  useCostLimit,
   useDepthLimit,
   useOperationLogging,
   useSchemaConcealment,
@@ -35,9 +35,10 @@ const formatLogArgs = (args: unknown[]): string => args.map(formatLogArg).join('
  * without it on the installed version; do NOT reach for `any`, which is a
  * lint error in this workspace.
  *
- * Plugin implementations (schema concealment, depth limiting, cost logging,
- * per-operation logging) live in `yoga-plugins.ts` — this file's own size
- * otherwise grows past the point a single-glance read stays useful.
+ * Plugin implementations (schema concealment, depth limiting, cost
+ * limiting, per-operation logging) live in `yoga-plugins.ts` — this file's
+ * own size otherwise grows past the point a single-glance read stays
+ * useful.
  */
 export const createGraphqlHandler = ({
   isProduction,
@@ -62,7 +63,7 @@ export const createGraphqlHandler = ({
     cors: false,
     plugins: [
       useDepthLimit(),
-      useCostLogging(),
+      useCostLimit(),
       useOperationLogging(deps.jwtSecret),
       ...(isProduction ? [useSchemaConcealment()] : []),
     ],

@@ -146,6 +146,39 @@ describe('operation logging — over real HTTP', () => {
     expect(typeof line['durationMs']).toBe('number');
   });
 
+  // Task 4 (query-cost-control plan): `cost-limit.ts`'s `costLimitRule` now
+  // enforces `BREADTH_BUDGET`/`COMPLEXITY_BUDGET` on the same
+  // `ValidationContext` the depth-limit test above already proves this
+  // WARN-logging mechanism observes — this is the same regression test,
+  // for the new rule, not a new mechanism: `cost-limit.ts`'s own doc
+  // comment is explicit that no new logging code was written for this,
+  // because this pre-existing `onValidate` hook already covers it. The
+  // scalar-list alias attack (breadth 800, well within `MAX_DEPTH`) is used
+  // specifically so this test isolates cost-limit's own rejection, not a
+  // combined depth-limit + cost-limit one.
+  it('logs one warn line for a validation-stage rejection (cost budget), even though execute never runs', async () => {
+    const scalarListAttack = `{ ${Array.from(
+      { length: 200 },
+      (_, i) => `a${i}: viewer { library { authors subjects } }`
+    ).join(' ')} }`;
+
+    const response = await request(app)
+      .post('/graphql')
+      .set('Authorization', `Bearer ${aliceToken()}`)
+      .send({ query: scalarListAttack });
+
+    expect(response.body.errors?.[0]?.extensions?.code).toBe('QUERY_BREADTH');
+    expect(spies.warn).toHaveBeenCalledTimes(1);
+    expect(spies.info).not.toHaveBeenCalled();
+
+    const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ operationName: 'anonymous', errorCount: 1 });
+    // Same N-3 fix the depth-limit test above exercises — a cost-budget
+    // rejection at validation time must attribute to the real authenticated
+    // viewer, not fall through to 'anon'.
+    expect(line['viewerId']).toBe(harness.aliceOwner.userId);
+  });
+
   // Final-review-wave, T3 N-3 (narrower than first recorded — only
   // `onValidate` was affected; `onExecute` already attributed correctly,
   // pinned separately below). Before the fix, THIS line always read
