@@ -116,6 +116,7 @@ describe('root type authorization', () => {
     'BookDeleteInput.id': 'Book',
     'BookRegenChaptersInput.id': 'Book',
     'BookClearEditionsInput.id': 'Book',
+    'BookClearEditLineageInput.id': 'Book',
     'BookResolvePendingFixInput.id': 'Book',
     'BookUpdateMetadataInput.id': 'Book',
     'BookAnalyzeReplaceInput.id': 'Book',

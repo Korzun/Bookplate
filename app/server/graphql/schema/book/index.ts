@@ -1,6 +1,7 @@
 export { model } from './model';
 
 import './mutation/analyze-replace';
+import './mutation/clear-edit-lineage';
 import './mutation/clear-editions';
 import './mutation/delete';
 import './mutation/link-document';
