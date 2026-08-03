@@ -1,6 +1,7 @@
 import {
   DocumentNode,
   GraphQLError,
+  GraphQLSchema,
   Kind,
   NoSchemaIntrospectionCustomRule,
   OperationDefinitionNode,
@@ -9,6 +10,7 @@ import { isAsyncIterable, type Plugin } from 'graphql-yoga';
 
 import { logger } from '../logger';
 import { viewerFromHeader, type Context } from './context';
+import { costLimitRule } from './cost-limit';
 import { depthLimitRule, MAX_DEPTH } from './depth-limit';
 
 // A distinct namespace from yoga.ts's own `logger('GraphQL')` (used there
@@ -66,6 +68,43 @@ export const useSchemaConcealment = (): Plugin => ({
  */
 export const useDepthLimit = (): Plugin => ({
   onValidate: ({ addValidationRule }) => addValidationRule(depthLimitRule(MAX_DEPTH)),
+});
+
+/** Distinct namespace from both `'GraphQL'` (yoga's own diagnostic bridge, yoga.ts) and `'GraphQL:operations'` (`useOperationLogging` below) — lets a test spy on this plugin's log line without also catching either of theirs, same reasoning `'GraphQL:operations'`'s own doc comment gives. */
+const costLog = logger('GraphQL:cost');
+
+/**
+ * Log-only wiring for `cost-limit.ts`'s hand-rolled breadth+complexity walk
+ * (query-cost-control plan, task 3 — `cost-limit.ts`'s own doc comment has
+ * the full counting model and the reasoning behind it). Computes and logs
+ * `{operationName, breadth, complexity}` at info for EVERY operation that
+ * reaches validation — including one `useDepthLimit`/`useSchemaConcealment`
+ * goes on to reject, deliberately: this is a measurement pass, not a guard,
+ * and an operator watching for an eventual budget wants to see what an
+ * attacker attempted just as much as what real traffic costs (the same
+ * "cheapest available attack signal" reasoning `useOperationLogging`'s own
+ * `onValidate` hook documents for M-4).
+ *
+ * Same `addValidationRule` seam as `useDepthLimit` and `useSchemaConcealment`
+ * — `costLimitRule` NEVER calls `context.reportError`, so installing this
+ * plugin cannot itself change what gets accepted or rejected; it exists
+ * purely to run the walk and hand its numbers to `costLog.info` via the
+ * callback `costLimitRule` invokes once per operation in the document.
+ *
+ * No query text or variables in the log line — same discipline
+ * `useOperationLogging` documents for its own line, because either may carry
+ * user data (a search filter today, a future password-bearing mutation's
+ * input) that has no business in server logs.
+ */
+export const useCostLogging = (schema: GraphQLSchema): Plugin => ({
+  onValidate: ({ addValidationRule }) =>
+    addValidationRule(
+      costLimitRule(schema, (operationName, cost) =>
+        costLog.info(
+          JSON.stringify({ operationName, breadth: cost.breadth, complexity: cost.complexity })
+        )
+      )
+    ),
 });
 
 /**

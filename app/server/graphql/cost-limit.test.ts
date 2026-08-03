@@ -1,0 +1,378 @@
+import express from 'express';
+import {
+  FragmentDefinitionNode,
+  Kind,
+  OperationDefinitionNode,
+  parse,
+  validate,
+  type DocumentNode,
+} from 'graphql';
+import request from 'supertest';
+
+import { logger } from '../logger';
+import { costLimitRule, measureOperationCost, type OperationCost } from './cost-limit';
+import { schema } from './schema';
+import { createHarness, type Harness } from './test-util';
+import { createGraphqlHandler } from './yoga';
+
+vi.mock('../logger');
+
+const operationAndFragmentsOf = (
+  source: string
+): { operation: OperationDefinitionNode; fragments: Record<string, FragmentDefinitionNode> } => {
+  const document = parse(source);
+  const operation = document.definitions.find(
+    (d): d is OperationDefinitionNode => d.kind === Kind.OPERATION_DEFINITION
+  );
+  if (!operation) throw new Error('fixture has no operation');
+  const fragments: Record<string, FragmentDefinitionNode> = {};
+  for (const definition of document.definitions) {
+    if (definition.kind === Kind.FRAGMENT_DEFINITION) fragments[definition.name.value] = definition;
+  }
+  return { operation, fragments };
+};
+
+const costOf = (source: string): OperationCost => {
+  const { operation, fragments } = operationAndFragmentsOf(source);
+  return measureOperationCost(operation, fragments, schema);
+};
+
+describe('measureOperationCost — boundary math (real schema, needed for args-aware multipliers)', () => {
+  it('a single leaf field is breadth 1, complexity 1 (FIELD_COST)', () => {
+    expect(costOf('{ viewer { id: username } }')).toEqual({ breadth: 2, complexity: 2 });
+  });
+
+  it('breadth SUMS siblings; depth takes their max — a field with a sub-selection contributes 1 + its own children', () => {
+    // `Viewer.username` (leaf) and `Viewer.isAdmin` (leaf) are siblings under
+    // `viewer` — breadth must count BOTH (1 + 1 + 1 = 3), unlike depth's max.
+    expect(costOf('{ viewer { username isAdmin } }')).toEqual({ breadth: 3, complexity: 3 });
+  });
+
+  it('an inline fragment does not itself add a breadth/complexity node — same transparency depth-limit.ts gives depth', () => {
+    const withoutFragment = costOf('{ viewer { library { book(id: "x") { title } } } }');
+    const withFragment = costOf(
+      '{ viewer { library { book(id: "x") { ... on Book { title } } } } }'
+    );
+    expect(withFragment).toEqual(withoutFragment);
+  });
+
+  it('a fragment spread does not itself add a breadth/complexity node, and is computed once regardless of type condition position', () => {
+    const withoutFragment = costOf('{ viewer { library { book(id: "x") { title author } } } }');
+    const withFragment = costOf(
+      '{ viewer { library { book(id: "x") { ...Frag } } } } fragment Frag on Book { title author }'
+    );
+    expect(withFragment).toEqual(withoutFragment);
+  });
+
+  // Byte-identical to `depth-limit.test.ts`'s `LIBRARY_GRID_FIXTURE` (minus
+  // its `... on Book {}` line wrapping, immaterial to parsing) — the same
+  // fixture `depth-limit.ts`'s calibration comment pins at depth 6. Measured
+  // via `probe-8-task3-calibration.ts` against the real schema.
+  it('measures the library-grid calibration fixture (thin card) at breadth 16, complexity 263', () => {
+    const GRID = `{ viewer { library { entries(first: 20) {
+      edges { node { ... on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+      } } }
+      pageInfo { hasNextPage endCursor }
+    } } } }`;
+
+    expect(costOf(GRID)).toEqual({ breadth: 16, complexity: 263 });
+  });
+
+  // Byte-identical to `depth-limit-integration.test.ts`'s "grid + Series arm
+  // + full card" fixture (depth 11, the richest LEGITIMATE shape that
+  // exercise found) — both `LibraryEntry` union arms, a `BookCard` fragment
+  // reused across both (fragment-composed, as Apollo generates), including
+  // `pendingFix.state.autoFixes`. This is the richest legitimate screen this
+  // task's own calibration measured; its breadth (41) is BYTE-IDENTICAL to
+  // `@pothos/plugin-complexity`'s own measurement of the same fixture
+  // (task-2-report.md, probe 5's real-schema table) — breadth is a
+  // structural, schema-agnostic-ISH count, so two independent
+  // implementations agreeing on it is a real cross-check, not a coincidence.
+  it('measures the grid + Series-arm + full-card fixture at breadth 41, complexity 3823 — the richest legitimate screen calibrated', () => {
+    const GRID_WITH_SERIES_ARM = `
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 20) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books(first: 10) { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`;
+
+    expect(costOf(GRID_WITH_SERIES_ARM)).toEqual({ breadth: 41, complexity: 3823 });
+  });
+});
+
+describe('multiplierFor — args-aware connection weighting (via measureOperationCost)', () => {
+  // Isolate the multiplier's effect: a fixed one-field connection body
+  // (`edges { node { id } }`, complexity 1+1+1=3 as a bare sub-selection —
+  // FIELD_COST for `edges`, `node`, `id`) so the ONLY thing that changes
+  // between cases is `entries`'s own multiplier. `entries` itself sits under
+  // `viewer { library { … } }`, each contributing its OWN FIELD_COST(1) with
+  // multiplier 1 (neither is a bounded connection) on top of `entries`'s own
+  // total — `totalComplexity(mult)` accounts for that wrapping explicitly
+  // rather than asserting a bare `entries`-only number.
+  const entriesQuery = (firstArg: string): string =>
+    `{ viewer { library { entries${firstArg} { edges { node { id } } } } } }`;
+  const totalComplexity = (multiplier: number): number => {
+    const edgesNodeId = 3; // edges(1) + node(1) + id(1), no multiplier below `entries`
+    const entries = 1 + multiplier * edgesNodeId;
+    const library = 1 + entries;
+    const viewer = 1 + library;
+    return viewer;
+  };
+
+  it("omitted `first` uses CONNECTION_LIMITS.libraryEntries.defaultSize (20) — the CONTROLLER RULING's own instruction", () => {
+    const { complexity } = costOf(entriesQuery(''));
+    expect(complexity).toBe(totalComplexity(20));
+  });
+
+  it('a literal `first` within maxSize uses that literal value', () => {
+    const { complexity } = costOf(entriesQuery('(first: 7)'));
+    expect(complexity).toBe(totalComplexity(7));
+  });
+
+  it('a literal `first` past maxSize (100) is CLAMPED, not left unbounded — Task 1 rejects this at execution time, this rule just avoids reporting a nine-digit number', () => {
+    const { complexity } = costOf(entriesQuery('(first: 999999999)'));
+    expect(complexity).toBe(totalComplexity(100));
+  });
+
+  it('a variable-valued `first` (unreadable at validation time) falls back to maxSize — worst case, not a guess', () => {
+    const { complexity } = costOf(
+      'query Q($n: Int) { viewer { library { entries(first: $n) { edges { node { id } } } } } }'
+    );
+    expect(complexity).toBe(totalComplexity(100));
+  });
+
+  it('a non-connection field with a `first`-shaped argument name is unaffected — the multiplier is keyed by (parent type, field), not by argument name alone', () => {
+    // `Book.progress` is a plain field (no `first` arg at all in the SDL) —
+    // sanity check that `multiplierFor` only fires on the 5 registered
+    // coordinates, never generically on "any list-ish field".
+    const flat = costOf('{ viewer { library { book(id: "x") { progress { percentage } } } } }');
+    // progress{percentage}: percentage=1; progress = FIELD_COST(1) + 1*1 = 2;
+    // book = 1 + 1*2 = 3; library = 1 + 1*3 = 4; viewer = 1 + 1*4 = 5.
+    expect(flat).toEqual({ breadth: 5, complexity: 5 });
+  });
+
+  it('Query.nodes(ids:) multiplies by ids.length, not by a fixed weight — the gap task-2 flagged breadth alone cannot close', () => {
+    const three = costOf('{ nodes(ids: ["a", "b", "c"]) { id } }');
+    // id = 1; nodes = 1 + 3*1 = 4.
+    expect(three).toEqual({ breadth: 2, complexity: 4 });
+  });
+
+  it('Query.nodes(ids:) with more ids than CONNECTION_LIMITS.nodesBatch (100) is clamped, matching the connection case', () => {
+    const ids = Array.from({ length: 150 }, (_, i) => `"id${i}"`).join(', ');
+    const { complexity } = costOf(`{ nodes(ids: [${ids}]) { id } }`);
+    expect(complexity).toBe(1 + 100 * 1);
+  });
+
+  it('Query.nodes(ids:) with a variable-valued ids list falls back to nodesBatch — same worst-case reasoning as connections', () => {
+    const { complexity } = costOf('query Q($ids: [ID!]!) { nodes(ids: $ids) { id } }');
+    expect(complexity).toBe(1 + 100 * 1);
+  });
+});
+
+/**
+ * Task-3 review (this task's own vetting gate, task-2-report.md): the exact
+ * bug pair `@pothos/plugin-complexity` was REJECTED for — an un-memoized
+ * fragment walk costing `2^N` (28.3s at N=27) and an un-cycle-guarded walk
+ * throwing `RangeError` on a cyclic fragment. `fragment-walk-memo.ts` is
+ * this walk's fix; these are its seen-to-fail regression tests — verified by
+ * hand (temporarily short-circuiting `resolveFragment`'s cache/in-progress
+ * check to always recompute) that both tests below fail without it: the
+ * timing test blows past its bound well before N=24, and the cyclic test
+ * throws `RangeError: Maximum call stack size exceeded` instead of
+ * completing.
+ */
+describe('costOfSelectionSet — fragment memoization and cycle guard (via costLimitRule)', () => {
+  // Each fragment F_i spreads F_(i-1) TWICE — identical construction to
+  // `depth-limit.test.ts`'s own `chainedFragmentDoc`, retargeted onto a real
+  // field (`Book.title`) since this walk needs real schema type info.
+  const chainedFragmentDoc = (n: number): string => {
+    const definitions = ['fragment F0 on Book { title }'];
+    for (let i = 1; i <= n; i++) {
+      definitions.push(`fragment F${i} on Book { x: title ...F${i - 1} y: title ...F${i - 1} }`);
+    }
+    return `{ viewer { library { book(id: "x") { ...F${n} } } } }\n${definitions.join('\n')}`;
+  };
+
+  const runRule = (
+    document: DocumentNode,
+    onMeasured: (name: string, cost: OperationCost) => void = () => {}
+  ) => validate(schema, document, [costLimitRule(schema, onMeasured)]);
+
+  it.each([6, 12, 18, 24, 30])(
+    'validates an N=%i chained-fragment amplification document in single-digit ms, never rejecting',
+    (n) => {
+      const document = parse(chainedFragmentDoc(n));
+
+      const start = performance.now();
+      const errors = runRule(document);
+      const elapsedMs = performance.now() - start;
+
+      // The plugin measured 3550ms at N=24 and 28255ms at N=27 (task-2
+      // report, probe 1) — reproducing the un-memoized 2^N curve. Measured
+      // here (see task-3-report.md): all of N=6..30 complete in under 2ms.
+      // A 500ms bound is the same generosity `depth-limit.test.ts`'s own
+      // N=24 timing test uses — comfortably two-plus orders of magnitude
+      // below "still exponential" while absorbing CI jitter.
+      expect(elapsedMs).toBeLessThan(500);
+      // LOG-ONLY: this rule never reports an error, no matter how large the
+      // computed cost is — rejecting is Task 4's job, not this one's.
+      expect(errors).toEqual([]);
+    }
+  );
+
+  it('a self-referential fragment spread does not throw, and reports no validation error (log-only)', () => {
+    const document = parse(
+      '{ viewer { library { book(id: "x") { ...F } } } } fragment F on Book { series { books(first: 1) { edges { node { ...F } } } } }'
+    );
+
+    expect(() => runRule(document)).not.toThrow();
+    expect(runRule(document)).toEqual([]);
+  });
+
+  it('an indirect (mutually recursive) fragment cycle also does not throw', () => {
+    const document = parse(
+      '{ viewer { library { book(id: "x") { ...A } } } } fragment A on Book { ...B } fragment B on Book { ...A }'
+    );
+
+    expect(() => runRule(document)).not.toThrow();
+    expect(runRule(document)).toEqual([]);
+  });
+
+  it('a fragment with a cyclic branch AND a legitimate field still measures the real one, via onMeasured', () => {
+    const document = parse(
+      '{ viewer { library { book(id: "x") { ...F } } } } fragment F on Book { ...F title author }'
+    );
+
+    const measured: OperationCost[] = [];
+    runRule(document, (_name, cost) => measured.push(cost));
+
+    // The cyclic branch contributes 0; `title`/`author` still measure as 2
+    // ordinary leaf fields (breadth 2, complexity 2) inside F, wrapped by
+    // book/library/viewer.
+    expect(measured).toHaveLength(1);
+    expect(measured[0]).toEqual({ breadth: 5, complexity: 5 });
+  });
+});
+
+describe('costLimitRule — never rejects, regardless of how large the computed cost is', () => {
+  const runRule = (source: string, onMeasured: (name: string, cost: OperationCost) => void) =>
+    validate(schema, parse(source), [costLimitRule(schema, onMeasured)]);
+
+  it('the proven 3-hop nodes()-rooted amplification cycle (depth-limit.ts admits this at depth 12) produces zero errors from this rule, but a large measured cost', () => {
+    const booksHop = (n: number): string =>
+      n === 0 ? 'id' : `books(first: 100) { edges { node { series { ${booksHop(n - 1)} } } } }`;
+    const THREE_HOP_NODES_CYCLE = `{ nodes(ids: ["x"]) { ... on Series { ${booksHop(3)} } } }`;
+
+    let measured: OperationCost | undefined;
+    const errors = runRule(THREE_HOP_NODES_CYCLE, (_name, cost) => (measured = cost));
+
+    expect(errors).toEqual([]);
+    // Legitimate max measured by this task's calibration is complexity 3823
+    // (the richest-screen fixture above) — this attack's complexity clears
+    // it by three orders of magnitude, breadth does not (see
+    // task-3-report.md's attack-probe table for the full comparison).
+    expect(measured?.complexity).toBeGreaterThan(1_000_000);
+  });
+
+  it('resolves the operation name the same way operationNameOf does, falling back to "anonymous"', () => {
+    const measured: string[] = [];
+    runRule('{ viewer { username } }', (name) => measured.push(name));
+    expect(measured).toEqual(['anonymous']);
+
+    const measuredNamed: string[] = [];
+    runRule('query MyQuery { viewer { username } }', (name) => measuredNamed.push(name));
+    expect(measuredNamed).toEqual(['MyQuery']);
+  });
+});
+
+describe('useCostLogging — over real HTTP, real schema (log-only: rejects nothing, no query text/variables)', () => {
+  const jwtSecret = Buffer.from('c'.repeat(64), 'hex');
+  let harness: Harness;
+  let app: express.Express;
+
+  const costLoggerSpy = (): { info: Mock } => {
+    const mocked = vi.mocked(logger);
+    const index = mocked.mock.calls.findIndex(([namespace]) => namespace === 'GraphQL:cost');
+    if (index === -1) throw new Error("logger('GraphQL:cost') was never called");
+    return mocked.mock.results[index]?.value as { info: Mock };
+  };
+  // Captured once at module load, same reasoning as
+  // `yoga-operation-logging.test.ts`'s own `operationLoggerSpies`.
+  const spy = costLoggerSpy();
+
+  beforeEach(async () => {
+    spy.info.mockClear();
+    harness = await createHarness();
+    const server = express();
+    server.use(
+      '/graphql',
+      createGraphqlHandler({
+        prisma: harness.prisma,
+        stores: harness.stores,
+        config: harness.config,
+        jwtSecret,
+        isProduction: false,
+      })
+    );
+    app = server;
+  });
+
+  afterEach(async () => {
+    await harness.cleanup();
+  });
+
+  it('logs {operationName, breadth, complexity} at info for a clean, successful operation — no query text or variables', async () => {
+    const { signAccessToken } = await import('../services/jwt');
+    const token = signAccessToken(jwtSecret, {
+      userId: harness.aliceOwner.userId,
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    });
+
+    const response = await request(app)
+      .post('/graphql')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ query: 'query MyGridQuery { viewer { username } }' });
+
+    expect(response.status).toBe(200);
+    expect(spy.info).toHaveBeenCalledTimes(1);
+
+    const line = JSON.parse(spy.info.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ operationName: 'MyGridQuery' });
+    expect(typeof line['breadth']).toBe('number');
+    expect(typeof line['complexity']).toBe('number');
+    expect(JSON.stringify(line)).not.toContain('MyGridQuery { viewer { username } }');
+  });
+
+  it('still logs (and does not itself reject) a query the depth limit ALSO rejects — a measurement pass, not a guard', async () => {
+    // Same over-depth shape `depth-limit-integration.test.ts` rejects at
+    // MAX_DEPTH — nothing about this rule changes that verdict.
+    const deepQuery = `{
+      viewer { library { entries(first: 1) { edges { node { ... on Book {
+        series { books(first: 1) { edges { node {
+          series { books(first: 1) { edges { node { id } } } }
+        } } } }
+      } } } } } }
+    }`;
+
+    const response = await request(app).post('/graphql').send({ query: deepQuery });
+
+    expect(response.body.errors?.[0]?.message).toContain('nested too deeply');
+    expect(spy.info).toHaveBeenCalledTimes(1);
+    const line = JSON.parse(spy.info.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(line['operationName']).toBe('anonymous');
+    expect(typeof line['breadth']).toBe('number');
+  });
+});
