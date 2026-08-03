@@ -14,9 +14,16 @@
  * (its own fragment walk reproduces both bugs below — task-2 report, probes
  * 1-2) and `depth-limit.ts` is now permanent, so the ruling that justified
  * two copies has expired: `depth-limit.ts` consumes this module too
- * (cost-calibration-suite plan, task 1) — this is now the ONLY
- * implementation of the fix in the repo, which is the point, not a
- * cosmetic tidy-up. Two copies of a security-relevant guard is a
+ * (cost-calibration-suite plan, task 1) — this is now the only place the
+ * memo's SHAPE and CONSTRUCTION live, which is the point, not a cosmetic
+ * tidy-up. Precisely (task-1 review): the cache/in-progress state and its
+ * lifetime are unified here, and a test proves both rules share them —
+ * neutering `inProgress` reddens the cyclic-fragment tests in BOTH files.
+ * What is NOT unified is each walk's branch logic (inline in
+ * `relativeDepthOf` vs `resolveFragment` in `cost-limit.ts`), because the
+ * value a fragment contributes differs per walk; that residual duplication
+ * is smaller but real, and a future third walk must consume this module
+ * rather than re-derive it. Two copies of a security-relevant guard is a
  * silent-drift hazard: a future edit to one walk's cycle handling (or a new
  * third walk copy-pasting the "obvious" inline version instead of reaching
  * for this module) could silently reintroduce either bug below in only one
