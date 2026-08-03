@@ -8,7 +8,6 @@ import {
 } from 'graphql';
 
 import {
-  BookAlreadyExistsError,
   BookHashCollisionError,
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
@@ -22,7 +21,6 @@ import { createOwnerLoader } from '../../owner';
 import { createPendingFixLoader } from '../../pending-fix-loader';
 import { createProgressLoader } from '../../progress-loader';
 import { createHarness, type Harness } from '../../test-util';
-import { bookAlreadyExistsError } from '../book-already-exists-error';
 import { bookHashCollisionError } from '../book-hash-collision-error';
 import { deviceSlugConflictError } from '../device-slug-conflict-error';
 import { documentAlreadyLinkedError } from '../document-already-linked-error';
@@ -56,7 +54,16 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the eight spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError and ScanAlreadyRunningError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError and ScanAlreadyRunningError', () => {
+    // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
+    // longer registered here: the GraphQL model (`schema/book-already-exists-
+    // error/`) was removed by the lineage-gap plan's task 2 because it was
+    // referenced by zero result unions — no mutation could ever return it, so
+    // it only polluted Apollo's generated `possibleTypes`. The *store* error
+    // class of the same name (`services/book-store.ts`, thrown by `addBook`)
+    // is unaffected and still flows through `to-result.ts`'s
+    // `KnownStoreError` union for the REST upload seam and scan pipeline.
+    //
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's
     // original eight-type error model does not mention — scoped to
@@ -100,7 +107,6 @@ describe('UserError', () => {
         .map((type) => type.name)
         .sort()
     ).toEqual([
-      'BookAlreadyExistsError',
       'BookHashCollisionError',
       'BookNotValidatedError',
       'DeviceSlugConflictError',
@@ -137,9 +143,6 @@ describe('user error factories', () => {
   it('carry the store error’s own message rather than restating it', () => {
     const collision = new BookHashCollisionError('c'.repeat(32));
     expect(bookHashCollisionError(collision, harness.aliceOwner).message).toBe(collision.message);
-
-    const exists = new BookAlreadyExistsError('e'.repeat(32));
-    expect(bookAlreadyExistsError(exists, harness.aliceOwner).message).toBe(exists.message);
 
     const selfLink = new SelfLinkError();
     expect(selfLinkError(selfLink).message).toBe(selfLink.message);
@@ -192,7 +195,7 @@ describe('user error factories', () => {
 });
 
 /**
- * `BookHashCollisionError`, `BookAlreadyExistsError`, `DocumentIsBookError` and
+ * `BookHashCollisionError`, `DocumentIsBookError` and
  * `DocumentAlreadyLinkedError` each turn an id into a `Book`. No field in the
  * schema returns them yet — tasks 3 and 4 add the mutations whose result unions
  * do — so they cannot be reached through `harness.execute`, and their
@@ -294,20 +297,6 @@ describe('errors that resolve an id into a Book', () => {
     const book = await resolveField(
       'BookHashCollisionError',
       'collidingBook',
-      value,
-      contextFor(harness.aliceViewer)
-    );
-
-    expect(book.title).toBe('Bob’s copy');
-  });
-
-  it('BookAlreadyExistsError.existingBook resolves the error’s owner’s copy', async () => {
-    await seedSharedBook();
-
-    const value = bookAlreadyExistsError(new BookAlreadyExistsError(SHARED_ID), harness.bobOwner);
-    const book = await resolveField(
-      'BookAlreadyExistsError',
-      'existingBook',
       value,
       contextFor(harness.aliceViewer)
     );
