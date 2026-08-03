@@ -634,13 +634,17 @@ const INTROSPECTION_ROOT_FIELDS = new Set(['__schema', '__type']);
  * operation outright in production before this rule's numbers would matter
  * to anyone.
  *
- * `depth-limit.ts` does not export its own copy of this check (and stays
- * byte-identical to base per the CONTROLLER RULING, so it cannot be made to
- * export one) — this is a second, deliberately duplicated copy, same
- * disposition as `fragment-walk-memo.ts` vs `depth-limit.ts`'s own memo
- * (task-3-review.md, I-2): re-derived because the source can't be imported
- * from, not extracted. Carried debt: if either copy's definition of
- * "introspection-only" ever changes, the other needs the same edit by hand.
+ * `depth-limit.ts` does not export its own copy of this check, so it cannot
+ * be imported from here — this is a second, deliberately duplicated copy,
+ * re-derived because the source can't be imported from, not extracted
+ * (task-3-review.md, I-2). Unlike the fragment-walk memo — which carried
+ * this exact disposition until the cost-calibration-suite plan's task 1
+ * consolidated both rules' memo onto `fragment-walk-memo.ts`, the ruling
+ * that had frozen `depth-limit.ts` against that having expired — nothing
+ * forces this particular duplication: `isIntrospectionOnly` could be
+ * extracted the same way if it is ever found to actually drift. Carried
+ * debt until then: if either copy's definition of "introspection-only"
+ * ever changes, the other needs the same edit by hand.
  */
 const isIntrospectionOnly = (selectionSet: SelectionSetNode): boolean =>
   selectionSet.selections.every(
