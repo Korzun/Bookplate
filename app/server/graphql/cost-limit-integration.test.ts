@@ -199,12 +199,13 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
   // production" test uses a partial `{ __schema { types { name } } }` query,
   // not the FULL query GraphiQL's own schema-fetch actually sends
   // (`getIntrospectionQuery()`) — that full query measures breadth/
-  // complexity 220 (task-3-report.md's calibration table), well past BOTH
-  // Task 4 budgets (100/17,000), so this is the one fixture in this whole
-  // suite where "does it still pass" is genuinely non-obvious without
-  // running it for real, end-to-end, over HTTP, exactly as GraphiQL's own
-  // client would.
-  it("GraphiQL's own schema-fetch (getIntrospectionQuery()) still succeeds in dev after enforcement, unauthenticated — breadth/complexity 220 would fail BOTH budgets if the introspection exemption regressed", async () => {
+  // complexity 220 (task-3-report.md's calibration table). Breadth (220)
+  // clears `BREADTH_BUDGET` (100) more than 2×; complexity (220) is nowhere
+  // near `COMPLEXITY_BUDGET` (25,000) — it is BREADTH the exemption has to
+  // protect this query from, so this is the one fixture in this whole suite
+  // where "does it still pass" is genuinely non-obvious without running it
+  // for real, end-to-end, over HTTP, exactly as GraphiQL's own client would.
+  it("GraphiQL's own schema-fetch (getIntrospectionQuery()) still succeeds in dev after enforcement, unauthenticated — breadth 220 would fail BREADTH_BUDGET if the introspection exemption regressed", async () => {
     const response = await request(app).post('/graphql').send({ query: getIntrospectionQuery() });
 
     expect(response.status).toBe(200);
