@@ -175,8 +175,8 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *  - `Device.enabledUsers` — `findMany`, no cap, admin-only
  *    (`device/model.ts:87-97`); reaches `User.library.*`, same as
  *    `Viewer.users` above but scoped to one device.
- *  - `Book.lineage` — delegates to `BookStore.getBookLineage`, no cap
- *    visible at the schema layer (`book/model.ts:270-278`); reaches
+ *  - `Book.lineage` — I-7. See `BOOK_LINEAGE_MULTIPLIER` below; delegates to
+ *    `BookStore.getBookLineage` (`book/model.ts:270-278`); reaches
  *    `LinkedDocument.{oldBook,newBook}.series.books`.
  *  - `ScanResult.imported` — `findMany({where:{id:{in:importedBookIds}}})`;
  *    the `findMany` itself is bounded by `importedBookIds`, but that id
@@ -187,49 +187,98 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *  - `SuggestionGroup.items` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
  *
  * **`UNBOUNDED_LIST_MULTIPLIER` (100, `CONNECTION_LIMITS.nodesBatch`) applies
- * ONLY to the five fields below that genuinely scale with LIBRARY or SCAN
- * size** (`Library.series`, `Library.pendingFixes`, `Book.lineage`,
- * `ScanResult.imported` — plus `Query.nodes(ids:)`, priced separately),
- * where "unbounded" is a real property of the data (a library can plausibly
- * hold thousands of series or pending fixes) and no REST precedent or
- * measured bound exists — the exact position `Query.nodes(ids:)` was in
- * before Task 1 (`pagination.ts`'s own doc comment: "NO REST or client
- * precedent... Set to the largest per-page ceiling established for any
- * single connection above"). Reusing that SAME shared reference number here
- * is the identical choice Task 1 already made for exactly this situation.
+ * ONLY to the three fields below that genuinely scale with LIBRARY or SCAN
+ * size** (`Library.series`, `Library.pendingFixes`, `ScanResult.imported` —
+ * plus `Query.nodes(ids:)`, priced separately), where "unbounded" is a real
+ * property of the data (a library can plausibly hold thousands of series or
+ * pending fixes) and no REST precedent or measured bound exists — the exact
+ * position `Query.nodes(ids:)` was in before Task 1 (`pagination.ts`'s own
+ * doc comment: "NO REST or client precedent... Set to the largest per-page
+ * ceiling established for any single connection above"). Reusing that SAME
+ * shared reference number here is the identical choice Task 1 already made
+ * for exactly this situation.
  *
- * `Viewer.users`, `Viewer.devices`, and `Device.enabledUsers` do **NOT**
- * use `UNBOUNDED_LIST_MULTIPLIER` — task-3-re-review-2.md, I-6: Bookplate is
- * a **self-hosted, single-instance personal library server** (the spec's
- * own framing, `pagination.ts`'s doc comment: "series lists, subjects,
- * authors, users, devices... small and unpaginated today"), not a
- * multi-tenant SaaS — the instance's TOTAL user count and one household's
- * device count are a fundamentally different scale of "unbounded" than a
- * library's book/series count. Pricing all three at the shared 100 was
- * measured to COMPOUND into a false rejection of a screen this app ships
- * TODAY: `app/client/src/page/device-list/` (REST precedent:
- * `GET /api/devices/:id/users`, `routes/devices.ts:178`) reads
- * `devices { … enabledUsers { … } }` — real cardinality on a self-hosted
- * instance is roughly 2-6 devices × 1-5 users each (a household's
- * e-readers), but `Viewer.devices` × `Device.enabledUsers` at 100×100
+ * `Viewer.users`, `Viewer.devices`, `Device.enabledUsers`, and (round-3,
+ * I-7) `Book.lineage` do **NOT** use `UNBOUNDED_LIST_MULTIPLIER` — each
+ * scales with a quantity smaller than "the whole library", and pricing all
+ * of them at the library-scale 100 was measured, twice, to produce the
+ * F-1 failure on both sides: once as an over-price (I-6) and once — for
+ * `Book.lineage` specifically, task-3-re-review-3.md, I-7 — as a
+ * near-miss REJECTION of a real screen. `getBookLineage`
+ * (`services/book-store.ts:530-559`) is `SELECT old_id, timestamp, type
+ * FROM book_id_history WHERE current_id = <this one book>` — one row per
+ * re-import/merge event for A SINGLE BOOK, realistically 1-5, and does NOT
+ * scale with library size at all; pricing it 100 overstates a typical
+ * lineage by ~50×, and that 50× multiplies every field a richer lineage UI
+ * selects. Measured: the shipped lineage UI renders bare content-hash ids
+ * today (`book-lineage-merge-row/index.tsx`, `{documentId}`) — "show the
+ * actual book" via the app's own existing `BookCard` fragment (already
+ * shared by `entries`/`seriesByName`) on `oldBook`/`newBook` is the obvious
+ * next step, and at the library-scale 100 that screen measured **complexity
+ * 4,004 / breadth 44 — 104.7% of the complexity ceiling AND over the
+ * breadth max — for ~2 real rows**, rejected by BOTH metrics on a plain,
+ * one-fragment-reuse edit. **Fixed: `Book.lineage` now uses its own
+ * `BOOK_LINEAGE_MULTIPLIER = 20`** — an assumed (not measured; no code caps
+ * re-import event count) per-book quantity, 4× the realistic upper bound
+ * (1-5) the same "generous headroom, not a bare minimum" reasoning the
+ * household-scale numbers already use, one order of magnitude below the
+ * library-scale 100 rather than two, because a book's own edit history,
+ * while genuinely per-book, isn't AS tightly bounded in principle as "users
+ * on one device" — see `cost-limit.test.ts`'s calibration re-check of the
+ * `BookCard`-on-lineage shape at this multiplier.
+ *
+ * `Viewer.users` and `Device.enabledUsers` price the SAME underlying
+ * quantity — round-3, M-8: `Device.enabledUsers`
+ * (`device/model.ts:87-97`) is `user.findMany({where:{deviceAccess:{some:
+ * {deviceId}}}})`, a SUBSET of the instance's users, which cannot exceed
+ * `Viewer.users`'s own count — so both now share
+ * `INSTANCE_USER_MULTIPLIER`. (Previously `Device.enabledUsers` used a
+ * separate, tighter `HOUSEHOLD_DEVICE_MULTIPLIER`, with no code, REST, or
+ * schema basis for pricing a subset of the instance's users more tightly
+ * than the instance's users themselves — on a 50-user instance a single
+ * shared device can legally return up to 50 rows.) `Viewer.devices` keeps
+ * its own `HOUSEHOLD_DEVICE_MULTIPLIER` — a genuinely different quantity
+ * (device count, not user count) — but round-3 also records, for Task 4,
+ * that `Viewer.devices` is **NOT household-scoped for an admin caller**:
+ * `viewer/model.ts:127-140` runs `device.findMany({orderBy})` with **no
+ * `where`** when the viewer is an admin — every device on the instance, not
+ * one household's e-readers; the household framing below holds only for
+ * the non-admin branch, and an admin-scale instance (e.g. 60 users × 1-2
+ * readers ⇒ 60-120 devices) plausibly exceeds the assumed 20.
+ *
+ * The `Viewer.devices`/`Device.enabledUsers` compounding shape this task
+ * exists to fix — round-3, M-9, correcting an overstated claim in an
+ * earlier version of this comment: `devices { … enabledUsers { … } }` is
+ * NOT a query the client ships today. `app/client/src/page/device-list/`
+ * (`component/device-list/index.tsx`) fetches exactly the 8 fields
+ * `app/client/src/provider/device/type.ts`'s `Device` type declares (`id
+ * name slug coverWidth coverHeight coverFit bwCover simplify`) — it never
+ * requests `enabledUsers` at all. `GET /api/devices/:id/users`
+ * (`routes/devices.ts:178`) is fetched separately, per-device, by
+ * `component/device-form`'s `useDeviceUsers` when an admin edits ONE
+ * device. `devices { … enabledUsers { … } }` is a PLAUSIBLE GraphQL
+ * consolidation of those two real REST reads, not a shipped query — real
+ * cardinality on a self-hosted instance is still roughly 2-6 devices ×
+ * 1-5 users each (a household's e-readers, non-admin branch), and
+ * `Viewer.devices` × `Device.enabledUsers` at the PRE-round-2 flat 100×100
  * scored complexity 20,402 — 5.3× the (then-stale) legit ceiling — for
- * ~15 real rows. No REST endpoint, admin UI, or schema constraint caps
- * either count numerically (confirmed: `routes/users.ts`'s own
- * `GET /users` is equally unpaginated), so these three numbers are
- * ASSUMED, not measured or sourced from code — stated as such, not
- * disguised as a real bound — but chosen an order of magnitude below the
- * library-scale 100 to reflect that a self-hosted server's household/
- * instance user count is genuinely a smaller-scale quantity than its book
- * catalog: `HOUSEHOLD_DEVICE_MULTIPLIER = 20` for `Viewer.devices` and
- * `Device.enabledUsers` (headroom for a large household's e-reader
- * collection and everyone who might use any one of them), and
- * `INSTANCE_USER_MULTIPLIER = 50` for `Viewer.users` (headroom for a larger
- * shared instance — e.g. a small book club or extended family — above any
- * single device's own user list).
+ * ~15 real rows either way. No REST endpoint, admin UI, or schema
+ * constraint caps device or user count numerically (confirmed:
+ * `routes/users.ts`'s own `GET /users` is equally unpaginated), so
+ * `HOUSEHOLD_DEVICE_MULTIPLIER`/`INSTANCE_USER_MULTIPLIER` are ASSUMED, not
+ * measured or sourced from code — stated as such, not disguised as a real
+ * bound — but chosen an order of magnitude below the library-scale 100 to
+ * reflect that a self-hosted server's household/instance user count is
+ * genuinely a smaller-scale quantity than its book catalog:
+ * `HOUSEHOLD_DEVICE_MULTIPLIER = 20` for `Viewer.devices` (headroom for a
+ * large household's e-reader collection), and `INSTANCE_USER_MULTIPLIER =
+ * 50` for `Viewer.users`/`Device.enabledUsers` (headroom for a larger
+ * shared instance — e.g. a small book club or extended family).
  */
 const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
 const HOUSEHOLD_DEVICE_MULTIPLIER = 20;
 const INSTANCE_USER_MULTIPLIER = 50;
+const BOOK_LINEAGE_MULTIPLIER = 20;
 
 const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
   'Library.series': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
@@ -242,11 +291,17 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
     maxSize: HOUSEHOLD_DEVICE_MULTIPLIER,
     defaultSize: HOUSEHOLD_DEVICE_MULTIPLIER,
   },
+  // M-8: shares Viewer.users's multiplier, not HOUSEHOLD_DEVICE_MULTIPLIER —
+  // enabledUsers is a SUBSET of the instance's users (device/model.ts:87-97's
+  // `where: { deviceAccess: { some: { deviceId } } }`), so it cannot exceed
+  // Viewer.users's own count and must never be priced tighter than it.
   'Device.enabledUsers': {
-    maxSize: HOUSEHOLD_DEVICE_MULTIPLIER,
-    defaultSize: HOUSEHOLD_DEVICE_MULTIPLIER,
+    maxSize: INSTANCE_USER_MULTIPLIER,
+    defaultSize: INSTANCE_USER_MULTIPLIER,
   },
-  'Book.lineage': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  // I-7: per-book re-import history, not library-scale — see the doc
+  // comment above BOOK_LINEAGE_MULTIPLIER's declaration.
+  'Book.lineage': { maxSize: BOOK_LINEAGE_MULTIPLIER, defaultSize: BOOK_LINEAGE_MULTIPLIER },
   'ScanResult.imported': {
     maxSize: UNBOUNDED_LIST_MULTIPLIER,
     defaultSize: UNBOUNDED_LIST_MULTIPLIER,
@@ -256,7 +311,7 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
 /**
  * `Library.searchSuggestions`/`SuggestionGroup.items` — task-3-re-review-2.md,
  * I-5. Previously ruled SAFE (priced at 1) because `getSearchSuggestions`
- * (`services/book-store.ts:172-265`) caps every branch at `LIMIT 30`
+ * (`services/book-store.ts:172-301`) caps every branch at `LIMIT 30`
  * (4 occurrences: `book-store.ts:195,227,253,265`, one per suggestion
  * group), ≤4 groups (`author`/`series`/`book`/`subject`). That reasoning
  * used "has a code-enforced bound" as grounds for EXEMPTION — but this
@@ -271,9 +326,11 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
  * one cost" class I-4 named.
  *
  * Priced at the SOURCED bounds, not an assumption: `searchSuggestions`
- * itself returns at most 4 groups (`getSearchSuggestions`'s own four `if`
- * branches, `book-store.ts:187-267` — `author`, `series`, `book`, `subject`,
- * each pushed at most once); each group's `items` is capped at `LIMIT 30`.
+ * itself returns at most 4 groups — `getSearchSuggestions`'s own four
+ * `groups.push(...)` sites, `book-store.ts:202` (`author`), `:234`
+ * (`series`), `:274` (`book`), `:291` (`subject`), each behind its own
+ * guard and pushed at most once (full function: `book-store.ts:172-301`);
+ * each group's `items` is capped at `LIMIT 30`.
  * `Suggestion.book` (`schema/suggestion/model.ts:33-40`) only resolves a
  * lookup for `BOOK`-typed items (`suggestion.userId === undefined` short-
  * circuits every other group to `null`, no query at all), so the true

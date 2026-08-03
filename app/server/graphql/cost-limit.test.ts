@@ -317,54 +317,98 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
 
   // Tight, seen-to-fail-verified pins for the 4 remaining registered
   // coordinates — NOT loose `>N` thresholds. `Viewer.devices`'s and
-  // `Book.lineage`'s and `ScanResult.imported`'s fixtures all also nest
-  // `Series.books` (a connection priced independently of I-4), so a loose
-  // ">10"-style assertion would pass whether or not THIS field's own
-  // multiplier fired — measured directly (temporarily emptying
-  // `UNBOUNDED_LIST_FIELD_LIMITS`, restored immediately after) what each
-  // fixture scores WITHOUT its own fix: `devices` 306, `enabledUsers`
-  // (isolated, no nested connection at all) 4, `lineage` 307, `imported`
-  // 307 — the exact pins below all clear those numbers by orders of
-  // magnitude, so this test can only pass with the multiplier genuinely
-  // applied.
+  // `ScanResult.imported`'s fixtures also nest `Series.books` (a connection
+  // priced independently of I-4), so a loose ">10"-style assertion would
+  // pass whether or not THIS field's own multiplier fired.
   //
-  // Round-2, I-6: `Viewer.devices` and `Device.enabledUsers` price at
-  // `HOUSEHOLD_DEVICE_MULTIPLIER` (20 each), not the shared 100 — this
-  // EXACT shape (minus the `edges{node{id}}` vs `edges{cursor}` wording) is
-  // `app/client/src/page/device-list/`'s real screen, which measured
-  // 20,402 at the flat 100×100 (5.3× the legit ceiling for ~15 real rows) —
-  // the F-1 failure this fix closes.
-  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers, now at household scale (20x20), not library scale (100x100)', () => {
+  // Round-3, M-8: `Device.enabledUsers` now shares `INSTANCE_USER_MULTIPLIER`
+  // (50) with `Viewer.users`, not its own tighter `HOUSEHOLD_DEVICE_MULTIPLIER`
+  // (20) — it prices a SUBSET of the instance's users
+  // (`device/model.ts:87-97`'s `where: {deviceAccess: {some: {deviceId}}}`),
+  // which cannot exceed the instance's own user count, so it must never be
+  // priced tighter than `Viewer.users` itself.
+  it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers (20 x 50 x 100 — household devices x instance users x library series)', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { devices { enabledUsers { library { series { books(first: 100) { edges { node { id } } } } } } } } }'
     );
     // books(first:100){edges{node{id}}}=301; series(mult 100, library-scale, unchanged){books}=1+100*301=30101;
-    // library{series}=1+30101=30102; enabledUsers(mult 20){library}=1+20*30102=602041;
-    // devices(mult 20){enabledUsers}=1+20*602041=12040821; viewer{devices}=1+12040821=12040822.
-    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 12040822 });
+    // library{series}=1+30101=30102; enabledUsers(mult 50){library}=1+50*30102=1505101;
+    // devices(mult 20){enabledUsers}=1+20*1505101=30102021; viewer{devices}=1+30102021=30102022.
+    expect({ breadth, complexity }).toEqual({ breadth: 9, complexity: 30102022 });
   });
 
-  it('the REAL admin device-list screen (id/name/slug + enabledUsers{id,username}, no nested connection) now measures well inside the legit range, not 5.3x over it', () => {
+  // Round-3, M-9 (correcting a prior version of this test, which mislabeled
+  // itself "the REAL admin device-list screen" using only `id name slug` —
+  // it never fetches `enabledUsers` at all): `component/device-list/index.tsx`
+  // fetches exactly the 8 fields `provider/device/type.ts`'s `Device` type
+  // declares, and NOTHING under `enabledUsers` — that's a SEPARATE,
+  // per-device REST read (`GET /api/devices/:id/users`,
+  // `component/device-form`'s `useDeviceUsers`), fetched one device at a
+  // time when an admin edits it, not as part of the list screen.
+  it('the REAL device-list screen (8 real Device fields, no enabledUsers) is cheap — this is what ships today', () => {
     const { breadth, complexity } = costOf(
-      '{ viewer { devices { id name slug enabledUsers { id username } } } }'
+      '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify } } }'
     );
-    // enabledUsers{id,username}=2 leaves=2; enabledUsers(mult 20)=1+20*2=41;
-    // devices{id,name,slug,enabledUsers}: id+name+slug=3, +enabledUsers(41)=44; devices(mult 20)=1+20*44=881; viewer{devices}=1+881=882.
-    expect({ breadth, complexity }).toEqual({ breadth: 8, complexity: 882 });
-    expect(complexity).toBeLessThan(3823); // inside the legit envelope, as a real shipping screen must be
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 162 });
+    expect(complexity).toBeLessThan(3823);
   });
 
-  it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own, at household scale', () => {
+  it('a PLAUSIBLE (not shipped) GraphQL consolidation of the device-list screen + enabledUsers still measures well inside the legit envelope', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
+    );
+    // Previously recorded as 882 (id/name/slug only) then 982 (8 fields,
+    // enabledUsers still at HOUSEHOLD_DEVICE_MULTIPLIER=20) — both stale
+    // now that M-8 raised Device.enabledUsers to INSTANCE_USER_MULTIPLIER
+    // (50): enabledUsers{id,username}=2; enabledUsers(50)=1+50*2=101;
+    // devices{8 leaves + enabledUsers(101)}=1+20*(8+101)=2181; viewer=1+2181=2182.
+    expect({ breadth, complexity }).toEqual({ breadth: 13, complexity: 2182 });
+    expect(complexity).toBeLessThan(3823); // still inside the legit envelope (57%), not rejected
+  });
+
+  it('Device.enabledUsers in isolation (no nested connection at all) is still priced on its own, at instance-user scale', () => {
     const { breadth, complexity } = costOf('{ viewer { devices { enabledUsers { username } } } }');
-    // username=1; enabledUsers(mult 20){username}=1+20*1=21; devices(mult 20){enabledUsers}=1+20*21=421; viewer{devices}=1+421=422.
-    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 422 });
+    // username=1; enabledUsers(mult 50){username}=1+50*1=51; devices(mult 20){enabledUsers}=1+20*51=1021; viewer{devices}=1+1021=1022.
+    expect({ breadth, complexity }).toEqual({ breadth: 4, complexity: 1022 });
   });
 
-  it('Book.lineage -> newBook.series.books is priced (bounded in practice, but no code-enforced ceiling)', () => {
+  // Round-3, I-7: `Book.lineage` now uses its own `BOOK_LINEAGE_MULTIPLIER`
+  // (20, per-book re-import-event scale) instead of the library-scale 100 —
+  // see `cost-limit.ts`'s doc comment for the full reasoning and the
+  // near-miss this fixes (the `BookCard`-on-lineage calibration fixture,
+  // below, previously measured 4,004 / breadth 44 at the old 100 — OVER
+  // both the complexity ceiling (104.7%) and the breadth max, for ~2 real
+  // rows).
+  it('Book.lineage -> newBook.series.books is priced at per-book scale (20), not library scale (100)', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { library { book(id: "x") { lineage { newBook { series { books(first: 100) { edges { node { id } } } } } } } } } }'
     );
-    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 30304 });
+    // books(first:100){edges{node{id}}}=301; series{books}=1+1*301=302 (Book.series is a singular field, mult 1);
+    // newBook{series}=1+1*302=303; lineage(mult 20){newBook}=1+20*303=6061; book{lineage}=1+6061=6062;
+    // library{book}=1+6062=6063; viewer{library}=1+6063=6064.
+    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 6064 });
+  });
+
+  it("the BookCard-on-lineage shape (the obvious next UI step, reusing the app's own shared fragment) now lands well inside the legit envelope on BOTH metrics", () => {
+    const source = `
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { book(id: "x") { lineage {
+          oldId newId timestamp type
+          oldBook { ...BookCard }
+          newBook { ...BookCard }
+        } } } } }`;
+    const { breadth, complexity } = costOf(source);
+    // Pre-fix (task-3-re-review-3.md, I-7): breadth 44 / complexity 4,004 —
+    // OVER the breadth max (41) AND 104.7% of the complexity ceiling
+    // (3,823), for ~2 real rows. Post-fix, both metrics clear with margin.
+    expect(breadth).toBeLessThanOrEqual(41);
+    expect(complexity).toBeLessThan(3823);
+    expect({ breadth, complexity }).toEqual({ breadth: 40, complexity: 724 });
   });
 
   it('ScanResult.imported -> series.books is priced — reachable via Library.scanStatus.result', () => {
