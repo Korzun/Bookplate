@@ -356,4 +356,73 @@ describe('Validation.messages connection', () => {
       (result.data as { viewer: { library: { book: unknown } } }).viewer.library.book ?? null
     ).toBeNull();
   });
+
+  // Query-cost-control task 1. Same mechanism as `Series.books`
+  // (`series/model.ts`'s doc comment on its `books` field) — the reject
+  // lives in the `query` callback, not a `resolve` override, because
+  // `t.relatedConnection` only calls a user `resolve` as a fallback.
+  describe('page-size bound', () => {
+    it('rejects `first` one above the max page size (500)', async () => {
+      const result = await harness.execute(
+        pageQuery(bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID)),
+        {
+          viewer: harness.aliceViewer,
+          variables: { first: 501 },
+        }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.extensions).toEqual({
+        code: 'PAGE_SIZE_EXCEEDED',
+        http: { status: 400 },
+      });
+    });
+
+    it('accepts `first` exactly at the max page size (500)', async () => {
+      const page = await readMessages({ first: 500 });
+
+      expect(page.edges).toHaveLength(5);
+    });
+
+    it('returns at most the default page size (50) when `first` is omitted', async () => {
+      // Five messages already exist (the fixture above) — far below the
+      // default of 50. Seed enough more that the assertion actually
+      // discriminates a bound from no bound at all.
+      await harness.prisma.validationMessage.createMany({
+        data: Array.from({ length: 60 }, (_, i) => ({
+          userId: harness.aliceOwner.userId,
+          bookId: MANY_BOOK_ID,
+          seq: i + 10,
+          code: `FILLER-${i}`,
+          severity: 'ERROR',
+          message: `filler ${i}`,
+        })),
+      });
+
+      const result = await harness.execute(
+        `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID)}") { validation {
+          messages {
+            edges { node { seq } }
+            pageInfo { hasNextPage }
+          }
+        } } } } }`,
+        { viewer: harness.aliceViewer }
+      );
+
+      expect(result.errors).toBeUndefined();
+      const messages = (
+        result.data as {
+          viewer: {
+            library: {
+              book: {
+                validation: { messages: { edges: unknown[]; pageInfo: { hasNextPage: boolean } } };
+              };
+            };
+          };
+        }
+      ).viewer.library.book.validation.messages;
+      expect(messages.edges).toHaveLength(50);
+      expect(messages.pageInfo.hasNextPage).toBe(true);
+    });
+  });
 });

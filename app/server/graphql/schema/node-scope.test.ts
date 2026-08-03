@@ -148,3 +148,52 @@ describe('every Node type refuses cross-tenant reads', () => {
     }
   );
 });
+
+// Query-cost-control task 1: `Query.nodes(ids:)` has no client caller today
+// to source a bound from (`grep -rn "nodes(ids" app/client` finds none) —
+// `CONNECTION_LIMITS.nodesBatch`'s doc comment (pagination.ts) reasons the
+// 100 cap from the largest per-page ceiling already established elsewhere
+// in this schema. `nodesQueryOptions.resolve` (builder.ts) is a plain root
+// field resolver on every path — unlike `t.relatedConnection`'s `resolve`
+// (see `series/model.ts`'s doc comment), so this is a direct guard test,
+// same shape as `Library.entries`'s oversize test.
+describe('Query.nodes(ids:) batch cap', () => {
+  let harness: Harness;
+
+  beforeEach(async () => {
+    harness = await createHarness();
+  });
+
+  afterEach(async () => {
+    await harness.cleanup();
+  });
+
+  const NODES = `
+    query ($ids: [ID!]!) { nodes(ids: $ids) { __typename } }
+  `;
+
+  it('rejects a batch of 101 ids with PAGE_SIZE_EXCEEDED / 400', async () => {
+    const globalId = await harness.seedNodeFor('User');
+    const result = await harness.execute(NODES, {
+      viewer: harness.aliceViewer,
+      variables: { ids: Array(101).fill(globalId) },
+    });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions).toEqual({
+      code: 'PAGE_SIZE_EXCEEDED',
+      http: { status: 400 },
+    });
+  });
+
+  it('accepts a batch of exactly 100 ids, the max', async () => {
+    const globalId = await harness.seedNodeFor('User');
+    const result = await harness.execute(NODES, {
+      viewer: harness.aliceViewer,
+      variables: { ids: Array(100).fill(globalId) },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect((result.data as { nodes: unknown[] }).nodes).toHaveLength(100);
+  });
+});

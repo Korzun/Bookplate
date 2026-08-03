@@ -1,5 +1,6 @@
 import { parseStringArray } from '../../derive';
 import { builder } from '../builder';
+import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 import { findUnique } from './node-loader';
 
 export const model = builder.prismaNode('Series', {
@@ -25,7 +26,37 @@ export const model = builder.prismaNode('Series', {
      */
     books: t.relatedConnection('books', {
       cursor: 'userId_id',
-      query: { orderBy: { seriesIndex: 'asc' } },
+      // Native `maxSize`/`defaultSize` bound the actual Prisma query
+      // (`@pothos/plugin-prisma`'s `prismaCursorConnectionQuery` — verified
+      // by reading `node_modules/@pothos/plugin-prisma/lib/util/cursors.js`)
+      // — but by CLAMPING an over-max `first` down to `maxSize`, not
+      // rejecting it, which the "reject, never clamp" ruling forbids. Kept
+      // anyway as the defense-in-depth bound on the SQL itself; the actual
+      // reject lives in `query` below.
+      maxSize: CONNECTION_LIMITS.seriesBooks.maxSize,
+      defaultSize: CONNECTION_LIMITS.seriesBooks.defaultSize,
+      // WHY THE REJECT LIVES HERE, NOT IN A `resolve` OVERRIDE: `t
+      // .relatedConnection` only calls a user-supplied `resolve` as a
+      // fallback, when the relation wasn't already loaded by the parent's
+      // own merged Prisma `select` (`@pothos/plugin-prisma/lib/index.js`'s
+      // `wrapResolve`: `resolver(parent, args, context, info)` runs on the
+      // normal path, the field's OWN `resolve` option only via
+      // `pothosPrismaFallback`) — verified empirically: a `resolve` that
+      // unconditionally throws never fires for
+      // `library.seriesByName.books`, the normal read path, because
+      // `seriesByName`'s own query already embeds `books` via `include`.
+      // `query`, by contrast, is called from `getQuery` inside BOTH the
+      // parent's query-planning walk (`relationSelect`, which runs
+      // unconditionally, is what builds that same `include`) and the
+      // fallback resolve — so it is the one hook Pothos always calls before
+      // this connection's rows are ever fetched, on every path. Confirmed
+      // with the same throwing-callback experiment (a `query` that throws
+      // above `first: 3` DOES fire for `seriesByName.books`, surfacing as a
+      // normal `GraphQLError` on the `seriesByName` field, not a 500).
+      query: (args) => {
+        rejectOversizePage('Series.books', args, CONNECTION_LIMITS.seriesBooks.maxSize);
+        return { orderBy: { seriesIndex: 'asc' } };
+      },
     }),
   }),
 });

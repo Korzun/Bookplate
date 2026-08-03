@@ -17,7 +17,7 @@ import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
 import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
-import { rejectBackwardPagination } from '../pagination';
+import { CONNECTION_LIMITS, rejectBackwardPagination, rejectOversizePage } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress` — see book/model.ts's note on the
 // same import for why an entity index must not be pulled in from a model file.
@@ -143,9 +143,15 @@ builder.node(model, {
       },
       resolve: async (owner, args, context) => {
         rejectBackwardPagination('Library.entries', args);
+        // Reject before the clamp below ever runs — see `CONNECTION_LIMITS`'s
+        // doc comment (pagination.ts) for where `100`/`20` come from.
+        rejectOversizePage('Library.entries', args, CONNECTION_LIMITS.libraryEntries.maxSize);
         const cursor = decodeCursor(args.after);
         // Same clamp REST applies to `take` (routes/ui.ts): default 20, 1..100.
-        const take = Math.min(Math.max(args.first ?? 20, 1), 100);
+        const take = Math.min(
+          Math.max(args.first ?? CONNECTION_LIMITS.libraryEntries.defaultSize, 1),
+          CONNECTION_LIMITS.libraryEntries.maxSize
+        );
         const filters: BookListFilters | undefined = args.filter
           ? {
               query: args.filter.query ?? undefined,
@@ -322,6 +328,12 @@ builder.node(model, {
         'BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.',
       resolve: async (owner, args, context) => {
         rejectBackwardPagination('Library.progress', args);
+        // Reject before `clampProgressTake` ever silently clamps — its bounds
+        // (50 default / 100 max) are restated in `CONNECTION_LIMITS.libraryProgress`
+        // (pagination.ts) rather than imported from it, since this number's
+        // real source of truth is `utils/progress-pagination.ts`, unchanged by
+        // this migration; `CONNECTION_LIMITS`'s doc comment records that origin.
+        rejectOversizePage('Library.progress', args, CONNECTION_LIMITS.libraryProgress.maxSize);
         const cursor = decodeProgressCursor(args.after);
         // Same clamp and same default (50) REST applies via `parseProgressTake`,
         // now sharing that function's bounds rather than restating them.

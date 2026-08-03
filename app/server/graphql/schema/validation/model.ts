@@ -3,6 +3,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
+import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 import { model as validationThreshold } from '../validation-threshold';
 
 /**
@@ -50,7 +51,25 @@ export const model = builder.prismaObject('Validation', {
      */
     messages: t.relatedConnection('messages', {
       cursor: 'userId_bookId_seq',
-      query: { orderBy: { seq: 'asc' } },
+      // Same mechanism split as `Series.books` (`series/model.ts`'s doc
+      // comment on its own `books` field has the full reasoning + the
+      // empirical proof): native `maxSize`/`defaultSize` bound the actual
+      // Prisma query as defense-in-depth (clamps, doesn't reject); the
+      // reject that satisfies "reject, never clamp" has to live in `query`,
+      // the one hook `@pothos/plugin-prisma` always calls before this
+      // connection's rows are fetched, on every path — a `resolve` override
+      // here would be fallback-only and silently never fire for the normal
+      // `book.validation.messages` read path.
+      maxSize: CONNECTION_LIMITS.validationMessages.maxSize,
+      defaultSize: CONNECTION_LIMITS.validationMessages.defaultSize,
+      query: (args) => {
+        rejectOversizePage(
+          'Validation.messages',
+          args,
+          CONNECTION_LIMITS.validationMessages.maxSize
+        );
+        return { orderBy: { seq: 'asc' } };
+      },
     }),
   }),
 });

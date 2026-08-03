@@ -180,6 +180,82 @@ describe('Library.entries', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
   });
 
+  // Query-cost-control task 1: `first` above `CONNECTION_LIMITS.libraryEntries
+  // .maxSize` (100, mirroring routes/ui.ts's own `take` clamp — see
+  // pagination.ts's `CONNECTION_LIMITS` doc comment) is rejected loudly
+  // rather than silently clamped. `999999999` is the spec's own probe value
+  // (`docs/superpowers/specs/2026-08-02-query-cost-control-design.md`,
+  // "no connection carries maxSize/defaultSize: entries(first: 999999999)
+  // is depth 6").
+  it('rejects `first: 999999999` instead of silently clamping it', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(first: 999999999) { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions).toEqual({
+      code: 'PAGE_SIZE_EXCEEDED',
+      http: { status: 400 },
+    });
+  });
+
+  it('rejects `first` one above the max page size (100)', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(first: 101) { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions).toEqual({
+      code: 'PAGE_SIZE_EXCEEDED',
+      http: { status: 400 },
+    });
+  });
+
+  it('accepts `first` exactly at the max page size (100)', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(first: 100) { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+  });
+
+  it('returns at most the default page size (20) when `first` is omitted', async () => {
+    // The fixture above (`beforeEach`) seeds only 2 entries — far below the
+    // default of 20, which would pass this test even with no bound at all.
+    // Seed enough standalone books to exceed it.
+    for (let i = 0; i < 25; i++) {
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id: `4${String(i).padStart(2, '0')}`.padEnd(32, 'z'),
+          title: `Filler ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+    }
+
+    const result = await harness.execute(
+      '{ viewer { library { entries { edges { node { __typename } } pageInfo { hasNextPage } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const entries = (
+      result.data as {
+        viewer: {
+          library: { entries: { edges: unknown[]; pageInfo: { hasNextPage: boolean } } };
+        };
+      }
+    ).viewer.library.entries;
+    expect(entries.edges).toHaveLength(20);
+    expect(entries.pageInfo.hasNextPage).toBe(true);
+  });
+
   // The parent `Book`/`Series` rows this connection resolves into are hand-
   // fetched via context.prisma.book.findMany()/series.findMany() outside the
   // Prisma plugin's own query planning, so a nested relation off a union
