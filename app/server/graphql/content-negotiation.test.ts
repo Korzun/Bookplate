@@ -93,6 +93,35 @@ describe('content negotiation contract', () => {
     expect(response.body.errors?.[0]?.extensions?.code).toBe('GRAPHQL_VALIDATION_FAILED');
   });
 
+  // Task 4 (query-cost-control plan): `cost-limit.ts`'s `costLimitRule` now
+  // enforces `BREADTH_BUDGET`/`COMPLEXITY_BUDGET`, reporting through the
+  // same `ValidationContext` every other validation rule (including the
+  // `GRAPHQL_VALIDATION_FAILED` case above) uses — so a budget rejection
+  // gets the SAME negotiated-content-type/400 treatment for free. Pinned
+  // here specifically because the code must be DISTINGUISHABLE from a plain
+  // validation typo (`GRAPHQL_VALIDATION_FAILED`, above): an `errorLink`
+  // that only checked "is this a 400" couldn't tell "you asked for too
+  // much" apart from "you made a typo," and the two call for different
+  // client behavior (backing off page size vs. surfacing the query itself).
+  it('an authenticated caller exceeding the query cost budget gets HTTP 400 with extensions.code QUERY_COMPLEXITY, distinct from the plain validation-error code above', async () => {
+    const booksHop = (n: number): string =>
+      n === 0 ? 'id' : `books(first: 100) { edges { node { series { ${booksHop(n - 1)} } } } }`;
+    const overBudget = `{ nodes(ids: ["x"]) { ... on Series { ${booksHop(3)} } } }`;
+
+    const response = await request(app)
+      .post('/graphql')
+      .set('Accept', GRAPHQL_RESPONSE_JSON)
+      .set('Authorization', `Bearer ${aliceToken()}`)
+      .send({ query: overBudget });
+
+    expect(response.status).toBe(400);
+    expect(response.body.data ?? null).toBeNull();
+    const codes = (response.body.errors as { extensions?: { code?: string } }[]).map(
+      (error) => error.extensions?.code
+    );
+    expect(codes).toContain('QUERY_COMPLEXITY');
+  });
+
   it('an authenticated caller with a syntactically malformed query is NOT treated as an auth failure', async () => {
     const response = await request(app)
       .post('/graphql')

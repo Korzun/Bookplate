@@ -1,21 +1,28 @@
-import express from 'express';
 import {
   FragmentDefinitionNode,
+  GraphQLError,
   Kind,
   OperationDefinitionNode,
   parse,
   validate,
   type DocumentNode,
 } from 'graphql';
-import request from 'supertest';
 
-import { logger } from '../logger';
-import { costLimitRule, measureOperationCost, type OperationCost } from './cost-limit';
+import {
+  BREADTH_BUDGET,
+  COMPLEXITY_BUDGET,
+  costLimitRule,
+  measureOperationCost,
+  type OperationCost,
+} from './cost-limit';
 import { schema } from './schema';
-import { createHarness, type Harness } from './test-util';
-import { createGraphqlHandler } from './yoga';
 
-vi.mock('../logger');
+// Real-HTTP tests (logging spies, `createGraphqlHandler`, the regression
+// suite's integration-level twins, the GraphiQL end-to-end check) live in
+// `cost-limit-integration.test.ts` — same file split `depth-limit.ts` /
+// `depth-limit-integration.test.ts` already use. This file stays unit-level:
+// pure `measureOperationCost` boundary math plus `validate()`-driven
+// `costLimitRule` assertions, no HTTP, no harness, no mocked logger.
 
 const operationAndFragmentsOf = (
   source: string
@@ -550,7 +557,7 @@ describe('costOfSelectionSet — fragment memoization and cycle guard (via costL
   ) => validate(schema, document, [costLimitRule(onMeasured)]);
 
   it.each([6, 12, 18, 24, 30])(
-    'validates an N=%i chained-fragment amplification document in single-digit ms, never rejecting',
+    'validates an N=%i chained-fragment amplification document in single-digit ms — Task 4: now CORRECTLY REJECTS it, still in constant time',
     (n) => {
       const document = parse(chainedFragmentDoc(n));
 
@@ -563,15 +570,28 @@ describe('costOfSelectionSet — fragment memoization and cycle guard (via costL
       // here (see task-3-report.md): all of N=6..30 complete in under 2ms.
       // A 500ms bound is the same generosity `depth-limit.test.ts`'s own
       // N=24 timing test uses — comfortably two-plus orders of magnitude
-      // below "still exponential" while absorbing CI jitter.
+      // below "still exponential" while absorbing CI jitter. This bound is
+      // about WALK TIME, not verdict — memoization guarantees the walk
+      // stays O(N), it says nothing about how large the resulting number is.
       expect(elapsedMs).toBeLessThan(500);
-      // LOG-ONLY: this rule never reports an error, no matter how large the
-      // computed cost is — rejecting is Task 4's job, not this one's.
-      expect(errors).toEqual([]);
+      // Task 3 asserted `errors` was always `[]` here ("LOG-ONLY: this rule
+      // never reports an error, no matter how large the computed cost is").
+      // Task 4 arms the rule, and this fixture's construction — each F_i
+      // spreads F_(i-1) TWICE — is genuine exponential amplification of
+      // REAL selection count (two leaf fields doubling at every level), not
+      // an artifact of how the walk is implemented: at N=6 its own breadth
+      // already measures 193, over BREADTH_BUDGET (100), and it only grows
+      // from there. Rejecting it is the CORRECT verdict a budget exists to
+      // produce, not a regression — what this test still proves is that
+      // reaching that correct verdict costs O(N) time, not O(2^N); a
+      // memo-less version would compute the SAME large numbers (and thus
+      // the same rejection) but take exponentially longer to get there.
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.every((error) => error instanceof GraphQLError)).toBe(true);
     }
   );
 
-  it('a self-referential fragment spread does not throw, and reports no validation error (log-only)', () => {
+  it('a self-referential fragment spread does not throw, and reports no validation error (well under either budget)', () => {
     const document = parse(
       '{ viewer { library { book(id: "x") { ...F } } } } fragment F on Book { series { books(first: 1) { edges { node { ...F } } } } }'
     );
@@ -605,25 +625,9 @@ describe('costOfSelectionSet — fragment memoization and cycle guard (via costL
   });
 });
 
-describe('costLimitRule — never rejects, regardless of how large the computed cost is', () => {
+describe('costLimitRule — operation-name resolution (unaffected by enforcement)', () => {
   const runRule = (source: string, onMeasured: (name: string, cost: OperationCost) => void) =>
     validate(schema, parse(source), [costLimitRule(onMeasured)]);
-
-  it('the proven 3-hop nodes()-rooted amplification cycle (depth-limit.ts admits this at depth 12) produces zero errors from this rule, but a large measured cost', () => {
-    const booksHop = (n: number): string =>
-      n === 0 ? 'id' : `books(first: 100) { edges { node { series { ${booksHop(n - 1)} } } } }`;
-    const THREE_HOP_NODES_CYCLE = `{ nodes(ids: ["x"]) { ... on Series { ${booksHop(3)} } } }`;
-
-    let measured: OperationCost | undefined;
-    const errors = runRule(THREE_HOP_NODES_CYCLE, (_name, cost) => (measured = cost));
-
-    expect(errors).toEqual([]);
-    // Legitimate max measured by this task's calibration is complexity 3823
-    // (the richest-screen fixture above) — this attack's complexity clears
-    // it by three orders of magnitude, breadth does not (see
-    // task-3-report.md's attack-probe table for the full comparison).
-    expect(measured?.complexity).toBeGreaterThan(1_000_000);
-  });
 
   it('resolves the operation name the same way operationNameOf does, falling back to "anonymous"', () => {
     const measured: string[] = [];
@@ -636,83 +640,301 @@ describe('costLimitRule — never rejects, regardless of how large the computed 
   });
 });
 
-describe('useCostLogging — over real HTTP, real schema (log-only: rejects nothing, no query text/variables)', () => {
-  const jwtSecret = Buffer.from('c'.repeat(64), 'hex');
-  let harness: Harness;
-  let app: express.Express;
+/**
+ * **Task 4 — the regression suite.** Every proven probe from the ledger
+ * (`.superpowers/sdd/2026-08-02-query-cost-control/progress.md`, "BINDING
+ * INPUTS FOR TASK 4") and task-3-report.md's own attack-probe table becomes
+ * a committed test asserting REJECTION here, at the unit (`validate()`)
+ * level — `cost-limit-integration.test.ts` covers the same 3-hop cycle plus
+ * one legit screen over real HTTP, per the brief's "integration-level for
+ * at least the 3-hop cycle and one screen query" instruction.
+ *
+ * `codesOf` sorts so a test asserting BOTH budgets fired doesn't depend on
+ * which `context.reportError` call happened first (`costLimitRule` always
+ * checks breadth then complexity, but asserting on ORDER would pin an
+ * implementation detail neither budget's own correctness depends on).
+ */
+describe('costLimitRule — budget enforcement (Task 4 regression suite)', () => {
+  const runRule = (source: string): readonly GraphQLError[] =>
+    validate(schema, parse(source), [costLimitRule(() => {})]);
+  const codesOf = (errors: readonly GraphQLError[]): string[] =>
+    [...errors].map((error) => String(error.extensions?.['code'])).sort();
 
-  const costLoggerSpy = (): { info: Mock } => {
-    const mocked = vi.mocked(logger);
-    const index = mocked.mock.calls.findIndex(([namespace]) => namespace === 'GraphQL:cost');
-    if (index === -1) throw new Error("logger('GraphQL:cost') was never called");
-    return mocked.mock.results[index]?.value as { info: Mock };
-  };
-  // Captured once at module load, same reasoning as
-  // `yoga-operation-logging.test.ts`'s own `operationLoggerSpies`.
-  const spy = costLoggerSpy();
+  // Same construction as probe-8-task3-calibration.ts's own `booksHop` —
+  // `n` repetitions of `books(<dir>:100){edges{node{series{...}}}}`,
+  // bottoming out at a leaf `id`.
+  const booksHop = (n: number, dir: 'first' | 'last' = 'first'): string =>
+    n === 0 ? 'id' : `books(${dir}: 100) { edges { node { series { ${booksHop(n - 1, dir)} } } } }`;
 
-  beforeEach(async () => {
-    spy.info.mockClear();
-    harness = await createHarness();
-    const server = express();
-    server.use(
-      '/graphql',
-      createGraphqlHandler({
-        prisma: harness.prisma,
-        stores: harness.stores,
-        config: harness.config,
-        jwtSecret,
-        isProduction: false,
-      })
+  it.each(['first', 'last'] as const)(
+    'rejects the 3-hop nodes()-rooted cycle, %s:100 (the proven 1.35M objects / 80.7MB / 8.2s shape) — complexity 4,040,402 vs COMPLEXITY_BUDGET (breadth 14 is BELOW BREADTH_BUDGET — complexity alone catches this)',
+    (dir) => {
+      const errors = runRule(`{ nodes(ids: ["x"]) { ... on Series { ${booksHop(3, dir)} } } }`);
+      expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
+      expect(errors[0]?.extensions).toMatchObject({
+        code: 'QUERY_COMPLEXITY',
+        http: { status: 400 },
+      });
+    }
+  );
+
+  it.each(['first', 'last'] as const)(
+    'rejects the Series-arm 2-hop via Library.entries, %s:100 (the amplification fixture) — complexity 808,063 (complexity only; breadth 14 stays under BREADTH_BUDGET)',
+    (dir) => {
+      const errors = runRule(
+        `{ viewer { library { entries(first: 20) { edges { node { ... on Series { ${booksHop(2, dir)} } } } } } } }`
+      );
+      expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
+    }
+  );
+
+  it.each(['first', 'last'] as const)(
+    'rejects the 2-hop-from-nodes() cycle, %s:100 — complexity 40,402 (complexity only)',
+    (dir) => {
+      const errors = runRule(`{ nodes(ids: ["x"]) { ... on Series { ${booksHop(2, dir)} } } }`);
+      expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
+    }
+  );
+
+  it('rejects the suggestions path, single query — breadth 10 / complexity 36,367 (complexity only)', () => {
+    const errors = runRule(
+      '{ viewer { library { searchSuggestions(query: "a") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } } }'
     );
-    app = server;
+    expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
   });
 
-  afterEach(async () => {
-    await harness.cleanup();
+  it('rejects the suggestions path, 12-alias — breadth 120 AND complexity 436,404 (BOTH budgets fire)', () => {
+    const errors = runRule(
+      `{ ${Array.from(
+        { length: 12 },
+        (_, i) =>
+          `a${i}: viewer { library { searchSuggestions(query: "q${i}") { items { book { series { books(first: 100) { edges { node { id } } } } } } } } }`
+      ).join(' ')} }`
+    );
+    expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
   });
 
-  it('logs {operationName, breadth, complexity} at info for a clean, successful operation — no query text or variables', async () => {
-    const { signAccessToken } = await import('../services/jwt');
-    const token = signAccessToken(jwtSecret, {
-      userId: harness.aliceOwner.userId,
-      username: 'alice',
-      isAdmin: false,
-      mustChangePassword: false,
-    });
-
-    const response = await request(app)
-      .post('/graphql')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ query: 'query MyGridQuery { viewer { username } }' });
-
-    expect(response.status).toBe(200);
-    expect(spy.info).toHaveBeenCalledTimes(1);
-
-    const line = JSON.parse(spy.info.mock.calls[0]?.[0] as string) as Record<string, unknown>;
-    expect(line).toMatchObject({ operationName: 'MyGridQuery' });
-    expect(typeof line['breadth']).toBe('number');
-    expect(typeof line['complexity']).toBe('number');
-    expect(JSON.stringify(line)).not.toContain('MyGridQuery { viewer { username } }');
+  it('rejects the 200-alias grid fan-out (61x baseline probe) — breadth 3200 AND complexity 52,600 (BOTH budgets fire)', () => {
+    const errors = runRule(
+      `{ ${Array.from(
+        { length: 200 },
+        (_, i) =>
+          `a${i}: viewer { library { entries(first: 20) { edges { node { ... on Book { series { id name } progress { percentage } validation { id valid } } } } pageInfo { hasNextPage endCursor } } } }`
+      ).join(' ')} }`
+    );
+    expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
   });
 
-  it('still logs (and does not itself reject) a query the depth limit ALSO rejects — a measurement pass, not a guard', async () => {
-    // Same over-depth shape `depth-limit-integration.test.ts` rejects at
-    // MAX_DEPTH — nothing about this rule changes that verdict.
-    const deepQuery = `{
-      viewer { library { entries(first: 1) { edges { node { ... on Book {
-        series { books(first: 1) { edges { node {
-          series { books(first: 1) { edges { node { id } } } }
+  it('rejects 200x nodes(ids:[100]) (the ledger N-1 probe, 20,000 lookups) — breadth 400 AND complexity 20,200 (BOTH budgets fire)', () => {
+    const errors = runRule(
+      `{ ${Array.from(
+        { length: 200 },
+        (_, i) =>
+          `a${i}: nodes(ids: [${Array.from({ length: 100 }, (_ignored, j) => `"id${i}_${j}"`).join(', ')}]) { id }`
+      ).join(' ')} }`
+    );
+    expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
+  });
+
+  it('rejects series { books } — the I-4 unbounded-list 2-hop through Library.series — complexity 364,903 (complexity only; breadth 11 stays under BREADTH_BUDGET)', () => {
+    const errors = runRule(
+      `{ viewer { library { series {
+        books(first: 12) { edges { node { series {
+          books(first: 100) { edges { node { id } } }
         } } } }
-      } } } } } }
-    }`;
+      } } } }`
+    );
+    expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
+  });
 
-    const response = await request(app).post('/graphql').send({ query: deepQuery });
+  it('rejects the scalar-list alias attack (200x viewer{library{authors subjects}}) — breadth 800 catches it; complexity is 800, 4.7% of COMPLEXITY_BUDGET — BREADTH IS THE ONLY DEFENSE for this family', () => {
+    const source = `{ ${Array.from(
+      { length: 200 },
+      (_, i) => `a${i}: viewer { library { authors subjects } }`
+    ).join(' ')} }`;
+    const errors = runRule(source);
+    expect(codesOf(errors)).toEqual(['QUERY_BREADTH']);
+    // Direct proof, not just an inference from the error code: measure the
+    // same document and confirm complexity really does stay under budget —
+    // this is the concrete "only breadth sees it" evidence the brief asks
+    // for, not an assertion taken on faith from the rejection code alone.
+    const { operation, fragments } = operationAndFragmentsOf(source);
+    const { breadth, complexity } = measureOperationCost(operation, fragments, schema);
+    expect(breadth).toBeGreaterThan(BREADTH_BUDGET);
+    expect(complexity).toBeLessThan(COMPLEXITY_BUDGET);
+  });
 
-    expect(response.body.errors?.[0]?.message).toContain('nested too deeply');
-    expect(spy.info).toHaveBeenCalledTimes(1);
-    const line = JSON.parse(spy.info.mock.calls[0]?.[0] as string) as Record<string, unknown>;
-    expect(line['operationName']).toBe('anonymous');
-    expect(typeof line['breadth']).toBe('number');
+  it("does NOT reject Library.entries(first: 999999999) — Task 1's execution-time rejectOversizePage is the layer that stops this, not validation (breadth 6 / complexity 303, both comfortably inside both budgets)", () => {
+    const errors = runRule(
+      '{ viewer { library { entries(first: 999999999) { edges { node { ... on Book { title } } } } } } }'
+    );
+    expect(errors).toEqual([]);
+  });
+});
+
+/**
+ * Every legit fixture from Task 3's calibration table (task-3-report.md §4)
+ * — plus the two near-future shapes Task 3's own round-4 re-review
+ * identified as the REAL ceiling `BREADTH_BUDGET`/`COMPLEXITY_BUDGET` had to
+ * clear (task-3-re-review-4.md; reproduced exactly by
+ * `probes/rereview4/verify.ts`) — asserts ACCEPTANCE.
+ */
+describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration table + the two near-future recalibration shapes)", () => {
+  const accepts = (source: string): void => {
+    expect(runRule(source)).toEqual([]);
+  };
+  const runRule = (source: string): readonly GraphQLError[] =>
+    validate(schema, parse(source), [costLimitRule(() => {})]);
+
+  it('the richest SHIPPED grid fixture (breadth 41 / complexity 3823)', () => {
+    accepts(`
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 20) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books(first: 10) { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`);
+  });
+
+  it('near-future shape 1: BookCard-on-lineage (breadth 40 / complexity 724) — the obvious next UI step for the shipped lineage screen', () => {
+    accepts(`
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { book(id: "x") { lineage {
+          oldId newId
+          oldBook { ...BookCard }
+          newBook { ...BookCard }
+        } } } } }`);
+  });
+
+  it('near-future shape 2: the richer grid (one more real card field + validation.messages + one more nesting level) — breadth 52 / complexity 13,483, the TRUE legit ceiling this task budgeted above, not 3823', () => {
+    accepts(`
+      fragment FullCard on Book {
+        id
+        title
+        author
+        series { id name }
+        progress { percentage }
+        validation { id valid messages { severity message } }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 20) {
+        edges { node {
+          ... on Book { ...FullCard }
+          ... on Series { id name books(first: 10) { edges { node { ...FullCard } } } }
+        } }
+      } } } }`);
+  });
+
+  it('the labeled PLAUSIBLE device-list + enabledUsers consolidation (breadth 13 / complexity 2,182 — the single highest-percentage-of-budget legit row, 12.8% of COMPLEXITY_BUDGET)', () => {
+    accepts(
+      '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
+    );
+  });
+
+  it('the REAL device-list screen that ships today (no enabledUsers) — breadth 10 / complexity 162', () => {
+    accepts(
+      '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify } } }'
+    );
+  });
+
+  it('a real search-as-you-type screen (I-5 legit case) — breadth 7 / complexity 251', () => {
+    accepts(
+      '{ viewer { library { searchSuggestions(query: "dune") { type items { label value } } } } }'
+    );
+  });
+
+  it('library series list and pending-fixes list (repo-corpus legit screens)', () => {
+    accepts('{ viewer { library { series { id name author bookCount totalPages } } } }');
+    accepts('{ viewer { library { pendingFixes { id fileName createdAt book { id title } } } } }');
+  });
+
+  it('a mutation (rootTypeOf resolves the mutation root, not just query)', () => {
+    accepts('mutation { progressDelete(input: { document: "x", userId: "u" }) { __typename } }');
+  });
+});
+
+/**
+ * **Task 4, Step 3 — "seen-to-fail both directions" (per the brief and the
+ * ledger's own standing discipline): disable each budget independently and
+ * confirm the tests that budget alone catches go red.** This is the
+ * committed, load-bearing PROOF that both budgets matter, not just a
+ * documented claim — run against `BREADTH_BUDGET`/`COMPLEXITY_BUDGET`
+ * temporarily patched to `Infinity` one at a time (never both at once — that
+ * would just reproduce Task 3's log-only state, already covered above).
+ *
+ * This describe does NOT patch the exported constants in place (they are
+ * real `const`s, not designed to be mutable at runtime, and mutating a
+ * shared module export from a test would leak into every other test file
+ * importing this module in the same worker). Instead it reproduces each
+ * budget's own enforcement check inline, parameterized by a budget value the
+ * test controls directly — the exact same comparison `costLimitRule` itself
+ * runs (`cost.breadth > BREADTH_BUDGET` / `cost.complexity >
+ * COMPLEXITY_BUDGET`), just against `Infinity` for the "disabled" side. This
+ * is not a different, weaker check: it is `costLimitRule`'s own two-line
+ * enforcement logic, copied here specifically so it can be run with one side
+ * disabled without touching module state.
+ */
+describe('costLimitRule — both budgets are load-bearing (seen-to-fail, both directions)', () => {
+  // Reuses the module-level `costOf` (top of file) — same `measureOperationCost`
+  // primitive every other describe block in this file already calls.
+  const verdictWith = (
+    source: string,
+    budgets: { breadth: number; complexity: number }
+  ): { breadthExceeded: boolean; complexityExceeded: boolean } => {
+    const cost = costOf(source);
+    return {
+      breadthExceeded: cost.breadth > budgets.breadth,
+      complexityExceeded: cost.complexity > budgets.complexity,
+    };
+  };
+
+  const THREE_HOP_CYCLE =
+    '{ nodes(ids: ["x"]) { ... on Series { books(first: 100) { edges { node { series { books(first: 100) { edges { node { series { books(first: 100) { edges { node { id } } } } } } } } } } } } } }';
+  const SCALAR_LIST_ATTACK = `{ ${Array.from(
+    { length: 200 },
+    (_, i) => `a${i}: viewer { library { authors subjects } }`
+  ).join(' ')} }`;
+
+  it('with BREADTH_BUDGET disabled (Infinity): the 3-hop cycle still rejects (complexity alone catches it) — proves complexity is load-bearing on its own', () => {
+    const verdict = verdictWith(THREE_HOP_CYCLE, {
+      breadth: Infinity,
+      complexity: COMPLEXITY_BUDGET,
+    });
+    expect(verdict.complexityExceeded).toBe(true);
+  });
+
+  it('with COMPLEXITY_BUDGET disabled (Infinity): the 3-hop cycle NO LONGER rejects (breadth 14 stays under BREADTH_BUDGET) — proves complexity was the ONLY thing catching it; disabling it truly opens the hole', () => {
+    const verdict = verdictWith(THREE_HOP_CYCLE, { breadth: BREADTH_BUDGET, complexity: Infinity });
+    expect(verdict.breadthExceeded).toBe(false);
+    expect(verdict.complexityExceeded).toBe(false);
+  });
+
+  it('with COMPLEXITY_BUDGET disabled (Infinity): the scalar-list alias attack still rejects (breadth alone catches it) — proves breadth is load-bearing on its own', () => {
+    const verdict = verdictWith(SCALAR_LIST_ATTACK, {
+      breadth: BREADTH_BUDGET,
+      complexity: Infinity,
+    });
+    expect(verdict.breadthExceeded).toBe(true);
+  });
+
+  it('with BREADTH_BUDGET disabled (Infinity): the scalar-list alias attack NO LONGER rejects (complexity 800 stays under COMPLEXITY_BUDGET) — proves breadth was the ONLY thing catching it; disabling it truly opens the hole', () => {
+    const verdict = verdictWith(SCALAR_LIST_ATTACK, {
+      breadth: Infinity,
+      complexity: COMPLEXITY_BUDGET,
+    });
+    expect(verdict.breadthExceeded).toBe(false);
+    expect(verdict.complexityExceeded).toBe(false);
   });
 });

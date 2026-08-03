@@ -1,5 +1,6 @@
 import {
   FragmentDefinitionNode,
+  GraphQLError,
   GraphQLField,
   GraphQLInterfaceType,
   GraphQLNamedType,
@@ -38,8 +39,11 @@ import { CONNECTION_LIMITS } from './schema/pagination';
  *
  * BINDING (query-cost-control ledger, "CONTROLLER RULING"): this file
  * computes NO depth — `depth-limit.ts` (unchanged, `MAX_DEPTH = 12`) is the
- * one depth enforcer. This file is LOG-ONLY this task: it never calls
- * `context.reportError` and rejects nothing — see `costLimitRule` below.
+ * one depth enforcer. Task 3 shipped this file LOG-ONLY (never called
+ * `context.reportError`); **Task 4 arms it** — see `BREADTH_BUDGET` /
+ * `COMPLEXITY_BUDGET` below for the two enforced numbers and their
+ * measured provenance, and `costLimitRule`'s own doc comment for how (and
+ * why BOTH, not either alone) it now rejects.
  *
  * ## Counting model
  *
@@ -639,12 +643,161 @@ export const measureOperationCost = (
   );
 
 /**
+ * **Task 4 — the breadth budget, ENFORCED.** Measured max → margin → budget
+ * → gap to nearest attack:
+ *
+ * - **Measured max (legit).** Task 3's own calibration table (task-3-report.md
+ *   §4) records breadth 6–41 across every shipped screen, but Task 3's own
+ *   round-4 re-review (task-3-re-review-4.md, "Breadth ceiling") went
+ *   further and measured two PLAUSIBLE near-future shapes — a `BookCard`
+ *   fragment reused on `Book.lineage`'s `oldBook`/`newBook` (breadth 40–44
+ *   depending on exact field composition; `cost-limit.test.ts` pins 40) and
+ *   a richer version of the already-legit richest grid fixture (one more
+ *   real field on the shared card, `author`, plus one more nesting level —
+ *   `.superpowers/sdd/2026-08-02-query-cost-control/probes/rereview4/verify.ts`)
+ *   at **breadth 52**. 52 is the highest MEASURED plausible-legit number and
+ *   the one this budget must clear — `cost-limit.test.ts` asserts both
+ *   near-future shapes ACCEPT.
+ * - **Margin.** The reviewer's own recommendation (task-3-re-review-4.md):
+ *   ~2× the near-future max (40–52), landing at 100 — "leaving room for one
+ *   more field or one more nesting level without landing exactly on the
+ *   line," the same F-1 lesson `depth-limit.ts`'s own recalibration comment
+ *   already paid for once (a budget set AT the observed legit max is a
+ *   production outage waiting for one new field).
+ * - **Budget: 100.**
+ * - **Gap to nearest attack.** The alias-repetition family sits at breadth
+ *   120 (12-aliased `searchSuggestions`), 400 (200×`nodes(ids:[100])`), and
+ *   3200 (200-alias grid fan-out) — 100 clears the near-future legit max
+ *   with 2× margin AND sits 20 below the SMALLEST of those (120), a real
+ *   gap, not a coin-flip boundary. (That smallest one, 120, is also caught
+ *   independently by `COMPLEXITY_BUDGET` below at 436,404 — losing no
+ *   coverage even though its own breadth margin over 100 is comparatively
+ *   thin.) The two costliest PROVEN attacks (the 3-hop `nodes()` cycle, the
+ *   Series-arm 2-hop) measure breadth **14** — below even the OLD legit max
+ *   of 41, let alone 100 — confirming (task-3-report.md §5) that breadth
+ *   cannot be this budget's only defense against them; `COMPLEXITY_BUDGET`
+ *   is what catches those two. What breadth's 100 uniquely defends against —
+ *   the job `COMPLEXITY_BUDGET` structurally cannot do (see that budget's
+ *   own doc comment) — is the scalar-list alias attack: 200 aliased
+ *   `viewer { library { authors subjects } }` calls measure breadth 800 /
+ *   complexity **800** (`cost-limit.test.ts` pins this) — complexity clears
+ *   it by miles under its own budget, breadth alone rejects it.
+ */
+export const BREADTH_BUDGET = 100;
+
+/**
+ * **Task 4 — the complexity budget, ENFORCED.** Measured max → margin →
+ * budget → gap to nearest attack:
+ *
+ * - **Measured max (legit).** Task 3's own table records complexity 84–3823
+ *   (the richest SHIPPED grid fixture). But — same recalibration as
+ *   `BREADTH_BUDGET` above, and for the identical reason (a budget set from
+ *   "today's shipped max" alone repeats the F-1 mistake the moment one more
+ *   real field lands) — the richer-grid near-future fixture measured above
+ *   scores complexity **13,483**, not 3823: one more real card field
+ *   (`author`) plus `validation.messages` plus one more nesting level pushes
+ *   a plausible near-future screen 3.5× past the "shipped today" number.
+ *   **13,483 is this budget's real floor, not 3823** — `cost-limit.test.ts`
+ *   asserts this exact fixture ACCEPTS, alongside the `BookCard`-on-lineage
+ *   near-future shape (complexity 724, comfortably clear) and the labeled
+ *   PLAUSIBLE device-list + `enabledUsers` consolidation (2,182).
+ * - **Margin.** Unlike breadth's wide-open corridor (52 legit vs. 120
+ *   smallest attack — room for a full 2×), complexity's corridor is
+ *   genuinely narrow: the nearest attack this project has ever measured is
+ *   **20,200** (200×`nodes(ids:[100])`, the ledger's own N-1 probe) — only
+ *   1.5× the near-future legit max of 13,483. A 2×-style margin (≈27,000)
+ *   would land ABOVE the attack and admit it; that is not available here,
+ *   and pretending otherwise would be inventing headroom the measurements
+ *   don't support. The honest number sits inside the corridor with real
+ *   space on both sides: **17,000** is +26.1% over the 13,483 legit floor
+ *   and −15.8% below the 20,200 attack floor — not landing exactly on
+ *   either line, the same non-negotiable the breadth budget above and
+ *   `depth-limit.ts`'s own `MAX_DEPTH` recalibration both insist on, even
+ *   though the available room is smaller on this axis.
+ * - **Budget: 17,000.**
+ * - **Gap to nearest attack: 3,200 (20,200 − 17,000), 15.8% below it.**
+ *   Every OTHER measured attack clears this budget by 2–3 orders of
+ *   magnitude (40,402 for the 2-hop-from-`nodes()` cycle up to 4,040,402 for
+ *   the 3-hop cycle) — 20,200 is the single tightest gap in the whole attack
+ *   table, which is why it, not one of the million-plus rows, sets the
+ *   ceiling on how much margin this budget can safely claim.
+ *   `Library.entries(first: 999999999)` (breadth 6, complexity 303) clears
+ *   BOTH budgets by design — Task 1's execution-time `rejectOversizePage`
+ *   is the layer that stops it, not this validation-time rule (task-3-report
+ *   §5's own conclusion, unchanged by Task 4).
+ *
+ * **Why this budget cannot be the only one enforced** (the mirror image of
+ * `BREADTH_BUDGET`'s own "why not complexity alone" note): complexity is
+ * `FIELD_COST + multiplier × Σchildren` — a scalar leaf field has no
+ * sub-selection for any multiplier to act on. Task 3's own handoff
+ * (task-3-report.md §5, "Handoff requirement for Task 4") measured this
+ * precisely: 200 aliased `viewer { library { authors subjects } }` calls
+ * (`Library.subjects`/`Library.authors` are unpaginated scalar lists, no
+ * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 21% of THIS
+ * budget, nowhere near rejecting — while breadth (800) clears
+ * `BREADTH_BUDGET` (100) 8× over. Complexity would need ~950 aliases of the
+ * same shape before it noticed; breadth catches it at ~13. Neither number
+ * is decorative — each is the ONLY defense against one proven attack family
+ * (see `cost-limit.test.ts`'s "both budgets are load-bearing" describe
+ * block, which disables each independently and shows the other's own
+ * regression tests red without it).
+ */
+export const COMPLEXITY_BUDGET = 17_000;
+
+/** `extensions.code`/`extensions.http.status` for a breadth-budget rejection — same shape convention `pagination.ts`'s `PAGE_SIZE_EXCEEDED`/`BACKWARD_PAGINATION_UNSUPPORTED` and `builder.ts`'s `UNAUTHENTICATED`/`FORBIDDEN` already use (`{ code, http: { status } }`), and the same CODE NAMING `@pothos/plugin-complexity`'s own validator seam used (task-2-report.md, probe 6 — `QUERY_DEPTH`/`QUERY_BREADTH`/`QUERY_COMPLEXITY`) — reused here for the naming, not the plugin's behavior (that seam shipped no `http.status` at all, one of the gaps this rule closes). `depth-limit.ts`'s own `GraphQLError` carries NO explicit `extensions` (it relies on graphql-js/yoga's default `GRAPHQL_VALIDATION_FAILED` + content-negotiated status) — this rule sets one explicitly so a client (the eventual Apollo `errorLink`) can distinguish "you asked for too much" from an ordinary validation typo, the same way `PAGE_SIZE_EXCEEDED` already lets it distinguish that from `BACKWARD_PAGINATION_UNSUPPORTED`. */
+const breadthBudgetError = (breadth: number, node: OperationDefinitionNode): GraphQLError =>
+  new GraphQLError(
+    `Query breadth ${breadth} exceeds the maximum allowed (${BREADTH_BUDGET}). ` +
+      'Split this into smaller operations, request fewer aliased copies of the same fields, ' +
+      'or request fewer nested connections.',
+    { nodes: node, extensions: { code: 'QUERY_BREADTH', http: { status: 400 } } }
+  );
+
+/** `complexity`'s counterpart to `breadthBudgetError` — same shape convention, distinct code. */
+const complexityBudgetError = (complexity: number, node: OperationDefinitionNode): GraphQLError =>
+  new GraphQLError(
+    `Query complexity ${complexity} exceeds the maximum allowed (${COMPLEXITY_BUDGET}). ` +
+      'Request smaller pages (lower `first`/`last`) or fewer nested connections.',
+    { nodes: node, extensions: { code: 'QUERY_COMPLEXITY', http: { status: 400 } } }
+  );
+
+/**
  * A graphql-js `ValidationRule` factory, the same `addValidationRule` seam
- * `depthLimitRule` uses — but this one calls `context.reportError` NEVER.
- * LOG-ONLY this task (query-cost-control plan, task 3): it computes
- * `{breadth, complexity}` per operation and hands them to `onMeasured`
- * rather than rejecting anything, so `yoga-plugins.ts`'s `useCostLogging`
- * can log them without this rule owning a budget yet.
+ * `depthLimitRule` uses. **Task 4 arms this rule**: Task 3 shipped it
+ * LOG-ONLY (never called `context.reportError`); it now enforces BOTH
+ * `BREADTH_BUDGET` and `COMPLEXITY_BUDGET`, independently — a query over
+ * EITHER budget is rejected, and a query over BOTH gets two distinct errors
+ * (one per axis), never silently coalesced into one, so a client sees
+ * exactly what it exceeded. This is a hard requirement, not a style choice
+ * (task-3-report.md §5's headline + its round-3 "Handoff requirement for
+ * Task 4" subsection, reproduced in both budgets' own doc comments above):
+ * breadth is structurally blind to the pagination-cycle attack family
+ * (the costliest proven attacks measure breadth 14, comfortably under 100);
+ * complexity is structurally blind to the scalar-list alias family (a
+ * scalar leaf has no sub-selection for any multiplier to act on). Shipping
+ * either budget alone reopens the OTHER family — see the "both budgets are
+ * load-bearing" describe block in `cost-limit.test.ts` for the seen-to-fail
+ * proof (each budget disabled independently, in turn).
+ *
+ * `onMeasured` still fires for EVERY operation, unconditionally — accepted
+ * or rejected — the same "measurement pass" behavior Task 3 shipped
+ * (`yoga-plugins.ts`'s `useCostLimit` logs `{operationName, breadth,
+ * complexity}` at info regardless of verdict; a rejection is what an
+ * operator most wants visibility into, not less of it).
+ *
+ * This rule does NOT log a WARN line itself for a rejection — it doesn't
+ * need to. `context.reportError` feeds into the SAME `ValidationContext`
+ * every validation rule in this pipeline shares, and `useOperationLogging`
+ * (yoga-plugins.ts)'s own `onValidate` hook already observes that shared
+ * result as a whole (not per-rule) and logs exactly one WARN line —
+ * `{operationName, viewerId, durationMs, errorCount}`, no query text — for
+ * ANY rejected operation, regardless of which rule(s) rejected it. This is
+ * the identical mechanism `depth-limit.ts`'s own rejections already ride
+ * (task-3 review's own M-4 finding: "one warn line per validation rejection
+ * is the cheapest attack signal available"). The moment this rule starts
+ * calling `context.reportError`, its rejections get that same WARN line for
+ * free, with zero new logging code — `cost-limit-integration.test.ts` pins
+ * that this rule's own rejection really does reach it.
  *
  * Takes no `schema` parameter (task-3-review, M-2) — `context.getSchema()`
  * already provides the schema this same `validate()` call was invoked with,
@@ -654,10 +807,11 @@ export const measureOperationCost = (
  *
  * Skips introspection-ONLY operations entirely (`isIntrospectionOnly`,
  * above) — task-3-review, I-3: `getIntrospectionQuery()` measures breadth
- * 220, more than 5× this task's own calibrated legit max, for the same
- * reason `depth-limit.ts`'s `depthLimitRule` skips it (see
- * `isIntrospectionOnly`'s doc comment). A future Task-4 budget derived from
- * "legit max ~41" must not also reject GraphiQL's own schema-fetch in dev.
+ * 220 / complexity 220, well past EITHER budget, for the same reason
+ * `depth-limit.ts`'s `depthLimitRule` skips it (see `isIntrospectionOnly`'s
+ * doc comment) — a budget derived from real-screen maxima must not also
+ * reject GraphiQL's own schema-fetch in dev (verified end-to-end,
+ * `cost-limit-integration.test.ts`, not just asserted at the unit level).
  * A query that merely INCLUDES `__schema` alongside real fields is NOT
  * exempt — `isIntrospectionOnly` requires EVERY top-level selection to be a
  * meta-field, pinned by `cost-limit.test.ts`.
@@ -668,7 +822,11 @@ export const measureOperationCost = (
  * skipped rather than treated as an error (`fieldDefOf` returning
  * `undefined`, or the `fragments[name]` miss above) — those are other
  * rules' problems (`FieldsOnCorrectType`, `KnownFragmentNames`), exactly the
- * discipline `depth-limit.ts` already documents for the same cases.
+ * discipline `depth-limit.ts` already documents for the same cases. Budget
+ * violations are reported via `context.reportError` (a clean GraphQL
+ * validation error), never a JS `throw` — the same "report through
+ * `ValidationContext`, never throw" discipline every other rule in this
+ * codebase's validation pipeline follows.
  *
  * Deliberately does NOT itself report a cyclic fragment as a validation
  * error the way `depth-limit.ts` does: `depth-limit.ts` is wired
@@ -683,13 +841,14 @@ export const measureOperationCost = (
  * pins that directly (seen-to-fail against a memo-less version), the same
  * way `depth-limit.test.ts` pins it for depth.
  *
- * One `onMeasured` call per `OperationDefinition` in the document, not per
- * EXECUTED operation (task-3-review, M-4) — a document naming N operations
- * (only one of which `operationName` selects to run) logs N lines. Bounded
- * by the 100KB body-size cap and arguably correct for a measurement pass
- * (every defined operation's shape gets recorded, not just the winner), but
- * it is a log-volume knob a client controls; worth a line in the Task-5
- * handoff docs, not fixed here.
+ * One `onMeasured` call, and up to two `reportError` calls, per
+ * `OperationDefinition` in the document, not per EXECUTED operation
+ * (task-3-review, M-4) — a document naming N operations (only one of which
+ * `operationName` selects to run) is fully measured, and fully enforced,
+ * for all N. Bounded by the 100KB body-size cap and arguably correct (every
+ * defined operation's shape gets recorded and enforced, not just the
+ * winner), but it is a log-volume knob a client controls; worth a line in
+ * the Task-5 handoff docs, not fixed here.
  */
 export const costLimitRule =
   (onMeasured: (operationName: string, cost: OperationCost) => void) =>
@@ -713,6 +872,10 @@ export const costLimitRule =
           memo
         );
         onMeasured(node.name?.value ?? 'anonymous', cost);
+        if (cost.breadth > BREADTH_BUDGET)
+          context.reportError(breadthBudgetError(cost.breadth, node));
+        if (cost.complexity > COMPLEXITY_BUDGET)
+          context.reportError(complexityBudgetError(cost.complexity, node));
       },
     };
   };

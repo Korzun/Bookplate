@@ -73,23 +73,30 @@ export const useDepthLimit = (): Plugin => ({
 const costLog = logger('GraphQL:cost');
 
 /**
- * Log-only wiring for `cost-limit.ts`'s hand-rolled breadth+complexity walk
- * (query-cost-control plan, task 3 — `cost-limit.ts`'s own doc comment has
- * the full counting model and the reasoning behind it). Computes and logs
- * `{operationName, breadth, complexity}` at info for EVERY operation that
- * reaches validation — including one `useDepthLimit`/`useSchemaConcealment`
- * goes on to reject, deliberately: this is a measurement pass, not a guard,
- * and an operator watching for an eventual budget wants to see what an
- * attacker attempted just as much as what real traffic costs (the same
- * "cheapest available attack signal" reasoning `useOperationLogging`'s own
- * `onValidate` hook documents for M-4).
+ * Wiring for `cost-limit.ts`'s hand-rolled breadth+complexity walk
+ * (query-cost-control plan — `cost-limit.ts`'s own doc comment has the full
+ * counting model, the two enforced budgets, and their measured provenance).
+ * Task 3 shipped this LOG-ONLY; **Task 4 arms it** — `costLimitRule` itself
+ * now calls `context.reportError` when either `BREADTH_BUDGET` or
+ * `COMPLEXITY_BUDGET` is exceeded (see that file), so installing this
+ * plugin is what makes those two budgets actually reject a request, the
+ * same way installing `useDepthLimit` is what makes `MAX_DEPTH` reject one.
+ * Renamed from `useCostLogging` → `useCostLimit` to match `useDepthLimit`'s
+ * naming now that it enforces, not just logs.
  *
- * Same `addValidationRule` seam as `useDepthLimit` and `useSchemaConcealment`
- * — `costLimitRule` NEVER calls `context.reportError`, so installing this
- * plugin cannot itself change what gets accepted or rejected; it exists
- * purely to run the walk and hand its numbers to `costLog.info` via the
- * callback `costLimitRule` invokes once per operation in the document.
+ * Still logs `{operationName, breadth, complexity}` at info for EVERY
+ * operation that reaches validation, accepted or rejected, unconditionally —
+ * this is unchanged from Task 3: a measurement pass, not a guard, and an
+ * operator wants to see what an attacker attempted just as much as what
+ * real traffic costs. A REJECTED operation does not get a second, separate
+ * WARN line from this plugin — `useOperationLogging`'s own `onValidate` hook
+ * (below) already observes the shared validation result and logs exactly
+ * one WARN line for any rejection, from any rule, the instant
+ * `costLimitRule` starts calling `context.reportError` — see
+ * `cost-limit.ts`'s own `costLimitRule` doc comment for why duplicating
+ * that here would be redundant, not missing.
  *
+ * Same `addValidationRule` seam as `useDepthLimit` and `useSchemaConcealment`.
  * Zero-arg, like its three siblings above — `costLimitRule` reads the
  * schema off `context.getSchema()` itself (task-3-review, M-2) rather than
  * this plugin threading one in.
@@ -99,7 +106,7 @@ const costLog = logger('GraphQL:cost');
  * user data (a search filter today, a future password-bearing mutation's
  * input) that has no business in server logs.
  */
-export const useCostLogging = (): Plugin => ({
+export const useCostLimit = (): Plugin => ({
   onValidate: ({ addValidationRule }) =>
     addValidationRule(
       costLimitRule((operationName, cost) =>
