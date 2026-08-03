@@ -542,9 +542,12 @@ describe('Headroom — every legit/near-future fixture stays under 70% of both b
     if (fixture.deferredToTask3) {
       const deferredReason = fixture.deferredToTask3;
       it(`${fixture.name} — still schema-valid, admitted, and under breadth headroom`, () => {
-        accepts(fixture.source); // schema-valid AND admitted by costLimitRule — NEVER deferred
+        // Record BEFORE asserting: on a failing run the rows worth reading are
+        // exactly the ones whose assertions failed, and `accepts()` throwing
+        // first would omit them from the table (task-2 re-review, N-1).
         const cost = costOf(fixture.source);
         recordRow(fixture, cost, 'accept');
+        accepts(fixture.source); // schema-valid AND admitted by costLimitRule — NEVER deferred
         expect(cost.breadth).toBeLessThanOrEqual(HEADROOM_FRACTION * BREADTH_BUDGET);
       });
       it.fails(`[DEFERRED] ${fixture.name} — ${deferredReason}`, () => {
@@ -558,9 +561,10 @@ describe('Headroom — every legit/near-future fixture stays under 70% of both b
       });
     } else {
       it(`${fixture.name} — stays under ${HEADROOM_FRACTION * 100}% of both budgets`, () => {
-        accepts(fixture.source); // schema-valid AND admitted by costLimitRule
+        // Record BEFORE asserting — see the deferred branch's note (N-1).
         const cost = costOf(fixture.source);
         recordRow(fixture, cost, 'accept');
+        accepts(fixture.source); // schema-valid AND admitted by costLimitRule
         expect(cost.breadth).toBeLessThanOrEqual(HEADROOM_FRACTION * BREADTH_BUDGET);
         expect(cost.complexity).toBeLessThanOrEqual(HEADROOM_FRACTION * COMPLEXITY_BUDGET);
       });
