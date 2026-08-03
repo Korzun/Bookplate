@@ -653,78 +653,135 @@ export const measureOperationCost = (
  *   fragment reused on `Book.lineage`'s `oldBook`/`newBook` (breadth 40–44
  *   depending on exact field composition; `cost-limit.test.ts` pins 40) and
  *   a richer version of the already-legit richest grid fixture (one more
- *   real field on the shared card, `author`, plus one more nesting level —
- *   `.superpowers/sdd/2026-08-02-query-cost-control/probes/rereview4/verify.ts`)
- *   at **breadth 52**. 52 is the highest MEASURED plausible-legit number and
- *   the one this budget must clear — `cost-limit.test.ts` asserts both
- *   near-future shapes ACCEPT.
+ *   real field on the shared card, `author`, `Validation.messages`, plus one
+ *   more nesting level) at **breadth 56** (task-4-review.md, C-1/M-2 —
+ *   corrected from an earlier, invalid 52: the fixture's original
+ *   `messages { severity message }` selected fields directly on
+ *   `ValidationMessagesConnection` instead of through `edges { node { … } }`,
+ *   which `FieldsOnCorrectType` rejects; the schema-valid rewrite measures
+ *   56, not 52 — `cost-limit.test.ts`'s `accepts()` helper now asserts every
+ *   ACCEPT fixture is schema-valid via `specifiedRules`, closing the gap that
+ *   let the invalid number through once). 56 is the highest MEASURED,
+ *   schema-valid plausible-legit number and the one this budget must clear —
+ *   `cost-limit.test.ts` asserts both near-future shapes ACCEPT.
  * - **Margin.** The reviewer's own recommendation (task-3-re-review-4.md):
- *   ~2× the near-future max (40–52), landing at 100 — "leaving room for one
- *   more field or one more nesting level without landing exactly on the
- *   line," the same F-1 lesson `depth-limit.ts`'s own recalibration comment
- *   already paid for once (a budget set AT the observed legit max is a
- *   production outage waiting for one new field).
- * - **Budget: 100.**
+ *   ~2× the near-future max (40–56 after the C-1 correction), landing at
+ *   100 — "leaving room for one more field or one more nesting level
+ *   without landing exactly on the line," the same F-1 lesson
+ *   `depth-limit.ts`'s own recalibration comment already paid for once (a
+ *   budget set AT the observed legit max is a production outage waiting for
+ *   one new field).
+ * - **Budget: 100** (unchanged by the task-4-review.md correction — only the
+ *   cited floor moved, 52 → 56; 1.8× margin over 56 still clears
+ *   comfortably, task-4-review.md M-2).
  * - **Gap to nearest attack.** The alias-repetition family sits at breadth
  *   120 (12-aliased `searchSuggestions`), 400 (200×`nodes(ids:[100])`), and
  *   3200 (200-alias grid fan-out) — 100 clears the near-future legit max
- *   with 2× margin AND sits 20 below the SMALLEST of those (120), a real
- *   gap, not a coin-flip boundary. (That smallest one, 120, is also caught
- *   independently by `COMPLEXITY_BUDGET` below at 436,404 — losing no
- *   coverage even though its own breadth margin over 100 is comparatively
- *   thin.) The two costliest PROVEN attacks (the 3-hop `nodes()` cycle, the
- *   Series-arm 2-hop) measure breadth **14** — below even the OLD legit max
- *   of 41, let alone 100 — confirming (task-3-report.md §5) that breadth
- *   cannot be this budget's only defense against them; `COMPLEXITY_BUDGET`
- *   is what catches those two. What breadth's 100 uniquely defends against —
- *   the job `COMPLEXITY_BUDGET` structurally cannot do (see that budget's
- *   own doc comment) — is the scalar-list alias attack: 200 aliased
+ *   with margin AND sits 20 below the SMALLEST of those (120), a real gap,
+ *   not a coin-flip boundary. (That smallest one, 120, is also caught
+ *   independently by `COMPLEXITY_BUDGET` below — losing no coverage even
+ *   though its own breadth margin over 100 is comparatively thin.) The two
+ *   costliest PROVEN attacks (the 3-hop `nodes()` cycle, the Series-arm
+ *   2-hop) measure breadth **14** — below even the OLD legit max of 41, let
+ *   alone 100 — confirming (task-3-report.md §5) that breadth cannot be
+ *   this budget's only defense against them; `COMPLEXITY_BUDGET` is what
+ *   catches those two. What breadth's 100 uniquely defends against — the
+ *   job `COMPLEXITY_BUDGET` structurally cannot do (see that budget's own
+ *   doc comment) — is the scalar-list alias attack: 200 aliased
  *   `viewer { library { authors subjects } }` calls measure breadth 800 /
  *   complexity **800** (`cost-limit.test.ts` pins this) — complexity clears
- *   it by miles under its own budget, breadth alone rejects it.
+ *   it by miles under its own budget, breadth alone rejects it. UNLIKE
+ *   complexity (below), breadth's legit/attack ranges genuinely do NOT
+ *   overlap — every attack shape in this schema measures breadth ≥120,
+ *   every legit shape measured measures breadth ≤56 — so "gap to nearest
+ *   attack" is a sound argument on THIS axis specifically (see
+ *   `COMPLEXITY_BUDGET`'s own doc comment for why the same argument does
+ *   NOT hold on the complexity axis, task-4-review.md I-1).
  */
 export const BREADTH_BUDGET = 100;
 
 /**
- * **Task 4 — the complexity budget, ENFORCED.** Measured max → margin →
- * budget → gap to nearest attack:
+ * **Task 4 — the complexity budget, ENFORCED.** Set at 25,000
+ * (task-4-review.md, ruling (b) — RAISED from an initial 17,000 after
+ * independent review found that number miscalibrated on both sides; see
+ * "Corrections from review" below for the full history, kept rather than
+ * deleted per this codebase's "corrections edit the original sentence in
+ * place" discipline).
  *
- * - **Measured max (legit).** Task 3's own table records complexity 84–3823
- *   (the richest SHIPPED grid fixture). But — same recalibration as
- *   `BREADTH_BUDGET` above, and for the identical reason (a budget set from
- *   "today's shipped max" alone repeats the F-1 mistake the moment one more
- *   real field lands) — the richer-grid near-future fixture measured above
- *   scores complexity **13,483**, not 3823: one more real card field
- *   (`author`) plus `validation.messages` plus one more nesting level pushes
- *   a plausible near-future screen 3.5× past the "shipped today" number.
- *   **13,483 is this budget's real floor, not 3823** — `cost-limit.test.ts`
- *   asserts this exact fixture ACCEPTS, alongside the `BookCard`-on-lineage
- *   near-future shape (complexity 724, comfortably clear) and the labeled
- *   PLAUSIBLE device-list + `enabledUsers` consolidation (2,182).
- * - **Margin.** Unlike breadth's wide-open corridor (52 legit vs. 120
- *   smallest attack — room for a full 2×), complexity's corridor is
- *   genuinely narrow: the nearest attack this project has ever measured is
- *   **20,200** (200×`nodes(ids:[100])`, the ledger's own N-1 probe) — only
- *   1.5× the near-future legit max of 13,483. A 2×-style margin (≈27,000)
- *   would land ABOVE the attack and admit it; that is not available here,
- *   and pretending otherwise would be inventing headroom the measurements
- *   don't support. The honest number sits inside the corridor with real
- *   space on both sides: **17,000** is +26.1% over the 13,483 legit floor
- *   and −15.8% below the 20,200 attack floor — not landing exactly on
- *   either line, the same non-negotiable the breadth budget above and
- *   `depth-limit.ts`'s own `MAX_DEPTH` recalibration both insist on, even
- *   though the available room is smaller on this axis.
- * - **Budget: 17,000.**
- * - **Gap to nearest attack: 3,200 (20,200 − 17,000), 15.8% below it.**
- *   Every OTHER measured attack clears this budget by 2–3 orders of
- *   magnitude (40,402 for the 2-hop-from-`nodes()` cycle up to 4,040,402 for
- *   the 3-hop cycle) — 20,200 is the single tightest gap in the whole attack
- *   table, which is why it, not one of the million-plus rows, sets the
- *   ceiling on how much margin this budget can safely claim.
- *   `Library.entries(first: 999999999)` (breadth 6, complexity 303) clears
- *   BOTH budgets by design — Task 1's execution-time `rejectOversizePage`
- *   is the layer that stops it, not this validation-time rule (task-3-report
- *   §5's own conclusion, unchanged by Task 4).
+ * **Derivation: legit anchors, not "gap to nearest attack."** Unlike
+ * `BREADTH_BUDGET` above, complexity's legit and attack ranges are NOT
+ * cleanly separated — see "The overlap band" below — so this budget is
+ * derived from the highest MEASURED, schema-valid, Task-1-PERMITTED legit
+ * traffic, not from a gap to any particular attack number:
+ *
+ * - **19,103** — the richest calibrated grid fixture (`entries` + the
+ *   `Series` arm's `books`, full `BookCard`), paginated with
+ *   `entries(first: 100)` — the MAXIMUM page size `CONNECTION_LIMITS.
+ *   libraryEntries.maxSize` (`schema/pagination.ts`) and Task 1's
+ *   `rejectOversizePage` both explicitly PERMIT. A budget below this number
+ *   creates a real contradiction between this validation-time rule and the
+ *   resolver-time rule that already allows the identical request
+ *   (task-4-review.md, C-2) — a client paginating at the documented maximum
+ *   page size must not get a 400 from a DIFFERENT layer of this same plan.
+ * - **22,283** — the near-future "richer grid" shape (breadth 56, above),
+ *   corrected to valid GraphQL (task-4-review.md, C-1): one more real card
+ *   field (`author`), `Validation.messages` (through `edges { node { … } }`,
+ *   default page size 20), and one more nesting level, at the connections'
+ *   DEFAULT (not maximum) page sizes.
+ * - **7,705** — the highest complexity measured among this repo's
+ *   PRE-EXISTING, ACCEPT-asserting real-HTTP tests
+ *   (`depth-limit-integration.test.ts`'s "two hops of Book → Series → books
+ *   off a single `book(id:)` field", `first: 50` — task-4-review.md I-3),
+ *   45% of this budget: real headroom, not a coincidence of a small test
+ *   corpus.
+ *
+ * **Budget: 25,000** — +30.9% over 19,103, +12.2% over 22,283. Clears every
+ * schema-valid legit and near-future shape measured for this task, including
+ * the two the budget exists to protect (task-4-review.md's own recommended
+ * number, adopted rather than re-derived independently — the review had
+ * already done the anchor analysis and re-deriving a different number
+ * without new evidence would just be a second guess). Does NOT admit a
+ * shape that simultaneously maxes BOTH `entries(first: 100)` AND the
+ * `Series` arm's `books(first: 100)` in the same request (measured ~34,400)
+ * — that shape compounds two independent max-page requests at once and was
+ * never one of the measured legit anchors; it stays correctly rejected, the
+ * same as before this fix.
+ *
+ * **The overlap band — stated plainly, not implied away.** Complexity-only
+ * attack shapes and legitimate paginated traffic overlap CONTINUOUSLY across
+ * roughly 15,000–23,000: the identical AST shape (a bounded connection at a
+ * large page size) reads as "legit" or "attack" depending only on which
+ * field it happens to be rooted at, not on any structural difference this
+ * walk can see. Measured (task-4-review.md, I-1): `nodes(ids:[56]) →
+ * books(first: 100)` (breadth 5, complexity 16,857) and `series →
+ * books(first: 56)` (breadth 7, complexity 16,903, `S` genuinely uncapped —
+ * `UNBOUNDED_LIST_MULTIPLIER`'s own assumed-worst-case 100 is what prices
+ * `S`, not a real bound on it) sit in the SAME band as this budget's own
+ * legit anchors (19,103 / 22,283) and are ADMITTED at 25,000, same as they
+ * were at 17,000 — raising the budget does not newly admit this family, it
+ * was never excluded by any complexity number in the range this project has
+ * ever measured. **No complexity threshold in this band can cleanly
+ * separate legit traffic from these bounded-cost attack shapes — that is
+ * not a gap in this number, it is a property of the metric on this
+ * schema.** What makes admitting some attack-shaped queries in this band
+ * ACCEPTABLE is Task 1's own `CONNECTION_LIMITS` capping the real row count
+ * on every individual connection hop to 100 — `nodes(ids:[56]) →
+ * books(first:100)` fetches at most 5,600 real rows, not an unbounded
+ * amount — not that this rule discriminates cost by intent. Complexity's
+ * real job, proven by the attack table (task-3-report.md §5,
+ * `cost-limit.test.ts`'s "budget enforcement" describe), is catching
+ * COMPOUNDING across multiple hops (the million-plus-complexity multi-hop
+ * cycles) — a coarse ceiling against unbounded amplification, not a
+ * fine-grained legit/attack classifier in the tens-of-thousands range. Task
+ * 3's own carried debt already named the root cause: `Library.series`'s
+ * multiplier (100, `UNBOUNDED_LIST_MULTIPLIER`) is an ASSUMPTION, not a
+ * measured bound — now load-bearing rather than merely advisory, because
+ * this rule enforces (task-4-review.md, I-1).
+ *
+ * `Library.entries(first: 999999999)` (breadth 6, complexity 303) clears
+ * BOTH budgets by design — Task 1's execution-time `rejectOversizePage` is
+ * the layer that stops it, not this validation-time rule (task-3-report §5's
+ * own conclusion, unchanged by Task 4).
  *
  * **Why this budget cannot be the only one enforced** (the mirror image of
  * `BREADTH_BUDGET`'s own "why not complexity alone" note): complexity is
@@ -733,16 +790,40 @@ export const BREADTH_BUDGET = 100;
  * (task-3-report.md §5, "Handoff requirement for Task 4") measured this
  * precisely: 200 aliased `viewer { library { authors subjects } }` calls
  * (`Library.subjects`/`Library.authors` are unpaginated scalar lists, no
- * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 21% of THIS
+ * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 3.2% of THIS
  * budget, nowhere near rejecting — while breadth (800) clears
- * `BREADTH_BUDGET` (100) 8× over. Complexity would need ~950 aliases of the
- * same shape before it noticed; breadth catches it at ~13. Neither number
- * is decorative — each is the ONLY defense against one proven attack family
- * (see `cost-limit.test.ts`'s "both budgets are load-bearing" describe
- * block, which disables each independently and shows the other's own
- * regression tests red without it).
+ * `BREADTH_BUDGET` (100) 8× over. Neither number is decorative — each is
+ * the ONLY defense against one proven attack family (see
+ * `cost-limit.test.ts`'s "both budgets are load-bearing" describe block,
+ * which disables each independently and shows the other's own regression
+ * tests red without it).
+ *
+ * **Corrections from review (task-4-review.md), kept in place per this
+ * plan's own "corrections edit the original sentence in place" discipline,
+ * not deleted:**
+ * 1. (C-1) The ORIGINAL 13,483/52 "richer grid" floor was measured from a
+ *    fixture that is not valid GraphQL against this schema (`messages {
+ *    severity message }` selected directly on `ValidationMessagesConnection`
+ *    instead of through `edges { node { … } }}`) — it validated only because
+ *    the ACCEPT test ran `costLimitRule` in isolation, where
+ *    `FieldsOnCorrectType` never fires; over real HTTP the same document is
+ *    a 400. The schema-valid rewrite measures 56/22,283, not 52/13,483.
+ *    Corrected: `cost-limit.test.ts`'s `accepts()` helper now asserts
+ *    `specifiedRules` validity for every ACCEPT fixture, not just this one.
+ * 2. (C-2) 17,000 rejected `entries(first: 100)` on the richest grid
+ *    (19,103) — a page size Task 1's own `rejectOversizePage` explicitly
+ *    permits. Corrected: 25,000 clears it.
+ * 3. (I-1) The original "gap to nearest attack" framing for THIS axis
+ *    (20,200, 200×`nodes(ids:[100])`) was doubly wrong: that attack is
+ *    independently breadth-caught (400 > 100) so it never constrained
+ *    complexity at all, AND the replacement "nearest complexity-only
+ *    ceiling" (36,367) was also not real — complexity-only-admitted shapes
+ *    exist continuously below it (15,051 / 16,857 / 16,903, all still
+ *    admitted at 25,000). Corrected: derivation now anchors on legit
+ *    traffic only ("Derivation: legit anchors" above), and the overlap band
+ *    is stated explicitly rather than implying a clean corridor exists.
  */
-export const COMPLEXITY_BUDGET = 17_000;
+export const COMPLEXITY_BUDGET = 25_000;
 
 /** `extensions.code`/`extensions.http.status` for a breadth-budget rejection — same shape convention `pagination.ts`'s `PAGE_SIZE_EXCEEDED`/`BACKWARD_PAGINATION_UNSUPPORTED` and `builder.ts`'s `UNAUTHENTICATED`/`FORBIDDEN` already use (`{ code, http: { status } }`), and the same CODE NAMING `@pothos/plugin-complexity`'s own validator seam used (task-2-report.md, probe 6 — `QUERY_DEPTH`/`QUERY_BREADTH`/`QUERY_COMPLEXITY`) — reused here for the naming, not the plugin's behavior (that seam shipped no `http.status` at all, one of the gaps this rule closes). `depth-limit.ts`'s own `GraphQLError` carries NO explicit `extensions` (it relies on graphql-js/yoga's default `GRAPHQL_VALIDATION_FAILED` + content-negotiated status) — this rule sets one explicitly so a client (the eventual Apollo `errorLink`) can distinguish "you asked for too much" from an ordinary validation typo, the same way `PAGE_SIZE_EXCEEDED` already lets it distinguish that from `BACKWARD_PAGINATION_UNSUPPORTED`. */
 const breadthBudgetError = (breadth: number, node: OperationDefinitionNode): GraphQLError =>

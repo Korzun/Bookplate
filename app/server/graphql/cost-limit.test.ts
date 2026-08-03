@@ -4,6 +4,7 @@ import {
   Kind,
   OperationDefinitionNode,
   parse,
+  specifiedRules,
   validate,
   type DocumentNode,
 } from 'graphql';
@@ -725,7 +726,7 @@ describe('costLimitRule — budget enforcement (Task 4 regression suite)', () =>
     expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
   });
 
-  it('rejects 200x nodes(ids:[100]) (the ledger N-1 probe, 20,000 lookups) — breadth 400 AND complexity 20,200 (BOTH budgets fire)', () => {
+  it('rejects 200x nodes(ids:[100]) (the ledger N-1 probe, 20,000 lookups) — breadth 400 catches it; complexity 20,200 is now UNDER COMPLEXITY_BUDGET (25,000) — breadth only (task-4-review.md, ruling (b): this is the one test whose catch-split changes at the raised budget, a deliberate tradeoff, not a regression — see cost-limit.ts COMPLEXITY_BUDGET doc comment, "overlap band")', () => {
     const errors = runRule(
       `{ ${Array.from(
         { length: 200 },
@@ -733,7 +734,7 @@ describe('costLimitRule — budget enforcement (Task 4 regression suite)', () =>
           `a${i}: nodes(ids: [${Array.from({ length: 100 }, (_ignored, j) => `"id${i}_${j}"`).join(', ')}]) { id }`
       ).join(' ')} }`
     );
-    expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
+    expect(codesOf(errors)).toEqual(['QUERY_BREADTH']);
   });
 
   it('rejects series { books } — the I-4 unbounded-list 2-hop through Library.series — complexity 364,903 (complexity only; breadth 11 stays under BREADTH_BUDGET)', () => {
@@ -774,13 +775,31 @@ describe('costLimitRule — budget enforcement (Task 4 regression suite)', () =>
 
 /**
  * Every legit fixture from Task 3's calibration table (task-3-report.md §4)
- * — plus the two near-future shapes Task 3's own round-4 re-review
- * identified as the REAL ceiling `BREADTH_BUDGET`/`COMPLEXITY_BUDGET` had to
- * clear (task-3-re-review-4.md; reproduced exactly by
- * `probes/rereview4/verify.ts`) — asserts ACCEPTANCE.
+ * — plus the near-future shapes and the Task-1-legal max-page shapes that
+ * set `BREADTH_BUDGET`/`COMPLEXITY_BUDGET` — asserts ACCEPTANCE.
+ *
+ * `accepts()` now asserts EACH fixture is schema-valid (`specifiedRules`)
+ * BEFORE asserting it's admitted by `costLimitRule` — task-4-review.md, I-2.
+ * Without this, a fixture that happens to be invalid GraphQL (a selection
+ * `FieldsOnCorrectType` would reject) can still "pass" here, because
+ * `costLimitRule` alone — unlike the real validation pipeline — never runs
+ * that check; `fieldDefOf` treats an unresolvable field as a childless leaf
+ * rather than an error (by design, see `fieldDefOf`'s own doc comment: "not
+ * an error here... another rule's problem"). That gap is exactly how C-1
+ * (task-4-review.md) got through once: the original "richer grid" fixture
+ * selected `Validation.messages { severity message }` directly, when
+ * `Validation.messages` is a CONNECTION (`ValidationMessagesConnection`) —
+ * `severity`/`message` only exist on `ValidationMessage`, reachable through
+ * `edges { node { … } }`. It measured a smaller, wrong number (13,483) than
+ * the schema-valid version (22,283) and both budgets were calibrated against
+ * it. This assertion makes that class of error impossible to reintroduce —
+ * every fixture in this describe block, present and future, is checked
+ * against the real schema the same way a client's request actually would be.
  */
-describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration table + the two near-future recalibration shapes)", () => {
+describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration table + near-future + Task-1-legal max-page shapes)", () => {
   const accepts = (source: string): void => {
+    const schemaErrors = validate(schema, parse(source), specifiedRules);
+    expect(schemaErrors).toEqual([]); // I-2: fail loudly if a fixture isn't real, sendable GraphQL.
     expect(runRule(source)).toEqual([]);
   };
   const runRule = (source: string): readonly GraphQLError[] =>
@@ -795,6 +814,30 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
         pendingFix { state { autoFixes { field kind from to } } }
       }
       { viewer { library { entries(first: 20) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books(first: 10) { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`);
+  });
+
+  // task-4-review.md, C-2: the SAME richest grid, but paginated with
+  // `entries(first: 100)` — the MAXIMUM page size `CONNECTION_LIMITS.
+  // libraryEntries.maxSize` and Task 1's own `rejectOversizePage` both
+  // explicitly permit. A client paginating at the documented maximum must
+  // not get rejected by a DIFFERENT layer of this same plan — this is a
+  // binding constraint, not merely a nice-to-have, and is now a committed
+  // regression test rather than an implicit assumption.
+  it('the richest grid at entries(first:100) — the MAXIMUM page size Task 1 permits on this connection — breadth 41 / complexity 19,103, must ACCEPT (task-4-review.md, C-2 — the exact shape 17,000 wrongly rejected)', () => {
+    accepts(`
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 100) {
         edges { node {
           ... on Book { ...BookCard }
           ... on Series { books(first: 10) { edges { node { ...BookCard } } } }
@@ -818,7 +861,15 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
         } } } } }`);
   });
 
-  it('near-future shape 2: the richer grid (one more real card field + validation.messages + one more nesting level) — breadth 52 / complexity 13,483, the TRUE legit ceiling this task budgeted above, not 3823', () => {
+  // task-4-review.md, C-1: the ORIGINAL version of this fixture selected
+  // `validation.messages { severity message }` directly on
+  // `ValidationMessagesConnection` — invalid GraphQL (`severity`/`message`
+  // only exist on `ValidationMessage`, through `edges { node { … } }`) — and
+  // measured a wrong, smaller number (breadth 52 / complexity 13,483) that
+  // both budgets were then calibrated against. Corrected here to the
+  // schema-valid selection; `accepts()`'s new `specifiedRules` check means
+  // this class of mistake can no longer pass silently.
+  it('near-future shape 2: the richer grid (one more real card field + validation.messages + one more nesting level) — breadth 56 / complexity 22,283, corrected per task-4-review.md C-1 (was an invalid 52/13,483)', () => {
     accepts(`
       fragment FullCard on Book {
         id
@@ -826,7 +877,7 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
         author
         series { id name }
         progress { percentage }
-        validation { id valid messages { severity message } }
+        validation { id valid messages { edges { node { severity message } } } }
         pendingFix { state { autoFixes { field kind from to } } }
       }
       { viewer { library { entries(first: 20) {
@@ -837,7 +888,7 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
       } } } }`);
   });
 
-  it('the labeled PLAUSIBLE device-list + enabledUsers consolidation (breadth 13 / complexity 2,182 — the single highest-percentage-of-budget legit row, 12.8% of COMPLEXITY_BUDGET)', () => {
+  it('the labeled PLAUSIBLE device-list + enabledUsers consolidation (breadth 13 / complexity 2,182 — the single highest-percentage-of-budget legit row, 8.7% of COMPLEXITY_BUDGET)', () => {
     accepts(
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
     );
