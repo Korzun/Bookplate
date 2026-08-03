@@ -321,4 +321,100 @@ describe('Series.books connection', () => {
         .seriesByName ?? null
     ).toBeNull();
   });
+
+  // Query-cost-control task 1. `Series.books` reached this way
+  // (`Library.seriesByName`, a `t.prismaField`) drives Pothos's own
+  // query-planning walk — `series/model.ts`'s doc comment on this field has
+  // the full mechanism reasoning (why the reject lives in the `query`
+  // callback, not a `resolve` override).
+  describe('page-size bound', () => {
+    it('rejects `first` one above the max page size (100)', async () => {
+      const result = await harness.execute(PAGE, {
+        viewer: harness.aliceViewer,
+        variables: { first: 101 },
+      });
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.extensions).toEqual({
+        code: 'PAGE_SIZE_EXCEEDED',
+        http: { status: 400 },
+      });
+    });
+
+    it('accepts `first` exactly at the max page size (100)', async () => {
+      const result = await harness.execute(PAGE, {
+        viewer: harness.aliceViewer,
+        variables: { first: 100 },
+      });
+
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('returns at most the default page size (20) when `first` is omitted', async () => {
+      // Five books already exist (the fixtures above) — far below the
+      // default of 20. Seed enough more that the assertion actually
+      // discriminates a bound from no bound at all.
+      for (let i = 0; i < 20; i++) {
+        await harness.prisma.book.create({
+          data: {
+            userId: harness.aliceOwner.userId,
+            id: `6${String(i).padStart(2, '0')}`.padEnd(32, 'z'),
+            title: `Filler ${i}`,
+            series: 'The Expanse',
+            seriesId: 'series-1',
+            seriesIndex: i + 10,
+            size: 1,
+            mtime: 1,
+            addedAt: 1,
+          },
+        });
+      }
+
+      const result = await harness.execute(
+        `{ viewer { library { seriesByName(name: "The Expanse") { books {
+          edges { node { title } }
+          pageInfo { hasNextPage }
+        } } } } }`,
+        { viewer: harness.aliceViewer }
+      );
+
+      expect(result.errors).toBeUndefined();
+      const books = (
+        result.data as {
+          viewer: {
+            library: {
+              seriesByName: { books: { edges: unknown[]; pageInfo: { hasNextPage: boolean } } };
+            };
+          };
+        }
+      ).viewer.library.seriesByName.books;
+      expect(books.edges).toHaveLength(20);
+      expect(books.pageInfo.hasNextPage).toBe(true);
+    });
+
+    // The OTHER reachable path to `Series.books`: through `LibraryEntry`'s
+    // union arm off `Library.entries`, where the parent `Series` row is
+    // hand-fetched (`context.prisma.series.findMany()`, `library/model.ts`)
+    // rather than produced by Pothos's own query-planning — the existing
+    // "resolves a nested relation (Series.books) through the union" test
+    // (`library/entries.test.ts`) documents that this takes the Prisma
+    // plugin's per-row FALLBACK path, the opposite of `seriesByName`'s
+    // planned-query path above. Both must reject; this is the one that
+    // would silently keep clamping if the guard only worked by accident on
+    // one of the two.
+    it('rejects an oversize `first` reached through the LibraryEntry union arm too', async () => {
+      const result = await harness.execute(
+        `{ viewer { library { entries(first: 10) {
+          edges { node { __typename ... on Series { books(first: 101) { edges { node { title } } } } } }
+        } } } }`,
+        { viewer: harness.aliceViewer }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.extensions).toEqual({
+        code: 'PAGE_SIZE_EXCEEDED',
+        http: { status: 400 },
+      });
+    });
+  });
 });

@@ -105,13 +105,41 @@ describe('Library.progress', () => {
     expect(after.edges.map((e) => e.node.document)).toEqual(['2'.repeat(32), '1'.repeat(32)]);
   });
 
-  it('clamps `first` to at most 100, as REST clamps `take`', async () => {
-    const page = await readPage({ first: 100_000 });
+  // Superseded by query-cost-control task 1's "reject, never clamp" ruling
+  // (pagination.ts's `rejectOversizePage` doc comment): a silent clamp here
+  // used to answer an out-of-range `first` with a truncated page; it now
+  // rejects loudly instead, matching `Library.entries`'s own oversize test.
+  it('rejects `first` above 100 instead of silently clamping it', async () => {
+    const result = await harness.execute(PAGE, {
+      viewer: harness.aliceViewer,
+      variables: { first: 100_000 },
+    });
 
-    // Clamping is not observable through row counts on a 3-row fixture; what
-    // is observable is that an out-of-range request is answered rather than
-    // rejected, and that the clamp is the shared one REST uses.
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions).toEqual({
+      code: 'PAGE_SIZE_EXCEEDED',
+      http: { status: 400 },
+    });
+  });
+
+  it('accepts `first` exactly at 100, the max page size', async () => {
+    const page = await readPage({ first: 100 });
+
     expect(page.edges).toHaveLength(3);
+  });
+
+  it('returns at most the default page size (50) when `first` is omitted', async () => {
+    // Seed past the default so the assertion actually discriminates: the
+    // `beforeEach` fixture above (3 rows) is far below 50 and would pass
+    // this test even with no bound at all.
+    for (let i = 0; i < 60; i++) {
+      const document = `d${String(i).padStart(2, '0')}`.padEnd(32, 'z');
+      await seedProgress(harness.aliceOwner.userId, document, 1_600_000_000 + i);
+    }
+    const page = await readPage({});
+
+    expect(page.edges).toHaveLength(50);
+    expect(page.pageInfo.hasNextPage).toBe(true);
   });
 
   it('rejects backward pagination loudly rather than returning the leading page', async () => {

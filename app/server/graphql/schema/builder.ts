@@ -9,6 +9,7 @@ import type { Context } from '../context';
 import { getDatamodel } from '../generated/pothos-types';
 import type PrismaTypes from '../generated/pothos-types';
 import { isOwnerOrAdmin } from './node-scope';
+import { CONNECTION_LIMITS, rejectOversizeIdBatch } from './pagination';
 
 export const builder = new SchemaBuilder<{
   Context: Context;
@@ -129,7 +130,25 @@ export const builder = new SchemaBuilder<{
   // The generated getDatamodel() supplies the same DMMF explicitly — see
   // @pothos/plugin-prisma's README and prisma-node.spike.test.ts.
   prisma: { client: (context: Context) => context.prisma, dmmf: getDatamodel() },
-  relay: { clientMutationId: 'omit', cursorType: 'String' },
+  relay: {
+    clientMutationId: 'omit',
+    cursorType: 'String',
+    // `Query.nodes(ids:)` is a plain root field (no parent's merged Prisma
+    // `select` to bypass, unlike `t.relatedConnection` — see
+    // `series/model.ts`'s `books` field for that distinction), so a custom
+    // `resolve` here IS the field's real resolver on every path
+    // (`@pothos/plugin-relay/lib/schema-builder.js`: `resolveNodesFn`, when
+    // given, is wired directly as the field's `resolve`, not a fallback).
+    // `CONNECTION_LIMITS.nodesBatch`'s doc comment (pagination.ts) records
+    // where `100` comes from — this field currently has no client caller to
+    // source a bound from.
+    nodesQueryOptions: {
+      resolve: (_root, args, _context, _info, resolveNodes) => {
+        rejectOversizeIdBatch('Query.nodes', args.ids, CONNECTION_LIMITS.nodesBatch);
+        return resolveNodes(args.ids);
+      },
+    },
+  },
 });
 
 builder.addScalarType('DateTime', DateTimeResolver);
