@@ -28,6 +28,31 @@ describe('rejectOversizePage', () => {
   it('throws a GraphQLError instance, not a plain Error', () => {
     expect(() => rejectOversizePage('Field', { first: 999999999 }, 100)).toThrow(GraphQLError);
   });
+
+  // Review I-2: the guard must reject an oversize `last` too — before this
+  // fix it only ever looked at `first`, so `Series.books`/`Validation.
+  // messages` (which genuinely support backward pagination) silently fell
+  // through to the native `maxSize` clamp on `last`.
+  it('allows a `last` request exactly at maxSize', () => {
+    expect(() => rejectOversizePage('Field', { last: 10 }, 10)).not.toThrow();
+  });
+
+  it('allows an omitted `last`', () => {
+    expect(() => rejectOversizePage('Field', { last: null }, 10)).not.toThrow();
+  });
+
+  it('rejects a `last` request one over maxSize with PAGE_SIZE_EXCEEDED / 400', () => {
+    expect(() => rejectOversizePage('Field', { last: 11 }, 10)).toThrowError(
+      expect.objectContaining({
+        message: 'Field allows at most 10 items per page (requested 11).',
+        extensions: { code: 'PAGE_SIZE_EXCEEDED', http: { status: 400 } },
+      })
+    );
+  });
+
+  it('rejects an oversize `first` even when `last` is also present', () => {
+    expect(() => rejectOversizePage('Field', { first: 11, last: 1 }, 10)).toThrow(GraphQLError);
+  });
 });
 
 describe('rejectOversizeIdBatch', () => {

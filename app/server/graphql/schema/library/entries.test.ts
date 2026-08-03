@@ -170,6 +170,22 @@ describe('Library.entries', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
   });
 
+  // Precedence probe (review I-2 fix): `rejectOversizePage` now also checks
+  // `last`, but `rejectBackwardPagination` runs first in this resolver and
+  // rejects ANY `last` at all — so even an oversize `last` must still
+  // surface as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED. The
+  // more specific "you can't paginate backward here" error must not be
+  // shadowed by a size error.
+  it('rejects an oversize `last` as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { entries(last: 999999999) { edges { node { __typename } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+  });
+
   it('rejects `before` instead of silently returning the leading page', async () => {
     const result = await harness.execute(
       '{ viewer { library { entries(before: "some-opaque-cursor") { edges { node { __typename } } } } } }',

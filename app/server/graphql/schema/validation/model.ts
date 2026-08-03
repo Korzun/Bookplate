@@ -48,6 +48,15 @@ export const model = builder.prismaObject('Validation', {
      * (forward-only store cursor, see `rejectBackwardPagination`'s doc
      * comment in `pagination.ts`), `t.relatedConnection` wraps a genuine
      * Prisma relation, so `last`/`before` genuinely work here.
+     *
+     * `maxSize`/`defaultSize` are 100/20 — NOT raised to accommodate the
+     * "hundreds of rows" case above; a client reading hundreds of messages
+     * pages through them 100 at a time instead. (Corrected after review,
+     * I-1: this shipped as 500/50 initially, an undetected 5x/2.5x widening
+     * of `@pothos/plugin-prisma`'s own pre-existing 100/20 default for an
+     * unconfigured `t.relatedConnection` — see `CONNECTION_LIMITS`'s doc
+     * comment in `pagination.ts` for the measured amplification and the
+     * full correction.)
      */
     messages: t.relatedConnection('messages', {
       cursor: 'userId_bookId_seq',
