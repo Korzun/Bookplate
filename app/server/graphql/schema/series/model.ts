@@ -29,10 +29,15 @@ export const model = builder.prismaNode('Series', {
       // Native `maxSize`/`defaultSize` bound the actual Prisma query
       // (`@pothos/plugin-prisma`'s `prismaCursorConnectionQuery` — verified
       // by reading `node_modules/@pothos/plugin-prisma/lib/util/cursors.js`)
-      // — but by CLAMPING an over-max `first` down to `maxSize`, not
+      // — but by CLAMPING an over-max `first`/`last` down to `maxSize`, not
       // rejecting it, which the "reject, never clamp" ruling forbids. Kept
       // anyway as the defense-in-depth bound on the SQL itself; the actual
-      // reject lives in `query` below.
+      // reject lives in `query` below. 100/20 here is a RESTATEMENT of
+      // `@pothos/plugin-prisma`'s own default for an unconfigured
+      // `t.relatedConnection` (`cursors.js:58-59`), not a new number — this
+      // field was already effectively bounded there before this task; see
+      // `CONNECTION_LIMITS`'s doc comment (`pagination.ts`) for the full
+      // before/after table.
       maxSize: CONNECTION_LIMITS.seriesBooks.maxSize,
       defaultSize: CONNECTION_LIMITS.seriesBooks.defaultSize,
       // WHY THE REJECT LIVES HERE, NOT IN A `resolve` OVERRIDE: `t

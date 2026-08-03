@@ -361,13 +361,18 @@ describe('Validation.messages connection', () => {
   // (`series/model.ts`'s doc comment on its `books` field) — the reject
   // lives in the `query` callback, not a `resolve` override, because
   // `t.relatedConnection` only calls a user `resolve` as a fallback.
+  // Bound is 100/20, NOT 500/50 — corrected after review (I-1): 500/50 was
+  // an undetected 5x/2.5x widening of `@pothos/plugin-prisma`'s own
+  // pre-existing 100/20 default for an unconfigured `t.relatedConnection`.
+  // See `CONNECTION_LIMITS`'s doc comment (`pagination.ts`) for the full
+  // correction and the measured amplification this caused.
   describe('page-size bound', () => {
-    it('rejects `first` one above the max page size (500)', async () => {
+    it('rejects `first` one above the max page size (100)', async () => {
       const result = await harness.execute(
         pageQuery(bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID)),
         {
           viewer: harness.aliceViewer,
-          variables: { first: 501 },
+          variables: { first: 101 },
         }
       );
 
@@ -378,18 +383,43 @@ describe('Validation.messages connection', () => {
       });
     });
 
-    it('accepts `first` exactly at the max page size (500)', async () => {
-      const page = await readMessages({ first: 500 });
+    it('accepts `first` exactly at the max page size (100)', async () => {
+      const page = await readMessages({ first: 100 });
 
       expect(page.edges).toHaveLength(5);
     });
 
-    it('returns at most the default page size (50) when `first` is omitted', async () => {
+    // Review I-2: `last` genuinely works on this connection (see the field's
+    // own doc comment), so an oversize `last` must be rejected too, not
+    // silently clamped by the native `maxSize`.
+    it('rejects `last` one above the max page size (100)', async () => {
+      const result = await harness.execute(
+        pageQuery(bookGlobalId(harness.aliceOwner.userId, MANY_BOOK_ID)),
+        {
+          viewer: harness.aliceViewer,
+          variables: { last: 101 },
+        }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.extensions).toEqual({
+        code: 'PAGE_SIZE_EXCEEDED',
+        http: { status: 400 },
+      });
+    });
+
+    it('accepts `last` exactly at the max page size (100)', async () => {
+      const page = await readMessages({ last: 100 });
+
+      expect(page.edges).toHaveLength(5);
+    });
+
+    it('returns at most the default page size (20) when `first` is omitted', async () => {
       // Five messages already exist (the fixture above) — far below the
-      // default of 50. Seed enough more that the assertion actually
+      // default of 20. Seed enough more that the assertion actually
       // discriminates a bound from no bound at all.
       await harness.prisma.validationMessage.createMany({
-        data: Array.from({ length: 60 }, (_, i) => ({
+        data: Array.from({ length: 30 }, (_, i) => ({
           userId: harness.aliceOwner.userId,
           bookId: MANY_BOOK_ID,
           seq: i + 10,
@@ -421,7 +451,7 @@ describe('Validation.messages connection', () => {
           };
         }
       ).viewer.library.book.validation.messages;
-      expect(messages.edges).toHaveLength(50);
+      expect(messages.edges).toHaveLength(20);
       expect(messages.pageInfo.hasNextPage).toBe(true);
     });
   });

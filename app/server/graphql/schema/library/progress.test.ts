@@ -151,6 +151,20 @@ describe('Library.progress', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
   });
 
+  // Precedence probe (review I-2 fix): `rejectOversizePage` now also checks
+  // `last`, but `rejectBackwardPagination` runs first in this resolver and
+  // rejects ANY `last` at all — so an oversize `last` must still surface as
+  // BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED.
+  it('rejects an oversize `last` as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { progress(last: 999999999) { edges { node { document } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+  });
+
   /**
    * Reads through `Query.user(id:).library` as the admin. This is the
    * assertion that discriminates "pages the parent Owner's progress" from

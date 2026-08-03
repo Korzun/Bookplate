@@ -350,6 +350,32 @@ describe('Series.books connection', () => {
       expect(result.errors).toBeUndefined();
     });
 
+    // Review I-2: `last` genuinely works on this connection (unlike
+    // `Library.entries`/`Library.progress`, which reject it outright via
+    // `rejectBackwardPagination`), so an oversize `last` must be rejected
+    // too, not silently clamped by the native `maxSize`.
+    it('rejects `last` one above the max page size (100)', async () => {
+      const result = await harness.execute(PAGE, {
+        viewer: harness.aliceViewer,
+        variables: { last: 101 },
+      });
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.extensions).toEqual({
+        code: 'PAGE_SIZE_EXCEEDED',
+        http: { status: 400 },
+      });
+    });
+
+    it('accepts `last` exactly at the max page size (100)', async () => {
+      const result = await harness.execute(PAGE, {
+        viewer: harness.aliceViewer,
+        variables: { last: 100 },
+      });
+
+      expect(result.errors).toBeUndefined();
+    });
+
     it('returns at most the default page size (20) when `first` is omitted', async () => {
       // Five books already exist (the fixtures above) — far below the
       // default of 20. Seed enough more that the assertion actually

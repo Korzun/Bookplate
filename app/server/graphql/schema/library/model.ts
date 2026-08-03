@@ -147,7 +147,12 @@ builder.node(model, {
         // doc comment (pagination.ts) for where `100`/`20` come from.
         rejectOversizePage('Library.entries', args, CONNECTION_LIMITS.libraryEntries.maxSize);
         const cursor = decodeCursor(args.after);
-        // Same clamp REST applies to `take` (routes/ui.ts): default 20, 1..100.
+        // Same default/floor REST applies to `take` (routes/ui.ts): default
+        // 20, floor 1. The upper `Math.min` bound below is no longer the
+        // operative ceiling (review M-1) — `rejectOversizePage` above already
+        // rejects anything past `maxSize` before this line runs — but it's
+        // kept as harmless defense-in-depth rather than removed, in case a
+        // future edit ever reorders these two lines.
         const take = Math.min(
           Math.max(args.first ?? CONNECTION_LIMITS.libraryEntries.defaultSize, 1),
           CONNECTION_LIMITS.libraryEntries.maxSize
@@ -335,8 +340,11 @@ builder.node(model, {
         // this migration; `CONNECTION_LIMITS`'s doc comment records that origin.
         rejectOversizePage('Library.progress', args, CONNECTION_LIMITS.libraryProgress.maxSize);
         const cursor = decodeProgressCursor(args.after);
-        // Same clamp and same default (50) REST applies via `parseProgressTake`,
-        // now sharing that function's bounds rather than restating them.
+        // Same default (50) REST applies via `parseProgressTake`, now sharing
+        // that function's default rather than restating it. Its own upper
+        // clamp is no longer the operative ceiling (review M-1) —
+        // `rejectOversizePage` above already rejects anything past `maxSize`
+        // before this line runs — kept as harmless defense-in-depth.
         const take = clampProgressTake(args.first);
 
         const page = await context.stores.user.getUserProgressPage(owner.userId, cursor, take);
