@@ -8,6 +8,8 @@ import {
 } from 'graphql';
 import type { ASTVisitor } from 'graphql';
 
+import { createFragmentWalkMemo, type FragmentWalkMemo } from './fragment-walk-memo';
+
 /**
  * Hand-rolled replacement for a `graphql-depth-limit`-shaped package — no new
  * dependency, wired into yoga via the same `addValidationRule` seam
@@ -67,30 +69,6 @@ import type { ASTVisitor } from 'graphql';
 export const MAX_DEPTH = 12;
 
 /**
- * Per-document memoization + cycle guard for `relativeDepthOf`'s
- * `FragmentSpread` branch (task-3 review, C-1/C-2 — REQUIRED, not an
- * optimization: without it, a document that spreads fragment N inside
- * fragment N+1 costs `2^N` traversals — measured 4777ms for N=24 on a
- * 2.2KB unauthenticated POST — and a cyclic fragment recurses until the
- * stack overflows, surfacing as an unhandled `RangeError` → HTTP 500).
- * `cache` holds each fragment's relative depth, computed once no matter how
- * many times (or from how many operations in the same document) it is
- * spread — this is sound because a fragment's contribution to depth is
- * relative, not absolute (`depthOf(set, d) === d + relativeDepthOf(set)`),
- * so it does not depend on where the spread sits. `inProgress` holds the
- * names currently being computed; re-entering one mid-computation is a
- * cycle, reported once via `onCycle` and treated as contributing 0 (cyclic
- * fragments are invalid GraphQL regardless of this rule — this is a clean
- * validation error, not a crash, and lets the REST of a fragment with a
- * cyclic branch alongside legitimate fields still measure correctly).
- */
-type FragmentDepthMemo = {
-  cache: Map<string, number>;
-  inProgress: Set<string>;
-  onCycle: (fragmentName: string) => void;
-};
-
-/**
  * The max RELATIVE nesting depth added by `selectionSet` — "relative"
  * meaning independent of how deep the caller already is; the caller adds
  * its own base depth on top (`measureOperationDepth`/`depthLimitRule`
@@ -109,12 +87,31 @@ type FragmentDepthMemo = {
  * inline fragments — a named fragment is still just a type condition plus
  * a reusable selection, not a hop of its own), but unlike inline fragments
  * they can be spread more than once, from more than one place, including
- * from inside another fragment — hence `memo`.
+ * from inside another fragment — hence `memo` (`FragmentWalkMemo<number>`,
+ * `fragment-walk-memo.ts` — task-3 review, C-1/C-2, REQUIRED not an
+ * optimization: without it, a document where fragment N spreads fragment
+ * N-1 twice costs `2^N` traversals, measured 4777ms for N=24 on a 2.2KB
+ * unauthenticated POST, and a cyclic fragment recurses until the stack
+ * overflows with an unhandled `RangeError` → HTTP 500).
+ *
+ * Caching a fragment's value by name alone (`memo.cache`) is sound because
+ * a fragment's contribution to depth is RELATIVE, not absolute:
+ * `depthOf(set, d) === d + relativeDepthOf(set)` for any base depth `d`, so
+ * the same fragment spread from two different depths still contributes the
+ * same relative number and computing it once is exact, not an
+ * approximation (`fragment-walk-memo.ts`'s own doc comment generalizes this
+ * soundness condition to breadth/complexity). `memo.inProgress` catches the
+ * cyclic case inline — the same mechanism `resolveFragment` implements
+ * generically: a fragment that spreads itself (directly or transitively)
+ * is invalid GraphQL regardless of this rule, so treating the cyclic
+ * occurrence as contributing 0 (`memo.onCycle`) is a clean validation
+ * error, not a crash, and lets the REST of a fragment with a cyclic branch
+ * alongside legitimate fields still measure correctly.
  */
 const relativeDepthOf = (
   selectionSet: SelectionSetNode,
   fragments: Record<string, FragmentDefinitionNode>,
-  memo: FragmentDepthMemo
+  memo: FragmentWalkMemo<number>
 ): number =>
   selectionSet.selections.reduce((max, selection) => {
     if (selection.kind === Kind.FIELD) {
@@ -157,11 +154,11 @@ export const measureOperationDepth = (
   operation: OperationDefinitionNode,
   fragments: Record<string, FragmentDefinitionNode>
 ): number =>
-  relativeDepthOf(operation.selectionSet, fragments, {
-    cache: new Map(),
-    inProgress: new Set(),
-    onCycle: () => {},
-  });
+  relativeDepthOf(
+    operation.selectionSet,
+    fragments,
+    createFragmentWalkMemo<number>(() => {})
+  );
 
 const INTROSPECTION_ROOT_FIELDS = new Set(['__schema', '__type']);
 
@@ -202,7 +199,7 @@ const isIntrospectionOnly = (selectionSet: SelectionSetNode): boolean =>
  * The memo (cache + in-progress set) is created ONCE per document, shared
  * across every operation `OperationDefinition` visits — correct because a
  * fragment's relative depth does not depend on which operation spreads it
- * (see `FragmentDepthMemo`'s doc comment), and it is what makes a document
+ * (see `relativeDepthOf`'s own doc comment), and it is what makes a document
  * that spreads the same fragment from multiple operations still only pay
  * for computing that fragment's depth once.
  */
@@ -215,23 +212,19 @@ export const depthLimitRule =
         fragments[definition.name.value] = definition;
     }
     const reportedCycles = new Set<string>();
-    const memo: FragmentDepthMemo = {
-      cache: new Map(),
-      inProgress: new Set(),
-      onCycle: (name) => {
-        // Deduped: once a fragment's cycle is reported, `relativeDepthOf`
-        // returning early (contributing 0) for every later re-encounter of
-        // the SAME name is the correct math, not a second bug — one error
-        // per cyclic fragment is the useful signal.
-        if (reportedCycles.has(name)) return;
-        reportedCycles.add(name);
-        context.reportError(
-          new GraphQLError(`Cannot spread fragment "${name}" within itself.`, {
-            nodes: fragments[name],
-          })
-        );
-      },
-    };
+    const memo: FragmentWalkMemo<number> = createFragmentWalkMemo<number>((name) => {
+      // Deduped: once a fragment's cycle is reported, `relativeDepthOf`
+      // returning early (contributing 0) for every later re-encounter of
+      // the SAME name is the correct math, not a second bug — one error
+      // per cyclic fragment is the useful signal.
+      if (reportedCycles.has(name)) return;
+      reportedCycles.add(name);
+      context.reportError(
+        new GraphQLError(`Cannot spread fragment "${name}" within itself.`, {
+          nodes: fragments[name],
+        })
+      );
+    });
 
     return {
       OperationDefinition(node: OperationDefinitionNode) {

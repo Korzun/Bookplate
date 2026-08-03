@@ -1,32 +1,48 @@
 /**
- * The generic shape of `depth-limit.ts`'s `FragmentDepthMemo` (task-3
- * review, C-1/C-2), extracted so a SECOND AST walk — `cost-limit.ts`'s
- * combined breadth+complexity walk — can reuse the identical
- * memoize-by-fragment-name + cycle-guard discipline without copying it.
- * `depth-limit.ts` itself is intentionally left untouched (query-cost-control
- * ledger, "CONTROLLER RULING": its file and both its test files stay
- * UNCHANGED) — this module is what a walk built AFTER it reaches for instead
- * of re-deriving the same fix from scratch, which is exactly how the two
- * walks would otherwise diverge (the "shared guards extracted, never
- * copied" rule, `rejectBackwardPagination` precedent).
+ * The generic shape of the per-document memoize-by-fragment-name +
+ * cycle-guard discipline BOTH of this schema's structural-limit rules need
+ * for their fragment-spread walk: `depth-limit.ts`'s `relativeDepthOf` and
+ * `cost-limit.ts`'s `costOfSelectionSet`. Originally extracted (task-3
+ * review, C-1/C-2) from `depth-limit.ts`'s own local `FragmentDepthMemo` so
+ * a SECOND AST walk — `cost-limit.ts`'s combined breadth+complexity walk —
+ * could reuse the identical discipline without copying it; `depth-limit.ts`
+ * itself stayed on its own local copy for one release cycle, frozen by a
+ * ruling (query-cost-control ledger, "CONTROLLER RULING") that its file and
+ * both its test files must stay byte-identical in case a later task adopted
+ * `@pothos/plugin-complexity` and deleted `depth-limit.ts` outright — no
+ * point migrating a file that might be removed. That plugin was REJECTED
+ * (its own fragment walk reproduces both bugs below — task-2 report, probes
+ * 1-2) and `depth-limit.ts` is now permanent, so the ruling that justified
+ * two copies has expired: `depth-limit.ts` consumes this module too
+ * (cost-calibration-suite plan, task 1) — this is now the ONLY
+ * implementation of the fix in the repo, which is the point, not a
+ * cosmetic tidy-up. Two copies of a security-relevant guard is a
+ * silent-drift hazard: a future edit to one walk's cycle handling (or a new
+ * third walk copy-pasting the "obvious" inline version instead of reaching
+ * for this module) could silently reintroduce either bug below in only one
+ * place:
+ *   - without a cache, a document where fragment N spreads fragment N-1
+ *     twice costs `2^N` traversals (measured 4777ms at N=24 on a 2.2KB
+ *     unauthenticated POST, before `depth-limit.ts` was first fixed;
+ *     `@pothos/plugin-complexity` reproduces the identical curve today —
+ *     task-2 report, probe 1);
+ *   - without an in-progress guard, a cyclic fragment recurses until the
+ *     stack overflows (`RangeError`, task-2 report probe 2, our own C-2) —
+ *     an unhandled crash (HTTP 500) instead of the clean GraphQL validation
+ *     error a cyclic fragment should produce.
  *
  * Generalized over `T` (a plain `number` for depth, `{breadth, complexity}`
  * for the cost walk) because the VALUE a fragment contributes differs per
- * walk, but the CONTROL FLOW around computing it does not:
- *   - without a cache, a document where fragment N spreads fragment N-1
- *     twice costs `2^N` traversals (measured 4777ms at N=24 before
- *     `depth-limit.ts` was fixed; `@pothos/plugin-complexity` reproduces the
- *     identical curve today — task-2 report, probe 1);
- *   - without an in-progress guard, a cyclic fragment recurses until the
- *     stack overflows (`RangeError`, task-2 report probe 2, our own C-2).
+ * walk, but the CONTROL FLOW around computing it does not.
  *
  * Caching by fragment name alone (not by name + calling context) is sound
  * for any walk where a named fragment's contribution depends only on its
  * OWN declared type condition, never on where it is spread from — true for
- * depth (`depth-limit.ts`'s own reasoning) and equally true for breadth and
- * complexity (a fragment always carries a type condition, so summing its
- * fields costs the same number of nodes / the same weight regardless of
- * which parent spreads it).
+ * depth (`depth-limit.ts`'s `relativeDepthOf`, whose own doc comment states
+ * the underlying identity `depthOf(set, d) === d + relativeDepthOf(set)`)
+ * and equally true for breadth and complexity (a fragment always carries a
+ * type condition, so summing its fields costs the same number of nodes /
+ * the same weight regardless of which parent spreads it).
  */
 export type FragmentWalkMemo<T> = {
   cache: Map<string, T>;
