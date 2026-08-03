@@ -726,7 +726,7 @@ describe('costLimitRule — budget enforcement (Task 4 regression suite)', () =>
     expect(codesOf(errors)).toEqual(['QUERY_BREADTH', 'QUERY_COMPLEXITY']);
   });
 
-  it('rejects 200x nodes(ids:[100]) (the ledger N-1 probe, 20,000 lookups) — breadth 400 catches it; complexity 20,200 is now UNDER COMPLEXITY_BUDGET (25,000) — breadth only (task-4-review.md, ruling (b): this is the one test whose catch-split changes at the raised budget, a deliberate tradeoff, not a regression — see cost-limit.ts COMPLEXITY_BUDGET doc comment, "overlap band")', () => {
+  it('rejects 200x nodes(ids:[100]) (the ledger N-1 probe, 20,000 lookups) — breadth 400 catches it; complexity 20,200 is UNDER COMPLEXITY_BUDGET (30,000, was 25,000) — breadth only (task-4-review.md, ruling (b): this is the one test whose catch-split changes at the raised budget, a deliberate tradeoff, not a regression — see cost-limit.ts COMPLEXITY_BUDGET doc comment, "overlap band")', () => {
     const errors = runRule(
       `{ ${Array.from(
         { length: 200 },
@@ -748,7 +748,7 @@ describe('costLimitRule — budget enforcement (Task 4 regression suite)', () =>
     expect(codesOf(errors)).toEqual(['QUERY_COMPLEXITY']);
   });
 
-  it('rejects the scalar-list alias attack (200x viewer{library{authors subjects}}) — breadth 800 catches it; complexity is 800, 4.7% of COMPLEXITY_BUDGET — BREADTH IS THE ONLY DEFENSE for this family', () => {
+  it('rejects the scalar-list alias attack (200x viewer{library{authors subjects}}) — breadth 800 catches it; complexity is 800, 2.7% of COMPLEXITY_BUDGET (30,000) — BREADTH IS THE ONLY DEFENSE for this family', () => {
     const source = `{ ${Array.from(
       { length: 200 },
       (_, i) => `a${i}: viewer { library { authors subjects } }`
@@ -947,7 +947,31 @@ describe("costLimitRule — every legit fixture ACCEPTS (Task 3's calibration ta
       } } } }`);
   });
 
-  it('the labeled PLAUSIBLE device-list + enabledUsers consolidation (breadth 13 / complexity 2,182 — the single highest-percentage-of-budget legit row, 8.7% of COMPLEXITY_BUDGET)', () => {
+  // final-review.md, I-2: the admin user-list mirror — `viewer { users {
+  // library { progress(first: 50) { ... } } } }`, the exact four `Progress`
+  // fields `component/user-progress-row` renders (`document`/`percentage`/
+  // `device`/`timestamp`), at `Library.progress`'s own DEFAULT page size
+  // (50), plus the two `pageInfo` fields a paginated client needs to keep
+  // fetching further pages. UNLIKE every other row in this describe block,
+  // this is a REAL, presently-reachable admin traversal (REST already
+  // exposes it, one user at a time, via `GET /api/users/:username/progress`
+  // — `use-fetch-user-progress-list.ts`) — not a hypothetical or
+  // near-future shape — and it was never in any calibration table before
+  // this fix: the whole-branch final review measured it at 91% of the
+  // then-shipped 25,000 `COMPLEXITY_BUDGET`, higher than every anchor that
+  // budget was derived from, with one more `Progress` field (+2,500) enough
+  // to reject it. Fixed by raising `COMPLEXITY_BUDGET` to 30,000 (see that
+  // constant's own doc comment, final-review.md I-2) rather than shrinking
+  // `INSTANCE_USER_MULTIPLIER` — this fixture is now a PERMANENT calibration
+  // anchor so this class of gap (a real screen never measured) cannot
+  // recur silently.
+  it('the admin user-list mirror (final-review.md, I-2) — breadth 13 / complexity 22,602, a REAL admin screen, now a permanent calibration anchor', () => {
+    accepts(
+      '{ viewer { users { library { progress(first: 50) { edges { node { document percentage device timestamp } } pageInfo { hasNextPage endCursor } } } } } }'
+    );
+  });
+
+  it('the labeled PLAUSIBLE device-list + enabledUsers consolidation (breadth 13 / complexity 2,182 — 7.3% of COMPLEXITY_BUDGET)', () => {
     accepts(
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify enabledUsers { id username } } } }'
     );

@@ -278,6 +278,42 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * large household's e-reader collection), and `INSTANCE_USER_MULTIPLIER =
  * 50` for `Viewer.users`/`Device.enabledUsers` (headroom for a larger
  * shared instance — e.g. a small book club or extended family).
+ *
+ * **`INSTANCE_USER_MULTIPLIER` re-examined and KEPT at 50 (final-review.md,
+ * I-2).** The whole-branch final review measured a REAL admin screen —
+ * `viewer { users { library { progress(first: 50) { edges { node { document
+ * percentage device timestamp } } } } } } }` (`component/user-progress-row`'s
+ * exact four fields, the server's own default page size) — at complexity
+ * 22,602-22,803 depending on exact `pageInfo` selection, 91% of the
+ * then-shipped `COMPLEXITY_BUDGET` (25,000) and higher than every anchor
+ * that budget was derived from, with NO calibration-table row recording it.
+ * One more `Progress` field (any of `deviceId`/`position`/`currentChapter`)
+ * adds a flat +2,500 (both `INSTANCE_USER_MULTIPLIER` and
+ * `CONNECTION_LIMITS.libraryProgress`'s own multiplier compound on every
+ * unit added beneath them) and would have rejected a real, shipping screen.
+ * Two paths existed: shrink the multiplier (which would UNDER-price the
+ * genuine worst case a larger deployment could reach — the multiplier's job
+ * is bounding how expensive `Viewer.users` fan-out CAN be, not how expensive
+ * today's smallest deployment happens to be), or keep it and give the
+ * budget real headroom. **Decision: keep `INSTANCE_USER_MULTIPLIER = 50`,
+ * raise `COMPLEXITY_BUDGET`** — see that constant's own doc comment for the
+ * re-derivation. Restated explicitly, per the review's own instruction not
+ * to paper over a wrong multiplier with a budget change: 50 is not being
+ * defended as "close enough" — Bookplate is self-hosted, single-instance,
+ * multi-tenant-free software; there is no code, REST, or product concept of
+ * "more than one Bookplate community" sharing an instance, so the
+ * quantity `Viewer.users` fans out over is bounded by how many people
+ * realistically share ONE self-hosted server: a household, extended family,
+ * or a small reading community (a book club, a friend group) — not a
+ * public multi-tenant SaaS user base. 50 registered accounts is a generous
+ * ceiling for that shape of deployment (an order of magnitude above a
+ * typical household, headroom for a genuinely large shared community), and
+ * nothing measured by this review suggests it is too small for Bookplate's
+ * actual target deployment size. If a real self-hosted instance ever
+ * exceeds 50 registered users, this multiplier under-prices `Viewer.users`
+ * fan-out and needs re-deriving upward — that risk is accepted deliberately,
+ * not overlooked, the same "assumed, not measured, because no code bound
+ * exists" disclosure this constant has always carried.
  */
 const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
 const HOUSEHOLD_DEVICE_MULTIPLIER = 20;
@@ -714,12 +750,16 @@ export const measureOperationCost = (
 export const BREADTH_BUDGET = 100;
 
 /**
- * **Task 4 — the complexity budget, ENFORCED.** Set at 25,000
- * (task-4-review.md, ruling (b) — RAISED from an initial 17,000 after
- * independent review found that number miscalibrated on both sides; see
- * "Corrections from review" below for the full history, kept rather than
- * deleted per this codebase's "corrections edit the original sentence in
- * place" discipline).
+ * **Task 4 — the complexity budget, ENFORCED.** Set at 30,000
+ * (final-review.md, I-2 — RAISED a second time, from 25,000, after the
+ * whole-branch final review found a REAL shipping screen — the admin
+ * user-list mirror, see "Derivation" below — sitting at 91% of the
+ * then-current budget and absent from every calibration table; 25,000 was
+ * itself RAISED from an initial 17,000 by task-4-review.md, ruling (b),
+ * after independent review found THAT number miscalibrated on both sides;
+ * see "Corrections from review" below for the full history, kept rather
+ * than deleted per this codebase's "corrections edit the original sentence
+ * in place" discipline).
  *
  * **Derivation: legit anchors, not "gap to nearest attack."** Unlike
  * `BREADTH_BUDGET` above, complexity's legit and attack ranges are NOT
@@ -744,16 +784,32 @@ export const BREADTH_BUDGET = 100;
  * - **7,705** — the highest complexity measured among this repo's
  *   PRE-EXISTING, ACCEPT-asserting real-HTTP tests
  *   (`depth-limit-integration.test.ts`'s "two hops of Book → Series → books
- *   off a single `book(id:)` field", `first: 50` — task-4-review.md I-3),
- *   45% of this budget: real headroom, not a coincidence of a small test
- *   corpus.
+ *   off a single `book(id:)` field", `first: 50` — task-4-review.md I-3).
+ * - **22,602** — (final-review.md, I-2) the admin user-list mirror,
+ *   `viewer { users { library { progress(first: 50) { edges { node {
+ *   document percentage device timestamp } } pageInfo { hasNextPage
+ *   endCursor } } } } } } }` — the exact four `Progress` fields
+ *   `component/user-progress-row` renders, at `Library.progress`'s own
+ *   default page size (50), plus the two `pageInfo` fields a paginated
+ *   client needs to keep fetching. Unlike the other three anchors, this one
+ *   is a REAL, presently-reachable screen (an admin traversal REST already
+ *   supports via `GET /api/users/:username/progress`), not a hypothetical
+ *   or near-future shape — and it was never in any calibration table before
+ *   this fix (`cost-limit.test.ts`'s "every legit fixture ACCEPTS" describe
+ *   block, below, now carries it permanently). At the then-shipped 25,000
+ *   budget it measured 91% — higher than every other anchor here — and one
+ *   more `Progress` field (+2,500, `INSTANCE_USER_MULTIPLIER` × the
+ *   connection's own multiplier compounding on any addition beneath both)
+ *   would have rejected it. See `INSTANCE_USER_MULTIPLIER`'s own doc comment
+ *   (above) for why the fix is a budget raise, not a multiplier cut.
  *
- * **Budget: 25,000** — +30.9% over 19,103, +12.2% over 22,283. Clears every
- * schema-valid legit and near-future shape measured for this task, including
- * the two the budget exists to protect (task-4-review.md's own recommended
- * number, adopted rather than re-derived independently — the review had
- * already done the anchor analysis and re-deriving a different number
- * without new evidence would just be a second guess).
+ * **Budget: 30,000** — +57.1% over 19,103, +34.6% over 22,283, +32.8% over
+ * the new top anchor (22,602). Clears every schema-valid legit and
+ * near-future shape measured for this task, including the four anchors
+ * above, while staying 21.2% below the smallest complexity-only attack this
+ * rule must still catch (36,367, the single-query suggestions path — see
+ * the catch-split table in `cost-limit.test.ts`'s "budget enforcement"
+ * describe block, re-verified unchanged by this raise).
  *
  * **The principle "no budget may reject a Task-1-permitted shape" (C-2) is
  * satisfiable only loosely, not literally — stated honestly here, not
@@ -770,33 +826,43 @@ export const BREADTH_BUDGET = 100;
  * the ~34,400 an earlier version of this paragraph named (that number
  * belongs to a DIFFERENT, cheaper shape — `entries(first: 20)` + the
  * Series arm's `books(first: 100)`, only ONE connection at its max, not
- * both — a mis-transcription now corrected). 25,000 does not, and by
+ * both — a mis-transcription now corrected). 30,000 does not, and by
  * construction cannot, admit either shape; satisfying the principle
  * literally would require raising the budget to ≥172,103, which would also
  * admit the 2-hop `nodes()` cycle (30,402–40,402) and the single-query
  * suggestions attack (36,367) — i.e. it would delete this rule's coverage
  * of its own named attack family. **The honest restatement: this budget
  * admits every REALISTIC Task-1-permitted shape measured for this task (the
- * three anchors above), not every ARITHMETICALLY permitted composition of
+ * anchors above), not every ARITHMETICALLY permitted composition of
  * independently-maxed connections — the validation layer and Task 1's
  * per-hop resolver bounds are DELIBERATELY not coextensive, the same way
  * `MAX_DEPTH` does not admit every depth `rejectOversizePage` would
  * separately allow.**
  *
  * **The nearest counterexample needs no explicit argument at all — a real
- * client-facing trap, flagged here for Task 5's handoff.** At
- * `entries(first: 100)`, the `Series` arm's nested `books` connection must
- * stay at `first: 13` or below to clear this budget (measured: `first: 13`
- * → 24,203, admitted; `first: 14` → 25,903, rejected) — but
- * `CONNECTION_LIMITS.seriesBooks.defaultSize` is **20**, and 13 is BELOW
- * that default. A client that pages the grid at the documented maximum and
- * writes the Series arm's `books` with NO argument at all — the single most
- * natural way to write it, taking the server's own default rather than
- * specifying one — measures **~36,000** and gets a 400. Pinned as two
- * committed tests (`cost-limit.test.ts`, next to the `entries(first:100)`
- * ACCEPT case): `books(first: 13)` accepts, `books` with no argument
- * (server default 20) rejects — so this boundary cannot drift silently the
- * way the ~34,400 number did.
+ * client-facing trap, flagged here for §Q's own handoff (see that doc's
+ * "Query budget" section for the client-facing explanation, corrected by
+ * final-review.md I-1 to give the cost MODEL rather than a single magic
+ * number).** At `entries(first: 100)`, the `Series` arm's nested `books`
+ * connection must stay at `first: 16` or below to clear THIS budget
+ * (30,000) with today's shipped `BookCard` (measured: `first: 13` →
+ * 24,203, `first: 16` → 29,303, both admitted; `first: 17` → 31,003,
+ * rejected — the raise from 25,000 moved this boundary from 13 to 16, a
+ * direct, deliberate consequence of I-2, not an oversight) — but
+ * `CONNECTION_LIMITS.seriesBooks.defaultSize` is **20**, still ABOVE 16. A
+ * client that pages the grid at the documented maximum and writes the
+ * Series arm's `books` with NO argument at all — the single most natural
+ * way to write it, taking the server's own default rather than specifying
+ * one — measures **36,103** and still gets a 400 (25,000 → 30,000 gave
+ * headroom, not a bypass: the no-argument shape sits 6,103 above even the
+ * raised budget). Pinned as two committed tests (`cost-limit.test.ts`, next
+ * to the `entries(first:100)` ACCEPT case): `books(first: 13)` accepts,
+ * `books` with no argument (server default 20) rejects — both still true,
+ * unchanged by this budget raise (13 was never the exact boundary these
+ * tests claimed to pin, only A value inside the accepted range; the
+ * boundary itself moving from 13→16 is exactly why §Q no longer states a
+ * magic number as if it were fixed — see I-1's fix there) — so this
+ * boundary cannot drift silently the way the ~34,400 number did.
  *
  * **The overlap band — stated plainly, not implied away.** Complexity-only
  * attack shapes and legitimate paginated traffic overlap CONTINUOUSLY across
@@ -808,10 +874,11 @@ export const BREADTH_BUDGET = 100;
  * books(first: 56)` (breadth 7, complexity 16,903, `S` genuinely uncapped —
  * `UNBOUNDED_LIST_MULTIPLIER`'s own assumed-worst-case 100 is what prices
  * `S`, not a real bound on it) sit in the SAME band as this budget's own
- * legit anchors (19,103 / 22,283) and are ADMITTED at 25,000, same as they
- * were at 17,000 — raising the budget does not newly admit this family, it
- * was never excluded by any complexity number in the range this project has
- * ever measured. **No complexity threshold in this band can cleanly
+ * legit anchors (19,103 / 22,283 / 22,602) and are ADMITTED at 30,000, same
+ * as they were at 25,000 and at 17,000 — raising the budget (either time)
+ * does not newly admit this family, it was never excluded by any complexity
+ * number in the range this project has ever measured. **No complexity
+ * threshold in this band can cleanly
  * separate legit traffic from these bounded-cost attack shapes — that is
  * not a gap in this number, it is a property of the metric on this
  * schema.** What makes admitting some attack-shaped queries in this band
@@ -841,7 +908,7 @@ export const BREADTH_BUDGET = 100;
  * (task-3-report.md §5, "Handoff requirement for Task 4") measured this
  * precisely: 200 aliased `viewer { library { authors subjects } }` calls
  * (`Library.subjects`/`Library.authors` are unpaginated scalar lists, no
- * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 3.2% of THIS
+ * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 2.7% of THIS
  * budget, nowhere near rejecting — while breadth (800) clears
  * `BREADTH_BUDGET` (100) 8× over. Neither number is decorative — each is
  * the ONLY defense against one proven attack family (see
@@ -873,8 +940,21 @@ export const BREADTH_BUDGET = 100;
  *    admitted at 25,000). Corrected: derivation now anchors on legit
  *    traffic only ("Derivation: legit anchors" above), and the overlap band
  *    is stated explicitly rather than implying a clean corridor exists.
+ * 4. (final-review.md, I-2) A whole-branch review measured a REAL admin
+ *    screen — `viewer { users { library { progress(first: 50) { … } } } }`
+ *    (`component/user-progress-row`'s exact fields) — at complexity 22,602,
+ *    91% of the then-shipped 25,000 and higher than every anchor that
+ *    number was derived from; it was in no calibration table. Two fixes
+ *    were possible: shrink `INSTANCE_USER_MULTIPLIER` (would under-price
+ *    the genuine worst case a larger self-hosted deployment could reach),
+ *    or add the anchor and raise the budget with real headroom. Corrected:
+ *    `INSTANCE_USER_MULTIPLIER` kept at 50 (see its own doc comment for the
+ *    stated deployment-size reasoning), `COMPLEXITY_BUDGET` raised to
+ *    30,000 (see "Derivation" above for the anchor and margin math), and
+ *    the admin user-list mirror added permanently to `cost-limit.test.ts`'s
+ *    calibration describe block so it can never again go unmeasured.
  */
-export const COMPLEXITY_BUDGET = 25_000;
+export const COMPLEXITY_BUDGET = 30_000;
 
 /** `extensions.code`/`extensions.http.status` for a breadth-budget rejection — same shape convention `pagination.ts`'s `PAGE_SIZE_EXCEEDED`/`BACKWARD_PAGINATION_UNSUPPORTED` and `builder.ts`'s `UNAUTHENTICATED`/`FORBIDDEN` already use (`{ code, http: { status } }`), and the same CODE NAMING `@pothos/plugin-complexity`'s own validator seam used (task-2-report.md, probe 6 — `QUERY_DEPTH`/`QUERY_BREADTH`/`QUERY_COMPLEXITY`) — reused here for the naming, not the plugin's behavior (that seam shipped no `http.status` at all, one of the gaps this rule closes). `depth-limit.ts`'s own `GraphQLError` carries NO explicit `extensions` (it relies on graphql-js/yoga's default `GRAPHQL_VALIDATION_FAILED` + content-negotiated status) — this rule sets one explicitly so a client (the eventual Apollo `errorLink`) can distinguish "you asked for too much" from an ordinary validation typo, the same way `PAGE_SIZE_EXCEEDED` already lets it distinguish that from `BACKWARD_PAGINATION_UNSUPPORTED`. */
 const breadthBudgetError = (breadth: number, node: OperationDefinitionNode): GraphQLError =>
