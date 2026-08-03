@@ -59,10 +59,16 @@ import { CONNECTION_LIMITS } from './schema/pagination';
  *
  * `complexity` = `FIELD_COST` (the cost of selecting the field itself) plus
  * `multiplier(field) × Σ complexity(children)`. `multiplier` is 1 for every
- * field EXCEPT the four connections `CONNECTION_LIMITS` already bounds
+ * field EXCEPT: the four connections `CONNECTION_LIMITS` already bounds
  * (`Library.entries`, `Library.progress`, `Series.books`,
  * `Validation.messages`) and `Query.nodes(ids:)`, where it is the field's
- * effective page size / batch size — see `multiplierFor` below.
+ * effective page size / batch size; and (task-3-review round 2, I-4) seven
+ * plain, non-connection list fields whose element type reaches further
+ * amplifiable content and whose cardinality has no code-enforced ceiling
+ * (`Library.series`, `Library.pendingFixes`, `Viewer.users`,
+ * `Viewer.devices`, `Device.enabledUsers`, `Book.lineage`,
+ * `ScanResult.imported`) — see `multiplierFor` and
+ * `UNBOUNDED_LIST_FIELD_LIMITS` below for both groups.
  *
  * Task 2's report is explicit about why this is NOT the plugin's own
  * default weighting: `@pothos/plugin-complexity`'s `DEFAULT_LIST_MULTIPLIER`
@@ -100,6 +106,117 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
   'Library.progress': CONNECTION_LIMITS.libraryProgress,
   'Series.books': CONNECTION_LIMITS.seriesBooks,
   'Validation.messages': CONNECTION_LIMITS.validationMessages,
+};
+
+/**
+ * `ParentTypeName.fieldName` → an ASSUMED worst-case multiplier for a plain
+ * (non-connection, no `first`/`last` argument at all) list field whose
+ * element type reaches further amplifiable content — task-3-review round 2,
+ * I-4, found AFTER the I-1 fix: `multiplierFor` priced five coordinates and
+ * left `Library.series: [Series!]!` (an unbounded `findMany`,
+ * `library/model.ts:267-275`) at the default multiplier of 1, handing a
+ * free `×S` (S = the library's series count) to any connection nested
+ * under it. Measured: a 132-byte `{ series { books(first:12) { … }
+ * books(first:100) { … } } }` scored breadth 11 / complexity 3,652 / depth
+ * 10 — INSIDE every one of this task's own calibrated envelopes (legit
+ * maxima 41 / 3823 / 12) — while fetching `S × 1,200` book rows, against
+ * the richest calibrated legit screen's ~220 rows at complexity 3823. A
+ * control isolated `series` as the exact unpriced factor: the identical
+ * 2-hop shape rooted at `nodes(ids:)` instead (a BOUNDED 1,200 rows, no
+ * hidden `×S`) scored 3,650 — same order, no `series` in the path.
+ * `Library.pendingFixes` is the same class (`PendingFix.book.series.books`
+ * reaches the identical connection through one more singular hop).
+ *
+ * The full sweep this finding required (`grep`-level inventory of every
+ * non-connection list field returning a non-scalar type, `schema.generated.graphql`):
+ * of ~24 such fields, MOST are safe with no code change — their element
+ * type is scalar-only (`Book.identifiers` → `Identifier {scheme, value}`,
+ * `PendingFixState.autoFixes`/`appliedFixes`/`proposals` → `MetadataFix`,
+ * `EpubValidationError.messages`/`BookAnalyzeReplacePayload.messages` →
+ * `EpubValidationMessage`, `InvalidInputError.issues` → `InputIssue`,
+ * `UndoSnapshot.appliedFixes`/`proposals` → `MetadataFix`,
+ * `BookUnlinkDocumentPayload.identifiers` → `IdentifierInput`) — there is
+ * nothing further under them to multiply, so pricing them above 1 would
+ * inflate the calibration record for no real risk, the same "don't invent
+ * a number where there's nothing to multiply" discipline
+ * `CONNECTION_FIELD_LIMITS` already follows. One more is safe with EVIDENCE
+ * rather than by leaf-type inspection: `Library.searchSuggestions` /
+ * `SuggestionGroup.items` reaches `Suggestion.book: Book` (which DOES reach
+ * `Book.series.books`) but is genuinely bounded — `getSearchSuggestions`
+ * (`services/book-store.ts:188-261`) caps every branch at `LIMIT 30`, at
+ * most 4 groups, ≤120 rows total, a real code-enforced ceiling, not an
+ * assumption.
+ *
+ * The seven fields below all reach further amplifiable content AND have no
+ * code-enforced ceiling — before this fix, EVERY ONE of them priced at the
+ * default multiplier of 1 (i.e. completely unpriced; none of them restates
+ * an existing bound the way `CONNECTION_FIELD_LIMITS` does):
+ *  - `Library.series` — `findMany({where:{userId}})`, no cap
+ *    (`library/model.ts:267-275`); reaches `Series.books`.
+ *  - `Library.pendingFixes` — `findMany({where:{userId}})`, no cap
+ *    (`library/model.ts:411-423`); reaches `PendingFix.book.series.books`.
+ *  - `Viewer.users` — `findMany({})`, no `where` clause AT ALL (every user
+ *    on the instance), admin-only (`viewer/model.ts:67-73`); reaches
+ *    `User.library.{entries,progress,series,pendingFixes}` — i.e. it can
+ *    chain into every other field this map prices, once per user.
+ *  - `Viewer.devices` — `findMany`, no cap on either branch
+ *    (`viewer/model.ts:127-140`); reaches `Device.enabledUsers`.
+ *  - `Device.enabledUsers` — `findMany`, no cap, admin-only
+ *    (`device/model.ts:87-97`); reaches `User.library.*`, same as
+ *    `Viewer.users` above but scoped to one device.
+ *  - `Book.lineage` — delegates to `BookStore.getBookLineage`, no cap
+ *    visible at the schema layer (`book/model.ts:270-278`); reaches
+ *    `LinkedDocument.{oldBook,newBook}.series.books`.
+ *  - `ScanResult.imported` — `findMany({where:{id:{in:importedBookIds}}})`;
+ *    the `findMany` itself is bounded by `importedBookIds`, but that id
+ *    list has no cap and scales with scan size (`scan-result/model.ts:32-47`);
+ *    reaches `Book.series.books`. Reachable via `Library.scanStatus`,
+ *    `libraryScan`'s mutation payload, and the `scanProgress` subscription.
+ *
+ * None of these has a REST precedent or a measured real-world bound —
+ * exactly the position `Query.nodes(ids:)` was in before Task 1
+ * (`pagination.ts`'s own doc comment: "NO REST or client precedent... Set
+ * to the largest per-page ceiling established for any single connection
+ * above"). Reusing that SAME shared reference point (100, `nodesBatch`)
+ * here, rather than inventing seven new unmeasured numbers, is the
+ * identical choice Task 1 already made for exactly this situation — an
+ * assumed worst case, stated as such, not a measured one.
+ */
+const UNBOUNDED_LIST_MULTIPLIER = CONNECTION_LIMITS.nodesBatch;
+
+const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
+  'Library.series': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  'Library.pendingFixes': {
+    maxSize: UNBOUNDED_LIST_MULTIPLIER,
+    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+  },
+  'Viewer.users': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  'Viewer.devices': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  'Device.enabledUsers': {
+    maxSize: UNBOUNDED_LIST_MULTIPLIER,
+    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+  },
+  'Book.lineage': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
+  'ScanResult.imported': {
+    maxSize: UNBOUNDED_LIST_MULTIPLIER,
+    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+  },
+};
+
+/**
+ * The single lookup `multiplierFor` reads — `CONNECTION_FIELD_LIMITS` and
+ * `UNBOUNDED_LIST_FIELD_LIMITS` are documented separately (genuine
+ * `first`/`last`-bearing connections vs. assumed-worst-case plain lists)
+ * because their NUMBERS have different provenance, but they are read
+ * through one map so `multiplierFor` doesn't need to know which kind of
+ * field it found — `pageSizeMultiplier` already does the right thing for a
+ * field with no `first`/`last` argument at all (both read as `undefined`,
+ * falling through to `defaultSize`, which for every
+ * `UNBOUNDED_LIST_FIELD_LIMITS` entry equals its own `maxSize`).
+ */
+const FIELD_MULTIPLIER_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
+  ...CONNECTION_FIELD_LIMITS,
+  ...UNBOUNDED_LIST_FIELD_LIMITS,
 };
 
 /** Reads a literal `Int` argument's value off a `Field` AST node. `undefined` = argument absent or explicit `null`; `'variable'` = present but not a literal we can read at validation time (a `$variable`) — `multiplierFor` treats both non-literal cases conservatively, never by guessing the runtime value. */
@@ -144,8 +261,9 @@ const pageSizeMultiplier = (
 
 /**
  * The args-aware multiplier for one field occurrence — `1` for every field
- * except the five this module knows are bounded, real-page-size-carrying
- * fields.
+ * except the twelve `FIELD_MULTIPLIER_LIMITS` prices: five real,
+ * `first`/`last`-bearing connections and seven unbounded plain lists
+ * (`UNBOUNDED_LIST_FIELD_LIMITS`, above — task-3-review round 2, I-4).
  *
  * `Query.nodes(ids:)`: multiplier is `ids.length`, clamped to
  * `CONNECTION_LIMITS.nodesBatch` (100) — same reasoning as a connection's
@@ -181,7 +299,7 @@ const multiplierFor = (parentTypeName: string | undefined, field: FieldNode): nu
     return CONNECTION_LIMITS.nodesBatch; // variable-valued `ids` — worst case, not a guess
   }
   const limits = parentTypeName
-    ? CONNECTION_FIELD_LIMITS[`${parentTypeName}.${fieldName}`]
+    ? FIELD_MULTIPLIER_LIMITS[`${parentTypeName}.${fieldName}`]
     : undefined;
   if (!limits) return 1;
   return pageSizeMultiplier(field, limits);
