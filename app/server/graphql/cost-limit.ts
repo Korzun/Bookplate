@@ -111,6 +111,38 @@ const literalIntArg = (field: FieldNode, argName: string): number | 'variable' |
 };
 
 /**
+ * The effective page size for a connection field, reading BOTH `first` and
+ * `last` — Task-3-review finding I-1. `Series.books`/`Validation.messages`
+ * support genuine backward pagination (Task 1 only rejects an OVERSIZE
+ * `last`, same as `first` — `rejectOversizePage`, `pagination.ts:66-81`), so
+ * `books(last: 100)` fetches exactly as many rows as `books(first: 100)`.
+ * Reading only `first` (this function's first version) priced that shape at
+ * `defaultSize` regardless of how many rows it actually fetched — measured
+ * (task-3-review.md, I-1) underpricing the 3-hop `nodes()` cycle 120× when
+ * rewritten with `last:100` (4,040,402 → 33,682) and putting a 2-hop
+ * `last:100` cycle BELOW both legitimate maxima entirely (breadth 10,
+ * complexity 1,682 vs legit max 41 / 3823) — invisible to both metrics
+ * while still fetching 100×100 rows. Whichever direction is present wins;
+ * if a document somehow carries both (Task 1 would reject an oversize
+ * either way, but this rule runs before that), take the larger so this
+ * function never underprices relative to reading either alone. A literal
+ * value is clamped to `[1, maxSize]`; a variable-valued or entirely omitted
+ * argument on EITHER side falls back to `maxSize`/`defaultSize` exactly as
+ * `multiplierFor`'s original single-argument version already did.
+ */
+const pageSizeMultiplier = (
+  field: FieldNode,
+  limits: { maxSize: number; defaultSize: number }
+): number => {
+  const first = literalIntArg(field, 'first');
+  const last = literalIntArg(field, 'last');
+  if (first === undefined && last === undefined) return limits.defaultSize;
+  if (first === 'variable' || last === 'variable') return limits.maxSize;
+  const literal = Math.max(first ?? 0, last ?? 0);
+  return Math.min(Math.max(literal, 1), limits.maxSize);
+};
+
+/**
  * The args-aware multiplier for one field occurrence — `1` for every field
  * except the five this module knows are bounded, real-page-size-carrying
  * fields.
@@ -128,13 +160,14 @@ const literalIntArg = (field: FieldNode, argName: string): number | 'variable' |
  * variable-valued list is common) falls back to the cap, the same
  * "can't resolve, assume worst case" rule connections use below.
  *
- * Connections: a literal `first` is clamped to `[1, maxSize]` — never left
+ * Connections: `pageSizeMultiplier` (above) prices whichever of `first`/
+ * `last` is actually present, clamped to `[1, maxSize]` — never left
  * unclamped, so a single `first: 999999999` (Task 1 already rejects this at
  * EXECUTION time, in the resolver — this rule runs at VALIDATION time,
  * before Task 1's guard ever sees it) reports a sane, bounded multiplier
- * rather than a nine-digit one. Omitted `first` uses `defaultSize` — the
- * CONTROLLER RULING's own instruction (query-cost-control ledger) —  a
- * variable-valued `first` (can't be read at validation time; `graphql-js`
+ * rather than a nine-digit one. Omitted `first`/`last` uses `defaultSize` —
+ * the CONTROLLER RULING's own instruction (query-cost-control ledger) — a
+ * variable-valued argument (can't be read at validation time; `graphql-js`
  * hands validation rules the AST, not resolved variable values) falls back
  * to `maxSize`, the same worst-case-not-a-guess reasoning `ids.length` uses.
  */
@@ -151,10 +184,7 @@ const multiplierFor = (parentTypeName: string | undefined, field: FieldNode): nu
     ? CONNECTION_FIELD_LIMITS[`${parentTypeName}.${fieldName}`]
     : undefined;
   if (!limits) return 1;
-  const first = literalIntArg(field, 'first');
-  if (first === undefined) return limits.defaultSize;
-  if (first === 'variable') return limits.maxSize;
-  return Math.min(Math.max(first, 1), limits.maxSize);
+  return pageSizeMultiplier(field, limits);
 };
 
 /**
@@ -273,6 +303,37 @@ const rootTypeOf = (
   return schema.getSubscriptionType() ?? undefined;
 };
 
+const INTROSPECTION_ROOT_FIELDS = new Set(['__schema', '__type']);
+
+/**
+ * True for an operation that IS `getIntrospectionQuery()` (or a hand-written
+ * equivalent) — every top-level selection is an introspection meta-field.
+ * Task-3-review finding I-3: `getIntrospectionQuery()` measures breadth 220
+ * / complexity 220 — 5.4× this task's own calibrated legit max of 41 — for
+ * the same reason `depth-limit.ts`'s own `isIntrospectionOnly` exemption
+ * exists (its doc comment, I-1 in ITS review): `__Type.fields.type.ofType…`
+ * is deep, legitimate self-reference, not amplification, and in dev
+ * `useSchemaConcealment` is deliberately not installed (`yoga.ts`), so
+ * GraphiQL's own schema-fetch reaches this rule. Zero production exposure
+ * for the same reason `depth-limit.ts`'s version has none:
+ * `NoSchemaIntrospectionCustomRule` already rejects every introspection
+ * operation outright in production before this rule's numbers would matter
+ * to anyone.
+ *
+ * `depth-limit.ts` does not export its own copy of this check (and stays
+ * byte-identical to base per the CONTROLLER RULING, so it cannot be made to
+ * export one) — this is a second, deliberately duplicated copy, same
+ * disposition as `fragment-walk-memo.ts` vs `depth-limit.ts`'s own memo
+ * (task-3-review.md, I-2): re-derived because the source can't be imported
+ * from, not extracted. Carried debt: if either copy's definition of
+ * "introspection-only" ever changes, the other needs the same edit by hand.
+ */
+const isIntrospectionOnly = (selectionSet: SelectionSetNode): boolean =>
+  selectionSet.selections.every(
+    (selection) =>
+      selection.kind === Kind.FIELD && INTROSPECTION_ROOT_FIELDS.has(selection.name.value)
+  );
+
 /**
  * Exposed for `cost-limit.test.ts`'s direct measurement assertions and the
  * calibration probes — mirrors `depth-limit.ts`'s `measureOperationDepth`.
@@ -282,6 +343,13 @@ const rootTypeOf = (
  * through, and — unlike `depth-limit.ts` — `costLimitRule` below does not
  * report cycles either; see its own doc comment for why that is still
  * correct, not a gap).
+ *
+ * Deliberately carries NO introspection exemption, unlike `costLimitRule`
+ * below — this is the pure measurement primitive the calibration probe uses
+ * to record introspection's real number (breadth 220 / complexity 220,
+ * task-3-report.md's calibration table) for the record, exactly mirroring
+ * how `depth-limit.ts` keeps `measureOperationDepth` unexempted while only
+ * `depthLimitRule` skips introspection operations.
  */
 export const measureOperationCost = (
   operation: OperationDefinitionNode,
@@ -293,11 +361,7 @@ export const measureOperationCost = (
     rootTypeOf(schema, operation.operation),
     fragments,
     schema,
-    {
-      cache: new Map(),
-      inProgress: new Set(),
-      onCycle: () => {},
-    }
+    createFragmentWalkMemo(() => {})
   );
 
 /**
@@ -307,6 +371,22 @@ export const measureOperationCost = (
  * `{breadth, complexity}` per operation and hands them to `onMeasured`
  * rather than rejecting anything, so `yoga-plugins.ts`'s `useCostLogging`
  * can log them without this rule owning a budget yet.
+ *
+ * Takes no `schema` parameter (task-3-review, M-2) — `context.getSchema()`
+ * already provides the schema this same `validate()` call was invoked with,
+ * so threading a module-level singleton in from `yoga.ts` was a seam this
+ * rule didn't need and would silently diverge from the moment another
+ * plugin wraps or transforms the schema before validation runs.
+ *
+ * Skips introspection-ONLY operations entirely (`isIntrospectionOnly`,
+ * above) — task-3-review, I-3: `getIntrospectionQuery()` measures breadth
+ * 220, more than 5× this task's own calibrated legit max, for the same
+ * reason `depth-limit.ts`'s `depthLimitRule` skips it (see
+ * `isIntrospectionOnly`'s doc comment). A future Task-4 budget derived from
+ * "legit max ~41" must not also reject GraphiQL's own schema-fetch in dev.
+ * A query that merely INCLUDES `__schema` alongside real fields is NOT
+ * exempt — `isIntrospectionOnly` requires EVERY top-level selection to be a
+ * meta-field, pinned by `cost-limit.test.ts`.
  *
  * Never throws: `costOfSelectionSet` cannot recurse unboundedly on a cyclic
  * fragment (`resolveFragment`'s in-progress guard breaks the cycle, same as
@@ -320,16 +400,27 @@ export const measureOperationCost = (
  * error the way `depth-limit.ts` does: `depth-limit.ts` is wired
  * UNCONDITIONALLY in `yoga.ts` (ahead of this rule in the `plugins:` array),
  * so any cyclic-fragment document is already rejected with a clean error
- * before this rule's own silence could matter — reporting it a second time
- * here would just be a duplicate error for the client to see, not a second
- * layer of protection. What this rule DOES own, independently, is not
- * CRASHING on the same document; `cost-limit.test.ts` pins that directly
- * (seen-to-fail against a memo-less version), the same way
- * `depth-limit.test.ts` pins it for depth.
+ * (in practice TWO: `depth-limit.ts`'s own `onCycle` report AND graphql-js's
+ * built-in `NoFragmentCycles` both fire independently — task-3-review, M-1;
+ * pre-existing on `main`, not introduced here) before this rule's own
+ * silence could matter — reporting a third copy here would only add MORE
+ * noise, not a missing layer of protection. What this rule DOES own,
+ * independently, is not CRASHING on the same document; `cost-limit.test.ts`
+ * pins that directly (seen-to-fail against a memo-less version), the same
+ * way `depth-limit.test.ts` pins it for depth.
+ *
+ * One `onMeasured` call per `OperationDefinition` in the document, not per
+ * EXECUTED operation (task-3-review, M-4) — a document naming N operations
+ * (only one of which `operationName` selects to run) logs N lines. Bounded
+ * by the 100KB body-size cap and arguably correct for a measurement pass
+ * (every defined operation's shape gets recorded, not just the winner), but
+ * it is a log-volume knob a client controls; worth a line in the Task-5
+ * handoff docs, not fixed here.
  */
 export const costLimitRule =
-  (schema: GraphQLSchema, onMeasured: (operationName: string, cost: OperationCost) => void) =>
+  (onMeasured: (operationName: string, cost: OperationCost) => void) =>
   (context: ValidationContext): ASTVisitor => {
+    const schema = context.getSchema();
     const fragments: Record<string, FragmentDefinitionNode> = {};
     for (const definition of context.getDocument().definitions) {
       if (definition.kind === Kind.FRAGMENT_DEFINITION)
@@ -339,6 +430,7 @@ export const costLimitRule =
 
     return {
       OperationDefinition(node: OperationDefinitionNode) {
+        if (isIntrospectionOnly(node.selectionSet)) return;
         const cost = costOfSelectionSet(
           node.selectionSet,
           rootTypeOf(schema, node.operation),

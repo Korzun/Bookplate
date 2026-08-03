@@ -64,6 +64,17 @@ describe('measureOperationCost — boundary math (real schema, needed for args-a
     expect(withFragment).toEqual(withoutFragment);
   });
 
+  // Task-3-review, M-5: `rootTypeOf` resolves `schema.getMutationType()` for
+  // a mutation operation, but no committed assertion pinned that before this
+  // — the code path existed, unexercised.
+  it('resolves the mutation root type, not just the query root', () => {
+    const mutation = costOf(
+      'mutation { progressDelete(input: { document: "x", userId: "u" }) { __typename } }'
+    );
+    // progressDelete(1) + __typename(1) = 2, no multiplier (not one of the 5 bounded fields).
+    expect(mutation).toEqual({ breadth: 2, complexity: 2 });
+  });
+
   // Byte-identical to `depth-limit.test.ts`'s `LIBRARY_GRID_FIXTURE` (minus
   // its `... on Book {}` line wrapping, immaterial to parsing) — the same
   // fixture `depth-limit.ts`'s calibration comment pins at depth 6. Measured
@@ -152,6 +163,46 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
     expect(complexity).toBe(totalComplexity(100));
   });
 
+  // Task-3-review, I-1: `Series.books`/`Validation.messages` genuinely
+  // support backward pagination (Task 1 only rejects an OVERSIZE `last`,
+  // same as `first` — `rejectOversizePage`, `pagination.ts:66-81`), so a
+  // `last:100` read fetches exactly as many rows as `first:100` — reading
+  // only `first` priced it at `defaultSize` regardless, a 120× underprice
+  // measured on the real amplification fixtures (task-3-report.md §4).
+  const booksQuery = (arg: string): string =>
+    `{ viewer { library { book(id: "x") { series { books${arg} { edges { node { id } } } } } } } }`;
+  const totalComplexityForBooks = (multiplier: number): number => {
+    const edgesNodeId = 3;
+    const books = 1 + multiplier * edgesNodeId;
+    const series = 1 + books;
+    const book = 1 + series;
+    const library = 1 + book;
+    const viewer = 1 + library;
+    return viewer;
+  };
+
+  it('a literal `last` prices exactly like a literal `first` of the same value — the bypass this task fixed', () => {
+    const { complexity } = costOf(booksQuery('(last: 7)'));
+    expect(complexity).toBe(totalComplexityForBooks(7));
+  });
+
+  it('`last` past maxSize is clamped, same as `first`', () => {
+    const { complexity } = costOf(booksQuery('(last: 999999999)'));
+    expect(complexity).toBe(totalComplexityForBooks(100));
+  });
+
+  it('a variable-valued `last` falls back to maxSize, same as a variable-valued `first`', () => {
+    const { complexity } = costOf(
+      'query Q($n: Int) { viewer { library { book(id: "x") { series { books(last: $n) { edges { node { id } } } } } } } }'
+    );
+    expect(complexity).toBe(totalComplexityForBooks(100));
+  });
+
+  it('when both `first` and `last` are present, the LARGER wins — this rule never underprices relative to reading either alone', () => {
+    const { complexity } = costOf(booksQuery('(first: 3, last: 30)'));
+    expect(complexity).toBe(totalComplexityForBooks(30));
+  });
+
   it('a non-connection field with a `first`-shaped argument name is unaffected — the multiplier is keyed by (parent type, field), not by argument name alone', () => {
     // `Book.progress` is a plain field (no `first` arg at all in the SDL) —
     // sanity check that `multiplierFor` only fires on the 5 registered
@@ -177,6 +228,46 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
   it('Query.nodes(ids:) with a variable-valued ids list falls back to nodesBatch — same worst-case reasoning as connections', () => {
     const { complexity } = costOf('query Q($ids: [ID!]!) { nodes(ids: $ids) { id } }');
     expect(complexity).toBe(1 + 100 * 1);
+  });
+});
+
+/**
+ * Task-3-review, I-3: `getIntrospectionQuery()` measures breadth 220 (see
+ * task-3-report.md's calibration table) — 5.4× this task's own calibrated
+ * legit max of 41 — for the same reason `depth-limit.ts`'s own
+ * `isIntrospectionOnly` exemption exists (its own doc comment, its I-1):
+ * `__Type.fields.type.ofType.ofType…` is deep, legitimate self-reference,
+ * not amplification, and in dev `useSchemaConcealment` is deliberately not
+ * installed, so GraphiQL's own schema-fetch reaches this rule.
+ */
+describe('costLimitRule — introspection exemption', () => {
+  const measure = (source: string): OperationCost[] => {
+    const measured: OperationCost[] = [];
+    validate(schema, parse(source), [costLimitRule((_name, cost) => measured.push(cost))]);
+    return measured;
+  };
+
+  it('every getIntrospectionQuery() variant produces NO onMeasured call — exempt, same as depth-limit.ts', async () => {
+    const { getIntrospectionQuery } = await import('graphql');
+    for (const options of [{}, { descriptions: false }, { inputValueDeprecation: true }]) {
+      expect(measure(getIntrospectionQuery(options))).toEqual([]);
+    }
+  });
+
+  it('a client query that merely INCLUDES __schema alongside real fields is still measured — not a bypass', () => {
+    const measured = measure('{ __schema { types { name } } viewer { username } }');
+    expect(measured).toHaveLength(1);
+  });
+
+  it("measureOperationCost (the pure calibration primitive) stays UNEXEMPTED, unlike costLimitRule — it is what records introspection's real number for the report", async () => {
+    const { getIntrospectionQuery } = await import('graphql');
+    const { breadth, complexity } = costOf(getIntrospectionQuery());
+    // Real, large numbers — NOT skipped, NOT zero. `costLimitRule`'s own
+    // `onMeasured` callback never fires for this same document (test
+    // above); this function is the one the calibration probe calls
+    // directly, bypassing that exemption on purpose.
+    expect(breadth).toBeGreaterThan(41); // > this task's own calibrated legit max
+    expect(complexity).toBeGreaterThan(41);
   });
 });
 
@@ -207,7 +298,7 @@ describe('costOfSelectionSet — fragment memoization and cycle guard (via costL
   const runRule = (
     document: DocumentNode,
     onMeasured: (name: string, cost: OperationCost) => void = () => {}
-  ) => validate(schema, document, [costLimitRule(schema, onMeasured)]);
+  ) => validate(schema, document, [costLimitRule(onMeasured)]);
 
   it.each([6, 12, 18, 24, 30])(
     'validates an N=%i chained-fragment amplification document in single-digit ms, never rejecting',
@@ -267,7 +358,7 @@ describe('costOfSelectionSet — fragment memoization and cycle guard (via costL
 
 describe('costLimitRule — never rejects, regardless of how large the computed cost is', () => {
   const runRule = (source: string, onMeasured: (name: string, cost: OperationCost) => void) =>
-    validate(schema, parse(source), [costLimitRule(schema, onMeasured)]);
+    validate(schema, parse(source), [costLimitRule(onMeasured)]);
 
   it('the proven 3-hop nodes()-rooted amplification cycle (depth-limit.ts admits this at depth 12) produces zero errors from this rule, but a large measured cost', () => {
     const booksHop = (n: number): string =>
