@@ -14,32 +14,57 @@ import type { ASTVisitor } from 'graphql';
  * `useSchemaConcealment` (yoga.ts) already uses for
  * `NoSchemaIntrospectionCustomRule`.
  *
- * CALIBRATION (measured 2026-08-02, this same depth algorithm): the deepest
- * real screen query — the library grid —
+ * RECALIBRATION (final pre-client-polish review wave, finding F-1; measured
+ * 2026-08-02, this same depth algorithm): `MAX_DEPTH = 9` (task-3's own
+ * calibration) was measured against a library-grid fixture that only walked
+ * the `... on Book` arm of `Library.entries` — but `LibraryEntry` is a
+ * `Book | Series` union and the shipped UI ALSO renders the `Series` arm
+ * with its own nested books (`app/client/src/page/library/index.tsx` →
+ * `SeriesRow` → `useSeriesBookList`), which costs 3 more levels before a
+ * book card even starts. That arm, combined with a book card rich enough to
+ * show a pending-fix banner (`pendingFix { state { autoFixes { … } } }`),
+ * measured depth 11 — REJECTED at the old limit of 9. Full measurement
+ * table (every number reproduced with `measureOperationDepth`, the same
+ * function `depthLimitRule` below calls):
  *
- *   { viewer { library { entries(first: 20) {
- *       edges { node { ... on Book {
- *         series { id name }
- *         progress { percentage }
- *         validation { id valid }
- *       } } }
- *       pageInfo { hasNextPage endCursor }
- *   } } } }
+ * | shape                                                              | depth |
+ * |---------------------------------------------------------------------|------|
+ * | flat grid, thin card (`series`/`progress`/`validation`)             |    6 |
+ * | flat grid, card w/ `pendingFix.state.autoFixes`                     |    8 |
+ * | grid + `Series` arm, thin card                                      |    9 |
+ * | grid + `Series` arm, card w/ `pendingFix.state.autoFixes` (either union arm; a `BookCard` fragment reused across both arms measures the same — fragments are depth-transparent, see `relativeDepthOf`) | **11** |
+ * | series detail (`seriesByName → books → node`, thin card or w/ `pendingFix.state.autoFixes`) |    9 |
+ * | series detail + full `validation.messages` per book (richest plausible) |   10 |
+ * | book detail (`pendingFix.state.autoFixes` + `validation.messages` together) |    7 |
+ * | admin `user(id:) { library { … } }` + `Series` arm, thin card        |    9 |
+ * | admin `user(id:) { library { … } }` + `Series` arm, full card (incl. `pendingFix.state.autoFixes`) | **11** |
+ * | one hop of `Book.series ↔ Series.books` (legitimate "sibling books") |    7 |
+ * | two-hop `Book.series ↔ Series.books` cycle, rooted at `Library.entries` (the amplification fixture this rule exists to stop — see `depth-limit-integration.test.ts`) | **13** |
  *
- * (see `depth-limit.test.ts`'s `LIBRARY_GRID_FIXTURE`, byte-identical to
- * this) measures depth 6: `viewer`→1, `library`→2, `entries`→3, `edges`→4,
- * `node`→5, `series`/`progress`/`validation`→6 (the inline `... on Book`
- * fragment does not itself add a level — see `relativeDepthOf`'s doc
- * comment). `pageInfo`, `entries`' other child, only reaches 4.
- * `MAX_DEPTH = 6 + 3 = 9` (task-3 review, M-5: bumped from an original
- * `+2` — an Apollo grid query composed from fragments plus one nested hop
- * lands at 7–8, one selection short of a `+2` margin's hard limit; `+3`
- * gives that composition real headroom without opening the door to the
- * `Book.series ↔ Series.books` amplification cycle a client could
- * otherwise nest indefinitely (still rejected at depth 11 for the two-hop
- * shape — see `depth-limit-integration.test.ts`).
+ * (See `depth-limit.test.ts` for the byte-identical `LIBRARY_GRID_FIXTURE`
+ * pinning the first row, and `depth-limit-integration.test.ts` for the
+ * grid+Series+autoFixes and amplification rows run end-to-end over real
+ * HTTP against the real schema.)
+ *
+ * The worst LEGITIMATE shape found is 11. The amplification cycle this rule
+ * exists to stop measures 13 — a client could otherwise nest it
+ * indefinitely, each hop multiplying the response's fan-out. `MAX_DEPTH =
+ * 12`: legitimate max 11 + a 1-level margin, and it still rejects the
+ * amplification fixture (13 > 12, a 1-level gap). This is a narrow corridor,
+ * not a generous one — 11 and 13 leave exactly one integer between them —
+ * so there is no room for a repeat of F-1 (a shape landing exactly on the
+ * limit with zero margin): any future field added to a book card that
+ * itself needs a sub-selection will need this table re-measured, not just
+ * eyeballed. A single two-hop cycle rooted at a directly-addressed
+ * `book(id:)` (rather than through `Library.entries`) measures 11, not 13 —
+ * within the new legitimate range, and thus no longer independently
+ * rejected; what remains bounded is INDEFINITE nesting (a third hop of the
+ * same cycle measures 15, still well past 12) — depth alone cannot and does
+ * not need to distinguish "one bounded structural cycle" from "a
+ * numerically identical legitimate shape", only "unboundedly repeated"
+ * from "bounded".
  */
-export const MAX_DEPTH = 9;
+export const MAX_DEPTH = 12;
 
 /**
  * Per-document memoization + cycle guard for `relativeDepthOf`'s

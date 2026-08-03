@@ -146,6 +146,35 @@ describe('operation logging — over real HTTP', () => {
     expect(typeof line['durationMs']).toBe('number');
   });
 
+  // Final-review-wave, T3 N-3 (narrower than first recorded — only
+  // `onValidate` was affected; `onExecute` already attributed correctly,
+  // pinned separately below). Before the fix, THIS line always read
+  // `viewerId: 'anon'`, even though the request above (a sibling test) is
+  // authenticated: envelop hadn't run `createContext` yet at `onValidate`
+  // time, so the only prior signal (`context.viewer`) didn't exist. An
+  // operator watching logs could see someone probed the depth limit, but
+  // never attribute it to a session.
+  it("attributes a validation-stage rejection (depth limit) to the real authenticated viewer, not 'anon'", async () => {
+    const deepQuery = `{
+      viewer { library { entries(first: 1) { edges { node { ... on Book {
+        series { books(first: 1) { edges { node {
+          series { books(first: 1) { edges { node { id } } } }
+        } } } }
+      } } } } } }
+    }`;
+
+    const response = await request(app)
+      .post('/graphql')
+      .set('Authorization', `Bearer ${aliceToken()}`)
+      .send({ query: deepQuery });
+
+    expect(response.body.errors?.[0]?.message).toContain('nested too deeply');
+    expect(spies.warn).toHaveBeenCalledTimes(1);
+
+    const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(line['viewerId']).toBe(harness.aliceOwner.userId);
+  });
+
   it("logs the admin session's username, not 'anon' — a real session must not read as anonymous", async () => {
     // No `userId` at all — `AuthUser.userId` is `string | undefined`
     // (services/jwt.ts), never `null`; this IS the config-based admin's
@@ -191,7 +220,7 @@ describe('operation logging — subscription hooks, called directly', () => {
   };
 
   it('a subscribe-time denial (non-async-iterable result) logs immediately, once', () => {
-    const plugin = useOperationLogging();
+    const plugin = useOperationLogging(jwtSecret);
     const onSubscribeResult = plugin.onSubscribe?.({
       args: fakeArgs,
     } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0])?.onSubscribeResult;
@@ -207,7 +236,7 @@ describe('operation logging — subscription hooks, called directly', () => {
   });
 
   it('a live stream logs exactly once, at onEnd, aggregating every event — never per event', () => {
-    const plugin = useOperationLogging();
+    const plugin = useOperationLogging(jwtSecret);
     const onSubscribeResult = plugin.onSubscribe?.({
       args: fakeArgs,
     } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0])?.onSubscribeResult;

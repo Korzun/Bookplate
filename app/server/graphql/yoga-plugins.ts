@@ -8,7 +8,7 @@ import {
 import { isAsyncIterable, type Plugin } from 'graphql-yoga';
 
 import { logger } from '../logger';
-import type { Context } from './context';
+import { viewerFromHeader, type Context } from './context';
 import { depthLimitRule, MAX_DEPTH } from './depth-limit';
 
 // A distinct namespace from yoga.ts's own `logger('GraphQL')` (used there
@@ -104,6 +104,39 @@ const operationNameOf = (document: DocumentNode, requested: string | null | unde
 const viewerIdOf = (context: Context): string =>
   context.viewer == null ? 'anon' : (context.viewer.userId ?? context.viewer.username);
 
+/**
+ * `viewerIdOf`'s counterpart for the `onValidate` hook specifically
+ * (task-3 review N-3; final-review-wave disposition — narrower than first
+ * recorded: ONLY `onValidate` was affected. `onExecute`/`onSubscribe`
+ * already log the real viewer correctly, since `createContext` has run by
+ * then — reproduced: an authenticated alice's `onExecute` line already
+ * carried her real `userId`). At `onValidate` time `context.viewer` doesn't
+ * exist yet (see `viewerIdOf`'s own doc comment above), so `viewerIdOf`
+ * always fell through to `'anon'` here — even for an authenticated caller —
+ * leaving the cheapest available attack signal (a depth-limit/introspection
+ * probe) with no attribution: an operator could see SOMEONE probed the
+ * limit, never which session.
+ *
+ * The object yoga hands `onValidate` before `createContext` runs is still
+ * yoga's own `YogaInitialContext` (`request`, `params`), not yet the built
+ * `Context` — hence the cast below, the same pre/post-`createContext`
+ * shape mismatch `viewerIdOf`'s `== null` check already works around.
+ * `request` IS present at this stage (it's part of yoga's initial
+ * per-request context, set up before parse/validate ever run), so this
+ * decodes the SAME bearer token `createContext` (context.ts) will decode
+ * moments later, via the exact same `viewerFromHeader` — an onValidate-time
+ * and an onExecute-time viewer for the same request can never disagree.
+ * Needs `jwtSecret` threaded in (from `GraphqlHandlerDeps`, via
+ * `useOperationLogging`'s own new parameter) because decoding a bearer
+ * token requires it.
+ */
+const viewerIdAtValidate = (jwtSecret: Buffer, context: Context): string => {
+  const request = (context as unknown as { request?: globalThis.Request }).request;
+  const header = request?.headers.get('authorization') ?? undefined;
+  const viewer = viewerFromHeader(jwtSecret, header);
+  return viewer === null ? 'anon' : (viewer.userId ?? viewer.username);
+};
+
 const logOperation = (
   operationName: string,
   viewerId: string,
@@ -148,8 +181,14 @@ const logOperation = (
  * depth limit or introspection concealment — task-3 review, M-4: "one warn
  * line per validation rejection [is] the cheapest attack signal available."
  * `durationMs` here is the validation phase's own duration, not execution's.
+ *
+ * Takes `jwtSecret` (final-review-wave, N-3 fix) so its `onValidate` line
+ * can attribute a validation-stage rejection to the real authenticated
+ * viewer via `viewerIdAtValidate`, instead of always reading `'anon'`.
+ * `onExecute`/`onSubscribe` keep using `viewerIdOf` unchanged — `context`
+ * there is already the fully-built post-`createContext` `Context`.
  */
-export const useOperationLogging = (): Plugin<Context> => ({
+export const useOperationLogging = (jwtSecret: Buffer): Plugin<Context> => ({
   onValidate: ({ context, params }) => {
     const start = Date.now();
     return ({ valid, result }) => {
@@ -158,7 +197,7 @@ export const useOperationLogging = (): Plugin<Context> => ({
       // run at all) is the one line for a successful operation.
       logOperation(
         operationNameOf(params.documentAST, undefined),
-        viewerIdOf(context),
+        viewerIdAtValidate(jwtSecret, context),
         Date.now() - start,
         result.length
       );

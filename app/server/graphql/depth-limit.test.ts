@@ -100,7 +100,38 @@ describe('measureOperationDepth — boundary math', () => {
     } } } }`;
 
     expect(depthOf(LIBRARY_GRID_FIXTURE)).toBe(6);
-    expect(MAX_DEPTH).toBe(6 + 3);
+  });
+
+  // Final-review-wave F-1: the grid ALSO renders `LibraryEntry`'s `Series`
+  // arm (the shipped UI's `SeriesRow`/`useSeriesBookList`), nesting its own
+  // books inside the same connection — a shape the task-3 calibration never
+  // measured. A shared `BookCard` fragment reused across both union arms
+  // (the canonical Apollo pattern) measures 11 here — see
+  // `depth-limit.ts`'s recalibration comment for the full measurement
+  // table. Byte-identical to `depth-limit-integration.test.ts`'s
+  // "grid + Series arm, full card" HTTP-level fixture.
+  it('measures the grid + Series-arm + full-card (incl. pendingFix.autoFixes) fixture at depth 11, and MAX_DEPTH clears it with margin to spare', () => {
+    const GRID_WITH_SERIES_ARM = `
+      fragment BookCard on Book {
+        series { id name }
+        progress { percentage }
+        validation { id valid }
+        pendingFix { state { autoFixes { field kind from to } } }
+      }
+      { viewer { library { entries(first: 20) {
+        edges { node {
+          ... on Book { ...BookCard }
+          ... on Series { books(first: 10) { edges { node { ...BookCard } } } }
+        } }
+        pageInfo { hasNextPage endCursor }
+      } } } }`;
+
+    expect(depthOf(GRID_WITH_SERIES_ARM)).toBe(11);
+    expect(MAX_DEPTH).toBeGreaterThanOrEqual(11);
+  });
+
+  it(`MAX_DEPTH (${MAX_DEPTH}) is the legitimate-max-11 + 1 margin, and still rejects the depth-13 amplification fixture`, () => {
+    expect(MAX_DEPTH).toBe(12);
   });
 });
 

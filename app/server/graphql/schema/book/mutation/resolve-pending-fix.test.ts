@@ -185,7 +185,11 @@ describe('Mutation.bookResolvePendingFix', () => {
       const data = result.data?.bookResolvePendingFix as {
         library: { user: { username: string } };
       };
-      expect(data.library.user.username).toBe('alice');
+      // Direct, per `delete.test.ts`'s precedent (final-review T1 M-2):
+      // asserts the whole `library` sub-object, not just a drilled-in
+      // scalar — a stray extra/missing field on this payload's `library`
+      // would show up here.
+      expect(data.library).toEqual({ user: { username: 'alice' } });
     });
 
     it('is a harmless no-op when no pending fix row exists, mirroring REST’s unconditional DELETE', async () => {
