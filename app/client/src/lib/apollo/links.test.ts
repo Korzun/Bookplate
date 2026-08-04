@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setToken } from '~/lib/token';
 
+import { cacheConfig } from './cache';
 import { createAuthLink, createRefreshLink } from './links';
 
 vi.mock('~/lib/api-fetch', () => ({
@@ -53,7 +54,7 @@ const flakyLink = (failures: number) => {
 const clientWith = (terminating: ApolloLink) =>
   new ApolloClient({
     link: ApolloLink.from([createRefreshLink(), createAuthLink(), terminating]),
-    cache: new InMemoryCache({ typePolicies: { Viewer: { keyFields: [] } } }),
+    cache: new InMemoryCache(cacheConfig),
   });
 
 afterEach(() => {

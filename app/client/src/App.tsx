@@ -1,6 +1,7 @@
 import { ApolloProvider } from '@apollo/client/react';
 
 import { createApolloClient } from './lib/apollo/client';
+import { useResetApolloStoreOnIdentityChange } from './lib/apollo/identity-reset';
 import { buildProvidersTree } from './provider';
 import { AuthProvider } from './provider/auth';
 import { BookProvider } from './provider/book';
@@ -31,10 +32,17 @@ const ProvidersTree = buildProvidersTree([
 // the normalized cache each time.
 const apolloClient = createApolloClient();
 
-export const App = () => (
-  <ApolloProvider client={apolloClient}>
-    <ProvidersTree>
-      <AppRouter />
-    </ProvidersTree>
-  </ApolloProvider>
-);
+export const App = () => {
+  // Clears the normalized cache when the logged-in identity changes — see
+  // the doc comment on the hook for why this can't just live in the token
+  // refresh path or inside createApolloClient().
+  useResetApolloStoreOnIdentityChange(apolloClient);
+
+  return (
+    <ApolloProvider client={apolloClient}>
+      <ProvidersTree>
+        <AppRouter />
+      </ProvidersTree>
+    </ApolloProvider>
+  );
+};

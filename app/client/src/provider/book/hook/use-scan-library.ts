@@ -43,7 +43,7 @@ export const useScanLibrary = (): UseScanLibrary => {
   const { clearCompleteBookIds } = use(Context);
   const fetchBookList = useFetchBookList();
   const { libraryId } = useCurrentLibraryId();
-  const { status, userId } = useScanProgress(libraryId);
+  const { status, userId, error: progressError } = useScanProgress(libraryId);
 
   const [startScan] = useMutation(LibraryScanDocument);
   const [startError, setStartError] = useState<string | undefined>();
@@ -104,8 +104,12 @@ export const useScanLibrary = (): UseScanLibrary => {
     };
   }, [status?.state, status?.result]);
 
-  const failed = status?.state === 'FAILED' || startError !== undefined;
-  const errorMessage = status?.error ?? startError ?? undefined;
+  // `progressError` covers a refused SSE stream or a failed bootstrap query —
+  // without it, either failure mode is indistinguishable from "no scan is
+  // running" and the progress UI would freeze silently instead of toasting.
+  const failed =
+    status?.state === 'FAILED' || startError !== undefined || progressError !== undefined;
+  const errorMessage = status?.error ?? startError ?? progressError?.message ?? undefined;
 
   return useMemo(
     () =>

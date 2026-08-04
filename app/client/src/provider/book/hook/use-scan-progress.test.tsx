@@ -83,6 +83,43 @@ describe('useScanProgress', () => {
     await waitFor(() => expect(result.current?.status?.processed).toBe(7));
   });
 
+  // SEEN-TO-FAIL class: proves a query error surfaces on `error` rather than
+  // being dropped. Without reading `error` off `useQuery`, this hook returns
+  // `{ status: undefined }` — indistinguishable from "no scan running".
+  it('surfaces a query error instead of dropping it silently', async () => {
+    const result = renderScanProgress([
+      {
+        request: { query: LibraryScanStatusDocument, variables: { libraryId: LIBRARY_ID } },
+        error: new Error('bootstrap query failed'),
+      },
+      {
+        request: { query: ScanProgressDocument, variables: { libraryId: LIBRARY_ID } },
+        result: { data: { scanProgress: status({}) } },
+        delay: 100_000,
+      },
+    ]);
+
+    await waitFor(() => expect(result.current?.error).toBeDefined());
+    expect(result.current?.error?.message).toBe('bootstrap query failed');
+    expect(result.current?.status).toBeUndefined();
+  });
+
+  it('surfaces a subscription error instead of dropping it silently', async () => {
+    const result = renderScanProgress([
+      {
+        request: { query: LibraryScanStatusDocument, variables: { libraryId: LIBRARY_ID } },
+        result: { data: libraryNode(null) },
+      },
+      {
+        request: { query: ScanProgressDocument, variables: { libraryId: LIBRARY_ID } },
+        error: new Error('stream refused'),
+      },
+    ]);
+
+    await waitFor(() => expect(result.current?.error).toBeDefined());
+    expect(result.current?.error?.message).toBe('stream refused');
+  });
+
   it('reports no status when the library has never been scanned', async () => {
     const result = renderScanProgress([
       {

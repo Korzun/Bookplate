@@ -23,15 +23,25 @@ import {
  * A scan started through REST is visible here, but only at start/terminal
  * granularity: REST passes no onProgress callback, so per-file progress exists
  * only for a scan started via `libraryScan`.
+ *
+ * Both reads' `error` is surfaced too — a refused SSE stream or a 5xx on the
+ * bootstrap query must not look identical to "no scan is running". Silence on
+ * a GraphQL error is the bug class an earlier fix round in this feature ruled
+ * unacceptable; this hook applies that ruling consistently rather than
+ * re-deciding it.
  */
 export const useScanProgress = (libraryId: string | undefined) => {
-  const { data: readData, loading } = useQuery(LibraryScanStatusDocument, {
+  const {
+    data: readData,
+    loading,
+    error: readError,
+  } = useQuery(LibraryScanStatusDocument, {
     variables: { libraryId: libraryId ?? '' },
     skip: !libraryId,
     fetchPolicy: 'cache-and-network',
   });
 
-  const { data: eventData } = useSubscription(ScanProgressDocument, {
+  const { data: eventData, error: subscriptionError } = useSubscription(ScanProgressDocument, {
     variables: { libraryId: libraryId ?? '' },
     skip: !libraryId,
   });
@@ -53,5 +63,9 @@ export const useScanProgress = (libraryId: string | undefined) => {
     // library is what makes an admin-targeted scan work.
     userId: library?.user.id,
     loading,
+    // Query error takes priority: a subscription can legitimately be in a
+    // reconnect gap while the query itself is failing outright, and the query
+    // is the one carrying the owner userId the whole hook depends on.
+    error: readError ?? subscriptionError ?? undefined,
   };
 };
