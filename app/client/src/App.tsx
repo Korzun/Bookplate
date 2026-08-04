@@ -1,7 +1,4 @@
-import { ApolloProvider } from '@apollo/client/react';
-
-import { createApolloClient } from './lib/apollo/client';
-import { useResetApolloStoreOnIdentityChange } from './lib/apollo/identity-reset';
+import { ApolloRoot } from './lib/apollo/provider';
 import { buildProvidersTree } from './provider';
 import { AuthProvider } from './provider/auth';
 import { BookProvider } from './provider/book';
@@ -15,7 +12,10 @@ import { UploadProvider } from './provider/upload';
 import { UserProvider } from './provider/user';
 import { AppRouter } from './router/';
 
+// `ApolloRoot` is first, so it renders outermost — `buildProvidersTree` nests
+// each subsequent entry inside the previous one.
 const ProvidersTree = buildProvidersTree([
+  [ApolloRoot],
   [ConfigProvider],
   [ThemeProvider],
   [AuthProvider],
@@ -28,21 +28,8 @@ const ProvidersTree = buildProvidersTree([
   [ToastProvider],
 ]);
 
-// Created once at module scope: a client rebuilt on every render would discard
-// the normalized cache each time.
-const apolloClient = createApolloClient();
-
-export const App = () => {
-  // Clears the normalized cache when the logged-in identity changes — see
-  // the doc comment on the hook for why this can't just live in the token
-  // refresh path or inside createApolloClient().
-  useResetApolloStoreOnIdentityChange(apolloClient);
-
-  return (
-    <ApolloProvider client={apolloClient}>
-      <ProvidersTree>
-        <AppRouter />
-      </ProvidersTree>
-    </ApolloProvider>
-  );
-};
+export const App = () => (
+  <ProvidersTree>
+    <AppRouter />
+  </ProvidersTree>
+);
