@@ -43,4 +43,51 @@ describe('LoginPage', () => {
     expect(style.display).toBe('flex');
     expect(style.flexDirection).toBe('column');
   });
+
+  it('shows a retry-after message on 429 rather than "Invalid credentials"', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '42' } }))
+    );
+
+    renderWithProviders(<LoginPage />);
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/too many attempts/i)).toBeInTheDocument();
+    expect(screen.getByText(/42 second/i)).toBeInTheDocument();
+    expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
+  });
+
+  it('still shows "Invalid credentials" on 401', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 401 }))
+    );
+
+    renderWithProviders(<LoginPage />);
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'wrong');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/invalid credentials/i)).toBeInTheDocument();
+  });
+
+  it('falls back to a generic wait message when Retry-After is absent', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 429 }))
+    );
+
+    renderWithProviders(<LoginPage />);
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/too many attempts/i)).toBeInTheDocument();
+  });
 });
