@@ -5,7 +5,7 @@ import { render, type RenderOptions } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 
-import { cacheConfig } from './lib/apollo/cache';
+import { cacheConfig } from './provider/apollo';
 import {
   Context as AuthContext,
   type AuthContext as AuthContextType,

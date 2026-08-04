@@ -1,5 +1,5 @@
-import { ApolloRoot } from './lib/apollo/provider';
 import { buildProvidersTree } from './provider';
+import { ApolloRoot } from './provider/apollo';
 import { AuthProvider } from './provider/auth';
 import { BookProvider } from './provider/book';
 import { ConfigProvider } from './provider/config';
