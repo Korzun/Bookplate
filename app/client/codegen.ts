@@ -23,10 +23,18 @@ import type { CodegenConfig } from '@graphql-codegen/cli';
  * silently fails to normalize a result missing `__typename`) and makes the
  * persisted-documents manifest record a query that isn't the one sent over
  * the wire, which would corrupt a later cost-measurement guardrail.
+ *
+ * `documents` excludes `*.test.ts(x)` alongside the generated directory: the
+ * persisted-documents manifest is consumed downstream as the definition of
+ * what the client SHIPS — one guardrail measures every entry against
+ * query-cost budgets, another lints every entry for cache-key correctness.
+ * A `gql`-tagged fixture inside a test file is never sent to a real server,
+ * so leaving it in would have those guardrails police test noise instead of
+ * shipped operations (or let a fixture mask a real regression).
  */
 const config: CodegenConfig = {
   schema: '../server/graphql/schema.generated.graphql',
-  documents: ['src/**/*.{ts,tsx}', '!src/gql/**/*'],
+  documents: ['src/**/*.{ts,tsx}', '!src/gql/**/*', '!src/**/*.test.{ts,tsx}'],
   ignoreNoDocuments: false,
   generates: {
     'src/gql/': {

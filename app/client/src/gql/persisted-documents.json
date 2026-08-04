@@ -1,5 +1,3 @@
 {
-  "sha256:8c438916bdd1980a46caef439e1ba70b4ddad1fa4134c647b012178854aef7d5": "query ViewerBootstrap { __typename viewer { __typename isAdmin library { __typename id } mustChangePassword user { __typename id } username } }",
-  "sha256:2cb06601a230ab6021fb48758b794ebbf581219bef1bf11c3449a798887be733": "query V { __typename viewer { __typename username } }",
-  "sha256:75e077d33e01c8853988ecb9c747049a42273530099bdd8db272616c0568caf0": "query P($id: ID!) { __typename node(id: $id) { __typename ... on Library { __typename id progress(first: 1) { __typename edges { __typename node { __typename document percentage userId } } } } } }"
+  "sha256:8c438916bdd1980a46caef439e1ba70b4ddad1fa4134c647b012178854aef7d5": "query ViewerBootstrap { __typename viewer { __typename isAdmin library { __typename id } mustChangePassword user { __typename id } username } }"
 }
