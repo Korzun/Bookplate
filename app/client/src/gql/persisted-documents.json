@@ -1,0 +1,3 @@
+{
+  "sha256:c6b67cabcef3904ee1e8de3092c21b781053bfb41490f2f01174071995aff20f": "query ViewerBootstrap { viewer { isAdmin library { id } mustChangePassword user { id } username } }"
+}

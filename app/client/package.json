@@ -7,17 +7,25 @@
     "build": "tsc && vite build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "lint": "oxlint src && oxfmt --check \"src/**/*.{ts,tsx}\" && tsc --noEmit",
-    "lint:fix": "oxlint src --fix && oxfmt \"src/**/*.{ts,tsx}\""
+    "lint": "oxlint src && oxfmt --check \"src/**/*.{ts,tsx}\" --ignore-path .oxfmtignore && tsc --noEmit",
+    "lint:fix": "oxlint src --fix && oxfmt \"src/**/*.{ts,tsx}\"",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "codegen:check": "graphql-codegen --config codegen.ts --check"
   },
   "dependencies": {
+    "@apollo/client": "^4.2.9",
     "classnames": "^2.5.1",
+    "graphql-sse": "^2.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-jss": "^10.10.0",
-    "react-router": "^8.3.0"
+    "react-router": "^8.3.0",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^7.2.0",
+    "@graphql-codegen/client-preset": "^6.1.0",
+    "@graphql-codegen/fragment-matcher": "^7.1.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
