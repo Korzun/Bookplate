@@ -7,43 +7,50 @@ import { useToast } from '~/provider/toast';
 import { Card } from '../card';
 
 export const ScanLibrarySetting = () => {
-  const [scanLibrary, , scanning] = useScanLibrary();
+  const [scanLibrary, scanResult, scanning, failed] = useScanLibrary();
   const showToast = useToast();
 
-  // scanLibrary resolves null for both a real failure and a cancellation (it
-  // only cancels on unmount). Skip the result toast if we've unmounted so
-  // navigating away mid-scan doesn't fire a false "Scan failed" on the next page.
-  const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
-      mountedRef.current = false;
-    },
-    []
-  );
+  // Completion now arrives asynchronously over the scan-progress subscription
+  // rather than from scanLibrary()'s return value (which resolves void), and
+  // the hook's terminal status stays populated indefinitely once a scan has
+  // ever completed. Only toast for a scan THIS component instance started —
+  // otherwise merely mounting on a library with a past completed/failed scan
+  // would fire a toast with no user action.
+  const startedRef = useRef(false);
+  const reportedResultRef = useRef<typeof scanResult>(undefined);
+  const reportedFailedRef = useRef(false);
 
-  const handleScan = useCallback(async () => {
+  const handleScan = useCallback(() => {
+    startedRef.current = true;
+    reportedResultRef.current = undefined;
+    reportedFailedRef.current = false;
     showToast('Scanning library…', 'info');
-    const result = await scanLibrary();
-    if (!mountedRef.current) return;
-    if (result === null) {
-      showToast('Scan failed', 'error');
-    } else {
-      const changed = result.imported.length + result.removed.length;
+    void scanLibrary();
+  }, [scanLibrary, showToast]);
+
+  useEffect(() => {
+    if (!startedRef.current) return;
+    if (scanResult && scanResult !== reportedResultRef.current) {
+      reportedResultRef.current = scanResult;
+      const changed = scanResult.imported.length + scanResult.removed.length;
       showToast(
         changed === 0
           ? 'Library already up to date'
-          : `Scan complete: ${result.imported.length} imported, ${result.removed.length} removed`,
+          : `Scan complete: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed`,
         'success'
       );
+    } else if (failed && !reportedFailedRef.current) {
+      reportedFailedRef.current = true;
+      showToast('Scan failed', 'error');
     }
-  }, [scanLibrary, showToast]);
+  }, [scanResult, failed, showToast]);
 
   return (
     <Card
       title="Scan library"
       subTitle="Check the library folder for books added or removed outside Bookplate and sync the catalog."
     >
-      <Button loading={scanning} onClick={() => void handleScan()}>
+      <Button loading={scanning} onClick={handleScan}>
         Scan
       </Button>
     </Card>

@@ -1,157 +1,110 @@
+import { useMutation } from '@apollo/client/react';
 import { useCallback, use, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useWithTargetUser } from '~/provider/library-target';
+import { LibraryScanDocument } from '~/graphql/scan';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
-import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import { useFetchBookList } from './use-fetch-book-list';
+import { useScanProgress } from './use-scan-progress';
 
 export type ScanResult = {
   imported: string[];
   removed: string[];
 };
 
-type ScanStatus =
-  | { status: 'idle' }
-  | {
-      jobId: string;
-      status: 'running' | 'completed' | 'failed';
-      startedAt: number;
-      result?: ScanResult;
-      error?: string;
-    };
-
-const POLL_INTERVAL_MS = 2000;
-
-export type ScanLibrary = () => Promise<ScanResult | null>;
+export type ScanLibrary = () => Promise<void>;
 export type UseScanLibrary =
   | [ScanLibrary, undefined, false, false, undefined] // Initial state
   | [ScanLibrary, undefined, true, false, undefined] // Scan is under way
   | [ScanLibrary, ScanResult, false, false, undefined] // Scan completed successfully
-  | [ScanLibrary, undefined, false, true, undefined] // There was an unspecified error while scanning
-  | [ScanLibrary, undefined, false, true, string]; // There was a specified error while scanning
+  | [ScanLibrary, undefined, false, true, undefined] // Unspecified error while scanning
+  | [ScanLibrary, undefined, false, true, string]; // Specified error while scanning
 
+/**
+ * Starts a library scan and reports its live progress.
+ *
+ * Replaces a 2-second polling loop against the REST scan-status endpoint. The
+ * mount-time "attach to a running scan" effect is gone too — it is now
+ * structural rather than something this hook arranges: `useScanProgress` always
+ * reads current `scanStatus` alongside the stream, so a page reloaded mid-scan
+ * renders the running state on first paint.
+ *
+ * `ScanAlreadyRunningError` is the attach path, not a failure — it is the
+ * direct equivalent of the REST route's HTTP 409, and it carries the live
+ * status, so it is treated as success exactly as the old code treated 409.
+ *
+ * `scanLibrary` resolves `void`, not the old `ScanResult | null`: completion
+ * now arrives asynchronously over the subscription, so the mutation has no
+ * result to hand back. The tuple's second slot still carries the ScanResult,
+ * driven by the terminal status.
+ */
 export const useScanLibrary = (): UseScanLibrary => {
   const { clearCompleteBookIds } = use(Context);
   const fetchBookList = useFetchBookList();
-  const withTargetUser = useWithTargetUser();
-  const [scanResult, setScanResult] = useState<ScanResult | undefined>();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const cancelledRef = useRef(false);
-  const pollPromiseRef = useRef<Promise<ScanResult | null> | null>(null);
+  const { libraryId } = useCurrentLibraryId();
+  const { status, userId } = useScanProgress(libraryId);
 
-  const applyCompletion = useCallback(
-    (result: ScanResult) => {
-      setScanResult(result);
-      clearCompleteBookIds();
-      fetchBookList();
-    },
-    [clearCompleteBookIds, fetchBookList]
-  );
+  const [startScan] = useMutation(LibraryScanDocument);
+  const [startError, setStartError] = useState<string | undefined>();
+  const [starting, setStarting] = useState(false);
 
-  // Polls the status endpoint until the job reaches a terminal state.
-  // Resolves with the result on completion, or null on failure/cancellation.
-  // Concurrent callers share a single in-flight poll via pollPromiseRef.
-  const pollUntilDone = useCallback((): Promise<ScanResult | null> => {
-    if (pollPromiseRef.current !== null) return pollPromiseRef.current;
-    const promise = (async (): Promise<ScanResult | null> => {
-      while (!cancelledRef.current) {
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-        if (cancelledRef.current) return null;
-        let response: Response;
-        try {
-          response = await apiFetch(withTargetUser('/api/books/scan/status'));
-        } catch {
-          if (!cancelledRef.current) setError(true);
-          return null;
-        }
-        if (!response.ok) {
-          if (!cancelledRef.current) setError(true);
-          return null;
-        }
-        const job = (await response.json()) as ScanStatus;
-        if (job.status === 'completed') {
-          const result = job.result ?? { imported: [], removed: [] };
-          if (!cancelledRef.current) applyCompletion(result);
-          return result;
-        }
-        if (job.status === 'failed') {
-          if (!cancelledRef.current) {
-            setError(true);
-            setErrorMessage('error' in job ? job.error : undefined);
-          }
-          return null;
-        }
-        if (job.status === 'idle') {
-          // The job is gone (e.g. the server restarted mid-scan). Treat as
-          // terminal so the loop can't poll forever and leave loading stuck.
-          return null;
-        }
-        // 'running' → keep polling
-      }
-      return null;
-    })();
-    pollPromiseRef.current = promise;
-    void promise.finally(() => {
-      pollPromiseRef.current = null;
-    });
-    return promise;
-  }, [withTargetUser, applyCompletion]);
+  const running = starting || status?.state === 'RUNNING';
 
   const scanLibrary: ScanLibrary = useCallback(async () => {
-    if (loading) return null;
+    // Guard concurrent presses, exactly as the polling version did.
+    if (running || !userId) return;
 
-    setLoading(true);
-    setError(false);
-    setErrorMessage(undefined);
-    setScanResult(undefined);
-
+    setStarting(true);
+    setStartError(undefined);
     try {
-      const response = await apiFetch(withTargetUser('/api/books/scan'), { method: 'POST' });
-      // 202 = started, 409 = already running; both mean "attach and poll".
-      if (response.status !== 202 && response.status !== 409) {
-        setError(true);
-        return null;
-      }
-      return await pollUntilDone();
+      const { data } = await startScan({ variables: { userId } });
+      const result = data?.libraryScan;
+      // Three-way branch: null (owner gone) / typed error member / payload.
+      // ScanAlreadyRunningError is NOT a failure — it is the attach path, the
+      // equivalent of the REST route's 409, and it carries the live status.
+      // Both it and LibraryScanPayload leave progress to `useScanProgress`,
+      // so neither needs anything read off the payload here.
+      if (!result) setStartError('Failed to start scan');
     } catch (err) {
-      setError(true);
-      if (err instanceof Error) setErrorMessage(err.message);
-      return null;
+      setStartError(err instanceof Error ? err.message : undefined);
     } finally {
-      setLoading(false);
+      setStarting(false);
     }
-  }, [withTargetUser, pollUntilDone, loading]);
+  }, [running, userId, startScan]);
 
-  // On mount, attach to an already-running scan (e.g. a page reload mid-scan)
-  // so the button shows its loading state and we surface the eventual result.
+  // Fire the completion side effects once per finished job, not on every
+  // re-render while the terminal status stays in the cache.
+  const completedJobRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    cancelledRef.current = false;
-    let active = true;
-    void (async () => {
-      try {
-        const response = await apiFetch(withTargetUser('/api/books/scan/status'));
-        if (!active || !response.ok) return;
-        const job = (await response.json()) as ScanStatus;
-        if (active && job.status === 'running') {
-          setLoading(true);
-          await pollUntilDone();
-          if (active) setLoading(false);
-        }
-      } catch {
-        /* ignore status errors on mount */
-      }
-    })();
-    return () => {
-      active = false;
-      cancelledRef.current = true;
+    if (status?.state !== 'COMPLETED' || status.id === completedJobRef.current) return;
+    completedJobRef.current = status.id;
+    clearCompleteBookIds();
+    void fetchBookList();
+  }, [status?.state, status?.id, clearCompleteBookIds, fetchBookList]);
+
+  const scanResult = useMemo<ScanResult | undefined>(() => {
+    if (status?.state !== 'COMPLETED') return undefined;
+    return {
+      // `ScanResult.imported` is [Book!]! in GraphQL; `importedFilenames` is the
+      // string list this tuple has always carried (REST parity).
+      imported: status.result?.importedFilenames ?? [],
+      removed: status.result?.removed ?? [],
     };
-  }, [withTargetUser, pollUntilDone]);
+  }, [status?.state, status?.result]);
+
+  const failed = status?.state === 'FAILED' || startError !== undefined;
+  const errorMessage = status?.error ?? startError ?? undefined;
 
   return useMemo(
-    () => [scanLibrary, scanResult, loading, error, errorMessage] as UseScanLibrary,
-    [scanLibrary, scanResult, loading, error, errorMessage]
+    () =>
+      [
+        scanLibrary,
+        failed ? undefined : scanResult,
+        running,
+        failed,
+        failed ? errorMessage : undefined,
+      ] as UseScanLibrary,
+    [scanLibrary, scanResult, running, failed, errorMessage]
   );
 };
