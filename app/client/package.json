@@ -8,7 +8,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "oxlint src && oxfmt --check \"src/**/*.{ts,tsx}\" --ignore-path .oxfmtignore && tsc --noEmit",
-    "lint:fix": "oxlint src --fix && oxfmt \"src/**/*.{ts,tsx}\"",
+    "lint:fix": "oxlint src --fix && oxfmt \"src/**/*.{ts,tsx}\" --ignore-path .oxfmtignore",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:check": "graphql-codegen --config codegen.ts --check"
   },

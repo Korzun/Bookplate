@@ -1,3 +1,6 @@
+import { ApolloProvider } from '@apollo/client/react';
+
+import { createApolloClient } from './lib/apollo/client';
 import { buildProvidersTree } from './provider';
 import { AuthProvider } from './provider/auth';
 import { BookProvider } from './provider/book';
@@ -24,8 +27,14 @@ const ProvidersTree = buildProvidersTree([
   [ToastProvider],
 ]);
 
+// Created once at module scope: a client rebuilt on every render would discard
+// the normalized cache each time.
+const apolloClient = createApolloClient();
+
 export const App = () => (
-  <ProvidersTree>
-    <AppRouter />
-  </ProvidersTree>
+  <ApolloProvider client={apolloClient}>
+    <ProvidersTree>
+      <AppRouter />
+    </ProvidersTree>
+  </ApolloProvider>
 );
