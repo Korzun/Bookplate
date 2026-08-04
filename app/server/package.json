@@ -9,7 +9,7 @@
     "dev": "NODE_ENV=development nodemon --watch . --ext ts,json --exec tsx index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cost": "vitest run graphql/cost-calibration --reporter=verbose --retry=0",
+    "test:cost": "vitest run graphql/cost-calibration graphql/client-operations-cost --reporter=verbose --retry=0",
     "lint": "oxlint && oxfmt --check \"**/*.ts\" && tsc --noEmit && npm run graphql:schema:check",
     "lint:fix": "oxlint --fix && oxfmt \"**/*.ts\"",
     "graphql:schema": "tsx graphql/print-schema.ts",
