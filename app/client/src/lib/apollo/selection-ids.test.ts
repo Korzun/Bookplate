@@ -5,10 +5,35 @@ import * as path from 'node:path';
 import { buildSchema, type GraphQLSchema } from 'graphql';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+// The manifest is loaded as a JSON module (not via `fs`), which always
+// reflects the real committed `persisted-documents.json`.
+//
+// The SDL is still read via `fs`/`path`, and the triple-slash `node`
+// reference below is what makes `__dirname` and `node:fs`/`node:path`
+// typecheck. Tried loading the SDL with Vite's `?raw` import instead (typed
+// by `vite/client`, already in tsconfig's `types`), but Vite's dev-server
+// file-serving guard rejects it: `schema.generated.graphql` lives in
+// `app/server`, outside `app/client`'s project root, so the transform fails
+// with `Error: Denied ID .../app/server/graphql/schema.generated.graphql?raw`.
+// Widening `server.fs.allow` to reach across workspaces felt like a bigger,
+// less obviously-scoped change than keeping this one `fs.readFileSync` call,
+// so the directive stays for this file's SDL read.
+//
+// IMPORTANT for the next reader: `/// <reference types="node" />` is NOT
+// scoped to this file. A global (non-module) `.d.ts` reference pulls Node's
+// ambient globals into the WHOLE program being type-checked by `tsc`, no
+// matter which file's directive triggered it — that is standard TypeScript
+// behaviour, not a bug. It defeats `app/client/tsconfig.json` restricting
+// `types` to `["vitest/globals", "vite/client"]`, just less discoverably
+// than widening that array would (a reader auditing tsconfig won't find this
+// as the cause). If a stricter boundary is ever needed, prefer removing this
+// import in favor of another `?raw`-style approach with a workspace-level
+// `fs.allow` change made deliberately, not restoring this directive.
+import manifestJson from '../../gql/persisted-documents.json';
 import { findMissingKeyFields } from './selection-ids';
 
 const SDL_PATH = path.resolve(__dirname, '../../../../server/graphql/schema.generated.graphql');
-const MANIFEST_PATH = path.resolve(__dirname, '../../gql/persisted-documents.json');
+const manifest = manifestJson as Record<string, string>;
 
 let schema: GraphQLSchema;
 
@@ -48,6 +73,18 @@ describe('findMissingKeyFields', () => {
     expect(issues).toEqual([]);
   });
 
+  // `Book implements Node`, so a fragment declared on the abstract `Node`
+  // interface legally supplies `Book`'s own `id` requirement when spread into
+  // a Book selection. This must NOT be flagged.
+  it('resolves id supplied through a fragment on an interface the type implements', () => {
+    const issues = findMissingKeyFields(
+      schema,
+      `query Q($id: ID!) { node(id: $id) { id ... on Library { id book(id: $id) { ...NodeId title } } } }
+       fragment NodeId on Node { id }`
+    );
+    expect(issues).toEqual([]);
+  });
+
   // Derived from cacheConfig's `Progress: { keyFields: ['userId', 'document'] }` —
   // not restated here. Change the typePolicy and this expectation follows.
   it('requires BOTH userId and document on Progress', () => {
@@ -68,7 +105,6 @@ describe('findMissingKeyFields', () => {
 
 describe('every shipped operation', () => {
   it('selects the cache key field of every normalizable type it touches', () => {
-    const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8')) as Record<string, string>;
     expect(Object.keys(manifest).length).toBeGreaterThan(0);
 
     const problems: string[] = [];

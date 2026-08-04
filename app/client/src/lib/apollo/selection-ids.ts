@@ -1,5 +1,6 @@
 import {
   getNamedType,
+  isAbstractType,
   isCompositeType,
   isInterfaceType,
   isObjectType,
@@ -41,8 +42,35 @@ const keyFieldsFor = (type: GraphQLNamedType): string[] => {
   return 'id' in type.getFields() ? ['id'] : [];
 };
 
+/**
+ * Whether a fragment/inline-fragment type condition named `conditionName`
+ * legally supplies fields for a selection being checked against `type`.
+ *
+ * True when the condition names `type` itself, OR when the condition is an
+ * abstract type (interface/union) of which `type` is a subtype — e.g. a
+ * fragment `on Node` spread into a `Book` selection legally supplies `Book`'s
+ * `id`, because `Book implements Node`.
+ *
+ * Direction matters: this must NOT hold the other way around. When checking
+ * `Node` itself, a fragment `... on Library { id }` does not satisfy `Node`'s
+ * own key — `Library` is a concrete object type, not an abstract type that
+ * `Node` is a subtype of.
+ */
+const conditionApplies = (
+  schema: GraphQLSchema,
+  conditionName: string,
+  type: GraphQLNamedType
+): boolean => {
+  if (conditionName === type.name) return true;
+  const conditionType = schema.getType(conditionName);
+  if (!conditionType || !isAbstractType(conditionType)) return false;
+  if (!isObjectType(type) && !isInterfaceType(type)) return false;
+  return schema.isSubType(conditionType, type);
+};
+
 /** Field names reachable in a selection set, following spreads that apply to `type`. */
 const reachableFieldNames = (
+  schema: GraphQLSchema,
   selectionSet: SelectionSetNode,
   type: GraphQLNamedType,
   fragments: Record<string, FragmentDefinitionNode>,
@@ -56,8 +84,8 @@ const reachableFieldNames = (
     }
     if (selection.kind === Kind.INLINE_FRAGMENT) {
       const onName = selection.typeCondition?.name.value;
-      if (onName && onName !== type.name) continue;
-      for (const n of reachableFieldNames(selection.selectionSet, type, fragments, seen)) {
+      if (onName && !conditionApplies(schema, onName, type)) continue;
+      for (const n of reachableFieldNames(schema, selection.selectionSet, type, fragments, seen)) {
         names.add(n);
       }
       continue;
@@ -66,8 +94,8 @@ const reachableFieldNames = (
     if (seen.has(fragmentName)) continue;
     seen.add(fragmentName);
     const definition = fragments[fragmentName];
-    if (definition && definition.typeCondition.name.value === type.name) {
-      for (const n of reachableFieldNames(definition.selectionSet, type, fragments, seen)) {
+    if (definition && conditionApplies(schema, definition.typeCondition.name.value, type)) {
+      for (const n of reachableFieldNames(schema, definition.selectionSet, type, fragments, seen)) {
         names.add(n);
       }
     }
@@ -91,7 +119,7 @@ export const findMissingKeyFields = (schema: GraphQLSchema, source: string): Mis
   const check = (selectionSet: SelectionSetNode, type: GraphQLNamedType, path: string): void => {
     const required = keyFieldsFor(type);
     if (required.length === 0) return;
-    const present = reachableFieldNames(selectionSet, type, fragments);
+    const present = reachableFieldNames(schema, selectionSet, type, fragments);
     const missing = required.filter((field) => !present.has(field));
     if (missing.length > 0) issues.push({ typeName: type.name, path, missing });
   };
