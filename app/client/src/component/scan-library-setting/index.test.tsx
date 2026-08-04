@@ -82,4 +82,20 @@ describe('ScanLibrarySetting', () => {
     act(() => applyResult?.({ imported: ['a'], removed: [] }));
     expect(screen.queryByText(/Scan complete/)).not.toBeInTheDocument();
   });
+
+  it('does not toast for a later terminal status once this click has already reported', async () => {
+    await mount();
+    fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
+
+    act(() => applyResult?.({ imported: ['a'], removed: [] }));
+    await waitFor(() =>
+      expect(screen.getByText('Scan complete: 1 imported, 0 removed')).toBeInTheDocument()
+    );
+
+    // A scan started from anywhere else (another tab, another device, the
+    // REST route) streams a distinct terminal status into this page next.
+    // Having already reported for the click above, this must stay silent.
+    act(() => applyResult?.({ imported: ['b', 'c'], removed: [] }));
+    expect(screen.queryByText('Scan complete: 2 imported, 0 removed')).not.toBeInTheDocument();
+  });
 });

@@ -56,7 +56,11 @@ describe('useScanProgress', () => {
       },
       {
         request: { query: ScanProgressDocument, variables: { libraryId: LIBRARY_ID } },
-        result: { data: { scanProgress: status({ processed: 4 }) } },
+        // Deliberately a DIFFERENT value than the query mock's `processed: 4`:
+        // if the delay below were ever removed/shortened and this event slipped
+        // through, the assertion below would then fail (9 !== 4) instead of
+        // passing for the wrong reason.
+        result: { data: { scanProgress: status({ processed: 9 }) } },
         delay: 100_000, // never arrives within the test
       },
     ]);

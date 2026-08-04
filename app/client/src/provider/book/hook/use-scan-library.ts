@@ -52,8 +52,19 @@ export const useScanLibrary = (): UseScanLibrary => {
   const running = starting || status?.state === 'RUNNING';
 
   const scanLibrary: ScanLibrary = useCallback(async () => {
-    // Guard concurrent presses, exactly as the polling version did.
-    if (running || !userId) return;
+    // Guard concurrent presses, exactly as the polling version did: a
+    // re-entrant click while a scan is already under way stays silent.
+    if (running) return;
+    // No library owner to scan for (e.g. the config-based admin, for whom
+    // `useCurrentLibraryId` returns undefined — the admin library-target
+    // reshape is a later plan). Unlike the running-guard above, this must
+    // surface feedback: a silent return here would leave the "Scanning
+    // library…" toast and the button's loading state hanging forever, since
+    // no state changes and the completion effect never re-runs.
+    if (!userId) {
+      setStartError('No library to scan');
+      return;
+    }
 
     setStarting(true);
     setStartError(undefined);

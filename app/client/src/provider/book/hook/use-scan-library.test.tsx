@@ -50,6 +50,13 @@ const statusMock = (scanStatus: ReturnType<typeof status> | null) => ({
   result: { data: libraryNode(scanStatus) },
 });
 
+/** No `node(id:)` result at all — the shape `useScanProgress` sees for the
+ * config-based admin, for whom `Library.user.id` can never be resolved. */
+const noOwnerMock = {
+  request: { query: LibraryScanStatusDocument, variables: { libraryId: LIBRARY_ID } },
+  result: { data: { node: null } },
+};
+
 /** The stream stays silent unless a test supplies its own event mock. */
 const silentStream = {
   request: { query: ScanProgressDocument, variables: { libraryId: LIBRARY_ID } },
@@ -160,5 +167,22 @@ describe('useScanLibrary', () => {
 
     await waitFor(() => expect(result.current?.[3]).toBe(true));
     expect(result.current?.[4]).toBe('disk full');
+  });
+
+  it('surfaces a failure instead of hanging silently when no library owner can be resolved', async () => {
+    // No `LibraryScanDocument` mock supplied: reaching a failure here without
+    // MockLink throwing on an unmatched request proves the mutation was never
+    // sent — the guard short-circuited on the missing userId, not on a failed
+    // network call.
+    const result = renderScanLibrary([noOwnerMock, silentStream]);
+
+    await waitFor(() => expect(result.current).toBeDefined());
+    expect(result.current?.[2]).toBe(false); // not running — nothing hangs
+
+    await result.current?.[0]();
+
+    await waitFor(() => expect(result.current?.[3]).toBe(true));
+    expect(result.current?.[2]).toBe(false);
+    expect(result.current?.[4]).toBe('No library to scan');
   });
 });

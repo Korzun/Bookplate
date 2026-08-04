@@ -32,6 +32,9 @@ export const ScanLibrarySetting = () => {
     if (!startedRef.current) return;
     if (scanResult && scanResult !== reportedResultRef.current) {
       reportedResultRef.current = scanResult;
+      // This report is done: a LATER scan (from anywhere — another tab,
+      // another device, the REST route) must not be attributed to this click.
+      startedRef.current = false;
       const changed = scanResult.imported.length + scanResult.removed.length;
       showToast(
         changed === 0
@@ -41,6 +44,7 @@ export const ScanLibrarySetting = () => {
       );
     } else if (failed && !reportedFailedRef.current) {
       reportedFailedRef.current = true;
+      startedRef.current = false;
       showToast('Scan failed', 'error');
     }
   }, [scanResult, failed, showToast]);
