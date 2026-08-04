@@ -13,34 +13,28 @@ const Probe = () => {
   return <div>{data?.viewer.username ?? 'loading'}</div>;
 };
 
-// Declared as a standalone value (not inlined into the `writeQuery` call) so
-// TS excess-property checking, which only fires on object literals assigned
-// directly into a typed position, does not fight the generated
-// `ViewerBootstrapQuery` type: that type omits `__typename` at every level
-// because the source document never selects it explicitly (Apollo injects it
-// over the wire regardless), while `writeQuery` still needs real `__typename`
-// values here to normalize `Viewer`/`User`/`Library` correctly.
-const viewerData = {
-  __typename: 'Viewer' as const,
-  username: 'alice',
-  isAdmin: false,
-  mustChangePassword: false,
-  user: { __typename: 'User' as const, id: 'USER-1' },
-  library: { __typename: 'Library' as const, id: 'LIB-1' },
-};
-
 describe('createApolloClient', () => {
   it('builds a client whose cache uses the app cacheConfig', () => {
     const client = createApolloClient();
     client.cache.writeQuery({
       query: ViewerBootstrapDocument,
-      data: { viewer: viewerData },
+      data: {
+        __typename: 'Query',
+        viewer: {
+          __typename: 'Viewer',
+          username: 'alice',
+          isAdmin: false,
+          mustChangePassword: false,
+          user: { __typename: 'User', id: 'USER-1' },
+          library: { __typename: 'Library', id: 'LIB-1' },
+        },
+      },
     });
 
     // Proves the Viewer singleton policy is in force, not Apollo's defaults.
     // `client.cache` is statically typed as the base `ApolloCache`, whose
-    // `extract()` returns `unknown`; narrow to the shape `InMemoryCache`
-    // actually produces rather than reaching for `any`.
+    // `extract()` returns `unknown`, independent of the typename issue above;
+    // narrow to the shape `InMemoryCache` actually produces instead of `any`.
     const store = client.cache.extract() as NormalizedCacheObject;
     expect(store['Viewer:{}']).toBeDefined();
   });
@@ -52,7 +46,19 @@ describe('renderWithApollo', () => {
       mocks: [
         {
           request: { query: ViewerBootstrapDocument },
-          result: { data: { viewer: viewerData } },
+          result: {
+            data: {
+              __typename: 'Query',
+              viewer: {
+                __typename: 'Viewer',
+                username: 'alice',
+                isAdmin: false,
+                mustChangePassword: false,
+                user: { __typename: 'User', id: 'USER-1' },
+                library: { __typename: 'Library', id: 'LIB-1' },
+              },
+            },
+          },
         },
       ],
     });
