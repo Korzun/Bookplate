@@ -70,8 +70,19 @@ describe('auth link chain', () => {
     expect(seenAuthHeaders[0]).toBe('Bearer first-token');
   });
 
-  // SEEN-TO-FAIL #1: must fail if the `retried` guard is removed (the chain
-  // then loops forever against a permanently-401ing server).
+  // Asserts a genuinely valuable property: against a permanently-401ing
+  // server, the chain retries exactly once and then gives up rather than
+  // hanging or retrying unboundedly.
+  //
+  // NOT a seen-to-fail test for the `retried` guard: removing that guard does
+  // NOT make this fail. Verified against @apollo/client 4.2.9 — `ErrorLink`
+  // does not re-enter this handler for an error raised by its own retry, so
+  // attemptCount() stays at 2 either way. The guard is kept as
+  // belt-and-braces (see the comment on `createRefreshLink`), but this test
+  // does not exercise it. The file's real seen-to-fail test is the
+  // link-order test below ("re-reads the freshly stored token on the
+  // retry"), which does fail if `createAuthLink()` is composed before
+  // `createRefreshLink()`.
   it('retries exactly once on UNAUTHENTICATED, then gives up', async () => {
     setToken('stale-token');
     const { link, attemptCount } = flakyLink(Number.POSITIVE_INFINITY);
@@ -84,8 +95,10 @@ describe('auth link chain', () => {
     expect(attemptCount()).toBe(2);
   });
 
-  // SEEN-TO-FAIL #2: must fail if the link order is flipped (authLink before
-  // refreshLink), because the retry would then re-send the STALE token.
+  // SEEN-TO-FAIL (this file's real one): must fail if the link order is
+  // flipped (authLink before refreshLink), because the retry would then
+  // re-send the STALE token. Verified — see the fix report in
+  // task-3-report.md.
   it('re-reads the freshly stored token on the retry', async () => {
     setToken('stale-token');
     const { link, seenAuthHeaders } = flakyLink(1);

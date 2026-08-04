@@ -14,10 +14,18 @@ export const createAuthLink = (): SetContextLink =>
   });
 
 /**
- * One-shot refresh-and-retry, mirroring `apiFetch`'s own semantics so a
- * permanently-dead refresh cannot loop. Reuses `refreshAccessToken()`, which is
- * already single-flight in-tab AND cross-tab via `navigator.locks` — do not
- * reimplement that coordination here.
+ * One-shot refresh-and-retry, mirroring `apiFetch`'s own semantics. Reuses
+ * `refreshAccessToken()`, which is already single-flight in-tab AND cross-tab
+ * via `navigator.locks` — do not reimplement that coordination here.
+ *
+ * The `retried` context guard below is belt-and-braces, not the thing
+ * preventing an infinite loop today: verified against @apollo/client 4.2.9,
+ * `ErrorLink` never re-enters this handler for a failure produced by the
+ * `forward(operation)` call inside it — the retry's own error propagates
+ * straight to the caller instead of looping back through `errorHandler`. That
+ * non-re-entrant behaviour is an implementation detail of the installed
+ * version, not a documented contract, so the guard stays as a safeguard
+ * against it changing.
  *
  * rxjs, NOT the snippet in the server spec's §C: Apollo v4 re-exports rxjs's
  * Observable verbatim, so there is no static `Observable.from` and no

@@ -79,12 +79,12 @@ describe('cacheConfig', () => {
     writeProgress(cache, 'LIB-A', 'user-a', 10);
     writeProgress(cache, 'LIB-B', 'user-b', 90);
 
-    const a = cache.readQuery<{ node: { progress: { edges: { node: { percentage: number } }[] } } }>(
-      { query: PROGRESS_QUERY, variables: { id: 'LIB-A' } }
-    );
-    const b = cache.readQuery<{ node: { progress: { edges: { node: { percentage: number } }[] } } }>(
-      { query: PROGRESS_QUERY, variables: { id: 'LIB-B' } }
-    );
+    const a = cache.readQuery<{
+      node: { progress: { edges: { node: { percentage: number } }[] } };
+    }>({ query: PROGRESS_QUERY, variables: { id: 'LIB-A' } });
+    const b = cache.readQuery<{
+      node: { progress: { edges: { node: { percentage: number } }[] } };
+    }>({ query: PROGRESS_QUERY, variables: { id: 'LIB-B' } });
 
     expect(a?.node.progress.edges[0].node.percentage).toBe(10);
     expect(b?.node.progress.edges[0].node.percentage).toBe(90);
