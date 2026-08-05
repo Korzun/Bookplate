@@ -111,13 +111,18 @@ const result = builder.unionType('UserChangePasswordResult', {
  * is `true` — Pothos ANDs type-level and field-level scopes by default, so
  * without `skipTypeScopes` this mutation would be unreachable by exactly the
  * users it exists for. `passwordChangeAllowed` (`context.viewer !== null`)
- * is the correct type-level substitute: it admits a `mustChangePassword`
- * viewer while still refusing a null one. The field-level `authScopes`
- * function below re-derives the same "non-null viewer" condition as part of
- * its self-only check, so `passwordChangeAllowed` and `skipTypeScopes`
- * together only need to cover the TYPE-level gate that would otherwise block
- * a forced-change viewer — see `builder.ts`'s own comment on this exemption
- * and the task ledger's standing rule.
+ * is the type-level substitute: it admits a `mustChangePassword` viewer while
+ * still refusing a null one — and the field's own `authScopes` function below
+ * DECLARES it (`{ passwordChangeAllowed: true }`) rather than merely
+ * re-deriving the same "non-null viewer" condition inline, so the scope
+ * system actually records the intent instead of a bare boolean hiding it (a
+ * prior version of this field did exactly that, which is how the scope went
+ * dead in the first place — see the schema-cleanup ledger, task 5). Pothos
+ * does not accept both an `authScopes` object and an `authScopes` function on
+ * one field, so the extra `viewer.userId !== null` check — refusing the
+ * config admin, which owns no user row — is folded into the same function: it
+ * returns the scope map only when that check also holds, `false` otherwise —
+ * see `builder.ts`'s own comment on this exemption.
  *
  * REST's own gate confirms this is the ONE exempted route: `passwordChangeGate`
  * (`middleware/auth.ts:97-120`) 403s every `/api/*` request from a
@@ -183,12 +188,19 @@ builder.mutationField('userChangePassword', (t) =>
       'null in the unlikely case the account was deleted mid-request.',
     args: { input: t.arg({ type: input, required: true }) },
     skipTypeScopes: true,
-    // A non-null viewer that owns a user row. The config admin's `userId` is
+    // Declares the type-level gate that `skipTypeScopes` removes (see
+    // `builder.ts`'s note on the exemption), AND re-checks `viewer.userId` —
+    // Pothos does not accept both an `authScopes` object and an `authScopes`
+    // function on one field, so the function form does both jobs: returning
+    // the scope map only when the field-level condition also holds. A
+    // non-null viewer that owns a user row. The config admin's `userId` is
     // always null — it has no account of its own — so it is refused here, the
     // same outcome the previous `viewer.userId === args.input.userId.id`
     // comparison produced, minus the argument it had to compare against.
     authScopes: (_parent, _args, context) =>
-      context.viewer !== null && context.viewer.userId !== null,
+      context.viewer !== null && context.viewer.userId !== null
+        ? { passwordChangeAllowed: true }
+        : false,
     resolve: async (_parent, args, context) => {
       const parsed = inputSchema.safeParse({
         currentPassword: args.input.currentPassword,

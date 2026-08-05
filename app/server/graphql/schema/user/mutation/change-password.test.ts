@@ -226,7 +226,7 @@ describe('Mutation.userChangePassword', () => {
     );
   });
 
-  it('refuses an unauthenticated caller (passwordChangeAllowed still requires a non-null viewer)', async () => {
+  it('refuses an unauthenticated caller through the declared passwordChangeAllowed scope', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: null,
       variables: {
