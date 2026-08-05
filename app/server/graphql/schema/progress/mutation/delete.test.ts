@@ -121,6 +121,7 @@ describe('Mutation.progressDelete', () => {
 
     // Same answer a nonexistent row gives — a probe must not learn that bob has this document.
     expect(result.data?.progressDelete ?? null).toBeNull();
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     // Bob's row survives. There is no progress store — read Prisma directly,
     // as this test file already does for its other assertions.
     expect(
@@ -160,6 +161,68 @@ describe('Mutation.progressDelete', () => {
       variables: {
         input: { id: progressId('no-such-user', 'dune.epub') },
       },
+    });
+
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+
+  // The next three tests pin `decodeProgressId`'s three defensive branches
+  // directly — review found all three were dead as far as the suite could
+  // tell (deleting the typename check, removing the decodeGlobalID try/catch,
+  // or turning the resolver's `parsed === null` guard into a throw each left
+  // the file green). Fix-round-1 report has the seen-to-fail output for each.
+
+  it('resolves to null for a well-formed Book global id, rather than mistaking its shape for a Progress id', async () => {
+    // Deliberately a `Book`-typed id whose LOCAL part is otherwise a
+    // well-formed `Progress` compound id (`[alice.userId, 'dune.epub']`) —
+    // same technique `bookValidate.test.ts`'s wrong-type-id test uses for
+    // `Series`. If `decodeProgressId`'s `typename !== 'Progress'` check were
+    // ever deleted, this id would decode and authorize exactly like a real
+    // Progress id, and an admin caller would actually delete alice's row.
+    await seedProgress(harness.aliceOwner.userId, 'dune.epub');
+    const wrongType = encodeGlobalID(
+      'Book',
+      JSON.stringify([harness.aliceOwner.userId, 'dune.epub'])
+    );
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { id: wrongType } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressDelete).toBeNull();
+    expect(await documentsOf(harness.aliceOwner.userId)).toEqual(['dune.epub']);
+  });
+
+  it('resolves to null for a malformed, non-base64 id from an admin, rather than throwing', async () => {
+    // `decodeGlobalID` throws `PothosValidationError` on structurally invalid
+    // input; `decodeProgressId`'s try/catch is what turns that into the same
+    // "no such row" `null` a genuinely missing row gets. An admin's `ownerOf`
+    // check passes regardless of the decoded userId, so this is the path
+    // that actually reaches the resolver's own (separate) decode call.
+    await seedProgress(harness.aliceOwner.userId, 'dune.epub');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { id: 'not-a-global-id!!' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressDelete).toBeNull();
+    expect(await documentsOf(harness.aliceOwner.userId)).toEqual(['dune.epub']);
+  });
+
+  it('refuses a malformed, non-base64 id from a non-admin viewer with a clean FORBIDDEN, not an unhandled error', async () => {
+    // Same malformed id as above, but from a non-admin: authScopes itself
+    // must call decodeProgressId to compute the ownerOf scope, BEFORE the
+    // resolver ever runs. If the try/catch were removed, this is the exact
+    // shape of the regression the review flagged: a clean 403 turning into
+    // an unhandled PothosValidationError (a 500) for any authenticated,
+    // non-admin caller who sends hostile input.
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { id: 'not-a-global-id!!' } },
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');

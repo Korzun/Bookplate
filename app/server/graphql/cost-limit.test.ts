@@ -48,9 +48,7 @@ describe('measureOperationCost — boundary math (real schema, needed for args-a
   // a mutation operation, but no committed assertion pinned that before this
   // — the code path existed, unexercised.
   it('resolves the mutation root type, not just the query root', () => {
-    const mutation = costOf(
-      'mutation { progressDelete(input: { document: "x", userId: "u" }) { __typename } }'
-    );
+    const mutation = costOf('mutation { progressDelete(input: { id: "u" }) { __typename } }');
     // progressDelete(1) + __typename(1) = 2, no multiplier (not one of the 5 bounded fields).
     expect(mutation).toEqual({ breadth: 2, complexity: 2 });
   });

@@ -30,14 +30,16 @@ type BookDeletePayloadShape = {
  * duplicated `deletedId` for no reason once the input itself became the
  * `Book` global ID: any caller that already had a `deletedId`-shaped id to
  * pass in can decode `deletedId` back out the same way. `deletedId: ID!`
- * alone stays, per the ledger's "deletes of Node-backed entities return
- * `deletedId: ID!`" rule — `Book` is a `Node`, so it does not fall under that
- * rule's one exception (`progressDelete`'s `deletedDocument`, for the non-
- * `Node` `Progress` type). Computed the same way the schema itself computes
- * it for a still-live row — `encodeGlobalID('Book', JSON.stringify([owner.
- * userId, id]))`, matching `node-scope.ts`'s `parseCompoundId` doc comment on
- * Pothos's own compound-id serializer — and costs nothing extra: both halves
- * of the compound key are already in hand from the resolver's own decode.
+ * alone stays, per the ledger's "deletes return `deletedId: ID!`" rule — no
+ * exception to it remains in this schema; `progressDelete` used to be one
+ * (`deletedDocument`, for the non-`Node` `Progress` type) but was collapsed
+ * to `deletedId` too once `Progress` itself gained a computed global ID (see
+ * that file's own payload doc comment). Computed the same way the schema
+ * itself computes it for a still-live row — `encodeGlobalID('Book',
+ * JSON.stringify([owner.userId, id]))`, matching `node-scope.ts`'s
+ * `parseCompoundId` doc comment on Pothos's own compound-id serializer — and
+ * costs nothing extra: both halves of the compound key are already in hand
+ * from the resolver's own decode.
  */
 const payload = builder.objectRef<BookDeletePayloadShape>('BookDeletePayload').implement({
   fields: (t) => ({

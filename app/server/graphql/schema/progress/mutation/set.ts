@@ -49,8 +49,12 @@ const input = builder.inputType('ProgressSetInput', {
  * `percentage` must be in `(0, 1]` — REST rejects `percentage <= 0` (not just
  * `< 0`) and `percentage > 1`. `document.min(1)` has no REST analogue (the
  * route's `:document` path segment cannot be empty) but matches every other
- * id-like field's rule in this schema (`progressDelete`'s identical field,
- * `bookId` elsewhere) — an empty string is a client bug, not a valid lookup.
+ * id-like field's rule in this schema (`bookId` elsewhere) — an empty string
+ * is a client bug, not a valid lookup. `progressDelete` no longer has a
+ * comparable field to cite here: its `document` component now rides inside
+ * an opaque `Progress` id rather than arriving as a raw argument, so there is
+ * nothing left there to zod-validate directly (see that file's own doc
+ * comment on why its `InvalidInputError` member was dropped).
  *
  * No `.int()` on `currentChapter`: GraphQL's `Int!` coercion already rejects
  * a non-integer before the resolver runs (unlike REST, which parses an
