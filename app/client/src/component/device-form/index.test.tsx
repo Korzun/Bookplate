@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DeviceCreateMutationVariables, DeviceUpdateMutationVariables } from '~/gql/graphql';
 import { DeviceCreateDocument, DeviceUpdateDocument } from '~/graphql/device';
-import { DeviceProvider } from '~/provider/device';
 import type { Device } from '~/provider/device';
 import { renderWithApollo } from '~/test-utils';
 
@@ -124,12 +123,7 @@ vi.mock('~/provider/user', async (importOriginal) => {
 type RenderFormOptions = Parameters<typeof renderWithApollo>[1];
 
 function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOptions) {
-  const rendered = renderWithApollo(
-    <DeviceProvider>
-      <DeviceForm device={device} onDone={onDone} />
-    </DeviceProvider>,
-    options
-  );
+  const rendered = renderWithApollo(<DeviceForm device={device} onDone={onDone} />, options);
   const nameInput = rendered.container.querySelector('input[name="name"]') as HTMLInputElement;
   return { ...rendered, nameInput };
 }
@@ -265,11 +259,7 @@ describe('DeviceForm', () => {
   });
 
   it('pre-fills the form and shows a Save button when editing an existing device', () => {
-    const { container } = renderWithApollo(
-      <DeviceProvider>
-        <DeviceForm device={kindle} onDone={() => {}} />
-      </DeviceProvider>
-    );
+    const { container } = renderWithApollo(<DeviceForm device={kindle} onDone={() => {}} />);
     const nameInput = container.querySelector('input[name="name"]') as HTMLInputElement;
     expect(nameInput.value).toBe('Kindle');
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
@@ -282,12 +272,9 @@ describe('DeviceForm', () => {
     const onDone = vi.fn();
     const { capture, matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-    renderWithApollo(
-      <DeviceProvider>
-        <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>,
-      { mocks: [updateSuccessMock(matcher)] }
-    );
+    renderWithApollo(<DeviceForm device={kindle} onDone={onDone} />, {
+      mocks: [updateSuccessMock(matcher)],
+    });
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(capture.current).toBeDefined());
@@ -315,10 +302,10 @@ describe('DeviceForm', () => {
     const updateCapture = captureVariables<DeviceUpdateMutationVariables>();
 
     const { container } = renderWithApollo(
-      <DeviceProvider>
+      <>
         <DeviceForm />
         <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>,
+      </>,
       {
         mocks: [updateSuccessMock(updateCapture.matcher), createSuccessMock(createCapture.matcher)],
       }
@@ -346,12 +333,9 @@ describe('DeviceForm', () => {
     const onDone = vi.fn();
     const { capture, matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-    renderWithApollo(
-      <DeviceProvider>
-        <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>,
-      { mocks: [updateSuccessMock(matcher)] }
-    );
+    renderWithApollo(<DeviceForm device={kindle} onDone={onDone} />, {
+      mocks: [updateSuccessMock(matcher)],
+    });
     await user.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(onDone).toHaveBeenCalled();
