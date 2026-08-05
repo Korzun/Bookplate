@@ -1,4 +1,4 @@
-import type { ApolloClient } from '@apollo/client';
+import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
 import { useApolloClient } from '@apollo/client/react';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -96,15 +96,24 @@ describe('useDeleteDevice', () => {
 
   // The task's real content: once the real response lands, the device stays
   // gone from a plain (non-optimistic) cache read too — the entity itself is
-  // evicted, not just hidden from this one list.
+  // evicted, not just hidden from this one list. The second assertion is the
+  // one that actually pins `cache.evict`: `cache.modify`'s filter alone
+  // already empties `viewer.devices`, so a `toEqual([])` on that read passes
+  // whether or not the entity was evicted — it only proves the filter ran.
+  // Asserting `Device:d1` is gone from the flat store is what would catch a
+  // deleted `cache.evict` call (see the seen-to-fail note above the test
+  // file, and the fix-round-2 section of the report).
   it('evicts the deleted device so a subsequent DeviceList cache read no longer includes it', async () => {
     const result = renderDeleteDevice([deleteSuccessMock]);
-    act(() => seedDeviceList(result.current!.client, [kindle]));
+    const { client } = result.current!;
+    act(() => seedDeviceList(client, [kindle]));
 
     await act(() => result.current!.deleteDevice[0]('d1'));
 
-    const cached = result.current!.client.readQuery({ query: DeviceListDocument });
+    const cached = client.readQuery({ query: DeviceListDocument });
     expect(cached?.viewer.devices).toEqual([]);
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).not.toContain('Device:d1');
   });
 
   // The half most likely to be silently broken: the device disappears
@@ -136,7 +145,15 @@ describe('useDeleteDevice', () => {
 
     expect(result.current!.deleteDevice[2]).toBe(true);
     expect(result.current!.deleteDevice[3]).toBe('Network error');
-    const cached = result.current!.client.readQuery({ query: DeviceListDocument });
+    // `optimistic: true` matters here: the optimistic pass never touches the
+    // root layer, so a default (`optimistic: false`) read would show `kindle`
+    // whether or not Apollo actually discarded the optimistic layer on
+    // failure — it would pass for the wrong reason. Reading the SAME layer
+    // that was hidden above is what actually proves the reappearance.
+    const cached = result.current!.client.readQuery({
+      query: DeviceListDocument,
+      optimistic: true,
+    });
     expect(cached?.viewer.devices).toEqual([kindle]);
   });
 
