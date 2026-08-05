@@ -46,7 +46,6 @@ describe('Mutation.userChangePassword', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },
@@ -74,7 +73,6 @@ describe('Mutation.userChangePassword', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },
@@ -89,7 +87,6 @@ describe('Mutation.userChangePassword', () => {
       viewer: harness.aliceViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'wrong-password',
           newPassword: 'newpass123',
         },
@@ -109,7 +106,7 @@ describe('Mutation.userChangePassword', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, currentPassword: 'alicepass', newPassword: '' },
+        input: { currentPassword: 'alicepass', newPassword: '' },
       },
     });
 
@@ -127,7 +124,7 @@ describe('Mutation.userChangePassword', () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: harness.aliceGlobalId, currentPassword: '', newPassword: 'newpass123' },
+        input: { currentPassword: '', newPassword: 'newpass123' },
       },
     });
 
@@ -138,41 +135,57 @@ describe('Mutation.userChangePassword', () => {
     });
   });
 
-  it("refuses one user changing another user's password, target unchanged", async () => {
+  /**
+   * The input no longer carries a `userId`, so "bob names alice" is not merely
+   * refused, it is unrepresentable. What remains worth pinning is the property
+   * that replaced it: the mutation always acts on the CALLER. Bob supplying
+   * alice's current password must not touch alice — it must be evaluated
+   * against bob's own account and fail there.
+   *
+   * Seen-to-fail: hard-coding the resolver's `username` to a fixed 'alice'
+   * turns this red on the first assertion (bob's call would succeed) and on
+   * the third (alice's password would change).
+   */
+  it('acts on the caller, never on the owner of the supplied password', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },
       },
     });
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    // Alice's password is not bob's, so against bob's account it is simply wrong.
+    expect(result.data?.userChangePassword).toMatchObject({
+      __typename: 'IncorrectPasswordError',
+    });
+    expect(await harness.stores.user.validateUser('bob', 'newpass123')).toBe(false);
     expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
 
   /**
-   * Seen-to-fail: swapping the resolver's `authScopes` from the self-only
-   * boolean check to the naive `ownerOf` scope (the shape most sibling
-   * user-associated mutations use) reproducibly turns THIS test red — an
-   * admin has no `userId` of their own, so `ownerOf`'s `isOwnerOrAdmin`
-   * admin branch lets it through, letting it change a NAMED user's password
-   * despite REST's flat 403; the test above (bob acting on alice) is denied
-   * either way and so cannot discriminate the two scopes. Confirmed
-   * experimentally (`AssertionError: expected undefined to be 'FORBIDDEN'`),
-   * then reverted.
+   * The config admin owns no user row (`viewer.userId` is always null), so it
+   * has no password of its own to change and REST 403s it outright
+   * (`routes/ui.ts:387-390`). Previously that fell out of the id comparison;
+   * now it is the explicit `viewer.userId !== null` half of `authScopes`, and
+   * this test is what pins it.
+   *
+   * Seen-to-fail: dropping `&& context.viewer.userId !== null` from
+   * `authScopes` turns this red — the admin then passes the scope and reaches
+   * the resolver, which looks up its non-existent account and answers
+   * `IncorrectPasswordError` instead of FORBIDDEN. A weaker assertion (merely
+   * "alice is unchanged") would pass in BOTH cases and prove nothing, which is
+   * why this asserts the error code.
    */
-  it("refuses the admin changing a named user's password (no REST admin-write path for a known current password)", async () => {
+  it('refuses the config admin, which owns no account of its own', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },
@@ -190,7 +203,6 @@ describe('Mutation.userChangePassword', () => {
       viewer: null,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },
@@ -209,6 +221,17 @@ describe('Mutation.userChangePassword', () => {
    * fail: removing `skipTypeScopes: true` from the resolver reproducibly
    * turns this red (`FORBIDDEN`) — confirmed while writing this test, then
    * reverted.
+   *
+   * **This test is also the regression guard for the input's missing `userId`
+   * (2026-08-04).** The exemption above made the mutation *reachable* by a
+   * forced-change viewer, but while `UserChangePasswordInput` required a User
+   * global ID that viewer could not actually CALL it: every `Query` field is
+   * gated on `authenticated`, which is false for them, so
+   * `query { viewer { user { id } } }` answers FORBIDDEN and there is no other
+   * way to obtain the id. Note this test supplies no id at all — that is the
+   * point. Re-adding a `userId` argument would restore the deadlock while
+   * leaving every existing assertion here green, so if a future change wants
+   * one back, it needs a way for this viewer to learn its own global ID first.
    */
   it('lets a mustChangePassword viewer change their own password', async () => {
     const forcedViewer: Viewer = { ...harness.aliceViewer, mustChangePassword: true };
@@ -217,7 +240,6 @@ describe('Mutation.userChangePassword', () => {
       viewer: forcedViewer,
       variables: {
         input: {
-          userId: harness.aliceGlobalId,
           currentPassword: 'alicepass',
           newPassword: 'newpass123',
         },

@@ -831,7 +831,6 @@ type User implements Node {
 input UserChangePasswordInput {
   currentPassword: String!
   newPassword: String!
-  userId: ID!
 }
 
 type UserChangePasswordPayload {

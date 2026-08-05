@@ -13,16 +13,34 @@ import {
 import { model as userModel } from '../model';
 
 /**
- * `userId` follows `progressSet`'s established shape-consistency precedent
- * (ledger, task 5): kept for input SHAPE even though the scope below pins it
- * to the caller's own id with no admin path — see this mutation's own doc
- * comment for the REST trace proving there is none. `currentPassword`/
- * `newPassword` are `PATCH /api/my/password`'s exact body fields
- * (`routes/ui.ts:393-396`).
+ * **No `userId` field — deliberately, and it must not be re-added.**
+ *
+ * This input originally carried `userId: ID!` for shape consistency with
+ * `progressSet` (ledger, task 5), even though the scope pinned it to the
+ * caller's own id and there is no admin path. That made the mutation
+ * *unreachable by the very users it exists for*, discovered while migrating
+ * the client (2026-08-04):
+ *
+ *   - `skipTypeScopes` + `passwordChangeAllowed` below exist so a viewer with
+ *     a pending forced password change can call this mutation. That works.
+ *   - But `authenticated` is `viewer !== null && !viewer.mustChangePassword`
+ *     (`schema/builder.ts`) and the WHOLE `Query` type is gated on it, with no
+ *     field opting out. So that same viewer gets `FORBIDDEN` from
+ *     `query { viewer { user { id } } }` — verified, not inferred.
+ *   - Their JWT carries only the RAW user id, so the only way to produce the
+ *     required global ID client-side was `base64('User:' + rawId)` — exactly
+ *     the Pothos-encoding coupling the book-relay-id plan removed.
+ *
+ * A self-only mutation has no business taking an identity argument it then
+ * refuses to honour: the caller is already known from the context. Deriving it
+ * removes the deadlock and one class of footgun at once.
+ *
+ * `currentPassword`/`newPassword` are `PATCH /api/my/password`'s exact body
+ * fields (`routes/ui.ts:393-396`), which likewise names no user — REST reads
+ * the identity off the session, as this now does.
  */
 const input = builder.inputType('UserChangePasswordInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: userModel }),
     currentPassword: t.string({ required: true }),
     newPassword: t.string({ required: true }),
   }),
@@ -78,11 +96,14 @@ const result = builder.unionType('UserChangePasswordResult', {
  * changes a *known* current password (only `POST .../reset-password`, which
  * `userResetPassword` mirrors, generates a NEW one). So — like `progressSet`
  * — this deliberately does NOT use the `ownerOf` scope every admin-capable
- * user-associated mutation in this schema uses; `userId` is still a required
- * input field for shape consistency (spec, "Mutations" section), but the
- * scope pins it to exactly the caller: `context.viewer.userId ===
- * args.input.userId.id`, which the config admin (`viewer.userId` always
- * `null`) can never satisfy.
+ * user-associated mutation in this schema uses. The target is not an argument
+ * at all (see the input type's own comment): it IS the caller, taken from
+ * `context.viewer.userId`.
+ *
+ * The config admin is still refused, by the same condition as before expressed
+ * directly rather than through an id comparison: its `viewer.userId` is always
+ * `null`, so it has no account of its own to change. Naming another user is now
+ * not merely refused but unrepresentable.
  *
  * **`skipTypeScopes: true` + `passwordChangeAllowed` is load-bearing, not
  * decorative.** `builder.mutationType`'s type-level scope is `authenticated`
@@ -162,8 +183,12 @@ builder.mutationField('userChangePassword', (t) =>
       'null in the unlikely case the account was deleted mid-request.',
     args: { input: t.arg({ type: input, required: true }) },
     skipTypeScopes: true,
-    authScopes: (_parent, args, context) =>
-      context.viewer !== null && context.viewer.userId === args.input.userId.id,
+    // A non-null viewer that owns a user row. The config admin's `userId` is
+    // always null — it has no account of its own — so it is refused here, the
+    // same outcome the previous `viewer.userId === args.input.userId.id`
+    // comparison produced, minus the argument it had to compare against.
+    authScopes: (_parent, _args, context) =>
+      context.viewer !== null && context.viewer.userId !== null,
     resolve: async (_parent, args, context) => {
       const parsed = inputSchema.safeParse({
         currentPassword: args.input.currentPassword,
@@ -171,9 +196,9 @@ builder.mutationField('userChangePassword', (t) =>
       });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      // authScopes already required args.input.userId.id === context.viewer.userId,
-      // so this names exactly the caller's own account.
-      const userId = args.input.userId.id;
+      // authScopes already established both are non-null, and the caller is the
+      // only account this mutation can ever name.
+      const userId = context.viewer!.userId!;
       const username = context.viewer!.username;
 
       const valid = await context.stores.user.validateUser(username, parsed.data.currentPassword);
