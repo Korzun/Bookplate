@@ -1,30 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@apollo/client/react';
+import { useMemo } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
+import { SyncPasswordDocument } from '~/graphql/user';
 
-export const useSyncPassword = (): [string | null, boolean, boolean] => {
-  const [syncPassword, setSyncPassword] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+export type UseSyncPassword = [string | null, boolean, boolean];
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await apiFetch('/api/my/sync-password');
-        if (res.status !== 200) {
-          setError(true);
-          return;
-        }
-        const data = (await res.json()) as { syncPassword: string };
-        setSyncPassword(data.syncPassword);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-    void load();
-  }, []);
+/**
+ * `Viewer.syncPassword` resolves to a clean `null` for the config-based
+ * admin — no `authScopes`, no accompanying `FORBIDDEN` error (see
+ * `SyncPasswordDocument`'s doc comment) — so there is nothing here for a
+ * `skip` gate to guard against; `page/user/index.tsx` also only ever mounts
+ * `SyncPassword` for a non-admin viewer in the first place. `error` covers
+ * real transport/GraphQL failures only.
+ */
+export const useSyncPassword = (): UseSyncPassword => {
+  const { data, loading, error } = useQuery(SyncPasswordDocument);
 
-  return [syncPassword, loading, error];
+  return useMemo(
+    () => [data?.viewer.syncPassword ?? null, loading, error !== undefined] as UseSyncPassword,
+    [data, loading, error]
+  );
 };

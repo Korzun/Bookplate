@@ -104,3 +104,57 @@ export const UserResetPasswordDocument = graphql(`
     }
   }
 `);
+
+/**
+ * A dedicated document, NOT folded into `ViewerBootstrapDocument`: `viewer.
+ * syncPassword`'s resolver (`viewer/model.ts`) carries a write side effect
+ * inherited from `UserStore.getSyncPassword` — an account with no
+ * `sync_password` row yet gets one generated and persisted on first read.
+ * Bootstrap fires once per app load for every screen; this document is fetched
+ * only when the device-password card actually mounts, keeping that
+ * lazy-generation side effect confined to visiting the one screen that reads
+ * it — exactly matching REST's `GET /api/my/sync-password`.
+ *
+ * `syncPassword` is nullable and resolves to a clean `null` (no accompanying
+ * error) for the config-based admin, which has no user row — the resolver
+ * carries no `authScopes`, unlike `Viewer.users`/`Device.enabledUsers`. Render
+ * that null as "not applicable to this account", not as a failure.
+ */
+export const SyncPasswordDocument = graphql(`
+  query SyncPassword {
+    viewer {
+      syncPassword
+    }
+  }
+`);
+
+/**
+ * `userRegenerateSyncPassword` returns `{ syncPassword, user }`, but the field
+ * the UI reads is `Viewer.syncPassword` — a different place entirely. The
+ * returned payload does not update it; `use-regenerate-sync-password.ts`
+ * closes that gap with an explicit `cache.modify` on the `Viewer` singleton
+ * (`cache.identify({ __typename: 'Viewer' })`, the same shape `useRegisterUser`
+ * uses to append into `Viewer.users`).
+ *
+ * `user { id }` is selected even though the hook never reads it: an object-
+ * typed payload field cannot carry an empty selection set, and selecting the
+ * id keeps the returned `User` well-formed for normalization (same reasoning
+ * as `UserResetPasswordDocument`'s doc comment above).
+ *
+ * Single-member union — same reasoning as `UserResetPasswordResult`'s
+ * identical note: the mutation's own `authScopes` pins `input.userId` to the
+ * caller's own id, so there is no reachable error case to select.
+ */
+export const UserRegenerateSyncPasswordDocument = graphql(`
+  mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {
+    userRegenerateSyncPassword(input: $input) {
+      __typename
+      ... on UserRegenerateSyncPasswordPayload {
+        syncPassword
+        user {
+          id
+        }
+      }
+    }
+  }
+`);

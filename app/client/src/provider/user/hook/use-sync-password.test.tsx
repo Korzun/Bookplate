@@ -1,49 +1,69 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { useSyncPassword } from './use-sync-password';
+import { SyncPasswordDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
+
+import { useSyncPassword, type UseSyncPassword } from './use-sync-password';
+
+const syncPasswordMock = (syncPassword: string | null) => ({
+  request: { query: SyncPasswordDocument },
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      viewer: { __typename: 'Viewer' as const, syncPassword },
+    },
+  },
+});
+
+const renderSyncPassword = (
+  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']
+) => {
+  const result: { current?: UseSyncPassword } = {};
+  const Probe = () => {
+    result.current = useSyncPassword();
+    return null;
+  };
+  renderWithApollo(<Probe />, { mocks });
+  return result;
+};
 
 describe('useSyncPassword', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+  it('returns the syncPassword once the query resolves', async () => {
+    const result = renderSyncPassword([syncPasswordMock('blue oak')]);
+
+    await waitFor(() => expect(result.current?.[1]).toBe(false));
+    expect(result.current?.[0]).toBe('blue oak');
+    expect(result.current?.[2]).toBe(false);
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  // `Viewer.syncPassword` resolves to a clean `null` for the config-based
+  // admin (no `authScopes`, no accompanying error) — that is "not applicable
+  // to this account", not a failure, so no error flag should be set here.
+  it('treats a null syncPassword (config-based admin) as not-an-error', async () => {
+    const result = renderSyncPassword([syncPasswordMock(null)]);
+
+    await waitFor(() => expect(result.current?.[1]).toBe(false));
+    expect(result.current?.[0]).toBeNull();
+    expect(result.current?.[2]).toBe(false);
   });
 
-  it('fetches and returns syncPassword on mount', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      status: 200,
-      json: async () => ({ syncPassword: 'blue oak' }),
-    } as Response);
+  it('sets error on a GraphQL/network failure', async () => {
+    const result = renderSyncPassword([
+      {
+        request: { query: SyncPasswordDocument },
+        error: new Error('Network error'),
+      },
+    ]);
 
-    const { result } = renderHook(() => useSyncPassword());
-    await waitFor(() => expect(result.current[0]).toBe('blue oak'));
-    expect(result.current[1]).toBe(false); // not loading
-    expect(result.current[2]).toBe(false); // no error
+    await waitFor(() => expect(result.current?.[2]).toBe(true));
+    expect(result.current?.[0]).toBeNull();
   });
 
-  it('sets error on non-200 response', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({ status: 500 } as Response);
-    const { result } = renderHook(() => useSyncPassword());
-    await waitFor(() => expect(result.current[2]).toBe(true));
-    expect(result.current[0]).toBeNull();
-  });
+  it('reports loading until the query resolves', () => {
+    const result = renderSyncPassword([syncPasswordMock('blue oak')]);
 
-  it('sets loading true while fetching', async () => {
-    let resolveFetch!: (value: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(
-        new Promise((r) => {
-          resolveFetch = r;
-        })
-      )
-    );
-    const { result } = renderHook(() => useSyncPassword());
-    expect(result.current[1]).toBe(true);
-    resolveFetch({ status: 200, json: async () => ({ syncPassword: 'red hawk' }) });
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    expect(result.current?.[1]).toBe(true);
+    expect(result.current?.[0]).toBeNull();
   });
 });
