@@ -31,6 +31,7 @@ type Documents = {
     "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": typeof types.UserResetPasswordDocument,
     "\n  query SyncPassword {\n    viewer {\n      syncPassword\n    }\n  }\n": typeof types.SyncPasswordDocument,
     "\n  mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {\n    userRegenerateSyncPassword(input: $input) {\n      __typename\n      ... on UserRegenerateSyncPasswordPayload {\n        syncPassword\n        user {\n          id\n        }\n      }\n    }\n  }\n": typeof types.UserRegenerateSyncPasswordDocument,
+    "\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n": typeof types.UserChangePasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": typeof types.ViewerBootstrapDocument,
 };
 const documents: Documents = {
@@ -51,6 +52,7 @@ const documents: Documents = {
     "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": types.UserResetPasswordDocument,
     "\n  query SyncPassword {\n    viewer {\n      syncPassword\n    }\n  }\n": types.SyncPasswordDocument,
     "\n  mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {\n    userRegenerateSyncPassword(input: $input) {\n      __typename\n      ... on UserRegenerateSyncPasswordPayload {\n        syncPassword\n        user {\n          id\n        }\n      }\n    }\n  }\n": types.UserRegenerateSyncPasswordDocument,
+    "\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n": types.UserChangePasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": types.ViewerBootstrapDocument,
 };
 
@@ -136,6 +138,10 @@ export function graphql(source: "\n  query SyncPassword {\n    viewer {\n      s
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {\n    userRegenerateSyncPassword(input: $input) {\n      __typename\n      ... on UserRegenerateSyncPasswordPayload {\n        syncPassword\n        user {\n          id\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {\n    userRegenerateSyncPassword(input: $input) {\n      __typename\n      ... on UserRegenerateSyncPasswordPayload {\n        syncPassword\n        user {\n          id\n        }\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

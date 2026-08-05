@@ -15,5 +15,6 @@
   "sha256:89758fe430dc1e5598ca424c24298df58dca2a2529eea7c677b7d3d2cb1f943c": "mutation UserResetPassword($input: UserResetPasswordInput!) { __typename userResetPassword(input: $input) { __typename ... on UserResetPasswordPayload { __typename password user { __typename id } } } }",
   "sha256:68b9971bd07724ae8b9700529a78109d2e54ce603f6ac3c27e729dec7c9dbde6": "query SyncPassword { __typename viewer { __typename syncPassword } }",
   "sha256:69f77058950b0f0d2971080a52ca757bb4de982a70245e9d7b5b52710909b13b": "mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) { __typename userRegenerateSyncPassword(input: $input) { __typename ... on UserRegenerateSyncPasswordPayload { __typename syncPassword user { __typename id } } } }",
+  "sha256:4e14d9b11a1919e3a6da825292ea1839236f25c533a7e44f9cd7f12cc1032555": "mutation UserChangePassword($input: UserChangePasswordInput!) { __typename userChangePassword(input: $input) { __typename ... on IncorrectPasswordError { __typename message } ... on InvalidInputError { __typename message } ... on UserChangePasswordPayload { __typename user { __typename id } } } }",
   "sha256:8c438916bdd1980a46caef439e1ba70b4ddad1fa4134c647b012178854aef7d5": "query ViewerBootstrap { __typename viewer { __typename isAdmin library { __typename id } mustChangePassword user { __typename id } username } }"
 }

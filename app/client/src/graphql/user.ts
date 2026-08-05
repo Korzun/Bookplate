@@ -158,3 +158,43 @@ export const UserRegenerateSyncPasswordDocument = graphql(`
     }
   }
 `);
+
+/**
+ * **No `userId` variable — deliberately.** `UserChangePasswordInput` takes only
+ * `currentPassword`/`newPassword`; the server derives the caller from the
+ * viewer (`user/mutation/change-password.ts`'s own doc comment explains why a
+ * `userId` field made this mutation unreachable by exactly the users it
+ * exists for). Do not add one back.
+ *
+ * `user { id }` is selected for the same "well-formed reference" reason as
+ * `UserResetPasswordDocument` above — the hook never reads it, a successful
+ * call logs the caller out immediately (see `use-change-my-password.ts`), so
+ * there is nothing left to normalize into. An object-typed payload field
+ * cannot carry an empty selection set regardless.
+ *
+ * Only `message` is selected for `InvalidInputError`, not `issues` — the same
+ * choice `UserRegisterDocument` above makes for its own `InvalidInputError`
+ * branch. Neither call site (`user-change-password`, `password-reset`)
+ * attaches a field-level error to an individual input today; both render one
+ * flat message. `IncorrectPasswordError` carries only `message` server-side
+ * (see its model's doc comment), so this is its complete selection, not a
+ * trimmed one.
+ */
+export const UserChangePasswordDocument = graphql(`
+  mutation UserChangePassword($input: UserChangePasswordInput!) {
+    userChangePassword(input: $input) {
+      __typename
+      ... on UserChangePasswordPayload {
+        user {
+          id
+        }
+      }
+      ... on InvalidInputError {
+        message
+      }
+      ... on IncorrectPasswordError {
+        message
+      }
+    }
+  }
+`);
