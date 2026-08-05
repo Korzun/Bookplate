@@ -431,7 +431,10 @@ describe('DeviceForm', () => {
 
       await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
       // Form stays open (Save still present) and the 'bob' selection is retained.
-      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      // useActionState's isPending can still be true right after enableUser
+      // resolves, so the button briefly reads "Saving…" — wait for it to
+      // settle back to "Save" instead of asserting synchronously.
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument());
       expect(screen.getByLabelText('Remove bob')).toBeInTheDocument();
       expect(onDone).not.toHaveBeenCalled();
     });
