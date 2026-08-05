@@ -168,6 +168,34 @@ describe('Mutation.userChangePassword', () => {
   });
 
   /**
+   * The payload's `user` field is the one line in this resolver that no other
+   * test reaches with a non-alice caller: every success-path assertion here
+   * uses alice, and bob only ever exercises the IncorrectPasswordError branch.
+   * A whole-branch review proved the gap by hardcoding the lookup to alice and
+   * watching all 1942 server tests still pass.
+   *
+   * This pins BOTH halves at once: the write lands on bob, and the payload
+   * reports bob.
+   */
+  it('reports the caller in its payload, and writes to the caller, for a non-default user', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.bobViewer,
+      variables: { input: { currentPassword: 'bobpass', newPassword: 'bobnewpass' } },
+    });
+
+    expect(result.data?.userChangePassword).toEqual({
+      __typename: 'UserChangePasswordPayload',
+      user: { username: 'bob', mustChangePassword: false },
+    });
+    expect(await harness.stores.user.validateUser('bob', 'bobnewpass')).toBe(
+      harness.bobOwner.userId
+    );
+    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+      harness.aliceOwner.userId
+    );
+  });
+
+  /**
    * The config admin owns no user row (`viewer.userId` is always null), so it
    * has no password of its own to change and REST 403s it outright
    * (`routes/ui.ts:387-390`). Previously that fell out of the id comparison;
