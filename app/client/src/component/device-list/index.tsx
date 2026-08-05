@@ -85,9 +85,17 @@ const DeviceRow = ({ device }: DeviceRowProps) => {
 
 export const DeviceList = () => {
   const styles = useStyle();
-  const [deviceList, loading] = useDeviceList();
+  const [deviceList, loading, hasError, errorMessage] = useDeviceList();
 
   if (loading) return <p className={styles.loading}>Loading…</p>;
+
+  // Checked before the empty-list branch below: an empty array is what a
+  // failed read also returns, so without this a GraphQL error renders
+  // identically to "you really have no devices" instead of saying what
+  // happened.
+  if (hasError) {
+    return <p className={styles.loading}>{errorMessage ?? 'Failed to load devices'}</p>;
+  }
 
   if (deviceList.length === 0) {
     return <p className={styles.loading}>No devices yet</p>;

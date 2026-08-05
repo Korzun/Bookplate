@@ -1,8 +1,20 @@
-import { useCallback, use, useMemo, useState } from 'react';
+import { useMutation } from '@apollo/client/react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
-import { Context } from '../context';
+import type { DeviceUpdateMutation } from '~/gql/graphql';
+import { DeviceUpdateDocument } from '~/graphql/device';
+import { unwrapResult } from '~/provider/apollo';
+
 import type { Device, DeviceInput } from '../type';
+import { coverFitToGraphQL, deviceFromGraphQL } from './util';
+
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated.
+type DeviceUpdatePayload = Extract<
+  NonNullable<DeviceUpdateMutation['deviceUpdate']>,
+  { __typename: 'DeviceUpdatePayload' }
+>;
 
 export type UpdateDevice = (id: string, input: DeviceInput) => Promise<Device | null>;
 export type UseUpdateDevice =
@@ -10,8 +22,19 @@ export type UseUpdateDevice =
   | [UpdateDevice, true, false, undefined] // Updating
   | [UpdateDevice, false, true, undefined] // Unspecified error
   | [UpdateDevice, false, true, string]; // Specified error
+
+/**
+ * `deviceUpdate` returns the updated `Device` outright, which normalizes over
+ * the existing `Device:<id>` entity — every cached read (`useDeviceList`
+ * included) picks up the change for free. No `update` function needed here,
+ * unlike `useCreateDevice`'s append.
+ *
+ * `DeviceSlugConflictError` and `InvalidInputError` are both real, reachable
+ * outcomes surfaced through this hook's existing error slot — the form
+ * already renders whichever message lands there.
+ */
 export const useUpdateDevice = (): UseUpdateDevice => {
-  const { setDeviceList } = use(Context);
+  const [runUpdate] = useMutation(DeviceUpdateDocument);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -23,18 +46,33 @@ export const useUpdateDevice = (): UseUpdateDevice => {
         setError(false);
         setErrorMessage(undefined);
 
-        const response = await apiFetch(`/api/devices/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(input),
+        const { data } = await runUpdate({
+          variables: {
+            input: {
+              deviceId: id,
+              name: input.name,
+              coverWidth: input.coverWidth,
+              coverHeight: input.coverHeight,
+              coverFit: coverFitToGraphQL(input.coverFit),
+              bwCover: input.bwCover,
+              simplify: input.simplify,
+            },
+          },
         });
-        if (response.status !== 200) {
-          const body = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error ?? 'Failed to update device');
+
+        const result = unwrapResult<DeviceUpdatePayload>(data?.deviceUpdate, 'DeviceUpdatePayload');
+        if (result.status === 'missing') {
+          setError(true);
+          setErrorMessage('Failed to update device');
+          return null;
         }
-        const device = (await response.json()) as Device;
-        setDeviceList((prev) => ({ ...prev, [device.id]: device }));
-        return device;
+        if (result.status === 'error') {
+          setError(true);
+          setErrorMessage(result.message);
+          return null;
+        }
+
+        return deviceFromGraphQL(result.payload.device);
       } catch (err) {
         setError(true);
         setErrorMessage(err instanceof Error ? err.message : 'Failed to update device');
@@ -43,7 +81,7 @@ export const useUpdateDevice = (): UseUpdateDevice => {
         setLoading(false);
       }
     },
-    [setDeviceList]
+    [runUpdate]
   );
 
   return useMemo(

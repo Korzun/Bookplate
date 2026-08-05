@@ -24,3 +24,49 @@ const COVER_FIT_FROM_GRAPHQL: Record<CoverFit, Device['coverFit']> = {
 
 export const coverFitFromGraphQL = (coverFit: CoverFit): Device['coverFit'] =>
   COVER_FIT_FROM_GRAPHQL[coverFit];
+
+/**
+ * The inverse of `COVER_FIT_FROM_GRAPHQL` above, for mutation inputs: the
+ * client's lowercase `Device['coverFit']` union to the GraphQL `CoverFit`
+ * enum. Explicit and exhaustive like its counterpart — no lower/upper-casing
+ * cast that would silently accept a future client value this map does not
+ * yet know about.
+ */
+const COVER_FIT_TO_GRAPHQL: Record<Device['coverFit'], CoverFit> = {
+  contain: 'CONTAIN',
+  cover: 'COVER',
+  fill: 'FILL',
+  smart: 'SMART',
+};
+
+export const coverFitToGraphQL = (coverFit: Device['coverFit']): CoverFit =>
+  COVER_FIT_TO_GRAPHQL[coverFit];
+
+/**
+ * Shared by `useCreateDevice`/`useUpdateDevice` to map a mutation payload's
+ * `device { … }` selection (identical field-for-field to `DeviceListDocument`)
+ * back to the client's `Device` shape — the same job `useDeviceList` does per
+ * row, factored out so both mutation hooks return a `Device` without
+ * duplicating the mapping.
+ */
+export type GraphQLDeviceFields = {
+  id: string;
+  name: string;
+  slug: string;
+  coverWidth: number | null;
+  coverHeight: number | null;
+  coverFit: CoverFit;
+  bwCover: boolean;
+  simplify: boolean;
+};
+
+export const deviceFromGraphQL = (device: GraphQLDeviceFields): Device => ({
+  id: device.id,
+  name: device.name,
+  slug: device.slug,
+  coverWidth: device.coverWidth,
+  coverHeight: device.coverHeight,
+  coverFit: coverFitFromGraphQL(device.coverFit),
+  bwCover: device.bwCover,
+  simplify: device.simplify,
+});

@@ -1,79 +1,13 @@
-import { ApolloClient, InMemoryCache } from '@apollo/client';
-import { ApolloProvider } from '@apollo/client/react';
-import { MockLink } from '@apollo/client/testing';
-import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ApolloClient } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
+import { act, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { DeviceListDocument } from '~/graphql/device';
-import { cacheConfig } from '~/provider/apollo';
+import { DeviceCreateDocument, DeviceListDocument } from '~/graphql/device';
+import { renderWithApollo } from '~/test-utils';
 
-import { useCreateDevice, useDeviceList } from '.';
-import { Context } from '../context';
-import type { Device, DeviceInput, DeviceList } from '../type';
-
-/**
- * `useDeviceList` reads the Apollo cache (task 2); `useCreateDevice` still
- * writes through this Context/REST (task 3's job to rewire). A real
- * `ApolloClient` seeded via `writeQuery` is what lets a test render both
- * hooks side by side without an "no ApolloProvider" crash, on a cache-first
- * read that never touches `MockLink`'s empty mock list.
- */
-function makeWrapper(initialDevices: Device[] = []) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [deviceList, setDeviceListRaw] = useState<DeviceList>(
-      Object.fromEntries(initialDevices.map((d) => [d.id, d]))
-    );
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | undefined>();
-    const setDeviceList = useCallback(
-      (updater: (prev: DeviceList) => DeviceList) => setDeviceListRaw(updater),
-      []
-    );
-    const [client] = useState(() => {
-      const apolloClient = new ApolloClient({
-        link: new MockLink([]),
-        cache: new InMemoryCache(cacheConfig),
-      });
-      apolloClient.writeQuery({
-        query: DeviceListDocument,
-        data: {
-          __typename: 'Query',
-          viewer: {
-            __typename: 'Viewer',
-            devices: initialDevices.map((device) => ({
-              __typename: 'Device' as const,
-              ...device,
-              coverFit: device.coverFit.toUpperCase() as 'CONTAIN' | 'COVER' | 'FILL' | 'SMART',
-            })),
-          },
-        },
-      });
-      return apolloClient;
-    });
-    return (
-      <ApolloProvider client={client}>
-        <Context.Provider
-          value={{ deviceList, loading, error, setDeviceList, setLoading, setError }}
-        >
-          {children}
-        </Context.Provider>
-      </ApolloProvider>
-    );
-  };
-}
-
-const kindle: Device = {
-  id: 'd1',
-  name: 'Kindle',
-  slug: 'kindle',
-  coverWidth: null,
-  coverHeight: null,
-  coverFit: 'contain',
-  bwCover: false,
-  simplify: true,
-};
+import type { DeviceInput } from '../type';
+import { useCreateDevice, type UseCreateDevice } from './use-create-device';
 
 const kindleInput: DeviceInput = {
   name: 'Kindle',
@@ -84,95 +18,137 @@ const kindleInput: DeviceInput = {
   simplify: true,
 };
 
-describe('useCreateDevice', () => {
-  afterEach(() => vi.unstubAllGlobals());
+/** What the hook sends over the wire: the client's lowercase `coverFit`
+ * mapped to the GraphQL enum, everything else passed through unchanged. */
+const kindleGraphQLInput = {
+  name: 'Kindle',
+  coverWidth: null,
+  coverHeight: null,
+  coverFit: 'CONTAIN' as const,
+  bwCover: false,
+  simplify: true,
+};
 
+const createdDevice = {
+  __typename: 'Device' as const,
+  id: 'd1',
+  name: 'Kindle',
+  slug: 'kindle',
+  coverWidth: null,
+  coverHeight: null,
+  coverFit: 'CONTAIN' as const,
+  bwCover: false,
+  simplify: true,
+};
+
+const createSuccessMock = {
+  request: { query: DeviceCreateDocument, variables: { input: kindleGraphQLInput } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      deviceCreate: { __typename: 'DeviceCreatePayload' as const, device: createdDevice },
+    },
+  },
+};
+
+const conflictMock = {
+  request: { query: DeviceCreateDocument, variables: { input: kindleGraphQLInput } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      deviceCreate: {
+        __typename: 'DeviceSlugConflictError' as const,
+        message: 'A device with this name already exists',
+      },
+    },
+  },
+};
+
+type Harness = { create: UseCreateDevice; client: ApolloClient };
+
+const renderCreateDevice = (
+  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']
+) => {
+  const result: { current?: Harness } = {};
+  const Probe = () => {
+    result.current = { create: useCreateDevice(), client: useApolloClient() };
+    return null;
+  };
+  renderWithApollo(<Probe />, { mocks });
+  return result;
+};
+
+/** Seeds an empty `DeviceList` read, mirroring the cache state before any
+ * device exists — the append's starting point. */
+const seedEmptyDeviceList = (client: ApolloClient) =>
+  client.writeQuery({
+    query: DeviceListDocument,
+    data: { __typename: 'Query', viewer: { __typename: 'Viewer', devices: [] } },
+  });
+
+describe('useCreateDevice', () => {
   it('returns createDevice function and initial false/undefined state', () => {
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
-    const [createDevice, loading, error, errorMessage] = result.current;
+    const result = renderCreateDevice([]);
+    const [createDevice, loading, error, errorMessage] = result.current!.create;
     expect(typeof createDevice).toBe('function');
     expect(loading).toBe(false);
     expect(error).toBe(false);
     expect(errorMessage).toBeUndefined();
   });
 
-  it('sends POST request to /api/devices with the device input', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) })
-    );
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
-    await act(() => result.current[0](kindleInput));
-    expect(fetch).toHaveBeenCalledWith('/api/devices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(kindleInput),
+  it('sends the DeviceCreate mutation with the mapped input and returns the created device', async () => {
+    const result = renderCreateDevice([createSuccessMock]);
+    act(() => seedEmptyDeviceList(result.current!.client));
+
+    // MockLink throws on an unmatched request, so resolving without error
+    // already proves the variables (including the uppercased coverFit) match.
+    const device = await act(() => result.current!.create[0](kindleInput));
+    expect(device).toEqual({
+      id: 'd1',
+      name: 'Kindle',
+      slug: 'kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
     });
   });
 
-  it('returns the created device on success', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) })
-    );
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
-    const device = await act(() => result.current[0](kindleInput));
-    expect(device).toEqual(kindle);
+  // The task's real content: a returned entity does not insert itself into a
+  // list, so this proves the `cache.modify` append actually ran, by reading
+  // the cache directly rather than re-mocking DeviceList.
+  it('appends the created device to a subsequent DeviceList cache read', async () => {
+    const result = renderCreateDevice([createSuccessMock]);
+    act(() => seedEmptyDeviceList(result.current!.client));
+
+    await act(() => result.current!.create[0](kindleInput));
+
+    const cached = result.current!.client.readQuery({ query: DeviceListDocument });
+    expect(cached?.viewer.devices).toEqual([createdDevice]);
   });
 
-  it('does not add the created device to the GraphQL-backed list — decoupled until task 3 rewires the mutation onto the cache', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) })
-    );
-    const { result } = renderHook(() => ({ create: useCreateDevice(), list: useDeviceList() }), {
-      wrapper: makeWrapper(),
-    });
-    await act(() => result.current.create[0](kindleInput));
-    // useCreateDevice still only writes to Context (REST); useDeviceList (task 2)
-    // reads the Apollo cache, which this mutation never touches. The seeded
-    // empty list is therefore still what useDeviceList reports.
-    expect(result.current.list[0]).toEqual([]);
+  it('surfaces a DeviceSlugConflictError message and does not append anything', async () => {
+    const result = renderCreateDevice([conflictMock]);
+    act(() => seedEmptyDeviceList(result.current!.client));
+
+    const device = await act(() => result.current!.create[0](kindleInput));
+    expect(device).toBeNull();
+    expect(result.current!.create[2]).toBe(true);
+    expect(result.current!.create[3]).toBe('A device with this name already exists');
+
+    const cached = result.current!.client.readQuery({ query: DeviceListDocument });
+    expect(cached?.viewer.devices).toEqual([]);
   });
 
-  it('sets error and message when POST fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Server error')));
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
-    await act(() => result.current[0](kindleInput));
-    expect(result.current[2]).toBe(true);
-    expect(result.current[3]).toBe('Server error');
-  });
+  it('sets loading to true while the mutation is pending', async () => {
+    const result = renderCreateDevice([{ ...createSuccessMock, delay: 20 }]);
+    act(() => seedEmptyDeviceList(result.current!.client));
 
-  it('sets error when the server responds with a non-201 status', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        status: 409,
-        json: () => Promise.resolve({ error: 'A device with this name/slug already exists' }),
-      })
-    );
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
-    await act(() => result.current[0](kindleInput));
-    expect(result.current[2]).toBe(true);
-    expect(result.current[3]).toBe('A device with this name/slug already exists');
-  });
-
-  it('sets loading to true while POST is pending', async () => {
-    let resolveFetch!: (value: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        })
-      )
-    );
-    const { result } = renderHook(() => useCreateDevice(), { wrapper: makeWrapper() });
     act(() => {
-      void result.current[0](kindleInput);
+      void result.current!.create[0](kindleInput);
     });
-    expect(result.current[1]).toBe(true);
-    resolveFetch({ status: 201, json: () => Promise.resolve(kindle) });
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    await waitFor(() => expect(result.current!.create[1]).toBe(true));
+    await waitFor(() => expect(result.current!.create[1]).toBe(false));
   });
 });

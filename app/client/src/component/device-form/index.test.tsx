@@ -2,9 +2,11 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { DeviceCreateMutationVariables, DeviceUpdateMutationVariables } from '~/gql/graphql';
+import { DeviceCreateDocument, DeviceUpdateDocument } from '~/graphql/device';
 import { DeviceProvider } from '~/provider/device';
 import type { Device } from '~/provider/device';
-import { renderWithProviders } from '~/test-utils';
+import { renderWithApollo } from '~/test-utils';
 
 import { DeviceForm } from './index';
 
@@ -19,10 +21,71 @@ const kindle: Device = {
   simplify: false,
 };
 
+const kindleDeviceGraphQL = {
+  __typename: 'Device' as const,
+  id: 'd1',
+  name: 'Kindle',
+  slug: 'kindle',
+  coverWidth: null,
+  coverHeight: null,
+  coverFit: 'CONTAIN' as const,
+  bwCover: false,
+  simplify: false,
+};
+
+/** Records the exact variables a mutation was sent with, while still
+ * matching (and thus resolving) the request — MockLink throws on an
+ * unmatched request, so a test's assertion never silently passes against a
+ * mock that was never hit. */
+const captureVariables = <TVariables,>() => {
+  const capture: { current?: TVariables } = {};
+  const matcher = (vars: TVariables) => {
+    capture.current = vars;
+    return true;
+  };
+  return { capture, matcher };
+};
+
+const createSuccessMock = (matcher: (vars: DeviceCreateMutationVariables) => boolean) => ({
+  request: { query: DeviceCreateDocument, variables: matcher },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      deviceCreate: { __typename: 'DeviceCreatePayload' as const, device: kindleDeviceGraphQL },
+    },
+  },
+});
+
+const createErrorMock = (error: Error) => ({
+  request: { query: DeviceCreateDocument, variables: () => true },
+  error,
+});
+
+const createInvalidInputMock = (message: string) => ({
+  request: { query: DeviceCreateDocument, variables: () => true },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      deviceCreate: { __typename: 'InvalidInputError' as const, message },
+    },
+  },
+});
+
+const updateSuccessMock = (matcher: (vars: DeviceUpdateMutationVariables) => boolean) => ({
+  request: { query: DeviceUpdateDocument, variables: matcher },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      deviceUpdate: { __typename: 'DeviceUpdatePayload' as const, device: kindleDeviceGraphQL },
+    },
+  },
+});
+
 // useDeviceUsers/useEnableDeviceUser/useDisableDeviceUser are mocked so the
 // Users field's fetched baseline and reconciliation calls are directly
-// assertable; useCreateDevice/useUpdateDevice keep their real implementation
-// so the existing fetch-based tests below are unaffected.
+// assertable; useCreateDevice/useUpdateDevice keep their real implementation,
+// exercised here against GraphQL mocks (see the `*Mock` builders above), so
+// the existing form-behavior tests below are unaffected by task 3's rewire.
 let mockDeviceUsers: [string[], boolean, boolean, string | undefined] = [
   [],
   false,
@@ -58,10 +121,10 @@ vi.mock('~/provider/user', async (importOriginal) => {
   };
 });
 
-type RenderFormOptions = Parameters<typeof renderWithProviders>[1];
+type RenderFormOptions = Parameters<typeof renderWithApollo>[1];
 
 function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOptions) {
-  const rendered = renderWithProviders(
+  const rendered = renderWithApollo(
     <DeviceProvider>
       <DeviceForm device={device} onDone={onDone} />
     </DeviceProvider>,
@@ -73,7 +136,6 @@ function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOp
 
 describe('DeviceForm', () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
     mockDeviceUsers = [[], false, false, undefined];
     enableUser.mockClear();
     disableUser.mockClear();
@@ -81,57 +143,48 @@ describe('DeviceForm', () => {
 
   it('caps the committed name at 50 characters', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
-    vi.stubGlobal('fetch', fetchMock);
+    const { capture, matcher } = captureVariables<DeviceCreateMutationVariables>();
 
-    const { nameInput } = renderForm();
+    const { nameInput } = renderForm(undefined, undefined, {
+      mocks: [createSuccessMock(matcher)],
+    });
     // 51 characters: typing is blocked past the 50-char limit, so the committed
     // name used for submission stays at the last valid 50-char prefix.
     await user.type(nameInput, 'a'.repeat(51));
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
-    const body = JSON.parse(options.body) as { name: string };
-    expect(body.name).toBe('a'.repeat(50));
+    await waitFor(() => expect(capture.current).toBeDefined());
+    expect(capture.current?.input.name).toBe('a'.repeat(50));
   });
 
   it('submits the parsed DeviceInput, with empty cover dimensions sent as null', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
-    vi.stubGlobal('fetch', fetchMock);
+    const { capture, matcher } = captureVariables<DeviceCreateMutationVariables>();
 
-    const { nameInput } = renderForm();
+    const { nameInput } = renderForm(undefined, undefined, {
+      mocks: [createSuccessMock(matcher)],
+    });
     await user.type(nameInput, 'Kindle');
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledWith('/api/devices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: false,
-      }),
+    await waitFor(() => expect(capture.current).toBeDefined());
+    expect(capture.current?.input).toEqual({
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'CONTAIN',
+      bwCover: false,
+      simplify: false,
     });
   });
 
   it('resets the form and shows a success toast after creating a device', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) })
-    );
+    const { matcher } = captureVariables<DeviceCreateMutationVariables>();
 
-    const { nameInput } = renderForm();
+    const { nameInput } = renderForm(undefined, undefined, {
+      mocks: [createSuccessMock(matcher)],
+    });
     await user.type(nameInput, 'Kindle');
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
@@ -142,9 +195,10 @@ describe('DeviceForm', () => {
 
   it('shows an error toast when creation fails', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Server error')));
 
-    const { nameInput } = renderForm();
+    const { nameInput } = renderForm(undefined, undefined, {
+      mocks: [createErrorMock(new Error('Server error'))],
+    });
     await user.type(nameInput, 'Kindle');
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
@@ -152,15 +206,12 @@ describe('DeviceForm', () => {
     expect(toast.textContent).toBe('Server error');
   });
 
-  it('surfaces the server-specific 400 message instead of a generic toast', async () => {
+  it('surfaces the server-specific error message instead of a generic toast', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue({
-      status: 400,
-      json: () => Promise.resolve({ error: 'coverWidth must be a positive integer' }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
 
-    const { nameInput } = renderForm();
+    const { nameInput } = renderForm(undefined, undefined, {
+      mocks: [createInvalidInputMock('coverWidth must be a positive integer')],
+    });
     await user.type(nameInput, 'Kindle');
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
@@ -172,12 +223,11 @@ describe('DeviceForm', () => {
     'does not commit a non-positive/non-integer coverWidth (%s) to the create call',
     async (badValue) => {
       const user = userEvent.setup();
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
-      vi.stubGlobal('fetch', fetchMock);
+      const { capture, matcher } = captureVariables<DeviceCreateMutationVariables>();
 
-      const { container, nameInput } = renderForm();
+      const { container, nameInput } = renderForm(undefined, undefined, {
+        mocks: [createSuccessMock(matcher)],
+      });
       const coverWidthInput = container.querySelector(
         'input[name="coverWidth"]'
       ) as HTMLInputElement;
@@ -191,21 +241,18 @@ describe('DeviceForm', () => {
 
       // validate() rejects the value, so onChange never fires and the form's
       // coverWidth state stays undefined — the bad value is never sent.
-      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
-      const body = JSON.parse(options.body) as { coverWidth: number | null };
-      expect(body.coverWidth).toBe(null);
+      await waitFor(() => expect(capture.current).toBeDefined());
+      expect(capture.current?.input.coverWidth).toBe(null);
     }
   );
 
   it('accepts a positive integer coverWidth and submits it as-is', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
-    vi.stubGlobal('fetch', fetchMock);
+    const { capture, matcher } = captureVariables<DeviceCreateMutationVariables>();
 
-    const { container, nameInput } = renderForm();
+    const { container, nameInput } = renderForm(undefined, undefined, {
+      mocks: [createSuccessMock(matcher)],
+    });
     const coverWidthInput = container.querySelector('input[name="coverWidth"]') as HTMLInputElement;
 
     await user.type(nameInput, 'Kindle');
@@ -213,14 +260,12 @@ describe('DeviceForm', () => {
     expect(coverWidthInput.value).toBe('600');
     await user.click(screen.getByRole('button', { name: /add device/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
-    const body = JSON.parse(options.body) as { coverWidth: number | null };
-    expect(body.coverWidth).toBe(600);
+    await waitFor(() => expect(capture.current).toBeDefined());
+    expect(capture.current?.input.coverWidth).toBe(600);
   });
 
   it('pre-fills the form and shows a Save button when editing an existing device', () => {
-    const { container } = renderWithProviders(
+    const { container } = renderWithApollo(
       <DeviceProvider>
         <DeviceForm device={kindle} onDone={() => {}} />
       </DeviceProvider>
@@ -232,33 +277,28 @@ describe('DeviceForm', () => {
     expect(screen.queryByRole('button', { name: /add device/i })).not.toBeInTheDocument();
   });
 
-  it('saves edits via PATCH /api/devices/:id and calls onDone', async () => {
+  it('saves edits via the DeviceUpdate mutation and calls onDone', async () => {
     const user = userEvent.setup();
     const onDone = vi.fn();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
-    vi.stubGlobal('fetch', fetchMock);
+    const { capture, matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-    renderWithProviders(
+    renderWithApollo(
       <DeviceProvider>
         <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>
+      </DeviceProvider>,
+      { mocks: [updateSuccessMock(matcher)] }
     );
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledWith('/api/devices/d1', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: false,
-      }),
+    await waitFor(() => expect(capture.current).toBeDefined());
+    expect(capture.current?.input).toEqual({
+      deviceId: 'd1',
+      name: 'Kindle',
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'CONTAIN',
+      bwCover: false,
+      simplify: false,
     });
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
@@ -271,57 +311,51 @@ describe('DeviceForm', () => {
     // the create action instead of updateDevice. A unique useId() id fixes it.
     const user = userEvent.setup();
     const onDone = vi.fn();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
-    vi.stubGlobal('fetch', fetchMock);
+    const createCapture = captureVariables<DeviceCreateMutationVariables>();
+    const updateCapture = captureVariables<DeviceUpdateMutationVariables>();
 
-    const { container } = renderWithProviders(
+    const { container } = renderWithApollo(
       <DeviceProvider>
         <DeviceForm />
         <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>
+      </DeviceProvider>,
+      {
+        mocks: [updateSuccessMock(updateCapture.matcher), createSuccessMock(createCapture.matcher)],
+      }
     );
 
     // Fill the create form's name so, if the collision fires, it would issue a
-    // POST — making the wrong-form regression observable rather than a silent
-    // early return on an empty name.
+    // create mutation — making the wrong-form regression observable rather
+    // than a silent early return on an empty name.
     const createNameInput = container.querySelectorAll('input[name="name"]')[0] as HTMLInputElement;
     await user.type(createNameInput, 'CreatedByMistake');
 
     // Only the edit instance renders a "Save" button (create renders "Add device").
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    // The edit Save must drive the edit form: PATCH /api/devices/:id, never the
-    // create POST.
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith('/api/devices/d1', expect.any(Object))
-    );
-    const patchCall = fetchMock.mock.calls.find(([url]) => url === '/api/devices/d1');
-    expect(patchCall).toBeDefined();
-    expect((patchCall![1] as { method: string }).method).toBe('PATCH');
-    const createCalls = fetchMock.mock.calls.filter(
-      ([url, opts]) => url === '/api/devices' && (opts as { method?: string })?.method === 'POST'
-    );
-    expect(createCalls).toHaveLength(0);
+    // The edit Save must drive the edit form's DeviceUpdate mutation, never
+    // the create form's DeviceCreate.
+    await waitFor(() => expect(updateCapture.capture.current).toBeDefined());
+    expect(updateCapture.capture.current?.input.deviceId).toBe('d1');
+    expect(createCapture.capture.current).toBeUndefined();
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
   it('calls onDone without saving when Cancel is clicked', async () => {
     const user = userEvent.setup();
     const onDone = vi.fn();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    const { capture, matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-    renderWithProviders(
+    renderWithApollo(
       <DeviceProvider>
         <DeviceForm device={kindle} onDone={onDone} />
-      </DeviceProvider>
+      </DeviceProvider>,
+      { mocks: [updateSuccessMock(matcher)] }
     );
     await user.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(onDone).toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(capture.current).toBeUndefined();
   });
 
   describe('Users field', () => {
@@ -332,13 +366,11 @@ describe('DeviceForm', () => {
 
     it('creating a device with users selected enables them for the newly created device', async () => {
       const user = userEvent.setup();
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) });
-      vi.stubGlobal('fetch', fetchMock);
+      const { matcher } = captureVariables<DeviceCreateMutationVariables>();
 
       const { nameInput } = renderForm(undefined, undefined, {
         user: { username: 'admin', isAdmin: true },
+        mocks: [createSuccessMock(matcher)],
       });
       await user.type(nameInput, 'Kindle');
 
@@ -356,11 +388,10 @@ describe('DeviceForm', () => {
       // by flipping its label to "Adding…").
       await user.type(usersInput, 'nonexistent{Enter}');
       expect(screen.queryByLabelText('Remove nonexistent')).not.toBeInTheDocument();
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(enableUser).not.toHaveBeenCalled();
 
       await user.click(screen.getByRole('button', { name: /add device/i }));
 
-      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
       await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'alice'));
       await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
       expect(disableUser).not.toHaveBeenCalled();
@@ -370,12 +401,12 @@ describe('DeviceForm', () => {
       mockDeviceUsers = [['alice'], false, false, undefined];
       const user = userEvent.setup();
       const onDone = vi.fn();
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
-      vi.stubGlobal('fetch', fetchMock);
+      const { matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-      renderForm(kindle, onDone, { user: { username: 'admin', isAdmin: true } });
+      renderForm(kindle, onDone, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [updateSuccessMock(matcher)],
+      });
 
       // Pre-filled with the fetched 'alice' chip.
       expect(screen.getByLabelText('Remove alice')).toBeInTheDocument();
@@ -389,9 +420,6 @@ describe('DeviceForm', () => {
 
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledWith('/api/devices/d1', expect.any(Object))
-      );
       await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
       await waitFor(() => expect(disableUser).toHaveBeenCalledWith('d1', 'alice'));
       await waitFor(() => expect(onDone).toHaveBeenCalled());
@@ -404,12 +432,12 @@ describe('DeviceForm', () => {
       enableUser.mockResolvedValueOnce(false);
       const user = userEvent.setup();
       const onDone = vi.fn();
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue({ status: 200, json: () => Promise.resolve(kindle) });
-      vi.stubGlobal('fetch', fetchMock);
+      const { matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
-      renderForm(kindle, onDone, { user: { username: 'admin', isAdmin: true } });
+      renderForm(kindle, onDone, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [updateSuccessMock(matcher)],
+      });
 
       const usersInput = screen.getByLabelText('Users');
       await user.type(usersInput, 'bob');
