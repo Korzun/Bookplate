@@ -52,7 +52,7 @@ const EMPTY_USERS: string[] = [];
  */
 export const useDeviceUsers = (deviceId?: string): UseDeviceUsers => {
   const [isAdmin] = useIsAdmin();
-  const [allUsers] = useUserList();
+  const [allUsers, allUsersLoading] = useUserList();
   const skip = !isAdmin || !deviceId;
   const { data, loading, error } = useQuery(DeviceUsersDocument, { skip });
 
@@ -61,7 +61,17 @@ export const useDeviceUsers = (deviceId?: string): UseDeviceUsers => {
     if (error !== undefined) {
       return [EMPTY_USERS, false, true, error.message] as UseDeviceUsers;
     }
-    if (loading) return [EMPTY_USERS, true, false, undefined] as UseDeviceUsers;
+    // Usernames come out of `allUsers` below, so this hook's loading slot
+    // must reflect BOTH queries — DeviceUsers alone isn't enough. If
+    // DeviceUsers resolves first while UserList is still in flight, folding
+    // only `loading` here would report a stable, authoritative-looking
+    // `[[], false, false, undefined]` for a device that in fact has enabled
+    // users — the id→username lookup just hasn't landed yet. Same race
+    // `use-enable-device-user.ts`/`use-disable-device-user.ts` guard against
+    // on the write side.
+    if (loading || allUsersLoading) {
+      return [EMPTY_USERS, true, false, undefined] as UseDeviceUsers;
+    }
 
     const device = data?.viewer.devices.find((candidate) => candidate.id === deviceId);
     const enabledIds = new Set((device?.enabledUsers ?? []).map((enabledUser) => enabledUser.id));
@@ -70,5 +80,5 @@ export const useDeviceUsers = (deviceId?: string): UseDeviceUsers => {
       .map((candidate) => candidate.username);
 
     return [usernames, false, false, undefined] as UseDeviceUsers;
-  }, [skip, error, loading, data, deviceId, allUsers]);
+  }, [skip, error, loading, allUsersLoading, data, deviceId, allUsers]);
 };

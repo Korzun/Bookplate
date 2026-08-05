@@ -1,3 +1,5 @@
+import type { ApolloClient } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
 import { waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -52,6 +54,21 @@ const renderDeviceUsers = (
     return null;
   };
   renderWithApollo(<Probe />, { mocks, user: { username: 'admin', isAdmin } });
+  return result;
+};
+
+type Harness = { deviceUsers: UseDeviceUsers; client: ApolloClient };
+
+const renderDeviceUsersWithClient = (
+  deviceId: string | undefined,
+  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']
+) => {
+  const result: { current?: Harness } = {};
+  const Probe = () => {
+    result.current = { deviceUsers: useDeviceUsers(deviceId), client: useApolloClient() };
+    return null;
+  };
+  renderWithApollo(<Probe />, { mocks, user: { username: 'admin', isAdmin: true } });
   return result;
 };
 
@@ -119,5 +136,39 @@ describe('useDeviceUsers', () => {
     expect(result.current?.[3]).toBe('device users query failed');
     expect(result.current?.[0]).toEqual([]);
     expect(result.current?.[1]).toBe(false);
+  });
+
+  /**
+   * Usernames are resolved by intersecting DeviceUsers ids against the
+   * cached UserList (see this hook's doc comment), so this hook's loading
+   * slot has to reflect BOTH queries. Sibling write-side hooks
+   * (`use-enable-device-user`/`use-disable-device-user`) already guard the
+   * identical race with a `waitForUserList` helper; this pins the same
+   * property on the read side. Explicit, unequal delays remove the random
+   * 20-50ms `MockLink` default so DeviceUsers is forced to resolve first,
+   * deterministically — without folding UserList's loading in, the hook
+   * would report a stable `[[], false, false, undefined]` in that window:
+   * an authoritative-looking "no enabled users" for a device that in fact
+   * has one, just not yet resolved against the username list.
+   */
+  it('keeps loading true — not an authoritative empty list — if DeviceUsers resolves before UserList', async () => {
+    const result = renderDeviceUsersWithClient('d1', [
+      { ...deviceUsersMock([device('d1', ['u1'])]), delay: 0 },
+      { ...userListMock([alice]), delay: 300 },
+    ]);
+
+    // DeviceUsers has landed in the cache...
+    await waitFor(() => {
+      expect(result.current!.client.readQuery({ query: DeviceUsersDocument })).not.toBeNull();
+    });
+    // ...while UserList is still in flight.
+    expect(result.current!.client.readQuery({ query: UserListDocument })).toBeNull();
+    expect(result.current!.deviceUsers[1]).toBe(true);
+    expect(result.current!.deviceUsers[0]).toEqual([]);
+
+    await waitFor(() => expect(result.current!.deviceUsers[1]).toBe(false));
+    expect(result.current!.deviceUsers[0]).toEqual(['alice']);
+    expect(result.current!.deviceUsers[2]).toBe(false);
+    expect(result.current!.deviceUsers[3]).toBeUndefined();
   });
 });
