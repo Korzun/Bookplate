@@ -1,5 +1,3 @@
-export type DeviceList = Record<string, Device>;
-
 export type Device = {
   id: string;
   name: string;

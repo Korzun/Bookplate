@@ -1,9 +1,6 @@
 import type { CoverFit } from '~/gql/graphql';
 
-import { DeviceList } from '../type';
 import type { Device } from '../type';
-
-export const removeDeviceById = (id: string, { [id]: _, ...rest }: DeviceList) => rest;
 
 /**
  * The server's `CoverFit` enum is SCREAMING_CASE; the client `Device` type has

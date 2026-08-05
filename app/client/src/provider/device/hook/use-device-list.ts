@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { DeviceListDocument } from '~/graphql/device';
 
 import type { Device } from '../type';
-import { coverFitFromGraphQL } from './util';
+import { deviceFromGraphQL } from './util';
 
 export const sortDeviceList = (deviceA: Device, deviceB: Device) =>
   deviceA.name.localeCompare(deviceB.name);
@@ -38,18 +38,7 @@ export const useDeviceList = (): UseDeviceList => {
     }
 
     const devices: Device[] = (data?.viewer.devices ?? [])
-      .map(
-        (device): Device => ({
-          id: device.id,
-          name: device.name,
-          slug: device.slug,
-          coverWidth: device.coverWidth,
-          coverHeight: device.coverHeight,
-          coverFit: coverFitFromGraphQL(device.coverFit),
-          bwCover: device.bwCover,
-          simplify: device.simplify,
-        })
-      )
+      .map(deviceFromGraphQL)
       .sort(sortDeviceList);
 
     return [devices, loading, false, undefined] as UseDeviceList;
