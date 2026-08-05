@@ -197,23 +197,16 @@ describe('useChangeMyPassword', () => {
     await waitFor(() => expect(result.current![1]).toBe(false));
   });
 
-  // The forced-reset page (`page/password-reset`) is where `ProtectedRoute`
-  // sends every `mustChangePassword` viewer, and it renders with no prior
-  // GraphQL query of any kind — no `ViewerBootstrap`, no `UserList`. Before
-  // the server change (2026-08-04), `UserChangePasswordInput` required a
-  // `User` global ID that a forced-change viewer had no way to obtain (every
-  // `Query` field is gated on `authenticated`, which is false for them) —
-  // structurally unreachable, not merely untested. This mounts the hook with
-  // ONLY the mutation mock in scope, matching exactly what the forced-reset
-  // page provides: no bootstrap query is a prerequisite, so a viewer arriving
-  // there with nothing yet fetched can still complete the call end to end.
-  it('completes a change with no prior GraphQL query — the path the forced-reset page depends on', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-    const result = renderChangeMyPassword([successMock]);
-
-    const ok = await act(() => result.current![0]('oldpass', 'newpass'));
-
-    expect(ok).toBe(true);
-    expect(window.location.href).toBe('/login');
-  });
+  // The forced-reset-viewer path this hook exists to unblock (every `Query`
+  // field is gated on `authenticated`, which is false for a
+  // `mustChangePassword` viewer) is now covered by a stronger test:
+  // `page/password-reset/index.integration.test.tsx` renders the REAL
+  // `PasswordResetPage` over this REAL hook with ONLY the
+  // `UserChangePassword` mutation mock in scope — no module mock standing in
+  // for `~/provider/user`, so it fails the moment the page or this hook
+  // grows an unsatisfied query dependency. A hook-level test with the same
+  // `[successMock]` mock array as "on success, clears the token and
+  // navigates to /login" above would only ever assert a strict subset of
+  // that test's assertions and could never fail on its own — this hook has
+  // no `useQuery` for such a test to actually discriminate against.
 });
