@@ -1,66 +1,91 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { useResetUserPassword } from './use-reset-user-password';
+import { UserResetPasswordDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
+
+import { useResetUserPassword, type UseResetUserPassword } from './use-reset-user-password';
+
+const resetSuccessMock = {
+  request: { query: UserResetPasswordDocument, variables: { input: { userId: 'u1' } } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      userResetPassword: {
+        __typename: 'UserResetPasswordPayload' as const,
+        user: { __typename: 'User' as const, id: 'u1' },
+        password: 'k4tWc9pLxQ2mAbCd',
+      },
+    },
+  },
+};
+
+const renderResetUserPassword = (
+  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']
+) => {
+  const result: { current?: UseResetUserPassword } = {};
+  const Probe = () => {
+    result.current = useResetUserPassword();
+    return null;
+  };
+  renderWithApollo(<Probe />, { mocks });
+  return result;
+};
 
 describe('useResetUserPassword', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+  it('returns resetUserPassword function and initial false/undefined state', () => {
+    const result = renderResetUserPassword([]);
+    const [resetUserPassword, loading, error, errorMessage] = result.current!;
+    expect(typeof resetUserPassword).toBe('function');
+    expect(loading).toBe(false);
+    expect(error).toBe(false);
+    expect(errorMessage).toBeUndefined();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it('sends the UserResetPassword mutation and returns the new password', async () => {
+    const result = renderResetUserPassword([resetSuccessMock]);
+
+    const password = await act(() => result.current![0]('u1'));
+    expect(password).toBe('k4tWc9pLxQ2mAbCd');
+    expect(result.current![1]).toBe(false);
+    expect(result.current![2]).toBe(false);
   });
 
-  it('calls POST and returns the new password', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      status: 200,
-      json: async () => ({ password: 'k4tWc9pLxQ2mAbCd' }),
-    } as Response);
+  it('sets error and returns null on a missing (null) userResetPassword result', async () => {
+    const result = renderResetUserPassword([
+      {
+        request: { query: UserResetPasswordDocument, variables: { input: { userId: 'nobody' } } },
+        result: { data: { __typename: 'Mutation' as const, userResetPassword: null } },
+      },
+    ]);
 
-    const { result } = renderHook(() => useResetUserPassword());
-    let returned: string | null = null;
-    await act(async () => {
-      returned = await result.current[0]('alice');
-    });
-
-    expect(returned).toBe('k4tWc9pLxQ2mAbCd');
-    expect(fetch).toHaveBeenCalledWith('/api/users/alice/reset-password', { method: 'POST' });
-    expect(result.current[1]).toBe(false);
-    expect(result.current[2]).toBe(false);
+    const password = await act(() => result.current![0]('nobody'));
+    expect(password).toBeNull();
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('Failed to reset password');
   });
 
-  it('sets error and returns null on non-200 response', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({ status: 404 } as Response);
+  it('sets error and returns null when the mutation throws', async () => {
+    const result = renderResetUserPassword([
+      {
+        request: { query: UserResetPasswordDocument, variables: { input: { userId: 'u1' } } },
+        error: new Error('Network error'),
+      },
+    ]);
 
-    const { result } = renderHook(() => useResetUserPassword());
-    let returned: string | null = null;
-    await act(async () => {
-      returned = await result.current[0]('nobody');
-    });
-
-    expect(returned).toBeNull();
-    expect(result.current[2]).toBe(true);
+    const password = await act(() => result.current![0]('u1'));
+    expect(password).toBeNull();
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('Network error');
   });
 
-  it('sets loading true while request is pending', async () => {
-    let resolveFetch!: (value: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        })
-      )
-    );
+  it('sets loading true while the mutation is pending', async () => {
+    const result = renderResetUserPassword([{ ...resetSuccessMock, delay: 20 }]);
 
-    const { result } = renderHook(() => useResetUserPassword());
     act(() => {
-      void result.current[0]('alice');
+      void result.current![0]('u1');
     });
-    expect(result.current[1]).toBe(true);
-
-    resolveFetch({ status: 200, json: async () => ({ password: 'k4tWc9pLxQ2mAbCd' }) });
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    await waitFor(() => expect(result.current![1]).toBe(true));
+    await waitFor(() => expect(result.current![1]).toBe(false));
   });
 });

@@ -9,10 +9,11 @@ import { PasswordResultModal } from '../password-result-modal';
 
 interface ResetPasswordButtonProps {
   radius?: ButtonRadiusValue;
+  userId: string;
   username: string;
 }
 
-export const ResetPasswordButton = ({ radius, username }: ResetPasswordButtonProps) => {
+export const ResetPasswordButton = ({ radius, userId, username }: ResetPasswordButtonProps) => {
   const [resetUserPassword, resetting] = useResetUserPassword();
   const showToast = useToast();
 
@@ -25,13 +26,13 @@ export const ResetPasswordButton = ({ radius, username }: ResetPasswordButtonPro
   const handleCancel = useCallback(() => setShowConfirm(false), []);
   const handleConfirm = useCallback(async () => {
     setShowConfirm(false);
-    const newPassword = await resetUserPassword(username);
+    const newPassword = await resetUserPassword(userId);
     if (newPassword === null) {
       showToast('Failed to reset password', 'error');
     } else {
       setPassword(newPassword);
     }
-  }, [resetUserPassword, username, showToast]);
+  }, [resetUserPassword, userId, showToast]);
   const handleDone = useCallback(() => {
     setPassword(null);
   }, []);

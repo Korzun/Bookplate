@@ -1,34 +1,39 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
-import { renderWithProviders } from '~/test-utils';
+import { UserResetPasswordDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
 
 import { ResetPasswordButton } from './index';
 
 beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = vi.fn();
-  HTMLDialogElement.prototype.close = vi.fn();
-  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  HTMLDialogElement.prototype.showModal = () => {};
+  HTMLDialogElement.prototype.close = () => {};
+  Object.assign(navigator, { clipboard: { writeText: () => Promise.resolve() } });
 });
 
-beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn());
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+const resetSuccessMock = {
+  request: { query: UserResetPasswordDocument, variables: { input: { userId: 'u1' } } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      userResetPassword: {
+        __typename: 'UserResetPasswordPayload' as const,
+        user: { __typename: 'User' as const, id: 'u1' },
+        password: 'k4tWc9pLxQ2mAbCd',
+      },
+    },
+  },
+};
 
 describe('ResetPasswordButton', () => {
   it('shows a confirm modal, then reveals the new password on confirm', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      status: 200,
-      json: async () => ({ password: 'k4tWc9pLxQ2mAbCd' }),
-    } as Response);
     const user = userEvent.setup();
 
-    renderWithProviders(<ResetPasswordButton username="alice" />);
+    renderWithApollo(<ResetPasswordButton userId="u1" username="alice" />, {
+      mocks: [resetSuccessMock],
+    });
 
     await user.click(screen.getByRole('button', { name: 'Reset password' }));
     expect(screen.getByText(/Reset password for/)).toBeInTheDocument();
@@ -43,14 +48,19 @@ describe('ResetPasswordButton', () => {
         screen.getByText((_, el) => el?.textContent === 'k4tWc9pLxQ2mAbCd')
       ).toBeInTheDocument()
     );
-    expect(fetch).toHaveBeenCalledWith('/api/users/alice/reset-password', { method: 'POST' });
   });
 
   it('shows an error toast when the reset fails', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({ status: 404 } as Response);
     const user = userEvent.setup();
 
-    renderWithProviders(<ResetPasswordButton username="alice" />);
+    renderWithApollo(<ResetPasswordButton userId="u1" username="alice" />, {
+      mocks: [
+        {
+          request: { query: UserResetPasswordDocument, variables: { input: { userId: 'u1' } } },
+          result: { data: { __typename: 'Mutation' as const, userResetPassword: null } },
+        },
+      ],
+    });
 
     await user.click(screen.getByRole('button', { name: 'Reset password' }));
     const resetButtons = screen.getAllByRole('button', { name: 'Reset password', hidden: true });

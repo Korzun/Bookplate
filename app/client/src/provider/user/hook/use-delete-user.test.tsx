@@ -1,118 +1,122 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { use, useCallback, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
+import { act, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { useDeleteUser } from '.';
-import { Context } from '../context';
-import type { User, UserList } from '../type';
+import { UserDeleteDocument, UserListDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
 
-function makeWrapper(initialUsers: User[] = []) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [userList, setUserListRaw] = useState<UserList>(
-      Object.fromEntries(initialUsers.map((u) => [u.username, u]))
-    );
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | undefined>();
-    const setUserList = useCallback(
-      (updater: (prev: UserList) => UserList) => setUserListRaw(updater),
-      []
-    );
-    return (
-      <Context.Provider value={{ userList, loading, error, setUserList, setLoading, setError }}>
-        {children}
-      </Context.Provider>
-    );
+import { useDeleteUser, type UseDeleteUser } from './use-delete-user';
+
+const alice = {
+  __typename: 'User' as const,
+  id: 'u1',
+  username: 'alice',
+  progressCount: 2,
+};
+
+const bob = {
+  __typename: 'User' as const,
+  id: 'u2',
+  username: 'bob',
+  progressCount: 0,
+};
+
+const deleteSuccessMock = {
+  request: { query: UserDeleteDocument, variables: { input: { userId: 'u1' } } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      userDelete: { __typename: 'UserDeletePayload' as const, deletedId: 'u1' },
+    },
+  },
+};
+
+type Harness = { deleteUser: UseDeleteUser; client: ApolloClient };
+
+const renderDeleteUser = (mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']) => {
+  const result: { current?: Harness } = {};
+  const Probe = () => {
+    result.current = { deleteUser: useDeleteUser(), client: useApolloClient() };
+    return null;
   };
-}
+  renderWithApollo(<Probe />, { mocks });
+  return result;
+};
+
+const seedUserList = (client: ApolloClient, users: (typeof alice)[]) =>
+  client.writeQuery({
+    query: UserListDocument,
+    data: { __typename: 'Query', viewer: { __typename: 'Viewer', users } },
+  });
 
 describe('useDeleteUser', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('returns deleteUser function and initial false/undefined state', () => {
-    const { result } = renderHook(() => useDeleteUser(), { wrapper: makeWrapper() });
-    const [deleteUser, loading, error, errorMessage] = result.current;
+  it('returns a deleteUser function and initial false/undefined state', () => {
+    const result = renderDeleteUser([]);
+    const [deleteUser, loading, error, errorMessage] = result.current!.deleteUser;
     expect(typeof deleteUser).toBe('function');
     expect(loading).toBe(false);
     expect(error).toBe(false);
     expect(errorMessage).toBeUndefined();
   });
 
-  it('sets error and message when username is not found in list', async () => {
-    const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
-    });
-    await act(() => result.current[0]('unknown'));
-    expect(result.current[2]).toBe(true);
-    expect(result.current[3]).toBe('Failed to delete user');
+  // The task's real content: `userDelete` returns only `deletedId`, which
+  // does not remove itself from any list — this proves the `cache.evict`
+  // call actually ran, by reading the cache directly rather than re-mocking
+  // UserList. No optimistic response exists for this mutation, so this only
+  // takes effect once the real response lands (unlike `useDeleteDevice`).
+  it('evicts the deleted user so a subsequent UserList cache read no longer includes it', async () => {
+    const result = renderDeleteUser([deleteSuccessMock]);
+    const { client } = result.current!;
+    act(() => seedUserList(client, [alice, bob]));
+
+    await act(() => result.current!.deleteUser[0]('u1'));
+
+    const cached = client.readQuery({ query: UserListDocument });
+    expect(cached?.viewer.users).toEqual([bob]);
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).not.toContain('User:u1');
   });
 
-  it('sends DELETE request to /api/users/:username', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
-    const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
-    });
-    await act(() => result.current[0]('alice'));
-    expect(fetch).toHaveBeenCalledWith('/api/users/alice', { method: 'DELETE' });
+  it('sets error and message on a missing (null) userDelete result', async () => {
+    const result = renderDeleteUser([
+      {
+        request: { query: UserDeleteDocument, variables: { input: { userId: 'u1' } } },
+        result: { data: { __typename: 'Mutation' as const, userDelete: null } },
+      },
+    ]);
+    act(() => seedUserList(result.current!.client, [alice]));
+
+    await act(() => result.current!.deleteUser[0]('u1'));
+    expect(result.current!.deleteUser[2]).toBe(true);
+    expect(result.current!.deleteUser[3]).toBe('Failed to delete user');
+
+    const cached = result.current!.client.readQuery({ query: UserListDocument });
+    expect(cached?.viewer.users).toEqual([alice]);
   });
 
-  // These two tests read the optimistic state straight off `Context` rather
-  // than through `useUserList`: as of this task, `useUserList` reads Apollo's
-  // cache (see `use-user-list.ts`), not this hook's `Context`, so it can no
-  // longer observe this hook's optimistic writes. The writes themselves are
-  // unchanged and still worth covering directly.
-  it('optimistically removes user from list before fetch resolves', async () => {
-    let resolveFetch!: (value: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        })
-      )
-    );
-    const { result } = renderHook(() => ({ delete: useDeleteUser(), context: use(Context) }), {
-      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
-    });
+  it('sets error and message when the mutation throws', async () => {
+    const result = renderDeleteUser([
+      {
+        request: { query: UserDeleteDocument, variables: { input: { userId: 'u1' } } },
+        error: new Error('Network error'),
+      },
+    ]);
+    act(() => seedUserList(result.current!.client, [alice]));
+
+    await act(() => result.current!.deleteUser[0]('u1'));
+    expect(result.current!.deleteUser[2]).toBe(true);
+    expect(result.current!.deleteUser[3]).toBe('Network error');
+  });
+
+  it('sets loading to true while the mutation is pending', async () => {
+    const result = renderDeleteUser([{ ...deleteSuccessMock, delay: 20 }]);
+    act(() => seedUserList(result.current!.client, [alice]));
+
     act(() => {
-      void result.current.delete[0]('alice');
+      void result.current!.deleteUser[0]('u1');
     });
-    expect(result.current.context.userList).toEqual({});
-    resolveFetch({ status: 204 });
-    await waitFor(() => expect(result.current.delete[1]).toBe(false));
-  });
-
-  it('restores user in list and sets error when DELETE fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
-    const { result } = renderHook(() => ({ delete: useDeleteUser(), context: use(Context) }), {
-      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
-    });
-    await act(() => result.current.delete[0]('alice'));
-    expect(result.current.context.userList).toEqual({
-      alice: { id: 'u1', username: 'alice', progressCount: 0 },
-    });
-    expect(result.current.delete[2]).toBe(true);
-    expect(result.current.delete[3]).toBe('Network error');
-  });
-
-  it('sets loading to true while DELETE is pending', async () => {
-    let resolveFetch!: (value: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        })
-      )
-    );
-    const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
-    });
-    act(() => {
-      void result.current[0]('alice');
-    });
-    expect(result.current[1]).toBe(true);
-    resolveFetch({ status: 204 });
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    await waitFor(() => expect(result.current!.deleteUser[1]).toBe(true));
+    await waitFor(() => expect(result.current!.deleteUser[1]).toBe(false));
   });
 });

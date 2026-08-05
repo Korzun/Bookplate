@@ -1,8 +1,19 @@
-import { useCallback, use, useMemo, useState } from 'react';
+import type { Reference } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { apiFetch } from '../../../lib/api-fetch';
-import { Context } from '../context';
-import { removeUserByUsername } from './util';
+import type { UserRegisterMutation } from '~/gql/graphql';
+import { UserRegisterDocument } from '~/graphql/user';
+import { unwrapResult } from '~/provider/apollo';
+
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call (the second argument's type is itself derived FROM `TPayload`), so
+// it is named explicitly here, extracted from the generated union rather
+// than hand-duplicated.
+type UserRegisterPayload = Extract<
+  UserRegisterMutation['userRegister'],
+  { __typename: 'UserRegisterPayload' }
+>;
 
 export type RegisterUser = (username: string) => Promise<string | null>;
 export type UseRegisterUser =
@@ -10,71 +21,77 @@ export type UseRegisterUser =
   | [RegisterUser, true, false, undefined] // Registering
   | [RegisterUser, false, true, undefined] // Unspecified error
   | [RegisterUser, false, true, string]; // Specified error
+
+/**
+ * `userRegister` returns the created `User`, but a returned entity does not
+ * insert itself into any list: `Viewer.users` is read separately by
+ * `useUserList`, so this hook appends into it via `cache.modify` on the
+ * `Viewer` singleton (`keyFields: []` in `cacheConfig` is what makes
+ * `cache.identify({ __typename: 'Viewer' })` resolve to an addressable id) —
+ * the same shape `useCreateDevice` uses for `Viewer.devices`.
+ *
+ * There is no client-side pre-validation of the username (no length/charset/
+ * duplicate check before sending): the server enforces all of that
+ * (`user/mutation/register.ts`) and reports it back as `InvalidInputError` or
+ * `UsernameAlreadyExistsError`, both surfaced through this hook's existing
+ * error slot exactly like `useCreateDevice` does for `DeviceSlugConflictError`.
+ */
 export const useRegisterUser = (): UseRegisterUser => {
-  const { userList, setUserList } = use(Context);
+  const [runRegister] = useMutation(UserRegisterDocument);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const registerUser = useCallback(
     async (username: string): Promise<string | null> => {
-      const normalizedUsername = username.trim();
-      if (!normalizedUsername) {
-        setError(true);
-        setErrorMessage('Username is required');
-        return null;
-      }
-
-      // Mirror of the server's MIN_USERNAME_LENGTH (app/server/utils/username.ts).
-      if (normalizedUsername.length < 6) {
-        setError(true);
-        setErrorMessage('Username must be at least 6 characters');
-        return null;
-      }
-
-      if (userList[normalizedUsername] !== undefined) {
-        setError(true);
-        setErrorMessage('Username already taken');
-        return null;
-      }
-
-      setUserList((prev) => ({
-        ...prev,
-        // The real User global id is not known until the next GraphQL
-        // UserList read; this Context-backed optimistic record no longer
-        // feeds the displayed list (use-user-list.ts reads Apollo's cache
-        // directly), so the placeholder only needs to satisfy the shape for
-        // this hook's own duplicate-username check.
-        [normalizedUsername]: { id: '', username: normalizedUsername, progressCount: 0 },
-      }));
-
       try {
         setLoading(true);
         setError(false);
         setErrorMessage(undefined);
 
-        const response = await apiFetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: normalizedUsername }),
+        const { data } = await runRegister({
+          variables: { input: { username } },
+          update: (cache, { data: mutationData }) => {
+            const created = unwrapResult<UserRegisterPayload>(
+              mutationData?.userRegister,
+              'UserRegisterPayload'
+            );
+            if (created.status !== 'ok') return;
+
+            cache.modify({
+              id: cache.identify({ __typename: 'Viewer' }),
+              fields: {
+                users: (existing: readonly Reference[] = [], { toReference }) => {
+                  const ref = toReference(created.payload.user);
+                  return ref ? [...existing, ref] : existing;
+                },
+              },
+            });
+          },
         });
-        if (response.status !== 201) throw new Error('Registration failed');
-        const data = (await response.json()) as { password: string };
-        return data.password;
+
+        const result = unwrapResult<UserRegisterPayload>(data?.userRegister, 'UserRegisterPayload');
+        if (result.status === 'missing') {
+          setError(true);
+          setErrorMessage('Registration failed');
+          return null;
+        }
+        if (result.status === 'error') {
+          setError(true);
+          setErrorMessage(result.message);
+          return null;
+        }
+
+        return result.payload.password;
       } catch (err) {
         setError(true);
-        setUserList((prev) => removeUserByUsername(normalizedUsername, prev));
-        if (err instanceof Error) {
-          setErrorMessage(err.message);
-        } else {
-          setErrorMessage('Registration failed');
-        }
+        setErrorMessage(err instanceof Error ? err.message : 'Registration failed');
         return null;
       } finally {
         setLoading(false);
       }
     },
-    [userList, setUserList]
+    [runRegister]
   );
 
   return useMemo(

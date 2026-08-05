@@ -13,7 +13,7 @@ interface UserRowProps {
   username: string;
 }
 
-export const UserRow = ({ userId: _userId, username }: UserRowProps) => {
+export const UserRow = ({ userId, username }: UserRowProps) => {
   const styles = useStyle();
   const [user] = useUser(username);
 
@@ -28,8 +28,8 @@ export const UserRow = ({ userId: _userId, username }: UserRowProps) => {
   }, []);
   const handleDeleteUserConfirm = useCallback(() => {
     setShowDeleteUserModal(false);
-    deleteUser(username);
-  }, [deleteUser, username]);
+    deleteUser(userId);
+  }, [deleteUser, userId]);
 
   return (
     <Fragment>
@@ -44,7 +44,7 @@ export const UserRow = ({ userId: _userId, username }: UserRowProps) => {
         }
         headerAction={
           <Fragment>
-            <ResetPasswordButton username={username} />
+            <ResetPasswordButton userId={userId} username={username} />
             <Button type="link" danger onClick={handleDeleteUser} loading={deleting}>
               Delete user
             </Button>

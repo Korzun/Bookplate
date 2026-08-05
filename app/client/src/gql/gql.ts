@@ -26,6 +26,9 @@ type Documents = {
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": typeof types.ScanProgressDocument,
     "\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": typeof types.LibraryScanDocument,
     "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n": typeof types.UserListDocument,
+    "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": typeof types.UserRegisterDocument,
+    "\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n": typeof types.UserDeleteDocument,
+    "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": typeof types.UserResetPasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": typeof types.ViewerBootstrapDocument,
 };
 const documents: Documents = {
@@ -41,6 +44,9 @@ const documents: Documents = {
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": types.ScanProgressDocument,
     "\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": types.LibraryScanDocument,
     "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n": types.UserListDocument,
+    "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": types.UserRegisterDocument,
+    "\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n": types.UserDeleteDocument,
+    "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": types.UserResetPasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": types.ViewerBootstrapDocument,
 };
 
@@ -106,6 +112,18 @@ export function graphql(source: "\n  mutation LibraryScan($userId: ID!) {\n    l
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n"): (typeof documents)["\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
