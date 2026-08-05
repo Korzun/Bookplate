@@ -323,6 +323,44 @@ describe('Progress.id', () => {
     // A removed field is a VALIDATION error, so `data` is absent entirely.
     expect(result.errors?.[0]?.message).toMatch(/Cannot query field "userId"/);
   });
+
+  // I-2: `Progress.id` encodes the typename `'Progress'`, which is not a
+  // registered `Node` (unlike `PendingFix.id`/`Validation.id`, which encode
+  // `'Book'` and DO round-trip through `node(id:)`). Nothing previously
+  // pinned this refusal directly — it was only implied by the SDL's lack of
+  // a `Progress: Node` implementation. This is also the only direct guard on
+  // the standing "Progress must NOT be a Node" constraint outside the SDL
+  // snapshot: if `Progress` were ever registered as a `Node`, both
+  // assertions below would start failing.
+  //
+  // Behaviour pinned as actually observed (not as expected going in):
+  //  - `node(id:)` resolves that one field to `null`, plus a top-level error.
+  //  - `nodes(ids:)` wipes the ENTIRE response to `data: null` — one bad id
+  //    poisons every other id in the same batch, not just its own slot.
+  it('refuses to resolve a Progress id through node(id:)/nodes(ids:), unlike Book-backed ids', async () => {
+    const shared = 'node-refusal-doc';
+    await seedProgress(harness.aliceOwner.userId, shared);
+    const progressId = await firstProgressId(harness.aliceViewer, harness.aliceOwner, shared);
+
+    const nodeResult = await harness.execute(`query($id: ID!) { node(id: $id) { __typename } }`, {
+      viewer: harness.aliceViewer,
+      variables: { id: progressId },
+    });
+    expect(nodeResult.data?.node).toBeNull();
+    expect(nodeResult.errors?.[0]?.message).toBe('Progress does not support loading by id');
+
+    const nodesResult = await harness.execute(
+      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename } }`,
+      {
+        viewer: harness.aliceViewer,
+        variables: { ids: [progressId, libraryIdOf(harness.aliceOwner)] },
+      }
+    );
+    // Not a partial result with one null slot — the WHOLE response is wiped,
+    // including the second, perfectly valid id in the same batch.
+    expect(nodesResult.data).toBeNull();
+    expect(nodesResult.errors?.[0]?.message).toBe('Progress does not support loading by id');
+  });
 });
 
 const seedProgress = (userId: string, document: string): Promise<unknown> =>

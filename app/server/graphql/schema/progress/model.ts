@@ -35,6 +35,12 @@ export const model = builder.prismaObject('Progress', {
      */
     id: t.field({
       type: 'ID',
+      description:
+        'Opaque cache identity for this reading position. Unlike other global ' +
+        'ids in this schema (e.g. `Book.id`, `PendingFix.id`, `Validation.id`), ' +
+        'this id is NOT resolvable through `node(id:)` or `nodes(ids:)` — ' +
+        '`Progress` is deliberately not a `Node`. Use it only to key a ' +
+        'normalizing cache.',
       resolve: (progress) =>
         encodeGlobalID('Progress', JSON.stringify([progress.userId, progress.document])),
     }),

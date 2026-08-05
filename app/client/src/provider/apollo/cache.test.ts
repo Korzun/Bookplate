@@ -90,6 +90,16 @@ describe('cacheConfig', () => {
 
     expect(a?.node.progress.edges[0].node.percentage).toBe(10);
     expect(b?.node.progress.edges[0].node.percentage).toBe(90);
+
+    // M-2: the two assertions above pass even with `Progress: { keyFields:
+    // false }` (no normalization at all) — both `Library` parents already
+    // differ, which is enough on its own to keep the two reads apart. That
+    // rules out `keyFields: ['document']` and nothing else; it does not
+    // prove `Progress` is actually normalized under its id. Assert the
+    // entity itself exists in the flat cache, mirroring the `Viewer` test
+    // above.
+    expect(cache.extract()['Progress:progress-id-user-a']).toMatchObject({ percentage: 10 });
+    expect(cache.extract()['Progress:progress-id-user-b']).toMatchObject({ percentage: 90 });
   });
 
   it('registers pagination policies on all four connection fields', () => {

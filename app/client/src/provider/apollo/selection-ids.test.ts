@@ -101,6 +101,32 @@ describe('findMissingKeyFields', () => {
     const issues = findMissingKeyFields(schema, `query Q { viewer { username isAdmin } }`);
     expect(issues).toEqual([]);
   });
+
+  // I-1: `keyFieldsFor`'s composite-array branch (an explicit `keyFields:
+  // ['a', 'b']`) was, until this test, exercised by nothing — `Progress` was
+  // the only non-empty-array `keyFields` in the real `cacheConfig`, and it was
+  // deleted when `Progress` moved to default `id` keying. `Viewer`/`Config`
+  // are both `keyFields: []`, which is a different branch entirely. A
+  // synthetic policy here (not added to the real `cacheConfig`, which has no
+  // genuinely composite-keyed type) is the only way to cover this branch:
+  // pass it as `findMissingKeyFields`'s third argument. `Device` is a real
+  // schema type with two plain string fields (`id`, `name`) to select from.
+  //
+  // SEEN-TO-FAIL: mutating `keyFieldsFor`'s composite-array branch to
+  // `return []` (the mutant the reviewer verified leaves all 1012 real
+  // client tests green) makes this test fail — see the fix report for the
+  // captured output.
+  it('flags a selection missing one field of a synthetic composite key', () => {
+    const syntheticPolicies = { Device: { keyFields: ['id', 'name'] } };
+    const issues = findMissingKeyFields(
+      schema,
+      `query Q { viewer { devices { id } } }`,
+      syntheticPolicies
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ typeName: 'Device', missing: ['name'] })
+    );
+  });
 });
 
 describe('every shipped operation', () => {

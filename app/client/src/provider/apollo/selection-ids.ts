@@ -1,3 +1,4 @@
+import type { InMemoryCacheConfig } from '@apollo/client';
 import {
   getNamedType,
   isAbstractType,
@@ -21,17 +22,24 @@ export type MissingKeyField = {
   missing: string[];
 };
 
+type TypePolicies = InMemoryCacheConfig['typePolicies'];
+
 /**
- * The key fields Apollo will actually use for `type`, derived from the app's
- * own `cacheConfig` rather than restated here — change a typePolicy and this
- * follows automatically.
+ * The key fields Apollo will actually use for `type`, derived from `policies`
+ * (defaulting to the app's own `cacheConfig.typePolicies`, so change a real
+ * typePolicy and this follows automatically) rather than restated here.
+ *
+ * Parameterised — rather than reading `cacheConfig` directly — so this can be
+ * exercised against a synthetic policy in tests (a composite-keyed type the
+ * app doesn't actually have) without needing to add one to `cacheConfig`
+ * itself. See `findMissingKeyFields`'s identical `policies` parameter.
  *
  * An explicit `keyFields: []` (the root singletons) yields no requirement; a
  * type with no policy falls back to Apollo's default, which is `id` when the
  * type has one and inline storage otherwise.
  */
-const keyFieldsFor = (type: GraphQLNamedType): string[] => {
-  const policy = cacheConfig.typePolicies?.[type.name];
+const keyFieldsFor = (type: GraphQLNamedType, policies: TypePolicies): string[] => {
+  const policy = policies?.[type.name];
   if (policy && typeof policy === 'object' && 'keyFields' in policy) {
     const declared = policy.keyFields;
     return Array.isArray(declared)
@@ -106,8 +114,17 @@ const reachableFieldNames = (
 /**
  * Every selection set in `source` whose type is normalized by Apollo but which
  * omits that type's cache key field(s).
+ *
+ * `policies` defaults to the app's real `cacheConfig.typePolicies` — every
+ * existing caller gets that behaviour for free — but can be overridden with a
+ * synthetic policy set in tests, to exercise the composite-`keyFields` branch
+ * against a type shape the app doesn't actually configure that way.
  */
-export const findMissingKeyFields = (schema: GraphQLSchema, source: string): MissingKeyField[] => {
+export const findMissingKeyFields = (
+  schema: GraphQLSchema,
+  source: string,
+  policies: TypePolicies = cacheConfig.typePolicies
+): MissingKeyField[] => {
   const document = parse(source);
   const issues: MissingKeyField[] = [];
 
@@ -117,7 +134,7 @@ export const findMissingKeyFields = (schema: GraphQLSchema, source: string): Mis
   }
 
   const check = (selectionSet: SelectionSetNode, type: GraphQLNamedType, path: string): void => {
-    const required = keyFieldsFor(type);
+    const required = keyFieldsFor(type, policies);
     if (required.length === 0) return;
     const present = reachableFieldNames(schema, selectionSet, type, fragments);
     const missing = required.filter((field) => !present.has(field));

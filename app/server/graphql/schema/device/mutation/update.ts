@@ -45,7 +45,7 @@ const input = builder.inputType('DeviceUpdateInput', {
 /**
  * `deviceId.min(1)` has no REST analogue (`PATCH /:id`'s path segment can't
  * be empty) but matches every other id-like field's rule in this schema
- * (`bookId`, `progressDelete`'s `document`, …) — an empty string is a client
+ * (`bookId`, `deviceDelete`'s `deviceId`, …) — an empty string is a client
  * bug, not a valid lookup. Kept as its OWN schema, separate from
  * `deviceFieldsSchema`, so it can be checked and used to look the device up
  * BEFORE the `name`/`coverWidth`/`coverHeight` fields are validated — see the

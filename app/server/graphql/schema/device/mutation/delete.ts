@@ -29,12 +29,13 @@ type DeviceDeletePayloadShape = {
 /**
  * `deletedDeviceId`, not `deletedId`: `Device` is deliberately not a `Node`
  * (`device/model.ts`'s doc comment — there is no tenant to scope a `node(id:)`
- * door against), so it has no global id to return. Same convention
- * `progressDelete`'s `deletedDocument` established for the one other
- * non-`Node` type in this schema: the ledger's "deletes of `Node`-backed
- * entities carry `deletedId`" rule names its exception as non-`Node` types,
- * and `Device` is exactly that exception, not an oversight. No `library`/
- * parent field alongside it either — `Device` has no owner to carry one for
+ * door against), so its `id` field is a plain scalar with no global-id
+ * encoding to round-trip — there is nothing to build a `deletedId` from.
+ * (`Progress` is also non-`Node`, but is not a precedent here: its `id` IS a
+ * computed global ID — see `progress/model.ts` — so `progressDelete` returns
+ * `deletedId`. Non-`Node`-ness alone doesn't determine this field's shape;
+ * whether the type's `id` is itself a global ID does.) No `library`/parent
+ * field alongside it either — `Device` has no owner to carry one for
  * (`userDelete`'s M-1 correction on why a parent field earns its place
  * doesn't apply here: there is no parent list scoped by anything but
  * `deletedDeviceId` itself, and `Viewer.devices`'s list-removal directive

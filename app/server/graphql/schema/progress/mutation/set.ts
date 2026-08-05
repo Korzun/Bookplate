@@ -12,8 +12,8 @@ import { model as progressModel } from '../model';
 
 /**
  * `userId` (a `User` global ID, per the spec's rule for every user-associated
- * mutation — `progress/mutation/delete.ts`'s identical field), `document`,
- * plus the exact body `PUT /api/my/progress/:document` accepts
+ * mutation — `libraryScan`'s identical field, `library/mutation/scan.ts`),
+ * `document`, plus the exact body `PUT /api/my/progress/:document` accepts
  * (`routes/ui.ts:338-381`). NOT a raw `progress` CFI string: that route does
  * not take one — the client sends `currentChapter` (a 1-based chapter
  * number) and the server itself synthesises a CFI from the book's

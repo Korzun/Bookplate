@@ -166,6 +166,25 @@ describe('Mutation.progressDelete', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
   });
 
+  // M-4 (final whole-branch review): the resolver's `owner === null` branch
+  // (delete.ts:157-158) was reachable only through a well-formed `Progress`
+  // id whose userId component names no real user, sent by an ADMIN —
+  // `isOwnerOrAdmin` passes on the userId alone (an admin, unlike alice
+  // above), so `authScopes` lets the resolver run, and `loadOwner` then
+  // returns null for that made-up userId. The non-admin variant above never
+  // reaches this branch at all (it 403s in authScopes first).
+  it('resolves to null for an admin-supplied Progress id whose userId component names no user', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: {
+        input: { id: progressId('no-such-user', 'dune.epub') },
+      },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressDelete).toBeNull();
+  });
+
   // The next three tests pin `decodeProgressId`'s three defensive branches
   // directly — review found all three were dead as far as the suite could
   // tell (deleting the typename check, removing the decodeGlobalID try/catch,
@@ -226,5 +245,64 @@ describe('Mutation.progressDelete', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+  });
+});
+
+/**
+ * M-3 (task-5-review, final whole-branch review): the `Progress` id
+ * encode/decode is duplicated across `progress/model.ts` (encode),
+ * `progress/mutation/delete.ts` (typename literal + encode/decode), and
+ * independent copies of `encodeGlobalID('Progress', ...)` in both test
+ * files — each side is pinned only against its OWN copy, so a coordinated
+ * refactor of `model.ts` + `model.test.ts` could break `delete.ts` silently.
+ * This does not extract a shared helper (deferred) — it pins the contract
+ * end to end instead: take an id exactly as the API hands it back
+ * (`progressSet`'s payload), never reconstructed with a local
+ * `encodeGlobalID` call, and feed that exact string to `progressDelete`.
+ */
+describe('Progress id round trip: progressSet’s output feeds progressDelete', () => {
+  const SET_MUTATION = `
+    mutation Set($input: ProgressSetInput!) {
+      progressSet(input: $input) {
+        __typename
+        ... on ProgressSetPayload {
+          progress { id }
+        }
+      }
+    }
+  `;
+
+  it('deletes by the id progressSet actually returned, and deletedId echoes that same id', async () => {
+    const setResult = await harness.execute(SET_MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          document: 'round-trip.epub',
+          currentChapter: 1,
+          percentage: 0.5,
+        },
+      },
+    });
+    expect(setResult.errors).toBeUndefined();
+    const setPayload = setResult.data?.progressSet as {
+      __typename: string;
+      progress: { id: string };
+    };
+    expect(setPayload.__typename).toBe('ProgressSetPayload');
+    const idFromApi = setPayload.progress.id;
+
+    const deleteResult = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { id: idFromApi } },
+    });
+
+    expect(deleteResult.errors).toBeUndefined();
+    expect(deleteResult.data?.progressDelete).toEqual({
+      __typename: 'ProgressDeletePayload',
+      deletedId: idFromApi,
+      library: { user: { username: 'alice' } },
+    });
+    expect(await documentsOf(harness.aliceOwner.userId)).toEqual([]);
   });
 });
