@@ -75,10 +75,11 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const [isAdmin] = useIsAdmin();
   const [allUsers] = useUserList();
   const userOptions = allUsers.map((u) => u.username);
-  // Only fetch when the field will actually be shown — non-admins can still
-  // open the edit form (Edit isn't gated), and the device users endpoint is
-  // admin-only server-side.
-  const [fetchedUsers, loadingUsers] = useDeviceUsers(isAdmin ? device?.id : undefined);
+  // Non-admins can still open the edit form (Edit isn't gated), and
+  // `Device.enabledUsers` is admin-only server-side — `useDeviceUsers` itself
+  // now gates on `isAdmin` (via `skip`), so this call needs no ternary of its
+  // own to avoid firing the query for a non-admin.
+  const [fetchedUsers, loadingUsers] = useDeviceUsers(device?.id);
   const [enableUser] = useEnableDeviceUser();
   const [disableUser] = useDisableDeviceUser();
   // The Users chips field shows fetchedUsers (server truth) until the admin

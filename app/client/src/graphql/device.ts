@@ -115,3 +115,91 @@ export const DeviceDeleteDocument = graphql(`
     }
   }
 `);
+
+/**
+ * There is no `Query.device` — `useDeviceUsers` reads every device's `id`
+ * plus its enabled users and picks the matching one out of the list.
+ *
+ * `Viewer.devices` carries a ×100 cost multiplier (see `DeviceListDocument`'s
+ * own note above); `Device.enabledUsers` adds ×50 ON TOP, so any field
+ * selected under BOTH is priced ×5000. `id` is selected here — and NOTHING
+ * else, in particular not `username` — for exactly that reason; usernames
+ * are resolved against the already-cached `UserListDocument`
+ * (`graphql/user.ts`) in `useDeviceUsers` instead. Measured (`test:cost -w
+ * app/server`): breadth 9.0%, complexity 31.2% of budget — comfortably under
+ * the 70% headroom despite the ×5000 shape, because only `id` travels
+ * through it.
+ */
+export const DeviceUsersDocument = graphql(`
+  query DeviceUsers {
+    viewer {
+      devices {
+        id
+        enabledUsers {
+          id
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * Grants a user access to a device. Returns `device { id enabledUsers { id
+ * } }` — that normalizes over the existing `Device:<id>` entity, refreshing
+ * `DeviceUsersDocument`'s cached read of the same device for free, so
+ * neither this mutation nor `DeviceDisableUserDocument` below needs an
+ * `update` function (verified in `use-enable-device-user.test.tsx` with none
+ * supplied).
+ *
+ * `userId` is a `User` global ID, not a username, per the schema's rule for
+ * every user-associated mutation — the enabling hook resolves the username
+ * it's given against the already-cached `UserListDocument` before calling
+ * this.
+ *
+ * Measured (`test:cost -w app/server`): breadth 12.0%, complexity 0.3% of
+ * budget — a mutation's own selection carries none of `Viewer.devices`'s
+ * ×100 multiplier, so the ×5000 shape does not apply here the way it does to
+ * `DeviceUsersDocument`.
+ */
+export const DeviceEnableUserDocument = graphql(`
+  mutation DeviceEnableUser($input: DeviceEnableUserInput!) {
+    deviceEnableUser(input: $input) {
+      __typename
+      ... on DeviceEnableUserPayload {
+        device {
+          id
+          enabledUsers {
+            id
+          }
+        }
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);
+
+/**
+ * Revokes a user's access to a device. Mirrors `DeviceEnableUserDocument`'s
+ * shape and reasoning above — same normalization, same no-`update` claim,
+ * same `User` global ID rule.
+ */
+export const DeviceDisableUserDocument = graphql(`
+  mutation DeviceDisableUser($input: DeviceDisableUserInput!) {
+    deviceDisableUser(input: $input) {
+      __typename
+      ... on DeviceDisableUserPayload {
+        device {
+          id
+          enabledUsers {
+            id
+          }
+        }
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);
