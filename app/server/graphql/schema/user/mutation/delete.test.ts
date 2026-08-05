@@ -21,7 +21,7 @@ const MUTATION = `
   mutation Delete($input: UserDeleteInput!) {
     userDelete(input: $input) {
       __typename
-      ... on UserDeletePayload { deletedId deletedUserId }
+      ... on UserDeletePayload { deletedId }
     }
   }
 `;
@@ -40,7 +40,6 @@ describe('Mutation.userDelete', () => {
     expect(result.data?.userDelete).toEqual({
       __typename: 'UserDeletePayload',
       deletedId: encodeGlobalID('User', harness.bobOwner.userId),
-      deletedUserId: harness.bobOwner.userId,
     });
     expect(
       await harness.prisma.user.findUnique({ where: { id: harness.bobOwner.userId } })

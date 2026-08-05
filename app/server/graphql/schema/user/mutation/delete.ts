@@ -18,22 +18,15 @@ const input = builder.inputType('UserDeleteInput', {
 type UserDeletePayloadShape = {
   readonly __typename: 'UserDeletePayload';
   readonly deletedId: string;
-  readonly deletedUserId: string;
 };
 
 /**
- * Carries BOTH `deletedId: ID!` and `deletedUserId: String!`, per the ledger's
- * rule for deletes of `Node`-backed entities. `User`'s node id (`user/
- * model.ts`: `id: { field: 'id' }`) is a plain, non-compound column, unlike
- * `Book`'s — so `deletedUserId` is the same value `deletedId` decodes to,
- * rather than a second half of a compound key. Still exposed as its own raw
- * field so a client that only needs the raw id (e.g. to match it against
- * something REST-sourced) needn't base64-decode `deletedId` to get it.
- * (`bookDelete` once carried a `deletedBookId` twin for the same reason; the
- * Book-Relay-ID pass removed it — Book clients are GraphQL-only. `User`'s raw
- * id remains genuinely REST-adjacent, e.g. the admin `?user=` query param.)
+ * Carries only `deletedId: ID!`, the Relay global ID. The raw `deletedUserId`
+ * field was removed — no in-repo client consumes a raw user id (the schema's
+ * only consumer evicts by global ID). (`bookDelete` made the same choice for
+ * `deletedBookId`, removing the twin when clients moved to GraphQL-only.)
  *
- * No `library`/`user` field alongside these, unlike `progressDelete`'s
+ * No `library`/`user` field alongside `deletedId`, unlike `progressDelete`'s
  * `library` or `bookDelete`'s `library`. **Correction (task-6 review, M-1):**
  * this is NOT because "nothing is left to resolve" — `Viewer.users:
  * [User!]!` (`viewer/model.ts`), the admin user list, still exists and is
@@ -48,7 +41,6 @@ type UserDeletePayloadShape = {
 const payload = builder.objectRef<UserDeletePayloadShape>('UserDeletePayload').implement({
   fields: (t) => ({
     deletedId: t.exposeID('deletedId'),
-    deletedUserId: t.exposeString('deletedUserId'),
   }),
 });
 
@@ -146,7 +138,6 @@ builder.mutationField('userDelete', (t) =>
       return {
         __typename: 'UserDeletePayload' as const,
         deletedId: encodeGlobalID('User', owner.userId),
-        deletedUserId: owner.userId,
       };
     },
   })

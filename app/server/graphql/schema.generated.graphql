@@ -844,7 +844,6 @@ input UserDeleteInput {
 
 type UserDeletePayload {
   deletedId: ID!
-  deletedUserId: String!
 }
 
 union UserDeleteResult = UserDeletePayload
