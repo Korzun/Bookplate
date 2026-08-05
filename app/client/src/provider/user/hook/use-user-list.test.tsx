@@ -14,7 +14,7 @@ const user = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-const userListMock = (users: ReturnType<typeof user>[] | null) => ({
+const userListMock = (users: ReturnType<typeof user>[]) => ({
   request: { query: UserListDocument },
   result: {
     data: {
@@ -27,14 +27,23 @@ const userListMock = (users: ReturnType<typeof user>[] | null) => ({
   },
 });
 
-/** Renders the hook inside renderWithApollo's provider stack. */
-const renderUserList = (mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']) => {
+/**
+ * Renders the hook inside renderWithApollo's provider stack. `isAdmin`
+ * defaults to `true` here (renderWithApollo's OWN default is `isAdmin:
+ * false`, which would `skip` every query below) since most of these tests
+ * exercise the query itself; the dedicated non-admin test below overrides it
+ * back to `false`.
+ */
+const renderUserList = (
+  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks'],
+  isAdmin = true
+) => {
   const result: { current?: UseUserList } = {};
   const Probe = () => {
     result.current = useUserList();
     return null;
   };
-  renderWithApollo(<Probe />, { mocks });
+  renderWithApollo(<Probe />, { mocks, user: { username: 'admin', isAdmin } });
   return result;
 };
 
@@ -61,13 +70,29 @@ describe('useUserList', () => {
     expect(result.current?.[0]).toEqual([]);
   });
 
-  it('treats a null users field (non-admin scope denial) as an empty list, not an error', async () => {
-    const result = renderUserList([userListMock(null)]);
+  /**
+   * Retired: "treats a null users field as an empty list, not an error".
+   * That test asserted a shape the real server never produces — its
+   * test-pinned contract (app/server/graphql/schema/viewer/users.test.ts)
+   * always pairs a denial's `users: null` with a FORBIDDEN GraphQL error,
+   * and Apollo's default errorPolicy discards `data` whenever an error is
+   * present. So "null data, no error" only ever occurred here because the
+   * mock supplied `null` with no `errors` array — an artifact of the test
+   * double, not a real response. The two tests below cover what actually
+   * happens instead: `skip` stopping the query before it is ever sent (this
+   * hook's real defense for a non-admin), and a genuine GraphQL error taking
+   * the error branch.
+   */
+  it('does not issue the query for a non-admin (skip), and reports neither loading nor an error', () => {
+    // No matching mock is supplied. If `skip` were not in effect, MockLink
+    // would have no response to resolve this request with, and the query
+    // would come back as an error instead of this clean idle state.
+    const result = renderUserList([], false);
 
-    await waitFor(() => expect(result.current?.[1]).toBe(false));
-    expect(result.current?.[0]).toEqual([]);
+    expect(result.current?.[1]).toBe(false);
     expect(result.current?.[2]).toBe(false);
     expect(result.current?.[3]).toBeUndefined();
+    expect(result.current?.[0]).toEqual([]);
   });
 
   it('surfaces a GraphQL error as hasError with a message, not an empty list', async () => {
