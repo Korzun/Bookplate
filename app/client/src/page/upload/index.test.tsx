@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MetadataFix } from '~/provider/book';
 import { UploadProvider } from '~/provider/upload';
-import { renderWithProviders } from '~/test-utils';
+import { renderWithApollo } from '~/test-utils';
 
 import { UploadPage } from './index';
 
@@ -82,7 +82,7 @@ describe('UploadPage — manual apply does not trigger the auto-fix toast', () =
   it('shows no "Auto-fixed" toast for a manually-applied proposal', async () => {
     const fix = makeFix();
 
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>
@@ -134,7 +134,7 @@ describe('UploadPage — manual apply does not trigger the auto-fix toast', () =
 
 describe('UploadPage — Clear finished', () => {
   it('is disabled with an empty queue and clears a failed row when chosen', async () => {
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>
@@ -181,7 +181,7 @@ describe('UploadPage — Clear finished', () => {
   });
 
   it('clears only the failed row, leaving an in-progress upload untouched', async () => {
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>
@@ -240,7 +240,7 @@ describe('UploadPage — Accept all / Reject all', () => {
   it('applies every pending proposal across the queue via the Actions menu', async () => {
     const fix = makeFix();
 
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>
@@ -307,7 +307,7 @@ describe('UploadPage — Accept all / Reject all', () => {
   it('ignores a re-entrant Accept all click while the first is still in flight', async () => {
     const fix = makeFix();
 
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>
@@ -404,7 +404,7 @@ describe('UploadPage — Accept all / Reject all', () => {
       })
     );
 
-    renderWithProviders(
+    renderWithApollo(
       <UploadProvider>
         <UploadPage />
       </UploadProvider>

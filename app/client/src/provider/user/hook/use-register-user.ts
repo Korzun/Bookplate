@@ -40,7 +40,12 @@ export const useRegisterUser = (): UseRegisterUser => {
 
       setUserList((prev) => ({
         ...prev,
-        [normalizedUsername]: { username: normalizedUsername, progressCount: 0 },
+        // The real User global id is not known until the next GraphQL
+        // UserList read; this Context-backed optimistic record no longer
+        // feeds the displayed list (use-user-list.ts reads Apollo's cache
+        // directly), so the placeholder only needs to satisfy the shape for
+        // this hook's own duplicate-username check.
+        [normalizedUsername]: { id: '', username: normalizedUsername, progressCount: 0 },
       }));
 
       try {

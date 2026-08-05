@@ -1,9 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { useRegisterUser, useUserList } from '.';
+import { useRegisterUser } from '.';
 import { Context } from '../context';
 import type { User, UserList } from '../type';
 
@@ -40,7 +40,7 @@ describe('useRegisterUser', () => {
 
   it('sets error and message when username already exists', async () => {
     const { result } = renderHook(() => useRegisterUser(), {
-      wrapper: makeWrapper([{ username: 'alicia', progressCount: 0 }]),
+      wrapper: makeWrapper([{ id: 'u1', username: 'alicia', progressCount: 0 }]),
     });
     await act(() => result.current[0]('alicia'));
     expect(result.current[2]).toBe(true);
@@ -76,7 +76,12 @@ describe('useRegisterUser', () => {
     expect(password).toBe('generatedPass123');
   });
 
-  it('optimistically adds user in sorted order before fetch resolves', async () => {
+  // These two tests read the optimistic state straight off `Context` rather
+  // than through `useUserList`: as of this task, `useUserList` reads Apollo's
+  // cache (see `use-user-list.ts`), not this hook's `Context`, so it can no
+  // longer observe this hook's optimistic writes. The writes themselves are
+  // unchanged and still worth covering directly.
+  it('optimistically adds user to the list before fetch resolves', async () => {
     let resolveFetch!: (value: unknown) => void;
     vi.stubGlobal(
       'fetch',
@@ -86,25 +91,24 @@ describe('useRegisterUser', () => {
         })
       )
     );
-    const { result } = renderHook(() => ({ register: useRegisterUser(), list: useUserList() }), {
-      wrapper: makeWrapper([{ username: 'charlie', progressCount: 0 }]),
+    const { result } = renderHook(() => ({ register: useRegisterUser(), context: use(Context) }), {
+      wrapper: makeWrapper([{ id: 'u2', username: 'charlie', progressCount: 0 }]),
     });
     act(() => {
       void result.current.register[0]('alicia');
     });
-    expect(result.current.list[0][0].username).toBe('alicia');
-    expect(result.current.list[0][1].username).toBe('charlie');
+    expect(Object.keys(result.current.context.userList).sort()).toEqual(['alicia', 'charlie']);
     resolveFetch({ status: 201, json: () => Promise.resolve({ password: 'pass' }) });
     await waitFor(() => expect(result.current.register[1]).toBe(false));
   });
 
   it('removes optimistically added user and sets error when POST fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Server error')));
-    const { result } = renderHook(() => ({ register: useRegisterUser(), list: useUserList() }), {
+    const { result } = renderHook(() => ({ register: useRegisterUser(), context: use(Context) }), {
       wrapper: makeWrapper(),
     });
     await act(() => result.current.register[0]('alicia'));
-    expect(result.current.list[0]).toEqual([]);
+    expect(result.current.context.userList).toEqual({});
     expect(result.current.register[2]).toBe(true);
     expect(result.current.register[3]).toBe('Server error');
   });

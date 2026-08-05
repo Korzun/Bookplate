@@ -41,8 +41,8 @@ function renderAsAdmin(ui: ReactNode) {
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([
     [
-      { username: 'alice', progressCount: 0 },
-      { username: 'bob', progressCount: 0 },
+      { id: 'u1', username: 'alice', progressCount: 0 },
+      { id: 'u2', username: 'bob', progressCount: 0 },
     ],
     false,
     false,

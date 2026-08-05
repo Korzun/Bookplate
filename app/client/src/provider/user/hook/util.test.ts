@@ -6,21 +6,21 @@ import { removeUserByUsername } from './util';
 describe('removeUserByUsername', () => {
   it('removes the named user and leaves others intact', () => {
     const list: UserList = {
-      alice: { username: 'alice', progressCount: 0 },
-      bob: { username: 'bob', progressCount: 1 },
+      alice: { id: 'u1', username: 'alice', progressCount: 0 },
+      bob: { id: 'u2', username: 'bob', progressCount: 1 },
     };
     expect(removeUserByUsername('alice', list)).toEqual({
-      bob: { username: 'bob', progressCount: 1 },
+      bob: { id: 'u2', username: 'bob', progressCount: 1 },
     });
   });
 
   it('returns unchanged list when username is absent', () => {
-    const list: UserList = { bob: { username: 'bob', progressCount: 1 } };
+    const list: UserList = { bob: { id: 'u2', username: 'bob', progressCount: 1 } };
     expect(removeUserByUsername('alice', list)).toEqual(list);
   });
 
   it('returns empty object when removing the only user', () => {
-    const list: UserList = { alice: { username: 'alice', progressCount: 0 } };
+    const list: UserList = { alice: { id: 'u1', username: 'alice', progressCount: 0 } };
     expect(removeUserByUsername('alice', list)).toEqual({});
   });
 });

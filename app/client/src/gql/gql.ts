@@ -22,6 +22,7 @@ type Documents = {
     "\n  query LibraryScanStatus($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        user {\n          id\n        }\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": typeof types.LibraryScanStatusDocument,
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": typeof types.ScanProgressDocument,
     "\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": typeof types.LibraryScanDocument,
+    "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n": typeof types.UserListDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": typeof types.ViewerBootstrapDocument,
 };
 const documents: Documents = {
@@ -33,6 +34,7 @@ const documents: Documents = {
     "\n  query LibraryScanStatus($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        user {\n          id\n        }\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": types.LibraryScanStatusDocument,
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": types.ScanProgressDocument,
     "\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": types.LibraryScanDocument,
+    "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n": types.UserListDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": types.ViewerBootstrapDocument,
 };
 
@@ -82,6 +84,10 @@ export function graphql(source: "\n  subscription ScanProgress($libraryId: ID!) 
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation LibraryScan($userId: ID!) {\n    libraryScan(input: { userId: $userId }) {\n      __typename\n      ... on LibraryScanPayload {\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n      ... on ScanAlreadyRunningError {\n        message\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n"): (typeof documents)["\n  query UserList {\n    viewer {\n      users {\n        id\n        username\n        progressCount\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

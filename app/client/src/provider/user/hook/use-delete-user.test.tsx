@@ -1,9 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { useDeleteUser, useUserList } from '.';
+import { useDeleteUser } from '.';
 import { Context } from '../context';
 import type { User, UserList } from '../type';
 
@@ -40,7 +40,7 @@ describe('useDeleteUser', () => {
 
   it('sets error and message when username is not found in list', async () => {
     const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
     });
     await act(() => result.current[0]('unknown'));
     expect(result.current[2]).toBe(true);
@@ -50,12 +50,17 @@ describe('useDeleteUser', () => {
   it('sends DELETE request to /api/users/:username', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
     const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
     });
     await act(() => result.current[0]('alice'));
     expect(fetch).toHaveBeenCalledWith('/api/users/alice', { method: 'DELETE' });
   });
 
+  // These two tests read the optimistic state straight off `Context` rather
+  // than through `useUserList`: as of this task, `useUserList` reads Apollo's
+  // cache (see `use-user-list.ts`), not this hook's `Context`, so it can no
+  // longer observe this hook's optimistic writes. The writes themselves are
+  // unchanged and still worth covering directly.
   it('optimistically removes user from list before fetch resolves', async () => {
     let resolveFetch!: (value: unknown) => void;
     vi.stubGlobal(
@@ -66,24 +71,26 @@ describe('useDeleteUser', () => {
         })
       )
     );
-    const { result } = renderHook(() => ({ delete: useDeleteUser(), list: useUserList() }), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+    const { result } = renderHook(() => ({ delete: useDeleteUser(), context: use(Context) }), {
+      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
     });
     act(() => {
       void result.current.delete[0]('alice');
     });
-    expect(result.current.list[0]).toEqual([]);
+    expect(result.current.context.userList).toEqual({});
     resolveFetch({ status: 204 });
     await waitFor(() => expect(result.current.delete[1]).toBe(false));
   });
 
   it('restores user in list and sets error when DELETE fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
-    const { result } = renderHook(() => ({ delete: useDeleteUser(), list: useUserList() }), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+    const { result } = renderHook(() => ({ delete: useDeleteUser(), context: use(Context) }), {
+      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
     });
     await act(() => result.current.delete[0]('alice'));
-    expect(result.current.list[0]).toEqual([{ username: 'alice', progressCount: 0 }]);
+    expect(result.current.context.userList).toEqual({
+      alice: { id: 'u1', username: 'alice', progressCount: 0 },
+    });
     expect(result.current.delete[2]).toBe(true);
     expect(result.current.delete[3]).toBe('Network error');
   });
@@ -99,7 +106,7 @@ describe('useDeleteUser', () => {
       )
     );
     const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
+      wrapper: makeWrapper([{ id: 'u1', username: 'alice', progressCount: 0 }]),
     });
     act(() => {
       void result.current[0]('alice');

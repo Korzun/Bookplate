@@ -1,124 +1,90 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { useUserList } from '.';
-import { Context as AuthContext } from '../../auth/context';
-import { Context } from '../context';
-import type { User, UserList } from '../type';
+import { UserListDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
 
-function makeWrapper(
-  initialUsers: User[] = [],
-  initialLoading = false,
-  initialError: string | undefined = undefined,
-  isAdmin = true
-) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [userList, setUserListRaw] = useState<UserList>(
-      Object.fromEntries(initialUsers.map((u) => [u.username, u]))
-    );
-    const [loading, setLoading] = useState(initialLoading);
-    const [error, setError] = useState<string | undefined>(initialError);
-    const setUserList = useCallback(
-      (updater: (prev: UserList) => UserList) => setUserListRaw(updater),
-      []
-    );
-    return (
-      <AuthContext.Provider
-        value={{
-          username: isAdmin ? 'admin' : 'user',
-          userId: undefined,
-          isAdmin,
-          mustChangePassword: false,
-          loading: false,
-        }}
-      >
-        <Context.Provider value={{ userList, loading, error, setUserList, setLoading, setError }}>
-          {children}
-        </Context.Provider>
-      </AuthContext.Provider>
-    );
+import { useUserList, type UseUserList } from './use-user-list';
+
+const user = (overrides: Record<string, unknown>) => ({
+  __typename: 'User' as const,
+  id: 'u1',
+  username: 'alice',
+  progressCount: 0,
+  ...overrides,
+});
+
+const userListMock = (users: ReturnType<typeof user>[] | null) => ({
+  request: { query: UserListDocument },
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      viewer: {
+        __typename: 'Viewer' as const,
+        users,
+      },
+    },
+  },
+});
+
+/** Renders the hook inside renderWithApollo's provider stack. */
+const renderUserList = (mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']) => {
+  const result: { current?: UseUserList } = {};
+  const Probe = () => {
+    result.current = useUserList();
+    return null;
   };
-}
+  renderWithApollo(<Probe />, { mocks });
+  return result;
+};
 
 describe('useUserList', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('returns empty list and default state initially', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
-    );
-    const { result } = renderHook(() => useUserList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(result.current[1]).toBe(false));
-    const [userList, loading, error, errorMessage] = result.current;
-    expect(userList).toEqual([]);
-    expect(loading).toBe(false);
-    expect(error).toBe(false);
-    expect(errorMessage).toBeUndefined();
-  });
-
-  it('returns users from context in sorted order', () => {
-    const users: User[] = [
-      { username: 'zara', progressCount: 0 },
-      { username: 'alice', progressCount: 1 },
-    ];
-    const { result } = renderHook(() => useUserList(), { wrapper: makeWrapper(users) });
-    expect(result.current[0]).toEqual([
-      { username: 'alice', progressCount: 1 },
-      { username: 'zara', progressCount: 0 },
+  it('returns users in username order with the tuple shape unchanged, id present', async () => {
+    const result = renderUserList([
+      userListMock([
+        user({ id: 'u2', username: 'zara', progressCount: 3 }),
+        user({ id: 'u1', username: 'alice', progressCount: 1 }),
+      ]),
     ]);
+
+    await waitFor(() => expect(result.current?.[1]).toBe(false));
+    expect(result.current?.[2]).toBe(false);
+    expect(result.current?.[3]).toBeUndefined();
+    expect(result.current?.[0].map((u) => u.username)).toEqual(['alice', 'zara']);
+    expect(result.current?.[0][0]).toEqual({ id: 'u1', username: 'alice', progressCount: 1 });
   });
 
-  it('fetches user list on mount when admin', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
-    vi.stubGlobal('fetch', mockFetch);
-    renderHook(() => useUserList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/users', {}));
+  it('reports loading before the query resolves', () => {
+    const result = renderUserList([userListMock([user({})])]);
+
+    expect(result.current?.[1]).toBe(true);
+    expect(result.current?.[0]).toEqual([]);
   });
 
-  it('does not fetch when user is not admin', async () => {
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-    renderHook(() => useUserList(), { wrapper: makeWrapper([], false, undefined, false) });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mockFetch).not.toHaveBeenCalled();
+  it('treats a null users field (non-admin scope denial) as an empty list, not an error', async () => {
+    const result = renderUserList([userListMock(null)]);
+
+    await waitFor(() => expect(result.current?.[1]).toBe(false));
+    expect(result.current?.[0]).toEqual([]);
+    expect(result.current?.[2]).toBe(false);
+    expect(result.current?.[3]).toBeUndefined();
   });
 
-  it('does not fetch when the user list is already populated', async () => {
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-    renderHook(() => useUserList(), {
-      wrapper: makeWrapper([{ username: 'alice', progressCount: 0 }]),
-    });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
+  it('surfaces a GraphQL error as hasError with a message, not an empty list', async () => {
+    // No `result`, an `error` instead: MockLink resolves this as a network
+    // error on UserListDocument. An empty array here would render identically
+    // to "no users exist", which the devices equivalent of this hook already
+    // ruled unacceptable.
+    const result = renderUserList([
+      {
+        request: { query: UserListDocument },
+        error: new Error('user list query failed'),
+      },
+    ]);
 
-  it('does not fetch while loading is already true', async () => {
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-    renderHook(() => useUserList(), { wrapper: makeWrapper([], true) });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('does not fetch when an error is already set', async () => {
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-    renderHook(() => useUserList(), { wrapper: makeWrapper([], false, 'Previous error') });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('sets error state when the server returns a non-ok response', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 403, json: () => Promise.resolve({}) })
-    );
-    const { result } = renderHook(() => useUserList(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(result.current[2]).toBe(true));
-    expect(result.current[3]).toMatch(/403/);
+    await waitFor(() => expect(result.current?.[2]).toBe(true));
+    expect(result.current?.[3]).toBe('user list query failed');
+    expect(result.current?.[0]).toEqual([]);
+    expect(result.current?.[1]).toBe(false);
   });
 });

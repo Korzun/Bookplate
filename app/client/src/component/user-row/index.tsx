@@ -9,10 +9,11 @@ import { UserRowContent } from '../user-row-content';
 import { useStyle } from './style';
 
 interface UserRowProps {
+  userId: string;
   username: string;
 }
 
-export const UserRow = ({ username }: UserRowProps) => {
+export const UserRow = ({ userId: _userId, username }: UserRowProps) => {
   const styles = useStyle();
   const [user] = useUser(username);
 

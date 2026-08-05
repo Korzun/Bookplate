@@ -12,7 +12,7 @@ export const UserList = () => {
   return (
     <div className={styles.root}>
       {userList.map((user) => (
-        <UserRow key={user.username} username={user.username} />
+        <UserRow key={user.username} userId={user.id} username={user.username} />
       ))}
     </div>
   );
