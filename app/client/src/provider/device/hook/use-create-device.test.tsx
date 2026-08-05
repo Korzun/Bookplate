@@ -1,12 +1,25 @@
+import { ApolloClient, InMemoryCache } from '@apollo/client';
+import { ApolloProvider } from '@apollo/client/react';
+import { MockLink } from '@apollo/client/testing';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { DeviceListDocument } from '~/graphql/device';
+import { cacheConfig } from '~/provider/apollo';
+
 import { useCreateDevice, useDeviceList } from '.';
 import { Context } from '../context';
 import type { Device, DeviceInput, DeviceList } from '../type';
 
+/**
+ * `useDeviceList` reads the Apollo cache (task 2); `useCreateDevice` still
+ * writes through this Context/REST (task 3's job to rewire). A real
+ * `ApolloClient` seeded via `writeQuery` is what lets a test render both
+ * hooks side by side without an "no ApolloProvider" crash, on a cache-first
+ * read that never touches `MockLink`'s empty mock list.
+ */
 function makeWrapper(initialDevices: Device[] = []) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [deviceList, setDeviceListRaw] = useState<DeviceList>(
@@ -18,10 +31,35 @@ function makeWrapper(initialDevices: Device[] = []) {
       (updater: (prev: DeviceList) => DeviceList) => setDeviceListRaw(updater),
       []
     );
+    const [client] = useState(() => {
+      const apolloClient = new ApolloClient({
+        link: new MockLink([]),
+        cache: new InMemoryCache(cacheConfig),
+      });
+      apolloClient.writeQuery({
+        query: DeviceListDocument,
+        data: {
+          __typename: 'Query',
+          viewer: {
+            __typename: 'Viewer',
+            devices: initialDevices.map((device) => ({
+              __typename: 'Device' as const,
+              ...device,
+              coverFit: device.coverFit.toUpperCase() as 'CONTAIN' | 'COVER' | 'FILL' | 'SMART',
+            })),
+          },
+        },
+      });
+      return apolloClient;
+    });
     return (
-      <Context.Provider value={{ deviceList, loading, error, setDeviceList, setLoading, setError }}>
-        {children}
-      </Context.Provider>
+      <ApolloProvider client={client}>
+        <Context.Provider
+          value={{ deviceList, loading, error, setDeviceList, setLoading, setError }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloProvider>
     );
   };
 }
@@ -82,7 +120,7 @@ describe('useCreateDevice', () => {
     expect(device).toEqual(kindle);
   });
 
-  it('adds the created device to the list on success', async () => {
+  it('does not add the created device to the GraphQL-backed list — decoupled until task 3 rewires the mutation onto the cache', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ status: 201, json: () => Promise.resolve(kindle) })
@@ -91,7 +129,10 @@ describe('useCreateDevice', () => {
       wrapper: makeWrapper(),
     });
     await act(() => result.current.create[0](kindleInput));
-    expect(result.current.list[0]).toEqual([kindle]);
+    // useCreateDevice still only writes to Context (REST); useDeviceList (task 2)
+    // reads the Apollo cache, which this mutation never touches. The seeded
+    // empty list is therefore still what useDeviceList reports.
+    expect(result.current.list[0]).toEqual([]);
   });
 
   it('sets error and message when POST fails', async () => {

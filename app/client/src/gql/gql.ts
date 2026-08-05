@@ -14,6 +14,7 @@ import { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-node/
  * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
 type Documents = {
+    "\n  query DeviceList {\n    viewer {\n      devices {\n        id\n        name\n        slug\n        coverWidth\n        coverHeight\n        coverFit\n        bwCover\n        simplify\n      }\n    }\n  }\n": typeof types.DeviceListDocument,
     "\n  fragment ScanStatusFields on ScanStatus {\n    id\n    state\n    phase\n    processed\n    total\n    currentFile\n    startedAt\n    error\n    result {\n      imported {\n        id\n        title\n      }\n      # The string list the ScanResult tuple has always carried (REST parity).\n      # imported is [Book!]! and is NOT interchangeable with it.\n      importedFilenames\n      removed\n    }\n  }\n": typeof types.ScanStatusFieldsFragmentDoc,
     "\n  query LibraryScanStatus($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        user {\n          id\n        }\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": typeof types.LibraryScanStatusDocument,
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": typeof types.ScanProgressDocument,
@@ -21,6 +22,7 @@ type Documents = {
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": typeof types.ViewerBootstrapDocument,
 };
 const documents: Documents = {
+    "\n  query DeviceList {\n    viewer {\n      devices {\n        id\n        name\n        slug\n        coverWidth\n        coverHeight\n        coverFit\n        bwCover\n        simplify\n      }\n    }\n  }\n": types.DeviceListDocument,
     "\n  fragment ScanStatusFields on ScanStatus {\n    id\n    state\n    phase\n    processed\n    total\n    currentFile\n    startedAt\n    error\n    result {\n      imported {\n        id\n        title\n      }\n      # The string list the ScanResult tuple has always carried (REST parity).\n      # imported is [Book!]! and is NOT interchangeable with it.\n      importedFilenames\n      removed\n    }\n  }\n": types.ScanStatusFieldsFragmentDoc,
     "\n  query LibraryScanStatus($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        user {\n          id\n        }\n        scanStatus {\n          ...ScanStatusFields\n        }\n      }\n    }\n  }\n": types.LibraryScanStatusDocument,
     "\n  subscription ScanProgress($libraryId: ID!) {\n    scanProgress(libraryId: $libraryId) {\n      ...ScanStatusFields\n    }\n  }\n": types.ScanProgressDocument,
@@ -42,6 +44,10 @@ const documents: Documents = {
  */
 export function graphql(source: string): unknown;
 
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query DeviceList {\n    viewer {\n      devices {\n        id\n        name\n        slug\n        coverWidth\n        coverHeight\n        coverFit\n        bwCover\n        simplify\n      }\n    }\n  }\n"): (typeof documents)["\n  query DeviceList {\n    viewer {\n      devices {\n        id\n        name\n        slug\n        coverWidth\n        coverHeight\n        coverFit\n        bwCover\n        simplify\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
