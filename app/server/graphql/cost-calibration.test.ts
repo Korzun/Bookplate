@@ -295,7 +295,7 @@ const LEGIT_FIXTURES: readonly LegitAcceptFixture[] = [
     verdict: 'accept',
     class: 'legit-screen',
     name: 'a mutation (rootTypeOf resolves the mutation root, not just query)',
-    source: 'mutation { progressDelete(input: { document: "x", userId: "u" }) { __typename } }',
+    source: 'mutation { progressDelete(input: { id: "u" }) { __typename } }',
   },
 ];
 

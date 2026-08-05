@@ -99,7 +99,6 @@
       "User"
     ],
     "ProgressDeleteResult": [
-      "InvalidInputError",
       "ProgressDeletePayload"
     ],
     "ProgressSetResult": [

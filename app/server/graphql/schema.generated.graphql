@@ -655,16 +655,15 @@ type Progress {
 }
 
 input ProgressDeleteInput {
-  document: String!
-  userId: ID!
+  id: ID!
 }
 
 type ProgressDeletePayload {
-  deletedDocument: String!
+  deletedId: ID!
   library: Library!
 }
 
-union ProgressDeleteResult = InvalidInputError | ProgressDeletePayload
+union ProgressDeleteResult = ProgressDeletePayload
 
 input ProgressSetInput {
   currentChapter: Int!

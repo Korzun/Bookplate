@@ -1,74 +1,106 @@
-import { z } from 'zod';
+import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
-import { invalidInputError, model as invalidInputErrorModel } from '../../invalid-input-error';
 import { model as library } from '../../library/model';
-import * as user from '../../user/model';
+import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 
 /**
- * Takes a `User` global ID rather than a username, per the spec's rule for
- * every user-associated mutation. `for: user.model` makes the relay plugin
- * reject a global ID of the wrong type at coercion time instead of quietly
- * handing over some other entity's local id.
+ * One opaque `Progress` global ID, replacing the `(userId, document)` pair.
+ * The owner rides inside the id — the same collapse the book-relay-id plan
+ * applied to all ten book mutations — so the scope decodes and authorizes it
+ * with `isOwnerOrAdmin` rather than taking the caller's word for an owner.
+ *
+ * Plain `t.id`, not `t.globalID({ for: ... })`: `Progress` is deliberately
+ * NOT a `Node` (see `progress/model.ts`), so there is no registered type to
+ * validate the incoming global ID's `Progress:` prefix against at the relay
+ * arg layer the way `book.ts`'s `t.globalID({ for: book })` does — `for`
+ * requires a Node-implementing type, which `Progress` deliberately is not.
+ * Because of that, `args.input.id` arrives here as the RAW base64 global id
+ * string, not a pre-stripped local part the way `t.globalID` hands
+ * `args.input.id.id` to the book mutations — `decodeProgressId` below does
+ * both jobs (`decodeGlobalID` plus the typename check) that `t.globalID`
+ * would otherwise have done at the arg layer.
  */
 const input = builder.inputType('ProgressDeleteInput', {
   fields: (t) => ({
-    userId: t.globalID({ required: true, for: user.model }),
-    document: t.string({ required: true }),
+    id: t.id({ required: true }),
   }),
 });
 
+/**
+ * Mirrors what `t.globalID({ for: model })` does for the book mutations —
+ * decode the base64 wrapper, reject anything not typed `Progress` — plus the
+ * compound-key split `parseCompoundId` does for every owner-scoped node.
+ * Unlike `t.globalID`, none of this runs at the relay arg layer (no `for`
+ * possible here — see the input's own doc comment), so malformed input
+ * (bad base64, no `:`, wrong typename, or a local part that isn't the
+ * `[userId, document]` pair) must be caught here rather than left to throw:
+ * `decodeGlobalID` throws `PothosValidationError` on a structurally invalid
+ * global id, and an uncaught throw here would surface as a 500 instead of
+ * this schema's uniform "no such row" convention. Every failure mode
+ * collapses to `null`, same as a genuinely missing row and same as
+ * `parseCompoundId`'s own `null` — a malformed or foreign id must not be
+ * distinguishable from an absent one to a probing caller.
+ */
+const decodeProgressId = (raw: string): readonly [userId: string, document: string] | null => {
+  let decoded: { typename: string; id: string };
+  try {
+    decoded = decodeGlobalID(raw);
+  } catch {
+    return null;
+  }
+  if (decoded.typename !== 'Progress') return null;
+  return parseCompoundId(decoded.id);
+};
+
 type ProgressDeletePayloadShape = {
   readonly __typename: 'ProgressDeletePayload';
-  readonly deletedDocument: string;
+  readonly deletedId: string;
   readonly owner: Owner;
 };
 
 /**
- * `deletedDocument`, not `deletedId`: `Progress` is deliberately not a `Node`
- * (spec, phase-3 outcome), so it has no global ID to return — and Houdini keys
- * `Progress` on `document` anyway, which is exactly the value its list-removal
- * directives need. `library` is the parent the row was removed from, so a
- * cache can update the `Library.progress` connection without a refetch.
+ * `deletedId`, not `deletedDocument`: `Progress` now carries a global ID
+ * (Task 1), so a normalized cache evicts by `cache.identify({ __typename:
+ * 'Progress', id })` and needs nothing else. This follows the precedent set
+ * when `BookDeletePayload.deletedBookId` was removed — the only consumer of
+ * this schema is the in-repo client, and a raw-key field beside a global ID
+ * served no one.
  */
 const payload = builder.objectRef<ProgressDeletePayloadShape>('ProgressDeletePayload').implement({
   fields: (t) => ({
-    deletedDocument: t.exposeString('deletedDocument'),
+    deletedId: t.exposeID('deletedId'),
     library: t.field({ type: library, resolve: (result) => result.owner }),
   }),
 });
 
 /**
- * No `resolveType`: every member value carries its own `__typename` (see
- * `user-error/model.ts`), which graphql-js's `defaultTypeResolver` — Pothos's
- * fallback when a union declares none (`build-cache.js`'s `buildUnion`) —
- * reads first.
+ * Single-member union, not a bare payload type: additive-safe if a future
+ * error case needs a member (spec 1's single-member-union precedent).
+ *
+ * No `InvalidInputError` member: `document` was this file's only
+ * zod-validated field, and it is gone now that both halves of the old input
+ * arrive folded into the `Progress` global ID — malformed/wrong-type
+ * rejection of THAT happens in this resolver's own `decodeProgressId` call,
+ * which resolves to the same `null` ("no such row") convention a genuinely
+ * missing row does, exactly like `bookResolvePendingFix`'s identical drop
+ * (see that file's result-union doc comment). With no zod schema left in
+ * this file to make `InvalidInputError` reachable, the traced-union-drop
+ * rule (`book-relay-id-design.md`'s "Discovered consequence") requires
+ * dropping it here too.
+ *
+ * No `resolveType`: the one member value carries its own `__typename` (see
+ * `user-error/model.ts`), which graphql-js's `defaultTypeResolver` reads
+ * first.
  */
 const result = builder.unionType('ProgressDeleteResult', {
-  types: [payload, invalidInputErrorModel],
+  types: [payload],
 });
 
 /**
- * Validated inside the resolver, after auth, never through a declarative
- * arg-validation plugin's option (`@pothos/plugin-validation`, removed from
- * this schema as of Task 4 — `builder.ts`'s plugin-list comment) — see
- * `invalid-input-error/model.ts` for why that approach is off limits.
- *
- * `min(1)` and nothing more, deliberately: REST's `DELETE
- * /api/my/progress/:document` applies no validation at all, and an empty
- * document is the one input it structurally cannot receive (Express would not
- * match the route). A whitespace-only document is therefore NOT rejected here
- * — REST would pass it to the store, match no row, and answer 404, which is
- * exactly what this mutation does with it.
- */
-const inputSchema = z.object({
-  document: z.string().min(1, 'document must not be empty'),
-});
-
-/**
- * Mirrors two REST routes at once, which is why it takes a `userId` rather
- * than acting on the viewer implicitly:
+ * Mirrors two REST routes at once, which is why it takes an id that can name
+ * ANY user's row rather than acting on the viewer implicitly:
  *
  *  - `DELETE /api/my/progress/:document` (`routes/ui.ts:317-334`) — `requireAuth`,
  *    403 for an admin (who has no library), otherwise the caller's own row.
@@ -78,15 +110,26 @@ const inputSchema = z.object({
  * The `ownerOf` scope is the union of those two rules (`isOwnerOrAdmin`), so
  * the GraphQL field covers both without inheriting REST's split. The one
  * intentional loosening: REST's `/api/my/` route 403s an admin, because an
- * admin has no `userId` of their own to substitute; here an admin must name
- * the user, so there is nothing to substitute and nothing to refuse.
+ * admin has no `userId` of their own to substitute; here an admin must pass a
+ * `Progress` id naming some user, so there is nothing to substitute and
+ * nothing to refuse.
+ *
+ * Input is the `Progress` global ID alone (mirroring the ten book mutations'
+ * input collapse), decoded by `decodeProgressId` above into the same
+ * `NO_MATCH_USER_ID` convention `bookDelete`'s `parseCompoundId` call uses —
+ * see that file's resolver doc comment for the full malformed-id /
+ * wrong-type-id reasoning, which applies here unchanged. A foreign id (a real
+ * row, but not the caller's, and the caller is not an admin) is refused by
+ * the SAME `ownerOf` scope a malformed id is, so the two are indistinguishable
+ * to a probing caller — neither reaches the resolver.
  *
  * Both routes answer 404 when the row is absent. That is modelled as a null
  * result rather than a typed error: absence is not a domain failure a client
  * acts on, the spec's error model is an exhaustive list that contains no
  * not-found member, and adding one here would oblige every later delete
  * mutation to invent its own. Nulling matches how this schema already reports
- * "no such row" everywhere else (`Library.book`, `Query.user`, node guards).
+ * "no such row" everywhere else (`Library.book`, `Query.user`, node guards) —
+ * including a malformed/foreign id, per this file's own convention above.
  *
  * `UserStore.clearProgress` is NOT wrapped in `toResult`: it throws none of
  * the seven known store errors (it already converts Prisma's P2025 into
@@ -103,23 +146,23 @@ builder.mutationField('progressDelete', (t) =>
       'Clears one stored reading position. Resolves to null when the user has ' +
       'no stored position for that document.',
     args: { input: t.arg({ type: input, required: true }) },
-    // Relay sits outside scope-auth in the plugin order (see builder.ts), so
-    // the global ID is already parsed by the time this runs.
-    authScopes: (_parent, args) => ({ ownerOf: args.input.userId.id }),
+    authScopes: (_parent, args) => {
+      const parsed = decodeProgressId(args.input.id);
+      return { ownerOf: parsed === null ? NO_MATCH_USER_ID : parsed[0] };
+    },
     resolve: async (_parent, args, context) => {
-      const parsed = inputSchema.safeParse({ document: args.input.document });
-      if (!parsed.success) return invalidInputError(parsed.error);
-
-      const userId = args.input.userId.id;
+      const parsed = decodeProgressId(args.input.id);
+      if (parsed === null) return null; // admin passed scope on a malformed id: same "no such row" convention
+      const [userId, document] = parsed;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const cleared = await context.stores.user.clearProgress(userId, parsed.data.document);
+      const cleared = await context.stores.user.clearProgress(userId, document);
       if (!cleared) return null;
 
       return {
         __typename: 'ProgressDeletePayload' as const,
-        deletedDocument: parsed.data.document,
+        deletedId: encodeGlobalID('Progress', JSON.stringify([userId, document])),
         owner,
       };
     },

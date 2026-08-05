@@ -19,16 +19,15 @@ const MUTATION = `
     progressDelete(input: $input) {
       __typename
       ... on ProgressDeletePayload {
-        deletedDocument
+        deletedId
         library { user { username } }
-      }
-      ... on InvalidInputError {
-        message
-        issues { path message }
       }
     }
   }
 `;
+
+const progressId = (userId: string, document: string): string =>
+  encodeGlobalID('Progress', JSON.stringify([userId, document]));
 
 const seedProgress = (userId: string, document: string): Promise<unknown> =>
   harness.prisma.progress.create({
@@ -49,18 +48,18 @@ const documentsOf = async (userId: string): Promise<string[]> =>
   );
 
 describe('Mutation.progressDelete', () => {
-  it('deletes the viewer’s own progress row and returns the deleted document', async () => {
+  it('deletes the viewer’s own progress row and returns the deleted id', async () => {
     await seedProgress(harness.aliceOwner.userId, 'dune.epub');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, document: 'dune.epub' } },
+      variables: { input: { id: progressId(harness.aliceOwner.userId, 'dune.epub') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.progressDelete).toEqual({
       __typename: 'ProgressDeletePayload',
-      deletedDocument: 'dune.epub',
+      deletedId: progressId(harness.aliceOwner.userId, 'dune.epub'),
       library: { user: { username: 'alice' } },
     });
     expect(await documentsOf(harness.aliceOwner.userId)).toEqual([]);
@@ -69,27 +68,30 @@ describe('Mutation.progressDelete', () => {
   it('resolves to null when no such progress row exists, mirroring REST’s 404', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, document: 'never-read.epub' } },
+      variables: { input: { id: progressId(harness.aliceOwner.userId, 'never-read.epub') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.progressDelete).toBeNull();
   });
 
-  it('returns InvalidInputError for an empty document and deletes nothing', async () => {
+  it('resolves to null for a well-formed id whose document component is empty, mirroring REST’s structural 404', async () => {
+    // `document` is no longer a separate, directly-validated argument — it
+    // rides inside the opaque id, so there is no `InvalidInputError` member
+    // left to reach (traced-union-drop rule, same as `bookResolvePendingFix`
+    // when its own last zod-validated field disappeared into a global ID).
+    // An empty document component simply matches no row, exactly like REST's
+    // `DELETE /api/my/progress/:document` can never structurally receive one
+    // and mismatched documents already 404 the same way.
     await seedProgress(harness.aliceOwner.userId, 'dune.epub');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
-      variables: { input: { userId: harness.aliceGlobalId, document: '' } },
+      variables: { input: { id: progressId(harness.aliceOwner.userId, '') } },
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.data?.progressDelete).toEqual({
-      __typename: 'InvalidInputError',
-      message: 'Invalid input',
-      issues: [{ path: ['document'], message: 'document must not be empty' }],
-    });
+    expect(result.data?.progressDelete).toBeNull();
     expect(await documentsOf(harness.aliceOwner.userId)).toEqual(['dune.epub']);
   });
 
@@ -98,7 +100,7 @@ describe('Mutation.progressDelete', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
-      variables: { input: { userId: harness.aliceGlobalId, document: 'dune.epub' } },
+      variables: { input: { id: progressId(harness.aliceOwner.userId, 'dune.epub') } },
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
@@ -106,6 +108,26 @@ describe('Mutation.progressDelete', () => {
     // Both halves matter: a mutation that 403s the caller but has already
     // written is still a breach.
     expect(await documentsOf(harness.aliceOwner.userId)).toEqual(['dune.epub']);
+  });
+
+  it('refuses a Progress id belonging to another tenant, indistinguishably from a missing row', async () => {
+    await seedProgress(harness.bobOwner.userId, 'doc-1');
+    const foreign = progressId(harness.bobOwner.userId, 'doc-1');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: { id: foreign } },
+    });
+
+    // Same answer a nonexistent row gives — a probe must not learn that bob has this document.
+    expect(result.data?.progressDelete ?? null).toBeNull();
+    // Bob's row survives. There is no progress store — read Prisma directly,
+    // as this test file already does for its other assertions.
+    expect(
+      await harness.prisma.progress.findFirst({
+        where: { userId: harness.bobOwner.userId, document: 'doc-1' },
+      })
+    ).not.toBeNull();
   });
 
   it('lets an admin delete a named user’s row without touching an identically-named row of another user', async () => {
@@ -119,24 +141,24 @@ describe('Mutation.progressDelete', () => {
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
-      variables: { input: { userId: harness.aliceGlobalId, document: 'shared.epub' } },
+      variables: { input: { id: progressId(harness.aliceOwner.userId, 'shared.epub') } },
     });
 
     expect(result.errors).toBeUndefined();
     expect(result.data?.progressDelete).toEqual({
       __typename: 'ProgressDeletePayload',
-      deletedDocument: 'shared.epub',
+      deletedId: progressId(harness.aliceOwner.userId, 'shared.epub'),
       library: { user: { username: 'alice' } },
     });
     expect(await documentsOf(harness.aliceOwner.userId)).toEqual([]);
     expect(await documentsOf(harness.bobOwner.userId)).toEqual(['shared.epub']);
   });
 
-  it('refuses a User global ID that names no user', async () => {
+  it('refuses a Progress id whose userId component names no user', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: {
-        input: { userId: encodeGlobalID('User', 'no-such-user'), document: 'dune.epub' },
+        input: { id: progressId('no-such-user', 'dune.epub') },
       },
     });
 
