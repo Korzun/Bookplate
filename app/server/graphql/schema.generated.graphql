@@ -646,12 +646,12 @@ type Progress {
   device: String!
   deviceId: String!
   document: String!
+  id: ID!
   percentage: Float!
 
   """Reader position as a KOReader CFI/xpointer string."""
   position: String!
   timestamp: DateTime!
-  userId: ID!
 }
 
 input ProgressDeleteInput {

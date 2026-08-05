@@ -1,5 +1,6 @@
-import { encodeGlobalID } from '@pothos/plugin-relay';
+import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 
+import type { Viewer } from '../../context';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -134,12 +135,15 @@ describe('Progress', () => {
   // Admin-traversal-discriminating: the config-based admin has no `userId`
   // of its own (`test-util.ts`'s `adminViewer`, `viewer.userId === null`), so
   // a resolver that read `context.viewer!.userId` instead of the row's own
-  // `userId` would return `null` here, not alice's real id — a self-read
-  // (alice reading her own progress) cannot discriminate the two, since her
-  // own `context.viewer.userId` and the row's `userId` are the same value.
-  it('exposes the owning userId — admin traversal proves it reads the row, not the viewer', async () => {
+  // `userId` would encode `null` into the id here, not alice's real id — a
+  // self-read (alice reading her own progress) cannot discriminate the two,
+  // since her own `context.viewer.userId` and the row's `userId` are the
+  // same value. Reads `id` and decodes it rather than the removed `userId`
+  // field — the two prove the same thing, since `id` now carries the row's
+  // owner.
+  it('exposes the owning userId through id — admin traversal proves it reads the row, not the viewer', async () => {
     const result = await harness.execute(
-      `query ($id: ID!) { user(id: $id) { library { progress(first: 10) { edges { node { userId document } } } } } }`,
+      `query ($id: ID!) { user(id: $id) { library { progress(first: 10) { edges { node { id document } } } } } }`,
       { viewer: harness.adminViewer, variables: { id: harness.aliceGlobalId } }
     );
 
@@ -147,12 +151,14 @@ describe('Progress', () => {
     const edges = (
       result.data as {
         user: {
-          library: { progress: { edges: { node: { userId: string; document: string } }[] } };
+          library: { progress: { edges: { node: { id: string; document: string } }[] } };
         };
       }
     ).user.library.progress.edges;
     expect(edges).toHaveLength(1);
-    expect(edges[0]?.node.userId).toBe(harness.aliceOwner.userId);
+    const { typename, id: local } = decodeGlobalID(edges[0]!.node.id);
+    expect(typename).toBe('Progress');
+    expect(JSON.parse(local)).toEqual([harness.aliceOwner.userId, BOOK_ID]);
     expect(edges[0]?.node.document).toBe(BOOK_ID);
   });
 
@@ -269,3 +275,89 @@ describe('Progress', () => {
     expect(result.errors!.length).toBeGreaterThan(0);
   }, 2000);
 });
+
+const PROGRESS_QUERY = `
+  query($id: ID!) {
+    node(id: $id) {
+      ... on Library {
+        progress(first: 10) {
+          edges { node { id document percentage } }
+        }
+      }
+    }
+  }
+`;
+
+describe('Progress.id', () => {
+  // Tenant isolation is the whole point: `document` is a KOReader content
+  // hash, so two users who own the same book have the SAME document value.
+  // A single-user fixture would pass even if `id` were just the document.
+  it('differs between two users who share a document hash', async () => {
+    const shared = 'shared-document-hash';
+    await seedProgress(harness.aliceOwner.userId, shared);
+    await seedProgress(harness.bobOwner.userId, shared);
+
+    const aliceId = await firstProgressId(harness.aliceViewer, harness.aliceOwner, shared);
+    const bobId = await firstProgressId(harness.bobViewer, harness.bobOwner, shared);
+
+    expect(aliceId).not.toEqual(bobId);
+  });
+
+  it('decodes to the owning user and the document', async () => {
+    const shared = 'shared-document-hash';
+    await seedProgress(harness.aliceOwner.userId, shared);
+
+    const id = await firstProgressId(harness.aliceViewer, harness.aliceOwner, shared);
+    const { typename, id: local } = decodeGlobalID(id);
+
+    expect(typename).toBe('Progress');
+    expect(JSON.parse(local)).toEqual([harness.aliceOwner.userId, shared]);
+  });
+
+  it('no longer exposes a raw userId field', async () => {
+    const result = await harness.execute(
+      `query($id: ID!) { node(id: $id) { ... on Library { progress(first: 1) { edges { node { userId } } } } } }`,
+      { viewer: harness.aliceViewer, variables: { id: libraryIdOf(harness.aliceOwner) } }
+    );
+
+    // A removed field is a VALIDATION error, so `data` is absent entirely.
+    expect(result.errors?.[0]?.message).toMatch(/Cannot query field "userId"/);
+  });
+});
+
+const seedProgress = (userId: string, document: string): Promise<unknown> =>
+  harness.prisma.progress.create({
+    data: {
+      userId,
+      document,
+      progress: 'EPUB_CFI(/6/4!/4/2:0)',
+      percentage: 0.5,
+      device: 'Web',
+      deviceId: 'dev-1',
+      timestamp: 1_700_000_000,
+    },
+  });
+
+/** The harness exposes no library id; a Library's global ID is its owner's user id. */
+const libraryIdOf = (owner: { userId: string }) => encodeGlobalID('Library', owner.userId);
+
+// Selects by `document` rather than blindly indexing `edges[0]` — this
+// file's own top-level `beforeEach` already seeds an unrelated progress row
+// for alice (`BOOK_ID`), so alice's library has more than one row by the time
+// these tests run.
+const firstProgressId = async (
+  viewer: Viewer,
+  owner: { userId: string },
+  document: string
+): Promise<string> => {
+  const result = await harness.execute(PROGRESS_QUERY, {
+    viewer,
+    variables: { id: libraryIdOf(owner) },
+  });
+  const node = result.data?.node as {
+    progress: { edges: { node: { id: string; document: string } }[] };
+  };
+  const edge = node.progress.edges.find((e) => e.node.document === document);
+  if (edge === undefined) throw new Error(`no progress row found for document ${document}`);
+  return edge.node.id;
+};

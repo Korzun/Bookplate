@@ -1,3 +1,5 @@
+import { encodeGlobalID } from '@pothos/plugin-relay';
+
 import { deriveCurrentChapter, epochSecondsToDate } from '../../derive';
 import { builder } from '../builder';
 
@@ -10,16 +12,32 @@ import { builder } from '../builder';
 export const model = builder.prismaObject('Progress', {
   fields: (t) => ({
     /**
-     * The PK's other half (`@@id([userId, document])`, `document` is a
-     * content-hash-derived string that COLLIDES across users in admin
-     * traversal — the same reason `Book.progress`'s doc comment above reads
-     * `parent.userId` off the row rather than the document alone). Exposes
-     * the raw column, not a `User` global ID: a normalizing cache keys
-     * `Progress` on `["userId", "document"]` together (design doc §1), and
-     * neither half alone is a `Node` id here — see this type's own doc
-     * comment on why `Progress` stays a plain `prismaObject`.
+     * A single opaque identifier, built exactly as `Book`, `PendingFix` and
+     * `Validation` build theirs: `encodeGlobalID(type, JSON.stringify([userId,
+     * localKey]))`, decoded by `parseCompoundId`. Computed — there is no `id`
+     * column and no migration; `Progress`'s PK stays `@@id([userId,
+     * document])`.
+     *
+     * Replaces the raw `userId` this type used to expose. That field was a
+     * genuine footgun: it carried the RAW Prisma id while every mutation input
+     * named `userId` is a `t.globalID` and REJECTS a raw value ("Invalid
+     * global ID: …"), so the two shared a name and a GraphQL type while being
+     * incompatible — and the output one was the natural thing to pass to
+     * `progressDelete`.
+     *
+     * The owner is still inside the id, so this remains tenant-unique:
+     * `document` is a KOReader content hash and COLLIDES across users.
+     *
+     * `Progress` is still deliberately NOT a `Node` — see this type's own doc
+     * comment. This id exists for cache identity only, following the
+     * `Device`/`PendingFix`/`Validation` precedent of a scalar id with no
+     * `node(id:)` door.
      */
-    userId: t.exposeID('userId'),
+    id: t.field({
+      type: 'ID',
+      resolve: (progress) =>
+        encodeGlobalID('Progress', JSON.stringify([progress.userId, progress.document])),
+    }),
     document: t.exposeString('document'),
     position: t.exposeString('progress', {
       description: 'Reader position as a KOReader CFI/xpointer string.',
