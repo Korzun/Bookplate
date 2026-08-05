@@ -20,6 +20,18 @@ const kindle = {
   simplify: true,
 };
 
+const zebra = {
+  __typename: 'Device' as const,
+  id: 'd2',
+  name: 'Zebra reader',
+  slug: 'zebra',
+  coverWidth: null,
+  coverHeight: null,
+  coverFit: 'CONTAIN' as const,
+  bwCover: false,
+  simplify: true,
+};
+
 const deleteSuccessMock = {
   request: { query: DeviceDeleteDocument, variables: { input: { deviceId: 'd1' } } },
   result: {
@@ -60,18 +72,13 @@ describe('useDeleteDevice', () => {
     expect(errorMessage).toBeUndefined();
   });
 
-  // Documents a measured Apollo behavior, not a hypothetical: `cache.evict()`
-  // called from the `optimisticResponse` pass is a no-op for an entity that
-  // lives in the ROOT layer (as `Device:d1` does here, written before this
-  // mutation runs). `InMemoryCache.evict()` deliberately passes the active
-  // optimistic layer as its own recursion limit, so eviction cannot escape
-  // it — see the comment on `useDeleteDevice`. Both an optimistic read
-  // (`{ optimistic: true }`) and the default (root-only) read show the
-  // device still present while the mutation is pending; only `loading`
-  // reflects the in-flight state during this window.
-  it('does not hide the device from any cache read while the mutation is pending — cache.evict cannot escape the optimistic layer', async () => {
+  // Preserves the REST version's optimistic removal: the deleted device is
+  // gone from a cache read the instant the mutation starts, well before the
+  // (here, deliberately delayed) response lands — proven against a
+  // two-device seed so this is "d1 filtered out", not "the list emptied".
+  it('hides the deleted device from a cache read while the mutation is pending', async () => {
     const result = renderDeleteDevice([{ ...deleteSuccessMock, delay: 20 }]);
-    act(() => seedDeviceList(result.current!.client, [kindle]));
+    act(() => seedDeviceList(result.current!.client, [kindle, zebra]));
 
     act(() => {
       void result.current!.deleteDevice[0]('d1');
@@ -82,16 +89,14 @@ describe('useDeleteDevice', () => {
       query: DeviceListDocument,
       optimistic: true,
     });
-    expect(optimistic?.viewer.devices).toEqual([kindle]);
-    const base = result.current!.client.readQuery({ query: DeviceListDocument });
-    expect(base?.viewer.devices).toEqual([kindle]);
+    expect(optimistic?.viewer.devices).toEqual([zebra]);
 
     await waitFor(() => expect(result.current!.deleteDevice[1]).toBe(false));
   });
 
-  // The task's real content: `viewer.devices` is an array of references,
-  // which Apollo auto-filters once `Device:d1` is evicted — no hand-written
-  // list filter. Proven by reading the cache directly.
+  // The task's real content: once the real response lands, the device stays
+  // gone from a plain (non-optimistic) cache read too — the entity itself is
+  // evicted, not just hidden from this one list.
   it('evicts the deleted device so a subsequent DeviceList cache read no longer includes it', async () => {
     const result = renderDeleteDevice([deleteSuccessMock]);
     act(() => seedDeviceList(result.current!.client, [kindle]));
@@ -102,16 +107,32 @@ describe('useDeleteDevice', () => {
     expect(cached?.viewer.devices).toEqual([]);
   });
 
-  it('restores the device in the cache and surfaces the message when the mutation throws', async () => {
+  // The half most likely to be silently broken: the device disappears
+  // immediately (optimistic hide), then REAPPEARS once the mutation actually
+  // fails — Apollo discards the optimistic layer on a thrown error, and the
+  // filter/evict never ran against the root layer, so nothing needs a
+  // hand-written restore.
+  it('hides the device optimistically, then restores it and surfaces the message when the mutation throws', async () => {
     const result = renderDeleteDevice([
       {
         request: { query: DeviceDeleteDocument, variables: { input: { deviceId: 'd1' } } },
         error: new Error('Network error'),
+        delay: 20,
       },
     ]);
     act(() => seedDeviceList(result.current!.client, [kindle]));
 
-    await act(() => result.current!.deleteDevice[0]('d1'));
+    act(() => {
+      void result.current!.deleteDevice[0]('d1');
+    });
+
+    const optimistic = result.current!.client.readQuery({
+      query: DeviceListDocument,
+      optimistic: true,
+    });
+    expect(optimistic?.viewer.devices).toEqual([]);
+
+    await waitFor(() => expect(result.current!.deleteDevice[1]).toBe(false));
 
     expect(result.current!.deleteDevice[2]).toBe(true);
     expect(result.current!.deleteDevice[3]).toBe('Network error');
@@ -120,9 +141,10 @@ describe('useDeleteDevice', () => {
   });
 
   // `deviceDelete` returning a typed error (rather than throwing) still runs
-  // `update` with the REAL result, which does not evict — the optimistic
-  // (evicting) layer is superseded by that non-evicting one, so the device
-  // reappears without any hand-written restore step.
+  // `update` with the REAL result — that call's `status !== 'ok'` guard runs
+  // neither the filter nor the evict, so the device is simply never removed
+  // from the root layer and the device reappears once the optimistic layer
+  // is discarded, without any hand-written restore step.
   it('restores the device in the cache and surfaces the message on a typed InvalidInputError', async () => {
     const result = renderDeleteDevice([
       {

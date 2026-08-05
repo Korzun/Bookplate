@@ -1,3 +1,4 @@
+import type { Reference } from '@apollo/client';
 import { useMutation } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -23,25 +24,32 @@ export type UseDeleteDevice =
 /**
  * `optimisticResponse` names the concrete union member's `__typename` and
  * supplies every field the mutation selects (just `deletedDeviceId`), which
- * is what lets the SAME `update` function run against it immediately, exactly
- * as instructed. Measured caveat, not a hypothetical: `cache.evict()` inside
- * that optimistic pass is a no-op here. `Device:<id>` lives in the ROOT layer
- * (written by the earlier `DeviceList` read), and `InMemoryCache.evict()`
- * deliberately passes the active (optimistic) layer as its OWN recursion
- * limit — "so evictions during optimistic updates … do not escape their
- * optimistic Layer" (`inMemoryCache.js`, `evict()`) — so the optimistic call
- * finds nothing of its own to delete and returns `false`. `viewer.devices`
- * therefore keeps showing the device (confirmed via `readQuery({ optimistic:
- * true })`) until the REAL response lands, at which point the SAME `update`
- * runs again outside any optimistic transaction, `cache.evict()` succeeds
- * against the root layer, and Apollo auto-filters the now-dangling reference
- * out of `viewer.devices` — no hand-written list filter needed for that step.
+ * is what lets the SAME `update` function run against it immediately, both
+ * optimistically and for the real response.
+ *
+ * `update` does BOTH a `cache.modify` filter on `Viewer.devices` AND a
+ * `cache.evict` of the `Device` entity — not evict alone. `Device:<id>` lives
+ * in the ROOT cache layer (written by the earlier `DeviceList` read), and
+ * `InMemoryCache.evict()` deliberately passes the active optimistic layer as
+ * its own recursion limit ("so evictions during optimistic updates … do not
+ * escape their optimistic Layer" — `inMemoryCache.js`, `evict()`), so an
+ * evict issued from inside the optimistic pass cannot hide an entity that
+ * exists only in a parent layer: it finds nothing of its own to remove and
+ * is a no-op there. `cache.modify`, unlike `evict`, does not have that
+ * restriction — filtering the reference out of `Viewer.devices` writes a
+ * shadow copy of the field into whichever layer is currently active, so it
+ * takes effect immediately during the optimistic pass, and again (redundant
+ * but harmless) once the real response lands. `evict` is kept alongside it
+ * so the normalized `Device` entity itself doesn't linger once the deletion
+ * is confirmed, rather than only ever being hidden from this one list.
  *
  * Rollback on failure is Apollo's optimistic layer doing its job, not a
  * hand-written restore: a thrown network/GraphQL error discards the
  * optimistic layer outright, and a typed error or `missing` result still
  * reaches `update` with the REAL data — that call's `status !== 'ok'` guard
- * evicts nothing, so the device is simply never evicted from the root layer.
+ * runs neither the filter nor the evict, so the device is simply never
+ * removed from the root layer and reappears once the optimistic layer is
+ * gone.
  */
 export const useDeleteDevice = (): UseDeleteDevice => {
   const [runDelete] = useMutation(DeviceDeleteDocument);
@@ -72,8 +80,18 @@ export const useDeleteDevice = (): UseDeleteDevice => {
             );
             if (result.status !== 'ok') return;
 
+            const deletedDeviceId = result.payload.deletedDeviceId;
+
+            cache.modify({
+              id: cache.identify({ __typename: 'Viewer' }),
+              fields: {
+                devices: (existing: readonly Reference[] = [], { readField }) =>
+                  existing.filter((deviceRef) => readField('id', deviceRef) !== deletedDeviceId),
+              },
+            });
+
             cache.evict({
-              id: cache.identify({ __typename: 'Device', id: result.payload.deletedDeviceId }),
+              id: cache.identify({ __typename: 'Device', id: deletedDeviceId }),
             });
           },
         });
