@@ -85,15 +85,15 @@ describe('findMissingKeyFields', () => {
     expect(issues).toEqual([]);
   });
 
-  // Derived from cacheConfig's `Progress: { keyFields: ['userId', 'document'] }` —
-  // not restated here. Change the typePolicy and this expectation follows.
-  it('requires BOTH userId and document on Progress', () => {
+  // Derived from cacheConfig's default `id` keying for `Progress` — not
+  // restated here. Change the typePolicy and this expectation follows.
+  it('requires id on Progress', () => {
     const issues = findMissingKeyFields(
       schema,
       `query Q($id: ID!) { node(id: $id) { ... on Library { id progress(first: 5) { edges { node { document percentage } } } } } }`
     );
     expect(issues).toContainEqual(
-      expect.objectContaining({ typeName: 'Progress', missing: ['userId'] })
+      expect.objectContaining({ typeName: 'Progress', missing: ['id'] })
     );
   });
 

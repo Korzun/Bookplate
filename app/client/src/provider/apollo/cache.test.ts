@@ -20,7 +20,7 @@ const PROGRESS_QUERY = gql`
         progress(first: 1) {
           edges {
             node {
-              userId
+              id
               document
               percentage
             }
@@ -31,7 +31,7 @@ const PROGRESS_QUERY = gql`
   }
 `;
 
-const writeProgress = (cache: InMemoryCache, libraryId: string, userId: string, pct: number) =>
+const writeProgress = (cache: InMemoryCache, libraryId: string, progressId: string, pct: number) =>
   cache.writeQuery({
     query: PROGRESS_QUERY,
     variables: { id: libraryId },
@@ -46,7 +46,7 @@ const writeProgress = (cache: InMemoryCache, libraryId: string, userId: string, 
               __typename: 'LibraryProgressConnectionEdge',
               node: {
                 __typename: 'Progress',
-                userId,
+                id: progressId,
                 document: 'shared-doc-hash',
                 percentage: pct,
               },
@@ -73,11 +73,13 @@ describe('cacheConfig', () => {
   // SEEN-TO-FAIL: this is the test that must fail if Progress reverts to
   // keyFields: ['document']. Two users owning the SAME book share a `document`
   // value (it is a KOReader content hash), so a single-user fixture passes
-  // either way and proves nothing.
-  it('keys Progress on (userId, document) so two users do not collapse', () => {
+  // either way and proves nothing. `id` is Progress's global ID, computed
+  // server-side from `[userId, document]` — two ids below stand in for two
+  // different users sharing the same `document`.
+  it('keys Progress on its global id so two users sharing a document do not collapse', () => {
     const cache = new InMemoryCache(cacheConfig);
-    writeProgress(cache, 'LIB-A', 'user-a', 10);
-    writeProgress(cache, 'LIB-B', 'user-b', 90);
+    writeProgress(cache, 'LIB-A', 'progress-id-user-a', 10);
+    writeProgress(cache, 'LIB-B', 'progress-id-user-b', 90);
 
     const a = cache.readQuery<{
       node: { progress: { edges: { node: { percentage: number } }[] } };

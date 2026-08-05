@@ -8,10 +8,11 @@ import introspection from '~/gql/possible-types';
  * `renderWithApollo` build their cache from this object, so a test can never
  * pass against typePolicies the app does not actually use.
  *
- * Only three types need explicit config; everything else normalizes on `id`
- * with zero configuration. `Book`/`Library`/`Series`/`User` are Nodes;
- * `Device`/`PendingFix`/`Validation`/`ScanStatus` carry a scalar `id` without
- * implementing Node.
+ * Only two types need explicit key config (the root singletons below);
+ * everything else — including `Progress`, keyed by its computed global ID —
+ * normalizes on `id` with zero configuration. `Book`/`Library`/`Series`/`User`
+ * are Nodes; `Device`/`PendingFix`/`Validation`/`ScanStatus`/`Progress` carry
+ * a scalar `id` without implementing Node.
  *
  * NOTE on pagination: `Library.entries` and `Library.progress` are FORWARD-ONLY
  * server-side — they reject `last`/`before` with BACKWARD_PAGINATION_UNSUPPORTED.
@@ -28,10 +29,13 @@ export const cacheConfig: InMemoryCacheConfig = {
     Viewer: { keyFields: [] },
     Config: { keyFields: [] },
 
-    // Prisma PK is (userId, document). `document` is a KOReader content hash
-    // and COLLIDES across users — two users owning the same book share it, so
-    // `document` alone would collapse both onto one entity in admin views.
-    Progress: { keyFields: ['userId', 'document'] },
+    // Progress has no explicit typePolicy: `Progress.id` is now a computed
+    // global ID (encodeGlobalID('Progress', [userId, document])), so the
+    // default `id` keying already carries the owner and is safe to use.
+    // `document` alone would NOT be — it's a KOReader content hash that
+    // COLLIDES across users, so two users owning the same book share it and
+    // would collapse onto one cache entity if `document` were the key.
+    // See cache.test.ts's two-user test, which proves this doesn't happen.
 
     Library: {
       fields: {
