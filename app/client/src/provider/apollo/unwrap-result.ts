@@ -18,7 +18,10 @@ export type UnwrappedResult<TPayload> =
   | { status: 'error'; message: string; typename: string }
   | { status: 'missing' };
 
-type MaybeMember = { __typename?: string; message?: string } | null | undefined;
+type MaybeMember =
+  | { __typename?: string; message?: string; [key: string]: unknown }
+  | null
+  | undefined;
 
 export const unwrapResult = <TPayload extends { __typename?: string }>(
   result: MaybeMember,
