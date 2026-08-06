@@ -2651,10 +2651,13 @@ function bookGlobalId(userId: string, bookId: string): string {
 
 describe('legacy book REST routes accept a Relay global ID (Task 13)', () => {
   let bobToken: string;
+  let bobOwner: Owner;
   let aliceBookId: string;
 
   beforeEach(async () => {
     await userStore.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+    const bobId = (await userStore.getUserIdByUsername('bob'))!;
+    bobOwner = { userId: bobId, username: 'bob' };
     const bobRes = await request(app)
       .post('/api/login')
       .send('username=bob&password=bobpass')
@@ -2699,6 +2702,37 @@ describe('legacy book REST routes accept a Relay global ID (Task 13)', () => {
         .get(`/api/books/${encodeURIComponent('%%%not-base64%%%')}`)
         .set(...bearer(token));
       expect(res.status).toBe(404);
+    });
+
+    // Book ids are content hashes (partial MD5) — two owners routinely hold
+    // the same id for the same file (`graphql/schema/node-scope.ts`'s
+    // `NO_MATCH_USER_ID` doc comment). So this is not a hypothetical: if the
+    // decode only stripped the type/JSON wrapper and never checked the
+    // embedded userId, Bob pasting Alice's global id for a book he also
+    // happens to own (same content-hash id) would resolve to
+    // `getBookById(bobOwner, sharedId)` and silently return BOB's OWN row —
+    // a 200 carrying a different book than the one the URL named, not a
+    // cross-tenant read, but still wrong. A status-only assertion wouldn't
+    // catch a handler that degraded to returning the wrong book with some
+    // other non-200 status, so this also pins the body.
+    it("refuses a global ID for a book that collides by content-hash id with the caller's own — not a silent substitution", async () => {
+      const sharedId = 'shared-content-hash';
+      await bookStore.addBook(aliceOwner, sharedId, stage(`${sharedId}-alice`), {
+        ...FAKE_META,
+        title: "Alice's Copy",
+      });
+      await bookStore.addBook(bobOwner, sharedId, stage(`${sharedId}-bob`), {
+        ...FAKE_META,
+        title: "Bob's Copy",
+      });
+
+      const globalId = bookGlobalId(aliceId, sharedId);
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}`)
+        .set(...bearer(bobToken));
+
+      expect(res.status).toBe(404);
+      expect(res.body.title).not.toBe("Bob's Copy");
     });
   });
 

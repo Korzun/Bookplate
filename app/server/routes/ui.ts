@@ -446,17 +446,40 @@ export function createUiRouter(
    * scope.ts`) rather than hand-rolling base64/JSON parsing — same
    * encoding, same decoder.
    *
-   * THE AUTHORIZATION RULE (this is the part that matters): the decoded
-   * id's embedded userId is a claim, not a credential. It is checked
-   * against `owner.userId` — the target THIS request already resolved via
-   * `resolveOwner` (the caller's own library, or an admin's `?user=`-named
-   * one) — and refused (returns null) on any mismatch. `?user=`/the
-   * caller's own session stays authoritative for which library a request
-   * targets; a global id can only ever point INTO that already-resolved
-   * library, never override it to a different one. Concretely: if an admin
-   * passes `?user=bob` but the id decodes to alice's userId, the two
-   * disagree and the request is refused — same as it would be if a raw id
-   * simply didn't belong to bob's library.
+   * THE RULE: the decoded id's embedded userId is a claim, not a
+   * credential. It is checked against `owner.userId` — the target THIS
+   * request already resolved via `resolveOwner` (the caller's own library,
+   * or an admin's `?user=`-named one) — and refused (returns null) on any
+   * mismatch. `?user=`/the caller's own session stays authoritative for
+   * which library a request targets; a global id can only ever point INTO
+   * that already-resolved library, never override it to a different one.
+   * Concretely: if an admin passes `?user=bob` but the id decodes to
+   * alice's userId, the two disagree and the request is refused — same as
+   * it would be if a raw id simply didn't belong to bob's library.
+   *
+   * WHAT THIS CHECK IS FOR (security-reviewed, Task 13 round 2): every
+   * caller of this function passes the returned local id straight into a
+   * `bookStore` method that re-scopes its own query by `owner.userId`
+   * (`prisma.book.findUnique({ where: { userId_id: { userId:
+   * owner.userId, id } } })`, `book-store.ts`) — so for tenant isolation
+   * specifically, this check is REDUNDANT with that query today; removing
+   * it does not open a cross-tenant read (verified: reducing this function
+   * to `return bookId` unconditionally leaves every cross-tenant test in
+   * `ui.test.ts`'s Task 13 suite green). What it DOES do, non-redundantly:
+   * (1) since book ids are content hashes and two owners routinely hold
+   * the same id for the same file (`graphql/schema/node-scope.ts`'s
+   * `NO_MATCH_USER_ID` doc comment), without this check a global id naming
+   * one owner's book could resolve — via that same owner-scoped query — to
+   * a DIFFERENT book the *caller* happens to own under the same hash,
+   * silently substituting it; this check refuses that case instead
+   * (pinned by the collision test in `ui.test.ts`, the one case besides
+   * the admin-`?user=`-disagreement above that actually goes red without
+   * it); (2) it is the boundary that stays correct if some future edit
+   * ever lets the decoded id reach a query that ISN'T independently
+   * re-scoped by `owner` — the exact mistake `graphql/schema/node-
+   * scope.ts`'s `ownerScopedFindUnique` exists to prevent on the GraphQL
+   * side, one file over, and the pattern a contributor extending this
+   * route later could plausibly reach for.
    *
    * Never throws. A string that isn't a well-formed `Book` global id
    * (fails `decodeGlobalID`, decodes to a non-`Book` typename, or fails
@@ -1317,6 +1340,7 @@ export function createUiRouter(
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
       if (bookId === null) {
+        log.warn(`Download attempted with a cross-tenant global ID: ${req.params.id}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -1344,6 +1368,7 @@ export function createUiRouter(
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
       if (bookId === null) {
+        log.warn(`Delete attempted with a cross-tenant global ID: ${req.params.id}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -1366,6 +1391,7 @@ export function createUiRouter(
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
       if (bookId === null) {
+        log.warn(`Clear editions attempted with a cross-tenant global ID: ${req.params.id}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
