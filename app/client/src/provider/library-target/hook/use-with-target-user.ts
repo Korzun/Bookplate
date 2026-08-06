@@ -1,35 +1,27 @@
-import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client';
-import { getApolloContext, useQuery } from '@apollo/client/react';
-import { useCallback, useContext } from 'react';
+import { useQuery } from '@apollo/client/react';
+import { useMemo } from 'react';
 
 import { UserListDocument } from '~/graphql/user';
 import { useIsAdmin } from '~/provider/auth';
 
 import { useLibraryTarget } from './use-library-target';
 
-export type WithTargetUser = (url: string) => string;
-
-/**
- * A real (but link-less, cache-less-in-practice) `ApolloClient`, used ONLY as
- * `useQuery`'s `client` override below when this hook renders outside any
- * `ApolloProvider`. `useQuery` (via `useApolloClient`) requires SOME client
- * to exist — it throws `invariant(!!client, ...)` BEFORE ever consulting
- * `skip`, so `skip: true` alone does not protect a provider-less render.
- *
- * Every real app tree has `ApolloRoot` as its outermost provider
- * (`App.tsx`), so this branch is dead code in production. It exists because
- * roughly a dozen REST book hooks (`useDeleteBook`, `useFetchBook`, …) call
- * `useWithTargetUser`, and none of their own unit tests wire up an
- * `ApolloProvider` — this hook had zero Apollo dependency before this task.
- * Requiring `ApolloProvider` in each of those tests would widen this task
- * from 2 files to ~18 for a property none of them actually exercise; this
- * keeps that blast radius at zero while staying fully reactive wherever a
- * real client — and therefore real `UserListDocument` data — is present.
- */
-const NO_PROVIDER_CLIENT = new ApolloClient({
-  link: ApolloLink.empty(),
-  cache: new InMemoryCache(),
-});
+export type WithTargetUser = {
+  (url: string): string;
+  /**
+   * False only during the brief window on a cold admin load where
+   * `targetLibraryId` has already restored synchronously from
+   * `localStorage` but `UserListDocument` hasn't answered yet — true the
+   * rest of the time (immediately, for a non-admin, since the query is
+   * `skip`ped and never enters a loading state).
+   *
+   * `useFetchBookList` is the one caller that must gate on this: calling
+   * the mapper before it's ready silently omits `?user=` from an admin's
+   * REST book request, which the server 400s — see that file's own doc
+   * comment for the full failure chain this closes.
+   */
+  ready: boolean;
+};
 
 /**
  * Returns a function that appends ?user=<target> to book API URLs when an
@@ -46,31 +38,41 @@ const NO_PROVIDER_CLIENT = new ApolloClient({
  * server-only encoding concern here (this project's `atob`/`btoa` ban on
  * client-side global ID handling).
  *
- * `skip: !isAdmin || !contextClient` mirrors `useUserList`'s own admin guard
- * (`Viewer.users` is admin-gated; see that hook's doc comment for why an
- * unguarded query would fire a `FORBIDDEN` request on every non-admin visit),
- * with the provider-less case folded into the same flag — see
- * `NO_PROVIDER_CLIENT` above.
+ * `skip: !isAdmin` mirrors `useUserList`'s own admin guard (`Viewer.users` is
+ * admin-gated; see that hook's doc comment for why an unguarded query would
+ * fire a `FORBIDDEN` request on every non-admin visit).
+ *
+ * This hook requires an `ApolloProvider` ancestor unconditionally (a bare
+ * `useQuery` call, no fallback client) — every real app tree has one
+ * (`ApolloRoot`, `App.tsx`'s outermost provider). A subtree that escapes it
+ * is a real bug, and Apollo's own invariant is the right way to surface
+ * that loudly; every unit test that reaches this hook carries its own
+ * (possibly empty-mock) `ApolloProvider` for exactly this reason.
  */
 export const useWithTargetUser = (): WithTargetUser => {
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
-  const { client: contextClient } = useContext(getApolloContext());
-  const { data } = useQuery(UserListDocument, {
-    client: contextClient ?? NO_PROVIDER_CLIENT,
-    skip: !isAdmin || !contextClient,
-  });
+  const { data, loading } = useQuery(UserListDocument, { skip: !isAdmin });
 
   const targetUsername = data?.viewer.users?.find(
     (user) => user.library.id === targetLibraryId
   )?.username;
+  const ready = !loading;
 
-  return useCallback(
-    (url: string) => {
+  // A fresh function object every time `isAdmin`/`targetUsername`/`ready`
+  // changes — NOT a mutate-in-place `Object.assign` on a stable `useCallback`
+  // reference. `use-fetch-book-list.ts` depends on THIS reference to decide
+  // whether to retry a fetch it deferred while `ready` was false; a mutation
+  // that kept the same identity across the false→true flip would leave that
+  // retry permanently unscheduled (`ready` changing without the reference
+  // changing is invisible to a `useCallback`/`useEffect` dependency array).
+  return useMemo(() => {
+    const withTargetUser = ((url: string) => {
       if (!isAdmin || !targetUsername) return url;
       const sep = url.includes('?') ? '&' : '?';
       return `${url}${sep}user=${encodeURIComponent(targetUsername)}`;
-    },
-    [isAdmin, targetUsername]
-  );
+    }) as WithTargetUser;
+    withTargetUser.ready = ready;
+    return withTargetUser;
+  }, [isAdmin, targetUsername, ready]);
 };

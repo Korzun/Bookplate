@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { useBookLineage } from './use-book-lineage';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -8,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('useBookLineage', () => {
   it('returns loading initially', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    const { result } = renderHook(() => useBookLineage('book-1'));
+    const { result } = renderHook(() => useBookLineage('book-1'), { wrapper: ApolloTestProvider });
     const [data, loading, error, refetch] = result.current;
     expect(data).toBeUndefined();
     expect(loading).toBe(true);
@@ -26,7 +28,7 @@ describe('useBookLineage', () => {
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(lineage) })
     );
 
-    const { result } = renderHook(() => useBookLineage('book-1'));
+    const { result } = renderHook(() => useBookLineage('book-1'), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[1]).toBe(false));
 
     const [data, loading, error] = result.current;
@@ -39,7 +41,7 @@ describe('useBookLineage', () => {
   it('returns error state on fetch failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
 
-    const { result } = renderHook(() => useBookLineage('book-1'));
+    const { result } = renderHook(() => useBookLineage('book-1'), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[2]).toBe(true));
 
     expect(result.current[0]).toBeUndefined();
@@ -51,7 +53,7 @@ describe('useBookLineage', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(lineage) });
     vi.stubGlobal('fetch', mockFetch);
 
-    const { result } = renderHook(() => useBookLineage('book-1'));
+    const { result } = renderHook(() => useBookLineage('book-1'), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[1]).toBe(false));
     expect(mockFetch).toHaveBeenCalledTimes(1);
 

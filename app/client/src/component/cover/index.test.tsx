@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('~/lib/api-fetch');
 
 import { apiFetch } from '~/lib/api-fetch';
-import { renderWithProviders } from '~/test-utils';
+import { renderWithApollo } from '~/test-utils';
 
 import { Cover } from './index';
 
@@ -40,7 +40,7 @@ describe('Cover', () => {
     const blob = new Blob(['img-bytes'], { type: 'image/jpeg' });
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
-    const { getByRole } = renderWithProviders(
+    const { getByRole } = renderWithApollo(
       <Cover bookId="book1" title="My Book" {...defaultProps} />
     );
 
@@ -54,7 +54,7 @@ describe('Cover', () => {
     const blob = new Blob(['img'], { type: 'image/jpeg' });
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
-    renderWithProviders(<Cover bookId="book2" thumbnailWidth={170} {...defaultProps} />);
+    renderWithApollo(<Cover bookId="book2" thumbnailWidth={170} {...defaultProps} />);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/api/books/book2/cover?width=170');
@@ -62,7 +62,7 @@ describe('Cover', () => {
   });
 
   it('renders a ghost div (no img) when bookId is null', () => {
-    const { queryByRole } = renderWithProviders(<Cover bookId={null} {...defaultProps} />);
+    const { queryByRole } = renderWithApollo(<Cover bookId={null} {...defaultProps} />);
     expect(queryByRole('img')).toBeNull();
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
@@ -72,7 +72,7 @@ describe('Cover', () => {
     createObjectURL.mockReturnValueOnce('blob:cover-to-revoke');
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
-    const { getByRole, unmount } = renderWithProviders(
+    const { getByRole, unmount } = renderWithApollo(
       <Cover bookId="book3" title="Test Cover" {...defaultProps} />
     );
 

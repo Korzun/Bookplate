@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { Context } from '../context';
 import type { Book, BookList, MetadataFix } from '../type';
 import { fixKey, useUploadQueueEngine } from './use-upload-queue';
@@ -39,33 +41,35 @@ function makeWrapper(clearCompleteBookIds: () => void = () => {}) {
     const setBookListLoading = useCallback((v: boolean) => setBookListLoadingState(v), []);
 
     return (
-      <Context.Provider
-        value={{
-          bookList,
-          bookListFetched: false,
-          bookListLoading,
-          bookListError: undefined,
-          loadingByBookId: {},
-          errorByBookId: {},
-          completeBookIds: new Set(),
-          setBookList,
-          setBookListFetched: () => {},
-          setBookListLoading,
-          setBookListError: () => {},
-          setLoadingForBook: () => {},
-          setErrorForBook: () => {},
-          setBookComplete: () => {},
-          clearCompleteBookIds,
-          bookListItems: [],
-          nextCursor: null,
-          setBookListItems: () => {},
-          setNextCursor: () => {},
-          bookListFilter: {},
-          setBookListFilter: () => {},
-        }}
-      >
-        {children}
-      </Context.Provider>
+      <ApolloTestProvider>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: false,
+            bookListLoading,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(),
+            setBookList,
+            setBookListFetched: () => {},
+            setBookListLoading,
+            setBookListError: () => {},
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds,
+            bookListItems: [],
+            nextCursor: null,
+            setBookListItems: () => {},
+            setNextCursor: () => {},
+            bookListFilter: {},
+            setBookListFilter: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloTestProvider>
     );
   };
 }

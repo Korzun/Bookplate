@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useContext, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { Context } from '../context';
 import type { Book, BookList, DisplayUnit } from '../type';
 import { useDeleteBook } from './use-delete-book';
@@ -47,33 +49,35 @@ function makeWrapper(
       []
     );
     return (
-      <Context.Provider
-        value={{
-          bookList,
-          bookListFetched: true,
-          bookListLoading: false,
-          bookListError: undefined,
-          loadingByBookId: {},
-          errorByBookId: {},
-          completeBookIds: new Set(),
-          setBookList,
-          setBookListFetched: () => {},
-          setBookListLoading: () => {},
-          setBookListError: () => {},
-          setLoadingForBook: () => {},
-          setErrorForBook: () => {},
-          setBookComplete: () => {},
-          clearCompleteBookIds,
-          bookListItems,
-          nextCursor: null,
-          setBookListItems,
-          setNextCursor: () => {},
-          bookListFilter: {},
-          setBookListFilter: () => {},
-        }}
-      >
-        {children}
-      </Context.Provider>
+      <ApolloTestProvider>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: true,
+            bookListLoading: false,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(),
+            setBookList,
+            setBookListFetched: () => {},
+            setBookListLoading: () => {},
+            setBookListError: () => {},
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds,
+            bookListItems,
+            nextCursor: null,
+            setBookListItems,
+            setNextCursor: () => {},
+            bookListFilter: {},
+            setBookListFilter: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloTestProvider>
     );
   };
 }

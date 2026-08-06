@@ -1,12 +1,19 @@
-import { act, renderHook } from '@testing-library/react';
+import type { MockedResponse } from '@apollo/client/testing';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { UserListDocument } from '~/graphql/user';
 import { makeJwt } from '~/lib/test-jwt';
 import { setToken } from '~/lib/token';
 import { AuthProvider } from '~/provider/auth';
-import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
+import {
+  LibraryTargetProvider,
+  useLibraryTarget,
+  useWithTargetUser,
+} from '~/provider/library-target';
+import { ApolloTestProvider } from '~/test-utils';
 
 import { Context } from '../context';
 import type { Book, BookList, BookListFilter, DisplayUnit, PagedBookListResponse } from '../type';
@@ -41,6 +48,15 @@ function makeResponse(books: Book[], nextCursor: string | null = null): PagedBoo
   };
 }
 
+/**
+ * `apolloMocks` defaults to empty — every non-admin test in this file (the
+ * vast majority) never lets `useWithTargetUser`'s query fire (`skip:
+ * !isAdmin`), so an empty `MockLink` never needs a matching mock. It exists
+ * as a param (not a second, nested `ApolloTestProvider`) so `makeAdminWrapper`
+ * below can supply a REAL mock through the SAME, single `ApolloProvider` —
+ * nesting a second one around this wrapper's output would just shadow it,
+ * since `useQuery` always reads the NEAREST `ApolloProvider` ancestor.
+ */
 function makeWrapper({
   initialBooks = {} as BookList,
   bookListLoading = false,
@@ -51,6 +67,7 @@ function makeWrapper({
   onSetBookListItems = vi.fn(),
   onSetNextCursor = vi.fn(),
   bookListFilter = {} as BookListFilter,
+  apolloMocks = [] as MockedResponse[],
 } = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(initialBooks);
@@ -71,33 +88,35 @@ function makeWrapper({
       });
     }, []);
     return (
-      <Context.Provider
-        value={{
-          bookList,
-          bookListFetched: false,
-          bookListLoading: loading,
-          bookListError: undefined,
-          loadingByBookId: {},
-          errorByBookId: {},
-          completeBookIds,
-          bookListItems,
-          nextCursor: null,
-          setBookList,
-          setBookListFetched: onSetBookListFetched,
-          setBookListLoading: (v) => setLoading(v),
-          setBookListError: onSetBookListError,
-          setLoadingForBook: () => {},
-          setErrorForBook: () => {},
-          setBookComplete: () => {},
-          clearCompleteBookIds: () => {},
-          setBookListItems,
-          setNextCursor: onSetNextCursor,
-          bookListFilter,
-          setBookListFilter: () => {},
-        }}
-      >
-        {children}
-      </Context.Provider>
+      <ApolloTestProvider mocks={apolloMocks}>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: false,
+            bookListLoading: loading,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds,
+            bookListItems,
+            nextCursor: null,
+            setBookList,
+            setBookListFetched: onSetBookListFetched,
+            setBookListLoading: (v) => setLoading(v),
+            setBookListError: onSetBookListError,
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds: () => {},
+            setBookListItems,
+            setNextCursor: onSetNextCursor,
+            bookListFilter,
+            setBookListFilter: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloTestProvider>
     );
   };
 }
@@ -113,8 +132,25 @@ function seedAdmin() {
   );
 }
 
-function makeAdminWrapper(bookCtxOverrides: Parameters<typeof makeWrapper>[0] = {}) {
-  const BookWrapper = makeWrapper(bookCtxOverrides);
+/**
+ * `apolloMocks` defaults to a `UserListDocument` response that resolves to
+ * no users — enough for `useWithTargetUser`'s query to settle (`ready`
+ * becomes `true`) without matching any library id, which is all the two
+ * admin tests below need (they exercise 404/500 handling, not username
+ * resolution).
+ */
+function makeAdminWrapper(
+  bookCtxOverrides: Omit<NonNullable<Parameters<typeof makeWrapper>[0]>, 'apolloMocks'> = {},
+  apolloMocks: MockedResponse[] = [
+    {
+      request: { query: UserListDocument },
+      result: {
+        data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } },
+      },
+    },
+  ]
+) {
+  const BookWrapper = makeWrapper({ ...bookCtxOverrides, apolloMocks });
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <AuthProvider>
@@ -344,10 +380,20 @@ describe('useFetchBookList', () => {
     const onSetBookListError = vi.fn();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
     const { result } = renderHook(
-      () => ({ fetchBookList: useFetchBookList(), target: useLibraryTarget() }),
+      () => ({
+        fetchBookList: useFetchBookList(),
+        target: useLibraryTarget(),
+        withTargetUser: useWithTargetUser(),
+      }),
       { wrapper: makeAdminWrapper({ onSetBookListError }) }
     );
     expect(result.current.target[0]).toBe('LIB-GHOST');
+
+    // The mocked UserListDocument response (no matching user) must settle
+    // before calling fetchBookList — otherwise `useFetchBookList`'s own
+    // cold-load guard (C-1) would defer this call entirely, and it would
+    // never reach the 404 branch this test exercises.
+    await waitFor(() => expect(result.current.withTargetUser.ready).toBe(true));
 
     await act(() => result.current.fetchBookList());
 
@@ -362,9 +408,15 @@ describe('useFetchBookList', () => {
     const onSetBookListError = vi.fn();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     const { result } = renderHook(
-      () => ({ fetchBookList: useFetchBookList(), target: useLibraryTarget() }),
+      () => ({
+        fetchBookList: useFetchBookList(),
+        target: useLibraryTarget(),
+        withTargetUser: useWithTargetUser(),
+      }),
       { wrapper: makeAdminWrapper({ onSetBookListError }) }
     );
+
+    await waitFor(() => expect(result.current.withTargetUser.ready).toBe(true));
 
     await act(() => result.current.fetchBookList());
 

@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { useDownloadBook } from './use-download-book';
 
 describe('useDownloadBook', () => {
@@ -41,7 +43,7 @@ describe('useDownloadBook', () => {
       })
     );
 
-    const { result } = renderHook(() => useDownloadBook());
+    const { result } = renderHook(() => useDownloadBook(), { wrapper: ApolloTestProvider });
     let returned: boolean | undefined;
     await act(async () => {
       returned = await result.current[0]('book/1');
@@ -56,7 +58,7 @@ describe('useDownloadBook', () => {
   it('returns false and does not click on a non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
 
-    const { result } = renderHook(() => useDownloadBook());
+    const { result } = renderHook(() => useDownloadBook(), { wrapper: ApolloTestProvider });
     let returned: boolean | undefined = true;
     await act(async () => {
       returned = await result.current[0]('1');

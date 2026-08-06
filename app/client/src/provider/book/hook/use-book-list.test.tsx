@@ -4,12 +4,14 @@ import { useCallback, useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { UserListDocument } from '~/graphql/user';
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
+import { ApolloTestProvider, renderWithApollo } from '~/test-utils';
 
 import { Context } from '../context';
 import { BookProvider } from '../provider';
 import type { Book, BookList } from '../type';
-import { useBookList } from './use-book-list';
+import { useBookList, type UseBookList } from './use-book-list';
 import { useBookListFilter } from './use-book-list-filter';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {
@@ -49,33 +51,35 @@ function makeWrapper({
       []
     );
     return (
-      <Context.Provider
-        value={{
-          bookList,
-          bookListFetched: fetched,
-          bookListLoading: loading,
-          bookListError: error,
-          loadingByBookId: {},
-          errorByBookId: {},
-          completeBookIds: new Set(),
-          setBookList,
-          setBookListFetched: setFetched,
-          setBookListLoading: setLoading,
-          setBookListError: setError,
-          setLoadingForBook: () => {},
-          setErrorForBook: () => {},
-          setBookComplete: () => {},
-          clearCompleteBookIds: () => {},
-          bookListItems: [],
-          nextCursor: null,
-          setBookListItems: () => {},
-          setNextCursor: () => {},
-          bookListFilter: {},
-          setBookListFilter: () => {},
-        }}
-      >
-        {children}
-      </Context.Provider>
+      <ApolloTestProvider>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: fetched,
+            bookListLoading: loading,
+            bookListError: error,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(),
+            setBookList,
+            setBookListFetched: setFetched,
+            setBookListLoading: setLoading,
+            setBookListError: setError,
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds: () => {},
+            bookListItems: [],
+            nextCursor: null,
+            setBookListItems: () => {},
+            setNextCursor: () => {},
+            bookListFilter: {},
+            setBookListFilter: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloTestProvider>
     );
   };
 }
@@ -183,11 +187,13 @@ describe('useBookList', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <MemoryRouter>
-        <LibraryTargetProvider>
-          <BookProvider>{children}</BookProvider>
-        </LibraryTargetProvider>
-      </MemoryRouter>
+      <ApolloTestProvider>
+        <MemoryRouter>
+          <LibraryTargetProvider>
+            <BookProvider>{children}</BookProvider>
+          </LibraryTargetProvider>
+        </MemoryRouter>
+      </ApolloTestProvider>
     );
 
     const { result } = renderHook(() => ({ list: useBookList(), filter: useBookListFilter() }), {
@@ -205,5 +211,71 @@ describe('useBookList', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/books?query=test&take=20', {})
     );
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?query=test&take=20', {});
+  });
+
+  // C-1 (task-4 fix-round-1 review): a cold admin page load restores
+  // `targetLibraryId` synchronously from `localStorage`, but resolving it to
+  // a USERNAME (`useWithTargetUser`) is a `UserListDocument` network round
+  // trip that cannot have answered on the very first render. Firing anyway
+  // built a `?user=`-less URL, which the server 400s and this hook latches
+  // as a permanent `bookListError` — the retry-on-target-change effect never
+  // fires again because it's gated on `bookListError === undefined`. This
+  // reproduces the REAL composition (`BookProvider` + `LibraryTargetProvider`
+  // + a real, not-yet-resolved Apollo mock), not just the guarded callback in
+  // isolation.
+  it('does not fire a ?user=-less request on a cold admin load, and retries once the target user resolves', async () => {
+    localStorage.setItem('library-target-id', 'LIB-ALICE');
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const userListMock = {
+      request: { query: UserListDocument },
+      result: {
+        data: {
+          __typename: 'Query' as const,
+          viewer: {
+            __typename: 'Viewer' as const,
+            users: [
+              {
+                __typename: 'User' as const,
+                id: 'u1',
+                username: 'alice',
+                progressCount: 0,
+                library: { __typename: 'Library' as const, id: 'LIB-ALICE' },
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const result: { current?: UseBookList } = {};
+    const Probe = () => {
+      result.current = useBookList();
+      return null;
+    };
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <BookProvider>
+          <Probe />
+        </BookProvider>
+      </LibraryTargetProvider>,
+      { mocks: [userListMock], user: { username: 'admin', isAdmin: true } }
+    );
+
+    // Cold load: the Library id is already restored, but UserListDocument
+    // has not answered yet — the guard must defer, not send a ?user=-less
+    // request the server would 400.
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    // Once the username resolves, the deferred fetch retries with ?user=.
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('/api/books?take=20&user=alice', {})
+    );
+    await waitFor(() => expect(result.current?.[2]).toBe(false));
   });
 });

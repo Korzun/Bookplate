@@ -1,6 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { useLibrarySubjects } from './use-library-subjects';
 
 describe('useLibrarySubjects', () => {
@@ -14,14 +16,14 @@ describe('useLibrarySubjects', () => {
         json: () => Promise.resolve({ subjects: ['Fiction', 'History'] }),
       })
     );
-    const { result } = renderHook(() => useLibrarySubjects());
+    const { result } = renderHook(() => useLibrarySubjects(), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[0]).toEqual(['Fiction', 'History']));
     expect(fetch).toHaveBeenCalledWith('/api/subjects', expect.anything());
   });
 
   it('starts with loading true', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    const { result } = renderHook(() => useLibrarySubjects());
+    const { result } = renderHook(() => useLibrarySubjects(), { wrapper: ApolloTestProvider });
     expect(result.current[1]).toBe(true);
   });
 
@@ -33,19 +35,19 @@ describe('useLibrarySubjects', () => {
         json: () => Promise.resolve({ subjects: [] }),
       })
     );
-    const { result } = renderHook(() => useLibrarySubjects());
+    const { result } = renderHook(() => useLibrarySubjects(), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
 
   it('sets error string on non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
-    const { result } = renderHook(() => useLibrarySubjects());
+    const { result } = renderHook(() => useLibrarySubjects(), { wrapper: ApolloTestProvider });
     await waitFor(() => expect(result.current[2]).toBe('Failed to fetch subjects'));
   });
 
   it('returns empty array by default', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    const { result } = renderHook(() => useLibrarySubjects());
+    const { result } = renderHook(() => useLibrarySubjects(), { wrapper: ApolloTestProvider });
     expect(result.current[0]).toEqual([]);
   });
 });

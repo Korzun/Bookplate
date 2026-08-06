@@ -3,6 +3,7 @@ import { ApolloProvider } from '@apollo/client/react';
 import { MockLink, type MockedResponse } from '@apollo/client/testing';
 import { render, type RenderOptions } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
+import { useState } from 'react';
 import { MemoryRouter } from 'react-router';
 
 import { cacheConfig } from './provider/apollo';
@@ -118,4 +119,31 @@ export function renderHookWithApollo<
 
   const rendered = renderWithApollo(<Probe />, { ...options, mocks: mocks as MockedResponse[] });
   return { result, ...rendered };
+}
+
+/**
+ * A real `ApolloProvider`, backed by a `MockLink` (empty by default), for
+ * hook/component tests that don't use `renderWithApollo`'s own provider
+ * stack (they compose their own `wrapper` around
+ * `BookProvider`/`AuthProvider`/etc.) but still transitively reach
+ * `useWithTargetUser` — an unconditional `useQuery` since task 4's C-1/I-1
+ * fix (no more provider-less fallback client; see that hook's own doc
+ * comment for why a loud failure here is the point, not a bug to route
+ * around). Most call sites default to a non-admin viewer, so that query is
+ * always `skip`ped and the default empty `MockLink` never needs a matching
+ * mock — drop `<ApolloTestProvider>` in anywhere above the hook under test.
+ * Pass `mocks` when the test DOES need the query to resolve (e.g. an admin
+ * scenario exercising `useWithTargetUser`/`useFetchBookList` together).
+ */
+export function ApolloTestProvider({
+  children,
+  mocks = [],
+}: {
+  children: ReactNode;
+  mocks?: MockedResponse[];
+}) {
+  const [client] = useState(
+    () => new ApolloClient({ link: new MockLink(mocks), cache: new InMemoryCache(cacheConfig) })
+  );
+  return <ApolloProvider client={client}>{children}</ApolloProvider>;
 }

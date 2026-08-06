@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BookProvider } from '~/provider/book';
 import { LibraryTargetProvider } from '~/provider/library-target';
+import { ApolloTestProvider } from '~/test-utils';
 
 import { useUploadQueue } from './hook';
 import { UploadProvider } from './provider';
@@ -45,15 +46,17 @@ afterEach(() => {
 describe('UploadProvider', () => {
   it('seeds the queue from the server pending-fixes on mount', async () => {
     render(
-      <MemoryRouter>
-        <LibraryTargetProvider>
-          <BookProvider>
-            <UploadProvider>
-              <Probe />
-            </UploadProvider>
-          </BookProvider>
-        </LibraryTargetProvider>
-      </MemoryRouter>
+      <ApolloTestProvider>
+        <MemoryRouter>
+          <LibraryTargetProvider>
+            <BookProvider>
+              <UploadProvider>
+                <Probe />
+              </UploadProvider>
+            </BookProvider>
+          </LibraryTargetProvider>
+        </MemoryRouter>
+      </ApolloTestProvider>
     );
 
     expect(await screen.findByText('count:1')).toBeTruthy();

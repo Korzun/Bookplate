@@ -28,6 +28,17 @@ export const useFetchBookList = (): FetchBookList => {
 
   return useCallback(async () => {
     if (isAdmin && !targetUsername) return;
+    // `withTargetUser` restores `targetUsername` (really: the selected
+    // Library id) synchronously from `localStorage`, but resolving it to a
+    // USERNAME is a network round trip (`UserListDocument`) that cannot have
+    // answered yet on the very first render after a cold page load. Firing
+    // here anyway would build a `?user=`-less URL, which the server 400s —
+    // and unlike a real failure, retrying it would keep 400ing until the
+    // query resolves, so this bails WITHOUT setting `bookListError`,
+    // leaving `bookListFetched`/`bookListLoading` at their initial values so
+    // `useBookList`'s trigger effect (gated on `bookListError === undefined`)
+    // fires again the moment `withTargetUser`'s identity changes to `ready`.
+    if (isAdmin && !withTargetUser.ready) return;
     if (bookListLoading) return;
 
     setBookListLoading(true);

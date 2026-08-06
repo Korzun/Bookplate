@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { useBookLineage } from '~/provider/book/hook/use-book-lineage';
-import { renderWithProviders } from '~/test-utils';
+import { renderWithApollo } from '~/test-utils';
 
 import { BookLineageModal } from './index';
 
@@ -23,19 +23,19 @@ const refetch = vi.fn();
 describe('BookLineageModal', () => {
   it('shows a loading state', () => {
     vi.mocked(useBookLineage).mockReturnValue([undefined, true, false, refetch]);
-    renderWithProviders(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
   it('explains what book lineage is', () => {
     vi.mocked(useBookLineage).mockReturnValue([undefined, true, false, refetch]);
-    renderWithProviders(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
     expect(screen.getByText(/Lineage maps former IDs to this book/i)).toBeInTheDocument();
   });
 
   it('shows an error state', () => {
     vi.mocked(useBookLineage).mockReturnValue([undefined, false, true, refetch]);
-    renderWithProviders(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" onClose={vi.fn()} />);
     expect(screen.getByText('Failed to load lineage.')).toBeInTheDocument();
   });
 
@@ -49,9 +49,7 @@ describe('BookLineageModal', () => {
       false,
       refetch,
     ]);
-    renderWithProviders(
-      <BookLineageModal isOpen bookId="book-1" addedAt={500} onClose={vi.fn()} />
-    );
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" addedAt={500} onClose={vi.fn()} />);
     expect(screen.getByText('doc-current')).toBeInTheDocument();
     expect(screen.getByText('doc-old')).toBeInTheDocument();
   });
@@ -59,7 +57,7 @@ describe('BookLineageModal', () => {
   it('calls onClose when Close is clicked', async () => {
     const onClose = vi.fn();
     vi.mocked(useBookLineage).mockReturnValue([undefined, true, false, refetch]);
-    renderWithProviders(<BookLineageModal isOpen bookId="book-1" onClose={onClose} />);
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" onClose={onClose} />);
     await userEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -77,16 +75,14 @@ describe('BookLineageModal', () => {
       false,
       refetch,
     ]);
-    renderWithProviders(
-      <BookLineageModal isOpen bookId="book-1" addedAt={500} onClose={vi.fn()} />
-    );
+    renderWithApollo(<BookLineageModal isOpen bookId="book-1" addedAt={500} onClose={vi.fn()} />);
     expect(screen.getByText('doc-merged')).toBeInTheDocument();
   });
 
   it('calls onClose when the dialog backdrop is clicked', () => {
     const onClose = vi.fn();
     vi.mocked(useBookLineage).mockReturnValue([undefined, true, false, refetch]);
-    const { container } = renderWithProviders(
+    const { container } = renderWithApollo(
       <BookLineageModal isOpen bookId="book-1" onClose={onClose} />
     );
     const dialogEl = container.querySelector('dialog');

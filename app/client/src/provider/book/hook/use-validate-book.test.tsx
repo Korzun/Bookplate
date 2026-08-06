@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { useValidateBook } from './use-validate-book';
 
 const REPORT = { valid: false, threshold: 'ERROR', counts: {}, messages: [] };
@@ -10,7 +12,7 @@ describe('useValidateBook', () => {
 
   it('POSTs the encoded validate URL and returns the report', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => REPORT }));
-    const { result } = renderHook(() => useValidateBook());
+    const { result } = renderHook(() => useValidateBook(), { wrapper: ApolloTestProvider });
     let out: unknown;
     await act(async () => {
       out = await result.current[0]('book/1');
@@ -23,7 +25,7 @@ describe('useValidateBook', () => {
 
   it('returns undefined on a non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
-    const { result } = renderHook(() => useValidateBook());
+    const { result } = renderHook(() => useValidateBook(), { wrapper: ApolloTestProvider });
     let out: unknown = 'x';
     await act(async () => {
       out = await result.current[0]('1');

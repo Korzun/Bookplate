@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { Context } from '../context';
 import type { Book, BookList } from '../type';
 
@@ -51,33 +53,35 @@ function makeWrapper(initialBooks: Book[] = [], initialCompleteIds: Set<string> 
     }, []);
 
     return (
-      <Context.Provider
-        value={{
-          bookList,
-          bookListFetched: true,
-          bookListLoading: false,
-          bookListError: undefined,
-          loadingByBookId,
-          errorByBookId,
-          completeBookIds,
-          setBookList,
-          setBookListFetched: () => {},
-          setBookListLoading: () => {},
-          setBookListError: () => {},
-          setLoadingForBook,
-          setErrorForBook,
-          setBookComplete,
-          clearCompleteBookIds: () => {},
-          bookListItems: [],
-          nextCursor: null,
-          setBookListItems: () => {},
-          setNextCursor: () => {},
-          bookListFilter: {},
-          setBookListFilter: () => {},
-        }}
-      >
-        {children}
-      </Context.Provider>
+      <ApolloTestProvider>
+        <Context.Provider
+          value={{
+            bookList,
+            bookListFetched: true,
+            bookListLoading: false,
+            bookListError: undefined,
+            loadingByBookId,
+            errorByBookId,
+            completeBookIds,
+            setBookList,
+            setBookListFetched: () => {},
+            setBookListLoading: () => {},
+            setBookListError: () => {},
+            setLoadingForBook,
+            setErrorForBook,
+            setBookComplete,
+            clearCompleteBookIds: () => {},
+            bookListItems: [],
+            nextCursor: null,
+            setBookListItems: () => {},
+            setNextCursor: () => {},
+            bookListFilter: {},
+            setBookListFilter: () => {},
+          }}
+        >
+          {children}
+        </Context.Provider>
+      </ApolloTestProvider>
     );
   };
 }

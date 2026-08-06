@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useContext, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { Context as ProgressContext } from '../../progress/context';
 import type { ProgressList, UserProgressList } from '../../progress/type';
 import { Context } from '../context';
@@ -73,45 +75,47 @@ function makeWrapper({
       });
     }, []);
     return (
-      <ProgressContext.Provider
-        value={{
-          progressList,
-          loadingByUsername: {},
-          errorByUsername: {},
-          setProgressForUsername,
-          setLoadingForUsername: () => {},
-          setErrorForUsername: () => {},
-          renameProgressKey,
-        }}
-      >
-        <Context.Provider
+      <ApolloTestProvider>
+        <ProgressContext.Provider
           value={{
-            bookList,
-            bookListFetched: true,
-            bookListLoading: false,
-            bookListError: undefined,
-            loadingByBookId: {},
-            errorByBookId: {},
-            completeBookIds: new Set(),
-            setBookList,
-            setBookListFetched,
-            setBookListLoading: () => {},
-            setBookListError: () => {},
-            setLoadingForBook: () => {},
-            setErrorForBook: () => {},
-            setBookComplete: () => {},
-            clearCompleteBookIds: () => {},
-            bookListItems: [],
-            nextCursor: null,
-            setBookListItems,
-            setNextCursor,
-            bookListFilter: {},
-            setBookListFilter: () => {},
+            progressList,
+            loadingByUsername: {},
+            errorByUsername: {},
+            setProgressForUsername,
+            setLoadingForUsername: () => {},
+            setErrorForUsername: () => {},
+            renameProgressKey,
           }}
         >
-          {children}
-        </Context.Provider>
-      </ProgressContext.Provider>
+          <Context.Provider
+            value={{
+              bookList,
+              bookListFetched: true,
+              bookListLoading: false,
+              bookListError: undefined,
+              loadingByBookId: {},
+              errorByBookId: {},
+              completeBookIds: new Set(),
+              setBookList,
+              setBookListFetched,
+              setBookListLoading: () => {},
+              setBookListError: () => {},
+              setLoadingForBook: () => {},
+              setErrorForBook: () => {},
+              setBookComplete: () => {},
+              clearCompleteBookIds: () => {},
+              bookListItems: [],
+              nextCursor: null,
+              setBookListItems,
+              setNextCursor,
+              bookListFilter: {},
+              setBookListFilter: () => {},
+            }}
+          >
+            {children}
+          </Context.Provider>
+        </ProgressContext.Provider>
+      </ApolloTestProvider>
     );
   };
 }

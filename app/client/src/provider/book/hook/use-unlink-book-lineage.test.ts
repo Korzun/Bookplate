@@ -1,13 +1,17 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApolloTestProvider } from '~/test-utils';
+
 import { useUnlinkBookLineage } from './use-unlink-book-lineage';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useUnlinkBookLineage', () => {
   it('returns initial state', () => {
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     const [unlink, unlinking, error, errorMessage] = result.current;
     expect(typeof unlink).toBe('function');
     expect(unlinking).toBe(false);
@@ -19,7 +23,9 @@ describe('useUnlinkBookLineage', () => {
     const mockFetch = vi.fn().mockResolvedValue({ status: 204 });
     vi.stubGlobal('fetch', mockFetch);
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     await act(() => result.current[0]('doc-1'));
 
     expect(mockFetch).toHaveBeenCalledWith('/api/books/book-1/link/doc-1', { method: 'DELETE' });
@@ -28,7 +34,9 @@ describe('useUnlinkBookLineage', () => {
   it('returns true on success', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     let returnValue: boolean | undefined;
     await act(async () => {
       returnValue = await result.current[0]('doc-1');
@@ -46,7 +54,9 @@ describe('useUnlinkBookLineage', () => {
       })
     );
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     await act(() => result.current[0]('doc-1'));
     await waitFor(() => expect(result.current[2]).toBe(true));
 
@@ -62,7 +72,9 @@ describe('useUnlinkBookLineage', () => {
       })
     );
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     let returnValue: boolean | undefined;
     await act(async () => {
       returnValue = await result.current[0]('doc-1');
@@ -74,7 +86,9 @@ describe('useUnlinkBookLineage', () => {
   it('returns false when already unlinking', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     // Kick off a first call without awaiting, then immediately call again
     let secondReturn: boolean | undefined;
     await act(async () => {
@@ -88,7 +102,9 @@ describe('useUnlinkBookLineage', () => {
   it('returns to idle state on success', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
 
-    const { result } = renderHook(() => useUnlinkBookLineage('book-1'));
+    const { result } = renderHook(() => useUnlinkBookLineage('book-1'), {
+      wrapper: ApolloTestProvider,
+    });
     await act(() => result.current[0]('doc-1'));
     await waitFor(() => expect(result.current[1]).toBe(false));
 
