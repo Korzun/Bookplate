@@ -31,10 +31,10 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function makeWrapper(initialBooks: Book[] = []) {
+function makeWrapper(initialBooks: Book[] = [], initialBookList?: BookList) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
-      Object.fromEntries(initialBooks.map((b) => [b.id, b]))
+      initialBookList ?? Object.fromEntries(initialBooks.map((b) => [b.id, b]))
     );
     const setBookList = useCallback(
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
@@ -134,5 +134,26 @@ describe('useClearBookEditions', () => {
     await waitFor(() => expect(result.current[1]).toBe(true));
     await act(() => result.current[0]('1'));
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Final-branch-review I-2: a book reached both via its Relay global id
+  // (the grid) and its raw id (the search dropdown) sits under TWO
+  // `bookList` keys describing the SAME book — clearing editions under one
+  // key must not leave the other alias's `deviceEditionCount` stale.
+  it('clears deviceEditionCount on every alias entry, not just the requested key', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ cleared: 3 }) })
+    );
+    const book = makeBook({ id: 'raw-1', deviceEditionCount: 3 });
+    const { result } = renderHook(
+      () => ({ hook: useClearBookEditions(), ctx: useContext(Context) }),
+      { wrapper: makeWrapper([], { 'global-1': book, 'raw-1': book }) }
+    );
+
+    await act(() => result.current.hook[0]('raw-1'));
+
+    expect(result.current.ctx.bookList['raw-1'].deviceEditionCount).toBe(0);
+    expect(result.current.ctx.bookList['global-1'].deviceEditionCount).toBe(0);
   });
 });

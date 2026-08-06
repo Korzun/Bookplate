@@ -33,11 +33,13 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
 function makeWrapper(
   initialBooks: Book[] = [],
   clearCompleteBookIds = vi.fn(),
-  initialItems: DisplayUnit[] = []
+  initialItems: DisplayUnit[] = [],
+  /** Overrides the derived `{ [book.id]: book }` map — for alias-key fixtures where a book sits under a key other than its own `id`. */
+  initialBookList?: BookList
 ) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
-      Object.fromEntries(initialBooks.map((b) => [b.id, b]))
+      initialBookList ?? Object.fromEntries(initialBooks.map((b) => [b.id, b]))
     );
     const setBookList = useCallback(
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
@@ -287,5 +289,41 @@ describe('useDeleteBook', () => {
     await act(() => result.current.hook[0]('2'));
     expect(result.current.ctx.bookListItems).toEqual(items);
     expect(result.current.hook[2]).toBe(true);
+  });
+
+  // Final-branch-review I-2: a book reached both via its Relay global id
+  // (the grid) and its raw id (the search dropdown) sits under TWO
+  // `bookList` keys describing the SAME book. Deleting only the requested
+  // key left the other alias's stale copy in place forever — this is the
+  // seen-to-fail for that.
+  describe('alias sweep (final-branch-review I-2)', () => {
+    it('removes every bookList entry describing the deleted book, not just the requested key', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+      const book = makeBook({ id: 'raw-1' });
+      const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+        wrapper: makeWrapper([book], vi.fn(), [], { 'global-1': book, 'raw-1': book }),
+      });
+
+      await act(() => result.current.hook[0]('raw-1'));
+
+      expect(result.current.ctx.bookList['raw-1']).toBeUndefined();
+      expect(result.current.ctx.bookList['global-1']).toBeUndefined();
+    });
+
+    it('restores under the requested key on rollback, not the book’s own raw id', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 500 }));
+      const book = makeBook({ id: 'raw-1' });
+      const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+        wrapper: makeWrapper([book], vi.fn(), [], { 'global-1': book }),
+      });
+
+      await act(() => result.current.hook[0]('global-1'));
+
+      expect(result.current.ctx.bookList['global-1']).toEqual(book);
+      // No stray duplicate written under the book's own raw id — that key
+      // was never in the list to begin with, and the failed delete must not
+      // invent one.
+      expect(result.current.ctx.bookList['raw-1']).toBeUndefined();
+    });
   });
 });

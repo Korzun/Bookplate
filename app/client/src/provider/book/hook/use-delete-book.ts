@@ -6,7 +6,27 @@ import { apiFetch } from '../../../lib/api-fetch';
 import { Context } from '../context';
 import { BookList, DisplayUnit } from '../type';
 
-const removeBookById = (bookId: string, { [bookId]: _, ...rest }: BookList) => rest;
+/**
+ * Deletes every `bookList` entry describing this book (`.id === rawId`), not
+ * just `prev[rawId]` itself — same alias sweep as
+ * `use-regen-chapters.ts`/`use-patch-book-metadata.ts` (see either's doc
+ * comment for the full mechanism). `useFetchBook` keys entries by the id
+ * they were REQUESTED under, not the book's own raw id, so a book reached
+ * via a Relay global id (the grid, `/book/<globalId>`) and also via its raw
+ * id (the search dropdown, `/book/<rawId>`) can sit under TWO keys at once.
+ * Deleting only the key the caller happened to pass left the other alias's
+ * `bookList` entry — and its `completeBookIds` membership — untouched
+ * forever: `useBook`'s effect only refetches when `bookList[bookId] ===
+ * undefined`, so the alias kept rendering the deleted book in full detail
+ * until a hard reload.
+ */
+const removeBookByAlias = (rawId: string, prev: BookList): BookList => {
+  const next = { ...prev };
+  for (const key of Object.keys(next)) {
+    if (next[key]?.id === rawId) delete next[key];
+  }
+  return next;
+};
 
 const isStandalone = (item: DisplayUnit, bookId: string) =>
   item.type === 'standalone' && item.bookId === bookId;
@@ -48,7 +68,7 @@ export const useDeleteBook = (): UseDeleteBook => {
       const itemIndex = bookListItems.findIndex(isRemovedItem);
       const removedItem = itemIndex === -1 ? undefined : bookListItems[itemIndex];
 
-      setBookList((prev) => removeBookById(id, prev));
+      setBookList((prev) => removeBookByAlias(book.id, prev));
       if (removedItem) {
         setBookListItems((prev) => prev.filter((item) => !isRemovedItem(item)));
       }
@@ -63,7 +83,15 @@ export const useDeleteBook = (): UseDeleteBook => {
         if (res.status !== 204) throw new Error('Failed to delete book');
       } catch (err) {
         setError(true);
-        setBookList((prev) => ({ ...prev, [book.id]: book }));
+        // Restores under the key `id` — the key the optimistic removal was
+        // requested against — not `book.id`. Before this fix those two
+        // could differ (a global-id request whose resolved book's own `.id`
+        // is the raw id): restoring under `book.id` left the `id` key
+        // permanently deleted even though the DELETE failed, while writing
+        // a possibly-new `book.id` entry that hadn't been touched — a
+        // silent duplicate once `use-book-list.ts`'s `Object.values(bookList)`
+        // fans it back out.
+        setBookList((prev) => ({ ...prev, [id]: book }));
         if (removedItem) {
           setBookListItems((prev) => {
             if (prev.some(isRemovedItem)) return prev;
