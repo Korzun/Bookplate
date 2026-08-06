@@ -21,7 +21,7 @@ export const UploadPage = () => {
   const styles = useStyle();
 
   const [isAdmin] = useIsAdmin();
-  const [targetUsername] = useLibraryTarget();
+  const [targetLibraryId] = useLibraryTarget();
   const [userList, userListLoading] = useUserList();
 
   const {
@@ -111,7 +111,7 @@ export const UploadPage = () => {
     }
   }, [items, dismissCompleted]);
 
-  if (isAdmin && !targetUsername) {
+  if (isAdmin && !targetLibraryId) {
     const noUsers = !userListLoading && userList.length === 0;
     return (
       <Page>

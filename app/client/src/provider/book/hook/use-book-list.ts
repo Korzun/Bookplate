@@ -24,7 +24,7 @@ export const useBookList = (): UseBookList => {
     setBookListItems,
   } = use(Context);
   const fetchBookList = useFetchBookList();
-  const [targetUsername] = useLibraryTarget();
+  const [targetLibraryId] = useLibraryTarget();
 
   useEffect(() => {
     if (!bookListLoading && bookListError === undefined && !bookListFetched) {
@@ -37,16 +37,16 @@ export const useBookList = (): UseBookList => {
   // bookList, reusing cached entries when book ids collide across libraries.
   // The trigger effect above refetches once the cleared state has flushed, and
   // clearing the error unblocks it after a failed fetch of a stale target.
-  const prevTargetRef = useRef(targetUsername);
+  const prevTargetRef = useRef(targetLibraryId);
   useEffect(() => {
-    if (prevTargetRef.current === targetUsername) return;
-    prevTargetRef.current = targetUsername;
+    if (prevTargetRef.current === targetLibraryId) return;
+    prevTargetRef.current = targetLibraryId;
     clearCompleteBookIds();
     setBookListError(undefined);
     setBookListFetched(false);
     setBookListItems(() => []);
   }, [
-    targetUsername,
+    targetLibraryId,
     setBookListFetched,
     setBookListError,
     clearCompleteBookIds,

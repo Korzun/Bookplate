@@ -22,13 +22,13 @@ export const useFetchBookList = (): FetchBookList => {
     bookListFilter,
   } = use(Context);
   const [isAdmin] = useIsAdmin();
-  const [targetUsername, setTargetUsername] = useLibraryTarget();
+  const [targetLibraryId, setTargetLibraryId] = useLibraryTarget();
   const withTargetUser = useWithTargetUser();
 
   return useCallback(async () => {
-    if (isAdmin && !targetUsername) return;
-    // `withTargetUser` restores `targetUsername` (really: the selected
-    // Library id) synchronously from `localStorage`, but resolving it to a
+    if (isAdmin && !targetLibraryId) return;
+    // `withTargetUser` restores `targetLibraryId` (the selected Library's
+    // global id) synchronously from `localStorage`, but resolving it to a
     // USERNAME is a network round trip (`UserListDocument`) that cannot have
     // answered yet on the very first render after a cold page load. Firing
     // here anyway would build a `?user=`-less URL, which the server 400s —
@@ -48,7 +48,7 @@ export const useFetchBookList = (): FetchBookList => {
     // already covers for a request the server itself rejects; this clears
     // the selection before ever attempting one).
     if (isAdmin && !withTargetUser.username) {
-      setTargetUsername(undefined);
+      setTargetLibraryId(undefined);
       return;
     }
     if (bookListLoading) return;
@@ -74,8 +74,8 @@ export const useFetchBookList = (): FetchBookList => {
       // server-side after this admin's list was fetched but before the
       // cache refreshed). Same fallback either way: clear the selection so
       // the page falls back to "Select a library" instead of a load failure.
-      if (response.status === 404 && isAdmin && targetUsername) {
-        setTargetUsername(undefined);
+      if (response.status === 404 && isAdmin && targetLibraryId) {
+        setTargetLibraryId(undefined);
         return;
       }
       if (!response.ok) throw new Error('Failed to fetch books');
@@ -101,8 +101,8 @@ export const useFetchBookList = (): FetchBookList => {
     }
   }, [
     isAdmin,
-    targetUsername,
-    setTargetUsername,
+    targetLibraryId,
+    setTargetLibraryId,
     withTargetUser,
     bookListLoading,
     bookList,
