@@ -1,10 +1,11 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { DeviceListDocument } from '~/graphql/device';
-import { renderWithApollo } from '~/test-utils';
+import { renderHookWithApollo } from '~/test-utils';
 
-import { useDeviceList, type UseDeviceList } from './use-device-list';
+import { useDeviceList } from './use-device-list';
 
 const device = (overrides: Record<string, unknown>) => ({
   __typename: 'Device' as const,
@@ -32,16 +33,9 @@ const deviceListMock = (devices: ReturnType<typeof device>[]) => ({
   },
 });
 
-/** Renders the hook inside renderWithApollo's provider stack. */
-const renderDeviceList = (mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']) => {
-  const result: { current?: UseDeviceList } = {};
-  const Probe = () => {
-    result.current = useDeviceList();
-    return null;
-  };
-  renderWithApollo(<Probe />, { mocks });
-  return result;
-};
+/** Renders the hook inside renderHookWithApollo's provider stack. */
+const renderDeviceList = (mocks: MockedResponse[]) =>
+  renderHookWithApollo(() => useDeviceList(), mocks).result;
 
 describe('useDeviceList', () => {
   it('returns devices in name order with the tuple shape unchanged', async () => {

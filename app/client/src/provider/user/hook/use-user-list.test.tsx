@@ -1,10 +1,11 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { UserListDocument } from '~/graphql/user';
-import { renderWithApollo } from '~/test-utils';
+import { renderHookWithApollo } from '~/test-utils';
 
-import { useUserList, type UseUserList } from './use-user-list';
+import { useUserList } from './use-user-list';
 
 const user = (overrides: Record<string, unknown>) => ({
   __typename: 'User' as const,
@@ -28,24 +29,14 @@ const userListMock = (users: ReturnType<typeof user>[]) => ({
 });
 
 /**
- * Renders the hook inside renderWithApollo's provider stack. `isAdmin`
+ * Renders the hook inside renderHookWithApollo's provider stack. `isAdmin`
  * defaults to `true` here (renderWithApollo's OWN default is `isAdmin:
  * false`, which would `skip` every query below) since most of these tests
  * exercise the query itself; the dedicated non-admin test below overrides it
  * back to `false`.
  */
-const renderUserList = (
-  mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks'],
-  isAdmin = true
-) => {
-  const result: { current?: UseUserList } = {};
-  const Probe = () => {
-    result.current = useUserList();
-    return null;
-  };
-  renderWithApollo(<Probe />, { mocks, user: { username: 'admin', isAdmin } });
-  return result;
-};
+const renderUserList = (mocks: MockedResponse[], isAdmin = true) =>
+  renderHookWithApollo(() => useUserList(), mocks, { user: { username: 'admin', isAdmin } }).result;
 
 describe('useUserList', () => {
   it('returns users in username order with the tuple shape unchanged, id present', async () => {
