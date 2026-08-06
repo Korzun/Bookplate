@@ -1,14 +1,16 @@
-import { renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Book } from '../type';
-import type { UseBookList } from './use-book-list';
 import { useSeriesBookList } from './use-series-book-list';
 
-vi.mock('./use-book-list');
+const mockWithTargetUser = (url: string) => url;
 
-const { useBookList } = await import('./use-book-list');
-const mockUseBookList = vi.mocked(useBookList);
+vi.mock('~/provider/library-target', () => ({
+  useWithTargetUser: () => mockWithTargetUser,
+}));
+
+vi.mock('~/lib/api-fetch');
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {
   return {
@@ -18,7 +20,7 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
     authorSort: '',
     publishDate: '',
     publisher: '',
-    series: '',
+    series: 'Dune',
     seriesIndex: 0,
     subjects: [],
     identifiers: [],
@@ -31,77 +33,155 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function stubBookList(tuple: UseBookList) {
-  mockUseBookList.mockReturnValue(tuple);
-}
+const makeListResponse = (books: Book[]) => ({ items: [], books, nextCursor: null });
 
 describe('useSeriesBookList', () => {
-  it('propagates error state from useBookList', () => {
-    stubBookList([[], false, true, 'fetch failed']);
-    const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current).toEqual([undefined, false, true, 'fetch failed']);
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          makeListResponse([
+            makeBook({ id: '3', seriesIndex: 3 }),
+            makeBook({ id: '1', seriesIndex: 1 }),
+            makeBook({ id: '2', seriesIndex: 2 }),
+          ])
+        ),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
   });
 
-  it('propagates error with undefined message', () => {
-    stubBookList([[], false, true, undefined]);
-    const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current).toEqual([undefined, false, true, undefined]);
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('returns loading state when no books loaded yet', () => {
-    stubBookList([[], true, false, undefined]);
-    const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current).toEqual([undefined, true, false, undefined]);
-  });
-
-  it('returns partial series books while still loading', () => {
-    const books: Book[] = [
-      makeBook({ id: '1', series: 'Dune', seriesIndex: 2 }),
-      makeBook({ id: '2', series: 'Dune', seriesIndex: 1 }),
-    ];
-    stubBookList([books, true, false, undefined]);
+  it('starts in loading state', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockReturnValue(new Promise(() => {})); // never settles
     const { result } = renderHook(() => useSeriesBookList('Dune'));
     const [list, loading, error] = result.current;
+    expect(list).toBeUndefined();
     expect(loading).toBe(true);
     expect(error).toBe(false);
-    expect(list?.map((b) => b.seriesIndex)).toEqual([1, 2]);
   });
 
-  it('returns error when loading=true but other series exist and requested is missing', () => {
-    const books: Book[] = [makeBook({ id: '1', series: 'Foundation', seriesIndex: 1 })];
-    stubBookList([books, true, false, undefined]);
-    const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current).toEqual([undefined, false, true, 'Unknown series Dune']);
+  it('requests exactly this series, not the shared unfiltered list', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    renderHook(() => useSeriesBookList('Dune'));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0]!;
+    expect(url).toContain('/api/books?');
+    expect(url).toContain('seriesName=Dune');
+    expect(url).toContain('take=100');
   });
 
-  it('returns sorted books for known series when fully loaded', () => {
-    const books: Book[] = [
-      makeBook({ id: '3', series: 'Dune', seriesIndex: 3 }),
-      makeBook({ id: '1', series: 'Dune', seriesIndex: 1 }),
-      makeBook({ id: '2', series: 'Dune', seriesIndex: 2 }),
-    ];
-    stubBookList([books, false, false, undefined]);
+  it('returns the series books sorted by seriesIndex when loaded', async () => {
     const { result } = renderHook(() => useSeriesBookList('Dune'));
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
     const [list, loading, error] = result.current;
     expect(loading).toBe(false);
     expect(error).toBe(false);
-    expect(list?.map((b) => b.seriesIndex)).toEqual([1, 2, 3]);
+    expect(list?.map((b) => b.id)).toEqual(['1', '2', '3']);
   });
 
-  it('returns error for unknown series when fully loaded', () => {
-    const books: Book[] = [makeBook({ id: '1', series: 'Foundation', seriesIndex: 1 })];
-    stubBookList([books, false, false, undefined]);
-    const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current).toEqual([undefined, false, true, 'Unknown series Dune']);
+  /**
+   * Seen-to-fail before this hook stopped filtering `useBookList`'s shared,
+   * 20-entry-capped REST list: a series sitting past the first REST page
+   * (i.e. almost any series once the grid has scrolled past ~20 entries)
+   * filtered to an empty array from that frozen list and this hook reported
+   * "Unknown series" — even though the series genuinely exists and the
+   * server has its books. This hook's own request is scoped to the series
+   * by name, so page position in any other list is irrelevant.
+   */
+  it('finds a series regardless of where it would have sat in a 20-item page', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    const books = Array.from({ length: 3 }, (_, i) =>
+      makeBook({ id: `book-${i}`, seriesIndex: i + 1 })
+    );
+    vi.mocked(apiFetch).mockResolvedValue(
+      new Response(JSON.stringify(makeListResponse(books)), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const { result } = renderHook(() => useSeriesBookList('Entry Number 21 Series'));
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    const [list, , error] = result.current;
+    expect(error).toBe(false);
+    expect(list).toHaveLength(3);
   });
 
-  it('excludes books with no series from series map', () => {
-    const books: Book[] = [
-      makeBook({ id: '1', series: '', seriesIndex: 0 }),
-      makeBook({ id: '2', series: 'Dune', seriesIndex: 1 }),
-    ];
-    stubBookList([books, false, false, undefined]);
+  it('returns error state when the response is not ok', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockResolvedValue(new Response('', { status: 404 }));
+
     const { result } = renderHook(() => useSeriesBookList('Dune'));
-    expect(result.current[0]).toHaveLength(1);
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    const [list, loading, error, errorMessage] = result.current;
+    expect(list).toBeUndefined();
+    expect(loading).toBe(false);
+    expect(error).toBe(true);
+    expect(errorMessage).toBe('Unknown series Dune');
+  });
+
+  it('returns error state when the response has no books', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockResolvedValue(
+      new Response(JSON.stringify(makeListResponse([])), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const { result } = renderHook(() => useSeriesBookList('Dune'));
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    const [list, , error, errorMessage] = result.current;
+    expect(list).toBeUndefined();
+    expect(error).toBe(true);
+    expect(errorMessage).toBe('Unknown series Dune');
+  });
+
+  it('returns error state when fetch throws', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+    vi.mocked(apiFetch).mockRejectedValue(new Error('Network error'));
+
+    const { result } = renderHook(() => useSeriesBookList('Dune'));
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+
+    const [, , error, errorMessage] = result.current;
+    expect(error).toBe(true);
+    expect(errorMessage).toBe('Network error');
+  });
+
+  it('re-fetches when seriesName changes', async () => {
+    const { apiFetch } = await import('~/lib/api-fetch');
+
+    const { result, rerender } = renderHook(({ name }) => useSeriesBookList(name), {
+      initialProps: { name: 'Dune' },
+    });
+
+    await waitFor(() => expect(result.current[1]).toBe(false));
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+
+    rerender({ name: 'Foundation' });
+
+    expect(result.current[1]).toBe(true);
+    await waitFor(() => expect(result.current[1]).toBe(false));
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(apiFetch).mock.calls[1]![0]).toContain('seriesName=Foundation');
   });
 });

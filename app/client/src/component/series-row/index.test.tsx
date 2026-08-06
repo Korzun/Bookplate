@@ -1,14 +1,10 @@
+import { waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn(), coverStackProps: vi.fn() }));
+vi.mock('~/lib/api-fetch');
 
-vi.mock('../cover-stack', () => ({
-  CoverStack: (props: { seriesName: string; layerWidth: number; layerHeight: number }) => {
-    mocks.coverStackProps(props);
-    return <div data-testid="cover-stack" />;
-  },
-}));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn() }));
 
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
@@ -18,10 +14,24 @@ vi.mock('react-router', async (importOriginal) => {
 import { makeFragmentData } from '~/gql';
 import type { SeriesRowFragmentFragment } from '~/gql/graphql';
 import { SeriesRowFragment } from '~/graphql/library';
+import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
 import { SeriesRow } from './index';
+
+const mockApiFetch = vi.mocked(apiFetch);
+
+const makeCoverNode = (
+  overrides: Partial<{ id: string; title: string; hasCover: boolean }> = {}
+) => ({
+  __typename: 'Book' as const,
+  id: overrides.id ?? 'gid-book-1',
+  title: overrides.title ?? 'Book One',
+  hasCover: overrides.hasCover ?? true,
+  mtime: '2024-01-01T00:00:00.000Z',
+  thumbnailUrl: `/api/books/${overrides.id ?? 'gid-book-1'}/cover?width=88`,
+});
 
 const makeSeriesRowData = (
   overrides: Partial<SeriesRowFragmentFragment> = {}
@@ -32,7 +42,27 @@ const makeSeriesRowData = (
   author: 'Frank Herbert',
   bookCount: 6,
   progressPercentage: null,
+  books: {
+    __typename: 'SeriesBooksConnection',
+    edges: [{ __typename: 'SeriesBooksConnectionEdge', node: makeCoverNode() }],
+  },
   ...overrides,
+});
+
+const makeOkResponse = (blob: Blob) => ({ ok: true, blob: () => Promise.resolve(blob) });
+
+beforeEach(() => {
+  URL.createObjectURL = vi.fn(() => 'blob:test-cover');
+  URL.revokeObjectURL = vi.fn();
+  // Never resolves by default — most of these tests don't assert on the
+  // cover image, and a resolution that lands after the test's own
+  // assertions (and possible unmount) trips React's `act()` warning for no
+  // reason. The two tests that DO care about the cover override this.
+  mockApiFetch.mockReturnValue(new Promise(() => {}));
+});
+
+afterEach(() => {
+  mockApiFetch.mockReset();
 });
 
 describe('SeriesRow', () => {
@@ -41,10 +71,7 @@ describe('SeriesRow', () => {
     // field rendered here, so `getByText` below only finds real content
     // because it's synchronous prop data — the same "gate render behind a
     // query's loading" seen-to-fail demonstrated on `BookRowFromEntry`
-    // (task 7's report) would break this the same way. `CoverStack` is
-    // mocked out because it deliberately keeps its own separate REST data
-    // path (see this component's doc comment) — this test isolates
-    // SeriesRow's own no-fetch property, not CoverStack's.
+    // (task 7's report) would break this the same way.
     const series = makeFragmentData(makeSeriesRowData(), SeriesRowFragment);
 
     const { getByText } = renderWithApollo(<SeriesRow series={series} />);
@@ -53,16 +80,66 @@ describe('SeriesRow', () => {
     expect(getByText('Frank Herbert · 6 book series')).toBeInTheDocument();
   });
 
-  it('passes seriesName (and the existing layer size) through to CoverStack', () => {
-    const series = makeFragmentData(makeSeriesRowData({ name: 'Foundation' }), SeriesRowFragment);
+  /**
+   * Seen-to-fail before this fix: `CoverStack` used to take a bare
+   * `seriesName` and filter it against `useSeriesBookList`'s REST list — a
+   * list that, in this test harness (no `BookProvider`, matching real usage
+   * once `page/library` moved to GraphQL pagination and nothing grew that
+   * REST list past page 1), never resolves any books at all. The old
+   * version of this test asserted only that `CoverStack` *received*
+   * `seriesName` — it mocked `CoverStack` out entirely, so it could not see
+   * that the component behind it was ghost-only for any series not on REST
+   * page 1. This version renders `CoverStack` for real: a fragment carrying
+   * a book WITH a cover must produce a real `<img>`, not a ghost div.
+   */
+  it('renders a real cover image from the fragment’s own books(first: 3), not a REST fetch', async () => {
+    mockApiFetch.mockResolvedValue(
+      makeOkResponse(new Blob(['img'], { type: 'image/jpeg' })) as Response
+    );
+    const series = makeFragmentData(
+      makeSeriesRowData({
+        name: 'A Series Past Grid Entry 20',
+        books: {
+          __typename: 'SeriesBooksConnection',
+          edges: [
+            {
+              __typename: 'SeriesBooksConnectionEdge',
+              node: makeCoverNode({ id: 'gid-book-21' }),
+            },
+          ],
+        },
+      }),
+      SeriesRowFragment
+    );
 
-    renderWithApollo(<SeriesRow series={series} />);
+    const { getByRole } = renderWithApollo(<SeriesRow series={series} />);
 
-    expect(mocks.coverStackProps).toHaveBeenCalledWith({
-      seriesName: 'Foundation',
-      layerWidth: 44,
-      layerHeight: 66,
+    await waitFor(() => {
+      expect(getByRole('img')).toHaveAttribute('src', 'blob:test-cover');
     });
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/books/gid-book-21/cover?width=88');
+  });
+
+  it('renders a ghost layer (no img) for a book with hasCover: false', () => {
+    const series = makeFragmentData(
+      makeSeriesRowData({
+        books: {
+          __typename: 'SeriesBooksConnection',
+          edges: [
+            {
+              __typename: 'SeriesBooksConnectionEdge',
+              node: makeCoverNode({ hasCover: false }),
+            },
+          ],
+        },
+      }),
+      SeriesRowFragment
+    );
+
+    const { queryByRole } = renderWithApollo(<SeriesRow series={series} />);
+
+    expect(queryByRole('img')).toBeNull();
+    expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
   it('omits the author segment when the series has none', () => {

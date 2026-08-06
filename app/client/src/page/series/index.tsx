@@ -10,18 +10,23 @@ import {
   Metadata,
   Tag,
 } from '~/component';
+import { coverUrl } from '~/lib/cover-url';
 import { useIsAdmin } from '~/provider/auth';
 import { useSeries, useSeriesBookList } from '~/provider/book';
+import { useWithTargetUser } from '~/provider/library-target';
 import { useMySeriesProgress } from '~/provider/progress';
 import { path } from '~/router';
 import { formatSize } from '~/utils';
 
 import { useStyle } from './style';
 
+const COVER_STACK_LAYER_WIDTH = 80;
+
 export const SeriesPage = () => {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
   const style = useStyle();
+  const withTargetUser = useWithTargetUser();
 
   const [isAdmin] = useIsAdmin();
   const [seriesBookList, booksLoading, booksError] = useSeriesBookList(name!);
@@ -75,7 +80,22 @@ export const SeriesPage = () => {
       <Card>
         <div className={style.cardContainer}>
           <div className={style.hero}>
-            <CoverStack seriesName={name!} layerWidth={80} layerHeight={120} />
+            <CoverStack
+              books={seriesBookList.slice(0, 3).map((book) => ({
+                id: book.id,
+                title: book.title,
+                src: book.hasCover
+                  ? withTargetUser(
+                      coverUrl(book.id, {
+                        width: COVER_STACK_LAYER_WIDTH * 2,
+                        version: book.mtime,
+                      })
+                    )
+                  : null,
+              }))}
+              layerWidth={COVER_STACK_LAYER_WIDTH}
+              layerHeight={120}
+            />
             <div>
               <h1 className={style.title}>{name}</h1>
               <div

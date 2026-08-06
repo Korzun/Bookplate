@@ -36,12 +36,12 @@ afterEach(() => {
 });
 
 describe('Cover', () => {
-  it('fetches the cover via apiFetch and renders an img with the blob URL', async () => {
+  it('fetches the given src via apiFetch and renders an img with the blob URL', async () => {
     const blob = new Blob(['img-bytes'], { type: 'image/jpeg' });
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
     const { getByRole } = renderWithApollo(
-      <Cover bookId="book1" title="My Book" {...defaultProps} />
+      <Cover src="/api/books/book1/cover" title="My Book" {...defaultProps} />
     );
 
     await waitFor(() => {
@@ -50,19 +50,19 @@ describe('Cover', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/books/book1/cover');
   });
 
-  it('appends ?width= when thumbnailWidth is given', async () => {
+  it('fetches whatever src it is given verbatim — width/version are the caller’s job', async () => {
     const blob = new Blob(['img'], { type: 'image/jpeg' });
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
-    renderWithApollo(<Cover bookId="book2" thumbnailWidth={170} {...defaultProps} />);
+    renderWithApollo(<Cover src="/api/books/book2/cover?width=170" {...defaultProps} />);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/api/books/book2/cover?width=170');
     });
   });
 
-  it('renders a ghost div (no img) when bookId is null', () => {
-    const { queryByRole } = renderWithApollo(<Cover bookId={null} {...defaultProps} />);
+  it('renders a ghost div (no img) when src is null', () => {
+    const { queryByRole } = renderWithApollo(<Cover src={null} {...defaultProps} />);
     expect(queryByRole('img')).toBeNull();
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
@@ -73,7 +73,7 @@ describe('Cover', () => {
     mockApiFetch.mockResolvedValueOnce(makeOkResponse(blob) as Response);
 
     const { getByRole, unmount } = renderWithApollo(
-      <Cover bookId="book3" title="Test Cover" {...defaultProps} />
+      <Cover src="/api/books/book3/cover" title="Test Cover" {...defaultProps} />
     );
 
     await waitFor(() => expect(getByRole('img')).toHaveAttribute('src', 'blob:cover-to-revoke'));

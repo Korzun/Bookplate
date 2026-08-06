@@ -5,20 +5,22 @@ import { graphql } from '~/gql';
  * `Library.entries` is priced at `maxSize` (100) because `first` is a
  * variable, and every edge fans out into a `Book` or a `Series`.
  *
- * `Series.books` is deliberately NOT selected here — it is itself a
- * connection, and selecting a connection inside a ×100-priced connection is
- * the shape most likely to blow the cost budget. `SeriesRowFragment` reads
- * `bookCount`, `author` and `progressPercentage` (all scalars on `Series`)
- * instead; the cover stack gets its own fetch, decided separately when the
- * grid row is built.
+ * `SeriesRowFragment` DOES select `Series.books` — `books(first: 3)`, a
+ * LITERAL page size, priced at 3 (`literalIntArg`/`pageSizeMultiplier` in
+ * `cost-limit.ts`), not the 100 a variable `$first` would price at. Nesting
+ * a ×3 connection inside the ×100 `entries` connection is what feeds
+ * `CoverStack` its three cover books directly from this document instead of
+ * a separate, REST-list-backed fetch — the REST list only ever holds page 1
+ * (`page/library`'s grid grows via this document's own `fetchMore`, not the
+ * REST list, so nothing keeps that list current past entry 20; see
+ * `component/cover-stack`'s doc comment for the regression this replaces).
  *
- * Measured (`test:cost -w app/server`): breadth 36 (36.0%), complexity 2907
- * (8.8%) of budget — comfortably under the 70% gate on both axes. (Before
- * task 14 added `Series.progressPercentage` to `SeriesRowFragment`: breadth
- * 35 (35.0%), complexity 2807 (8.5%) — a scalar leaf adds a flat +1 breadth
- * and +1×the connection's own page-size multiplier (100, since `first` is a
- * variable here) to complexity, exactly the "page-size multiplier applies
- * to complexity only" rule `cost-limit.ts`'s own doc comment states.)
+ * Measured (`test:cost -w app/server`): breadth 47 (47.0%), complexity 6007
+ * (18.2%) of budget — comfortably under the 70% gate on both axes. (Before
+ * adding `books(first: 3)`: breadth 36 (36.0%), complexity 2907 (8.8%) —
+ * confirming the ×3, not ×100, nesting: +11 breadth and +3100 complexity for
+ * three books' worth of `id`/`title`/`hasCover`/`mtime`/`thumbnailUrl`,
+ * scaled by `entries`' own ×100.)
  */
 export const BookRowFragment = graphql(`
   fragment BookRowFragment on Book {
@@ -56,6 +58,17 @@ export const SeriesRowFragment = graphql(`
     author
     bookCount
     progressPercentage
+    books(first: 3) {
+      edges {
+        node {
+          id
+          title
+          hasCover
+          mtime
+          thumbnailUrl(width: 88)
+        }
+      }
+    }
   }
 `);
 
