@@ -72,6 +72,19 @@ export type UseLibraryEntries = {
  * no library selected has nothing to root `node(id:)` on, and querying
  * anyway would be a wasted, guaranteed-empty round trip.
  *
+ * **`loading` also covers `useCurrentLibraryId`'s own bootstrap round trip**
+ * (review round 1, cold-load flash fix): a SKIPPED `useQuery` reports
+ * `loading: false`, and on a cold load `libraryId` is `undefined` for the
+ * ENTIRE `ViewerBootstrap` round trip — even for an admin with a stored
+ * selection, since `useCurrentLibraryId` only trusts that selection once it
+ * has learned `isAdmin` from that same query. Without folding
+ * `useCurrentLibraryId`'s own `loading` in here, a consumer keying its
+ * empty-state spinner off this hook's `loading` alone sees `edges: [],
+ * loading: false` for that whole window and renders "library is empty"
+ * instead — a false empty state on every cold load, not a corner case.
+ * `edges`/`hasNextPage` are unaffected: they only ever reflect the
+ * `LibraryEntries` query's own (skipped-safe) defaults.
+ *
  * **Error-surfacing policy** (spec §14.6 flagged that no such pattern
  * existed for screens and asked the next plan to decide one; this hook is
  * that decision, and every later screen hook should follow it): `error` is
@@ -96,7 +109,7 @@ export type UseLibraryEntries = {
  * failure untouched and `error` reports it either way.
  */
 export const useLibraryEntries = (filter: LibraryFilter | undefined): UseLibraryEntries => {
-  const { libraryId } = useCurrentLibraryId();
+  const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
   const [fetchMoreError, setFetchMoreError] = useState<string | undefined>(undefined);
 
   const { data, loading, error, fetchMore } = useQuery(LibraryEntriesDocument, {
@@ -135,7 +148,7 @@ export const useLibraryEntries = (filter: LibraryFilter | undefined): UseLibrary
 
   return {
     edges,
-    loading,
+    loading: loading || libraryIdLoading,
     error: error?.message ?? fetchMoreError,
     hasNextPage,
     fetchNextPage,

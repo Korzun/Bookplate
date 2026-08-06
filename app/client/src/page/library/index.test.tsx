@@ -1,16 +1,22 @@
-import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { ApolloClient, InMemoryCache } from '@apollo/client';
+import { ApolloProvider } from '@apollo/client/react';
+import { MockLink, type MockedResponse } from '@apollo/client/testing';
+import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LibraryFilter } from '~/gql/graphql';
 import { LibraryEntriesDocument } from '~/graphql/library';
+import { cacheConfig } from '~/provider/apollo';
+import { ThemeProvider } from '~/provider/theme';
 import { renderWithApollo } from '~/test-utils';
 
 const LIBRARY_ID = 'LIB-1';
 const PAGE_SIZE = 20;
 
 let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
 let targetLibraryId: string | undefined = undefined;
 let isAdminValue = false;
 let userListValue: { username: string }[] = [];
@@ -25,7 +31,7 @@ vi.mock('~/provider/user', () => ({
 }));
 
 vi.mock('~/provider/library-target', () => ({
-  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: false }),
+  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
   useLibraryTarget: () => [targetLibraryId, vi.fn()],
 }));
 
@@ -66,6 +72,7 @@ class AutoIntersectingObserver {
 
 beforeEach(() => {
   currentLibraryId = LIBRARY_ID;
+  currentLibraryIdLoading = false;
   targetLibraryId = undefined;
   isAdminValue = false;
   userListValue = [];
@@ -236,6 +243,40 @@ describe('LibraryPage', () => {
     await waitFor(() => expect(screen.getByText('Your library is empty')).toBeTruthy());
   });
 
+  // Review round 1 (test gap): only the "Your" half of this wording switch
+  // was exercised. `isAdmin && targetLibraryId` is the other branch —
+  // wired verbatim from the pre-migration REST version (`isAdmin &&
+  // targetUsername`), now keyed on a Library id instead of a username.
+  it('renders "This library is empty" for an admin viewing another library with no books', async () => {
+    isAdminValue = true;
+    targetLibraryId = 'LIB-1';
+    const mock = firstPageMock([], { hasNextPage: false, endCursor: null });
+
+    await renderLibraryPage([mock]);
+
+    await waitFor(() => expect(screen.getByText('This library is empty')).toBeTruthy());
+    expect(screen.queryByText('Your library is empty')).toBeNull();
+  });
+
+  // Review round 1 (blocked merge): `useCurrentLibraryId` learns its
+  // `libraryId` from a NETWORK query (`ViewerBootstrap`) — `libraryId` is
+  // `undefined` for the whole round trip on a cold load, and a SKIPPED
+  // `useLibraryEntries` query reports `loading: false` on its own. Without
+  // folding `useCurrentLibraryId`'s own `loading` in (fixed in
+  // `use-library-entries.ts`), this state — no library id yet, bootstrap
+  // still in flight — is indistinguishable from "the library really has no
+  // books", and the page renders the wrong message for the ENTIRE bootstrap
+  // round trip on every cold load.
+  it('shows the loading spinner, not "library is empty", while the library id is still resolving', async () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = true;
+
+    await renderLibraryPage([]);
+
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeTruthy();
+    expect(screen.queryByText('Your library is empty')).toBeNull();
+  });
+
   it('keeps rows and offers Retry when the next page fails', async () => {
     const mocks = [
       firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
@@ -250,5 +291,60 @@ describe('LibraryPage', () => {
     // not clear it.
     expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // Review round 1 (minor, unprotected): `useBookListFilter()` returns a
+  // FRESH `BookListFilter` object every render (by design — see that
+  // hook's own doc comment), so `libraryFilter`'s `useMemo` in `index.tsx`
+  // is what keeps the mapped `LibraryFilter` reference stable across
+  // renders that don't change the filter's values. Bypassing that memo
+  // (e.g. calling `toLibraryFilter(bookListFilter)` inline on every render)
+  // still passes all the OTHER tests in this file — they never force a
+  // second render after establishing the retry state. `rerender` here
+  // forces exactly that: a render with unchanged filter values, but (absent
+  // the memo) a NEW `filter` object reaching `useLibraryEntries`, which
+  // resets its `fetchMore` error state on `[libraryId, filter]` by
+  // REFERENCE equality (`use-library-entries.ts`'s own doc comment) — that
+  // reset would silently clear a legitimate retry state the user hasn't
+  // acted on yet.
+  //
+  // Uses a hand-rolled wrapper (MemoryRouter + ApolloProvider only) instead
+  // of `renderLibraryPage`/`renderWithApollo`: RTL's `rerender` re-wraps the
+  // new element with whatever `wrapper` was passed to `render`, but
+  // `renderWithApollo` builds `<ApolloProvider>` OUTSIDE that `wrapper` (it
+  // wraps `ui` before handing off to `renderWithProviders`) — so
+  // `rerender(<LibraryPage />)` through it drops the `ApolloProvider` and
+  // crashes on `useApolloClient`. Putting `ApolloProvider` INSIDE the
+  // `wrapper` here keeps it mounted across `rerender`, matching how the
+  // client's Apollo/router providers actually behave in the real app (they
+  // don't remount on every LibraryPage render either).
+  it('keeps the fetchMore retry state across an unrelated re-render', async () => {
+    const { LibraryPage } = await import('./index');
+    const mocks = [
+      firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
+      fetchMoreErrorMock('c1'),
+    ];
+    const client = new ApolloClient({
+      link: new MockLink(mocks),
+      cache: new InMemoryCache(cacheConfig),
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <MemoryRouter initialEntries={['/library']}>
+          <ThemeProvider>
+            <ApolloProvider client={client}>{children}</ApolloProvider>
+          </ThemeProvider>
+        </MemoryRouter>
+      );
+    }
+
+    const { rerender } = render(<LibraryPage />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Failed to load more books')).toBeTruthy());
+
+    rerender(<LibraryPage />);
+
+    expect(screen.getByText('Failed to load more books')).toBeTruthy();
+    expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy();
   });
 });

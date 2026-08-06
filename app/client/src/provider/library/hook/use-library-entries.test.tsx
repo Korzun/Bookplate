@@ -13,9 +13,10 @@ const LIBRARY_ID = 'LIB-1';
 const PAGE_SIZE = 20;
 
 let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
 
 vi.mock('~/provider/library-target', () => ({
-  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: false }),
+  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
 }));
 
 /**
@@ -184,6 +185,28 @@ describe('useLibraryEntries', () => {
       expect(result.current?.error).toBeUndefined();
     } finally {
       currentLibraryId = LIBRARY_ID;
+    }
+  });
+
+  // Review round 1 (cold-load empty-state flash, blocked merge): a SKIPPED
+  // `useQuery` reports `loading: false`, and `libraryId` is `undefined` for
+  // the whole `ViewerBootstrap` round trip on a cold load — including for an
+  // admin with a stored selection, since `useCurrentLibraryId` only trusts
+  // that selection once it has learned `isAdmin` from that same query. A
+  // consumer keying its empty-state spinner off `loading` alone (exactly
+  // what `LibraryPage` does) would render "library is empty" for that whole
+  // window without this.
+  it('reports loading while useCurrentLibraryId itself is still resolving, even though the query is skipped', () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = true;
+    try {
+      const result = renderProbe([]);
+
+      expect(result.current?.loading).toBe(true);
+      expect(result.current?.edges).toEqual([]);
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+      currentLibraryIdLoading = false;
     }
   });
 

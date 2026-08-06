@@ -167,4 +167,36 @@ describe('useBook', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/books/1', {}));
   });
+
+  // Review round 1: `use-fetch-book.test.tsx` pins the mis-keying (root
+  // cause), but not the actual symptom this hook produces from it — a
+  // reviewer's probe against the pre-fix code hit 4438 fetches in 300ms and
+  // climbing. `bookList[bookId] === undefined` (this hook's own effect
+  // guard, above) never clears when `useFetchBook` stores the response
+  // under `book.id` instead of the requested `bookId`: `setBookList` mints
+  // a fresh object identity every time regardless, re-arming the effect on
+  // every resulting render, and `loadingByBookId` is already back to
+  // `false` by the time it re-fires, so the re-entrancy guard inside
+  // `useFetchBook` doesn't catch it either. This pins the bounded-call-count
+  // symptom directly, the way the reviewer's own probe did.
+  it('fetches exactly once when the requested id differs from the response book.id (global-id navigation), not in a loop', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(makeBook({ id: 'raw-1' })),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    renderHook(() => useBook('global-1', true), { wrapper: makeWrapper() });
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+
+    // Give a runaway effect a real window to keep firing before asserting
+    // the count stayed put — a `waitFor` alone only proves the FIRST call
+    // happened, not that it stopped there.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
 });

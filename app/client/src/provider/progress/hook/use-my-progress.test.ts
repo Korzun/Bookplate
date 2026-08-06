@@ -69,8 +69,26 @@ describe('useMyProgress', () => {
   // `page/book` passes `book?.id` (undefined until the book itself has
   // loaded) rather than the raw URL param — see that page's doc comment.
   // This is the "not loaded yet" shape for that gap, not a distinct error.
-  it('returns undefined without indexing the list when bookId is undefined, even if the list has entries', () => {
-    stubList([{ 'book-1': { document: 'book-1', percentage: 60 } }, false, false, undefined]);
+  //
+  // Review round 1 (test gap): a list with only a NORMAL entry
+  // (`'book-1'`) doesn't discriminate the `bookId === undefined` guard from
+  // an accidental miss — plain-object indexing coerces a non-string key via
+  // `String(undefined)`, so `myProgressList[undefined]` is really
+  // `myProgressList['undefined']`, which misses that list too EVEN WITHOUT
+  // the explicit guard. This version keys an entry under the literal
+  // STRING `'undefined'`: without the guard, `myProgressList[bookId]` with
+  // `bookId === undefined` would find THAT entry via coercion and return it
+  // — so this only stays green with the guard actually in place.
+  it('returns undefined without indexing the list when bookId is undefined, even when the list has an entry under the coerced key "undefined"', () => {
+    stubList([
+      {
+        'book-1': { document: 'book-1', percentage: 60 },
+        undefined: { document: 'undefined', percentage: 99 },
+      },
+      false,
+      false,
+      undefined,
+    ]);
     const { result } = renderHook(() => useMyProgress(undefined));
     expect(result.current).toEqual([undefined, false, false, undefined]);
   });
