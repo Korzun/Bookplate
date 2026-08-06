@@ -1,79 +1,106 @@
-import { act, renderHook } from '@testing-library/react';
-import { type ReactNode } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { useQuery } from '@apollo/client/react';
+import { waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { makeJwt } from '~/lib/test-jwt';
-import { setToken } from '~/lib/token';
-import { AuthProvider } from '~/provider/auth';
-import { LibraryTargetProvider } from '~/provider/library-target';
+import { UserListDocument } from '~/graphql/user';
+import { renderWithApollo } from '~/test-utils';
 
-import { useLibraryTarget } from './use-library-target';
+import { LibraryTargetProvider } from '../provider';
 import { useWithTargetUser } from './use-with-target-user';
 
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <AuthProvider>
-    <LibraryTargetProvider>{children}</LibraryTargetProvider>
-  </AuthProvider>
-);
+const STORAGE_KEY = 'library-target-id';
 
-// Auth state derives from the stored JWT; seed one instead of mocking fetch.
-const seedAuth = (isAdmin: boolean) => {
-  setToken(
-    makeJwt({
-      ...(isAdmin ? {} : { sub: 'u1' }),
-      username: isAdmin ? 'admin' : 'x',
-      isAdmin,
-      mustChangePassword: false,
-      exp: Math.floor(Date.now() / 1000) + 900,
-    })
+const user = (overrides: Record<string, unknown>) => ({
+  __typename: 'User' as const,
+  id: 'u1',
+  username: 'alice',
+  progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'LIB-ALICE' },
+  ...overrides,
+});
+
+const userListMock = (users: ReturnType<typeof user>[]) => ({
+  request: { query: UserListDocument },
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      viewer: { __typename: 'Viewer' as const, users },
+    },
+  },
+});
+
+/**
+ * Renders `useWithTargetUser` inside a real `LibraryTargetProvider`
+ * (`useLibraryTarget` reads `localStorage` through it) plus `renderWithApollo`
+ * for `UserListDocument`. `isAdmin` drives `renderWithApollo`'s own
+ * `AuthContext` value, same as `use-user-list.test.tsx`'s `renderUserList` —
+ * no JWT/`AuthProvider` needed since `useIsAdmin` only reads that context.
+ *
+ * Also renders a second, identically-keyed `useQuery(UserListDocument)` as a
+ * test-only readiness signal (the same pattern `use-scan-library.test.tsx`
+ * uses): query deduplication means it observes the SAME response as the one
+ * inside the hook, without consuming a second mock.
+ */
+const renderWithTargetUser = (isAdmin: boolean, mocks: ReturnType<typeof userListMock>[] = []) => {
+  const result: { current?: { call: ReturnType<typeof useWithTargetUser>; loaded: boolean } } = {};
+  const Probe = () => {
+    const call = useWithTargetUser();
+    const { loading } = useQuery(UserListDocument, { skip: !isAdmin });
+    result.current = { call, loaded: !loading };
+    return null;
+  };
+  renderWithApollo(
+    <LibraryTargetProvider>
+      <Probe />
+    </LibraryTargetProvider>,
+    { mocks, user: { username: isAdmin ? 'admin' : 'alice', isAdmin } }
   );
+  return result;
 };
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  localStorage.clear();
-});
-
-it('returns URLs unchanged for non-admin users', async () => {
-  seedAuth(false);
-  const { result } = renderHook(
-    () => ({ withTarget: useWithTargetUser(), target: useLibraryTarget() }),
-    { wrapper }
-  );
-  await act(async () => {
-    result.current.target[1]('alice');
+describe('useWithTargetUser', () => {
+  afterEach(() => {
+    localStorage.clear();
   });
-  expect(result.current.withTarget('/api/books')).toBe('/api/books');
-});
 
-it('appends ?user= for admins with a target selected', async () => {
-  seedAuth(true);
-  const { result } = renderHook(
-    () => ({ withTarget: useWithTargetUser(), target: useLibraryTarget() }),
-    { wrapper }
-  );
-  await act(async () => {
-    result.current.target[1]('alice');
+  it('returns URLs unchanged for non-admin users', () => {
+    const result = renderWithTargetUser(false);
+    expect(result.current?.loaded).toBe(true);
+    expect(result.current?.call('/api/books')).toBe('/api/books');
   });
-  expect(result.current.withTarget('/api/books')).toBe('/api/books?user=alice');
-  expect(result.current.withTarget('/api/books/x/cover?width=60')).toBe(
-    '/api/books/x/cover?width=60&user=alice'
-  );
-});
 
-it('persists the target in localStorage', async () => {
-  seedAuth(true);
-  const { result } = renderHook(() => useLibraryTarget(), { wrapper });
-  await act(async () => {
-    result.current[1]('bob');
+  it('returns URLs unchanged for an admin with no library selected', async () => {
+    const result = renderWithTargetUser(true, [userListMock([user({})])]);
+
+    await waitFor(() => expect(result.current?.loaded).toBe(true));
+    expect(result.current?.call('/api/books')).toBe('/api/books');
   });
-  expect(localStorage.getItem('library-target-user')).toBe('bob');
-});
 
-it('reads an existing localStorage value on mount', async () => {
-  localStorage.setItem('library-target-user', 'alice');
-  seedAuth(true);
-  const { result } = renderHook(() => useLibraryTarget(), { wrapper });
-  await act(async () => {});
-  expect(result.current[0]).toBe('alice');
+  it('appends ?user=<username> for an admin, resolved by matching the selected library id', async () => {
+    localStorage.setItem(STORAGE_KEY, 'LIB-ALICE');
+    const result = renderWithTargetUser(true, [
+      userListMock([
+        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
+        user({ id: 'u2', username: 'bob', library: { __typename: 'Library', id: 'LIB-BOB' } }),
+      ]),
+    ]);
+
+    await waitFor(() => expect(result.current?.loaded).toBe(true));
+    expect(result.current?.call('/api/books')).toBe('/api/books?user=alice');
+    expect(result.current?.call('/api/books/x/cover?width=60')).toBe(
+      '/api/books/x/cover?width=60&user=alice'
+    );
+  });
+
+  it('returns URLs unchanged when the stored selection matches no user in the list', async () => {
+    localStorage.setItem(STORAGE_KEY, 'LIB-GHOST');
+    const result = renderWithTargetUser(true, [
+      userListMock([
+        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
+      ]),
+    ]);
+
+    await waitFor(() => expect(result.current?.loaded).toBe(true));
+    expect(result.current?.call('/api/books')).toBe('/api/books');
+  });
 });

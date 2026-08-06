@@ -335,25 +335,30 @@ describe('useFetchBookList', () => {
 
   it('clears the target selection when the server 404s for a missing user', async () => {
     seedAdmin();
-    localStorage.setItem('library-target-user', 'ghost');
+    // `useFetchBookList` treats `useLibraryTarget()`'s value as an opaque
+    // token (it never reads it as a username) — this test only pins the
+    // generic "clear on 404" mechanics, so a Library-global-ID-shaped value
+    // under the current storage key (`library-target-id`, since Task 3
+    // renamed it from `library-target-user`) is what belongs here now.
+    localStorage.setItem('library-target-id', 'LIB-GHOST');
     const onSetBookListError = vi.fn();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
     const { result } = renderHook(
       () => ({ fetchBookList: useFetchBookList(), target: useLibraryTarget() }),
       { wrapper: makeAdminWrapper({ onSetBookListError }) }
     );
-    expect(result.current.target[0]).toBe('ghost');
+    expect(result.current.target[0]).toBe('LIB-GHOST');
 
     await act(() => result.current.fetchBookList());
 
     expect(result.current.target[0]).toBeUndefined();
-    expect(localStorage.getItem('library-target-user')).toBeNull();
+    expect(localStorage.getItem('library-target-id')).toBeNull();
     expect(onSetBookListError).not.toHaveBeenCalledWith('Failed to fetch books');
   });
 
   it('still surfaces an error for a non-404 failure when a target is selected', async () => {
     seedAdmin();
-    localStorage.setItem('library-target-user', 'alice');
+    localStorage.setItem('library-target-id', 'LIB-ALICE');
     const onSetBookListError = vi.fn();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     const { result } = renderHook(
@@ -363,7 +368,7 @@ describe('useFetchBookList', () => {
 
     await act(() => result.current.fetchBookList());
 
-    expect(result.current.target[0]).toBe('alice');
+    expect(result.current.target[0]).toBe('LIB-ALICE');
     expect(onSetBookListError).toHaveBeenCalledWith('Failed to fetch books');
   });
 });

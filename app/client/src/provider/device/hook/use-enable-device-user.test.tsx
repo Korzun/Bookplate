@@ -9,8 +9,20 @@ import { renderWithApollo } from '~/test-utils';
 
 import { useEnableDeviceUser, type UseEnableDeviceUser } from './use-enable-device-user';
 
-const alice = { __typename: 'User' as const, id: 'u1', username: 'alice', progressCount: 0 };
-const bob = { __typename: 'User' as const, id: 'u2', username: 'bob', progressCount: 0 };
+const alice = {
+  __typename: 'User' as const,
+  id: 'u1',
+  username: 'alice',
+  progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'LIB-U1' },
+};
+const bob = {
+  __typename: 'User' as const,
+  id: 'u2',
+  username: 'bob',
+  progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'LIB-U2' },
+};
 
 const userListMock = (users: (typeof alice)[]) => ({
   request: { query: UserListDocument },

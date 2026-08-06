@@ -13,6 +13,7 @@ const registeredUser = {
   id: 'u1',
   username: 'alicia',
   progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'LIB-U1' },
 };
 
 const registerSuccessMock = {

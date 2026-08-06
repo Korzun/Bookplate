@@ -13,6 +13,7 @@ const alice = {
   id: 'u1',
   username: 'alice',
   progressCount: 2,
+  library: { __typename: 'Library' as const, id: 'LIB-U1' },
 };
 
 const bob = {
@@ -20,6 +21,7 @@ const bob = {
   id: 'u2',
   username: 'bob',
   progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'LIB-U2' },
 };
 
 const deleteSuccessMock = {
