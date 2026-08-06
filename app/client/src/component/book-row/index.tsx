@@ -1,62 +1,54 @@
 import cx from 'classnames';
-import { useCallback } from 'react';
-import { useNavigate } from 'react-router';
-
-import { coverUrl } from '~/lib/cover-url';
-import { useAuthorizedSrc } from '~/lib/use-authorized-src';
-import { useBook } from '~/provider/book';
-import { useWithTargetUser } from '~/provider/library-target';
-import { useMyProgress } from '~/provider/progress';
-import { path } from '~/router';
 
 import { Card } from '../card';
 import { useStyle } from './style';
 
-interface BookRowProps {
+/**
+ * Purely presentational: plain values in, a row out. No hooks, no fetching,
+ * no `useFragment` — this component doesn't know whether its data came from
+ * GraphQL or REST. `BookRowFromEntry` (fragment-backed, for the grid) and
+ * `BookRowFromBook` (REST-backed, for `page/series` until it migrates) are
+ * the two adapters that resolve real data into these props; both call their
+ * hooks once in their own body and render this. See both files' doc
+ * comments for why the split exists.
+ */
+export interface BookRowProps {
   asCard?: boolean;
-  bookId: string;
   showAuthor?: boolean;
+  title: string;
+  author: string;
+  seriesIndex: number;
+  hasCover: boolean;
+  /** Already-authorized image src (from `useAuthorizedSrc`), or `undefined` while unresolved / no cover. */
+  coverSrc?: string;
+  /** 0..1, or `undefined` when there is no progress to show. */
+  progressPercentage?: number;
+  onClick?: () => void;
 }
 
-export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowProps) {
+export function BookRow({
+  asCard = true,
+  showAuthor = true,
+  title,
+  author,
+  seriesIndex,
+  hasCover,
+  coverSrc,
+  progressPercentage,
+  onClick,
+}: BookRowProps) {
   const styles = useStyle();
-  const navigate = useNavigate();
-  const withTargetUser = useWithTargetUser();
-
-  const [book, loading, error] = useBook(bookId);
-  const [progress] = useMyProgress(bookId);
-
-  const handleNavigate = useCallback(() => {
-    if (!book) {
-      return;
-    }
-    navigate(path.book(book.id));
-  }, [book, navigate]);
-
-  const coverSrc = useAuthorizedSrc(
-    book?.hasCover ? withTargetUser(coverUrl(book.id, { width: 88, version: book.mtime })) : null
-  );
-
-  if (loading) {
-    const loadingContent = <div className={styles.root}>Loading...</div>;
-    return asCard ? <Card size="small">{loadingContent}</Card> : loadingContent;
-  }
-
-  if (error) {
-    const errorContent = <div className={styles.root}>Error loading book</div>;
-    return asCard ? <Card size="small">{errorContent}</Card> : errorContent;
-  }
 
   const meta: string[] = [];
-  if (showAuthor && book.author) {
-    meta.push(book.author);
+  if (showAuthor && author) {
+    meta.push(author);
   }
-  if (book.seriesIndex > 0) {
-    meta.push(`Book ${book.seriesIndex}`);
+  if (seriesIndex > 0) {
+    meta.push(`Book ${seriesIndex}`);
   }
-  if (progress) {
-    if (progress.percentage < 1) {
-      meta.push(`${(progress.percentage * 100).toFixed(0)}%`);
+  if (progressPercentage !== undefined) {
+    if (progressPercentage < 1) {
+      meta.push(`${(progressPercentage * 100).toFixed(0)}%`);
     } else {
       meta.push(`Completed`);
     }
@@ -65,24 +57,24 @@ export function BookRow({ asCard = true, bookId, showAuthor = true }: BookRowPro
   const content = (
     <div
       className={cx(styles.root, { [styles.navigate]: !asCard })}
-      onClick={!asCard ? handleNavigate : undefined}
+      onClick={!asCard ? onClick : undefined}
     >
       <div className={styles.cover}>
-        {book.hasCover ? (
-          <img src={coverSrc} alt={book.title} className={styles.coverImg} />
+        {hasCover ? (
+          <img src={coverSrc} alt={title} className={styles.coverImg} />
         ) : (
           <div className={styles.coverPlaceholder} />
         )}
       </div>
       <div className={styles.info}>
-        <div className={styles.title}>{book.title}</div>
+        <div className={styles.title}>{title}</div>
         <div className={styles.meta}>{meta.join(' · ')}</div>
       </div>
     </div>
   );
 
   return asCard ? (
-    <Card size="small" onClick={handleNavigate}>
+    <Card size="small" onClick={onClick}>
       {content}
     </Card>
   ) : (

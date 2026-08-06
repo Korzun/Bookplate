@@ -1,5 +1,7 @@
 export { BookEditForm } from './book-edit-form';
-export { BookRow } from './book-row';
+export { BookRow, type BookRowProps } from './book-row';
+export { BookRowFromBook } from './book-row/from-book';
+export { BookRowFromEntry } from './book-row/from-entry';
 export { BrandLockup } from './brand-lockup';
 export { Card } from './card';
 export { CardDivider } from './card-divider';

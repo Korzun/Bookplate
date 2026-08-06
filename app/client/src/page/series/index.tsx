@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import {
   Card,
   CoverStack,
-  BookRow,
+  BookRowFromBook,
   Page,
   ProgressIndicator,
   MetadataList,
@@ -113,7 +113,7 @@ export const SeriesPage = () => {
       <Card title="Books">
         <div className={style.bookList}>
           {seriesBookList.map((book) => (
-            <BookRow key={book.id} asCard={false} bookId={book.id} showAuthor={false} />
+            <BookRowFromBook key={book.id} asCard={false} book={book} showAuthor={false} />
           ))}
         </div>
       </Card>

@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router';
 
-import { useSeriesBookList } from '~/provider/book';
-import { useMySeriesProgress } from '~/provider/progress';
+import { useFragment, type FragmentType } from '~/gql';
+import { SeriesRowFragment } from '~/graphql/library';
 import { path } from '~/router';
 
 import { Card } from '../card';
@@ -10,52 +10,49 @@ import { CoverStack } from '../cover-stack';
 import { useStyle } from './style';
 
 type SeriesRowProps = {
-  seriesName: string;
+  series: FragmentType<typeof SeriesRowFragment>;
 };
-export function SeriesRow({ seriesName }: SeriesRowProps) {
+
+/**
+ * Renders from `SeriesRowFragment` — no fetching, no loading/error branch,
+ * the parent (`useLibraryEntries`) already has the data. Only consumer is
+ * the grid (`page/library`), so unlike `BookRow` this needed no REST
+ * adapter split — see task 7's report for why `BookRow` did.
+ *
+ * `CoverStack` keeps its OWN existing REST data path deliberately
+ * (`useSeriesBookList` inside it) — reshaping it needs `Series.books`, which
+ * was kept out of `LibraryEntries` on cost-budget grounds. It only needs
+ * `seriesName`, unmasked here.
+ *
+ * Drops the progress badge the REST version showed (`useMySeriesProgress`):
+ * `SeriesRowFragment` carries no progress field because the server has none
+ * — `Series` (`app/server/graphql/schema/series/model.ts`) exposes no
+ * per-series aggregate progress, over REST or GraphQL. Verified against the
+ * schema, not assumed; flagged in task 7's report as a disclosed behaviour
+ * change rather than silently dropped, since fixing it needs a server
+ * change this plan's constraints forbid.
+ */
+export function SeriesRow({ series }: SeriesRowProps) {
   const styles = useStyle();
   const navigate = useNavigate();
-  const [bookList, loading, error] = useSeriesBookList(seriesName);
-  const [seriesProgressPercent] = useMySeriesProgress(seriesName);
+  const unmasked = useFragment(SeriesRowFragment, series);
 
   const handleNavigate = useCallback(() => {
-    navigate(path.series(seriesName));
-  }, [seriesName, navigate]);
-
-  if (loading === true) {
-    return (
-      <Card size="small">
-        <div className={styles.root}>Loading...</div>
-      </Card>
-    );
-  }
-  if (error === true) {
-    return (
-      <Card size="small">
-        <div className={styles.root}>Error</div>
-      </Card>
-    );
-  }
+    navigate(path.series(unmasked.name));
+  }, [unmasked.name, navigate]);
 
   const meta: string[] = [];
-  if (bookList[0]?.author) {
-    meta.push(bookList[0]?.author);
+  if (unmasked.author) {
+    meta.push(unmasked.author);
   }
-  meta.push(`${bookList.length} book series`);
-  if (seriesProgressPercent !== undefined) {
-    if (seriesProgressPercent < 1) {
-      meta.push(`${(seriesProgressPercent * 100).toFixed(0)}%`);
-    } else {
-      meta.push(`Completed`);
-    }
-  }
+  meta.push(`${unmasked.bookCount} book series`);
 
   return (
     <Card size="small" onClick={handleNavigate}>
       <div className={styles.root}>
-        <CoverStack seriesName={seriesName} layerWidth={44} layerHeight={66} />
+        <CoverStack seriesName={unmasked.name} layerWidth={44} layerHeight={66} />
         <div className={styles.info}>
-          <div className={styles.name}>{seriesName}</div>
+          <div className={styles.name}>{unmasked.name}</div>
           <div className={styles.meta}>{meta.join(' · ')}</div>
         </div>
       </div>
