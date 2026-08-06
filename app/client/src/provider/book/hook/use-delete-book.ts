@@ -61,7 +61,9 @@ export const useDeleteBook = (): UseDeleteBook => {
       // last remaining book of its series (the server deletes the emptied series).
       const isLastInSeries =
         book.series.length > 0 &&
-        !Object.values(bookList).some((other) => other.id !== id && other.series === book.series);
+        !Object.values(bookList).some(
+          (other) => other.id !== book.id && other.series === book.series
+        );
       const isRemovedItem = (item: DisplayUnit) =>
         isStandalone(item, id) || (isLastInSeries && isSeries(item, book.series));
 

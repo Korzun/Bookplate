@@ -325,5 +325,24 @@ describe('useDeleteBook', () => {
       // invent one.
       expect(result.current.ctx.bookList['raw-1']).toBeUndefined();
     });
+
+    // Re-review Important: `isLastInSeries` (line 64) still compared
+    // `other.id !== id` — the REQUESTED key, not the book's own raw id.
+    // When `id` is a global-id alias, every OTHER entry's `.id` is raw and
+    // therefore always `!== id`, so the book's own alias entries counted as
+    // "another book in the series", and a genuinely-last book's series row
+    // was never optimistically removed.
+    it('treats the book being deleted as the only series member, even requested by an alias key', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+      const book = makeBook({ id: 'raw-1', series: 'Teixcalaan', seriesIndex: 1 });
+      const items: DisplayUnit[] = [{ type: 'series', seriesName: 'Teixcalaan' }];
+      const { result } = renderHook(() => ({ hook: useDeleteBook(), ctx: useContext(Context) }), {
+        wrapper: makeWrapper([], vi.fn(), items, { 'global-1': book, 'raw-1': book }),
+      });
+
+      await act(() => result.current.hook[0]('global-1'));
+
+      expect(result.current.ctx.bookListItems).toEqual([]);
+    });
   });
 });
