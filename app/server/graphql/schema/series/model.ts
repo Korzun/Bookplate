@@ -27,6 +27,22 @@ export const model = builder.prismaNode('Series', {
      * this reason — no such field existed on either transport; task 14
      * restores it here).
      *
+     * Named `progressPercentage`, not the bare `progress` this field
+     * carried in an earlier revision of this task (review round 1) — a
+     * bare `Series.progress: Float` broke two of this schema's own
+     * conventions at once: `progress` elsewhere always names an OBJECT
+     * (`Book.progress: Progress`) or a CONNECTION (`Library.progress`),
+     * never a bare scalar, and this schema already has a word for "a raw
+     * float percentage" — `Progress.percentage` — that the aggregate
+     * scalars on `Series` itself (`bookCount`, `totalPages`, `totalSize`)
+     * already follow the same descriptive-suffix pattern for. The rename
+     * also let `SeriesRowFragment` (`app/client/src/graphql/library.ts`)
+     * drop the `seriesProgress: progress` alias it needed solely to avoid
+     * colliding with `BookRowFragment`'s own `progress` field inside the
+     * same `LibraryEntry` union selection set — see that file's (now
+     * removed) doc comment on the collision for the mechanism, still
+     * worth knowing if a future field ever re-creates it.
+     *
      * Resolved through `context.loadSeriesProgress`
      * (`series-progress-loader.ts`), a request-scoped batching loader —
      * NOT a plain per-series query, which would be a textbook N+1 across a
@@ -35,7 +51,7 @@ export const model = builder.prismaNode('Series', {
      * comment for why the aggregate needs two batched queries (member
      * books, then their progress rows) rather than one.
      */
-    progress: t.field({
+    progressPercentage: t.field({
       type: 'Float',
       nullable: true,
       resolve: (series, _args, context) => context.loadSeriesProgress(series.userId, series.id),

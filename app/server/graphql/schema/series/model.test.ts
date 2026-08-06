@@ -208,8 +208,9 @@ describe('Series', () => {
   });
 });
 
-describe('Series.progress', () => {
-  const QUERY = '{ viewer { library { seriesByName(name: "The Expanse") { progress } } } }';
+describe('Series.progressPercentage', () => {
+  const QUERY =
+    '{ viewer { library { seriesByName(name: "The Expanse") { progressPercentage } } } }';
 
   const readProgress = async (viewer = harness.aliceViewer): Promise<number | null> => {
     const result = await harness.execute(QUERY, { viewer });
@@ -217,9 +218,9 @@ describe('Series.progress', () => {
     return (
       (
         result.data as {
-          viewer: { library: { seriesByName: { progress: number | null } | null } };
+          viewer: { library: { seriesByName: { progressPercentage: number | null } | null } };
         }
-      ).viewer.library.seriesByName?.progress ?? null
+      ).viewer.library.seriesByName?.progressPercentage ?? null
     );
   };
 
@@ -286,14 +287,17 @@ describe('Series.progress', () => {
     });
 
     const result = await harness.execute(
-      '{ viewer { library { seriesByName(name: "Empty Series") { progress } } } }',
+      '{ viewer { library { seriesByName(name: "Empty Series") { progressPercentage } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toBeUndefined();
     expect(
-      (result.data as { viewer: { library: { seriesByName: { progress: number | null } } } }).viewer
-        .library.seriesByName.progress
+      (
+        result.data as {
+          viewer: { library: { seriesByName: { progressPercentage: number | null } } };
+        }
+      ).viewer.library.seriesByName.progressPercentage
     ).toBeNull();
   });
 
@@ -350,7 +354,7 @@ describe('Series.progress', () => {
   // here stands in for a page at that scale; the loader itself doesn't know
   // or care which field reached it, so this mirrors `Book.progress`'s own
   // batching test (`progress/model.test.ts`) one level up the graph.
-  it('batches Series.progress across a page of series into a fixed number of queries, not one per series', async () => {
+  it('batches Series.progressPercentage across a page of series into a fixed number of queries, not one per series', async () => {
     for (let i = 0; i < 20; i++) {
       const seriesId = `series-batch-${i}`;
       const bookId = i.toString().padStart(32, '9');
@@ -384,7 +388,7 @@ describe('Series.progress', () => {
 
     const fields = Array.from(
       { length: 20 },
-      (_, i) => `s${i}: seriesByName(name: "Batch Series ${i}") { progress }`
+      (_, i) => `s${i}: seriesByName(name: "Batch Series ${i}") { progressPercentage }`
     ).join(' ');
     const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
       viewer: harness.aliceViewer,
@@ -393,8 +397,8 @@ describe('Series.progress', () => {
     expect(result.errors).toBeUndefined();
     for (let i = 0; i < 20; i++) {
       expect(
-        (result.data as Record<string, { library: Record<string, { progress: number }> }>).viewer
-          .library[`s${i}`].progress
+        (result.data as Record<string, { library: Record<string, { progressPercentage: number }> }>)
+          .viewer.library[`s${i}`].progressPercentage
       ).toBeCloseTo(0.1 * (i % 10));
     }
     expect(bookFindManySpy).toHaveBeenCalledTimes(1);

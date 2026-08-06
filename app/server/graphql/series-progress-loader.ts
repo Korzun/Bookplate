@@ -12,9 +12,10 @@ type PendingLookup = {
 };
 
 /**
- * Batches `Series.progress` lookups for the life of one request so that a
- * page of N series each resolving the field issues two `findMany` calls
- * total (one for member books, one for progress rows), not N.
+ * Batches `Series.progressPercentage` lookups for the life of one request
+ * so that a page of N series each resolving the field issues two
+ * `findMany` calls total (one for member books, one for progress rows),
+ * not N.
  *
  * A direct relative of `createProgressLoader`/`createPendingFixLoader` (same
  * files, `progress-loader.ts`/`pending-fix-loader.ts`) — same problem shape:

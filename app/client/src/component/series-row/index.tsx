@@ -26,15 +26,13 @@ type SeriesRowProps = {
  *
  * The progress badge the REST version showed (`useMySeriesProgress`), which
  * task 7 dropped because no such field existed on either transport, is
- * restored here (task 14): `unmasked.seriesProgress` — aliased in the
- * fragment (`~/graphql/library`'s doc comment on `SeriesRowFragment`
- * explains why a bare `progress` collides with `BookRowFragment`'s own
- * `Progress`-typed field in the same union selection set) — carries
- * `Series.progress`, the server's aggregate over the same semantics
- * `useMySeriesProgress` used: the mean of each member book's percentage,
- * `null` when none of them have started. Formatting matches the REST
- * version exactly (`< 1` → a rounded percentage, else "Completed" — see
- * `e2a17228`, "show 'Completed' text when series progress reaches 100%").
+ * restored here (task 14): `unmasked.progressPercentage` carries
+ * `Series.progressPercentage`, the server's aggregate over the same
+ * semantics `useMySeriesProgress` used: the mean of each member book's
+ * percentage, `null` when none of them have started. Formatting matches
+ * the REST version exactly (`< 1` → a rounded percentage, else "Completed"
+ * — see `e2a17228`, "show 'Completed' text when series progress reaches
+ * 100%").
  */
 export function SeriesRow({ series }: SeriesRowProps) {
   const styles = useStyle();
@@ -50,9 +48,11 @@ export function SeriesRow({ series }: SeriesRowProps) {
     meta.push(unmasked.author);
   }
   meta.push(`${unmasked.bookCount} book series`);
-  if (unmasked.seriesProgress !== null) {
+  if (unmasked.progressPercentage !== null) {
     meta.push(
-      unmasked.seriesProgress < 1 ? `${(unmasked.seriesProgress * 100).toFixed(0)}%` : 'Completed'
+      unmasked.progressPercentage < 1
+        ? `${(unmasked.progressPercentage * 100).toFixed(0)}%`
+        : 'Completed'
     );
   }
 

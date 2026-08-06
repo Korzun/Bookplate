@@ -31,7 +31,7 @@ const makeSeriesRowData = (
   name: 'Dune Chronicles',
   author: 'Frank Herbert',
   bookCount: 6,
-  seriesProgress: null,
+  progressPercentage: null,
   ...overrides,
 });
 
@@ -74,7 +74,10 @@ describe('SeriesRow', () => {
   });
 
   it('omits the progress badge when no member book has started', () => {
-    const series = makeFragmentData(makeSeriesRowData({ seriesProgress: null }), SeriesRowFragment);
+    const series = makeFragmentData(
+      makeSeriesRowData({ progressPercentage: null }),
+      SeriesRowFragment
+    );
 
     const { getByText, queryByText } = renderWithApollo(<SeriesRow series={series} />);
 
@@ -85,7 +88,10 @@ describe('SeriesRow', () => {
   // Formatting matches the REST version exactly (`e2a17228`): a rounded
   // percentage below 100%, "Completed" text at or above it.
   it('shows a rounded percentage badge when the series is partway through', () => {
-    const series = makeFragmentData(makeSeriesRowData({ seriesProgress: 0.42 }), SeriesRowFragment);
+    const series = makeFragmentData(
+      makeSeriesRowData({ progressPercentage: 0.42 }),
+      SeriesRowFragment
+    );
 
     const { getByText } = renderWithApollo(<SeriesRow series={series} />);
 
@@ -93,7 +99,10 @@ describe('SeriesRow', () => {
   });
 
   it('shows "Completed" instead of "100%" when every member book is fully read', () => {
-    const series = makeFragmentData(makeSeriesRowData({ seriesProgress: 1 }), SeriesRowFragment);
+    const series = makeFragmentData(
+      makeSeriesRowData({ progressPercentage: 1 }),
+      SeriesRowFragment
+    );
 
     const { getByText } = renderWithApollo(<SeriesRow series={series} />);
 
@@ -101,7 +110,10 @@ describe('SeriesRow', () => {
   });
 
   it('shows "0%", not the empty-progress state, when the only progress reads 0%', () => {
-    const series = makeFragmentData(makeSeriesRowData({ seriesProgress: 0 }), SeriesRowFragment);
+    const series = makeFragmentData(
+      makeSeriesRowData({ progressPercentage: 0 }),
+      SeriesRowFragment
+    );
 
     const { getByText } = renderWithApollo(<SeriesRow series={series} />);
 
