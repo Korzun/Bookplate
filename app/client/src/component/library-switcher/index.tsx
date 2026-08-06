@@ -17,20 +17,26 @@ const AdminLibrarySwitcher = () => {
   // to fetch a dead library. An empty list is skipped: it is
   // indistinguishable from "not fetched yet".
   //
-  // `useFetchBookList` (Task 4) used to clear this same condition once it
-  // actually attempted a fetch (`ready && isAdmin && !username`) — final-
-  // branch-review cleanup: that was already false in both directions by the
-  // time this comment was last touched. `page/library` stopped calling
-  // `useBookList`/`useFetchBookList` at all once Task 11 moved the grid onto
-  // GraphQL pagination, and `page/series`'s `useSeriesBookList` (the one
-  // other candidate) was decoupled from that same Context-wide REST list in
-  // the C-1 fix that made `CoverStack` read off GraphQL instead — so nothing
-  // in this app calls `useFetchBookList` today at all (`useBookList`,
-  // `useFetchBookList`, and `useStandaloneBookList` are dead code left in
-  // place deliberately, same as this plan's other carried dead exports).
-  // This effect is consequently the ONLY thing anywhere that clears a
-  // `targetLibraryId` naming a deleted/stale user — it stays for that
-  // reason alone, not because some other path is "not quite" covering it.
+  // `useFetchBookList` (Task 4) still clears this same condition once it
+  // actually attempts a fetch — but re-review correction: NOT "on screens
+  // that call `useBookList`/`useFetchBookList`, today only `page/library`".
+  // `page/library` stopped calling either hook once Task 11 moved the grid
+  // onto GraphQL pagination, and `page/series`'s `useSeriesBookList` was
+  // decoupled from that same Context-wide REST list in the C-1 fix that
+  // made `CoverStack` read off GraphQL instead. `useBookList` and
+  // `useStandaloneBookList` ARE now fully dead (no live caller) — but
+  // `useFetchBookList` itself is not: it still fires from two ACTION-
+  // triggered call sites, `useUploadQueueEngine` (`use-upload-queue.ts`,
+  // invoked after a completed upload — `UploadProvider` mounts globally in
+  // `App.tsx`, so this can fire from any screen) and `useScanLibrary`
+  // (`use-scan-library.ts`, invoked after a completed scan, reached via
+  // `page/user`'s `ScanLibrarySetting`). Neither is triggered merely by
+  // visiting a screen this switcher renders on (`page/library`,
+  // `page/upload`) — both need a real upload or scan to actually finish
+  // first. THIS effect is the only one that clears a stale target
+  // PROACTIVELY, the moment the switcher itself renders with one, without
+  // waiting on an upload or scan to complete — that is what it is not
+  // redundant with, not "nothing else ever clears it at all".
   useEffect(() => {
     if (loading || hasError || userList.length === 0 || targetLibraryId === undefined) return;
     if (!userList.some((user) => user.library.id === targetLibraryId)) {
