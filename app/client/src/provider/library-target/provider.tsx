@@ -2,26 +2,26 @@ import { type ReactNode, useCallback, useMemo, useState } from 'react';
 
 import { Context } from './context';
 
-const STORAGE_KEY = 'library-target-user';
+const STORAGE_KEY = 'library-target-id';
 
 export type LibraryTargetProviderProps = { children: ReactNode };
 export const LibraryTargetProvider = ({ children }: LibraryTargetProviderProps) => {
-  const [targetUsername, setTargetUsernameRaw] = useState<string | undefined>(
+  const [targetLibraryId, setTargetLibraryIdRaw] = useState<string | undefined>(
     () => localStorage.getItem(STORAGE_KEY) ?? undefined
   );
 
-  const setTargetUsername = useCallback((username: string | undefined) => {
-    if (username === undefined) {
+  const setTargetLibraryId = useCallback((libraryId: string | undefined) => {
+    if (libraryId === undefined) {
       localStorage.removeItem(STORAGE_KEY);
     } else {
-      localStorage.setItem(STORAGE_KEY, username);
+      localStorage.setItem(STORAGE_KEY, libraryId);
     }
-    setTargetUsernameRaw(username);
+    setTargetLibraryIdRaw(libraryId);
   }, []);
 
   const state = useMemo(
-    () => ({ targetUsername, setTargetUsername }),
-    [targetUsername, setTargetUsername]
+    () => ({ targetLibraryId, setTargetLibraryId }),
+    [targetLibraryId, setTargetLibraryId]
   );
 
   return <Context.Provider value={state}>{children}</Context.Provider>;
