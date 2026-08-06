@@ -20,6 +20,7 @@ import type { Context } from '../../context';
 import { createOwnerLoader } from '../../owner';
 import { createPendingFixLoader } from '../../pending-fix-loader';
 import { createProgressLoader } from '../../progress-loader';
+import { createSeriesProgressLoader } from '../../series-progress-loader';
 import { createHarness, type Harness } from '../../test-util';
 import { bookHashCollisionError } from '../book-hash-collision-error';
 import { deviceSlugConflictError } from '../device-slug-conflict-error';
@@ -217,6 +218,7 @@ describe('errors that resolve an id into a Book', () => {
     loadProgress: createProgressLoader(harness.prisma),
     loadPendingFix: createPendingFixLoader(harness.prisma),
     loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
+    loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
   });
 
   /**

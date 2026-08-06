@@ -5,6 +5,7 @@ import type { Context, Viewer } from '../../../context';
 import { createOwnerLoader } from '../../../owner';
 import { createPendingFixLoader } from '../../../pending-fix-loader';
 import { createProgressLoader } from '../../../progress-loader';
+import { createSeriesProgressLoader } from '../../../series-progress-loader';
 import { createHarness, type Harness } from '../../../test-util';
 import { schema } from '../../index';
 
@@ -44,6 +45,7 @@ const contextFor = (viewer: Viewer | null): Context => ({
   loadProgress: createProgressLoader(harness.prisma),
   loadPendingFix: createPendingFixLoader(harness.prisma),
   loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
+  loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
 });
 
 type ScanProgressData = {

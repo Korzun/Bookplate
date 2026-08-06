@@ -762,6 +762,7 @@ type Series implements Node {
   books(after: String, before: String, first: Int, last: Int): SeriesBooksConnection!
   id: ID!
   name: String!
+  progress: Float
   publisher: String!
   subjects: [String!]!
   totalPages: Int!

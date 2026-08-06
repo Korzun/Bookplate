@@ -208,6 +208,223 @@ describe('Series', () => {
   });
 });
 
+describe('Series.progress', () => {
+  const QUERY = '{ viewer { library { seriesByName(name: "The Expanse") { progress } } } }';
+
+  const readProgress = async (viewer = harness.aliceViewer): Promise<number | null> => {
+    const result = await harness.execute(QUERY, { viewer });
+    expect(result.errors).toBeUndefined();
+    return (
+      (
+        result.data as {
+          viewer: { library: { seriesByName: { progress: number | null } | null } };
+        }
+      ).viewer.library.seriesByName?.progress ?? null
+    );
+  };
+
+  const seedProgress = (userId: string, document: string, percentage: number) =>
+    harness.prisma.progress.create({
+      data: {
+        userId,
+        document,
+        progress: '/x',
+        percentage,
+        device: 'Kobo',
+        deviceId: 'dev-1',
+        timestamp: 1,
+      },
+    });
+
+  // The two "Expanse" books seeded by the outer `beforeEach` are
+  // `'b'.repeat(32)` (Book 1) and `'c'.repeat(32)` (Book 2), neither with a
+  // progress row yet.
+  it('is null when none of the series books have a progress row', async () => {
+    expect(await readProgress()).toBeNull();
+  });
+
+  it('is the mean of member books, treating a missing progress row as 0%', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 0.8);
+    // Book 2 has no progress row at all -> counts as 0. (0.8 + 0) / 2 = 0.4,
+    // matching `calculateSeriesProgressPercent`'s "returns the percentage
+    // when only one book has progress" case (helper.test.ts).
+    expect(await readProgress()).toBeCloseTo(0.4);
+  });
+
+  it('averages across every member book when more than one has progress', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 0.6);
+    await seedProgress(harness.aliceOwner.userId, 'c'.repeat(32), 0.9);
+    // No third book here, unlike the client helper's three-book fixture, but
+    // the same averaging rule: (0.6 + 0.9) / 2 = 0.75.
+    expect(await readProgress()).toBeCloseTo(0.75);
+  });
+
+  it('is 1 when every member book is fully read', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 1);
+    await seedProgress(harness.aliceOwner.userId, 'c'.repeat(32), 1);
+    expect(await readProgress()).toBe(1);
+  });
+
+  it('is 0 when the only progress row that exists reads 0%', async () => {
+    // The row is truthy even at 0% — this must not be confused with "no
+    // progress row at all", which resolves null, not 0 (helper.test.ts's
+    // "returns 0 when the only progress entry has 0%" pins the same
+    // distinction client-side).
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 0);
+    expect(await readProgress()).toBe(0);
+  });
+
+  it('is null for a series with no member books', async () => {
+    await harness.prisma.series.create({
+      data: {
+        id: 'series-empty',
+        userId: harness.aliceOwner.userId,
+        name: 'Empty Series',
+        sortKey: 'empty series',
+        bookCount: 0,
+      },
+    });
+
+    const result = await harness.execute(
+      '{ viewer { library { seriesByName(name: "Empty Series") { progress } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { seriesByName: { progress: number | null } } } }).viewer
+        .library.seriesByName.progress
+    ).toBeNull();
+  });
+
+  // `document` is a KOReader content hash and collides across tenants
+  // (`progress-loader.ts`'s doc comment) — this proves the aggregate is
+  // scoped by owner, not merely by book id, guarding against the two-query
+  // loader ever cross-matching a book from one user's batch against another
+  // user's progress row for the same content hash.
+  it('scopes progress by owner, not bare book id, when two users share a content-hash book id', async () => {
+    await harness.prisma.series.create({
+      data: {
+        id: 'series-bob',
+        userId: harness.bobOwner.userId,
+        name: 'Bob Series',
+        sortKey: 'bob series',
+        bookCount: 1,
+      },
+    });
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.bobOwner.userId,
+        id: 'b'.repeat(32), // same content hash as alice's own Book 1
+        title: 'Bob Book 1',
+        series: 'Bob Series',
+        seriesId: 'series-bob',
+        seriesIndex: 1,
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    await seedProgress(harness.bobOwner.userId, 'b'.repeat(32), 0.99);
+
+    // Alice has no progress on her own copy of that same content-hash id —
+    // a leak would show 0.99 or an average including it instead of null.
+    expect(await readProgress(harness.aliceViewer)).toBeNull();
+  });
+
+  it('does not expose another user series progress', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 0.8);
+
+    const result = await harness.execute(QUERY, { viewer: harness.bobViewer });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { seriesByName: unknown } } }).viewer.library
+        .seriesByName ?? null
+    ).toBeNull();
+  });
+
+  // Computing progress per series across a page of `Library.entries` (priced
+  // at `maxSize` 100, `cost-limit.ts`/`pagination.ts`) must not issue a query
+  // per series — see `series-progress-loader.ts`'s doc comment. 20 series
+  // here stands in for a page at that scale; the loader itself doesn't know
+  // or care which field reached it, so this mirrors `Book.progress`'s own
+  // batching test (`progress/model.test.ts`) one level up the graph.
+  it('batches Series.progress across a page of series into a fixed number of queries, not one per series', async () => {
+    for (let i = 0; i < 20; i++) {
+      const seriesId = `series-batch-${i}`;
+      const bookId = i.toString().padStart(32, '9');
+      await harness.prisma.series.create({
+        data: {
+          id: seriesId,
+          userId: harness.aliceOwner.userId,
+          name: `Batch Series ${i}`,
+          sortKey: `batch series ${i}`,
+          bookCount: 1,
+        },
+      });
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id: bookId,
+          title: `Batch Book ${i}`,
+          series: `Batch Series ${i}`,
+          seriesId,
+          seriesIndex: 1,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      await seedProgress(harness.aliceOwner.userId, bookId, 0.1 * (i % 10));
+    }
+
+    const bookFindManySpy = vi.spyOn(harness.prisma.book, 'findMany');
+    const progressFindManySpy = vi.spyOn(harness.prisma.progress, 'findMany');
+
+    const fields = Array.from(
+      { length: 20 },
+      (_, i) => `s${i}: seriesByName(name: "Batch Series ${i}") { progress }`
+    ).join(' ');
+    const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    for (let i = 0; i < 20; i++) {
+      expect(
+        (result.data as Record<string, { library: Record<string, { progress: number }> }>).viewer
+          .library[`s${i}`].progress
+      ).toBeCloseTo(0.1 * (i % 10));
+    }
+    expect(bookFindManySpy).toHaveBeenCalledTimes(1);
+    expect(progressFindManySpy).toHaveBeenCalledTimes(1);
+  });
+
+  // A prior version of `createProgressLoader` captured only `resolve`, never
+  // `reject`, when it took over settling each batched caller's promise. A
+  // rejected `findMany` then left every in-flight lookup in that batch
+  // permanently unsettled instead of surfacing a GraphQL error — this proves
+  // `createSeriesProgressLoader` doesn't repeat that gap, on both of its
+  // queries.
+  it('surfaces a GraphQL error instead of hanging when the member-books query fails', async () => {
+    vi.spyOn(harness.prisma.book, 'findMany').mockRejectedValue(new Error('db unavailable'));
+
+    const result = await harness.execute(QUERY, { viewer: harness.aliceViewer });
+
+    expect(result.errors).toBeDefined();
+  });
+
+  it('surfaces a GraphQL error instead of hanging when the progress query fails', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'b'.repeat(32), 0.8);
+    vi.spyOn(harness.prisma.progress, 'findMany').mockRejectedValue(new Error('db unavailable'));
+
+    const result = await harness.execute(QUERY, { viewer: harness.aliceViewer });
+
+    expect(result.errors).toBeDefined();
+  });
+});
+
 describe('Series.books connection', () => {
   type BooksPage = {
     edges: { cursor: string; node: { title: string; seriesIndex: number } }[];

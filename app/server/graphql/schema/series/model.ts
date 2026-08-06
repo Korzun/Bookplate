@@ -16,6 +16,31 @@ export const model = builder.prismaNode('Series', {
     totalSize: t.exposeInt('totalSize'),
     subjects: t.field({ type: ['String'], resolve: (series) => parseStringArray(series.subjects) }),
     /**
+     * The viewer's own aggregate reading progress across this series' member
+     * books — the unweighted mean of each book's `Progress.percentage`
+     * (missing progress counts as 0%), or `null` when NONE of the series'
+     * books have a progress row at all (an unstarted series, not a 0% one).
+     * Exactly `calculateSeriesProgressPercent`
+     * (`app/client/src/provider/progress/helper.ts`), the computation
+     * `useMySeriesProgress` used client-side before grid rows went
+     * fetch-free (task 7 dropped `SeriesRow`'s progress badge for exactly
+     * this reason — no such field existed on either transport; task 14
+     * restores it here).
+     *
+     * Resolved through `context.loadSeriesProgress`
+     * (`series-progress-loader.ts`), a request-scoped batching loader —
+     * NOT a plain per-series query, which would be a textbook N+1 across a
+     * page of up to 100 series (`Library.entries`, `pagination.ts`'s
+     * `CONNECTION_LIMITS.libraryEntries.maxSize`). See that file's doc
+     * comment for why the aggregate needs two batched queries (member
+     * books, then their progress rows) rather than one.
+     */
+    progress: t.field({
+      type: 'Float',
+      nullable: true,
+      resolve: (series, _args, context) => context.loadSeriesProgress(series.userId, series.id),
+    }),
+    /**
      * A connection, not the plain list this started as — see the cleanup
      * spec, §"5. Connections for growable lists". Backward pagination
      * (`last`/`before`) genuinely works here, unlike `Library.entries` and

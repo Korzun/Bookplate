@@ -18,6 +18,7 @@ import type { Context } from '../context';
 import { createOwnerLoader } from '../owner';
 import { createPendingFixLoader } from '../pending-fix-loader';
 import { createProgressLoader } from '../progress-loader';
+import { createSeriesProgressLoader } from '../series-progress-loader';
 import { createHarness, type Harness } from '../test-util';
 import { schema } from './index';
 
@@ -221,6 +222,7 @@ describe('root type authorization', () => {
       loadProgress: createProgressLoader(harness.prisma),
       loadPendingFix: createPendingFixLoader(harness.prisma),
       loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
+      loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
     };
 
     // `seedNodeFor('Library')` inserts nothing (Library is 1:1 with the
