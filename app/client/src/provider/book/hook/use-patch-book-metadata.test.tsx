@@ -39,7 +39,6 @@ type WrapperOptions = {
   setBookListItems?: (
     updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]
   ) => void;
-  setNextCursor?: (cursor: string | null) => void;
 };
 
 function makeWrapper({
@@ -47,7 +46,6 @@ function makeWrapper({
   initialProgress = {},
   setBookListFetched = () => {},
   setBookListItems = () => {},
-  setNextCursor = () => {},
 }: WrapperOptions = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
@@ -105,9 +103,7 @@ function makeWrapper({
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems,
-              setNextCursor,
               bookListFilter: {},
               setBookListFilter: () => {},
             }}
@@ -166,9 +162,7 @@ function makeWrapperWithBookList(bookList: BookList) {
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems: () => {},
-              setNextCursor: () => {},
               bookListFilter: {},
               setBookListFilter: () => {},
             }}
@@ -407,7 +401,6 @@ describe('usePatchBookMetadata', () => {
   it('invalidates the book list after a successful patch so stale items are re-fetched', async () => {
     const setBookListFetched = vi.fn();
     const setBookListItems = vi.fn();
-    const setNextCursor = vi.fn();
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -420,12 +413,10 @@ describe('usePatchBookMetadata', () => {
         initialBooks: [makeBook({ id: 'old-id' })],
         setBookListFetched,
         setBookListItems,
-        setNextCursor,
       }),
     });
     await act(() => result.current[0]('old-id', { series: 'New Series' }));
     expect(setBookListFetched).toHaveBeenCalledWith(false);
     expect(setBookListItems).toHaveBeenCalled();
-    expect(setNextCursor).toHaveBeenCalledWith(null);
   });
 });

@@ -11,7 +11,6 @@ export type BookContext = {
   errorByBookId: Record<string, string | undefined>;
   completeBookIds: Set<string>;
   bookListItems: DisplayUnit[];
-  nextCursor: string | null;
   bookListFilter: BookListFilter;
   setBookList: (updater: (prev: BookList) => BookList) => void;
   setBookListFetched: (fetched: boolean) => void;
@@ -22,7 +21,6 @@ export type BookContext = {
   setBookComplete: (bookId: string) => void;
   clearCompleteBookIds: () => void;
   setBookListItems: (updater: (prev: DisplayUnit[]) => DisplayUnit[]) => void;
-  setNextCursor: (cursor: string | null) => void;
   setBookListFilter: (filter: BookListFilter) => void;
 };
 
@@ -35,7 +33,6 @@ export const Context = createContext<BookContext>({
   errorByBookId: {},
   completeBookIds: new Set(),
   bookListItems: [],
-  nextCursor: null,
   bookListFilter: {},
   setBookList: () => {},
   setBookListFetched: () => {},
@@ -46,6 +43,5 @@ export const Context = createContext<BookContext>({
   setBookComplete: () => {},
   clearCompleteBookIds: () => {},
   setBookListItems: () => {},
-  setNextCursor: () => {},
   setBookListFilter: () => {},
 });

@@ -70,9 +70,7 @@ function makeWrapper(mockSetBookComplete: () => void, bookListRef?: { current: B
             setBookComplete: mockSetBookComplete,
             clearCompleteBookIds: () => {},
             bookListItems: [],
-            nextCursor: null,
             setBookListItems: () => {},
-            setNextCursor: () => {},
             bookListFilter: {},
             setBookListFilter: () => {},
           }}

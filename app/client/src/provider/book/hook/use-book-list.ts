@@ -22,7 +22,6 @@ export const useBookList = (): UseBookList => {
     setBookListError,
     clearCompleteBookIds,
     setBookListItems,
-    setNextCursor,
   } = use(Context);
   const fetchBookList = useFetchBookList();
   const [targetUsername] = useLibraryTarget();
@@ -46,14 +45,12 @@ export const useBookList = (): UseBookList => {
     setBookListError(undefined);
     setBookListFetched(false);
     setBookListItems(() => []);
-    setNextCursor(null);
   }, [
     targetUsername,
     setBookListFetched,
     setBookListError,
     clearCompleteBookIds,
     setBookListItems,
-    setNextCursor,
   ]);
 
   return useMemo(

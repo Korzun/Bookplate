@@ -65,7 +65,6 @@ function makeWrapper({
   onSetBookListFetched = vi.fn(),
   onSetBookListError = vi.fn(),
   onSetBookListItems = vi.fn(),
-  onSetNextCursor = vi.fn(),
   bookListFilter = {} as BookListFilter,
   apolloMocks = [] as MockedResponse[],
 } = {}) {
@@ -99,7 +98,6 @@ function makeWrapper({
             errorByBookId: {},
             completeBookIds,
             bookListItems,
-            nextCursor: null,
             setBookList,
             setBookListFetched: onSetBookListFetched,
             setBookListLoading: (v) => setLoading(v),
@@ -109,7 +107,6 @@ function makeWrapper({
             setBookComplete: () => {},
             clearCompleteBookIds: () => {},
             setBookListItems,
-            setNextCursor: onSetNextCursor,
             bookListFilter,
             setBookListFilter: () => {},
           }}
@@ -212,22 +209,6 @@ describe('useFetchBookList', () => {
     });
     await act(() => result.current());
     expect(onSetBookListItems).toHaveBeenCalledWith([{ type: 'standalone', bookId: '1' }]);
-  });
-
-  it('sets nextCursor from the response', async () => {
-    const onSetNextCursor = vi.fn();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(makeResponse([], 'abc==')),
-      })
-    );
-    const { result } = renderHook(() => useFetchBookList(), {
-      wrapper: makeWrapper({ onSetNextCursor }),
-    });
-    await act(() => result.current());
-    expect(onSetNextCursor).toHaveBeenCalledWith('abc==');
   });
 
   it('merges response books into bookList dict', async () => {

@@ -89,9 +89,7 @@ function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = 
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems: () => {},
-              setNextCursor: () => {},
               bookListFilter: {},
               setBookListFilter: () => {},
             }}
@@ -150,9 +148,7 @@ function makeWrapperWithBookList(bookList: BookList, initialProgress: ProgressLi
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems: () => {},
-              setNextCursor: () => {},
               bookListFilter: {},
               setBookListFilter: () => {},
             }}

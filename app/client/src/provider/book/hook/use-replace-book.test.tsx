@@ -75,7 +75,6 @@ type WrapperOptions = {
   setBookListItems?: (
     updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]
   ) => void;
-  setNextCursor?: (cursor: string | null) => void;
 };
 
 function makeWrapper({
@@ -83,7 +82,6 @@ function makeWrapper({
   initialProgress = {},
   setBookListFetched = () => {},
   setBookListItems = () => {},
-  setNextCursor = () => {},
 }: WrapperOptions = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>(
@@ -141,9 +139,7 @@ function makeWrapper({
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems,
-              setNextCursor,
               bookListFilter: {},
               setBookListFilter: () => {},
             }}
@@ -202,9 +198,7 @@ function makeWrapperWithBookList(bookList: BookList) {
               setBookComplete: () => {},
               clearCompleteBookIds: () => {},
               bookListItems: [],
-              nextCursor: null,
               setBookListItems: () => {},
-              setNextCursor: () => {},
               bookListFilter: {},
               setBookListFilter: () => {},
             }}
@@ -391,10 +385,9 @@ describe('useReplaceBook', () => {
       expect(result.current.ctx.bookList['raw-1'].title).toBe('Replaced');
     });
 
-    it('invalidates the book list pagination after a successful commit', async () => {
+    it('invalidates the cached book list items after a successful commit', async () => {
       const setBookListFetched = vi.fn();
       const setBookListItems = vi.fn();
-      const setNextCursor = vi.fn();
       const updated = makeBook({ id: '1', title: 'Replaced' });
       vi.stubGlobal(
         'fetch',
@@ -405,7 +398,6 @@ describe('useReplaceBook', () => {
           initialBooks: [makeBook({ id: '1' })],
           setBookListFetched,
           setBookListItems,
-          setNextCursor,
         }),
       });
 
@@ -415,7 +407,6 @@ describe('useReplaceBook', () => {
 
       expect(setBookListFetched).toHaveBeenCalledWith(false);
       expect(setBookListItems).toHaveBeenCalled();
-      expect(setNextCursor).toHaveBeenCalledWith(null);
     });
 
     it('returns undefined when the response is not ok', async () => {

@@ -30,7 +30,7 @@ export interface UseReplaceBook {
 }
 
 export const useReplaceBook = (): UseReplaceBook => {
-  const { setBookList, setBookListFetched, setBookListItems, setNextCursor } = use(Context);
+  const { setBookList, setBookListFetched, setBookListItems } = use(Context);
   const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [analyzing, setAnalyzing] = useState(false);
@@ -105,7 +105,6 @@ export const useReplaceBook = (): UseReplaceBook => {
         if (updated.id !== id) renameProgressKey(id, updated.id);
         setBookListFetched(false);
         setBookListItems(() => []);
-        setNextCursor(null);
         setCommitError(undefined);
         return updated;
       } catch {
@@ -120,7 +119,6 @@ export const useReplaceBook = (): UseReplaceBook => {
       setBookList,
       setBookListFetched,
       setBookListItems,
-      setNextCursor,
       renameProgressKey,
     ]
   );

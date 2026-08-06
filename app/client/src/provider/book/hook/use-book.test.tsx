@@ -72,9 +72,7 @@ function makeWrapper(initialBooks: Book[] = [], initialCompleteIds: Set<string> 
             setBookComplete,
             clearCompleteBookIds: () => {},
             bookListItems: [],
-            nextCursor: null,
             setBookListItems: () => {},
-            setNextCursor: () => {},
             bookListFilter: {},
             setBookListFilter: () => {},
           }}

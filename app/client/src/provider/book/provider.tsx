@@ -13,7 +13,6 @@ export const BookProvider = ({ children }: BookProviderProps) => {
   const [errorByBookId, setErrorByBookIdRaw] = useState<Record<string, string | undefined>>({});
   const [completeBookIds, setCompleteBookIdsRaw] = useState(new Set<string>());
   const [bookListItems, setBookListItemsRaw] = useState<DisplayUnit[]>([]);
-  const [nextCursor, setNextCursorRaw] = useState<string | null>(null);
   const [bookListFilter, setBookListFilterRaw] = useState<BookListFilter>({});
 
   const setBookList = useCallback(
@@ -36,7 +35,6 @@ export const BookProvider = ({ children }: BookProviderProps) => {
     (updater: (prev: DisplayUnit[]) => DisplayUnit[]) => setBookListItemsRaw(updater),
     []
   );
-  const setNextCursor = useCallback((cursor: string | null) => setNextCursorRaw(cursor), []);
   const setBookListFilter = useCallback((filter: BookListFilter) => {
     setBookListFilterRaw(filter);
     setBookListFetched(false);
@@ -44,7 +42,6 @@ export const BookProvider = ({ children }: BookProviderProps) => {
     setBookListError(undefined);
     setBookListRaw({});
     setBookListItemsRaw(() => []);
-    setNextCursorRaw(null);
     setCompleteBookIdsRaw(new Set());
   }, []);
 
@@ -59,7 +56,6 @@ export const BookProvider = ({ children }: BookProviderProps) => {
         errorByBookId,
         completeBookIds,
         bookListItems,
-        nextCursor,
         setBookList,
         setBookListFetched,
         setBookListLoading,
@@ -69,7 +65,6 @@ export const BookProvider = ({ children }: BookProviderProps) => {
         setBookComplete,
         clearCompleteBookIds,
         setBookListItems,
-        setNextCursor,
         bookListFilter,
         setBookListFilter,
       }}

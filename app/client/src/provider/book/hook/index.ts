@@ -8,7 +8,6 @@ export { useDeleteBook } from './use-delete-book';
 export { useDownloadBook } from './use-download-book';
 export { useFetchBook } from './use-fetch-book';
 export { useFetchBookList } from './use-fetch-book-list';
-export { useFetchNextPage } from './use-fetch-next-page';
 export { useLibrarySubjects } from './use-library-subjects';
 export { usePatchBookMetadata } from './use-patch-book-metadata';
 export { useRegenChapters } from './use-regen-chapters';

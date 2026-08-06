@@ -19,7 +19,6 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListLoading,
     setBookListError,
     setBookListItems,
-    setNextCursor,
     bookListFilter,
   } = use(Context);
   const [isAdmin] = useIsAdmin();
@@ -80,8 +79,7 @@ export const useFetchBookList = (): FetchBookList => {
         return;
       }
       if (!response.ok) throw new Error('Failed to fetch books');
-      const { items, books, nextCursor } =
-        await (response.json() as Promise<PagedBookListResponse>);
+      const { items, books } = await (response.json() as Promise<PagedBookListResponse>);
       setBookList(() =>
         books.reduce(
           (acc, book) => ({
@@ -95,7 +93,6 @@ export const useFetchBookList = (): FetchBookList => {
         )
       );
       setBookListItems(() => items);
-      setNextCursor(nextCursor);
       setBookListFetched(true);
     } catch (err) {
       setBookListError(err instanceof Error ? err.message : 'Unknown error');
@@ -115,7 +112,6 @@ export const useFetchBookList = (): FetchBookList => {
     setBookListLoading,
     setBookListError,
     setBookListItems,
-    setNextCursor,
     bookListFilter,
   ]);
 };
