@@ -74,3 +74,21 @@ export const LibraryEntriesDocument = graphql(`
     }
   }
 `);
+
+/**
+ * `Library.subjects` is a flat `[String!]!` — no connection, no fragment, a
+ * single scalar list. Feeds the filter chip picker in `component/search-bar`.
+ * Same `node(id:) { id ... on Library { id ... } }` double-`id` shape as
+ * `LibraryEntriesDocument` above, for the same cache-key reason.
+ */
+export const LibrarySubjectsDocument = graphql(`
+  query LibrarySubjects($libraryId: ID!) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        subjects
+      }
+    }
+  }
+`);

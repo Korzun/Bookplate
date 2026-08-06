@@ -1,38 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@apollo/client/react';
 
-import { useWithTargetUser } from '~/provider/library-target';
+import { LibrarySubjectsDocument } from '~/graphql/library';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
-import { apiFetch } from '../../../lib/api-fetch';
-
-type Result = { url: string; subjects: string[] } | { url: string; error: string };
-
+/**
+ * Feeds the filter-chip subject picker (`component/search-bar`) from
+ * `Library.subjects` — a flat, unpaginated `[String!]!` (no connection, no
+ * fragment).
+ *
+ * Skips the query while `libraryId` is `undefined` — an admin with no
+ * library selected has nothing to root `node(id:)` on. `loading` folds in
+ * `useCurrentLibraryId`'s own `loading` for the same reason
+ * `useLibraryEntries` does: a SKIPPED `useQuery` reports `loading: false`,
+ * and on a cold load `libraryId` stays `undefined` for the whole
+ * `ViewerBootstrap` round trip. Without folding that in, a caller keying an
+ * empty-subjects state off this hook's `loading` alone would see `[],
+ * loading: false` for that entire window — a false "no subjects" read, not
+ * a corner case.
+ *
+ * Preserves the previous REST hook's tuple shape and its "silently empty on
+ * error" contract: `error` reports Apollo's own `error?.message`, but the
+ * caller (`SearchBar`) never surfaced one — subjects are optional filter
+ * candidates, not a first-class loaded screen, so a failure here degrades to
+ * "no subject chips offered" rather than an error state.
+ */
 export const useLibrarySubjects = (): [string[], boolean, string | undefined] => {
-  const [result, setResult] = useState<Result | null>(null);
-  const withTargetUser = useWithTargetUser();
-  const url = withTargetUser('/api/subjects');
+  const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data, loading, error } = useQuery(LibrarySubjectsDocument, {
+    variables: { libraryId: libraryId ?? '' },
+    skip: libraryId === undefined,
+  });
 
-    apiFetch(url)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch subjects');
-        return res.json() as Promise<{ subjects: string[] }>;
-      })
-      .then((data) => {
-        if (!cancelled) setResult({ url, subjects: data.subjects });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setResult({ url, error: err instanceof Error ? err.message : 'Unknown error' });
-      });
+  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const subjects = library?.subjects ?? [];
 
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  if (result === null || result.url !== url) return [[], true, undefined];
-  if ('error' in result) return [[], false, result.error];
-  return [result.subjects, false, undefined];
+  return [subjects, loading || libraryIdLoading, error?.message];
 };

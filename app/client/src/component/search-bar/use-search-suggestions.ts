@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@apollo/client/react';
+import { useEffect, useState } from 'react';
 
-import { apiFetch } from '~/lib/api-fetch';
+import type {
+  SearchSuggestionsFilter,
+  SearchSuggestionsQuery,
+  SuggestionType,
+} from '~/gql/graphql';
+import { SearchSuggestionsDocument } from '~/graphql/search-suggestions';
 import type { BookListFilter } from '~/provider/book';
-import { useWithTargetUser } from '~/provider/library-target';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
 export type Suggestion = {
   type: 'entryType' | 'status' | 'author' | 'series' | 'book' | 'subject';
@@ -17,12 +23,6 @@ export type SuggestionGroup = {
   type: Suggestion['type'];
   label: string;
   items: Suggestion[];
-};
-
-type ServerItem = { label: string; value: string; matchStart: number; matchLength: number };
-type ServerGroup = {
-  type: 'author' | 'series' | 'book' | 'subject';
-  items: ServerItem[];
 };
 
 const TYPE_OPTIONS: { label: string; value: 'series' | 'standalone' }[] = [
@@ -45,6 +45,20 @@ const GROUP_LABEL: Record<Suggestion['type'], string> = {
   subject: 'Subject',
 };
 
+/** Wire `SuggestionType` (`AUTHOR|BOOK|SERIES|SUBJECT`) → this hook's lowercase client type. */
+const SERVER_GROUP_TYPE: Record<SuggestionType, 'author' | 'series' | 'book' | 'subject'> = {
+  AUTHOR: 'author',
+  SERIES: 'series',
+  BOOK: 'book',
+  SUBJECT: 'subject',
+};
+
+/** Unchanged by the REST→GraphQL move — the debounce this hook has always used. */
+const DEBOUNCE_MS = 200;
+
+type LibraryNode = Extract<NonNullable<SearchSuggestionsQuery['node']>, { __typename: 'Library' }>;
+type ServerGroup = LibraryNode['searchSuggestions'][number];
+
 function matchInfo(
   text: string,
   query: string
@@ -54,114 +68,70 @@ function matchInfo(
   return { matchStart: idx, matchLength: query.length };
 }
 
+/**
+ * Suggestions fire per keystroke against `Library.searchSuggestions`
+ * (`graphql/search-suggestions.ts` — deliberately not selecting
+ * `Suggestion.book`; see that file's doc comment for why). The request
+ * itself stays debounced by `DEBOUNCE_MS`, exactly as the REST version was:
+ * `debouncedQuery` only ever advances from inside the `setTimeout` callback,
+ * never synchronously in the effect body, so a blank query (or any further
+ * keystroke before the timer fires) cancels the pending advance for free —
+ * the effect's own cleanup clears the previous timer, and no new one is
+ * scheduled when `inputValue.trim()` is empty. There is no AbortController
+ * here (unlike the REST version): once `debouncedQuery` moves on to a new
+ * value, `useQuery`'s variables change and Apollo simply stops caring about
+ * whatever the in-flight request for the OLD variables returns.
+ *
+ * Skips the query while `libraryId` is `undefined` (no library resolved
+ * yet) or the debounce hasn't settled (`debouncedQuery === ''`). `loading`
+ * folds in `useCurrentLibraryId`'s own `loading` for the same reason
+ * `useLibraryEntries` does: a skipped `useQuery` reports `loading: false`,
+ * so without this a caller could read "no suggestions" during the
+ * `ViewerBootstrap` round trip rather than "still resolving which library
+ * this is". This does NOT apply to the empty-query quick-pick branch below
+ * — that branch is pure client-side derivation and never touches
+ * `libraryId` or the network.
+ */
 export function useSearchSuggestions(
   inputValue: string,
   filter: BookListFilter
 ): { groups: SuggestionGroup[]; loading: boolean } {
-  const withTargetUser = useWithTargetUser();
-  const [groups, setGroups] = useState<SuggestionGroup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  // Destructure filter fields as primitive deps so the effect does not re-fire
-  // when the caller passes a new object literal with identical values.
   const { status, author, seriesName, subjects, entryType } = filter;
-  // subjects is a string[] — serialize it so the dep compares by value rather
-  // than reference. The effect reconstructs the array from this key.
-  const subjectsKey = subjects?.join('\0') ?? '';
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    abortRef.current?.abort();
-
     const query = inputValue.trim();
-    if (!query) {
-      // Abort any in-flight request. Groups and loading are short-circuited at
-      // the return site when query is empty, avoiding setState in an effect body
-      // (react-hooks/set-state-in-effect).
-      abortRef.current?.abort();
-      return;
-    }
+    if (!query) return;
+    const timer = setTimeout(() => setDebouncedQuery(query), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [inputValue]);
 
-    debounceRef.current = setTimeout(() => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+  // Built with only the keys that are actually active — an explicit
+  // `undefined` value on a key is a distinct shape from an omitted key as
+  // far as exact variable matching (e.g. `MockLink`'s `@wry/equality`
+  // comparison) is concerned, so this omits rather than nulling.
+  const suggestionsFilter: SearchSuggestionsFilter = {
+    ...(author ? { author } : {}),
+    ...(seriesName ? { seriesName } : {}),
+    ...(subjects && subjects.length > 0 ? { activeSubjects: subjects } : {}),
+  };
 
-      // Reconstruct subjects array from the serialized key so no array
-      // reference is needed in the dep list.
-      const subjectsArray = subjectsKey ? subjectsKey.split('\0') : [];
+  const { data, loading: queryLoading } = useQuery(SearchSuggestionsDocument, {
+    variables: {
+      libraryId: libraryId ?? '',
+      query: debouncedQuery,
+      filter: suggestionsFilter,
+    },
+    skip: libraryId === undefined || debouncedQuery === '',
+  });
 
-      const params = new URLSearchParams({ q: query });
-      if (author) params.set('author', author);
-      if (seriesName) params.set('seriesName', seriesName);
-      for (const s of subjectsArray) params.append('subjects', s);
-      const url = withTargetUser(`/api/search/suggestions?${params.toString()}`);
-
-      setLoading(true);
-      apiFetch(url, { signal: controller.signal })
-        .then(async (res) => {
-          if (!res.ok) throw new Error('Suggestion fetch failed');
-          return res.json() as Promise<{ groups: ServerGroup[] }>;
-        })
-        .then(({ groups: serverGroups }) => {
-          if (controller.signal.aborted) return;
-
-          const result: SuggestionGroup[] = [];
-
-          if (!status) {
-            const items: Suggestion[] = [];
-            for (const opt of STATUS_OPTIONS) {
-              const info = matchInfo(opt.label, query);
-              if (info) {
-                items.push({
-                  type: 'status',
-                  label: opt.label,
-                  value: opt.value,
-                  additive: false,
-                  ...info,
-                });
-              }
-            }
-            if (items.length > 0) result.push({ type: 'status', label: GROUP_LABEL.status, items });
-          }
-
-          for (const g of serverGroups) {
-            const additive = g.type === 'subject';
-            const items: Suggestion[] = g.items.map((item) => ({
-              type: g.type,
-              label: item.label,
-              value: item.value,
-              additive,
-              matchStart: item.matchStart,
-              matchLength: item.matchLength,
-            }));
-            if (items.length > 0) {
-              result.push({ type: g.type, label: GROUP_LABEL[g.type], items });
-            }
-          }
-
-          setGroups(result);
-          setLoading(false);
-        })
-        .catch((_err: unknown) => {
-          if (controller.signal.aborted) return;
-          setGroups([]);
-          setLoading(false);
-        });
-    }, 200);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      abortRef.current?.abort();
-    };
-  }, [inputValue, status, author, seriesName, subjectsKey, withTargetUser]);
-
-  // When input is empty, return static quick-pick groups (Type and/or Status)
-  // so the dropdown shows useful options on focus. Both are omitted when the
-  // corresponding filter is already active.
   const query = inputValue.trim();
+
+  // When input is empty, return static quick-pick groups (Type and/or
+  // Status) so the dropdown shows useful options on focus. Both are omitted
+  // when the corresponding filter is already active.
   if (!query) {
     const emptyGroups: SuggestionGroup[] = [];
     if (!entryType) {
@@ -195,5 +165,48 @@ export function useSearchSuggestions(
     return { groups: emptyGroups, loading: false };
   }
 
-  return { groups, loading };
+  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const result: SuggestionGroup[] = [];
+
+  // Gated on `library` — i.e. a completed fetch for the CURRENT debounced
+  // query — matching the REST version, which only ever computed the status
+  // quick-match and mapped the server groups inside its fetch's success
+  // handler. While a fetch for a brand-new `debouncedQuery` is in flight
+  // (nothing cached yet for these variables), `groups` is empty rather than
+  // showing the previous query's stale results.
+  if (library) {
+    if (!status) {
+      const items: Suggestion[] = [];
+      for (const opt of STATUS_OPTIONS) {
+        const info = matchInfo(opt.label, debouncedQuery);
+        if (info) {
+          items.push({
+            type: 'status',
+            label: opt.label,
+            value: opt.value,
+            additive: false,
+            ...info,
+          });
+        }
+      }
+      if (items.length > 0) result.push({ type: 'status', label: GROUP_LABEL.status, items });
+    }
+
+    const serverGroups: ServerGroup[] = library.searchSuggestions;
+    for (const g of serverGroups) {
+      const type = SERVER_GROUP_TYPE[g.type];
+      const additive = type === 'subject';
+      const items: Suggestion[] = g.items.map((item) => ({
+        type,
+        label: item.label,
+        value: item.value,
+        additive,
+        matchStart: item.matchStart,
+        matchLength: item.matchLength,
+      }));
+      if (items.length > 0) result.push({ type, label: GROUP_LABEL[type], items });
+    }
+  }
+
+  return { groups: result, loading: queryLoading || libraryIdLoading };
 }
