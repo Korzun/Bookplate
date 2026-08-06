@@ -41,7 +41,18 @@ export const BookPage = () => {
   const withTargetUser = useWithTargetUser();
 
   const [book, loading, error] = useBook(id!, true);
-  const [progress] = useMyProgress(id!);
+  // `book?.id`, NOT the raw `id` URL param: since the grid (task 8) started
+  // navigating here with a Book's Relay global id, `id` can be that global
+  // id, while `useMyProgressList`'s map is keyed by `p.document` — the
+  // RAW local id (`use-fetch-my-progress-list.ts`) — the same raw id
+  // `/api/books/:id` (task 13) always resolves to and returns as `book.id`,
+  // regardless of which id form was requested. Indexing on `id!` directly
+  // would silently miss for every global-id visit: 0% progress shown for a
+  // book the viewer is actually partway through, and `SetProgressModal`
+  // below would open at chapter 0 instead of their real chapter. `book?.id`
+  // is `undefined` until `useBook` resolves, which `useMyProgress` treats
+  // as "not loaded yet" rather than "no progress" — see its own doc comment.
+  const [progress] = useMyProgress(book?.id);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
   const [replaceModalOpen, setReplaceModalOpen] = useState(false);

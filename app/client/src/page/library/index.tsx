@@ -1,36 +1,57 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 
-import { Page, BookRow, SearchBar, SeriesRow } from '~/component';
+import { BookRowFromEntry, Page, SearchBar, SeriesRow } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
+import type { LibraryFilter } from '~/gql/graphql';
 import { SpinnerIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
-import {
-  useBookList,
-  useBookListFilter,
-  useBookListItems,
-  useFetchNextPage,
-} from '~/provider/book';
+import { useBookListFilter } from '~/provider/book';
+import { useLibraryEntries } from '~/provider/library';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useUserList } from '~/provider/user';
 import { path } from '~/router';
 
 import { useStyle } from './style';
+import { toLibraryFilter } from './to-library-filter';
 
 export const LibraryPage = () => {
   const style = useStyle();
   const [isAdmin] = useIsAdmin();
-  const [targetUsername] = useLibraryTarget();
+  const [targetLibraryId] = useLibraryTarget();
   const [userList, userListLoading] = useUserList();
   const [bookListFilter, setBookListFilter] = useBookListFilter();
 
-  const [, bookListLoading, hasError, bookListError] = useBookList();
-  const [bookListItems, nextCursor] = useBookListItems();
-  const fetchNextPage = useFetchNextPage();
+  // `useBookListFilter` recomputes a fresh `BookListFilter` object from URL
+  // search params on every render (see that hook's own doc comment) — never
+  // a stable reference. `useLibraryEntries` resets its `fetchMore` error
+  // state on `[libraryId, filter]` by REFERENCE equality, so passing that
+  // straight through (even re-mapped) would fire the reset effect every
+  // render and could clear a legitimate retry state before it's ever shown.
+  // Destructuring to primitives (plus a stringified `subjects`) and gating
+  // the `useMemo` on those, rather than on `bookListFilter` itself, is what
+  // keeps `libraryFilter`'s identity stable across renders that don't
+  // actually change the filter.
+  const { query, author, seriesName, status, entryType, subjects } = bookListFilter;
+  const subjectsKey = subjects && subjects.length > 0 ? JSON.stringify(subjects) : '';
+  const libraryFilter = useMemo<LibraryFilter>(
+    () =>
+      toLibraryFilter({
+        query,
+        author,
+        seriesName,
+        status,
+        entryType,
+        subjects: subjectsKey ? (JSON.parse(subjectsKey) as string[]) : undefined,
+      }),
+    [query, author, seriesName, status, entryType, subjectsKey]
+  );
+
+  const { edges, loading, error, hasNextPage, fetchNextPage } = useLibraryEntries(libraryFilter);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (hasError || bookListLoading || nextCursor === null) return;
+    if (error !== undefined || loading || !hasNextPage) return;
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
@@ -43,9 +64,9 @@ export const LibraryPage = () => {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchNextPage, hasError, bookListLoading, nextCursor]);
+  }, [fetchNextPage, error, loading, hasNextPage]);
 
-  if (isAdmin && !targetUsername) {
+  if (isAdmin && !targetLibraryId) {
     const noUsers = !userListLoading && userList.length === 0;
     return (
       <Page>
@@ -75,13 +96,13 @@ export const LibraryPage = () => {
     );
   }
 
-  if (!bookListLoading && hasError && bookListItems.length === 0) {
+  if (!loading && error !== undefined && edges.length === 0) {
     return (
       <Page>
         <LibrarySwitcher />
         <div className={style.emptyState}>
           <div className={style.emptyStateTitle}>Failed to load library</div>
-          <div className={style.emptyStateSubtitle}>{bookListError}</div>
+          <div className={style.emptyStateSubtitle}>{error}</div>
         </div>
       </Page>
     );
@@ -98,16 +119,16 @@ export const LibraryPage = () => {
     <Page>
       <LibrarySwitcher />
       <SearchBar filter={bookListFilter} onChange={setBookListFilter} />
-      {bookListItems.length === 0 ? (
+      {edges.length === 0 ? (
         <div className={style.emptyState}>
-          {bookListLoading ? (
+          {loading ? (
             <SpinnerIcon role="status" aria-label="Loading" className={style.spinner} />
           ) : (
             <>
               <div className={style.emptyStateTitle}>
                 {isSearchActive
                   ? 'No books match your search'
-                  : `${isAdmin && targetUsername ? 'This' : 'Your'} library is empty`}
+                  : `${isAdmin && targetLibraryId ? 'This' : 'Your'} library is empty`}
               </div>
               <div className={style.emptyStateSubtitle}>
                 {isSearchActive
@@ -119,15 +140,15 @@ export const LibraryPage = () => {
         </div>
       ) : (
         <div className={style.root}>
-          {bookListItems.map((item) =>
-            item.type === 'series' ? (
-              <SeriesRow key={item.seriesName} seriesName={item.seriesName} />
+          {edges.map((edge) =>
+            edge.node.__typename === 'Series' ? (
+              <SeriesRow key={edge.cursor} series={edge.node} />
             ) : (
-              <BookRow key={item.bookId} bookId={item.bookId} />
+              <BookRowFromEntry key={edge.cursor} book={edge.node} />
             )
           )}
-          {nextCursor !== null && <div ref={sentinelRef} />}
-          {hasError && bookListItems.length > 0 && (
+          {hasNextPage && <div ref={sentinelRef} />}
+          {error !== undefined && edges.length > 0 && (
             <div className={style.pageError}>
               Failed to load more books
               <br />

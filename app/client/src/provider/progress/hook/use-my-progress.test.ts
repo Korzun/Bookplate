@@ -65,4 +65,13 @@ describe('useMyProgress', () => {
     const { result } = renderHook(() => useMyProgress('book-1'));
     expect(result.current).toEqual([undefined, false, false, undefined]);
   });
+
+  // `page/book` passes `book?.id` (undefined until the book itself has
+  // loaded) rather than the raw URL param — see that page's doc comment.
+  // This is the "not loaded yet" shape for that gap, not a distinct error.
+  it('returns undefined without indexing the list when bookId is undefined, even if the list has entries', () => {
+    stubList([{ 'book-1': { document: 'book-1', percentage: 60 } }, false, false, undefined]);
+    const { result } = renderHook(() => useMyProgress(undefined));
+    expect(result.current).toEqual([undefined, false, false, undefined]);
+  });
 });

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApolloTestProvider } from '~/test-utils';
@@ -29,11 +29,15 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
   };
 }
 
-function makeWrapper(mockSetBookComplete: () => void) {
+function makeWrapper(mockSetBookComplete: () => void, bookListRef?: { current: BookList }) {
   return function Wrapper({ children }: { children: ReactNode }) {
     const [bookList, setBookListRaw] = useState<BookList>({});
     const [loadingByBookId, setLoadingByBookIdRaw] = useState<Record<string, boolean>>({});
     const [errorByBookId, setErrorByBookIdRaw] = useState<Record<string, string | undefined>>({});
+
+    useEffect(() => {
+      if (bookListRef) bookListRef.current = bookList;
+    }, [bookList]);
 
     const setBookList = useCallback(
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
@@ -128,5 +132,43 @@ describe('useFetchBook', () => {
     await act(() => result.current('1'));
 
     expect(mockSetBookComplete).not.toHaveBeenCalled();
+  });
+
+  // The legacy `/api/books/:id` route now also accepts a Relay global ID
+  // (task 13) and resolves it server-side to the book's raw, content-hash
+  // local id — so the response body's own `id` field can legitimately
+  // differ from the id this hook was asked to fetch. `useBook`
+  // (`use-book.ts`) looks up `bookList[bookId]` keyed by the REQUESTED id,
+  // matching every other per-book map on this context
+  // (`loadingByBookId`/`errorByBookId`/`completeBookIds`, all keyed by the
+  // hook's own `bookId` argument) — so this hook must store under that same
+  // key too. Storing under `book.id` instead (the pre-fix behavior) leaves
+  // `bookList[bookId]` permanently `undefined` for a global-id request:
+  // `useBook`'s own effect re-fires every render (its `bookList[bookId] ===
+  // undefined` guard never clears), refetching in an infinite loop, and the
+  // book page never leaves its loading state — verified as this test's
+  // seen-to-fail (task 8 report).
+  it('stores the fetched book under the REQUESTED id, even when the server resolves it to a different raw id', async () => {
+    const mockSetBookComplete = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBook({ id: 'raw-1' })),
+      })
+    );
+
+    const bookListRef: { current: BookList } = { current: {} };
+    const { result } = renderHook(() => useFetchBook(), {
+      wrapper: makeWrapper(mockSetBookComplete, bookListRef),
+    });
+
+    // 'global-1' stands in for a Relay global ID reaching this hook from a
+    // grid-originated navigation (`BookRowFromEntry`'s `path.book(unmasked.id)`);
+    // the server resolves it to the raw id 'raw-1' in the response body.
+    await act(() => result.current('global-1'));
+
+    expect(bookListRef.current['global-1']).toBeDefined();
+    expect(bookListRef.current['global-1']?.id).toBe('raw-1');
   });
 });

@@ -10,7 +10,16 @@ export type UseMyProgress =
   | [undefined, true, false, undefined] // Progress is being loaded
   | [undefined, false, true, undefined] // There was an unspecified error while loading progress
   | [undefined, false, true, string]; // There was a specified error while loading progress
-export const useMyProgress = (bookId: string): UseMyProgress => {
+/**
+ * `bookId` accepts `undefined` for callers (`page/book`) that only learn the
+ * book's real, raw local id asynchronously — see that page's own doc
+ * comment on why it can't just pass the URL param straight through. While
+ * `bookId` is `undefined`, this reports the same "not loaded yet" shape as
+ * an unresolved lookup, rather than adding a distinct state: there is
+ * nothing meaningful to distinguish it from `myProgressList[bookId] ===
+ * undefined` from the caller's point of view.
+ */
+export const useMyProgress = (bookId: string | undefined): UseMyProgress => {
   const [myProgressList, loading, error, errorMessage] = useMyProgressList();
 
   return useMemo((): UseMyProgress => {
@@ -18,7 +27,11 @@ export const useMyProgress = (bookId: string): UseMyProgress => {
       return [undefined, false, error, errorMessage];
     }
 
-    if (myProgressList === undefined || myProgressList[bookId] === undefined) {
+    if (
+      bookId === undefined ||
+      myProgressList === undefined ||
+      myProgressList[bookId] === undefined
+    ) {
       return [undefined, loading, false, undefined];
     }
     return [myProgressList[bookId], loading, false, undefined];
