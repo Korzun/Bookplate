@@ -17,16 +17,20 @@ const AdminLibrarySwitcher = () => {
   // to fetch a dead library. An empty list is skipped: it is
   // indistinguishable from "not fetched yet".
   //
-  // `useFetchBookList` (Task 4) already clears this same condition once it
-  // actually attempts a fetch (`ready && isAdmin && !username`) — but that
-  // path only runs on screens that call `useBookList`/`useFetchBookList`,
-  // which today is only `page/library`. `page/upload` mounts this switcher
-  // too, and its own book-list refresh (`useUploadQueue`) only fires
-  // `fetchBookList` reactively, after a successful upload — not on mount. A
-  // ghost target sitting in `localStorage` would otherwise survive
-  // indefinitely on that screen until the admin uploads something. This
-  // effect is the one path that clears it promptly everywhere the switcher
-  // itself is rendered, so it stays — it is not redundant with Task 4's.
+  // `useFetchBookList` (Task 4) used to clear this same condition once it
+  // actually attempted a fetch (`ready && isAdmin && !username`) — final-
+  // branch-review cleanup: that was already false in both directions by the
+  // time this comment was last touched. `page/library` stopped calling
+  // `useBookList`/`useFetchBookList` at all once Task 11 moved the grid onto
+  // GraphQL pagination, and `page/series`'s `useSeriesBookList` (the one
+  // other candidate) was decoupled from that same Context-wide REST list in
+  // the C-1 fix that made `CoverStack` read off GraphQL instead — so nothing
+  // in this app calls `useFetchBookList` today at all (`useBookList`,
+  // `useFetchBookList`, and `useStandaloneBookList` are dead code left in
+  // place deliberately, same as this plan's other carried dead exports).
+  // This effect is consequently the ONLY thing anywhere that clears a
+  // `targetLibraryId` naming a deleted/stale user — it stays for that
+  // reason alone, not because some other path is "not quite" covering it.
   useEffect(() => {
     if (loading || hasError || userList.length === 0 || targetLibraryId === undefined) return;
     if (!userList.some((user) => user.library.id === targetLibraryId)) {

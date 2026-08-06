@@ -35,14 +35,16 @@ interface BookRowFromEntryProps {
  * server-built `thumbnailUrl` — already scoped with the correct `?user=`/`v=`
  * suffix, so no `withTargetUser()` wrapping is needed here.
  *
- * NOTE for whoever wires book-detail navigation next: `unmasked.id` is
- * `Book`'s Relay global ID (`builder.prismaNode('Book', { id: { field:
- * 'userId_id' } ... })`, server-side), not the raw content-hash id
- * `page/book` and `/api/books/:id` expect today. `path.book(unmasked.id)`
- * below reproduces the pre-migration call shape exactly, but until
- * `page/book` itself moves onto GraphQL (out of this plan's scope), a click
- * from a GraphQL-rendered grid row may not resolve. Verified, not guessed —
- * see task 7's report.
+ * `unmasked.id` is `Book`'s Relay global ID (`builder.prismaNode('Book', {
+ * id: { field: 'userId_id' } ... })`, server-side), not the raw content-hash
+ * id `page/book` was built against — this component's own task-7 doc
+ * comment used to warn that a click from a GraphQL-rendered grid row might
+ * not resolve there. That gap closed two commits later, in task 13:
+ * `/api/books/:id` (and four sibling REST routes — `routes/ui.ts`'s
+ * `resolveBookLocalId`) now accepts EITHER form and resolves a global id to
+ * the raw one before querying `bookStore`, so `path.book(unmasked.id)`
+ * below reaches `page/book` correctly today, ahead of `page/book` itself
+ * ever moving onto GraphQL.
  */
 export function BookRowFromEntry({ asCard, showAuthor, book }: BookRowFromEntryProps) {
   const navigate = useNavigate();

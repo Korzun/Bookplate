@@ -101,8 +101,10 @@ export type UseLibraryEntries = {
  * `edges` completely untouched. This hook catches that rejection itself and
  * surfaces it through the SAME `error` field via local state, rather than
  * adding a second error slot — but because `edges` is untouched, a consumer
- * distinguishes the two cases exactly as `LibraryPage` already does today
- * (`bookListItems.length === 0` vs `> 0`): empty `edges` + `error` is the
+ * distinguishes the two cases exactly as `page/library` already does today
+ * (`edges.length === 0` vs `> 0`, this hook's OWN `edges` — not
+ * `bookListItems`, a leftover REST-era field `page/library` no longer keys
+ * on at all since it moved onto this hook): empty `edges` + `error` is the
  * empty-error state, non-empty `edges` + `error` is "keep the rows, show a
  * retry affordance". That distinction is the caller's job, not this hook's
  * — `useLibraryEntries` only guarantees `edges` survives a fetchMore
