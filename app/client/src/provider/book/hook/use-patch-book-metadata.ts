@@ -76,13 +76,25 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         // mechanism). `useFetchBook` keys entries by the id they were
         // REQUESTED under, not the book's own raw id, so a book reached via
         // a Relay global id (the grid) can be cached under a key that isn't
-        // `bookId` here (`bookId` is always the resolved raw id —
-        // `page/book-edit` calls `patchBookMetadata(id)` with the id its own
-        // `useBook` already resolved). `next[bookId]` alone leaves that
-        // alias holding the pre-edit book forever: `completeBookIds` still
-        // marks it complete, so `useBook` never refetches it, and browsing
-        // back to the book via its original (global-id) URL silently shows
-        // stale, pre-edit data with no loading state or error.
+        // `bookId` here.
+        //
+        // This match ONLY works when `bookId` is the raw id — `.id` fields
+        // on stored books are always raw, so a `bookId` that were itself a
+        // global id would match zero entries here, silently skipping the
+        // sweep entirely rather than just missing an alias. Final-branch-
+        // review I-3: an earlier version of this comment asserted "`bookId`
+        // is always the resolved raw id" as an already-true fact, but
+        // `page/book-edit` was at the time calling `patchBookMetadata(id)`
+        // with the RAW URL PARAM, not `useBook`'s resolved `original.id` —
+        // the two differ for a book reached via a global-id URL, which no
+        // in-app link produces today but a future grid→edit link would.
+        // `page/book-edit` now passes `original.id` (its own fix, same
+        // review), which is what makes the claim actually true.
+        // `next[bookId]` alone leaves that alias holding the pre-edit book
+        // forever: `completeBookIds` still marks it complete, so `useBook`
+        // never refetches it, and browsing back to the book via its
+        // original (global-id) URL silently shows stale, pre-edit data with
+        // no loading state or error.
         setBookList((prev) => {
           const next = { ...prev };
           for (const key of Object.keys(next)) {

@@ -18,7 +18,17 @@ export const BookEditPage = () => {
   const lastErrorRef = useRef<string | undefined>(undefined);
 
   const [original, loading, hasError, errorMessage] = useBook(id!);
-  const pendingItem = usePendingFixesForBook(id);
+  // `original.id` — the RAW, resolved id `useBook` already looked up — not
+  // the bare `id` URL param. `usePendingFixesForBook` matches against
+  // `item.bookId` (`use-pending-fixes-for-book.ts`), which the upload queue
+  // always keys by raw id; `id` here can be a Relay global id (a grid link,
+  // once one exists to `/book/<globalId>/edit`), which would never match
+  // and silently miss a real pending-fix conflict. `original` isn't defined
+  // yet on the first render while `useBook` is still loading — passing
+  // `undefined` is correct there too: `usePendingFixesForBook` already
+  // treats a missing id as "no conflict" until there's a real raw id to
+  // check.
+  const pendingItem = usePendingFixesForBook(original?.id);
   const { dismissAllProposals } = useUploadQueue();
 
   useEffect(() => {
@@ -64,7 +74,7 @@ export const BookEditPage = () => {
           onCancel={() => navigate(path.library())}
         />
       ) : (
-        <BookEditForm key={id} original={original} id={id!} />
+        <BookEditForm key={id} original={original} id={original.id} />
       )}
     </Page>
   );

@@ -5,10 +5,15 @@ import { renderWithProviders } from '~/test-utils';
 
 const navigate = vi.fn();
 const dismissAllProposals = vi.fn();
+const mockUsePendingFixesForBook = vi.fn();
+const mockBookEditForm = vi.fn();
 
+// `useParams().id` deliberately differs from `bookReturn.id` below — a
+// Relay global id, standing in for the URL param a future grid→edit link
+// would produce (final-branch-review I-3).
 vi.mock('react-router', async (orig) => ({
   ...(await orig<typeof import('react-router')>()),
-  useParams: () => ({ id: 'b1' }),
+  useParams: () => ({ id: 'global-b1' }),
   useNavigate: () => navigate,
 }));
 let bookReturn: unknown = { id: 'b1', title: 'X', valid: true };
@@ -29,12 +34,18 @@ const pending = {
 };
 let pendingReturn: unknown = pending;
 vi.mock('~/provider/upload', () => ({
-  usePendingFixesForBook: () => pendingReturn,
+  usePendingFixesForBook: (bookId: string | undefined) => {
+    mockUsePendingFixesForBook(bookId);
+    return pendingReturn;
+  },
   useUploadQueue: () => ({ dismissAllProposals }),
 }));
 vi.mock('~/component', () => ({
   Page: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  BookEditForm: () => <div>EDIT FORM</div>,
+  BookEditForm: (props: { id: string }) => {
+    mockBookEditForm(props);
+    return <div>EDIT FORM</div>;
+  },
 }));
 
 beforeAll(() => {
@@ -44,6 +55,8 @@ beforeAll(() => {
 beforeEach(() => {
   navigate.mockClear();
   dismissAllProposals.mockClear();
+  mockUsePendingFixesForBook.mockClear();
+  mockBookEditForm.mockClear();
   pendingReturn = pending;
   bookReturn = { id: 'b1', title: 'X', valid: true };
 });
@@ -70,5 +83,30 @@ describe('BookEditPage fix guard', () => {
     await renderPage();
     expect(screen.getByText(/must pass validation/i)).toBeTruthy();
     expect(screen.queryByText('EDIT FORM')).toBeNull();
+  });
+
+  // Final-branch-review I-3: the URL param (`useParams().id`, mocked above
+  // as `'global-b1'` — standing in for a Relay global id) must never reach
+  // `usePendingFixesForBook` or `BookEditForm`'s `id` prop. Both need the
+  // RAW id `useBook` already resolved (`bookReturn.id`, `'b1'`) —
+  // `usePendingFixesForBook` matches against the upload queue's raw
+  // `bookId`, and `BookEditForm` forwards `id` straight into
+  // `patchBookMetadata`, which hits `PATCH /api/books/:id/metadata` (a
+  // route that does not accept global ids).
+  it("calls usePendingFixesForBook and BookEditForm with the book's resolved raw id, not the URL param", async () => {
+    pendingReturn = undefined;
+    await renderPage();
+
+    expect(mockUsePendingFixesForBook).toHaveBeenCalledWith('b1');
+    expect(mockUsePendingFixesForBook).not.toHaveBeenCalledWith('global-b1');
+    expect(mockBookEditForm).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1' }));
+  });
+
+  it('passes undefined to usePendingFixesForBook while the book has not resolved yet', async () => {
+    bookReturn = undefined;
+    pendingReturn = undefined;
+    await renderPage();
+
+    expect(mockUsePendingFixesForBook).toHaveBeenCalledWith(undefined);
   });
 });
