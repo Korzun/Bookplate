@@ -1,7 +1,11 @@
-import { waitFor } from '@testing-library/react';
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client';
+import { ApolloProvider } from '@apollo/client/react';
+import { MockLink, MockSubscriptionLink } from '@apollo/client/testing';
+import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { LibraryScanStatusDocument, ScanProgressDocument } from '~/graphql/scan';
+import { cacheConfig } from '~/provider/apollo';
 import { renderWithApollo } from '~/test-utils';
 
 import { useScanProgress } from './use-scan-progress';
@@ -23,10 +27,10 @@ const status = (overrides: Record<string, unknown>) => ({
 });
 
 /** A `node(id:)` result carrying the Library arm, its user bridge, and a scan status. */
-const libraryNode = (scanStatus: ReturnType<typeof status> | null) => ({
+const libraryNode = (scanStatus: ReturnType<typeof status> | null, id: string = LIBRARY_ID) => ({
   node: {
     __typename: 'Library' as const,
-    id: LIBRARY_ID,
+    id,
     user: { __typename: 'User' as const, id: 'USER-1' },
     scanStatus,
   },
@@ -135,5 +139,82 @@ describe('useScanProgress', () => {
 
     await waitFor(() => expect(result.current?.loading).toBe(false));
     expect(result.current?.status).toBeUndefined();
+  });
+
+  describe('across a libraryId change', () => {
+    const LIBRARY_A = 'LIB-A';
+    const LIBRARY_B = 'LIB-B';
+
+    // RESOLVES spec §14.6 (previously unverified): Apollo v4's `useSubscription`
+    // recreates its tracking object — with a fresh `{ loading: true, data:
+    // undefined }` result — synchronously in the SAME render that notices the
+    // variables changed (see `useSubscription.js`: the `recreate()` call and
+    // its `setObservable` both happen in the render body, not an effect, and
+    // the new object is what `useSyncExternalStore`'s snapshot already reads
+    // for that render). Measured here rather than trusted: mount against
+    // `MockSubscriptionLink`, push an event for library A, switch to B, and
+    // check `status` in the very next render — before B's bootstrap query has
+    // even had a tick to resolve. Confirmed: `status` is `undefined` there,
+    // and stays that way since no event for B is ever emitted. No production
+    // change follows from this — see this task's report for why.
+    it("clears status when libraryId changes, rather than keeping the old library's last event", async () => {
+      const subscriptionLink = new MockSubscriptionLink();
+      const queryLink = new MockLink([
+        {
+          request: { query: LibraryScanStatusDocument, variables: { libraryId: LIBRARY_A } },
+          result: { data: libraryNode(null, LIBRARY_A) },
+        },
+        {
+          request: { query: LibraryScanStatusDocument, variables: { libraryId: LIBRARY_B } },
+          result: { data: libraryNode(null, LIBRARY_B) },
+        },
+      ]);
+      const link = ApolloLink.split(
+        (operation) => operation.query === ScanProgressDocument,
+        subscriptionLink,
+        queryLink
+      );
+      const client = new ApolloClient({ link, cache: new InMemoryCache(cacheConfig) });
+
+      const result: { current?: ReturnType<typeof useScanProgress> } = {};
+      const Probe = ({ libraryId }: { libraryId: string }) => {
+        result.current = useScanProgress(libraryId);
+        return null;
+      };
+
+      const { rerender } = render(
+        <ApolloProvider client={client}>
+          <Probe libraryId={LIBRARY_A} />
+        </ApolloProvider>
+      );
+
+      // Let library A's bootstrap query settle (its scanStatus is null — only
+      // the subscription event below carries a status), then push an event
+      // for A's in-flight scan.
+      await waitFor(() => expect(result.current?.loading).toBe(false));
+      subscriptionLink.simulateResult({
+        result: { data: { scanProgress: status({ processed: 4 }) } },
+      });
+      await waitFor(() => expect(result.current?.status?.processed).toBe(4));
+
+      // Switch to library B. No event for B is ever emitted in this test, and
+      // B's bootstrap query also resolves to a null scanStatus, so B's read
+      // contributes nothing — isolating what the SUBSCRIPTION alone is still
+      // holding onto.
+      rerender(
+        <ApolloProvider client={client}>
+          <Probe libraryId={LIBRARY_B} />
+        </ApolloProvider>
+      );
+
+      // Measured, not assumed: A's event does NOT survive the switch, in the
+      // very next render — before B's bootstrap query has had a tick to
+      // resolve either.
+      expect(result.current?.status).toBeUndefined();
+
+      // Stays cleared once B's own (empty) read settles too.
+      await waitFor(() => expect(result.current?.loading).toBe(false));
+      expect(result.current?.status).toBeUndefined();
+    });
   });
 });
