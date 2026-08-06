@@ -39,6 +39,19 @@ export const useFetchBookList = (): FetchBookList => {
     // `useBookList`'s trigger effect (gated on `bookListError === undefined`)
     // fires again the moment `withTargetUser`'s identity changes to `ready`.
     if (isAdmin && !withTargetUser.ready) return;
+    // `ready` but no resolved username: the stored selection matches no user
+    // in the (settled) list — a deleted owner, an id stale across installs,
+    // or the UserList query itself errored. A request built from this state
+    // can never carry `?user=`, and the server 400s every such admin
+    // request, which would otherwise `throw` below and latch a permanent
+    // `bookListError` with no route back (round-2 review finding — this is
+    // the SAME "Select a library" fallback the 404 branch further down
+    // already covers for a request the server itself rejects; this clears
+    // the selection before ever attempting one).
+    if (isAdmin && !withTargetUser.username) {
+      setTargetUsername(undefined);
+      return;
+    }
     if (bookListLoading) return;
 
     setBookListLoading(true);
@@ -55,9 +68,13 @@ export const useFetchBookList = (): FetchBookList => {
       if (bookListFilter.entryType) params.append('entryType', bookListFilter.entryType);
       params.append('take', '20');
       const response = await apiFetch(withTargetUser(`/api/books?${params.toString()}`));
-      // An admin's selected user no longer exists (deleted, or a stale value in
-      // localStorage): clear the selection so the page falls back to the
-      // "Select a library" state instead of showing a load failure.
+      // Reaching here means `withTargetUser.username` WAS resolved (the
+      // guard above already clears an unresolvable selection before ever
+      // building a request) — so a 404 here means the client's cached
+      // `UserListDocument` match was itself stale (the owner was deleted
+      // server-side after this admin's list was fetched but before the
+      // cache refreshed). Same fallback either way: clear the selection so
+      // the page falls back to "Select a library" instead of a load failure.
       if (response.status === 404 && isAdmin && targetUsername) {
         setTargetUsername(undefined);
         return;

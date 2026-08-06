@@ -278,4 +278,54 @@ describe('useBookList', () => {
     );
     await waitFor(() => expect(result.current?.[2]).toBe(false));
   });
+
+  // Round-2 review: C-1's fix narrowed the cold-load window but left an
+  // ADJACENT one open — a stored `library-target-id` that matches NO user
+  // (deleted owner, or an id stale across installs). `ready` still flips
+  // true once `UserListDocument` settles, but `withTargetUser.username`
+  // stays undefined, so a `?user=`-less request would fire and the server
+  // 400s it — `!response.ok` throws, `bookListError` latches, and (unlike a
+  // real 404) there is no status-code branch that ever clears it: this is a
+  // STICKY error with no route back except manually re-picking in the
+  // switcher. This is a regression against pre-Task-4 behavior, where a
+  // dead username 404'd and self-healed automatically.
+  it('clears a target that resolves to no match, instead of latching a permanent error', async () => {
+    localStorage.setItem('library-target-id', 'LIB-GHOST');
+    // The server's real answer for a ?user=-less admin request — reachable
+    // only if the fix below fails to clear the selection first.
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const emptyUserListMock = {
+      request: { query: UserListDocument },
+      result: {
+        data: {
+          __typename: 'Query' as const,
+          viewer: { __typename: 'Viewer' as const, users: [] },
+        },
+      },
+    };
+
+    const result: { current?: UseBookList } = {};
+    const Probe = () => {
+      result.current = useBookList();
+      return null;
+    };
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <BookProvider>
+          <Probe />
+        </BookProvider>
+      </LibraryTargetProvider>,
+      { mocks: [emptyUserListMock], user: { username: 'admin', isAdmin: true } }
+    );
+
+    // The selection clears once UserListDocument settles with no match —
+    // no fetch is ever attempted, so no error can latch.
+    await waitFor(() => expect(localStorage.getItem('library-target-id')).toBeNull());
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.current?.[2]).toBe(false);
+    expect(result.current?.[3]).toBeUndefined();
+  });
 });

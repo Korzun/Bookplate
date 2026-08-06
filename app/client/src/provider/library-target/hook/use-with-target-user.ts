@@ -21,6 +21,20 @@ export type WithTargetUser = {
    * comment for the full failure chain this closes.
    */
   ready: boolean;
+  /**
+   * The resolved username once `ready`, or `undefined` if either there is no
+   * stored selection or the stored selection matches no user in the list
+   * (deleted owner, or an id stale across installs) — the same "no match"
+   * case whether ready is reached because a real query settled or because a
+   * non-admin's `skip` short-circuits it immediately.
+   *
+   * `useFetchBookList` also gates on THIS (round-2 review, the 400-latch
+   * fix): once `ready`, an admin with a `targetLibraryId` but no
+   * `username` can never build a request the server would accept — every
+   * such request 400s — so that hook clears the stale selection itself
+   * rather than ever sending it.
+   */
+  username: string | undefined;
 };
 
 /**
@@ -73,6 +87,7 @@ export const useWithTargetUser = (): WithTargetUser => {
       return `${url}${sep}user=${encodeURIComponent(targetUsername)}`;
     }) as WithTargetUser;
     withTargetUser.ready = ready;
+    withTargetUser.username = targetUsername;
     return withTargetUser;
   }, [isAdmin, targetUsername, ready]);
 };

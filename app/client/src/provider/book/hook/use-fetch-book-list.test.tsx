@@ -369,16 +369,40 @@ describe('useFetchBookList', () => {
     expect(fetch).toHaveBeenCalledWith('/api/books?entryType=series&take=20', {});
   });
 
-  it('clears the target selection when the server 404s for a missing user', async () => {
+  /** A `UserListDocument` mock with exactly one user, owning `libraryId`. */
+  const matchingUserListMock = (username: string, libraryId: string): MockedResponse => ({
+    request: { query: UserListDocument },
+    result: {
+      data: {
+        __typename: 'Query',
+        viewer: {
+          __typename: 'Viewer',
+          users: [
+            {
+              __typename: 'User',
+              id: 'u1',
+              username,
+              progressCount: 0,
+              library: { __typename: 'Library', id: libraryId },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  // Round-2 review (the 400-latch finding): once `withTargetUser` settles
+  // with NO matching username, a request built from it can never carry
+  // `?user=` and the server would 400 it — so this clears the selection
+  // BEFORE ever attempting a fetch, rather than waiting for that 400 to
+  // surface as a permanent `bookListError`. `makeAdminWrapper`'s DEFAULT
+  // mock (`users: []`) is exactly this "settled, no match" state.
+  it('clears the target selection when the resolved user list has no match, without ever fetching', async () => {
     seedAdmin();
-    // `useFetchBookList` treats `useLibraryTarget()`'s value as an opaque
-    // token (it never reads it as a username) — this test only pins the
-    // generic "clear on 404" mechanics, so a Library-global-ID-shaped value
-    // under the current storage key (`library-target-id`, since Task 3
-    // renamed it from `library-target-user`) is what belongs here now.
     localStorage.setItem('library-target-id', 'LIB-GHOST');
     const onSetBookListError = vi.fn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
     const { result } = renderHook(
       () => ({
         fetchBookList: useFetchBookList(),
@@ -389,14 +413,49 @@ describe('useFetchBookList', () => {
     );
     expect(result.current.target[0]).toBe('LIB-GHOST');
 
-    // The mocked UserListDocument response (no matching user) must settle
-    // before calling fetchBookList — otherwise `useFetchBookList`'s own
-    // cold-load guard (C-1) would defer this call entirely, and it would
-    // never reach the 404 branch this test exercises.
     await waitFor(() => expect(result.current.withTargetUser.ready).toBe(true));
+    expect(result.current.withTargetUser.username).toBeUndefined();
 
     await act(() => result.current.fetchBookList());
 
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.current.target[0]).toBeUndefined();
+    expect(localStorage.getItem('library-target-id')).toBeNull();
+    expect(onSetBookListError).not.toHaveBeenCalledWith('Failed to fetch books');
+  });
+
+  // The pre-emptive guard above only fires when the CLIENT never resolved a
+  // match. This test pins the remaining, genuinely different case: the
+  // client DID resolve one (a real `?user=` request goes out), but the
+  // server still 404s it — the owner was deleted server-side after this
+  // admin's `UserListDocument` was fetched but before the cache refreshed.
+  it('clears the target selection when the server 404s a request built from a resolved (now stale) username', async () => {
+    seedAdmin();
+    localStorage.setItem('library-target-id', 'LIB-GHOST');
+    const onSetBookListError = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    const { result } = renderHook(
+      () => ({
+        fetchBookList: useFetchBookList(),
+        target: useLibraryTarget(),
+        withTargetUser: useWithTargetUser(),
+      }),
+      {
+        wrapper: makeAdminWrapper({ onSetBookListError }, [
+          matchingUserListMock('ghost', 'LIB-GHOST'),
+        ]),
+      }
+    );
+
+    await waitFor(() => expect(result.current.withTargetUser.username).toBe('ghost'));
+
+    await act(() => result.current.fetchBookList());
+
+    // `seedAdmin()` seeds a real JWT, so `apiFetch` attaches a real
+    // `Authorization` header here (unlike this file's other, non-admin
+    // tests) — asserting only the URL argument, not the full call, is
+    // what actually matters: that `?user=ghost` really went out.
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/books?take=20&user=ghost');
     expect(result.current.target[0]).toBeUndefined();
     expect(localStorage.getItem('library-target-id')).toBeNull();
     expect(onSetBookListError).not.toHaveBeenCalledWith('Failed to fetch books');
@@ -413,13 +472,18 @@ describe('useFetchBookList', () => {
         target: useLibraryTarget(),
         withTargetUser: useWithTargetUser(),
       }),
-      { wrapper: makeAdminWrapper({ onSetBookListError }) }
+      {
+        wrapper: makeAdminWrapper({ onSetBookListError }, [
+          matchingUserListMock('alice', 'LIB-ALICE'),
+        ]),
+      }
     );
 
-    await waitFor(() => expect(result.current.withTargetUser.ready).toBe(true));
+    await waitFor(() => expect(result.current.withTargetUser.username).toBe('alice'));
 
     await act(() => result.current.fetchBookList());
 
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/books?take=20&user=alice');
     expect(result.current.target[0]).toBe('LIB-ALICE');
     expect(onSetBookListError).toHaveBeenCalledWith('Failed to fetch books');
   });

@@ -73,14 +73,17 @@ describe('useWithTargetUser', () => {
         user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
       ]),
     ]);
-    expect(result.current?.ready).toBe(true);
-    expect(result.current?.('/api/books')).toBe('/api/books');
-
-    // Give the (correctly skipped) query every chance to fire and resolve —
-    // proves the guard holds, not just a synchronous timing accident. With
-    // `skip: !isAdmin` intact this mock is never consumed and nothing
-    // changes; with the guard deleted it resolves here and leaks `?user=`.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // `ready` is `true` immediately here (`skip: !isAdmin` never lets the
+    // query fire for a non-admin), so this resolves on the first poll — but
+    // `waitFor` (not a fixed timer) is what makes this a REAL check rather
+    // than a synchronous-timing accident: with the guard deleted, `skip`
+    // stops blocking the query, `waitFor` keeps polling through the actual
+    // resolve-and-re-render cycle, `ready` still eventually flips `true`,
+    // and the assertion below then sees the leak. A bare `await new
+    // Promise(...)` here previously looked like it exercised this but
+    // didn't — the resolved query never flushed into `result.current`
+    // without something `act`-aware (`waitFor`) driving it (round-2 review).
+    await waitFor(() => expect(result.current?.ready).toBe(true));
     expect(result.current?.('/api/books')).toBe('/api/books');
   });
 
@@ -104,6 +107,34 @@ describe('useWithTargetUser', () => {
     // resolved yet — `ready` must reflect that, not default to `true`.
     expect(result.current?.ready).toBe(false);
     expect(result.current?.('/api/books')).toBe('/api/books');
+  });
+
+  // Round-2 review (minor): every OTHER test in this file has `targetUsername`
+  // itself change on the same tick as `ready` — which would make even a
+  // mutate-in-place `Object.assign(useCallback(...), { ready })` pass, since
+  // `targetUsername` changing already forces `useCallback` to recompute
+  // regardless of how `ready` is attached. This test isolates the one shape
+  // that wouldn't: a stored selection matching NO user, where `ready` flips
+  // false→true while `targetUsername` stays `undefined` throughout. A
+  // mutate-in-place implementation returns the SAME object both times here
+  // (nothing it depends on changed), which is exactly the hazard the fresh
+  // `useMemo` object exists to avoid — see this hook's own doc comment.
+  it('returns a new function reference when ready flips, even though targetUsername stays undefined (no match)', async () => {
+    localStorage.setItem(STORAGE_KEY, 'LIB-GHOST');
+    const result = renderWithTargetUser(true, [
+      userListMock([
+        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
+      ]),
+    ]);
+
+    const before = result.current;
+    expect(before?.ready).toBe(false);
+
+    await waitFor(() => expect(result.current?.ready).toBe(true));
+    const after = result.current;
+
+    expect(after).not.toBe(before);
+    expect(after?.('/api/books')).toBe('/api/books');
   });
 
   it('appends ?user=<username> for an admin, resolved by matching the selected library id', async () => {
