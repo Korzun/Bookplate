@@ -18,12 +18,22 @@ vi.mock('~/provider/library-target', () => ({
   useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: false }),
 }));
 
-const bookEdge = (cursor: string, overrides: Record<string, unknown>) => ({
+/**
+ * `edges` is a MASKED array (see `use-library-entries.ts`'s doc comment):
+ * `node`'s fragment fields (`id`, `title`, ...) are not visible on the
+ * hook's return type without a `useFragment` call this hook deliberately
+ * does not make. Everything these tests assert on — `cursor` and
+ * `node.__typename` — is a plain sibling selection, NOT part of either
+ * named fragment, so it stays visible pre-unmask and is enough to prove
+ * order, count, and Book/Series discrimination without reaching into
+ * fragment-only fields.
+ */
+const bookEdge = (cursor: string, overrides: Record<string, unknown> = {}) => ({
   __typename: 'LibraryEntriesConnectionEdge' as const,
   cursor,
   node: {
     __typename: 'Book' as const,
-    id: 'BOOK-1',
+    id: `BOOK-${cursor}`,
     title: 'Dune',
     author: 'Frank Herbert',
     seriesIndex: 0,
@@ -34,8 +44,21 @@ const bookEdge = (cursor: string, overrides: Record<string, unknown>) => ({
   },
 });
 
+const seriesEdge = (cursor: string, overrides: Record<string, unknown> = {}) => ({
+  __typename: 'LibraryEntriesConnectionEdge' as const,
+  cursor,
+  node: {
+    __typename: 'Series' as const,
+    id: `SERIES-${cursor}`,
+    name: 'Dune Chronicles',
+    author: 'Frank Herbert',
+    bookCount: 6,
+    ...overrides,
+  },
+});
+
 const connection = (
-  edges: ReturnType<typeof bookEdge>[],
+  edges: (ReturnType<typeof bookEdge> | ReturnType<typeof seriesEdge>)[],
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
 ) => ({
   node: {
@@ -50,7 +73,7 @@ const connection = (
 });
 
 const firstPageMock = (
-  edges: ReturnType<typeof bookEdge>[],
+  edges: (ReturnType<typeof bookEdge> | ReturnType<typeof seriesEdge>)[],
   pageInfo: { hasNextPage: boolean; endCursor: string | null },
   filter: LibraryFilter | undefined = undefined
 ) => ({
@@ -63,7 +86,7 @@ const firstPageMock = (
 
 const fetchMoreMock = (
   after: string,
-  edges: ReturnType<typeof bookEdge>[],
+  edges: (ReturnType<typeof bookEdge> | ReturnType<typeof seriesEdge>)[],
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
 ) => ({
   request: {
@@ -99,10 +122,7 @@ const renderProbe = (
 describe('useLibraryEntries', () => {
   it('returns edges for the current library', async () => {
     const result = renderProbe([
-      firstPageMock([bookEdge('c1', { id: 'BOOK-1', title: 'Dune' })], {
-        hasNextPage: false,
-        endCursor: null,
-      }),
+      firstPageMock([bookEdge('c1')], { hasNextPage: false, endCursor: null }),
     ]);
 
     await waitFor(() => expect(result.current?.loading).toBe(false));
@@ -114,14 +134,8 @@ describe('useLibraryEntries', () => {
 
   it('appends the next page on fetchNextPage without dropping the first', async () => {
     const result = renderProbe([
-      firstPageMock([bookEdge('c1', { id: 'BOOK-1', title: 'Dune' })], {
-        hasNextPage: true,
-        endCursor: 'c1',
-      }),
-      fetchMoreMock('c1', [bookEdge('c2', { id: 'BOOK-2', title: 'Dune Messiah' })], {
-        hasNextPage: false,
-        endCursor: 'c2',
-      }),
+      firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
+      fetchMoreMock('c1', [bookEdge('c2')], { hasNextPage: false, endCursor: 'c2' }),
     ]);
 
     await waitFor(() => expect(result.current?.loading).toBe(false));
@@ -133,17 +147,14 @@ describe('useLibraryEntries', () => {
     });
 
     await waitFor(() => expect(result.current?.edges).toHaveLength(2));
-    expect(result.current?.edges.map((e) => e.node.id)).toEqual(['BOOK-1', 'BOOK-2']);
+    expect(result.current?.edges.map((e) => e.cursor)).toEqual(['c1', 'c2']);
     expect(result.current?.hasNextPage).toBe(false);
     expect(result.current?.error).toBeUndefined();
   });
 
   it('keeps existing edges when fetchNextPage fails', async () => {
     const result = renderProbe([
-      firstPageMock([bookEdge('c1', { id: 'BOOK-1', title: 'Dune' })], {
-        hasNextPage: true,
-        endCursor: 'c1',
-      }),
+      firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
       fetchMoreErrorMock('c1'),
     ]);
 
@@ -156,7 +167,7 @@ describe('useLibraryEntries', () => {
 
     await waitFor(() => expect(result.current?.error).toBe('fetch more failed'));
     expect(result.current?.edges).toHaveLength(1);
-    expect(result.current?.edges[0]?.node.id).toBe('BOOK-1');
+    expect(result.current?.edges[0]?.cursor).toBe('c1');
     expect(result.current?.hasNextPage).toBe(true);
   });
 
@@ -182,28 +193,38 @@ describe('useLibraryEntries', () => {
 
     const result = renderProbe(
       [
-        firstPageMock(
-          [bookEdge('c1', { id: 'BOOK-1', title: 'Dune' })],
-          { hasNextPage: false, endCursor: null },
-          filterA
-        ),
-        firstPageMock(
-          [bookEdge('c2', { id: 'BOOK-2', title: 'The Hobbit' })],
-          { hasNextPage: false, endCursor: null },
-          filterB
-        ),
+        firstPageMock([bookEdge('c1')], { hasNextPage: false, endCursor: null }, filterA),
+        firstPageMock([bookEdge('c2')], { hasNextPage: false, endCursor: null }, filterB),
       ],
       filterA
     );
 
     await waitFor(() => expect(result.current?.edges).toHaveLength(1));
-    expect(result.current?.edges[0]?.node.id).toBe('BOOK-1');
+    expect(result.current?.edges[0]?.cursor).toBe('c1');
 
     await act(async () => {
       result.current?.setFilter(filterB);
     });
 
-    await waitFor(() => expect(result.current?.edges[0]?.node.id).toBe('BOOK-2'));
+    await waitFor(() => expect(result.current?.edges[0]?.cursor).toBe('c2'));
     expect(result.current?.edges).toHaveLength(1);
+  });
+
+  it('preserves Book/Series discrimination and edge order across an interleaved page', async () => {
+    const result = renderProbe([
+      firstPageMock([seriesEdge('c1'), bookEdge('c2'), bookEdge('c3'), seriesEdge('c4')], {
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    expect(result.current?.edges.map((e) => e.cursor)).toEqual(['c1', 'c2', 'c3', 'c4']);
+    expect(result.current?.edges.map((e) => e.node.__typename)).toEqual([
+      'Series',
+      'Book',
+      'Book',
+      'Series',
+    ]);
   });
 });

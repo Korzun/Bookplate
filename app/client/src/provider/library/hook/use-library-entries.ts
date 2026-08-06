@@ -1,13 +1,8 @@
 import { useQuery } from '@apollo/client/react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { useFragment } from '~/gql';
-import type {
-  BookRowFragmentFragment,
-  LibraryFilter,
-  SeriesRowFragmentFragment,
-} from '~/gql/graphql';
-import { BookRowFragment, LibraryEntriesDocument, SeriesRowFragment } from '~/graphql/library';
+import type { LibraryEntriesQuery, LibraryFilter } from '~/gql/graphql';
+import { LibraryEntriesDocument } from '~/graphql/library';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
@@ -20,17 +15,34 @@ import { useCurrentLibraryId } from '~/provider/library-target';
  */
 const PAGE_SIZE = 20;
 
+type LibraryNode = Extract<NonNullable<LibraryEntriesQuery['node']>, { __typename: 'Library' }>;
+
 /**
- * Unmasked here, the same way `useScanProgress` unmasks `ScanStatusFields`
- * before returning it: this hook is the single place that requested
- * `BookRowFragment`/`SeriesRowFragment`, so it is the single place that
- * should call codegen's `useFragment` (a plain type-cast helper, not a React
- * hook — see that file's comment) to unwrap them, rather than pushing a
- * masked `FragmentType` ref downstream for every consumer to unwrap itself.
+ * Deliberately still MASKED here: `edge.node` carries a `FragmentType` ref
+ * for `BookRowFragment`/`SeriesRowFragment`, not the unwrapped fields.
+ *
+ * An earlier version of this hook unmasked centrally (mirroring
+ * `useScanProgress`'s handling of `ScanStatusFields`) and returned concrete
+ * `BookRowFragmentFragment | SeriesRowFragmentFragment` nodes. That forced
+ * iterating a HETEROGENEOUS array of two fragment types in one place, which
+ * is what collided with `useFragment` needing to be called unconditionally
+ * (`react-hooks/rules-of-hooks` — codegen's `useFragment` is a plain
+ * identity cast today, `src/gql/fragment-masking.ts`, but is deliberately
+ * named/shaped to mirror Apollo's real cache-reactive `useFragment`, so the
+ * lint rule is right to enforce this now even though nothing reactive is
+ * happening yet).
+ *
+ * Returning the ref instead removes the conflict rather than working around
+ * it: each row component (`BookRow`/`SeriesRow`, Task 7/9) calls
+ * `useFragment` exactly ONCE, unconditionally, in its own component body —
+ * its own render context, not a shared iteration here. `__typename` is
+ * readable on `node` WITHOUT unmasking (masking only wraps the fields
+ * pulled in by the named fragment spread, not sibling selections like
+ * `__typename` or the edge's own `cursor`), so this hook and any consumer
+ * can still discriminate `Book` from `Series` before ever calling
+ * `useFragment`.
  */
-export type LibraryEntryEdge =
-  | { cursor: string; node: BookRowFragmentFragment }
-  | { cursor: string; node: SeriesRowFragmentFragment };
+export type LibraryEntryEdge = LibraryNode['entries']['edges'][number];
 
 export type UseLibraryEntries = {
   edges: LibraryEntryEdge[];
@@ -50,7 +62,11 @@ export type UseLibraryEntries = {
  * filter change starts a fresh list in the cache rather than appending to
  * the old one, and `fetchMore` below appends within the SAME filter. This
  * hook adds no second pagination policy; it only decides when to call
- * `fetchMore` and how to report the result of doing so.
+ * `fetchMore` and how to report the result of doing so. `edges` is Apollo's
+ * own array, passed through unchanged — no reordering, filtering, or
+ * per-edge transform happens here (see `LibraryEntryEdge`'s doc comment for
+ * why: that used to exist, in the form of a masked→unmasked zip, and was
+ * deliberately removed).
  *
  * Skips the query outright when `libraryId` is `undefined` — an admin with
  * no library selected has nothing to root `node(id:)` on, and querying
@@ -89,39 +105,20 @@ export const useLibraryEntries = (filter: LibraryFilter | undefined): UseLibrary
   });
 
   const library = data?.node?.__typename === 'Library' ? data.node : undefined;
-  const rawEdges = library?.entries.edges ?? [];
-
-  // `useFragment` must be called unconditionally, at this hook's own top
-  // level — not per-edge inside a `.map` callback, which is indistinguishable
-  // from a real conditional hook call to both the linter and, if this codegen
-  // shim is ever swapped for Apollo's real (cache-reactive) `useFragment`, to
-  // React itself. The two calls below unmask each type's edges as ONE batch
-  // via `useFragment`'s array overload; the `.map` just after zips the two
-  // unmasked arrays back into `rawEdges`' original order using plain index
-  // arithmetic, no further hook calls involved.
-  const bookNodes = useFragment(
-    BookRowFragment,
-    rawEdges.flatMap((edge) => (edge.node.__typename === 'Book' ? [edge.node] : []))
-  );
-  const seriesNodes = useFragment(
-    SeriesRowFragment,
-    rawEdges.flatMap((edge) => (edge.node.__typename === 'Series' ? [edge.node] : []))
-  );
-
-  let bookCursor = 0;
-  let seriesCursor = 0;
-  const edges: LibraryEntryEdge[] = rawEdges.map((edge) =>
-    edge.node.__typename === 'Book'
-      ? { cursor: edge.cursor, node: bookNodes[bookCursor++]! }
-      : { cursor: edge.cursor, node: seriesNodes[seriesCursor++]! }
-  );
-
+  const edges = library?.entries.edges ?? [];
   const hasNextPage = library?.entries.pageInfo.hasNextPage ?? false;
   const endCursor = library?.entries.pageInfo.endCursor ?? undefined;
 
   // A stale fetchMore failure belongs to the request that produced it: once
   // the target library or filter moves on to a different list, clear it
   // rather than let it linger over rows it never actually failed to load.
+  //
+  // This depends on `libraryId`/`filter` REFERENCE stability to behave: a
+  // caller that passes a freshly-literal `filter` object on every render
+  // (rather than one held in state, as `useProbe` does in this hook's own
+  // test) makes this effect fire every render, which can clear a legitimate
+  // retry state before the screen ever gets to show it. Pass a stable
+  // `filter` reference.
   useEffect(() => {
     setFetchMoreError(undefined);
   }, [libraryId, filter]);
