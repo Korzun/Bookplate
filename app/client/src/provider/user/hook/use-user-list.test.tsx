@@ -12,6 +12,7 @@ const user = (overrides: Record<string, unknown>) => ({
   id: 'u1',
   username: 'alice',
   progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'lib-u1' },
   ...overrides,
 });
 
@@ -42,8 +43,18 @@ describe('useUserList', () => {
   it('returns users in username order with the tuple shape unchanged, id present', async () => {
     const result = renderUserList([
       userListMock([
-        user({ id: 'u2', username: 'zara', progressCount: 3 }),
-        user({ id: 'u1', username: 'alice', progressCount: 1 }),
+        user({
+          id: 'u2',
+          username: 'zara',
+          progressCount: 3,
+          library: { __typename: 'Library' as const, id: 'lib-u2' },
+        }),
+        user({
+          id: 'u1',
+          username: 'alice',
+          progressCount: 1,
+          library: { __typename: 'Library' as const, id: 'lib-u1' },
+        }),
       ]),
     ]);
 
@@ -51,7 +62,12 @@ describe('useUserList', () => {
     expect(result.current?.[2]).toBe(false);
     expect(result.current?.[3]).toBeUndefined();
     expect(result.current?.[0].map((u) => u.username)).toEqual(['alice', 'zara']);
-    expect(result.current?.[0][0]).toEqual({ id: 'u1', username: 'alice', progressCount: 1 });
+    expect(result.current?.[0][0]).toEqual({
+      id: 'u1',
+      username: 'alice',
+      progressCount: 1,
+      library: { id: 'lib-u1' },
+    });
   });
 
   it('reports loading before the query resolves', () => {

@@ -33,6 +33,13 @@ export type UseUserList =
  * Without `skip`, each of those would fire a `UserList` query the server
  * always answers `FORBIDDEN`, on ordinary navigation. `skip: !isAdmin` stops
  * that at the source, mirroring the REST-era hook's own admin-gated fetch.
+ *
+ * `library: { id }` (task 5) rides along on every entry — `UserListDocument`
+ * already selects it (task 4, for `useWithTargetUser`'s own separate query
+ * against the same document), so exposing it here costs nothing extra over
+ * the wire. `component/library-switcher` is the consumer: it stores the
+ * selected user's `library.id` (a Library global ID) while still displaying
+ * `username`, matching `library-target`'s Task 3 storage contract.
  */
 export const useUserList = (): UseUserList => {
   const [isAdmin] = useIsAdmin();
@@ -49,6 +56,7 @@ export const useUserList = (): UseUserList => {
           id: user.id,
           username: user.username,
           progressCount: user.progressCount,
+          library: { id: user.library.id },
         })
       )
       .sort(sortUserList);

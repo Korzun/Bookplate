@@ -14,6 +14,7 @@ const user = (overrides: Record<string, unknown>) => ({
   id: 'u1',
   username: 'alice',
   progressCount: 0,
+  library: { __typename: 'Library' as const, id: 'lib-u1' },
   ...overrides,
 });
 

@@ -41,8 +41,8 @@ function renderAsAdmin(ui: ReactNode) {
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([
     [
-      { id: 'u1', username: 'alice', progressCount: 0 },
-      { id: 'u2', username: 'bob', progressCount: 0 },
+      { id: 'u1', username: 'alice', progressCount: 0, library: { id: 'lib-alice' } },
+      { id: 'u2', username: 'bob', progressCount: 0, library: { id: 'lib-bob' } },
     ],
     false,
     false,
@@ -64,29 +64,29 @@ it('renders nothing for non-admin users', () => {
   expect(vi.mocked(useUserList)).not.toHaveBeenCalled();
 });
 
-it('lists users and selects a target library', async () => {
+it("stores the selected user's library id, not their username", async () => {
   renderAsAdmin(<LibrarySwitcher />);
   await userEvent.click(await screen.findByRole('button', { name: 'Select library…' }));
   await userEvent.click(await screen.findByRole('option', { name: 'alice' }));
-  expect(localStorage.getItem('library-target-user')).toBe('alice');
+  expect(localStorage.getItem('library-target-id')).toBe('lib-alice');
 });
 
-it('clears a persisted target missing from the loaded user list', async () => {
-  localStorage.setItem('library-target-user', 'ghost');
+it('clears a persisted target whose library id is missing from the loaded user list', async () => {
+  localStorage.setItem('library-target-id', 'lib-ghost');
   renderAsAdmin(<LibrarySwitcher />);
-  await waitFor(() => expect(localStorage.getItem('library-target-user')).toBeNull());
+  await waitFor(() => expect(localStorage.getItem('library-target-id')).toBeNull());
   expect(screen.getByRole('button', { name: 'Select library…' })).toBeInTheDocument();
 });
 
 it('keeps a persisted target present in the loaded user list', async () => {
-  localStorage.setItem('library-target-user', 'bob');
+  localStorage.setItem('library-target-id', 'lib-bob');
   renderAsAdmin(<LibrarySwitcher />);
   expect(await screen.findByRole('button', { name: 'bob' })).toBeInTheDocument();
-  expect(localStorage.getItem('library-target-user')).toBe('bob');
+  expect(localStorage.getItem('library-target-id')).toBe('lib-bob');
 });
 
 it('keeps the persisted target while the user list is loading', () => {
-  localStorage.setItem('library-target-user', 'ghost');
+  localStorage.setItem('library-target-id', 'lib-ghost');
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([[], true, false, undefined]);
   render(
@@ -98,11 +98,11 @@ it('keeps the persisted target while the user list is loading', () => {
       </ThemeProvider>
     </MemoryRouter>
   );
-  expect(localStorage.getItem('library-target-user')).toBe('ghost');
+  expect(localStorage.getItem('library-target-id')).toBe('lib-ghost');
 });
 
 it('keeps the persisted target when the user list is empty (not yet fetched)', () => {
-  localStorage.setItem('library-target-user', 'ghost');
+  localStorage.setItem('library-target-id', 'lib-ghost');
   vi.mocked(useIsAdmin).mockReturnValue([true, false]);
   vi.mocked(useUserList).mockReturnValue([[], false, false, undefined]);
   render(
@@ -114,5 +114,5 @@ it('keeps the persisted target when the user list is empty (not yet fetched)', (
       </ThemeProvider>
     </MemoryRouter>
   );
-  expect(localStorage.getItem('library-target-user')).toBe('ghost');
+  expect(localStorage.getItem('library-target-id')).toBe('lib-ghost');
 });

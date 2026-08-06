@@ -15,9 +15,19 @@ function stubList(tuple: UseUserList) {
 
 describe('useUser', () => {
   it('returns the user when found in the list', () => {
-    stubList([[{ id: 'u1', username: 'alice', progressCount: 2 }], false, false, undefined]);
+    stubList([
+      [{ id: 'u1', username: 'alice', progressCount: 2, library: { id: 'lib-u1' } }],
+      false,
+      false,
+      undefined,
+    ]);
     const { result } = renderHook(() => useUser('alice'));
-    expect(result.current[0]).toEqual({ id: 'u1', username: 'alice', progressCount: 2 });
+    expect(result.current[0]).toEqual({
+      id: 'u1',
+      username: 'alice',
+      progressCount: 2,
+      library: { id: 'lib-u1' },
+    });
     expect(result.current[1]).toBe(false);
     expect(result.current[2]).toBe(false);
     expect(result.current[3]).toBeUndefined();
@@ -32,7 +42,12 @@ describe('useUser', () => {
   });
 
   it('returns unknown-user error when list loaded but user absent', () => {
-    stubList([[{ id: 'u2', username: 'bob', progressCount: 0 }], false, false, undefined]);
+    stubList([
+      [{ id: 'u2', username: 'bob', progressCount: 0, library: { id: 'lib-u2' } }],
+      false,
+      false,
+      undefined,
+    ]);
     const { result } = renderHook(() => useUser('alice'));
     expect(result.current[0]).toBeUndefined();
     expect(result.current[2]).toBe(true);
@@ -48,9 +63,19 @@ describe('useUser', () => {
   });
 
   it('returns user alongside loading when list is refreshing', () => {
-    stubList([[{ id: 'u1', username: 'alice', progressCount: 0 }], true, false, undefined]);
+    stubList([
+      [{ id: 'u1', username: 'alice', progressCount: 0, library: { id: 'lib-u1' } }],
+      true,
+      false,
+      undefined,
+    ]);
     const { result } = renderHook(() => useUser('alice'));
-    expect(result.current[0]).toEqual({ id: 'u1', username: 'alice', progressCount: 0 });
+    expect(result.current[0]).toEqual({
+      id: 'u1',
+      username: 'alice',
+      progressCount: 0,
+      library: { id: 'lib-u1' },
+    });
     expect(result.current[1]).toBe(true);
     expect(result.current[2]).toBe(false);
   });
