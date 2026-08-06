@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 
+import { encodeGlobalID } from '@pothos/plugin-relay';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
@@ -2631,6 +2632,151 @@ describe('POST /api/books/:id/validate', () => {
   it('returns 401 without a token', async () => {
     const res = await request(app).post('/api/books/whatever/validate');
     expect(res.status).toBe(401);
+  });
+});
+
+// Task 13: GraphQL's `Book.id` is a Relay global ID encoding [userId, bookId]
+// (spec 1's book-relay-id pass removed the raw `bookId` field from the
+// schema entirely), but the GraphQL-fed library grid still navigates to
+// these legacy REST routes for one book at a time (`page/book` isn't on
+// GraphQL yet). These are the routes reachable from that grid with a global
+// ID in `:id` — see `resolveBookLocalId`'s doc comment in `ui.ts` for the
+// full reachability analysis and the authorization rule. Every other
+// `/api/books/:id/...` route is fed a book id resolved earlier in the same
+// page load (or belongs to a screen still entirely on REST) and is
+// unaffected.
+function bookGlobalId(userId: string, bookId: string): string {
+  return encodeGlobalID('Book', JSON.stringify([userId, bookId]));
+}
+
+describe('legacy book REST routes accept a Relay global ID (Task 13)', () => {
+  let bobToken: string;
+  let aliceBookId: string;
+
+  beforeEach(async () => {
+    await userStore.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+    const bobRes = await request(app)
+      .post('/api/login')
+      .send('username=bob&password=bobpass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    bobToken = (bobRes.body as { accessToken: string }).accessToken;
+
+    await bookStore.addBook(aliceOwner, 'gidbook', stage('gidbook'), FAKE_META);
+    aliceBookId = (await bookStore.listBooks(aliceOwner))[0].id;
+  });
+
+  describe('GET /api/books/:id', () => {
+    it('still resolves a raw id', async () => {
+      const token = await loginAlice();
+      const res = await request(app)
+        .get(`/api/books/${aliceBookId}`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(aliceBookId);
+    });
+
+    it('resolves a Relay global ID to the same book', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(aliceBookId);
+    });
+
+    it('refuses a global ID belonging to another user, exactly as a cross-tenant raw id is refused today', async () => {
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+
+    it('refuses a malformed base64 id cleanly (404, never a throw/500)', async () => {
+      const token = await loginAlice();
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent('%%%not-base64%%%')}`)
+        .set(...bearer(token));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/books/:id', () => {
+    it('resolves a Relay global ID', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}`)
+        .set(...bearer(token));
+      expect(res.status).toBe(204);
+    });
+
+    it("refuses another user's global ID", async () => {
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/books/:id/download', () => {
+    it('resolves a Relay global ID', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}/download`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+    });
+
+    it("refuses another user's global ID", async () => {
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}/download`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/books/:id/editions', () => {
+    it('resolves a Relay global ID', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}/editions`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ cleared: 0 });
+    });
+
+    it("refuses another user's global ID", async () => {
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}/editions`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/books/:id/validate', () => {
+    it('resolves a Relay global ID', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/validate`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+    });
+
+    it("refuses another user's global ID", async () => {
+      const globalId = bookGlobalId(aliceId, aliceBookId);
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/validate`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
   });
 });
 

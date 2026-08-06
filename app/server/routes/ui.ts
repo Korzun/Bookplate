@@ -2,10 +2,12 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { decodeGlobalID } from '@pothos/plugin-relay';
 import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
 import { deriveCurrentChapter } from '../graphql/derive';
+import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { applyEpubChanges, replaceEpubBytes } from '../services/apply-epub-changes';
@@ -423,6 +425,58 @@ export function createUiRouter(
     const userId = requireUserId(req, res);
     if (!userId) return null;
     return { userId, username: req.user!.username };
+  }
+
+  /**
+   * TEMPORARY (Task 13). Dies with this route: `/api/books/:id` and its
+   * siblings below are on spec 3's deletion list, and this dual-form
+   * acceptance is not a permanent identifier design — do not extend it or
+   * copy it elsewhere.
+   *
+   * GraphQL's `Book.id` is a Relay global ID encoding `[userId, bookId]`
+   * (spec 1's book-relay-id pass removed the raw `bookId` field from the
+   * schema entirely — the global ID is now the only book identifier
+   * GraphQL emits). But `page/book` is still REST, and the GraphQL-fed
+   * library grid navigates to it with that global ID in the URL, which
+   * flows straight through to this route's `:id` param. Resolves either
+   * form to the raw, content-hash id `bookStore` expects; a raw id (every
+   * screen not yet on GraphQL) passes through unchanged.
+   *
+   * Reuses the schema's own `parseCompoundId` (`graphql/schema/node-
+   * scope.ts`) rather than hand-rolling base64/JSON parsing — same
+   * encoding, same decoder.
+   *
+   * THE AUTHORIZATION RULE (this is the part that matters): the decoded
+   * id's embedded userId is a claim, not a credential. It is checked
+   * against `owner.userId` — the target THIS request already resolved via
+   * `resolveOwner` (the caller's own library, or an admin's `?user=`-named
+   * one) — and refused (returns null) on any mismatch. `?user=`/the
+   * caller's own session stays authoritative for which library a request
+   * targets; a global id can only ever point INTO that already-resolved
+   * library, never override it to a different one. Concretely: if an admin
+   * passes `?user=bob` but the id decodes to alice's userId, the two
+   * disagree and the request is refused — same as it would be if a raw id
+   * simply didn't belong to bob's library.
+   *
+   * Never throws. A string that isn't a well-formed `Book` global id
+   * (fails `decodeGlobalID`, decodes to a non-`Book` typename, or fails
+   * `parseCompoundId`) is passed through unchanged as a raw id — matching
+   * today's behavior for every existing raw id: an unresolvable/malformed
+   * id simply fails to match any book downstream and 404s, same as any
+   * other unknown raw id does today.
+   */
+  function resolveBookLocalId(owner: Owner, rawId: string): string | null {
+    let decoded: { typename: string; id: string };
+    try {
+      decoded = decodeGlobalID(rawId);
+    } catch {
+      return rawId;
+    }
+    if (decoded.typename !== 'Book') return rawId;
+    const parsed = parseCompoundId(decoded.id);
+    if (parsed === null) return rawId;
+    const [userId, bookId] = parsed;
+    return userId === owner.userId ? bookId : null;
   }
 
   // ── Auth ──────────────────────────────────────────────
@@ -1068,7 +1122,12 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id, { withEditionCount: true });
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId, { withEditionCount: true });
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
@@ -1256,9 +1315,14 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId);
       if (!book) {
-        log.warn(`Download attempted for unknown book ID: ${req.params.id}`);
+        log.warn(`Download attempted for unknown book ID: ${bookId}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -1278,9 +1342,14 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const deleted = await bookStore.deleteBook(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const deleted = await bookStore.deleteBook(owner, bookId);
       if (!deleted) {
-        log.warn(`Delete attempted for unknown book ID: ${req.params.id}`);
+        log.warn(`Delete attempted for unknown book ID: ${bookId}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -1295,13 +1364,18 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const cleared = await bookStore.clearDeviceEditions(owner, req.params.id);
-      if (cleared === null) {
-        log.warn(`Clear editions attempted for unknown book ID: ${req.params.id}`);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
         res.status(404).json({ error: 'Book not found' });
         return;
       }
-      log.info(`Cleared ${cleared} device edition(s) for book "${req.params.id}"`);
+      const cleared = await bookStore.clearDeviceEditions(owner, bookId);
+      if (cleared === null) {
+        log.warn(`Clear editions attempted for unknown book ID: ${bookId}`);
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      log.info(`Cleared ${cleared} device edition(s) for book "${bookId}"`);
       res.json({ cleared });
     })
   );
@@ -1552,7 +1626,12 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
