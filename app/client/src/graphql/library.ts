@@ -8,11 +8,17 @@ import { graphql } from '~/gql';
  * `Series.books` is deliberately NOT selected here — it is itself a
  * connection, and selecting a connection inside a ×100-priced connection is
  * the shape most likely to blow the cost budget. `SeriesRowFragment` reads
- * `bookCount` and `author` (both scalars on `Series`) instead; the cover
- * stack gets its own fetch, decided separately when the grid row is built.
+ * `bookCount`, `author` and `progress` (all scalars on `Series`) instead;
+ * the cover stack gets its own fetch, decided separately when the grid row
+ * is built.
  *
- * Measured (`test:cost -w app/server`): breadth 35 (35.0%), complexity 2807
- * (8.5%) of budget — comfortably under the 70% gate on both axes.
+ * Measured (`test:cost -w app/server`): breadth 36 (36.0%), complexity 2907
+ * (8.8%) of budget — comfortably under the 70% gate on both axes. (Before
+ * task 14 added `Series.progress` to `SeriesRowFragment`: breadth 35
+ * (35.0%), complexity 2807 (8.5%) — a scalar leaf adds a flat +1 breadth and
+ * +1×the connection's own page-size multiplier (100, since `first` is a
+ * variable here) to complexity, exactly the "page-size multiplier applies
+ * to complexity only" rule `cost-limit.ts`'s own doc comment states.)
  */
 export const BookRowFragment = graphql(`
   fragment BookRowFragment on Book {
@@ -29,12 +35,29 @@ export const BookRowFragment = graphql(`
   }
 `);
 
+/**
+ * `seriesProgress: progress`, not a bare `progress` — `SeriesRowFragment` is
+ * spread alongside `BookRowFragment` inside the SAME selection set
+ * (`LibraryEntriesDocument`'s `node { ... on Book {...} ... on Series {...} }`,
+ * where `LibraryEntry` is the union `Book | Series`). `Book.progress` is an
+ * OBJECT field (`Progress`); `Series.progress` (this task) is a `Float`
+ * scalar — same response name, incompatible response shapes. GraphQL's
+ * field-merging rule (`SameResponseShape`, spec §5.3.2) requires every field
+ * with a given response name in a merged selection set to agree on shape
+ * REGARDLESS of the two fields' parent types being mutually exclusive union
+ * members — verified against this schema directly: `graphql-js`'s own
+ * `validate()` with `specifiedRules` rejects the bare-name version with
+ * "Fields \"progress\" conflict because they return conflicting types
+ * \"Progress\" and \"Float\"." The alias is the fix the error message itself
+ * names ("Use different aliases on the fields to fetch both").
+ */
 export const SeriesRowFragment = graphql(`
   fragment SeriesRowFragment on Series {
     id
     name
     author
     bookCount
+    seriesProgress: progress
   }
 `);
 

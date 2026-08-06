@@ -24,13 +24,17 @@ type SeriesRowProps = {
  * was kept out of `LibraryEntries` on cost-budget grounds. It only needs
  * `seriesName`, unmasked here.
  *
- * Drops the progress badge the REST version showed (`useMySeriesProgress`):
- * `SeriesRowFragment` carries no progress field because the server has none
- * — `Series` (`app/server/graphql/schema/series/model.ts`) exposes no
- * per-series aggregate progress, over REST or GraphQL. Verified against the
- * schema, not assumed; flagged in task 7's report as a disclosed behaviour
- * change rather than silently dropped, since fixing it needs a server
- * change this plan's constraints forbid.
+ * The progress badge the REST version showed (`useMySeriesProgress`), which
+ * task 7 dropped because no such field existed on either transport, is
+ * restored here (task 14): `unmasked.seriesProgress` — aliased in the
+ * fragment (`~/graphql/library`'s doc comment on `SeriesRowFragment`
+ * explains why a bare `progress` collides with `BookRowFragment`'s own
+ * `Progress`-typed field in the same union selection set) — carries
+ * `Series.progress`, the server's aggregate over the same semantics
+ * `useMySeriesProgress` used: the mean of each member book's percentage,
+ * `null` when none of them have started. Formatting matches the REST
+ * version exactly (`< 1` → a rounded percentage, else "Completed" — see
+ * `e2a17228`, "show 'Completed' text when series progress reaches 100%").
  */
 export function SeriesRow({ series }: SeriesRowProps) {
   const styles = useStyle();
@@ -46,6 +50,11 @@ export function SeriesRow({ series }: SeriesRowProps) {
     meta.push(unmasked.author);
   }
   meta.push(`${unmasked.bookCount} book series`);
+  if (unmasked.seriesProgress !== null) {
+    meta.push(
+      unmasked.seriesProgress < 1 ? `${(unmasked.seriesProgress * 100).toFixed(0)}%` : 'Completed'
+    );
+  }
 
   return (
     <Card size="small" onClick={handleNavigate}>
