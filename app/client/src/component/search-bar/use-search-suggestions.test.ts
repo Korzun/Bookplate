@@ -162,6 +162,52 @@ describe('useSearchSuggestions', () => {
     await waitFor(() => expect(result.current?.loading).toBe(false));
   });
 
+  it('keeps the previous groups visible while a newly-settled debounced query is still in flight', async () => {
+    const groupsA = [
+      wireGroup('AUTHOR', [
+        { label: 'N.K. Jemisin', value: 'N.K. Jemisin', matchStart: 0, matchLength: 4 },
+      ]),
+    ];
+    const mockA = suggestionsMock('jemi', {}, groupsA);
+    // `delay: Infinity` never resolves — the SECOND query stays perpetually
+    // in flight, so if the hook's groups ever reflected it, this test would
+    // have to be reading stale-from-the-future data, which is impossible.
+    // Any groups seen here can only be the FIRST query's.
+    const mockB: MockedResponse<SearchSuggestionsQuery> = {
+      request: {
+        query: SearchSuggestionsDocument,
+        variables: { libraryId: LIBRARY_ID, query: 'jemis', filter: {} },
+      },
+      delay: Infinity,
+    };
+
+    const useProbe = () => {
+      const [input, setInput] = useState('jemi');
+      return { ...useSearchSuggestions(input, emptyFilter), setInput };
+    };
+    const { result } = renderHookWithApollo(useProbe, [mockA, mockB]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    expect(result.current?.groups.find((g) => g.type === 'author')?.items[0].label).toBe(
+      'N.K. Jemisin'
+    );
+
+    // Type further: a new debounced query starts (and never settles, per
+    // mockB above), but the dropdown should keep showing the first query's
+    // groups rather than blanking out for the round trip.
+    act(() => result.current?.setInput('jemis'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(result.current?.loading).toBe(true);
+    expect(result.current?.groups.find((g) => g.type === 'author')?.items[0].label).toBe(
+      'N.K. Jemisin'
+    );
+  });
+
   it('prepends a client-matched status group before server groups, and maps grouped-by-type server results', async () => {
     const groups = [
       wireGroup('AUTHOR', [

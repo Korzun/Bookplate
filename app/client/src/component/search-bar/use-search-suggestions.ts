@@ -118,7 +118,11 @@ export function useSearchSuggestions(
     ...(subjects && subjects.length > 0 ? { activeSubjects: subjects } : {}),
   };
 
-  const { data, loading: queryLoading } = useQuery(SearchSuggestionsDocument, {
+  const {
+    data,
+    previousData,
+    loading: queryLoading,
+  } = useQuery(SearchSuggestionsDocument, {
     variables: {
       libraryId: libraryId ?? '',
       query: debouncedQuery,
@@ -126,6 +130,13 @@ export function useSearchSuggestions(
     },
     skip: libraryId === undefined || debouncedQuery === '',
   });
+  // Falls back to `previousData` while a just-settled `debouncedQuery` has
+  // no cache entry yet: `data` is `undefined` for that round trip (Apollo
+  // has no merge policy on `searchSuggestions`), but `previousData` still
+  // holds the prior debounced query's result, so the dropdown keeps showing
+  // it (stale-while-revalidate) instead of blanking out and repopulating on
+  // every settled keystroke.
+  const effectiveData = data ?? previousData;
 
   const query = inputValue.trim();
 
@@ -165,15 +176,15 @@ export function useSearchSuggestions(
     return { groups: emptyGroups, loading: false };
   }
 
-  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const library = effectiveData?.node?.__typename === 'Library' ? effectiveData.node : undefined;
   const result: SuggestionGroup[] = [];
 
-  // Gated on `library` — i.e. a completed fetch for the CURRENT debounced
-  // query — matching the REST version, which only ever computed the status
+  // Gated on `library` — i.e. a completed fetch for the CURRENT OR the
+  // immediately preceding debounced query (see `effectiveData` above) —
+  // matching the REST version, which only ever computed the status
   // quick-match and mapped the server groups inside its fetch's success
-  // handler. While a fetch for a brand-new `debouncedQuery` is in flight
-  // (nothing cached yet for these variables), `groups` is empty rather than
-  // showing the previous query's stale results.
+  // handler, and kept the previous groups on screen between one fetch
+  // finishing and the next one starting.
   if (library) {
     if (!status) {
       const items: Suggestion[] = [];

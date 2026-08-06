@@ -4,9 +4,9 @@ import { LibrarySubjectsDocument } from '~/graphql/library';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
- * Feeds the filter-chip subject picker (`component/search-bar`) from
- * `Library.subjects` — a flat, unpaginated `[String!]!` (no connection, no
- * fragment).
+ * Feeds `component/book-edit-form`'s `SubjectChips` — a per-book subject
+ * editor — from `Library.subjects`: a flat, unpaginated `[String!]!` (no
+ * connection, no fragment).
  *
  * Skips the query while `libraryId` is `undefined` — an admin with no
  * library selected has nothing to root `node(id:)` on. `loading` folds in
@@ -20,9 +20,9 @@ import { useCurrentLibraryId } from '~/provider/library-target';
  *
  * Preserves the previous REST hook's tuple shape and its "silently empty on
  * error" contract: `error` reports Apollo's own `error?.message`, but the
- * caller (`SearchBar`) never surfaced one — subjects are optional filter
- * candidates, not a first-class loaded screen, so a failure here degrades to
- * "no subject chips offered" rather than an error state.
+ * current caller doesn't read it — subjects are optional editing candidates,
+ * not a first-class loaded screen, so a failure here degrades to "no subject
+ * chips offered" rather than an error state.
  */
 export const useLibrarySubjects = (): [string[], boolean, string | undefined] => {
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
