@@ -179,6 +179,16 @@ describe('useBook', () => {
   // `false` by the time it re-fires, so the re-entrancy guard inside
   // `useFetchBook` doesn't catch it either. This pins the bounded-call-count
   // symptom directly, the way the reviewer's own probe did.
+  //
+  // Review round 2 (minor): against the unfixed code this doesn't fail a
+  // count assertion — the loop just keeps firing async setState/fetch
+  // cycles until vitest's default 5000ms test timeout kills it, which reads
+  // as a hang, not a regression. This hook's own loop is
+  // fetch-then-setState-then-refire (not a synchronous render loop), so it
+  // never trips React's own "Maximum update depth exceeded" guard the way a
+  // synchronous update loop would — it just keeps going. The explicit 2000ms
+  // timeout below (comfortably above the ~200ms the fixed case takes) makes
+  // a regression fail fast and legibly instead of reading as a hang.
   it('fetches exactly once when the requested id differs from the response book.id (global-id navigation), not in a loop', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -198,5 +208,5 @@ describe('useBook', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
+  }, 2000);
 });

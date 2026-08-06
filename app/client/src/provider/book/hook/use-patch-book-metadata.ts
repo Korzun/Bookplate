@@ -70,9 +70,25 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
           throw new Error(body.error ?? 'Save failed');
         }
         const updatedBook = await (response.json() as Promise<Book>);
+        // Delete every `bookList` entry describing the PRE-edit book
+        // (`.id === bookId`), not just `next[bookId]` itself — same fix as
+        // `use-regen-chapters.ts` (see that file's doc comment for the full
+        // mechanism). `useFetchBook` keys entries by the id they were
+        // REQUESTED under, not the book's own raw id, so a book reached via
+        // a Relay global id (the grid) can be cached under a key that isn't
+        // `bookId` here (`bookId` is always the resolved raw id —
+        // `page/book-edit` calls `patchBookMetadata(id)` with the id its own
+        // `useBook` already resolved). `next[bookId]` alone leaves that
+        // alias holding the pre-edit book forever: `completeBookIds` still
+        // marks it complete, so `useBook` never refetches it, and browsing
+        // back to the book via its original (global-id) URL silently shows
+        // stale, pre-edit data with no loading state or error.
         setBookList((prev) => {
-          const next = { ...prev, [updatedBook.id]: updatedBook };
-          if (updatedBook.id !== bookId) delete next[bookId];
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key]?.id === bookId) delete next[key];
+          }
+          next[updatedBook.id] = updatedBook;
           return next;
         });
         if (updatedBook.id !== bookId) renameProgressKey(bookId, updatedBook.id);

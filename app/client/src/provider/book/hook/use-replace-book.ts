@@ -81,9 +81,25 @@ export const useReplaceBook = (): UseReplaceBook => {
           return undefined;
         }
         const updated = (await res.json()) as Book;
+        // Delete every `bookList` entry describing the PRE-replace book
+        // (`.id === id`), not just `next[id]` itself — same fix as
+        // `use-regen-chapters.ts`/`use-patch-book-metadata.ts` (see the
+        // former's doc comment for the full mechanism). `id` here is
+        // always the resolved raw id (`UploadReplaceModal` is given
+        // `bookId={book.id}` by `page/book`), but `bookList` is keyed by
+        // whatever id `useFetchBook` was REQUESTED under — a Relay global
+        // id for a grid-originated visit. `next[id]` alone leaves that
+        // alias holding the pre-replace book forever, masked by the
+        // immediate post-replace `navigate(path.book(newId))` (which
+        // populates the NEW id's own entry correctly) — but browsing back
+        // to the ORIGINAL url shows the stale, pre-replace book with no
+        // loading state or error.
         setBookList((prev) => {
-          const next = { ...prev, [updated.id]: updated };
-          if (updated.id !== id) delete next[id];
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key]?.id === id) delete next[key];
+          }
+          next[updated.id] = updated;
           return next;
         });
         if (updated.id !== id) renameProgressKey(id, updated.id);

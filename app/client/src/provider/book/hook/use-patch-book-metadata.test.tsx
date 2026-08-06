@@ -120,6 +120,67 @@ function makeWrapper({
   };
 }
 
+/**
+ * Same Context shape as `makeWrapper`, but takes the initial `BookList` map
+ * directly — needed for the alias-key test below, which files the book
+ * under a key OTHER than its own `.id` (simulating a book reached via a
+ * Relay global id, whose cache entry `useFetchBook` keys by the REQUESTED
+ * id rather than `book.id` — see `use-regen-chapters.ts`'s doc comment for
+ * the full mechanism, task 8 review round 1/2).
+ */
+function makeWrapperWithBookList(bookList: BookList) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    const [state, setBookListRaw] = useState<BookList>(bookList);
+    const setBookList = useCallback(
+      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
+      []
+    );
+    return (
+      <ApolloTestProvider>
+        <ProgressContext.Provider
+          value={{
+            progressList: {},
+            loadingByUsername: {},
+            errorByUsername: {},
+            setProgressForUsername: () => {},
+            setLoadingForUsername: () => {},
+            setErrorForUsername: () => {},
+            renameProgressKey: () => {},
+          }}
+        >
+          <Context.Provider
+            value={{
+              bookList: state,
+              bookListFetched: true,
+              bookListLoading: false,
+              bookListError: undefined,
+              loadingByBookId: {},
+              errorByBookId: {},
+              completeBookIds: new Set(['global-1']),
+              setBookList,
+              setBookListFetched: () => {},
+              setBookListLoading: () => {},
+              setBookListError: () => {},
+              setLoadingForBook: () => {},
+              setErrorForBook: () => {},
+              setBookComplete: () => {},
+              clearCompleteBookIds: () => {},
+              bookListItems: [],
+              nextCursor: null,
+              setBookListItems: () => {},
+              setNextCursor: () => {},
+              bookListFilter: {},
+              setBookListFilter: () => {},
+            }}
+          >
+            {children}
+          </Context.Provider>
+        </ProgressContext.Provider>
+      </ApolloTestProvider>
+    );
+  };
+}
+
 describe('usePatchBookMetadata', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -203,6 +264,37 @@ describe('usePatchBookMetadata', () => {
     await act(() => result.current.hook[0]('1', { title: 'Renamed' }));
     expect(result.current.ctx.bookList['1']).toBeUndefined();
     expect(result.current.ctx.bookList['2']).toBeDefined();
+  });
+
+  // Task 8 review round 2: `bookId` here is always the resolved raw id
+  // (`page/book-edit` passes the id its own `useBook` resolved), but a book
+  // reached earlier via a Relay global id (the grid) can have its `bookList`
+  // entry filed under THAT global-id key instead — `useFetchBook` keys by
+  // the REQUESTED id, not `book.id`. The pre-fix `next[bookId]`-only
+  // deletion never touched that alias: the stale, pre-edit copy survived
+  // under `global-1` forever, and `completeBookIds` still marked it
+  // complete, so `useBook` never refetched it — browsing back to the
+  // book's original (global-id) URL would silently show the pre-edit book.
+  it('clears a stale alias entry (cached under a different key than its own id) after a metadata edit', async () => {
+    const updated = makeBook({ id: 'raw-1', title: 'Updated' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+    );
+    const preEdit = makeBook({ id: 'raw-1', title: 'Dune' });
+    const { result } = renderHook(
+      () => ({ hook: usePatchBookMetadata(), ctx: useContext(Context) }),
+      // Filed under 'global-1' — a different key than the book's own raw id
+      // ('raw-1') — exactly what a grid-originated (global-id) navigation
+      // produces via `useFetchBook`.
+      { wrapper: makeWrapperWithBookList({ 'global-1': preEdit }) }
+    );
+
+    await act(() => result.current.hook[0]('raw-1', { title: 'Updated' }));
+
+    expect(result.current.ctx.bookList['global-1']).toBeUndefined();
+    expect(result.current.ctx.bookList['raw-1']).toBeDefined();
+    expect(result.current.ctx.bookList['raw-1'].title).toBe('Updated');
   });
 
   it('returns the new book id on success', async () => {

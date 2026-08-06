@@ -156,6 +156,67 @@ function makeWrapper({
   };
 }
 
+/**
+ * Same Context shape as `makeWrapper`, but takes the initial `BookList` map
+ * directly — needed for the alias-key test below, which files the book
+ * under a key OTHER than its own `.id` (simulating a book reached via a
+ * Relay global id, whose cache entry `useFetchBook` keys by the REQUESTED
+ * id rather than `book.id` — see `use-regen-chapters.ts`'s doc comment for
+ * the full mechanism, task 8 review round 1/2).
+ */
+function makeWrapperWithBookList(bookList: BookList) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    const [state, setBookListRaw] = useState<BookList>(bookList);
+    const setBookList = useCallback(
+      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
+      []
+    );
+    return (
+      <ApolloTestProvider>
+        <ProgressContext.Provider
+          value={{
+            progressList: {},
+            loadingByUsername: {},
+            errorByUsername: {},
+            setProgressForUsername: () => {},
+            setLoadingForUsername: () => {},
+            setErrorForUsername: () => {},
+            renameProgressKey: () => {},
+          }}
+        >
+          <Context.Provider
+            value={{
+              bookList: state,
+              bookListFetched: true,
+              bookListLoading: false,
+              bookListError: undefined,
+              loadingByBookId: {},
+              errorByBookId: {},
+              completeBookIds: new Set(['global-1']),
+              setBookList,
+              setBookListFetched: () => {},
+              setBookListLoading: () => {},
+              setBookListError: () => {},
+              setLoadingForBook: () => {},
+              setErrorForBook: () => {},
+              setBookComplete: () => {},
+              clearCompleteBookIds: () => {},
+              bookListItems: [],
+              nextCursor: null,
+              setBookListItems: () => {},
+              setNextCursor: () => {},
+              bookListFilter: {},
+              setBookListFilter: () => {},
+            }}
+          >
+            {children}
+          </Context.Provider>
+        </ProgressContext.Provider>
+      </ApolloTestProvider>
+    );
+  };
+}
+
 describe('useReplaceBook', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -294,6 +355,40 @@ describe('useReplaceBook', () => {
       expect(result.current.ctx.bookList['2']).toBeDefined();
       expect(result.current.progress.progressList['alice']['1']).toBeUndefined();
       expect(result.current.progress.progressList['alice']['2']).toBeDefined();
+    });
+
+    // Task 8 review round 2: `id` here is always the resolved raw id
+    // (`UploadReplaceModal` is given `bookId={book.id}` by `page/book`), but
+    // a book reached earlier via a Relay global id (the grid) can have its
+    // `bookList` entry filed under THAT global-id key instead —
+    // `useFetchBook` keys by the REQUESTED id, not `book.id`. The pre-fix
+    // `next[id]`-only deletion never touched that alias: it's masked by the
+    // immediate post-replace `navigate(path.book(newId))` (which populates
+    // the NEW id's own entry correctly), but the stale, pre-replace copy
+    // survives under the original global-id key forever — browsing back to
+    // the book's original URL would silently show the pre-replace book.
+    it('clears a stale alias entry (cached under a different key than its own id) after a replace', async () => {
+      const updated = makeBook({ id: 'raw-1', title: 'Replaced' });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+      );
+      const preReplace = makeBook({ id: 'raw-1', title: 'Dune' });
+      const { result } = renderHook(
+        () => ({ hook: useReplaceBook(), ctx: useContext(Context) }),
+        // Filed under 'global-1' — a different key than the book's own raw
+        // id ('raw-1') — exactly what a grid-originated (global-id)
+        // navigation produces via `useFetchBook`.
+        { wrapper: makeWrapperWithBookList({ 'global-1': preReplace }) }
+      );
+
+      await act(async () => {
+        await result.current.hook.commitReplacement('raw-1', makeFile(), []);
+      });
+
+      expect(result.current.ctx.bookList['global-1']).toBeUndefined();
+      expect(result.current.ctx.bookList['raw-1']).toBeDefined();
+      expect(result.current.ctx.bookList['raw-1'].title).toBe('Replaced');
     });
 
     it('invalidates the book list pagination after a successful commit', async () => {
