@@ -1,3 +1,5 @@
+import type { Severity } from '@korzun/epubcheck-ts';
+
 import { builder } from '../builder';
 import { model as validationSeverity } from '../validation-severity';
 
@@ -20,7 +22,7 @@ export const model = builder
     fields: (t) => ({
       severity: t.field({
         type: validationSeverity,
-        resolve: (row) => row.severity as never,
+        resolve: (row) => row.severity as Severity,
       }),
       count: t.exposeInt('count'),
     }),
