@@ -58,22 +58,34 @@ export const LineageEntryFragment = graphql(`
 
 /**
  * The richest document this migration has produced: `book` plus its
- * `validation` (with a nested `messages(first: 100)` connection) and
- * `lineage` list, all fanning out from a single `Library.book(id:)` lookup —
- * no list connection above it, so none of these fields amplify the way
+ * `lineage` list, fanning out from a single `Library.book(id:)` lookup — no
+ * list connection above it, so none of these fields amplify the way
  * `LibraryEntries`' ×100 `entries` does (`graphql/library.ts`). Breadth is
- * the tight axis here (69.0%, one point off the 70% gate) because breadth
- * counts SELECTED FIELDS, not fan-out, and this document simply selects a
- * lot of them across `book`, `validation` (incl. `counts`, `messages`'
- * connection wrapper and its 7-field `node`), and `lineage`'s 4-field
- * fragment; complexity stays low (4.2%) precisely because none of that is
- * multiplied by a list.
+ * the tight axis here because breadth counts SELECTED FIELDS, not fan-out
+ * — an original version of this document that also carried
+ * `validation { ...ValidationFragment }` measured breadth 69 (69.0%), one
+ * point off the 70% gate.
  *
- * Measured (`test:cost -w app/server`): breadth 69 (69.0%), complexity 1371
- * (4.2%) of budget — under the 70% gate on both axes; no trimming lever
- * (brief step 4: `messages(first: 20)`, then splitting `validation` into its
- * own lazy query) was needed. Breadth's 1-point margin is real, not noise —
- * adding any further field here should be re-measured before shipping.
+ * 2026-08-13, human ruling (task-4 review): that margin was too thin for
+ * later migration steps to extend safely, so `validation`'s expensive
+ * payload (`threshold`, `validatedAt`, `counts`, `messages`) was split out
+ * into `BookValidationDocument` below, fired lazily when the validation
+ * modal opens. This document keeps only `validation { id valid }` —
+ * load-bearing, not a leftover: `editingBlocked` gates the "Edit metadata"
+ * action on `validation?.valid !== true` and is evaluated on page LOAD, not
+ * on modal open, so it cannot wait for the lazy query.
+ *
+ * NOTE for future trims: a page-size cut (e.g. `messages(first: 20)`) only
+ * moves COMPLEXITY, which was already a harmless 4.2% here — breadth is 1
+ * per selection in the expanded tree, UNWEIGHTED by any connection
+ * multiplier (`cost-limit.ts:598-666`). If breadth ever gets tight again on
+ * a document like this one, cut FIELDS (or split them out, as here), not
+ * page sizes.
+ *
+ * Measured (`test:cost -w app/server`): breadth 49 (49.0%), complexity 163
+ * (0.5%) of budget — comfortably under the 70% gate on both axes after the
+ * split (was 69/69.0% breadth, 1371/4.2% complexity with `validation`
+ * inline).
  */
 export const BookDetailDocument = graphql(`
   query BookDetail($libraryId: ID!, $bookId: ID!) {
@@ -110,13 +122,50 @@ export const BookDetailDocument = graphql(`
             currentChapter
           }
           validation {
-            ...ValidationFragment
+            id
+            valid
           }
           lineage {
             ...LineageEntryFragment
           }
           pendingFix {
             id
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * The lazy half of the 2026-08-13 split (see `BookDetailDocument`'s doc
+ * comment): fired only when the validation modal opens, not on page load.
+ * `BookDetail` deliberately keeps its own cheap `validation { id valid }`
+ * for `editingBlocked`, evaluated eagerly on load — this document carries
+ * everything else `ValidationFragment` selects (`threshold`, `validatedAt`,
+ * `counts`, `messages`).
+ *
+ * `Validation.id` is byte-identical to the owning Book's global id
+ * (server-side `encodeGlobalID('Book', [userId, bookId])`), so this
+ * document's result normalizes onto the SAME `Book` cache entity
+ * `BookDetail` already created — Apollo merges the eager `{ id valid }` and
+ * this lazy payload onto one object rather than the two competing. That is
+ * also why `bookValidate`'s mutation payload will land here for free later:
+ * same key, same shape, no manual cache write needed.
+ *
+ * Measured (`test:cost -w app/server`): breadth 33 (33.0%), complexity 1221
+ * (3.7%) of budget — comfortably under the 70% gate on both axes.
+ */
+export const BookValidationDocument = graphql(`
+  query BookValidation($libraryId: ID!, $bookId: ID!) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        book(id: $bookId) {
+          id
+          validation {
+            ...ValidationFragment
           }
         }
       }
