@@ -2814,6 +2814,291 @@ describe('legacy book REST routes accept a Relay global ID (Task 13)', () => {
   });
 });
 
+// Task 3: the six REST routes that survive `page/book`'s move to GraphQL
+// (reached, per Task 13's reachability comment, with a Relay global ID once
+// that page reads GraphQL) get the same `resolveBookLocalId` treatment as
+// Task 13's five. `PUT`/`DELETE /api/my/progress/:document` are permissive —
+// a Book global ID resolves, anything else (including a real KOReader
+// document hash with no Book row at all) passes through untouched.
+describe('REST routes accept a Relay global ID (Task 3)', () => {
+  let bobToken: string;
+  let bobOwner: Owner;
+
+  beforeEach(async () => {
+    await userStore.createUser('bob3', await UserStore.hashLoginPassword('bobpass'));
+    const bobId = (await userStore.getUserIdByUsername('bob3'))!;
+    bobOwner = { userId: bobId, username: 'bob3' };
+    const bobRes = await request(app)
+      .post('/api/login')
+      .send('username=bob3&password=bobpass')
+      .set('Content-Type', 'application/x-www-form-urlencoded');
+    bobToken = (bobRes.body as { accessToken: string }).accessToken;
+  });
+
+  // Brief's table calls this "GET"; the line-numbered handler it actually
+  // points at (verified against commit ebc6ae53) is this DELETE route — see
+  // task-3-report.md for the discrepancy.
+  describe('DELETE /api/books/:id/pending-fixes', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(aliceOwner, 'pf-gid', stage('pf-gid'), FAKE_META);
+      await bookStore.upsertPendingFix(aliceOwner, 'pf-gid', 'x.epub', 1, {
+        autoFixes: [],
+        appliedFixes: [],
+        proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+        undo: null,
+      });
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'pf-gid');
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}/pending-fixes`)
+        .set(...bearer(token));
+      expect(res.status).toBe(204);
+      expect(await bookStore.getPendingFixes(aliceOwner)).toHaveLength(0);
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(aliceOwner, 'pf-gid2', stage('pf-gid2'), FAKE_META);
+      await bookStore.upsertPendingFix(aliceOwner, 'pf-gid2', 'x.epub', 1, {
+        autoFixes: [],
+        appliedFixes: [],
+        proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+        undo: null,
+      });
+      const globalId = bookGlobalId(aliceId, 'pf-gid2');
+      const res = await request(app)
+        .delete(`/api/books/${encodeURIComponent(globalId)}/pending-fixes`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+      // Alice's row must survive — a cross-tenant global id must not
+      // silently delete another user's pending fix.
+      expect(await bookStore.getPendingFixes(aliceOwner)).toHaveLength(1);
+    });
+  });
+
+  // Brief's table calls this "POST"; the line-numbered handler it actually
+  // points at (verified against commit ebc6ae53) is this GET route.
+  describe('GET /api/books/:id/cover', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(aliceOwner, 'cover-gid', stage('cover-gid'), {
+        ...FAKE_META,
+        coverData: Buffer.from('gid-cover-bytes'),
+        coverMime: 'image/jpeg',
+      });
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'cover-gid');
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}/cover`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+      expect(Buffer.from(res.body).toString()).toBe('gid-cover-bytes');
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(aliceOwner, 'cover-gid2', stage('cover-gid2'), {
+        ...FAKE_META,
+        coverData: Buffer.from('gid-cover-bytes'),
+        coverMime: 'image/jpeg',
+      });
+      const globalId = bookGlobalId(aliceId, 'cover-gid2');
+      const res = await request(app)
+        .get(`/api/books/${encodeURIComponent(globalId)}/cover`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /api/books/:id/metadata', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'meta-gid',
+        stage('meta-gid', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      await validationStore.saveValidation(aliceOwner, 'meta-gid', VALID_REPORT);
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'meta-gid');
+      const res = await request(app)
+        .patch(`/api/books/${encodeURIComponent(globalId)}/metadata`)
+        .field('title', 'Renamed')
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+      expect(res.body.title).toBe('Renamed');
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'meta-gid2',
+        stage('meta-gid2', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      await validationStore.saveValidation(aliceOwner, 'meta-gid2', VALID_REPORT);
+      const globalId = bookGlobalId(aliceId, 'meta-gid2');
+      const res = await request(app)
+        .patch(`/api/books/${encodeURIComponent(globalId)}/metadata`)
+        .field('title', 'Renamed')
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/books/:id/replace/analyze', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-analyze-gid',
+        stage('rep-analyze-gid', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'rep-analyze-gid');
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/replace/analyze`)
+        .set(...bearer(token))
+        .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('valid');
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-analyze-gid2',
+        stage('rep-analyze-gid2', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      const globalId = bookGlobalId(aliceId, 'rep-analyze-gid2');
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/replace/analyze`)
+        .set(...bearer(bobToken))
+        .attach('file', makeEpub({ title: 'New', author: 'A' }), 'new.epub');
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/books/:id/replace', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-gid',
+        stage('rep-gid', makeEpub({ title: 'Old', author: 'A' })),
+        FAKE_META
+      );
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'rep-gid');
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/replace`)
+        .set(...bearer(token))
+        .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
+      expect(res.status).toBe(200);
+      expect(res.body.title).toBe('Fixed');
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-gid2',
+        stage('rep-gid2', makeEpub({ title: 'Old', author: 'A' })),
+        FAKE_META
+      );
+      const globalId = bookGlobalId(aliceId, 'rep-gid2');
+      const res = await request(app)
+        .post(`/api/books/${encodeURIComponent(globalId)}/replace`)
+        .set(...bearer(bobToken))
+        .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PUT /api/my/progress/:document', () => {
+    it('resolves a Book global ID embedded in the document param to its raw id', async () => {
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'doc-gid');
+      const res = await request(app)
+        .put(`/api/my/progress/${encodeURIComponent(globalId)}`)
+        .set(...bearer(token))
+        .send({ currentChapter: 3, percentage: 0.3 });
+      expect(res.status).toBe(200);
+      // Saved under the decoded raw id, not the still-encoded global id string.
+      expect(await userStore.getProgress(aliceId, 'doc-gid')).not.toBeNull();
+      expect(await userStore.getProgress(aliceId, globalId)).toBeNull();
+    });
+
+    it("404s on another tenant's global id instead of creating a stray progress row", async () => {
+      const globalId = bookGlobalId(aliceId, 'doc-gid2');
+      const res = await request(app)
+        .put(`/api/my/progress/${encodeURIComponent(globalId)}`)
+        .set(...bearer(bobToken))
+        .send({ currentChapter: 3, percentage: 0.3 });
+      expect(res.status).toBe(404);
+      expect(await userStore.getProgress(bobOwner.userId, 'doc-gid2')).toBeNull();
+      expect(await userStore.getProgress(bobOwner.userId, globalId)).toBeNull();
+    });
+
+    it('still accepts an ordinary document id with no Book row at all (e-reader sync)', async () => {
+      const token = await loginAlice();
+      const res = await request(app)
+        .put('/api/my/progress/koreader-hash-doc')
+        .set(...bearer(token))
+        .send({ currentChapter: 3, percentage: 0.3 });
+      expect(res.status).toBe(200);
+      expect(await userStore.getProgress(aliceId, 'koreader-hash-doc')).not.toBeNull();
+    });
+  });
+
+  describe('DELETE /api/my/progress/:document (sibling of PUT, same permissive resolution)', () => {
+    it('resolves a Book global ID embedded in the document param to its raw id', async () => {
+      await userStore.saveProgress(aliceId, {
+        document: 'del-doc-gid',
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'del-doc-gid');
+      const res = await request(app)
+        .delete(`/api/my/progress/${encodeURIComponent(globalId)}`)
+        .set(...bearer(token));
+      expect(res.status).toBe(204);
+      expect(await userStore.getProgress(aliceId, 'del-doc-gid')).toBeNull();
+    });
+
+    it("404s on another tenant's global id, leaving the real record untouched", async () => {
+      await userStore.saveProgress(aliceId, {
+        document: 'del-doc-gid2',
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      const globalId = bookGlobalId(aliceId, 'del-doc-gid2');
+      const res = await request(app)
+        .delete(`/api/my/progress/${encodeURIComponent(globalId)}`)
+        .set(...bearer(bobToken));
+      expect(res.status).toBe(404);
+      expect(await userStore.getProgress(aliceId, 'del-doc-gid2')).not.toBeNull();
+    });
+
+    it('still accepts an ordinary document id with no Book row at all (e-reader sync)', async () => {
+      await userStore.saveProgress(aliceId, {
+        document: 'koreader-hash-doc-del',
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        device_id: 'd1',
+      });
+      const token = await loginAlice();
+      const res = await request(app)
+        .delete('/api/my/progress/koreader-hash-doc-del')
+        .set(...bearer(token));
+      expect(res.status).toBe(204);
+      expect(await userStore.getProgress(aliceId, 'koreader-hash-doc-del')).toBeNull();
+    });
+  });
+});
+
 describe('POST /api/books/replace-staging', () => {
   it('stages the uploaded file and returns a stagedUploadId, keyed to the caller', async () => {
     const token = await loginAlice();

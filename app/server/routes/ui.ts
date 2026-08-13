@@ -655,7 +655,23 @@ export function createUiRouter(
       }
       const userId = requireUserId(req, res);
       if (!userId) return;
-      const cleared = await userStore.clearProgress(userId, req.params.document);
+      // Permissive, not the strict `resolveBookLocalId` treatment the other
+      // book routes get: `:document` is a KOReader document id, and a
+      // progress row may legitimately exist for a document with no `Book`
+      // row at all (an e-reader syncing a book outside the library). A Book
+      // global ID still resolves to its raw id (and, since resolution
+      // includes the owner check, a cross-tenant one still 404s instead of
+      // clearing a stray row under a hash nobody owns); anything else
+      // — including an ordinary document hash — passes through untouched,
+      // exactly as `resolveBookLocalId` already behaves for non-global-ID
+      // input.
+      const owner: Owner = { userId, username: req.user!.username };
+      const documentId = resolveBookLocalId(owner, req.params.document);
+      if (documentId === null) {
+        res.status(404).json({ error: 'Progress record not found' });
+        return;
+      }
+      const cleared = await userStore.clearProgress(userId, documentId);
       if (!cleared) {
         res.status(404).json({ error: 'Progress record not found' });
         return;
@@ -675,6 +691,13 @@ export function createUiRouter(
       const userId = requireUserId(req, res);
       if (!userId) return;
       const owner: Owner = { userId, username: req.user!.username };
+      // See the DELETE sibling above for why this resolution is permissive
+      // rather than the strict treatment the other book routes get.
+      const documentId = resolveBookLocalId(owner, req.params.document);
+      if (documentId === null) {
+        res.status(404).json({ error: 'Progress record not found' });
+        return;
+      }
       const { currentChapter, percentage, device, device_id } = req.body as Record<string, unknown>;
       if (
         typeof currentChapter !== 'number' ||
@@ -688,7 +711,7 @@ export function createUiRouter(
         return;
       }
       // Synthesise a minimal EPUB CFI so currentChapter persists through GET /api/my/progress
-      const book = await bookStore.getBookById(owner, req.params.document);
+      const book = await bookStore.getBookById(owner, documentId);
       let progress = '';
       if (
         book &&
@@ -699,7 +722,7 @@ export function createUiRouter(
         progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
       }
       await userStore.saveProgress(userId, {
-        document: req.params.document,
+        document: documentId,
         progress,
         percentage,
         device: typeof device === 'string' && device ? device : 'Web',
@@ -1134,7 +1157,12 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      await bookStore.deletePendingFix(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      await bookStore.deletePendingFix(owner, bookId);
       res.status(204).end();
     })
   );
@@ -1253,6 +1281,11 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
       const { width } = req.query;
       const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
@@ -1260,15 +1293,15 @@ export function createUiRouter(
       let mime: string;
 
       if (!isNaN(parsedWidth) && parsedWidth > 0) {
-        const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
+        const thumbnail = await bookStore.getThumbnail(owner.userId, bookId, parsedWidth);
         if (thumbnail) {
           data = thumbnail.data;
           mime = thumbnail.mime;
         } else {
           log.warn(
-            `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
+            `Cover thumbnail width=${parsedWidth} not found for book ${bookId}, serving full-size`
           );
-          const cover = await bookStore.getCover(owner.userId, req.params.id);
+          const cover = await bookStore.getCover(owner.userId, bookId);
           if (!cover) {
             res.status(404).send('Not found');
             return;
@@ -1277,7 +1310,7 @@ export function createUiRouter(
           mime = cover.mime;
         }
       } else {
-        const cover = await bookStore.getCover(owner.userId, req.params.id);
+        const cover = await bookStore.getCover(owner.userId, bookId);
         if (!cover) {
           res.status(404).send('Not found');
           return;
@@ -1469,11 +1502,17 @@ export function createUiRouter(
         log.warn(`Metadata edit rejected: could not resolve owner for book=${req.params.id}`);
         return;
       }
-      const book = await bookStore.getBookById(owner, req.params.id);
-      if (!book) {
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
         log.warn(
-          `Metadata edit rejected: book=${req.params.id} not found for user=${owner.username}`
+          `Metadata edit rejected: global id=${req.params.id} not owned by user=${owner.username}`
         );
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId);
+      if (!book) {
+        log.warn(`Metadata edit rejected: book=${bookId} not found for user=${owner.username}`);
         res.status(404).json({ error: 'Book not found' });
         return;
       }
@@ -1768,7 +1807,12 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
@@ -1808,7 +1852,12 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
+      const book = await bookStore.getBookById(owner, bookId);
       if (!book) {
         res.status(404).json({ error: 'Book not found' });
         return;
