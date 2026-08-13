@@ -4,6 +4,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
+import { model as validationSeverityCount } from '../validation-severity-count';
 import { model as validationThreshold } from '../validation-threshold';
 
 /**
@@ -39,6 +40,28 @@ export const model = builder.prismaObject('Validation', {
     validatedAt: t.field({
       type: 'DateTime',
       resolve: (validation) => epochToDate(validation.validatedAt),
+    }),
+    /**
+     * Per-severity message tallies. Resolved through
+     * `context.loadValidationCounts` (`validation-counts-loader.ts`), a
+     * request-scoped batching loader — NOT a per-parent COUNT, which would be
+     * an N+1 across a page of up to 100 books (`Library.entries`,
+     * `CONNECTION_LIMITS.libraryEntries.maxSize`). Same precedent as
+     * `Series.progressPercentage`.
+     *
+     * Exists because `messages` is a connection capped at 100: a client tally
+     * is wrong-by-construction for any book with more than 100 messages, and
+     * costs extra round trips and query budget besides. `ValidationDetailModal`
+     * has rendered this summary since long before GraphQL.
+     *
+     * `validation.userId`/`.bookId` read straight off this row, never off
+     * `context.viewer` — see `id`'s doc comment above for why that matters
+     * under admin traversal.
+     */
+    counts: t.field({
+      type: [validationSeverityCount],
+      resolve: (validation, _args, context) =>
+        context.loadValidationCounts(validation.userId, validation.bookId),
     }),
     /**
      * A connection — validation output for a broken EPUB is the one list in

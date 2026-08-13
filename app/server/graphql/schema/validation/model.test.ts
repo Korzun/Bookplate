@@ -456,3 +456,170 @@ describe('Validation.messages connection', () => {
     });
   });
 });
+
+describe('Validation.counts', () => {
+  type CountsData = {
+    viewer: {
+      library: { book: { validation: { counts: { severity: string; count: number }[] } } };
+    };
+  };
+
+  it('reports one entry per severity present, omitting severities with no messages', async () => {
+    const COUNTS_BOOK_ID = 'f'.repeat(32);
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id: COUNTS_BOOK_ID,
+        title: 'Counted',
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    await harness.prisma.validation.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        bookId: COUNTS_BOOK_ID,
+        valid: false,
+        threshold: 'ERROR',
+        validatedAt: 1,
+        messages: {
+          create: [
+            {
+              seq: 0,
+              code: 'RSC-005',
+              severity: 'ERROR',
+              message: 'bad',
+              path: 'OEBPS/x.xhtml',
+              line: 1,
+              column: 1,
+            },
+            {
+              seq: 1,
+              code: 'RSC-005',
+              severity: 'ERROR',
+              message: 'also bad',
+              path: 'OEBPS/y.xhtml',
+              line: 2,
+              column: 2,
+            },
+            {
+              seq: 2,
+              code: 'RSC-006',
+              severity: 'WARNING',
+              message: 'meh',
+              path: 'OEBPS/z.xhtml',
+              line: 3,
+              column: 3,
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, COUNTS_BOOK_ID)}") { validation { counts { severity count } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const counts = (result.data as CountsData).viewer.library.book.validation.counts;
+    expect(counts).toHaveLength(2);
+    expect(counts).toEqual(
+      expect.arrayContaining([
+        { severity: 'ERROR', count: 2 },
+        { severity: 'WARNING', count: 1 },
+      ])
+    );
+    expect(counts.map((c) => c.severity)).not.toContain('INFO');
+  });
+
+  it('resolves an empty list for a validation with no messages', async () => {
+    const EMPTY_BOOK_ID = 'a'.repeat(32);
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id: EMPTY_BOOK_ID,
+        title: 'Untallied',
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    await harness.prisma.validation.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        bookId: EMPTY_BOOK_ID,
+        valid: true,
+        threshold: 'ERROR',
+        validatedAt: 1,
+      },
+    });
+
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, EMPTY_BOOK_ID)}") { validation { counts { severity count } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect((result.data as CountsData).viewer.library.book.validation.counts).toEqual([]);
+  });
+
+  // Mirrors `series/model.test.ts`'s identical batching test for
+  // `Series.progressPercentage` — a page of books each resolving
+  // `validation.counts` must not issue one `groupBy` per book.
+  it('does not fire one query per book across a page of books', async () => {
+    const bookIds: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const id = i.toString().padStart(32, '7');
+      bookIds.push(id);
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id,
+          title: `Batch Book ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      await harness.prisma.validation.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          bookId: id,
+          valid: false,
+          threshold: 'ERROR',
+          validatedAt: 1,
+          messages: {
+            create: [
+              {
+                seq: 0,
+                code: 'RSC-005',
+                severity: 'ERROR',
+                message: 'bad',
+                path: 'OEBPS/x.xhtml',
+                line: 1,
+                column: 1,
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    const groupBySpy = vi.spyOn(harness.prisma.validationMessage, 'groupBy');
+
+    const fields = bookIds
+      .map(
+        (id, i) =>
+          `b${i}: book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { validation { counts { severity count } } }`
+      )
+      .join(' ');
+    const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(groupBySpy).toHaveBeenCalledTimes(1);
+  });
+});

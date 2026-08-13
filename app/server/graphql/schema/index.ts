@@ -41,6 +41,7 @@ import './username-already-exists-error';
 import './validation';
 import './validation-message';
 import './validation-severity';
+import './validation-severity-count';
 import './validation-threshold';
 import './viewer';
 import { builder } from './builder';

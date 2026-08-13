@@ -648,7 +648,7 @@ type Progress {
   document: String!
 
   """
-  Opaque cache identity for this reading position. Unlike other global ids in this schema (e.g. `Book.id`, `PendingFix.id`, `Validation.id`), this id is NOT resolvable through `node(id:)` or `nodes(ids:)` — `Progress` is deliberately not a `Node`. Use it only to key a normalizing cache.
+  Opaque cache identity for this reading position. Unlike other global ids in this schema (e.g. `Book.id`, `PendingFix.id`, `Validation.id` (to their owning `Book`)), this id is NOT resolvable through `node(id:)` or `nodes(ids:)` — `Progress` is deliberately not a `Node`. Use it only to key a normalizing cache.
   """
   id: ID!
   percentage: Float!
@@ -902,6 +902,7 @@ type UsernameAlreadyExistsError implements UserError {
 }
 
 type Validation {
+  counts: [ValidationSeverityCount!]!
   id: ID!
   messages(after: String, before: String, first: Int, last: Int): ValidationMessagesConnection!
   threshold: ValidationThreshold!
@@ -935,6 +936,11 @@ enum ValidationSeverity {
   INFO
   USAGE
   WARNING
+}
+
+type ValidationSeverityCount {
+  count: Int!
+  severity: ValidationSeverity!
 }
 
 enum ValidationThreshold {

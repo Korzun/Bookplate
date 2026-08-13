@@ -26,6 +26,7 @@ import { createProgressLoader } from './progress-loader';
 import { createScanPubSub } from './pubsub';
 import { schema } from './schema';
 import { createSeriesProgressLoader } from './series-progress-loader';
+import { createValidationCountsLoader } from './validation-counts-loader';
 
 export type ExecuteOptions = {
   viewer?: Viewer | null;
@@ -163,6 +164,7 @@ export const createHarness = async (): Promise<Harness> => {
       loadPendingFix: createPendingFixLoader(prisma),
       loadChapterSpineMap: createChapterSpineMapLoader(prisma),
       loadSeriesProgress: createSeriesProgressLoader(prisma),
+      loadValidationCounts: createValidationCountsLoader(prisma),
     };
     const result = await graphql({
       schema,

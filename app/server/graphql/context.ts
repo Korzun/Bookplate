@@ -19,6 +19,10 @@ import { createOwnerLoader, type OwnerLoader } from './owner';
 import { createPendingFixLoader, type PendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader, type ProgressLoader } from './progress-loader';
 import { createSeriesProgressLoader, type SeriesProgressLoader } from './series-progress-loader';
+import {
+  createValidationCountsLoader,
+  type ValidationCountsLoader,
+} from './validation-counts-loader';
 
 /**
  * The WHATWG/undici `Request` yoga hands to the context factory — deliberately
@@ -90,6 +94,7 @@ export type Context = {
   loadPendingFix: PendingFixLoader;
   loadChapterSpineMap: ChapterSpineMapLoader;
   loadSeriesProgress: SeriesProgressLoader;
+  loadValidationCounts: ValidationCountsLoader;
 };
 
 export type ContextDeps = {
@@ -136,4 +141,5 @@ export const createContext =
     loadPendingFix: createPendingFixLoader(deps.prisma),
     loadChapterSpineMap: createChapterSpineMapLoader(deps.prisma),
     loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
+    loadValidationCounts: createValidationCountsLoader(deps.prisma),
   });
