@@ -1131,6 +1131,11 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
+      const bookId = resolveBookLocalId(owner, req.params.id);
+      if (bookId === null) {
+        res.status(404).json({ error: 'Book not found' });
+        return;
+      }
       const { fileName, fileSize, state } = req.body ?? {};
       if (
         typeof fileName !== 'string' ||
@@ -1141,7 +1146,7 @@ export function createUiRouter(
         res.status(400).json({ error: 'fileName, fileSize, and state are required' });
         return;
       }
-      await bookStore.upsertPendingFix(owner, req.params.id, fileName, fileSize, {
+      await bookStore.upsertPendingFix(owner, bookId, fileName, fileSize, {
         autoFixes: state.autoFixes ?? [],
         appliedFixes: state.appliedFixes ?? [],
         proposals: state.proposals ?? [],

@@ -2835,6 +2835,76 @@ describe('REST routes accept a Relay global ID (Task 3)', () => {
     bobToken = (bobRes.body as { accessToken: string }).accessToken;
   });
 
+  // Scope addition (human ruling, post-review): PUT and DELETE
+  // /api/books/:id/pending-fixes are siblings in
+  // `app/client/src/provider/upload/api.ts`, both keyed by book id, called
+  // from the same place. Decoding DELETE and not PUT would split the pair —
+  // and PUT's caller swallows errors by design (best-effort state sync), so
+  // an undecoded 404 there would be silent.
+  describe('PUT /api/books/:id/pending-fixes', () => {
+    it('resolves a Relay global ID', async () => {
+      await bookStore.addBook(aliceOwner, 'pf-put-gid', stage('pf-put-gid'), FAKE_META);
+      const token = await loginAlice();
+      const globalId = bookGlobalId(aliceId, 'pf-put-gid');
+      const res = await request(app)
+        .put(`/api/books/${encodeURIComponent(globalId)}/pending-fixes`)
+        .set(...bearer(token))
+        .send({
+          fileName: 'x.epub',
+          fileSize: 10,
+          state: {
+            autoFixes: [],
+            appliedFixes: [],
+            proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+            undo: null,
+          },
+        });
+      expect(res.status).toBe(204);
+      const rows = await bookStore.getPendingFixes(aliceOwner);
+      expect(rows).toHaveLength(1);
+      // Saved under the decoded raw id, not the still-encoded global id string.
+      expect(rows[0].bookId).toBe('pf-put-gid');
+    });
+
+    it("404s on another tenant's global id", async () => {
+      await bookStore.addBook(aliceOwner, 'pf-put-gid2', stage('pf-put-gid2'), FAKE_META);
+      const globalId = bookGlobalId(aliceId, 'pf-put-gid2');
+      const res = await request(app)
+        .put(`/api/books/${encodeURIComponent(globalId)}/pending-fixes`)
+        .set(...bearer(bobToken))
+        .send({
+          fileName: 'x.epub',
+          fileSize: 10,
+          state: { autoFixes: [], appliedFixes: [], proposals: [], undo: null },
+        });
+      expect(res.status).toBe(404);
+      // No stray row created under either the cross-tenant owner or the raw id.
+      expect(await bookStore.getPendingFixes(aliceOwner)).toHaveLength(0);
+    });
+
+    it('still resolves a raw id', async () => {
+      await bookStore.addBook(aliceOwner, 'pf-put-raw', stage('pf-put-raw'), FAKE_META);
+      const token = await loginAlice();
+      const res = await request(app)
+        .put('/api/books/pf-put-raw/pending-fixes')
+        .set(...bearer(token))
+        .send({
+          fileName: 'x.epub',
+          fileSize: 10,
+          state: {
+            autoFixes: [],
+            appliedFixes: [],
+            proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+            undo: null,
+          },
+        });
+      expect(res.status).toBe(204);
+      const rows = await bookStore.getPendingFixes(aliceOwner);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].bookId).toBe('pf-put-raw');
+    });
+  });
+
   // Brief's table calls this "GET"; the line-numbered handler it actually
   // points at (verified against commit ebc6ae53) is this DELETE route — see
   // task-3-report.md for the discrepancy.
