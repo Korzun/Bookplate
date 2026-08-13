@@ -5,12 +5,12 @@ import { useStyle } from './style';
 
 /**
  * Purely presentational: plain values in, a row out. No hooks, no fetching,
- * no `useFragment` — this component doesn't know whether its data came from
- * GraphQL or REST. `BookRowFromEntry` (fragment-backed, for the grid) and
- * `BookRowFromBook` (REST-backed, for `page/series` until it migrates) are
- * the two adapters that resolve real data into these props; both call their
- * hooks once in their own body and render this. See both files' doc
- * comments for why the split exists.
+ * no `useFragment` — this component doesn't know which fragment its data was
+ * unmasked from. `BookRowFromEntry` (the grid, `BookRowFragment`) and
+ * `BookRowFromSeriesBook` (`page/series`, `SeriesBookRowFragment`) are the
+ * two fragment-backed adapters that resolve real data into these props; both
+ * call their `useFragment` once in their own body and render this. See both
+ * files' doc comments for why the split exists.
  */
 export interface BookRowProps {
   asCard?: boolean;

@@ -3,13 +3,15 @@ import { useNavigate, useParams } from 'react-router';
 import {
   Card,
   CoverStack,
-  BookRowFromBook,
+  BookRowFromSeriesBook,
   Page,
   ProgressIndicator,
   MetadataList,
   Metadata,
   Tag,
 } from '~/component';
+import { makeFragmentData } from '~/gql';
+import { SeriesBookRowFragment } from '~/graphql/series';
 import { coverUrl } from '~/lib/cover-url';
 import { useIsAdmin } from '~/provider/auth';
 import { useSeries, useSeriesBookList } from '~/provider/book';
@@ -133,7 +135,36 @@ export const SeriesPage = () => {
       <Card title="Books">
         <div className={style.bookList}>
           {seriesBookList.map((book) => (
-            <BookRowFromBook key={book.id} asCard={false} book={book} showAuthor={false} />
+            <BookRowFromSeriesBook
+              key={book.id}
+              asCard={false}
+              showAuthor={false}
+              // TEMPORARY shim, Task 6 only: this page still reads
+              // `useSeriesBookList`, a REST hook (`Book` has no `progress`
+              // field), not `useSeriesDetail`'s GraphQL `SeriesBookRowFragment`
+              // refs. `makeFragmentData` fabricates a fragment-shaped ref by
+              // hand so `BookRowFromSeriesBook` (which now only accepts
+              // fragment data) can render `Book`s a plain REST fetch already
+              // holds — at the cost of losing per-row progress here, since
+              // REST has no per-book equivalent to wire in. Task 7 rewires
+              // this page onto `useSeriesDetail` and deletes this shim, which
+              // restores real per-row progress via the fragment's own
+              // `progress { percentage }` field.
+              book={makeFragmentData(
+                {
+                  __typename: 'Book',
+                  id: book.id,
+                  title: book.title,
+                  seriesIndex: book.seriesIndex,
+                  hasCover: book.hasCover,
+                  thumbnailUrl: book.hasCover
+                    ? withTargetUser(coverUrl(book.id, { width: 88, version: book.mtime }))
+                    : '',
+                  progress: null,
+                },
+                SeriesBookRowFragment
+              )}
+            />
           ))}
         </div>
       </Card>

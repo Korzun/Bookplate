@@ -24,10 +24,11 @@ interface CoverStackProps {
  *   `SeriesRowFragment` (`graphql/library.ts`) and maps each node's
  *   `hasCover ? thumbnailUrl : null` into `src` — a server-built URL, same
  *   pattern `BookRowFromEntry` already uses for the grid's book rows.
- * - `page/series` (still REST — out of this migration's scope, see
- *   `component/book-row/from-book.tsx`'s doc comment) already holds its
- *   `useSeriesBookList` result for the page's own "Books" list and slices
- *   the first 3 off that, building `src` from `coverUrl()` +
+ * - `page/series` (still reading `useSeriesBookList`, a REST hook, as of
+ *   task 6 — `page/series/index.tsx`'s own `BookRowFromSeriesBook` call has
+ *   the up-to-date note; task 7 moves this page onto `useSeriesDetail`)
+ *   already holds its `useSeriesBookList` result for the page's own "Books"
+ *   list and slices the first 3 off that, building `src` from `coverUrl()` +
  *   `withTargetUser()` itself.
  *
  * Before this split, this component called `useSeriesBookList` directly —
