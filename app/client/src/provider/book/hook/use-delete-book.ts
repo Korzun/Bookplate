@@ -29,7 +29,9 @@ export type UseDeleteBook = [(id: string) => Promise<void>, boolean, boolean, st
  *      `Reference`s, and `InMemoryCache` silently drops an edge whose `node`
  *      reference now points at nothing when the connection is next read —
  *      no error, no manual list-filter, confirmed empirically (see this
- *      hook's own test, "removes a deleted standalone book's row").
+ *      hook's own test, "evicts the deleted book from the cache", and
+ *      "invalidates the LibraryEntries connection so a subsequent read
+ *      misses the cache (standalone book)").
  *
  *   2. `cache.evict` the OWNING `Library`'s entire `entries` field (every
  *      filter variant, no `args` given) + `cache.gc()`. This is required
@@ -48,6 +50,21 @@ export type UseDeleteBook = [(id: string) => Promise<void>, boolean, boolean, st
  *      instead of serving stale rows. `cache.identify` needs the `Library`'s
  *      own global id for this, which is why the mutation document selects
  *      `library { id }` on top of `deletedId`.
+ *
+ *      **This is not free.** `relayStylePagination`'s stored field data is
+ *      exactly what `fetchMore` had accumulated across every page the user
+ *      had scrolled through — evicting the WHOLE field discards all of it,
+ *      not just the deleted row. A user several pages deep in the grid who
+ *      deletes one book sees the grid re-fetch from the network on its next
+ *      read and start over at page 1, not resume where they were. A
+ *      narrower fix — `cache.modify` filtering only the deleted book's edge
+ *      (and, for the series case, the now-empty series' edge) out of each
+ *      stored `entries` field variant in place, rather than evicting the
+ *      whole field — would preserve already-loaded pages, and is the
+ *      natural follow-up if the page-1 reset proves annoying in practice.
+ *      Not done here: it needs a way to identify the affected `Series` edge
+ *      without a `deletedSeriesId` in hand, which is genuinely more than
+ *      this task's scope.
  *
  * **Seen-to-fail**: deleting the field-evict + gc lines above (keeping only
  * the `Book` entity eviction) leaves this hook's "removes an emptied

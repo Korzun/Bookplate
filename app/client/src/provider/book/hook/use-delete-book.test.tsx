@@ -237,4 +237,27 @@ describe('useDeleteBook', () => {
     await waitFor(() => expect(result.current![1]).toBe(false));
     expect(result.current![2]).toBe(false);
   });
+
+  // The `if (loading) return;` guard in `use-delete-book.ts` is live code,
+  // not leftover REST-era plumbing — it still needs its own coverage. Only
+  // ONE mock is queued: if the guard were removed, the second call would
+  // try to consume a SECOND response from a `MockLink` that has none left,
+  // surfacing as an error instead of silently doing nothing.
+  it('does not send a second request while the first is still in flight', async () => {
+    const { result } = renderHookWithApollo(
+      () => useDeleteBook(),
+      [{ ...deleteSuccessMock(BOOK_ID), delay: 20 }]
+    );
+
+    act(() => {
+      void result.current![0](BOOK_ID);
+    });
+    await waitFor(() => expect(result.current![1]).toBe(true));
+
+    await act(() => result.current![0](BOOK_ID));
+    expect(result.current![2]).toBe(false);
+    expect(result.current![3]).toBeUndefined();
+
+    await waitFor(() => expect(result.current![1]).toBe(false));
+  });
 });
