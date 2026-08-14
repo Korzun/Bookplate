@@ -1,9 +1,11 @@
 export {
   useBook,
+  useBookDetail,
   useBookLineage,
   useBookList,
   useBookListFilter,
   useBookListItems,
+  useBookValidation,
   useClearBookEditions,
   useDeleteBook,
   useDownloadBook,
@@ -37,7 +39,14 @@ export type {
   UploadFileResult,
   UploadResult,
 } from './type';
-export type { SeriesMeta, FetchSeriesNextIndex, ReplaceAnalysis } from './hook';
+export type {
+  SeriesMeta,
+  FetchSeriesNextIndex,
+  ReplaceAnalysis,
+  BookDetail,
+  UseBookDetail,
+  UseBookValidation,
+} from './hook';
 export type {
   UndoSnapshot,
   UploadItem,

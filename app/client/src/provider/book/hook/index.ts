@@ -1,8 +1,12 @@
 export { useBook } from './use-book';
+export { useBookDetail } from './use-book-detail';
+export type { BookDetail, UseBookDetail } from './use-book-detail';
 export { useBookLineage } from './use-book-lineage';
 export { useBookList } from './use-book-list';
 export { useBookListFilter } from './use-book-list-filter';
 export { useBookListItems } from './use-book-list-items';
+export { useBookValidation } from './use-book-validation';
+export type { UseBookValidation } from './use-book-validation';
 export { useClearBookEditions } from './use-clear-book-editions';
 export { useDeleteBook } from './use-delete-book';
 export { useDownloadBook } from './use-download-book';
