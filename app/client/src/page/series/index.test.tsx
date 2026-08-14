@@ -171,11 +171,20 @@ describe('SeriesPage', () => {
     expect(getByText('Fantasy')).toBeInTheDocument();
   });
 
-  it('renders the book list from the series', async () => {
-    const { findByText, getByText } = await renderPage([seriesMock()]);
+  it('renders the book list from the series, with real cover images', async () => {
+    const { findByText, getByText, getAllByRole } = await renderPage([seriesMock()]);
 
     await findByText('Earthsea');
     expect(getByText('A Wizard of Earthsea')).toBeInTheDocument();
+    // Loose (`> 0`, not an exact count) deliberately: this exercises the
+    // page's real, unmocked `CoverStack`/`Cover`/`BookRowFromSeriesBook`
+    // tree end to end (the `beforeEach` above stubs `apiFetch` and
+    // `URL.createObjectURL` for exactly this), not just that book text
+    // renders. `CoverStack` contributes ghost `<div>`s for any of its 3
+    // slots without a cover, and `BookRowFromSeriesBook`'s own row renders
+    // an `<img>` only when `hasCover` — an exact count would be brittle
+    // against either without adding coverage this test cares about.
+    await waitFor(() => expect(getAllByRole('img').length).toBeGreaterThan(0));
   });
 
   it("navigates to the author's filtered library view on click", async () => {

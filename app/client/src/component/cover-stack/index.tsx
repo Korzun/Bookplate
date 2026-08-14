@@ -17,19 +17,19 @@ interface CoverStackProps {
 
 /**
  * Purely presentational: three layered `Cover`s from already-resolved book
- * data, no fetching of its own. Two callers feed it from two different
- * transports:
+ * data, no fetching of its own. Two callers, both GraphQL, both building
+ * `src` the same way (`hasCover ? thumbnailUrl : null` — a server-built URL,
+ * already scoped, no `coverUrl()`/`withTargetUser()` involved):
  *
- * - `SeriesRow` (the GraphQL grid) reads `Series.books(first: 3)` off
- *   `SeriesRowFragment` (`graphql/library.ts`) and maps each node's
- *   `hasCover ? thumbnailUrl : null` into `src` — a server-built URL, same
- *   pattern `BookRowFromEntry` already uses for the grid's book rows.
- * - `page/series` (still reading `useSeriesBookList`, a REST hook, as of
- *   task 6 — `page/series/index.tsx`'s own `BookRowFromSeriesBook` call has
- *   the up-to-date note; task 7 moves this page onto `useSeriesDetail`)
- *   already holds its `useSeriesBookList` result for the page's own "Books"
- *   list and slices the first 3 off that, building `src` from `coverUrl()` +
- *   `withTargetUser()` itself.
+ * - `SeriesRow` (the library grid) reads `Series.books(first: 3)` off
+ *   `SeriesRowFragment` (`graphql/library.ts`) and maps each node directly —
+ *   same pattern `BookRowFromEntry` already uses for the grid's book rows.
+ * - `page/series` reads `useSeriesDetail`'s `series.books` (masked
+ *   `SeriesBookRowFragment` refs, `graphql/series.ts`), unmasks the whole
+ *   list in one `useFragment(SeriesBookRowFragment, ...)` call (its own
+ *   array overload — see `page/series/index.tsx`'s doc comment for why that
+ *   beats unmasking per-item in a `.map()`), and slices the first 3 off the
+ *   unmasked result.
  *
  * Before this split, this component called `useSeriesBookList` directly —
  * the SAME hook whose whole-list REST fetch was capped at 20 entries with
