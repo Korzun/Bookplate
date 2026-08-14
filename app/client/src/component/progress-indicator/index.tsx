@@ -25,7 +25,15 @@ export const ProgressIndicator = ({ value, size = 40 }: ProgressIndicatorProps) 
   return (
     <div className={style.root}>
       {clamped > 0 && clamped < 100 && (
-        <svg viewBox="0 0 100 100" width={size} height={size}>
+        <svg
+          viewBox="0 0 100 100"
+          width={size}
+          height={size}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(clamped)}
+        >
           <circle cx={CX} cy={CY} r={R_INNER} className={style.track} />
           <path d={sectorPath(clamped)} className={style.sector} />
           <circle cx={CX} cy={CY} r={R_RING} className={style.ring} />

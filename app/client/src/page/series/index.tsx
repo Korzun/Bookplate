@@ -10,13 +10,10 @@ import {
   Metadata,
   Tag,
 } from '~/component';
-import { makeFragmentData } from '~/gql';
+import { useFragment } from '~/gql';
 import { SeriesBookRowFragment } from '~/graphql/series';
-import { coverUrl } from '~/lib/cover-url';
 import { useIsAdmin } from '~/provider/auth';
-import { useSeries, useSeriesBookList } from '~/provider/book';
-import { useWithTargetUser } from '~/provider/library-target';
-import { useMySeriesProgress } from '~/provider/progress';
+import { useSeriesDetail } from '~/provider/library';
 import { path } from '~/router';
 import { formatSize } from '~/utils';
 
@@ -28,15 +25,25 @@ export const SeriesPage = () => {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
   const style = useStyle();
-  const withTargetUser = useWithTargetUser();
 
   const [isAdmin] = useIsAdmin();
-  const [seriesBookList, booksLoading, booksError] = useSeriesBookList(name!);
-  const [series, seriesLoading, seriesError] = useSeries(name!);
-  const [seriesProgressPercent] = useMySeriesProgress(name!);
+  const { series, loading, error } = useSeriesDetail(name!);
 
-  const loading = booksLoading || seriesLoading;
-  const error = booksError || seriesError;
+  // `useFragment`'s array overload (`gql/fragment-masking.ts`) unmasks the
+  // whole list in ONE call — no per-item `useFragment` inside a `.map()`,
+  // which would call a hook from a loop and trip `react-hooks/rules-of-hooks`
+  // even though the generated `useFragment` is just an identity cast at
+  // runtime. Called unconditionally, before either early return below, with
+  // `series?.books` optional-chained to an empty array while still loading.
+  //
+  // Unmasked once for the WHOLE list, not just `CoverStack`'s first three:
+  // `BookRowFromSeriesBook` still receives the original MASKED `book` ref
+  // below (it does its own `useFragment` in its own render context, per its
+  // doc comment) — this array exists only so the page itself can read real
+  // `id`s for `CoverStack` and for React keys, neither of which is on the
+  // masked ref's declared type.
+  const unmaskedBooks = useFragment(SeriesBookRowFragment, series?.books ?? []);
+  const coverBooks = unmaskedBooks.slice(0, 3);
 
   if (loading) {
     return (
@@ -48,7 +55,24 @@ export const SeriesPage = () => {
     );
   }
 
-  if (error || !seriesBookList || seriesBookList.length === 0 || !series) {
+  // `error` is checked FIRST and returns its own message — a transport
+  // failure also leaves `series` `undefined`, and ORing it into the
+  // not-found branch (the old REST code's `booksError || !seriesBookList`)
+  // is exactly the bug a prior review caught in this file: a network error
+  // reading as "Series not found." rather than "the series really isn't
+  // there." See `useSeriesDetail`'s own doc comment for why `series ===
+  // undefined` alone means "not found" only when `error` is undefined.
+  if (error !== undefined) {
+    return (
+      <Page back={path.library()}>
+        <Card>
+          <p className={style.notFound}>Failed to load series.</p>
+        </Card>
+      </Page>
+    );
+  }
+
+  if (series === undefined) {
     return (
       <Page back={path.library()}>
         <Card>
@@ -63,7 +87,10 @@ export const SeriesPage = () => {
     metadata.push({
       title: 'progress',
       value: (
-        <ProgressIndicator value={seriesProgressPercent ? seriesProgressPercent : 0} size={12} />
+        <ProgressIndicator
+          value={series.progressPercentage ? series.progressPercentage : 0}
+          size={12}
+        />
       ),
     });
   }
@@ -83,17 +110,10 @@ export const SeriesPage = () => {
         <div className={style.cardContainer}>
           <div className={style.hero}>
             <CoverStack
-              books={seriesBookList.slice(0, 3).map((book) => ({
+              books={coverBooks.map((book) => ({
                 id: book.id,
                 title: book.title,
-                src: book.hasCover
-                  ? withTargetUser(
-                      coverUrl(book.id, {
-                        width: COVER_STACK_LAYER_WIDTH * 2,
-                        version: book.mtime,
-                      })
-                    )
-                  : null,
+                src: book.hasCover ? book.thumbnailUrl : null,
               }))}
               layerWidth={COVER_STACK_LAYER_WIDTH}
               layerHeight={120}
@@ -134,36 +154,16 @@ export const SeriesPage = () => {
       )}
       <Card title="Books">
         <div className={style.bookList}>
-          {seriesBookList.map((book) => (
+          {series.books.map((book, index) => (
             <BookRowFromSeriesBook
-              key={book.id}
+              // `unmaskedBooks[index].id` (not `index` itself, not a field
+              // read off the masked `book`) — `unmaskedBooks` mirrors
+              // `series.books`' order/length 1:1 (`useFragment`'s identity
+              // cast preserves both), so this is real per-book identity.
+              key={unmaskedBooks[index]?.id ?? index}
               asCard={false}
               showAuthor={false}
-              // TEMPORARY shim, Task 6 only: this page still reads
-              // `useSeriesBookList`, a REST hook (`Book` has no `progress`
-              // field), not `useSeriesDetail`'s GraphQL `SeriesBookRowFragment`
-              // refs. `makeFragmentData` fabricates a fragment-shaped ref by
-              // hand so `BookRowFromSeriesBook` (which now only accepts
-              // fragment data) can render `Book`s a plain REST fetch already
-              // holds — at the cost of losing per-row progress here, since
-              // REST has no per-book equivalent to wire in. Task 7 rewires
-              // this page onto `useSeriesDetail` and deletes this shim, which
-              // restores real per-row progress via the fragment's own
-              // `progress { percentage }` field.
-              book={makeFragmentData(
-                {
-                  __typename: 'Book',
-                  id: book.id,
-                  title: book.title,
-                  seriesIndex: book.seriesIndex,
-                  hasCover: book.hasCover,
-                  thumbnailUrl: book.hasCover
-                    ? withTargetUser(coverUrl(book.id, { width: 88, version: book.mtime }))
-                    : '',
-                  progress: null,
-                },
-                SeriesBookRowFragment
-              )}
+              book={book}
             />
           ))}
         </div>
