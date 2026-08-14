@@ -172,3 +172,116 @@ export const BookValidationDocument = graphql(`
     }
   }
 `);
+
+/**
+ * `BookDeleteResult` is a single-member union today (schema-verified,
+ * `app/server/graphql/schema/book/mutation/delete.ts`) — no error branch is
+ * added here, matching the "no speculative error members" rule (spec 1's
+ * traced-union-drop precedent). `deletedId` is the ONLY field
+ * `useDeleteBook`'s cache update needs to `cache.identify` and evict the
+ * `Book` entity; `library { id }` is what lets it ALSO evict the owning
+ * `Library`'s `entries` connection field (see that hook's doc comment for
+ * why eviction of the `Book` entity alone is not enough).
+ */
+export const BookDeleteDocument = graphql(`
+  mutation BookDelete($id: ID!) {
+    bookDelete(input: { id: $id }) {
+      __typename
+      ... on BookDeletePayload {
+        deletedId
+        library {
+          id
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * `BookValidateResult` is a single-member union today (schema-verified,
+ * `app/server/graphql/schema/book/mutation/validate.ts`) — no error branch.
+ * `validation` is spread through `ValidationFragment` rather than selected
+ * inline: `Validation.id` is byte-identical to the owning Book's global id
+ * server-side (`encodeGlobalID('Book', [userId, bookId])` — see
+ * `BookValidationDocument`'s doc comment above), so this payload normalizes
+ * onto the SAME `Book`/`Validation` cache entities `BookDetailDocument` and
+ * `BookValidationDocument` already read. No hand-written `update` function:
+ * Apollo's own normalization does the work, asserted in
+ * `use-validate-book.test.tsx` rather than reconstructed here.
+ */
+export const BookValidateDocument = graphql(`
+  mutation BookValidate($id: ID!) {
+    bookValidate(input: { id: $id }) {
+      __typename
+      ... on BookValidatePayload {
+        book {
+          id
+        }
+        validation {
+          ...ValidationFragment
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * `BookRegenChaptersResult` genuinely has two error members today
+ * (schema-verified, `app/server/graphql/schema/book/mutation/
+ * regen-chapters.ts`): `BookHashCollisionError` and `BookNotValidatedError`,
+ * both mapped to `useRegenChapters`'s `errorMessage`. `book { id
+ * chapterCount chapterNames chapterSpineMap }` re-selects every field the
+ * REST `regen-chapters` response updated — normalization alone would
+ * refresh those on the EXISTING `Book` entity, but `reimportBook` can also
+ * change the book's global id (its raw content hash is recomputed from the
+ * re-parsed file), in which case the payload's `book.id` differs from the
+ * requested `$id` and normalization writes a NEW entity instead of updating
+ * the old one — the hand-written `update` function evicts the stale
+ * `Book:<old-id>` entity in that case. See that hook's doc comment for the
+ * seen-to-fail evidence.
+ */
+export const BookRegenChaptersDocument = graphql(`
+  mutation BookRegenChapters($id: ID!) {
+    bookRegenChapters(input: { id: $id }) {
+      __typename
+      ... on BookRegenChaptersPayload {
+        book {
+          id
+          chapterCount
+          chapterNames
+          chapterSpineMap
+        }
+      }
+      ... on BookHashCollisionError {
+        message
+      }
+      ... on BookNotValidatedError {
+        message
+      }
+    }
+  }
+`);
+
+/**
+ * `BookClearEditionsResult` is a single-member union today (schema-verified,
+ * `app/server/graphql/schema/book/mutation/clear-editions.ts`) — no error
+ * branch. `book { id deviceEditionCount }` re-selects the one field REST's
+ * `clear editions` response updated, so Apollo's own normalization writes
+ * the new `deviceEditionCount` onto the existing `Book` entity with no
+ * hand-written `update` function — asserted in
+ * `use-clear-book-editions.test.tsx`.
+ */
+export const BookClearEditionsDocument = graphql(`
+  mutation BookClearEditions($id: ID!) {
+    bookClearEditions(input: { id: $id }) {
+      __typename
+      ... on BookClearEditionsPayload {
+        clearedCount
+        book {
+          id
+          deviceEditionCount
+        }
+      }
+    }
+  }
+`);

@@ -1,268 +1,226 @@
-import { act, renderHook } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { useCallback, useContext, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { NormalizedCacheObject } from '@apollo/client';
+import type { MockedResponse } from '@apollo/client/testing';
+import { act, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { ApolloTestProvider } from '~/test-utils';
+import type { BookRegenChaptersMutation, BookRegenChaptersMutationVariables } from '~/gql/graphql';
+import { BookDetailDocument, BookRegenChaptersDocument } from '~/graphql/book';
+import { renderHookWithApollo } from '~/test-utils';
 
-import { Context as ProgressContext } from '../../progress/context';
-import type { ProgressList, UserProgressList } from '../../progress/type';
-import { Context } from '../context';
-import type { Book, BookList } from '../type';
 import { useRegenChapters } from './use-regen-chapters';
 
-function makeBook(overrides: Partial<Book> & { id: string }): Book {
-  return {
-    title: 'Dune',
-    author: 'Herbert',
-    titleSort: '',
-    authorSort: '',
-    publishDate: '',
-    publisher: '',
-    series: '',
-    seriesIndex: 0,
-    subjects: [],
-    identifiers: [],
-    hasCover: false,
-    size: 0,
-    addedAt: '2024-01-01',
-    chapterCount: 0,
-    pageCount: 0,
-    ...overrides,
-  };
-}
+const LIBRARY_ID = 'TGlicmFyeTox';
+const BOOK_ID = 'book-1';
+const NEW_BOOK_ID = 'book-1-new-hash';
 
-function makeWrapper(initialBooks: Book[] = [], initialProgress: ProgressList = {}) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [bookList, setBookListRaw] = useState<BookList>(
-      Object.fromEntries(initialBooks.map((b) => [b.id, b]))
-    );
-    const setBookList = useCallback(
-      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
-      []
-    );
-    const [progressList, setProgressListRaw] = useState<ProgressList>(initialProgress);
-    const setProgressForUsername = useCallback((username: string, data: UserProgressList) => {
-      setProgressListRaw((prev) => ({ ...prev, [username]: data }));
-    }, []);
-    const renameProgressKey = useCallback((oldId: string, newId: string) => {
-      setProgressListRaw((prev) => {
-        const next = { ...prev };
-        for (const username of Object.keys(next)) {
-          const userProgress = next[username];
-          if (userProgress && oldId in userProgress) {
-            const { [oldId]: oldEntry, ...rest } = userProgress;
-            next[username] = { ...rest, [newId]: { ...oldEntry, document: newId } };
-          }
-        }
-        return next;
-      });
-    }, []);
-    return (
-      <ApolloTestProvider>
-        <ProgressContext.Provider
-          value={{
-            progressList,
-            loadingByUsername: {},
-            errorByUsername: {},
-            setProgressForUsername,
-            setLoadingForUsername: () => {},
-            setErrorForUsername: () => {},
-            renameProgressKey,
-          }}
-        >
-          <Context.Provider
-            value={{
-              bookList,
-              bookListFetched: true,
-              bookListLoading: false,
-              bookListError: undefined,
-              loadingByBookId: {},
-              errorByBookId: {},
-              completeBookIds: new Set(),
-              setBookList,
-              setBookListFetched: () => {},
-              setBookListLoading: () => {},
-              setBookListError: () => {},
-              setLoadingForBook: () => {},
-              setErrorForBook: () => {},
-              setBookComplete: () => {},
-              clearCompleteBookIds: () => {},
-              bookListItems: [],
-              setBookListItems: () => {},
-              bookListFilter: {},
-              setBookListFilter: () => {},
-            }}
-          >
-            {children}
-          </Context.Provider>
-        </ProgressContext.Provider>
-      </ApolloTestProvider>
-    );
-  };
-}
+// Seeds a full pre-regen `Book:<id>` entity (via the same document
+// `useBookDetail` reads) so the eviction test below actually proves
+// something: without a pre-existing entity, `cache.extract()` would never
+// contain `Book:<old-id>` in the first place, and "not.toContain" would
+// pass whether or not `update` ever ran.
+const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id: string) =>
+  client.writeQuery({
+    query: BookDetailDocument,
+    variables: { libraryId: LIBRARY_ID, bookId: id },
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book',
+          id,
+          title: 'Dune',
+          author: 'Herbert',
+          description: '',
+          publisher: '',
+          publishDate: '',
+          addedAt: '2026-01-01T00:00:00.000Z',
+          mtime: '2026-01-01T00:00:00.000Z',
+          size: 0,
+          pageCount: 0,
+          chapterCount: 0,
+          chapterNames: null,
+          chapterSpineMap: [],
+          subjects: [],
+          seriesIndex: 0,
+          hasCover: false,
+          coverUrl: '',
+          deviceEditionCount: 0,
+          series: null,
+          progress: null,
+          validation: null,
+          lineage: [],
+          pendingFix: null,
+        },
+      },
+    },
+  });
 
-/**
- * Same shape as `makeWrapper`, but takes the initial `BookList` map
- * directly — needed for the alias-key test below, which deliberately files
- * the book under a key OTHER than its own `.id` (simulating a book reached
- * via a Relay global id, whose cache entry `useFetchBook` now keys by the
- * REQUESTED id rather than `book.id` — see task 8's fix round 1 report).
- */
-function makeWrapperWithBookList(bookList: BookList, initialProgress: ProgressList = {}) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [state, setBookListRaw] = useState<BookList>(bookList);
-    const setBookList = useCallback(
-      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
-      []
-    );
-    const [progressList] = useState<ProgressList>(initialProgress);
-    return (
-      <ApolloTestProvider>
-        <ProgressContext.Provider
-          value={{
-            progressList,
-            loadingByUsername: {},
-            errorByUsername: {},
-            setProgressForUsername: () => {},
-            setLoadingForUsername: () => {},
-            setErrorForUsername: () => {},
-            renameProgressKey: () => {},
-          }}
-        >
-          <Context.Provider
-            value={{
-              bookList: state,
-              bookListFetched: true,
-              bookListLoading: false,
-              bookListError: undefined,
-              loadingByBookId: {},
-              errorByBookId: {},
-              completeBookIds: new Set(['global-1']),
-              setBookList,
-              setBookListFetched: () => {},
-              setBookListLoading: () => {},
-              setBookListError: () => {},
-              setLoadingForBook: () => {},
-              setErrorForBook: () => {},
-              setBookComplete: () => {},
-              clearCompleteBookIds: () => {},
-              bookListItems: [],
-              setBookListItems: () => {},
-              bookListFilter: {},
-              setBookListFilter: () => {},
-            }}
-          >
-            {children}
-          </Context.Provider>
-        </ProgressContext.Provider>
-      </ApolloTestProvider>
-    );
-  };
-}
+const regenSuccessMock = (
+  requestedId: string,
+  responseId: string
+): MockedResponse<BookRegenChaptersMutation, BookRegenChaptersMutationVariables> => ({
+  request: { query: BookRegenChaptersDocument, variables: { id: requestedId } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookRegenChapters: {
+        __typename: 'BookRegenChaptersPayload',
+        book: {
+          __typename: 'Book',
+          id: responseId,
+          chapterCount: 5,
+          chapterNames: ['One', 'Two'],
+          chapterSpineMap: [0, 10],
+        },
+      },
+    },
+  },
+});
 
 describe('useRegenChapters', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('calls POST /api/books/:id/regen-chapters', async () => {
-    const updated = makeBook({ id: 'book-1', chapterCount: 5 });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-    );
-    const { result } = renderHook(() => useRegenChapters(), {
-      wrapper: makeWrapper([makeBook({ id: 'book-1' })]),
-    });
-    await act(() => result.current[0]('book-1'));
-    expect(fetch).toHaveBeenCalledWith(
-      `/api/books/${encodeURIComponent('book-1')}/regen-chapters`,
-      expect.objectContaining({ method: 'POST' })
-    );
+  it('returns a regenChapters function and initial false/undefined state', () => {
+    const { result } = renderHookWithApollo(() => useRegenChapters(), []);
+    const [regenChapters, loading, error, errorMessage] = result.current!;
+    expect(typeof regenChapters).toBe('function');
+    expect(loading).toBe(false);
+    expect(error).toBe(false);
+    expect(errorMessage).toBeUndefined();
   });
 
-  it('updates book in context on success', async () => {
-    const updated = makeBook({ id: 'book-1', chapterCount: 5 });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+  it('updates chapter fields on the same Book entity via normalization when the id is unchanged', async () => {
+    const { result, client } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [regenSuccessMock(BOOK_ID, BOOK_ID)]
     );
-    const { result } = renderHook(() => ({ hook: useRegenChapters(), ctx: useContext(Context) }), {
-      wrapper: makeWrapper([makeBook({ id: 'book-1' })]),
-    });
-    await act(() => result.current.hook[0]('book-1'));
-    expect(result.current.ctx.bookList['book-1'].chapterCount).toBe(5);
+    act(() => seedBook(client, BOOK_ID));
+
+    await act(() => result.current![0](BOOK_ID));
+
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    const entity = extracted[`Book:${BOOK_ID}`] as { chapterCount: number };
+    expect(entity.chapterCount).toBe(5);
   });
 
-  it('removes old book key when id changes after regen', async () => {
-    const updated = makeBook({ id: 'new-id' });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+  // The task's real content: `reimportBook` can change the book's content-
+  // hash global id. Normalization alone would then write a NEW `Book:<new-
+  // id>` entity and leave the stale `Book:<old-id>` entity — with its
+  // pre-regen `chapterCount`/`chapterNames`/`chapterSpineMap` — sitting in
+  // the cache forever, since nothing else ever reads or evicts it. The
+  // hand-written `update` evicts the old entity in that case.
+  it('evicts the old Book entity when the payload reports a different id (hash changed)', async () => {
+    const { result, client } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [regenSuccessMock(BOOK_ID, NEW_BOOK_ID)]
     );
-    const { result } = renderHook(() => ({ hook: useRegenChapters(), ctx: useContext(Context) }), {
-      wrapper: makeWrapper([makeBook({ id: 'old-id' })]),
-    });
-    await act(() => result.current.hook[0]('old-id'));
-    expect(result.current.ctx.bookList['old-id']).toBeUndefined();
-    expect(result.current.ctx.bookList['new-id']).toBeDefined();
+    act(() => seedBook(client, BOOK_ID));
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`]).toBeDefined();
+
+    await act(() => result.current![0](BOOK_ID));
+
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).not.toContain(`Book:${BOOK_ID}`);
+    const newEntity = extracted[`Book:${NEW_BOOK_ID}`] as { chapterCount: number };
+    expect(newEntity.chapterCount).toBe(5);
   });
 
-  it('moves progress from old to new id in all user caches when book id changes', async () => {
-    const initialProgress: ProgressList = {
-      alice: { 'old-id': { document: 'old-id', percentage: 0.6 } },
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(makeBook({ id: 'new-id' })),
-      })
+  it('maps a BookHashCollisionError to errorMessage', async () => {
+    const { result } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [
+        {
+          request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+          result: {
+            data: {
+              __typename: 'Mutation' as const,
+              bookRegenChapters: {
+                __typename: 'BookHashCollisionError' as const,
+                message: 'This book collides with another book already in the library.',
+              },
+            },
+          },
+        },
+      ]
     );
-    const { result } = renderHook(
-      () => ({ hook: useRegenChapters(), ctx: useContext(ProgressContext) }),
-      { wrapper: makeWrapper([makeBook({ id: 'old-id' })], initialProgress) }
-    );
-    await act(() => result.current.hook[0]('old-id'));
-    expect(result.current.ctx.progressList['alice']['new-id']).toBeDefined();
-    expect(result.current.ctx.progressList['alice']['old-id']).toBeUndefined();
+
+    await act(() => result.current![0](BOOK_ID));
+
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('This book collides with another book already in the library.');
   });
 
-  // Task 8 review round 1: since `useFetchBook` keys `bookList` by the
-  // REQUESTED id (which can be a Relay global id from the grid) rather than
-  // `book.id`, a book's cache entry can live under a key that ISN'T its own
-  // raw id. `regenChapters` is always called with `book.id` (raw) —
-  // `page/book/index.tsx` calls `regenChapters(book.id)` — so `next[id]`
-  // alone (the pre-fix behavior) never touches the alias key at all: the
-  // stale, pre-regen copy under `global-1` survives untouched, and
-  // `completeBookIds` still marks it complete, so `useBook` never refetches
-  // it. Chapters wouldn't reflect the regen until a hard reload.
-  it('clears a stale alias entry (cached under a different key than its own id) after regen', async () => {
-    const updated = makeBook({ id: 'raw-1', chapterCount: 5 });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
+  it('maps a BookNotValidatedError to errorMessage', async () => {
+    const { result } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [
+        {
+          request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+          result: {
+            data: {
+              __typename: 'Mutation' as const,
+              bookRegenChapters: {
+                __typename: 'BookNotValidatedError' as const,
+                message: 'This book must pass validation before it can be edited.',
+              },
+            },
+          },
+        },
+      ]
     );
-    const preRegen = makeBook({ id: 'raw-1', chapterCount: 0 });
-    const { result } = renderHook(() => ({ hook: useRegenChapters(), ctx: useContext(Context) }), {
-      // Filed under 'global-1' — a different key than the book's own raw id
-      // ('raw-1') — exactly what a grid-originated (global-id) navigation
-      // produces via the now-fixed `useFetchBook`.
-      wrapper: makeWrapperWithBookList({ 'global-1': preRegen }),
-    });
 
-    await act(() => result.current.hook[0]('raw-1'));
+    await act(() => result.current![0](BOOK_ID));
 
-    expect(result.current.ctx.bookList['global-1']).toBeUndefined();
-    expect(result.current.ctx.bookList['raw-1']).toBeDefined();
-    expect(result.current.ctx.bookList['raw-1'].chapterCount).toBe(5);
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('This book must pass validation before it can be edited.');
   });
 
-  it('sets error state on failed response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
-    const { result } = renderHook(() => useRegenChapters(), {
-      wrapper: makeWrapper([makeBook({ id: 'book-1' })]),
+  it('sets error when the mutation resolves missing (book not found for this owner)', async () => {
+    const { result } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [
+        {
+          request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+          result: { data: { __typename: 'Mutation' as const, bookRegenChapters: null } },
+        },
+      ]
+    );
+
+    await act(() => result.current![0](BOOK_ID));
+
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('Failed to regenerate chapters');
+  });
+
+  it('sets error and errorMessage when the mutation throws', async () => {
+    const { result } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [
+        {
+          request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+          error: new Error('Network error'),
+        },
+      ]
+    );
+
+    await act(() => result.current![0](BOOK_ID));
+
+    expect(result.current![2]).toBe(true);
+    expect(result.current![3]).toBe('Network error');
+  });
+
+  it('sets loading true during the request and resets it after', async () => {
+    const { result } = renderHookWithApollo(
+      () => useRegenChapters(),
+      [{ ...regenSuccessMock(BOOK_ID, BOOK_ID), delay: 20 }]
+    );
+
+    act(() => {
+      void result.current![0](BOOK_ID);
     });
-    await act(() => result.current[0]('book-1'));
-    expect(result.current[2]).toBe(true);
+    expect(result.current![1]).toBe(true);
+
+    await waitFor(() => expect(result.current![1]).toBe(false));
+    expect(result.current![2]).toBe(false);
   });
 });

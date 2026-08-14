@@ -1,11 +1,17 @@
-import { useCallback, use, useMemo, useState } from 'react';
+import { useMutation } from '@apollo/client/react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { useWithTargetUser } from '~/provider/library-target';
+import type { BookRegenChaptersMutation } from '~/gql/graphql';
+import { BookRegenChaptersDocument } from '~/graphql/book';
+import { unwrapResult } from '~/provider/apollo';
 
-import { apiFetch } from '../../../lib/api-fetch';
-import { Context as ProgressContext } from '../../progress/context';
-import { Context } from '../context';
-import type { Book } from '../type';
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated.
+type BookRegenChaptersPayload = Extract<
+  NonNullable<BookRegenChaptersMutation['bookRegenChapters']>,
+  { __typename: 'BookRegenChaptersPayload' }
+>;
 
 export type UseRegenChapters = [
   (id: string) => Promise<void>,
@@ -14,10 +20,39 @@ export type UseRegenChapters = [
   string | undefined,
 ];
 
+/**
+ * The REST-era `renameProgressKey` call is GONE along with the REST progress
+ * map it renamed keys in — `ProgressContext` is not touched by this hook at
+ * all anymore. Progress lives in its own not-yet-migrated REST hooks
+ * (untouched per Global Constraints); nothing here bridges to them.
+ *
+ * `BookRegenChaptersResult` genuinely has two error members
+ * (schema-verified against `app/server/graphql/schema/book/mutation/
+ * regen-chapters.ts`): `BookHashCollisionError` and `BookNotValidatedError`.
+ * `unwrapResult` treats either as `status: 'error'` uniformly — both types
+ * expose only `message` — so both map onto `errorMessage` the same way,
+ * with no per-typename branching needed.
+ *
+ * `update` evicts the STALE `Book:<id>` entity ONLY when the payload's
+ * `book.id` differs from the requested `id` — `reimportBook` re-parses the
+ * EPUB and recomputes its content-hash fingerprint, which is also the raw
+ * local half of the Book's global id, so a regen can genuinely mint a new
+ * id. When it does, Apollo's normalization on the payload's `book { id
+ * chapterCount chapterNames chapterSpineMap }` selection writes a BRAND NEW
+ * `Book:<new-id>` entity — it has no way to know the old entity described
+ * the SAME book and needs removing, so the pre-regen `Book:<old-id>` would
+ * otherwise linger in the cache forever with stale chapter data. When the
+ * id is UNCHANGED, normalization alone updates the existing entity's three
+ * re-selected fields and this `update` function does nothing extra.
+ *
+ * **Seen-to-fail**: deleting the `id !== requestedId` evict branch below
+ * leaves this hook's "evicts the old Book entity when the payload reports a
+ * different id" test failing — `Book:<old-id>` survives in
+ * `cache.extract()` instead of disappearing. Restored; see this file's git
+ * history / the task report for the exact failure output.
+ */
 export const useRegenChapters = (): UseRegenChapters => {
-  const { setBookList } = use(Context);
-  const { renameProgressKey } = use(ProgressContext);
-  const withTargetUser = useWithTargetUser();
+  const [runRegen] = useMutation(BookRegenChaptersDocument);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -30,38 +65,36 @@ export const useRegenChapters = (): UseRegenChapters => {
         setLoading(true);
         setError(false);
         setErrorMessage(undefined);
-        const res = await apiFetch(
-          withTargetUser(`/api/books/${encodeURIComponent(id)}/regen-chapters`),
-          {
-            method: 'POST',
-          }
-        );
-        if (!res.ok) throw new Error('Failed to regenerate chapters');
-        const updated = await (res.json() as Promise<Book>);
-        // Delete every `bookList` entry describing the PRE-regen book (`.id
-        // === id`), not just `next[id]` itself: since `useFetchBook` (task
-        // 8) now keys entries by the id they were REQUESTED under rather
-        // than the book's own raw id, a book reached via a Relay global id
-        // (the grid) can be cached under a key that ISN'T `id` — `id` here
-        // is always `book.id` (raw; `page/book` calls `regenChapters(book.id)`)
-        // — while a stale copy of the SAME book sits under its global-id
-        // key. `next[id]` alone would leave that alias untouched, holding
-        // pre-regen data forever (`completeBookIds` already marks it
-        // complete, so `useBook` never refetches — chapters wouldn't
-        // reflect the regen until a hard reload). Deleting by value match
-        // instead removes every stale copy; if that happens to be the
-        // book's own global-id key, `useBook`'s `bookList[bookId] ===
-        // undefined` guard fires exactly once more and self-heals through
-        // the now-correctly-keyed `useFetchBook`, rather than looping.
-        setBookList((prev) => {
-          const next = { ...prev };
-          for (const key of Object.keys(next)) {
-            if (next[key]?.id === id) delete next[key];
-          }
-          next[updated.id] = updated;
-          return next;
+
+        const { data } = await runRegen({
+          variables: { id },
+          update: (cache, { data: mutationData }) => {
+            const result = unwrapResult<BookRegenChaptersPayload>(
+              mutationData?.bookRegenChapters,
+              'BookRegenChaptersPayload'
+            );
+            if (result.status !== 'ok') return;
+            if (result.payload.book.id === id) return;
+
+            cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
+            cache.gc();
+          },
         });
-        if (updated.id !== id) renameProgressKey(id, updated.id);
+
+        const result = unwrapResult<BookRegenChaptersPayload>(
+          data?.bookRegenChapters,
+          'BookRegenChaptersPayload'
+        );
+        if (result.status === 'missing') {
+          setError(true);
+          setErrorMessage('Failed to regenerate chapters');
+          return;
+        }
+        if (result.status === 'error') {
+          setError(true);
+          setErrorMessage(result.message);
+          return;
+        }
       } catch (err) {
         setError(true);
         if (err instanceof Error) setErrorMessage(err.message);
@@ -69,11 +102,11 @@ export const useRegenChapters = (): UseRegenChapters => {
         setLoading(false);
       }
     },
-    [withTargetUser, loading, setBookList, renameProgressKey]
+    [runRegen, loading]
   );
 
   return useMemo(
-    () => [regenChapters, loading, error, errorMessage],
+    () => [regenChapters, loading, error, errorMessage] as UseRegenChapters,
     [regenChapters, loading, error, errorMessage]
   );
 };

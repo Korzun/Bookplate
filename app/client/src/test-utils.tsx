@@ -71,6 +71,13 @@ interface RenderWithApolloOptions extends RenderWithProvidersOptions {
  * --noEmit` (already part of `npm run lint`) silently accepts a `result.data`
  * shape the server could never return. As of this writing every mock in this
  * codebase is an unannotated bare literal, so none of them get this check.
+ *
+ * Returns the `client` it built, spread alongside `renderWithProviders`'s own
+ * return value — `client.cache` is the only way a test can assert on cache
+ * state (seeded via `client.cache.writeQuery`, inspected via
+ * `client.cache.extract()`) rather than just on the hook/component's return
+ * value. `test-utils.test.tsx` asserts this IS the cache instance the
+ * rendered tree actually reads/writes, not a second, disconnected one.
  */
 export function renderWithApollo(
   ui: ReactElement,
@@ -80,7 +87,10 @@ export function renderWithApollo(
     link: new MockLink(mocks),
     cache: new InMemoryCache(cacheConfig),
   });
-  return renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>, options);
+  return {
+    client,
+    ...renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>, options),
+  };
 }
 
 type RenderHookWithApolloOptions = Omit<RenderWithApolloOptions, 'mocks'>;

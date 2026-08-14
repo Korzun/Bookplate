@@ -7,7 +7,6 @@ import {
   ConfirmModal,
   SetProgressModal,
   UploadReplaceModal,
-  ValidationDetailModal,
   type PageActionItem,
 } from '~/control';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
@@ -21,7 +20,6 @@ import {
   useDownloadBook,
   useRegenChapters,
   useValidateBook,
-  type ValidationReport,
 } from '~/provider/book';
 import { useWithTargetUser } from '~/provider/library-target';
 import { useMyProgress } from '~/provider/progress';
@@ -64,8 +62,6 @@ export const BookPage = () => {
   const [clearEditionsModalOpen, setClearEditionsModalOpen] = useState(false);
   const [downloadBook] = useDownloadBook();
   const [validateBook, validating] = useValidateBook();
-  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
-  const [validationNonce, setValidationNonce] = useState(0);
   const showToast = useToast();
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -89,14 +85,23 @@ export const BookPage = () => {
     if (!ok) showToast('Download failed', 'error');
   }, [downloadBook, id, showToast]);
 
+  // `useValidateBook` (task 9) now resolves a MASKED `ValidationFragment`
+  // ref, not a REST `ValidationReport` — it normalizes the fresh result
+  // straight onto the cached `Book` entity (see that hook's own doc
+  // comment), so this handler no longer needs the resolved value to show
+  // anything itself. Opening a detail view after Validate is task 11's job
+  // (wiring `ValidationDetailModal` to `useBookValidation`'s cache-hit
+  // read, per the 2026-08-13 plan amendment) — until then this only
+  // toasts pass/fail, a documented, deliberate, transient narrowing of the
+  // action (same shape as task 6's per-row-progress shim: minimal, noted,
+  // closed by the next task).
   const handleValidate = useCallback(async () => {
     const result = await validateBook(id!);
     if (!result) {
       showToast('Validation failed', 'error');
       return;
     }
-    setValidationReport(result);
-    setValidationNonce((n) => n + 1);
+    showToast('Validation complete', 'success');
   }, [validateBook, id, showToast]);
 
   const handleEditMetadata = useCallback(
@@ -329,18 +334,6 @@ export const BookPage = () => {
             setReplaceModalOpen(false);
             navigate(path.book(newId));
           }}
-        />
-      )}
-      {validationReport && (
-        <ValidationDetailModal
-          key={validationNonce}
-          isOpen
-          filename={book.title}
-          counts={validationReport.counts}
-          messages={validationReport.messages}
-          threshold={validationReport.threshold}
-          intro="EPUBCheck results for this book. Issues below the rejection threshold don't block anything, but you may want to fix them."
-          onClose={() => setValidationReport(null)}
         />
       )}
     </Page>
