@@ -1,7 +1,6 @@
 export {
   useBook,
   useBookDetail,
-  useBookLineage,
   useBookList,
   useBookListFilter,
   useBookListItems,
@@ -21,7 +20,6 @@ export {
   useSeriesNames,
   useFetchSeriesNextIndex,
   useStandaloneBookList,
-  useUnlinkBookLineage,
   useUploadBookList,
   useUploadQueueEngine,
   useValidateBook,

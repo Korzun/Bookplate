@@ -285,3 +285,51 @@ export const BookClearEditionsDocument = graphql(`
     }
   }
 `);
+
+/**
+ * `BookUnlinkDocumentResult` genuinely has three error members
+ * (schema-verified against `app/server/graphql/schema/book/mutation/
+ * unlink-document.ts`): `LineageEntryNotFoundError` (no lineage row matches
+ * `documentId`), `EditLineageEntryError` (the row exists but is an organic
+ * edit-history entry, which this mutation refuses to remove — only manual
+ * `merge` links can be unlinked), and `InvalidInputError` (an empty
+ * `documentId`, the one input REST's path-segment routing could never
+ * receive, per that file's own doc comment — unreachable in practice but
+ * declared, so kept here rather than speculatively dropped).
+ *
+ * `book { id lineage { ...LineageEntryFragment } }` re-selects the FULL
+ * lineage list, so Apollo's own normalization overwrites the whole array on
+ * the existing `Book:<id>` entity — the removed entry is simply absent from
+ * the new array on the next read. No hand-written `update` function, and no
+ * client-side refetch: `BookLineageModal` (task 10) takes `lineage` as a
+ * prop rather than fetching it itself, so once a LIVE consumer (`
+ * useBookDetail`, wired in a later task) watches `Book.lineage` through
+ * `BookDetailDocument`, this mutation's normalization alone is what makes
+ * the unlinked row disappear — asserted directly against the cache/DOM in
+ * `book-lineage-modal/index.test.tsx`, per Global Constraints' instruction
+ * not to reconstruct what normalization already does.
+ */
+export const BookUnlinkDocumentDocument = graphql(`
+  mutation BookUnlinkDocument($id: ID!, $documentId: String!) {
+    bookUnlinkDocument(input: { id: $id, documentId: $documentId }) {
+      __typename
+      ... on BookUnlinkDocumentPayload {
+        book {
+          id
+          lineage {
+            ...LineageEntryFragment
+          }
+        }
+      }
+      ... on LineageEntryNotFoundError {
+        message
+      }
+      ... on EditLineageEntryError {
+        message
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);

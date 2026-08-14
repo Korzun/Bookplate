@@ -1,7 +1,6 @@
 export { useBook } from './use-book';
 export { useBookDetail } from './use-book-detail';
 export type { BookDetail, UseBookDetail } from './use-book-detail';
-export { useBookLineage } from './use-book-lineage';
 export { useBookList } from './use-book-list';
 export { useBookListFilter } from './use-book-list-filter';
 export { useBookListItems } from './use-book-list-items';
@@ -25,7 +24,6 @@ export { useSeriesNames } from './use-series-names';
 export { useFetchSeriesNextIndex } from './use-fetch-series-next-index';
 export type { FetchSeriesNextIndex } from './use-fetch-series-next-index';
 export { useStandaloneBookList } from './use-standalone-book-list';
-export { useUnlinkBookLineage } from './use-unlink-book-lineage';
 export { useUploadBookList } from './use-upload-book-list';
 export { useUploadQueueEngine, fixKey } from './use-upload-queue';
 export { useValidateBook } from './use-validate-book';

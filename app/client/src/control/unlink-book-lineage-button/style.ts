@@ -10,4 +10,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     fontWeight: theme.fontWeight.extrabold,
     display: 'inline-block',
   },
+  error: {
+    color: theme.color.danger.default,
+    fontSize: theme.fontSize.sm,
+    margin: `${theme.space.sm} 0 0`,
+  },
 }));

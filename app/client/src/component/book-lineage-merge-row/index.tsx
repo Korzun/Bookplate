@@ -5,16 +5,28 @@ import { useStyle } from './style';
 
 export type BookLineageMergeRowProps = {
   bookId: string;
+  bookTitle: string;
   documentId: string;
   timestamp?: number;
-  onSuccess?: () => void;
 };
 
+/**
+ * `bookTitle` is forwarded straight through to `UnlinkBookLineageButton` —
+ * this row has no other use for it. Added alongside task 10's move of that
+ * button off `useBook` onto a plain prop; `BookLineageModal` (the only
+ * caller) already has the title from its own `bookTitle` prop.
+ *
+ * No `onSuccess` prop (unlike the REST-era version): `bookUnlinkDocument`'s
+ * payload re-selects the full `lineage` list, so Apollo's own normalization
+ * is what removes this row on the next read of a LIVE `Book.lineage` query —
+ * there is nothing left for a success callback to trigger (see
+ * `graphql/book.ts`'s `BookUnlinkDocumentDocument` doc comment).
+ */
 export const BookLineageMergeRow = ({
   bookId,
+  bookTitle,
   documentId,
   timestamp,
-  onSuccess,
 }: BookLineageMergeRowProps) => {
   const styles = useStyle();
 
@@ -32,7 +44,7 @@ export const BookLineageMergeRow = ({
               buttonType="link"
               documentId={documentId}
               bookId={bookId}
-              onSuccess={onSuccess}
+              bookTitle={bookTitle}
             />
           </span>
         </div>

@@ -294,6 +294,18 @@ export const BookPage = () => {
         <BookLineageModal
           isOpen
           bookId={book.id}
+          bookTitle={book.title}
+          // `book` here is still `useBook`'s REST shape (task 11's job to
+          // move this page onto `useBookDetail`), which carries no `lineage`
+          // field at all — REST never returned book history alongside the
+          // book itself; it was a separate `/api/books/:id/lineage` call the
+          // now-deleted `useBookLineage` hook made. The minimal
+          // compile-preserving fix (matching task 9's `handleValidate` call
+          // for the same reason) is an empty list: a real, visible
+          // regression — this modal shows "no history" for EVERY book on
+          // this page until task 11 wires it to `useBookDetail`'s live
+          // `lineage` — not merely an untested gap.
+          lineage={[]}
           addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
           onClose={() => setLineageModalOpen(false)}
         />

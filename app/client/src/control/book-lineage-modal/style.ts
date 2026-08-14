@@ -27,16 +27,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     margin: 0,
     padding: `0 ${theme.space.xxl} ${theme.space.xxl}`,
   },
-  loading: {
-    fontSize: theme.fontSize.sm,
-    color: theme.color.text.faint,
-    padding: `${theme.space.md} ${theme.space.xxl} ${theme.space.xxl}`,
-  },
-  error: {
-    fontSize: theme.fontSize.sm,
-    color: theme.color.danger.default,
-    padding: `${theme.space.md} ${theme.space.xxl} ${theme.space.xxl}`,
-  },
   footer: {
     ...theme.recipe.modal.footer,
   },
