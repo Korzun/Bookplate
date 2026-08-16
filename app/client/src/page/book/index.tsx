@@ -85,7 +85,7 @@ export const BookPage = () => {
   const navigate = useNavigate();
   const [isAdmin] = useIsAdmin();
 
-  const { book, loading, error } = useBookDetail(id!);
+  const { book, loading, error, refetch } = useBookDetail(id!);
   const { validation: lazyValidation, load: loadValidation } = useBookValidation(book?.id ?? '');
   // `useFragment` is an identity cast (Global Constraints — masking is
   // compile-time only here), but called unconditionally before either early
@@ -354,6 +354,7 @@ export const BookPage = () => {
           chapterSpineMap={book.chapterSpineMap}
           chapterNames={book.chapterNames ?? []}
           onClose={() => setProgressModalOpen(false)}
+          onSaved={refetch}
         />
       )}
       {lineageModalOpen && (

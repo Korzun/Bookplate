@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -204,9 +204,12 @@ const validateMutationFailureMock = (): MockedResponse => ({
   result: { data: { __typename: 'Mutation' as const, bookValidate: null } },
 });
 
-async function renderPage(mocks: MockedResponse[]) {
+async function renderPage(
+  mocks: MockedResponse[],
+  options: Partial<Parameters<typeof renderWithApollo>[1]> = {}
+) {
   const { BookPage } = await import('./index');
-  return renderWithApollo(<BookPage />, { mocks });
+  return renderWithApollo(<BookPage />, { ...options, mocks });
 }
 
 // `PageActionsMenu` (`~/control/page-actions-menu`) always renders an "all
@@ -401,6 +404,83 @@ describe('BookPage', () => {
       // never `book.id` (the Relay global id `bookUnlinkDocument` needs).
       expect(await screen.findByText(DOCUMENT_ID)).toBeInTheDocument();
       expect(screen.queryByText(BOOK_ID)).not.toBeInTheDocument();
+    });
+  });
+
+  // Task 12 (STEP-8 BRIDGE, see `SetProgressModal`'s `onSaved` doc comment):
+  // `SetProgressModal` still writes progress through `ProgressProvider` over
+  // REST (that migration is step 8); `book.progress` here comes off the
+  // Apollo cache. These two tests need a real `username` — unlike every
+  // other `renderPage` call above, which relies on `renderWithProviders`'
+  // default anonymous user — because `useSetMyProgress` no-ops (never
+  // resolves `saving`) when `username` is `undefined`.
+  describe('set progress bridge', () => {
+    const at = (percentage: number) =>
+      bookMock({
+        progress: {
+          __typename: 'Progress' as const,
+          id: 'UHJvZ3Jlc3M6MQ==',
+          percentage,
+          currentChapter: 3,
+        },
+      });
+
+    // `SetProgressModal` is a real `<dialog>`; `showModal` is stubbed to a
+    // no-op in `beforeAll` above (jsdom has no dialog rendering support), so
+    // the element never gains the `open` attribute jsdom's own default
+    // stylesheet keys `display` off of (`dialog:not([open]) { display: none;
+    // }`). Plain `getByRole` filters that out by default — `hidden: true` is
+    // this codebase's own convention for querying inside a real `<dialog>`
+    // in tests (see `book-lineage-modal/index.test.tsx`,
+    // `validation-detail-modal/index.test.tsx`). Scoped with `within`, not a
+    // bare `screen.getByRole('button', { name: /cancel/i, hidden: true })`,
+    // because `ConfirmModal` (delete / clear-editions) is ALSO always
+    // mounted on this page as a real, permanently-hidden `<dialog>` with its
+    // own "Cancel" button — an unscoped query throws "Found multiple
+    // elements".
+    async function getSetProgressDialog() {
+      const header = await screen.findByText('Set Progress');
+      return within(header.closest('dialog') as HTMLElement);
+    }
+
+    it('refreshes the displayed progress after the set-progress modal saves', async () => {
+      await renderPage([at(0.2), at(0.6)], { user: { username: 'le', isAdmin: false } });
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
+
+      await selectMenuItem(/^set progress$/i);
+      const modal = await getSetProgressDialog();
+      await userEvent.click(modal.getByRole('button', { name: /save/i, hidden: true }));
+
+      await waitFor(() =>
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60')
+      );
+    });
+
+    it('does not refetch when the modal is dismissed without saving', async () => {
+      // Only ONE mock in the list. If `onSaved` fired on Cancel too (the bug
+      // this guards against), the resulting refetch would be a SECOND
+      // `BookDetail` operation with no matching mock left — `MockLink`
+      // (`showWarnings` left on by `renderWithApollo`) logs "No more mocked
+      // responses" and errors that operation's observable. That error
+      // populates `useBookDetail`'s `error`, which flips this page from its
+      // normal content to the "Failed to load book." branch — unmounting
+      // `progressbar` entirely. So the `waitFor` below is the actual check:
+      // not a literal DOM match on the warning text (this page never renders
+      // `error.message`), but the progressbar surviving, unchanged, rather
+      // than the whole page going to the error state.
+      await renderPage([at(0.2)], { user: { username: 'le', isAdmin: false } });
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await selectMenuItem(/^set progress$/i);
+      const modal = await getSetProgressDialog();
+      await userEvent.click(modal.getByRole('button', { name: /cancel/i, hidden: true }));
+
+      await waitFor(() =>
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20')
+      );
+      expect(screen.getByRole('heading', { name: 'A Wizard of Earthsea' })).toBeInTheDocument();
     });
   });
 });

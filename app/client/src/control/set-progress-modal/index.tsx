@@ -15,6 +15,15 @@ type SetProgressModalProps = {
   chapterSpineMap?: number[];
   chapterNames?: string[];
   onClose: () => void;
+  /**
+   * STEP-8 BRIDGE — delete this when the progress hooks move to GraphQL.
+   * `SetProgressModal` writes through `ProgressProvider` (REST); this page reads
+   * `Book.progress` from the Apollo cache. Nothing connects the two, so without
+   * this refetch a save leaves the displayed percentage stale until a reload.
+   * Once `progressSet` is a GraphQL mutation its payload normalizes onto the same
+   * `Progress` entity and this prop, and the refetch, become dead weight.
+   */
+  onSaved?: () => void;
 };
 
 export function SetProgressModal({
@@ -25,6 +34,7 @@ export function SetProgressModal({
   chapterSpineMap = [],
   chapterNames = [],
   onClose,
+  onSaved,
 }: SetProgressModalProps) {
   const styles = useStyle();
   const [selectedChapter, setSelectedChapter] = useState(initialChapter);
@@ -51,7 +61,10 @@ export function SetProgressModal({
     if (wasBusyRef.current) {
       wasBusyRef.current = false;
       pendingRef.current = false;
-      if (!hasError) onClose();
+      if (!hasError) {
+        onSaved?.();
+        onClose();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBusy, hasError]);
