@@ -230,9 +230,15 @@ describe('BookLineageModal', () => {
    * fetchPolicy: 'cache-only' })` (seeded directly via `client.cache.
    * writeQuery`, not a network mock) and re-renders the modal with whatever
    * that query returns — exactly the shape a future `useBookDetail` consumer
-   * will have. `mocks` carries exactly ONE entry, for the mutation alone: if
-   * anything in this path tried to refetch, `MockLink` would have nothing
-   * left to resolve it with.
+   * will have. `mocks` carries exactly ONE entry, for the mutation alone —
+   * NOT because a stray refetch would otherwise starve `MockLink` (the
+   * harness's `cache-only` policy never touches the link regardless, and the
+   * modal has no fetch machinery left to attempt one either way), but
+   * because that's all this test needs: the load-bearing claim is that the
+   * mutation's re-selected `lineage` normalizes onto the SAME `Book:<id>`
+   * entity `BookDetailDocument` reads through, and that change propagates to
+   * a live `cache-only` reader with no explicit refetch call anywhere in
+   * this path.
    */
   it('removes an unlinked merge row without a refetch', async () => {
     function Harness() {
