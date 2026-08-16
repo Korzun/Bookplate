@@ -7,22 +7,25 @@ import {
   ConfirmModal,
   SetProgressModal,
   UploadReplaceModal,
+  ValidationDetailModal,
   type PageActionItem,
 } from '~/control';
+import { useFragment } from '~/gql';
+import type { ValidationFragmentFragment } from '~/gql/graphql';
+import { ValidationFragment } from '~/graphql/book';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
-import { coverUrl } from '~/lib/cover-url';
+import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
 import { useIsAdmin } from '~/provider/auth';
 import {
-  useBook,
+  useBookDetail,
+  useBookValidation,
   useClearBookEditions,
   useDeleteBook,
   useDownloadBook,
   useRegenChapters,
   useValidateBook,
 } from '~/provider/book';
-import { useWithTargetUser } from '~/provider/library-target';
-import { useMyProgress } from '~/provider/progress';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { formatSize, hashString } from '~/utils';
@@ -30,30 +33,70 @@ import { formatSize, hashString } from '~/utils';
 import { buildBookActions } from './actions';
 import { useStyle } from './style';
 
+/**
+ * `counts` on `ValidationFragment` is a LIST (`{ severity count }[]`) — the
+ * server shape, one entry per severity that actually occurred. The modal
+ * (`ValidationDetailModal`, still shared with `page/upload` and the replace
+ * flow, both on the REST-shaped record until a later step) takes
+ * `Record<Severity, number>`. `SeverityCounts`' own `orderSeverityCounts`
+ * reads `counts[severity] ?? 0`, so a partial record — every severity NOT in
+ * the list is simply absent here — is safe to hand it; the cast matches the
+ * same `Object.fromEntries(...) as Record<Severity, number>` idiom the
+ * server's own `validation-store.ts` uses for the identical shape.
+ */
+function toValidationCounts(
+  counts: ValidationFragmentFragment['counts']
+): Record<Severity, number> {
+  return Object.fromEntries(counts.map((c) => [c.severity, c.count])) as Record<Severity, number>;
+}
+
+/**
+ * `ValidationMessage.id` is `node.code` (e.g. `"PKG-003"`), not `node.seq` —
+ * matching REST's own `validation-store.ts` (`id: m.code`) byte-for-byte, so
+ * a message keeps the same rendered id it always had. `location` collapses
+ * the fragment's flat `path`/`line`/`column` into the modal's nested shape,
+ * `undefined` when `path` is null (REST's own `m.path != null` check).
+ *
+ * `segments` is left unset: REST derived it from `splitSubjects(m.message)`,
+ * a server-only helper this schema does not expose as a field, so there is
+ * no client-side way to reconstruct it here. The modal already falls back to
+ * the raw `message` text when `segments` is absent — this is a real, minor,
+ * unavoidable narrowing (quoted subjects no longer render monospaced), not a
+ * bug this task's brief asked to fix.
+ */
+function toValidationMessages(
+  edges: ValidationFragmentFragment['messages']['edges']
+): ValidationMessage[] {
+  return edges.map(({ node }) => ({
+    id: node.code,
+    severity: node.severity,
+    message: node.message,
+    location:
+      node.path != null
+        ? { path: node.path, line: node.line ?? undefined, column: node.column ?? undefined }
+        : undefined,
+  }));
+}
+
 export const BookPage = () => {
   const styles = useStyle();
 
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isAdmin] = useIsAdmin();
-  const withTargetUser = useWithTargetUser();
 
-  const [book, loading, error] = useBook(id!, true);
-  // `book?.id`, NOT the raw `id` URL param: since the grid (task 8) started
-  // navigating here with a Book's Relay global id, `id` can be that global
-  // id, while `useMyProgressList`'s map is keyed by `p.document` — the
-  // RAW local id (`use-fetch-my-progress-list.ts`) — the same raw id
-  // `/api/books/:id` (task 13) always resolves to and returns as `book.id`,
-  // regardless of which id form was requested. Indexing on `id!` directly
-  // would silently miss for every global-id visit: 0% progress shown for a
-  // book the viewer is actually partway through, and `SetProgressModal`
-  // below would open at chapter 0 instead of their real chapter. `book?.id`
-  // is `undefined` until `useBook` resolves, which `useMyProgress` treats
-  // as "not loaded yet" rather than "no progress" — see its own doc comment.
-  const [progress] = useMyProgress(book?.id);
+  const { book, loading, error } = useBookDetail(id!);
+  const { validation: lazyValidation, load: loadValidation } = useBookValidation(book?.id ?? '');
+  // `useFragment` is an identity cast (Global Constraints — masking is
+  // compile-time only here), but called unconditionally before either early
+  // return below anyway, the same discipline `page/series` follows for its
+  // own `useFragment` call.
+  const unmaskedValidation = useFragment(ValidationFragment, lazyValidation);
+
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
   const [replaceModalOpen, setReplaceModalOpen] = useState(false);
+  const [validationModalOpen, setValidationModalOpen] = useState(false);
 
   const [regenChapters, regenLoading] = useRegenChapters();
   const [deleteBook, deleting] = useDeleteBook();
@@ -66,43 +109,55 @@ export const BookPage = () => {
 
   const handleDeleteConfirm = useCallback(async () => {
     setDeleteModalOpen(false);
-    await deleteBook(id!);
+    await deleteBook(book?.id ?? '');
     navigate(path.home());
-  }, [deleteBook, id, navigate]);
+  }, [deleteBook, book, navigate]);
 
   const handleClearEditionsConfirm = useCallback(async () => {
     setClearEditionsModalOpen(false);
-    const cleared = await clearBookEditions(id!);
+    const cleared = await clearBookEditions(book?.id ?? '');
     if (cleared === undefined) {
       showToast('Failed to clear device editions', 'error');
       return;
     }
     showToast(`Cleared ${cleared} device edition${cleared === 1 ? '' : 's'}`, 'success');
-  }, [clearBookEditions, id, showToast]);
+  }, [clearBookEditions, book, showToast]);
 
   const handleDownload = useCallback(async () => {
-    const ok = await downloadBook(id!);
+    const ok = await downloadBook(book?.id ?? '');
     if (!ok) showToast('Download failed', 'error');
-  }, [downloadBook, id, showToast]);
+  }, [downloadBook, book, showToast]);
 
-  // `useValidateBook` (task 9) now resolves a MASKED `ValidationFragment`
-  // ref, not a REST `ValidationReport` — it normalizes the fresh result
-  // straight onto the cached `Book` entity (see that hook's own doc
-  // comment), so this handler no longer needs the resolved value to show
-  // anything itself. Opening a detail view after Validate is task 11's job
-  // (wiring `ValidationDetailModal` to `useBookValidation`'s cache-hit
-  // read, per the 2026-08-13 plan amendment) — until then this only
-  // toasts pass/fail, a documented, deliberate, transient narrowing of the
-  // action (same shape as task 6's per-row-progress shim: minimal, noted,
-  // closed by the next task).
+  /**
+   * Closes the debt Task 9 left open: `validateBook`'s resolved (masked)
+   * `ValidationFragment` ref is no longer just toasted as a blanket
+   * "Validation complete" regardless of outcome — a book that FAILS
+   * validation now looks nothing like one that passes, because this opens
+   * `ValidationDetailModal` for BOTH, and the modal itself renders the real
+   * pass/fail difference (an empty "No validation issues found" state vs a
+   * real message list).
+   *
+   * `loadValidation()` — NOT reading `result` directly — is the single path
+   * that populates `ValidationDetailModal`'s data, the same lazy
+   * `useBookValidation` read a future "open validation report" entry point
+   * (not wired yet — there is only this one trigger today) would also use.
+   * `Validation.id` is byte-identical to the owning Book's global id
+   * (`graphql/book.ts`), so `bookValidate`'s payload has already normalized
+   * onto the exact `Validation` entity `BookValidationDocument` reads —
+   * `loadValidation()` here is a CACHE HIT with no network round trip, only
+   * a fresh reactive read of what the mutation just wrote. Asserted directly
+   * in this file's test ("opens the validation modal ... with no
+   * BookValidationDocument mock in the list").
+   */
   const handleValidate = useCallback(async () => {
-    const result = await validateBook(id!);
+    const result = await validateBook(book?.id ?? '');
     if (!result) {
       showToast('Validation failed', 'error');
       return;
     }
-    showToast('Validation complete', 'success');
-  }, [validateBook, id, showToast]);
+    loadValidation();
+    setValidationModalOpen(true);
+  }, [validateBook, book, showToast, loadValidation]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -111,7 +166,7 @@ export const BookPage = () => {
 
   const handleSeriesNavigate = useCallback(() => {
     if (book?.series) {
-      navigate(path.series(book.series));
+      navigate(path.series(book.series.name));
     }
   }, [book, navigate]);
 
@@ -130,7 +185,7 @@ export const BookPage = () => {
   if (!isAdmin) {
     metadata.push({
       title: 'progress',
-      value: <ProgressIndicator value={progress ? progress.percentage : 0} size={12} />,
+      value: <ProgressIndicator value={book?.progress ? book.progress.percentage : 0} size={12} />,
     });
   }
   if (book !== undefined && book.chapterCount > 0) {
@@ -167,9 +222,7 @@ export const BookPage = () => {
       .map((paragraph) => <p key={hashString(paragraph.trim())}>{paragraph.trim()}</p>);
   }, [book]);
 
-  const coverSrc = useAuthorizedSrc(
-    book?.hasCover ? withTargetUser(coverUrl(book.id, { width: 160, version: book.mtime })) : null
-  );
+  const coverSrc = useAuthorizedSrc(book?.hasCover ? book.coverUrl : null);
 
   if (loading) {
     return (
@@ -181,7 +234,21 @@ export const BookPage = () => {
     );
   }
 
-  if (error) {
+  // Checked BEFORE the not-found branch below — see `page/series`' own doc
+  // comment on the same ordering: a transport failure also leaves `book`
+  // `undefined`, and OR-ing it into "Book not found." would misreport a
+  // network failure as the book genuinely not existing.
+  if (error !== undefined) {
+    return (
+      <Page>
+        <Card>
+          <p className={styles.notFound}>Failed to load book.</p>
+        </Card>
+      </Page>
+    );
+  }
+
+  if (book === undefined) {
     return (
       <Page>
         <Card>
@@ -191,14 +258,13 @@ export const BookPage = () => {
     );
   }
 
-  const deviceEditionCount = book.deviceEditionCount ?? 0;
   const actions: PageActionItem[] = buildBookActions(
     {
       chapterCount: book.chapterCount,
-      deviceEditionCount,
+      deviceEditionCount: book.deviceEditionCount,
       regenLoading,
       validating,
-      editingBlocked: book.valid !== true,
+      editingBlocked: book.validation?.valid !== true,
     },
     {
       onSetProgress: () => setProgressModalOpen(true),
@@ -215,7 +281,7 @@ export const BookPage = () => {
 
   return (
     <Page
-      back={book.series.length > 0 ? path.series(book.series) : path.library()}
+      back={book.series !== null ? path.series(book.series.name) : path.library()}
       headerActions={actions}
     >
       <Card>
@@ -235,9 +301,9 @@ export const BookPage = () => {
             <div className={styles.info}>
               <div className={styles.titleContainer}>
                 <h1 className={styles.title}>{book.title}</h1>
-                {book.series.length > 0 && (
+                {book.series !== null && (
                   <span className={styles.series} onClick={handleSeriesNavigate}>
-                    ({book.series}
+                    ({book.series.name}
                     {book.seriesIndex > 0 ? ` #${book.seriesIndex}` : ''})
                   </span>
                 )}
@@ -284,8 +350,8 @@ export const BookPage = () => {
           isOpen
           bookId={book.id}
           chapterCount={book.chapterCount}
-          initialChapter={progress?.currentChapter ?? 0}
-          chapterSpineMap={book.chapterSpineMap ?? []}
+          initialChapter={book.progress?.currentChapter ?? 0}
+          chapterSpineMap={book.chapterSpineMap}
           chapterNames={book.chapterNames ?? []}
           onClose={() => setProgressModalOpen(false)}
         />
@@ -294,18 +360,9 @@ export const BookPage = () => {
         <BookLineageModal
           isOpen
           bookId={book.id}
+          documentId={book.documentId}
           bookTitle={book.title}
-          // `book` here is still `useBook`'s REST shape (task 11's job to
-          // move this page onto `useBookDetail`), which carries no `lineage`
-          // field at all — REST never returned book history alongside the
-          // book itself; it was a separate `/api/books/:id/lineage` call the
-          // now-deleted `useBookLineage` hook made. The minimal
-          // compile-preserving fix (matching task 9's `handleValidate` call
-          // for the same reason) is an empty list: a real, visible
-          // regression — this modal shows "no history" for EVERY book on
-          // this page until task 11 wires it to `useBookDetail`'s live
-          // `lineage` — not merely an untested gap.
-          lineage={[]}
+          lineage={book.lineage}
           addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
           onClose={() => setLineageModalOpen(false)}
         />
@@ -346,6 +403,16 @@ export const BookPage = () => {
             setReplaceModalOpen(false);
             navigate(path.book(newId));
           }}
+        />
+      )}
+      {validationModalOpen && unmaskedValidation && (
+        <ValidationDetailModal
+          isOpen
+          filename={book.title}
+          counts={toValidationCounts(unmaskedValidation.counts)}
+          messages={toValidationMessages(unmaskedValidation.messages.edges)}
+          threshold={unmaskedValidation.threshold}
+          onClose={() => setValidationModalOpen(false)}
         />
       )}
     </Page>

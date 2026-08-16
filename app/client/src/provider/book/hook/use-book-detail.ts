@@ -15,6 +15,14 @@ import { useCurrentLibraryId } from '~/provider/library-target';
  */
 export type BookDetail = {
   id: string;
+  /**
+   * Task 10b's display-only RAW content hash — `BookDetailDocument` already
+   * selects it (`graphql/book.ts`), but this hand-written type omitted the
+   * field until task 11, its first real consumer: `BookLineageModal`'s
+   * `documentId` fallback prop (the current row's display id when `lineage`
+   * is empty), which must never receive `id` (the Relay GLOBAL id) instead.
+   */
+  documentId: string;
   title: string;
   author: string;
   description: string;

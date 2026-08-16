@@ -15,6 +15,7 @@ import { renderWithApollo } from '~/test-utils';
 import { BookLineageModal } from './index';
 
 const BOOK_ID = 'book-1';
+const DOCUMENT_ID = 'a'.repeat(32);
 const LIBRARY_ID = 'library-1';
 const noop = () => {};
 
@@ -56,7 +57,14 @@ const mergeEntry = rawEntry({ oldId: 'doc-merged', newId: 'doc-current', type: '
 describe('BookLineageModal', () => {
   it('explains what book lineage is', () => {
     renderWithApollo(
-      <BookLineageModal isOpen bookId={BOOK_ID} bookTitle="Dune" lineage={[]} onClose={noop} />
+      <BookLineageModal
+        isOpen
+        bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
+        bookTitle="Dune"
+        lineage={[]}
+        onClose={noop}
+      />
     );
     expect(screen.getByText(/Lineage maps former IDs to this book/i)).toBeInTheDocument();
   });
@@ -81,6 +89,7 @@ describe('BookLineageModal', () => {
       <BookLineageModal
         isOpen
         bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
         bookTitle="Dune"
         addedAt={500}
         lineage={lineage}
@@ -89,7 +98,7 @@ describe('BookLineageModal', () => {
     );
 
     // The current row's document id is derived from the newest entry's
-    // `newId`, not the raw `bookId` prop (lineage is non-empty here).
+    // `newId`, not the `documentId` fallback prop (lineage is non-empty here).
     expect(screen.getByText('doc-current')).toBeInTheDocument();
     // The edit entry becomes its own row (the book's PREVIOUS id).
     expect(screen.getByText('doc-old')).toBeInTheDocument();
@@ -97,13 +106,14 @@ describe('BookLineageModal', () => {
     expect(screen.getByText('doc-merged')).toBeInTheDocument();
   });
 
-  it("derives the current row's document id from the newest entry's newId, ignoring bookId", () => {
+  it("derives the current row's document id from the newest entry's newId, ignoring the documentId prop", () => {
     const lineage = [fragmentEntry({ oldId: 'doc-old', newId: 'doc-new-current', type: 'EDIT' })];
 
     renderWithApollo(
       <BookLineageModal
         isOpen
-        bookId="Qm9vazox"
+        bookId={BOOK_ID}
+        documentId="Qm9vazox"
         bookTitle="Dune"
         lineage={lineage}
         onClose={noop}
@@ -118,22 +128,21 @@ describe('BookLineageModal', () => {
    * THE part most likely to go wrong (task brief). REST's `getBookLineage`
    * (`app/server/services/book-store.ts:552`, `return { currentId: id,
    * entries }`) always echoed back the exact `id` it was called with as
-   * `currentId` — regardless of whether `entries` was empty — and that `id`
-   * was the same `bookId` the REST hook (`use-book-lineage.ts`) was given.
-   * GraphQL's `Book` type exposes no raw id at all (by design — see
+   * `currentId` — regardless of whether `entries` was empty. GraphQL's
+   * `Book` type exposes no raw id at all through `lineage` (by design — see
    * `graphql/book.ts`'s `LineageEntryFragment` doc comment on "the client
    * never holds a raw book id"), so when `lineage` is empty there is no raw
-   * hash anywhere in this component's data to derive one from. Falling back
-   * to the `bookId` prop reproduces REST's rendered string byte-for-byte, as
-   * long as `bookId` itself is still a raw hash — true today, since
-   * `page/book` still sources it from the REST `useBook` hook (see this
-   * task's report for the caveat once `page/book` moves to `useBookDetail`).
+   * hash anywhere in THAT data to derive one from. `documentId` (Task 10b's
+   * `Book.documentId`, task 11's split from `bookId`) is what reproduces
+   * REST's rendered string byte-for-byte here — a RAW hash, distinct from
+   * `bookId` (the GLOBAL id `bookUnlinkDocument` needs).
    */
-  it('falls back to the bookId prop for the current row when lineage is empty', () => {
+  it('falls back to the documentId prop for the current row when lineage is empty', () => {
     renderWithApollo(
       <BookLineageModal
         isOpen
-        bookId="raw-hash-abc123"
+        bookId={BOOK_ID}
+        documentId="raw-hash-abc123"
         bookTitle="Dune"
         addedAt={500}
         lineage={[]}
@@ -147,7 +156,14 @@ describe('BookLineageModal', () => {
   it('calls onClose when Close is clicked', async () => {
     const onClose = vi.fn();
     renderWithApollo(
-      <BookLineageModal isOpen bookId={BOOK_ID} bookTitle="Dune" lineage={[]} onClose={onClose} />
+      <BookLineageModal
+        isOpen
+        bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
+        bookTitle="Dune"
+        lineage={[]}
+        onClose={onClose}
+      />
     );
     await userEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -156,7 +172,14 @@ describe('BookLineageModal', () => {
   it('calls onClose when the dialog backdrop is clicked', () => {
     const onClose = vi.fn();
     const { container } = renderWithApollo(
-      <BookLineageModal isOpen bookId={BOOK_ID} bookTitle="Dune" lineage={[]} onClose={onClose} />
+      <BookLineageModal
+        isOpen
+        bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
+        bookTitle="Dune"
+        lineage={[]}
+        onClose={onClose}
+      />
     );
     const dialogEl = container.querySelector('dialog');
     expect(dialogEl).not.toBeNull();
@@ -172,6 +195,7 @@ describe('BookLineageModal', () => {
       <BookLineageModal
         isOpen
         bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
         bookTitle="A Wizard of Earthsea"
         lineage={[fragmentEntry(mergeEntry)]}
         onClose={noop}
@@ -188,6 +212,7 @@ describe('BookLineageModal', () => {
       <BookLineageModal
         isOpen
         bookId={BOOK_ID}
+        documentId={DOCUMENT_ID}
         bookTitle="A Wizard of Earthsea"
         lineage={[fragmentEntry(mergeEntry)]}
         onClose={noop}
@@ -252,6 +277,7 @@ describe('BookLineageModal', () => {
         <BookLineageModal
           isOpen
           bookId={BOOK_ID}
+          documentId={book?.documentId ?? DOCUMENT_ID}
           bookTitle="A Wizard of Earthsea"
           lineage={book?.lineage ?? []}
           onClose={noop}
