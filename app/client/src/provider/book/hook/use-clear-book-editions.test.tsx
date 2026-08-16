@@ -48,6 +48,7 @@ const seedBook = (
         book: {
           __typename: 'Book',
           id: BOOK_ID,
+          documentId: 'a'.repeat(32),
           title: 'Dune',
           author: 'Herbert',
           description: '',

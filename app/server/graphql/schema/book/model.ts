@@ -87,6 +87,31 @@ export const model = builder.prismaNode('Book', {
   findUnique,
   nullable: true,
   fields: (t) => ({
+    /**
+     * The raw content-hash id, for DISPLAY ONLY — never to address this book.
+     * `id` (the Relay global id) is the only identifier; every mutation and
+     * every `node(id:)`/`Library.book(id:)` lookup takes that. This is the
+     * same display-only contract `LinkedDocument.oldId`/`newId` already carry
+     * ("Raw content-hash for display; resolve `oldBook`/`newBook` to
+     * navigate.", `linked-document/model.ts`) — applied to the type those
+     * ids are entries *about*, not a reversal of the decision that made the
+     * Relay id the sole address.
+     *
+     * Exists because the client's book-lineage modal renders a book's own
+     * document id as visible text alongside its former ids, and those former
+     * ids are raw hashes too. Without this field a book with no lineage
+     * entries — one never edited or re-imported — has no id to show in that
+     * row at all, since the entry list it would otherwise be derived from is
+     * empty.
+     */
+    documentId: t.exposeString('id', {
+      description:
+        'Raw content-hash id, for DISPLAY ONLY. `id` (the Relay global id) is ' +
+        'the sole address for this book — every mutation and every lookup ' +
+        'takes that, never this. Same display-only contract as ' +
+        '`LinkedDocument.oldId`/`newId`.',
+    }),
+
     title: t.exposeString('title'),
     titleSort: t.exposeString('titleSort'),
     author: t.exposeString('author'),

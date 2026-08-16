@@ -18,6 +18,11 @@ type Book implements Node {
   deviceEditionCount: Int!
 
   """
+  Raw content-hash id, for DISPLAY ONLY. `id` (the Relay global id) is the sole address for this book — every mutation and every lookup takes that, never this. Same display-only contract as `LinkedDocument.oldId`/`newId`.
+  """
+  documentId: String!
+
+  """
   REST URL to download this book's EPUB file. Same `?user=`/`v=` suffix as `coverUrl` — see its description.
   """
   downloadUrl: String!

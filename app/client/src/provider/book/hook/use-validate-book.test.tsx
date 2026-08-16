@@ -61,6 +61,7 @@ const seedBookDetail = (
         book: {
           __typename: 'Book',
           id: BOOK_ID,
+          documentId: 'a'.repeat(32),
           title: 'A Wizard of Earthsea',
           author: 'Le Guin',
           description: '',

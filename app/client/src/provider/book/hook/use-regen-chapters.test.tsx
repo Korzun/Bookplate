@@ -30,6 +30,7 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
         book: {
           __typename: 'Book',
           id,
+          documentId: 'a'.repeat(32),
           title: 'Dune',
           author: 'Herbert',
           description: '',

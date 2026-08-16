@@ -1,4 +1,4 @@
-import { encodeGlobalID } from '@pothos/plugin-relay';
+import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 
 import { createHarness, type Harness } from '../../test-util';
 
@@ -150,6 +150,28 @@ describe('Book', () => {
     expect(
       (result.data as { user: { library: { book: unknown } } }).user.library.book ?? null
     ).toBeNull();
+  });
+
+  // Task 10b: `documentId` is a display-only carrier of the raw content-hash
+  // `Book.id` column — added because the lineage modal's top row has nothing
+  // to derive a current book's own id from when its lineage list is empty.
+  // Distinct from the Relay `id` (which encodes `[userId, id]`, not the raw
+  // hash alone) — the third assertion confirms the global id still embeds
+  // the same raw hash `documentId` exposes, not an unrelated value.
+  it('exposes the raw content hash as documentId, distinct from the Relay id', async () => {
+    const gid = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${gid}") { id documentId } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const book = (
+      result.data as { viewer: { library: { book: { id: string; documentId: string } } } }
+    ).viewer.library.book;
+    expect(book.documentId).toBe(BOOK_ID);
+    expect(book.id).not.toBe(book.documentId);
+    expect(decodeGlobalID(book.id).id).toContain(book.documentId);
   });
 
   it('resolves null for a malformed local id', async () => {

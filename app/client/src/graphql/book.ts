@@ -82,10 +82,12 @@ export const LineageEntryFragment = graphql(`
  * a document like this one, cut FIELDS (or split them out, as here), not
  * page sizes.
  *
- * Measured (`test:cost -w app/server`): breadth 49 (49.0%), complexity 163
+ * Measured (`test:cost -w app/server`): breadth 50 (50.0%), complexity 164
  * (0.5%) of budget — comfortably under the 70% gate on both axes after the
  * split (was 69/69.0% breadth, 1371/4.2% complexity with `validation`
- * inline).
+ * inline). Breadth 50 includes task 10b's `documentId` scalar (49 -> 50,
+ * one point per the field's own doc comment) — a display-only raw
+ * content-hash the book-lineage modal needs for its top row.
  */
 export const BookDetailDocument = graphql(`
   query BookDetail($libraryId: ID!, $bookId: ID!) {
@@ -95,6 +97,7 @@ export const BookDetailDocument = graphql(`
         id
         book(id: $bookId) {
           id
+          documentId
           title
           author
           description
