@@ -78,7 +78,7 @@ beforeEach(() => {
   // specifically), which a bare `{ ok: true }` doesn't satisfy. Every other
   // caller (the cover `blob()` fetch, `PUT` progress saves) only ever checks
   // `.ok`/`.blob()`, so folding them into one implementation is safe.
-  mockApiFetch.mockImplementation((_url: string, init?: RequestInit) => {
+  mockApiFetch.mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === 'DELETE') {
       return Promise.resolve({ ok: true, status: 204 } as Response);
     }

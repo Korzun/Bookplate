@@ -75,7 +75,7 @@ describe('BookEditForm', () => {
   it('navigates to the book after a successful save', async () => {
     mocks.nextResult.mode = 'ok';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm original={original} id="book-1" />);
+    renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -85,7 +85,7 @@ describe('BookEditForm', () => {
   it('shows an error toast and does not navigate away when the save fails', async () => {
     mocks.nextResult.mode = 'fail';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm original={original} id="book-1" />);
+    renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -95,11 +95,28 @@ describe('BookEditForm', () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
+  // C-2 (2026-08-13 final review): `page/book` is on GraphQL and its `book`
+  // route now takes a Relay GLOBAL id (`Library.book(id: globalID!)`) — a
+  // raw content hash like `original.id` 404s there. `bookGlobalId` is the
+  // URL param `page/book-edit` already has (populated by `page/book`'s own
+  // `navigate(path.bookEdit(book.id))`, a global id), threaded through
+  // rather than re-deriving anything client-side.
+  it('cancels back to the book using the global id URL param, not the raw resolved id', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith(path.book('global-book-1'));
+  });
+
   // The cards are spaced by Page's flex column gap. If the wrapping <form> ever
   // generates a box it swallows them into a single flex item and every gap
   // between the cards disappears, so it has to stay `display: contents`.
   it('keeps the form boxless so the cards stay spaced by the page', () => {
-    const { container } = renderWithProviders(<BookEditForm original={original} id="book-1" />);
+    const { container } = renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
     const form = container.querySelector('form') as HTMLElement;
     expect(form.querySelectorAll(':scope > *').length).toBeGreaterThan(1);
     expect(getComputedStyle(form).display).toBe('contents');
@@ -119,7 +136,7 @@ describe('series order auto-fill', () => {
   it('fills empty Order with the fetched next index for an existing series', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
     );
     await openSeriesAndPick(user, 'Dune');
     await waitFor(() => expect(seriesInput().value).toBe('4'));
@@ -129,7 +146,7 @@ describe('series order auto-fill', () => {
   it('fills Order with 1 for a brand-new series', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
     );
     await openSeriesAndPick(user, 'Brand New');
     await waitFor(() => expect(seriesInput().value).toBe('1'));
@@ -138,7 +155,7 @@ describe('series order auto-fill', () => {
   it('does not overwrite an Order the user already entered', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
     );
     await user.click(screen.getByRole('switch', { name: 'isSeries' }));
     await user.type(seriesInput(), '2');
@@ -160,7 +177,7 @@ describe('series order auto-fill', () => {
 
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" />
+      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
     );
     await openSeriesAndPick(user, 'Dune');
 

@@ -74,7 +74,12 @@ export const BookEditPage = () => {
           onCancel={() => navigate(path.library())}
         />
       ) : (
-        <BookEditForm key={id} original={original} id={original.id} />
+        // `bookGlobalId={id!}` — the bare URL param, NOT `original.id`
+        // (2026-08-13 final review, C-2): `page/book` only ever links here
+        // via `path.bookEdit(book.id)`, a Relay global id, so the param this
+        // page was reached with is already the right kind for `BookEditForm`'s
+        // own Cancel-button navigation back to `path.book(...)`.
+        <BookEditForm key={id} original={original} id={original.id} bookGlobalId={id!} />
       )}
     </Page>
   );

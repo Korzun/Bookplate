@@ -29,9 +29,29 @@ import { useStyle } from './style';
 
 type IdentifierRow = { _key: string; scheme: string; value: string };
 
-type Props = { original: Book; id: string };
+type Props = {
+  original: Book;
+  /**
+   * RAW resolved id (`useBook`'s response always carries the raw content
+   * hash — see `use-fetch-book.ts`'s doc comment). Used ONLY for
+   * `patchBookMetadata`, which accepts either kind; NEVER pass this to
+   * `path.book()` — `page/book` is on GraphQL now and 404s on a raw id.
+   */
+  id: string;
+  /**
+   * Relay GLOBAL id — `page/book-edit`'s own URL param, unchanged (2026-08-13
+   * final review, C-2). Used ONLY for the Cancel button's `navigate(path.
+   * book(...))`: `page/book`'s `Library.book(id: globalID!)` argument
+   * requires this kind, not `id` above. Save's own post-write navigation
+   * (`handleSave`, below) is a SEPARATE, still-open problem — the PATCH
+   * response only ever carries a fresh RAW id (editing metadata changes the
+   * content hash), and there is currently no client-side way to turn that
+   * into a global id without the server supplying one.
+   */
+  bookGlobalId: string;
+};
 
-export const BookEditForm = ({ original, id }: Props) => {
+export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
   const navigate = useNavigate();
   const styles = useStyle();
   // Unique id ties the footer-slot Save action to this form by construction,
@@ -305,7 +325,7 @@ export const BookEditForm = ({ original, id }: Props) => {
         items={[
           {
             label: 'Cancel',
-            onClick: () => navigate(path.book(id)),
+            onClick: () => navigate(path.book(bookGlobalId)),
             disabled: isPending,
           },
           {
