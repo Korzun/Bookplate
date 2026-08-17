@@ -11,13 +11,16 @@ export type UseMyProgress =
   | [undefined, false, true, undefined] // There was an unspecified error while loading progress
   | [undefined, false, true, string]; // There was a specified error while loading progress
 /**
- * `bookId` accepts `undefined` for callers (`page/book`) that only learn the
- * book's real, raw local id asynchronously — see that page's own doc
- * comment on why it can't just pass the URL param straight through. While
- * `bookId` is `undefined`, this reports the same "not loaded yet" shape as
- * an unresolved lookup, rather than adding a distinct state: there is
- * nothing meaningful to distinguish it from `myProgressList[bookId] ===
- * undefined` from the caller's point of view.
+ * `bookId` accepts `undefined` for a caller that only learns the book's
+ * real, raw local id asynchronously (e.g. still resolving it off a REST
+ * response). No current caller is in that position — `page/book` moved onto
+ * GraphQL (`Book.progress` off the Apollo cache) and no longer calls this
+ * hook at all; `MyProgressRow`, the one real consumer left, always has a
+ * resolved `bookId`. The `undefined` case stays supported for that shape of
+ * caller regardless. While `bookId` is `undefined`, this reports the same
+ * "not loaded yet" shape as an unresolved lookup, rather than adding a
+ * distinct state: there is nothing meaningful to distinguish it from
+ * `myProgressList[bookId] === undefined` from the caller's point of view.
  */
 export const useMyProgress = (bookId: string | undefined): UseMyProgress => {
   const [myProgressList, loading, error, errorMessage] = useMyProgressList();
