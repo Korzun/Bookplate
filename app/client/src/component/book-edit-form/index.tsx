@@ -40,13 +40,14 @@ type Props = {
   id: string;
   /**
    * Relay GLOBAL id — `page/book-edit`'s own URL param, unchanged (2026-08-13
-   * final review, C-2). Used ONLY for the Cancel button's `navigate(path.
+   * final review, C-2). Used for the Cancel button's `navigate(path.
    * book(...))`: `page/book`'s `Library.book(id: globalID!)` argument
    * requires this kind, not `id` above. Save's own post-write navigation
-   * (`handleSave`, below) is a SEPARATE, still-open problem — the PATCH
-   * response only ever carries a fresh RAW id (editing metadata changes the
-   * content hash), and there is currently no client-side way to turn that
-   * into a global id without the server supplying one.
+   * (`handleSave`, below) does NOT use this prop — it navigates with the
+   * `globalId` field `patchBookMetadata`'s response now carries (C-2
+   * unblock: the server computes it via `routes/ui.ts`'s `bookGlobalId`
+   * helper), since editing metadata rotates the id and this prop's value
+   * would be stale by the time Save completes.
    */
   bookGlobalId: string;
 };

@@ -16,7 +16,8 @@ import { usePatchBookMetadata } from './use-patch-book-metadata';
 // existing raw `id`. Defaulted here (not required on every `makeBook` call
 // site) so the many tests below that don't care about it stay unchanged;
 // the one test that DOES (`'returns the new book id and its global id on
-// success'`) asserts on this default directly.
+// success'`) passes an explicit `globalId` override instead of relying on
+// this default, so its expectation is visible at the call site.
 function makeBook(
   overrides: Partial<Book> & { id: string; globalId?: string }
 ): Book & { globalId: string } {
