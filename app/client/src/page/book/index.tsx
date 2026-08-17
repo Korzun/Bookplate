@@ -189,7 +189,13 @@ export const BookPage = () => {
   if (!isAdmin) {
     metadata.push({
       title: 'progress',
-      value: <ProgressIndicator value={book?.progress ? book.progress.percentage : 0} size={12} />,
+      value: (
+        <ProgressIndicator
+          value={book?.progress ? book.progress.percentage : 0}
+          ariaLabel={book ? `Reading progress for ${book.title}` : 'Reading progress'}
+          size={12}
+        />
+      ),
     });
   }
   if (book !== undefined && book.chapterCount > 0) {

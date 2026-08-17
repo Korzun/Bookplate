@@ -2,6 +2,16 @@ import { useStyle } from './style';
 
 type ProgressIndicatorProps = {
   value: number;
+  /**
+   * Required, not defaulted (2026-08-13 final review, M-1): `role=
+   * "progressbar"` below has no accessible name of its own — a bare number
+   * ("N%") means nothing out of context to a screen-reader user, and this
+   * component has four semantic call sites (book, series, my-progress-row,
+   * user-progress-row) that each mean something different. Every caller
+   * must say what progress this actually is, e.g. `Reading progress for
+   * ${title}`.
+   */
+  ariaLabel: string;
   size?: number;
 };
 
@@ -18,7 +28,7 @@ const sectorPath = (pct: number): string => {
   return `M ${CX} ${CY} L ${CX} ${CY - R_INNER} A ${R_INNER} ${R_INNER} 0 ${largeArc} 1 ${x} ${y} Z`;
 };
 
-export const ProgressIndicator = ({ value, size = 40 }: ProgressIndicatorProps) => {
+export const ProgressIndicator = ({ value, ariaLabel, size = 40 }: ProgressIndicatorProps) => {
   const style = useStyle();
   const clamped = Math.min(100, Math.max(0, value * 100));
 
@@ -30,6 +40,7 @@ export const ProgressIndicator = ({ value, size = 40 }: ProgressIndicatorProps) 
           width={size}
           height={size}
           role="progressbar"
+          aria-label={ariaLabel}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(clamped)}

@@ -61,7 +61,11 @@ export const UserProgressRow = ({ bookId, username }: UserProgressRowProps) => {
     <Fragment>
       <div className={styles.root}>
         <div className={styles.progress}>
-          <ProgressIndicator value={progress.percentage} size={14} />
+          <ProgressIndicator
+            value={progress.percentage}
+            ariaLabel={`Reading progress for ${bookTitle}`}
+            size={14}
+          />
         </div>
         <div className={styles.book}>{bookTitle}</div>
         <div className={styles.metadata}>{metadataList.join(' · ')}</div>

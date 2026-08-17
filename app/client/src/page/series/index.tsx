@@ -89,6 +89,7 @@ export const SeriesPage = () => {
       value: (
         <ProgressIndicator
           value={series.progressPercentage ? series.progressPercentage : 0}
+          ariaLabel={`Reading progress for ${series.name}`}
           size={12}
         />
       ),
