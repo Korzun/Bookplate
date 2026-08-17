@@ -11,7 +11,15 @@ import { Context } from '../context';
 import type { Book, BookList } from '../type';
 import { usePatchBookMetadata } from './use-patch-book-metadata';
 
-function makeBook(overrides: Partial<Book> & { id: string }): Book {
+// `globalId` (2026-08-13 final review, C-2 — human ruling, Option 1): every
+// real `PATCH .../metadata` response now carries it alongside the pre-
+// existing raw `id`. Defaulted here (not required on every `makeBook` call
+// site) so the many tests below that don't care about it stay unchanged;
+// the one test that DOES (`'returns the new book id and its global id on
+// success'`) asserts on this default directly.
+function makeBook(
+  overrides: Partial<Book> & { id: string; globalId?: string }
+): Book & { globalId: string } {
   return {
     title: 'Dune',
     author: 'Herbert',
@@ -29,6 +37,7 @@ function makeBook(overrides: Partial<Book> & { id: string }): Book {
     chapterCount: 0,
     pageCount: 0,
     ...overrides,
+    globalId: overrides.globalId ?? `global-${overrides.id}`,
   };
 }
 
@@ -291,8 +300,8 @@ describe('usePatchBookMetadata', () => {
     expect(result.current.ctx.bookList['raw-1'].title).toBe('Updated');
   });
 
-  it('returns the new book id on success', async () => {
-    const updated = makeBook({ id: '2' });
+  it('returns the new book id and its global id on success', async () => {
+    const updated = makeBook({ id: '2', globalId: 'gid-2' });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
@@ -300,8 +309,8 @@ describe('usePatchBookMetadata', () => {
     const { result } = renderHook(() => usePatchBookMetadata(), {
       wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
     });
-    const id = await act(() => result.current[0]('1', {}));
-    expect(id).toBe('2');
+    const patched = await act(() => result.current[0]('1', {}));
+    expect(patched).toEqual({ id: '2', globalId: 'gid-2' });
   });
 
   it('sets error with body.error message on failed response', async () => {

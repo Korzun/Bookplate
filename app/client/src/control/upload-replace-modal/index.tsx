@@ -14,6 +14,11 @@ interface Props {
   bookId: string;
   bookTitle: string;
   onClose: () => void;
+  /**
+   * `newId` is the Relay GLOBAL id for the post-replace book (2026-08-13
+   * final review, C-2 — human ruling, Option 1), not the raw content hash
+   * `commitReplacement`'s response also carries — see `handleConfirm` below.
+   */
   onReplaced: (newId: string) => void;
 }
 
@@ -93,7 +98,11 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
     const updated = await commitReplacement(bookId, file, accepted.map(fixKey));
     if (updated) {
       reset();
-      onReplaced(updated.id);
+      // `.globalId`, not `.id` (2026-08-13 final review, C-2 — human ruling,
+      // Option 1, fixed): replacing the file changes the content hash, so
+      // `.id` (raw) is a NEW id `page/book` (GraphQL) can't resolve — its
+      // `Library.book` argument requires a Relay global id.
+      onReplaced(updated.globalId);
     } else {
       setCommitFailed(true);
     }

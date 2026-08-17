@@ -40,7 +40,11 @@ vi.mock('~/provider/book', async (importOriginal) => {
           return undefined;
         }
         setState({ error: false, message: undefined });
-        return 'new-id';
+        // Deliberately DIFFERENT literal values (C-2 fix, 2026-08-13 final
+        // review) — same convention the Cancel-navigation test below uses —
+        // so a test asserting on `path.book(...)` can't pass by coincidence
+        // if Save regresses to navigating with the raw `id` again.
+        return { id: 'new-id', globalId: 'new-global-id' };
       }, []);
       return [patch, false, state.error, state.message];
     },
@@ -72,7 +76,11 @@ afterEach(() => {
 });
 
 describe('BookEditForm', () => {
-  it('navigates to the book after a successful save', async () => {
+  // C-2 (2026-08-13 final review, human ruling — Option 1, fixed): Save
+  // navigates with `patchBookMetadata`'s NEW `globalId`, not its raw `id` —
+  // `page/book` (GraphQL) 404s on a raw id. The mock above returns visibly
+  // different `id`/`globalId` literals so this can't pass by coincidence.
+  it('navigates to the book using the PATCH response globalId, not its raw id, after a successful save', async () => {
     mocks.nextResult.mode = 'ok';
     const user = userEvent.setup();
     renderWithProviders(
@@ -81,7 +89,8 @@ describe('BookEditForm', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith(path.book('new-id')));
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith(path.book('new-global-id')));
+    expect(mocks.navigate).not.toHaveBeenCalledWith(path.book('new-id'));
   });
 
   it('shows an error toast and does not navigate away when the save fails', async () => {

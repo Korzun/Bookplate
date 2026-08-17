@@ -411,15 +411,18 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
         patch.subjects = subjects;
       }
 
-      const newId = await patchBookMetadata(item.bookId, patch);
-      if (newId === undefined) return false;
+      const patched = await patchBookMetadata(item.bookId, patch);
+      if (patched === undefined) return false;
       const applied = new Set(fixes.map(fixKey));
       setItems((prev) =>
         prev.map((i) =>
           i.id === itemId
             ? {
                 ...i,
-                bookId: newId,
+                // `.id` (raw) — the upload queue's own `bookId` is always
+                // raw (matches every other REST call it makes); `.globalId`
+                // is not this caller's concern.
+                bookId: patched.id,
                 proposals: (i.proposals ?? []).filter((p) => !applied.has(fixKey(p))),
                 appliedFixes: [...(i.appliedFixes ?? []), ...fixes],
               }
@@ -531,9 +534,9 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       if (!item.bookId) return false;
       let revertedId = item.bookId;
       if (snap.originalMetadata) {
-        const newId = await patchBookMetadata(item.bookId, snap.originalMetadata);
-        if (newId === undefined) return false; // revert failed — keep applied state + undo
-        revertedId = newId;
+        const patched = await patchBookMetadata(item.bookId, snap.originalMetadata);
+        if (patched === undefined) return false; // revert failed — keep applied state + undo
+        revertedId = patched.id; // raw — the `/lineage` REST call below needs raw
       }
       try {
         await apiFetch(

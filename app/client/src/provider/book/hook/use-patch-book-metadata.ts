@@ -22,8 +22,24 @@ export type BookMetadataPatch = Partial<{
   title: string;
 }>;
 
+/**
+ * The resolved id shape every caller of `patchBookMetadata` gets back.
+ * `id` is the RAW content hash — unchanged behavior, every existing caller
+ * (`use-upload-queue.ts`, twice) already depends on this being raw, since
+ * they thread it into more REST calls (`/lineage`, re-keying the upload
+ * queue's own `bookId`) that only ever accept raw ids.
+ *
+ * `globalId` (2026-08-13 final review, C-2 — human ruling, Option 1): editing
+ * metadata changes the book's content hash, so `id` here is a NEW id the
+ * client had no global counterpart for — `page/book` (GraphQL) needs one to
+ * navigate back. The server computes it with the same `encodeGlobalID`
+ * formula `book/mutation/delete.ts`'s `deletedId` already uses
+ * (`routes/ui.ts`'s `bookGlobalId` helper).
+ */
+export type PatchBookMetadataResult = { id: string; globalId: string };
+
 export type UsePatchBookMetadata = [
-  (bookId: string, patch: BookMetadataPatch) => Promise<string | undefined>,
+  (bookId: string, patch: BookMetadataPatch) => Promise<PatchBookMetadataResult | undefined>,
   boolean,
   boolean,
   string | undefined,
@@ -37,7 +53,10 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const patchBookMetadata = useCallback(
-    async (bookId: string, patch: BookMetadataPatch): Promise<string | undefined> => {
+    async (
+      bookId: string,
+      patch: BookMetadataPatch
+    ): Promise<PatchBookMetadataResult | undefined> => {
       // Prevent multiple parallel requests
       if (loading) {
         return;
@@ -69,7 +88,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
           const body = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? 'Save failed');
         }
-        const updatedBook = await (response.json() as Promise<Book>);
+        const updatedBook = await (response.json() as Promise<Book & { globalId: string }>);
         // Delete every `bookList` entry describing the PRE-edit book
         // (`.id === bookId`), not just `next[bookId]` itself — same fix as
         // `use-regen-chapters.ts` (see that file's doc comment for the full
@@ -106,7 +125,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         if (updatedBook.id !== bookId) renameProgressKey(bookId, updatedBook.id);
         setBookListFetched(false);
         setBookListItems(() => []);
-        return updatedBook.id;
+        return { id: updatedBook.id, globalId: updatedBook.globalId };
       } catch (err) {
         setError(true);
         if (err instanceof Error) {

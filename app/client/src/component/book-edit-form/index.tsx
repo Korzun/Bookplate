@@ -168,7 +168,7 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
     const newIdentifiers = identifiers.map((row) => ({ scheme: row.scheme, value: row.value }));
     const originalSeriesIndex = original.seriesIndex !== 0 ? String(original.seriesIndex) : '';
 
-    const newId = await patchBookMetadata(id, {
+    const patched = await patchBookMetadata(id, {
       cover,
       author: author && author.trim() !== original.author ? author.trim() : undefined,
       title: title && title.trim() !== original.title ? title.trim() : undefined,
@@ -198,15 +198,14 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
     });
     // A failed save returns undefined (the effect above shows why); stay on the
     // form so the user can retry rather than navigating away as if it worked.
-    if (newId === undefined) return;
-    // KNOWN BROKEN (2026-08-13 final review, C-2 — BLOCKED, not fixed here):
-    // `newId` is `patchBookMetadata`'s PATCH response id, always RAW (editing
-    // metadata changes the content hash, so it can't be `id` above either).
-    // `page/book` requires a Relay GLOBAL id and 404s on this. Fixing it
-    // needs the server to hand back a global id (the client may never encode
-    // one itself); see the final-fix report for the options. Left as-is
-    // rather than guessed at.
-    navigate(path.book(newId));
+    if (patched === undefined) return;
+    // `.globalId`, not `.id` (2026-08-13 final review, C-2 — human ruling,
+    // Option 1, fixed): editing metadata changes the content hash, so
+    // `.id` (raw) is a NEW id `page/book` (GraphQL) can't resolve — its
+    // `Library.book` argument requires a Relay global id. `.globalId` is
+    // that id, computed server-side (`routes/ui.ts`'s `bookGlobalId`), not
+    // encoded here.
+    navigate(path.book(patched.globalId));
   }
 
   const [, submitAction, isPending] = useActionState(async () => {

@@ -17,13 +17,25 @@ export interface ReplaceAnalysis {
   proposals: MetadataFix[];
 }
 
+/**
+ * `Book`, plus `globalId` (2026-08-13 final review, C-2 — human ruling,
+ * Option 1): replacing the file changes the content hash, so `.id` (raw,
+ * unchanged meaning — every existing field on `Book` stays as-is) is a NEW
+ * id `page/book` (GraphQL) can't resolve on its own. `.globalId` is the
+ * Relay global id for that same new id, computed server-side (`routes/
+ * ui.ts`'s `bookGlobalId` helper, the same `encodeGlobalID` formula
+ * `book/mutation/delete.ts`'s `deletedId` already uses) — this is what
+ * `UploadReplaceModal` now passes to `onReplaced`, not `.id`.
+ */
+export type ReplacedBook = Book & { globalId: string };
+
 export interface UseReplaceBook {
   analyzeReplacement: (id: string, file: File) => Promise<ReplaceAnalysis | undefined>;
   commitReplacement: (
     id: string,
     file: File,
     acceptedFixKeys: string[]
-  ) => Promise<Book | undefined>;
+  ) => Promise<ReplacedBook | undefined>;
   analyzing: boolean;
   committing: boolean;
   commitError: string | undefined;
@@ -63,7 +75,11 @@ export const useReplaceBook = (): UseReplaceBook => {
   );
 
   const commitReplacement = useCallback(
-    async (id: string, file: File, acceptedFixKeys: string[]): Promise<Book | undefined> => {
+    async (
+      id: string,
+      file: File,
+      acceptedFixKeys: string[]
+    ): Promise<ReplacedBook | undefined> => {
       if (committing) return undefined;
       try {
         setCommitting(true);
@@ -80,13 +96,14 @@ export const useReplaceBook = (): UseReplaceBook => {
           setCommitError(body.error);
           return undefined;
         }
-        const updated = (await res.json()) as Book;
+        const updated = (await res.json()) as ReplacedBook;
         // Delete every `bookList` entry describing the PRE-replace book
         // (`.id === id`), not just `next[id]` itself — same fix as
         // `use-regen-chapters.ts`/`use-patch-book-metadata.ts` (see the
         // former's doc comment for the full mechanism).
         //
-        // CORRECTION (2026-08-13 final review, I-3): this comment used to
+        // CORRECTION (2026-08-13 final review, I-3, updated after C-2's
+        // replace case was fixed in the same review): this comment used to
         // claim "`id` here is always the resolved raw id" — false since
         // `page/book` moved onto GraphQL (step 6): `UploadReplaceModal` is
         // still given `bookId={book.id}`, but `book.id` is now the Relay
@@ -99,14 +116,17 @@ export const useReplaceBook = (): UseReplaceBook => {
         // pre-replace `bookList` entry under a global-id key is never
         // evicted, so revisiting the book via that original global-id URL
         // (e.g. browser back) could show stale, pre-replace data with no
-        // loading state or error — a real, if currently hard-to-reach, bug
-        // (`page/book`'s own post-replace `navigate(path.book(updated.id))`
-        // is itself broken per C-2, since `updated.id` is raw and `page/book`
-        // now requires a global id, so the in-app path to land back on a
-        // stale cached entry is already gated by that separate, still-open
-        // bug). Left AS IS rather than "fixed" here: repairing it requires
-        // first resolving C-2's replace case, which needs a server-supplied
-        // global id (see the final-fix report) — out of this fix's scope.
+        // loading state or error.
+        //
+        // NOT gated anymore: `page/book`'s post-replace navigation now uses
+        // `updated.globalId` (C-2's fix, same review), so a user CAN reach
+        // this book's original global-id URL again after a real replace —
+        // this is a live, reachable bug, not a latent one. Left un-fixed
+        // here regardless: this review's scope was the navigation, not this
+        // pre-existing cache-alias sweep, and fixing it would mean deciding
+        // what `commitReplacement`'s `id` argument SHOULD be (raw vs global)
+        // for THIS comparison specifically — a real design question, not a
+        // one-line change. Flagged as a follow-up in the final-fix report.
         setBookList((prev) => {
           const next = { ...prev };
           for (const key of Object.keys(next)) {

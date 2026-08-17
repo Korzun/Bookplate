@@ -188,7 +188,7 @@ describe('UploadReplaceModal', () => {
     const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
     const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
     analyzeReplacement.mockResolvedValue(analysis);
-    commitReplacement.mockResolvedValue({ id: 'b2' });
+    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
     const onReplaced = vi.fn();
 
     renderWithProviders(
@@ -219,14 +219,14 @@ describe('UploadReplaceModal', () => {
     });
 
     expect(commitReplacement).toHaveBeenCalledWith('b1', file, [fixKey(proposal)]);
-    expect(onReplaced).toHaveBeenCalledWith('b2');
+    expect(onReplaced).toHaveBeenCalledWith('gid-b2');
   });
 
   it('rejecting a proposal then confirming excludes its key from acceptedFixKeys', async () => {
     const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
     const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
     analyzeReplacement.mockResolvedValue(analysis);
-    commitReplacement.mockResolvedValue({ id: 'b2' });
+    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
 
     renderWithProviders(
       <UploadReplaceModal
@@ -335,7 +335,7 @@ describe('UploadReplaceModal', () => {
   it('leaving a proposal untouched excludes it from acceptedFixKeys on confirm', async () => {
     const report = makeAnalysis({ valid: true });
     analyzeReplacement.mockResolvedValue(report);
-    commitReplacement.mockResolvedValue({ id: 'b2' });
+    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
     const onReplaced = vi.fn();
 
     renderWithProviders(
@@ -362,7 +362,7 @@ describe('UploadReplaceModal', () => {
     });
 
     expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
-    expect(onReplaced).toHaveBeenCalledWith('b2');
+    expect(onReplaced).toHaveBeenCalledWith('gid-b2');
   });
 
   it('keeps the modal open, shows the commit error, and does not call onReplaced when commit fails', async () => {

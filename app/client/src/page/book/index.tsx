@@ -412,13 +412,11 @@ export const BookPage = () => {
           onClose={() => setReplaceModalOpen(false)}
           onReplaced={(newId) => {
             setReplaceModalOpen(false);
-            // KNOWN BROKEN (2026-08-13 final review, C-2 — BLOCKED, not fixed
-            // here): `newId` is `commitReplacement`'s REST response id,
-            // always RAW (replacing the file changes the content hash). This
-            // page requires a Relay GLOBAL id and 404s on its own raw id.
-            // Fixing it needs the server to hand back a global id (the
-            // client may never encode one itself); see the final-fix report
-            // for the options. Left as-is rather than guessed at.
+            // `newId` is `UploadReplaceModal`'s `onReplaced` — the Relay
+            // GLOBAL id for the post-replace book (2026-08-13 final review,
+            // C-2 — human ruling, Option 1, fixed), not the raw content hash
+            // `commitReplacement`'s response also carries. This page's own
+            // `Library.book` read requires a global id, and now gets one.
             navigate(path.book(newId));
           }}
         />
