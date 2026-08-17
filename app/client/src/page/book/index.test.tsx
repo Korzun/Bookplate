@@ -164,8 +164,39 @@ const warningMessageEdge = (seq: number) => ({
     path: null,
     line: null,
     column: null,
+    segments: [
+      { __typename: 'MessageSegment' as const, text: `warning message ${seq}`, subject: false },
+    ],
   },
 });
+
+// A message whose `segments` (task 12b) include a genuine subject run — used
+// to prove `toValidationMessages` threads the real server split through to
+// the modal, rather than the modal's own `?? [{ text: m.message }]` fallback
+// (which `validation-detail-modal/index.test.tsx` already covers directly,
+// via hand-built props, not a GraphQL round trip).
+const subjectMessageEdge = {
+  __typename: 'ValidationMessagesConnectionEdge' as const,
+  node: {
+    __typename: 'ValidationMessage' as const,
+    seq: 0,
+    severity: 'ERROR' as const,
+    message: 'Referenced resource "text/001-ch1.xhtml#pg-11" could not be found.',
+    code: 'RSC-007',
+    path: null,
+    line: null,
+    column: null,
+    segments: [
+      { __typename: 'MessageSegment' as const, text: 'Referenced resource ', subject: false },
+      {
+        __typename: 'MessageSegment' as const,
+        text: 'text/001-ch1.xhtml#pg-11',
+        subject: true,
+      },
+      { __typename: 'MessageSegment' as const, text: ' could not be found.', subject: false },
+    ],
+  },
+};
 
 const validateMutationMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
   request: { query: BookValidateDocument, variables: { id: BOOK_ID } },
@@ -359,6 +390,34 @@ describe('BookPage', () => {
       await selectMenuItem(/^validate$/i);
 
       expect(await screen.findByText(/no validation issues found/i)).toBeInTheDocument();
+    });
+
+    // Task 12b: `ValidationFragment` now selects `segments`, and
+    // `toValidationMessages` threads them through — this is the fallback
+    // (`m.segments ?? [{ text: m.message }]`) NO LONGER being the live path
+    // for a real server payload. A fixture with `segments: undefined` would
+    // throw here (`node.segments.map` on `undefined`), so reaching the
+    // assertion also proves the mock itself carries the field.
+    it('renders a quoted subject run monospaced, from real server segments', async () => {
+      await renderPage([
+        bookMock(),
+        validateMutationMock({
+          counts: [{ __typename: 'ValidationSeverityCount' as const, severity: 'ERROR', count: 1 }],
+          messages: {
+            __typename: 'ValidationMessagesConnection' as const,
+            edges: [subjectMessageEdge],
+          },
+        }),
+      ]);
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await selectMenuItem(/^validate$/i);
+
+      const subject = await screen.findByText('text/001-ch1.xhtml#pg-11');
+      expect(subject.tagName).toBe('CODE');
+      // the quotes are dropped from the rendered output
+      expect(screen.queryByText(/"text\//)).not.toBeInTheDocument();
+      expect(screen.getByText(/Referenced resource/)).toBeInTheDocument();
     });
 
     it('toasts an error and does not open the modal when the mutation fails', async () => {

@@ -57,12 +57,15 @@ function toValidationCounts(
  * the fragment's flat `path`/`line`/`column` into the modal's nested shape,
  * `undefined` when `path` is null (REST's own `m.path != null` check).
  *
- * `segments` is left unset: REST derived it from `splitSubjects(m.message)`,
- * a server-only helper this schema does not expose as a field, so there is
- * no client-side way to reconstruct it here. The modal already falls back to
- * the raw `message` text when `segments` is absent — this is a real, minor,
- * unavoidable narrowing (quoted subjects no longer render monospaced), not a
- * bug this task's brief asked to fix.
+ * `segments` (task 12b): the schema now exposes `ValidationMessage.segments`
+ * (`message-segment/model.ts`), resolved server-side through the SAME
+ * `splitSubjects` helper REST used, so this is a straight pass-through, not
+ * a client-side reconstruction. This closes the narrowing the doc comment
+ * here used to describe — quoted subjects render monospaced again, and the
+ * modal's `m.segments ?? [{ text: m.message }]` fallback is no longer the
+ * live path for THIS caller (`page/upload` and the replace flow still build
+ * `ValidationMessage`s without `segments`, by design — see the modal's own
+ * prop type; that fallback still matters for them).
  */
 function toValidationMessages(
   edges: ValidationFragmentFragment['messages']['edges']
@@ -71,6 +74,7 @@ function toValidationMessages(
     id: node.code,
     severity: node.severity,
     message: node.message,
+    segments: node.segments.map((s) => ({ text: s.text, subject: s.subject })),
     location:
       node.path != null
         ? { path: node.path, line: node.line ?? undefined, column: node.column ?? undefined }

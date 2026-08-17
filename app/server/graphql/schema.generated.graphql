@@ -484,6 +484,11 @@ type LinkedDocument {
   type: LineageType!
 }
 
+type MessageSegment {
+  subject: Boolean!
+  text: String!
+}
+
 type MetadataFix {
   changes: JSON!
   field: String!
@@ -921,6 +926,7 @@ type ValidationMessage {
   line: Int
   message: String!
   path: String
+  segments: [MessageSegment!]!
   seq: Int!
   severity: ValidationSeverity!
 }

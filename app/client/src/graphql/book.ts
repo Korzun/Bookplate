@@ -33,6 +33,10 @@ export const ValidationFragment = graphql(`
           path
           line
           column
+          segments {
+            text
+            subject
+          }
         }
       }
     }
@@ -156,8 +160,15 @@ export const BookDetailDocument = graphql(`
  * also why `bookValidate`'s mutation payload will land here for free later:
  * same key, same shape, no manual cache write needed.
  *
- * Measured (`test:cost -w app/server`): breadth 33 (33.0%), complexity 1221
- * (3.7%) of budget — comfortably under the 70% gate on both axes.
+ * Re-measured for task 12b, which added `segments { text subject }` to
+ * `ValidationFragment`'s `messages` selection (restoring subject
+ * monospacing — `message-segment/model.ts`): `segments` is a nested list
+ * INSIDE `messages(first: 100)`, so unlike a scalar addition it costs more
+ * breadth AND fans complexity out ×100 with the connection.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 37 (37.0%),
+ * complexity 1621 (4.9%) of budget — up from 33 (33.0%) / 1221 (3.7%)
+ * pre-`segments`, still comfortably under the 70% gate on both axes.
  */
 export const BookValidationDocument = graphql(`
   query BookValidation($libraryId: ID!, $bookId: ID!) {
