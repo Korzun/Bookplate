@@ -15,8 +15,6 @@ export {
   useRegenChapters,
   useReplaceBook,
   useScanLibrary,
-  useSeries,
-  useSeriesBookList,
   useSeriesNames,
   useFetchSeriesNextIndex,
   useStandaloneBookList,
@@ -38,7 +36,6 @@ export type {
   UploadResult,
 } from './type';
 export type {
-  SeriesMeta,
   FetchSeriesNextIndex,
   ReplaceAnalysis,
   BookDetail,
