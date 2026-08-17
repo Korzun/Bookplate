@@ -417,6 +417,12 @@ export const BookPage = () => {
           counts={toValidationCounts(unmaskedValidation.counts)}
           messages={toValidationMessages(unmaskedValidation.messages.edges)}
           threshold={unmaskedValidation.threshold}
+          // I-2 (2026-08-13 final review): the modal's DEFAULT `intro` is
+          // upload-flow copy ("...must be fixed before this EPUB can be
+          // uploaded") — wrong for a book already in the library. This is
+          // the same book-specific copy the pre-GraphQL REST page passed,
+          // dropped as collateral during the rewrite to GraphQL.
+          intro="EPUBCheck results for this book. Issues below the rejection threshold don't block anything, but you may want to fix them."
           onClose={() => setValidationModalOpen(false)}
         />
       )}

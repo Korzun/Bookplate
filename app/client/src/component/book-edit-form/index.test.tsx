@@ -75,7 +75,9 @@ describe('BookEditForm', () => {
   it('navigates to the book after a successful save', async () => {
     mocks.nextResult.mode = 'ok';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
+    renderWithProviders(
+      <BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />
+    );
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -85,7 +87,9 @@ describe('BookEditForm', () => {
   it('shows an error toast and does not navigate away when the save fails', async () => {
     mocks.nextResult.mode = 'fail';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
+    renderWithProviders(
+      <BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />
+    );
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -116,7 +120,9 @@ describe('BookEditForm', () => {
   // generates a box it swallows them into a single flex item and every gap
   // between the cards disappears, so it has to stay `display: contents`.
   it('keeps the form boxless so the cards stay spaced by the page', () => {
-    const { container } = renderWithProviders(<BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />);
+    const { container } = renderWithProviders(
+      <BookEditForm original={original} id="book-1" bookGlobalId="global-book-1" />
+    );
     const form = container.querySelector('form') as HTMLElement;
     expect(form.querySelectorAll(':scope > *').length).toBeGreaterThan(1);
     expect(getComputedStyle(form).display).toBe('contents');
@@ -136,7 +142,11 @@ describe('series order auto-fill', () => {
   it('fills empty Order with the fetched next index for an existing series', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
+      <BookEditForm
+        original={{ ...original, series: '', seriesIndex: 0 }}
+        id="book-1"
+        bookGlobalId="global-book-1"
+      />
     );
     await openSeriesAndPick(user, 'Dune');
     await waitFor(() => expect(seriesInput().value).toBe('4'));
@@ -146,7 +156,11 @@ describe('series order auto-fill', () => {
   it('fills Order with 1 for a brand-new series', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
+      <BookEditForm
+        original={{ ...original, series: '', seriesIndex: 0 }}
+        id="book-1"
+        bookGlobalId="global-book-1"
+      />
     );
     await openSeriesAndPick(user, 'Brand New');
     await waitFor(() => expect(seriesInput().value).toBe('1'));
@@ -155,7 +169,11 @@ describe('series order auto-fill', () => {
   it('does not overwrite an Order the user already entered', async () => {
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
+      <BookEditForm
+        original={{ ...original, series: '', seriesIndex: 0 }}
+        id="book-1"
+        bookGlobalId="global-book-1"
+      />
     );
     await user.click(screen.getByRole('switch', { name: 'isSeries' }));
     await user.type(seriesInput(), '2');
@@ -177,7 +195,11 @@ describe('series order auto-fill', () => {
 
     const user = userEvent.setup();
     renderWithProviders(
-      <BookEditForm original={{ ...original, series: '', seriesIndex: 0 }} id="book-1" bookGlobalId="global-book-1" />
+      <BookEditForm
+        original={{ ...original, series: '', seriesIndex: 0 }}
+        id="book-1"
+        bookGlobalId="global-book-1"
+      />
     );
     await openSeriesAndPick(user, 'Dune');
 

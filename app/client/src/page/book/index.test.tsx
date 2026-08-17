@@ -415,6 +415,22 @@ describe('BookPage', () => {
       await waitFor(() => expect(screen.getByText(/3 warning/i)).toBeInTheDocument());
     });
 
+    // I-2 (2026-08-13 final review): `ValidationDetailModal`'s DEFAULT intro
+    // ("...must be fixed before this EPUB can be uploaded") is upload-flow
+    // copy — false here, since this book is already in the library. A prior
+    // rewrite dropped the book-specific `intro` this page used to pass.
+    it('shows book-specific validation copy, not the upload-flow default', async () => {
+      await renderPage([bookMock(), validateMutationMock()]);
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await selectMenuItem(/^validate$/i);
+
+      await waitFor(() =>
+        expect(screen.getByText(/epubcheck results for this book/i)).toBeInTheDocument()
+      );
+      expect(screen.queryByText(/can be uploaded/i)).not.toBeInTheDocument();
+    });
+
     it('shows a clean pass with no messages distinctly from a fail with messages', async () => {
       // Closes the debt this task was scoped around: previously ANY
       // successful mutation toasted the SAME "Validation complete" message
