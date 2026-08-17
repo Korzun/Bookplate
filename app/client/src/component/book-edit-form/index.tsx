@@ -199,6 +199,13 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
     // A failed save returns undefined (the effect above shows why); stay on the
     // form so the user can retry rather than navigating away as if it worked.
     if (newId === undefined) return;
+    // KNOWN BROKEN (2026-08-13 final review, C-2 — BLOCKED, not fixed here):
+    // `newId` is `patchBookMetadata`'s PATCH response id, always RAW (editing
+    // metadata changes the content hash, so it can't be `id` above either).
+    // `page/book` requires a Relay GLOBAL id and 404s on this. Fixing it
+    // needs the server to hand back a global id (the client may never encode
+    // one itself); see the final-fix report for the options. Left as-is
+    // rather than guessed at.
     navigate(path.book(newId));
   }
 
