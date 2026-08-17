@@ -10,13 +10,24 @@ import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, Response } from 'express';
+import { graphql } from 'graphql';
 import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
+import { createChapterSpineMapLoader } from '../graphql/chapter-spine-map-loader';
+import type { Context, Stores, Viewer } from '../graphql/context';
 import { deriveCurrentChapter } from '../graphql/derive';
+import { createOwnerLoader } from '../graphql/owner';
+import { createPendingFixLoader } from '../graphql/pending-fix-loader';
+import { createProgressLoader } from '../graphql/progress-loader';
+import { schema } from '../graphql/schema';
+import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
+import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookHashCollisionError, BookStore } from '../services/book-store';
+import { DeviceStore } from '../services/device-store';
+import { EditionStore } from '../services/edition-store';
 import * as epubWriterModule from '../services/epub-writer';
 import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import {
@@ -291,6 +302,49 @@ async function loginAlice(): Promise<string> {
 }
 
 const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${token}`];
+
+/**
+ * Executes a REAL GraphQL query against the exact same `prisma`/stores this
+ * file's REST `app` uses — not a second, disconnected harness
+ * (`graphql/test-util.ts`'s `createHarness()` builds its own isolated
+ * db/booksDir, which would defeat the one thing this exists for). This is
+ * what lets a test PATCH/POST a REST route, then feed that response's
+ * `globalId` straight into `Library.book` and prove it resolves the SAME
+ * row the REST call just touched — the C-2 round-trip requirement
+ * (2026-08-13 final review, human ruling): a pair of one-sided unit tests
+ * (REST asserts a well-formed id; GraphQL asserts `Library.book` accepts
+ * SOME global id) could both stay green while the two sides silently
+ * disagreed on the compound-id shape. This proves the actual handoff.
+ */
+async function gqlExecute(
+  source: string,
+  viewer: Viewer
+): ReturnType<typeof graphql<Record<string, unknown>>> {
+  const stores: Stores = {
+    book: bookStore,
+    user: userStore,
+    device: new DeviceStore(prisma),
+    edition: new EditionStore(path.join(os.tmpdir(), 'ui-test-round-trip-editions'), prisma),
+    validation: validationStore,
+    scanJob: scanJobStore,
+    thumbnail: mockThumbnailQueue,
+    replaceStaging,
+    token: tokenStore,
+  };
+  const contextValue: Context = {
+    viewer,
+    prisma,
+    stores,
+    config: { ...config, booksDir },
+    loadOwner: createOwnerLoader(prisma),
+    loadProgress: createProgressLoader(prisma),
+    loadPendingFix: createPendingFixLoader(prisma),
+    loadChapterSpineMap: createChapterSpineMapLoader(prisma),
+    loadSeriesProgress: createSeriesProgressLoader(prisma),
+    loadValidationCounts: createValidationCountsLoader(prisma),
+  };
+  return graphql({ schema, source, contextValue });
+}
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-'));
@@ -3011,6 +3065,87 @@ describe('REST routes accept a Relay global ID (Task 3)', () => {
         .set(...bearer(bobToken));
       expect(res.status).toBe(404);
     });
+
+    // C-2 (2026-08-13 final review, human ruling — Option 1): editing
+    // metadata changes the book's content hash, so the response's `id`
+    // (still raw, unmistakably distinct from `documentId` on the GraphQL
+    // side and `id` REST always meant) is a NEW id the client never had a
+    // global counterpart for. `globalId` closes that gap — built with the
+    // exact same `encodeGlobalID('Book', JSON.stringify([userId, id]))` call
+    // `book/mutation/delete.ts`'s `deletedId` already uses, so it's byte-
+    // identical to what `bookGlobalId` (this file's own helper, same
+    // formula) produces for the SAME resolved owner + new raw id.
+    it('the response also carries globalId — the Relay global id for the NEW (post-edit) raw id', async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'meta-globalid-src',
+        stage('meta-globalid-src', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      await validationStore.saveValidation(aliceOwner, 'meta-globalid-src', VALID_REPORT);
+      const token = await loginAlice();
+      const res = await request(app)
+        .patch('/api/books/meta-globalid-src/metadata')
+        .field('title', 'Renamed via globalId test')
+        .set(...bearer(token));
+
+      expect(res.status).toBe(200);
+      // The edit changed the content hash — a REAL id rotation, not a
+      // same-id no-op, so a test asserting `globalId` merely EXISTS
+      // couldn't tell a correct implementation from one that echoed back
+      // the id the request was SENT under.
+      expect(res.body.id).not.toBe('meta-globalid-src');
+      expect(res.body.globalId).toBe(bookGlobalId(aliceId, res.body.id));
+      // Unmistakable from the pre-existing raw `id` field — the whole point
+      // of the human ruling's naming requirement.
+      expect(res.body.globalId).not.toBe(res.body.id);
+    });
+
+    // THE ROUND TRIP (2026-08-13 final review, C-2): a well-formed `globalId`
+    // proves nothing on its own if `Library.book`'s actual `t.arg.globalID({
+    // for: book })` rejects it for some reason this test's own hand-rolled
+    // `bookGlobalId` helper wouldn't catch (e.g. a typename/compound-id
+    // mismatch). This feeds the REST response's `globalId` — not a re-derived
+    // one — straight into a REAL `Library.book` query over the SAME
+    // prisma/db this REST call just wrote to, and checks it resolves the
+    // exact post-edit row. This is the test `page/book`'s own broken
+    // navigation needed and never had.
+    it("the response's globalId, fed straight into Library.book, resolves the SAME post-edit book", async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'meta-roundtrip-src',
+        stage('meta-roundtrip-src', makeEpub({ title: 'Old', author: 'A' })),
+        { ...FAKE_META, title: 'Old', author: 'A' }
+      );
+      await validationStore.saveValidation(aliceOwner, 'meta-roundtrip-src', VALID_REPORT);
+      const token = await loginAlice();
+      const res = await request(app)
+        .patch('/api/books/meta-roundtrip-src/metadata')
+        .field('title', 'Round Trip Title')
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+
+      const aliceViewer: Viewer = {
+        userId: aliceId,
+        username: 'alice',
+        isAdmin: false,
+        mustChangePassword: false,
+      };
+      const gqlResult = await gqlExecute(
+        `{ viewer { library { book(id: "${res.body.globalId as string}") { id title } } } }`,
+        aliceViewer
+      );
+
+      expect(gqlResult.errors).toBeUndefined();
+      const data = gqlResult.data as {
+        viewer: { library: { book: { id: string; title: string } | null } };
+      };
+      expect(data.viewer.library.book).not.toBeNull();
+      expect(data.viewer.library.book!.title).toBe('Round Trip Title');
+      // Confirms the schema's OWN encoding of this same row agrees with what
+      // REST emitted — not just that SOME book came back.
+      expect(data.viewer.library.book!.id).toBe(res.body.globalId);
+    });
   });
 
   describe('POST /api/books/:id/replace/analyze', () => {
@@ -3078,6 +3213,74 @@ describe('REST routes accept a Relay global ID (Task 3)', () => {
         .set(...bearer(bobToken))
         .attach('file', makeEpub({ title: 'Fixed', author: 'A' }), 'fixed.epub');
       expect(res.status).toBe(404);
+    });
+
+    // C-2 (2026-08-13 final review, human ruling — Option 1): same reasoning
+    // as the metadata sibling test above — replacing the file changes the
+    // content hash, so `globalId` is the ONLY way the client can navigate
+    // back to the post-replace book. Same `encodeGlobalID` formula, same
+    // owner-scoped construction.
+    it('the response also carries globalId — the Relay global id for the NEW (post-replace) raw id', async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-globalid-src',
+        stage('rep-globalid-src', makeEpub({ title: 'Old', author: 'A' })),
+        FAKE_META
+      );
+      const token = await loginAlice();
+      const res = await request(app)
+        .post('/api/books/rep-globalid-src/replace')
+        .set(...bearer(token))
+        .attach(
+          'file',
+          makeEpub({ title: 'Replaced via globalId test', author: 'A' }),
+          'fixed.epub'
+        );
+
+      expect(res.status).toBe(200);
+      // The replace changed the content hash — a REAL id rotation.
+      expect(res.body.id).not.toBe('rep-globalid-src');
+      expect(res.body.globalId).toBe(bookGlobalId(aliceId, res.body.id));
+      expect(res.body.globalId).not.toBe(res.body.id);
+    });
+
+    // THE ROUND TRIP — same reasoning as the metadata sibling test.
+    it("the response's globalId, fed straight into Library.book, resolves the SAME post-replace book", async () => {
+      await bookStore.addBook(
+        aliceOwner,
+        'rep-roundtrip-src',
+        stage('rep-roundtrip-src', makeEpub({ title: 'Old', author: 'A' })),
+        FAKE_META
+      );
+      const token = await loginAlice();
+      const res = await request(app)
+        .post('/api/books/rep-roundtrip-src/replace')
+        .set(...bearer(token))
+        .attach(
+          'file',
+          makeEpub({ title: 'Round Trip Replaced Title', author: 'A' }),
+          'fixed.epub'
+        );
+      expect(res.status).toBe(200);
+
+      const aliceViewer: Viewer = {
+        userId: aliceId,
+        username: 'alice',
+        isAdmin: false,
+        mustChangePassword: false,
+      };
+      const gqlResult = await gqlExecute(
+        `{ viewer { library { book(id: "${res.body.globalId as string}") { id title } } } }`,
+        aliceViewer
+      );
+
+      expect(gqlResult.errors).toBeUndefined();
+      const data = gqlResult.data as {
+        viewer: { library: { book: { id: string; title: string } | null } };
+      };
+      expect(data.viewer.library.book).not.toBeNull();
+      expect(data.viewer.library.book!.title).toBe('Round Trip Replaced Title');
+      expect(data.viewer.library.book!.id).toBe(res.body.globalId);
     });
   });
 

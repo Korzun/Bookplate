@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { decodeGlobalID } from '@pothos/plugin-relay';
+import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
@@ -500,6 +500,27 @@ export function createUiRouter(
     if (parsed === null) return rawId;
     const [userId, bookId] = parsed;
     return userId === owner.userId ? bookId : null;
+  }
+
+  /**
+   * The exact inverse of `resolveBookLocalId` above, and byte-identical to
+   * the formula GraphQL's own `book/mutation/delete.ts` already uses for
+   * `deletedId` (`encodeGlobalID('Book', JSON.stringify([owner.userId,
+   * deleted.id]))`) — not a fresh encoding scheme invented for REST.
+   *
+   * 2026-08-13 final review, C-2 (human ruling, Option 1): `PATCH .../
+   * metadata` and `POST .../replace` both return a NEW raw id (editing
+   * metadata or replacing the file changes the content hash), and
+   * `page/book` (GraphQL) needs a Relay global id to navigate back to it —
+   * there is no client-side way to produce one without this. Named
+   * `bookGlobalId` (a local helper, not a response field name) to keep this
+   * unambiguously distinct from `resolveBookLocalId` above; the two REST
+   * response bodies that call it expose it as `globalId` — see their own
+   * comments for why that field name, not `id` (already means the raw hash
+   * in every REST response) or `documentId` (means raw on the GraphQL side).
+   */
+  function bookGlobalId(owner: Owner, rawId: string): string {
+    return encodeGlobalID('Book', JSON.stringify([owner.userId, rawId]));
   }
 
   // ── Auth ──────────────────────────────────────────────
@@ -1646,7 +1667,11 @@ export function createUiRouter(
         chapterNames: _chapterNames,
         ...rest
       } = updated;
-      res.json(rest);
+      // `globalId` (2026-08-13 final review, C-2 — additive, `id` above is
+      // UNCHANGED and stays the raw content hash every existing consumer of
+      // this response already reads): the Relay global id for `rest.id`
+      // (the NEW, post-edit raw id) — see `bookGlobalId`'s own doc comment.
+      res.json({ ...rest, globalId: bookGlobalId(owner, updated.id) });
     })
   );
 
@@ -1936,7 +1961,10 @@ export function createUiRouter(
       }
       log.info(`Book replaced: "${finalBook.filename}"`);
       const { path: _p, ...rest } = finalBook;
-      res.json(rest);
+      // `globalId` (2026-08-13 final review, C-2 — additive, same as the
+      // metadata route above): the Relay global id for `rest.id` (the NEW,
+      // post-replace raw id).
+      res.json({ ...rest, globalId: bookGlobalId(owner, finalBook.id) });
     })
   );
 
