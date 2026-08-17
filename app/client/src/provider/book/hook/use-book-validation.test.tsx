@@ -73,6 +73,11 @@ describe('useBookValidation', () => {
 
     expect(result.current?.loading).toBe(false);
     expect(result.current?.validation).toBeUndefined();
+    // M-2 (2026-08-13 final review): `loading: false` + `validation:
+    // undefined` alone doesn't distinguish "no operation issued" from "an
+    // operation issued and ERRORED" — both produce that exact shape. This
+    // pins down the actual claim the test's own name makes.
+    expect(result.current?.error).toBeUndefined();
   });
 
   it('fetches the validation payload once load() is called', async () => {
