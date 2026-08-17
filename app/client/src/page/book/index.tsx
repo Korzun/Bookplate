@@ -352,7 +352,7 @@ export const BookPage = () => {
       {progressModalOpen && (
         <SetProgressModal
           isOpen
-          bookId={book.id}
+          documentId={book.documentId}
           chapterCount={book.chapterCount}
           initialChapter={book.progress?.currentChapter ?? 0}
           chapterSpineMap={book.chapterSpineMap}

@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -42,6 +42,7 @@ import { makeFragmentData } from '~/gql';
 import type { LineageEntryFragmentFragment } from '~/gql/graphql';
 import { BookDetailDocument, BookValidateDocument, LineageEntryFragment } from '~/graphql/book';
 import { apiFetch } from '~/lib/api-fetch';
+import { ProgressProvider } from '~/provider/progress';
 import { renderWithApollo } from '~/test-utils';
 
 const mockApiFetch = vi.mocked(apiFetch);
@@ -49,6 +50,21 @@ const mockApiFetch = vi.mocked(apiFetch);
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn();
   HTMLDialogElement.prototype.close = vi.fn();
+  // `ProportionalChapterSlider` (inside `SetProgressModal`) drives its
+  // `onChange` off real `PointerEvent`s — same polyfill/stub
+  // `proportional-chapter-slider/index.test.tsx` uses, needed here too for
+  // the "clear progress" regression test to drag the slider to chapter 0.
+  Element.prototype.setPointerCapture = vi.fn();
+  if (!window.PointerEvent) {
+    class PointerEvent extends MouseEvent {
+      pointerId: number;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 0;
+      }
+    }
+    Object.defineProperty(window, 'PointerEvent', { value: PointerEvent, writable: true });
+  }
 });
 
 beforeEach(() => {
@@ -56,10 +72,24 @@ beforeEach(() => {
   replaceModalSpy.mockClear();
   URL.createObjectURL = vi.fn(() => 'blob:test-cover');
   URL.revokeObjectURL = vi.fn();
-  mockApiFetch.mockResolvedValue({
-    ok: true,
-    blob: () => Promise.resolve(new Blob(['cover'], { type: 'image/jpeg' })),
-  } as Response);
+  // Differentiated by method, not a single blanket `mockResolvedValue`: the
+  // "clear progress" regression test below needs a real `DELETE` → `204`
+  // round trip (`useDeleteMyProgress` checks `response.status !== 204`
+  // specifically), which a bare `{ ok: true }` doesn't satisfy. Every other
+  // caller (the cover `blob()` fetch, `PUT` progress saves) only ever checks
+  // `.ok`/`.blob()`, so folding them into one implementation is safe.
+  mockApiFetch.mockImplementation((_url: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') {
+      return Promise.resolve({ ok: true, status: 204 } as Response);
+    }
+    if (init?.method === 'PUT') {
+      return Promise.resolve({ ok: true } as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['cover'], { type: 'image/jpeg' })),
+    } as Response);
+  });
 });
 
 afterEach(() => {
@@ -240,7 +270,20 @@ async function renderPage(
   options: Partial<Parameters<typeof renderWithApollo>[1]> = {}
 ) {
   const { BookPage } = await import('./index');
-  return renderWithApollo(<BookPage />, { ...options, mocks });
+  // `ProgressProvider` is only mounted at the real app root (`App.tsx`), not
+  // by `renderWithApollo`/`renderWithProviders` — every `SetProgressModal`
+  // hook otherwise runs against `provider/progress/context.ts`'s DEFAULT
+  // context value, whose setters are all no-ops. That silently defeated any
+  // attempt to assert on a save-then-clear round trip (the "clear progress"
+  // regression test below): the save's optimistic write never actually
+  // landed anywhere for a later delete to find. Wrapping here matches how
+  // this page is really composed in production.
+  return renderWithApollo(
+    <ProgressProvider>
+      <BookPage />
+    </ProgressProvider>,
+    { ...options, mocks }
+  );
 }
 
 // `PageActionsMenu` (`~/control/page-actions-menu`) always renders an "all
@@ -502,6 +545,27 @@ describe('BookPage', () => {
       return within(header.closest('dialog') as HTMLElement);
     }
 
+    // Structural traversal down to `ProportionalChapterSlider`'s own pointer
+    // target, mirroring `proportional-chapter-slider/index.test.tsx`'s own
+    // `renderSlider` helper (that component exposes no accessible role).
+    // `SetProgressModal`'s dialog body is, in order:
+    // header / chapterDisplay / sliderSection / (error?) / footer — index 2
+    // is `sliderSection` whenever `hasError` is false, which it always is
+    // the first time a dialog opens in these tests.
+    async function getSliderRoot() {
+      const header = await screen.findByText('Set Progress');
+      const dialogInner = header.parentElement as HTMLElement;
+      const sliderSection = dialogInner.children[2] as HTMLElement;
+      const sliderWrapper = sliderSection.firstElementChild as HTMLElement;
+      const sliderRoot = sliderWrapper.firstElementChild as HTMLElement;
+      const track = sliderRoot.firstElementChild as HTMLElement;
+      Object.defineProperty(track, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ left: 0, width: 100 }) as DOMRect,
+      });
+      return sliderRoot;
+    }
+
     it('refreshes the displayed progress after the set-progress modal saves', async () => {
       await renderPage([at(0.2), at(0.6)], { user: { username: 'le', isAdmin: false } });
 
@@ -540,6 +604,60 @@ describe('BookPage', () => {
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20')
       );
       expect(screen.getByRole('heading', { name: 'A Wizard of Earthsea' })).toBeInTheDocument();
+    });
+
+    // C-1 (2026-08-13 final review): `SetProgressModal` used to be handed
+    // `book.id` — the Relay GLOBAL id — for BOTH `useSetMyProgress` and
+    // `useDeleteMyProgress`, which write/read the REST progress map keyed by
+    // the RAW `documentId`. A save under the wrong key masks the bug (the
+    // save and the later delete agree with EACH OTHER, just not with the
+    // server's real key), so this drives a real save-then-clear round trip
+    // and asserts on the literal URL `useDeleteMyProgress` asked `apiFetch`
+    // for — the only way to actually catch "wrong KIND of id", not merely
+    // "modal closed".
+    it('issues the clear-progress DELETE against the raw documentId, never the global id', async () => {
+      await renderPage([at(0.2), at(0.2)], { user: { username: 'le', isAdmin: false } });
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      // Save once first — the only way this test populates `ProgressProvider`'s
+      // REST-side map with a real entry to later clear (nothing else in this
+      // render tree issues the REST `GET /api/my/progress` that map would
+      // otherwise come from).
+      await selectMenuItem(/^set progress$/i);
+      let modal = await getSetProgressDialog();
+      await userEvent.click(modal.getByRole('button', { name: /save/i, hidden: true }));
+      await waitFor(() => expect(screen.queryByText('Set Progress')).not.toBeInTheDocument());
+      // Waits out the `onSaved` refetch's own `loading` window (Apollo
+      // re-flips `loading` briefly for a `refetch()`, unlike a cache-only
+      // update) — `Page`'s loading branch drops `headerActions` (the "More
+      // actions" trigger) entirely, so the next `selectMenuItem` needs the
+      // refetched content back on screen first.
+      await screen.findAllByRole('button', { name: 'More actions' });
+
+      // Reopen and drag the slider to the leftmost position (chapter 0) to
+      // surface "Clear Progress".
+      await selectMenuItem(/^set progress$/i);
+      modal = await getSetProgressDialog();
+      const sliderRoot = await getSliderRoot();
+      fireEvent.pointerDown(sliderRoot, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerUp(sliderRoot, { clientX: 0, pointerId: 1 });
+
+      await userEvent.click(modal.getByRole('button', { name: /clear progress/i, hidden: true }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          expect.stringContaining(encodeURIComponent(DOCUMENT_ID)),
+          expect.objectContaining({ method: 'DELETE' })
+        )
+      );
+      expect(mockApiFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining(encodeURIComponent(BOOK_ID)),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+      // The modal closes on a clean delete — proof the DELETE didn't just
+      // fire, it SUCCEEDED against an id the server could resolve.
+      await waitFor(() => expect(screen.queryByText('Set Progress')).not.toBeInTheDocument());
     });
   });
 });

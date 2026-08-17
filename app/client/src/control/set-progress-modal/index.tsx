@@ -9,7 +9,19 @@ import { useStyle } from './style';
 
 type SetProgressModalProps = {
   isOpen: boolean;
-  bookId: string;
+  /**
+   * RAW content hash — the key `ProgressProvider`'s REST map uses
+   * (`Progress.document`, `use-fetch-my-progress-list.ts`'s `merged[p.
+   * document] = p`). Both `useSetMyProgress` and `useDeleteMyProgress` write
+   * and look up against this exact string; NEVER pass a Relay global id
+   * here (2026-08-13 final review, C-1/I-1) — `page/book`'s `Book.id` — a
+   * global id would silently miss every existing REST progress row (delete
+   * finds nothing to clear) and, on save, create a phantom second row keyed
+   * by the wrong id (`MyProgressContent` renders one row per map entry,
+   * so a save under the wrong key duplicates the book in the profile list
+   * for the rest of the session). Use `Book.documentId`.
+   */
+  documentId: string;
   chapterCount: number;
   initialChapter: number;
   chapterSpineMap?: number[];
@@ -28,7 +40,7 @@ type SetProgressModalProps = {
 
 export function SetProgressModal({
   isOpen,
-  bookId,
+  documentId,
   chapterCount,
   initialChapter,
   chapterSpineMap = [],
@@ -40,7 +52,7 @@ export function SetProgressModal({
   const [selectedChapter, setSelectedChapter] = useState(initialChapter);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
 
-  const [setMyProgress, saving, saveError, saveErrorMessage] = useSetMyProgress(bookId);
+  const [setMyProgress, saving, saveError, saveErrorMessage] = useSetMyProgress(documentId);
   const [deleteMyProgress, deleting, deleteError, deleteErrorMessage] = useDeleteMyProgress();
 
   const isBusy = saving || deleting;
@@ -73,7 +85,7 @@ export function SetProgressModal({
     pendingRef.current = true;
     wasBusyRef.current = false;
     if (selectedChapter === 0) {
-      deleteMyProgress(bookId);
+      deleteMyProgress(documentId);
     } else if (selectedChapter > chapterCount) {
       setMyProgress({ currentChapter: chapterCount, percentage: 1.0 });
     } else {
@@ -82,7 +94,7 @@ export function SetProgressModal({
         percentage: selectedChapter / chapterCount,
       });
     }
-  }, [selectedChapter, bookId, chapterCount, setMyProgress, deleteMyProgress]);
+  }, [selectedChapter, documentId, chapterCount, setMyProgress, deleteMyProgress]);
 
   const handleCancel = useCallback(() => onClose(), [onClose]);
   // Escape dismisses the modal the same way the Cancel button does.
