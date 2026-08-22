@@ -126,3 +126,45 @@ export const LibrarySubjectsDocument = graphql(`
     }
   }
 `);
+
+/**
+ * `Library.series` feeds the book edit form's series autocomplete
+ * (`useSeriesNames`). Same `node(id:) { id ... on Library { id ... } }`
+ * double-`id` shape as `LibrarySubjectsDocument` above, for the same
+ * cache-key reason. Unlike `subjects`, `series` is `[Series!]!` — each
+ * entry is a real `Series` node (its own `id`), so it is selected as an
+ * object (`id`, `name`), not a flat scalar list.
+ */
+export const SeriesNamesDocument = graphql(`
+  query SeriesNames($libraryId: ID!) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        series {
+          id
+          name
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * `Library.seriesNextIndex(name:)` backs `useFetchSeriesNextIndex` — an
+ * on-demand lookup fired only once the user picks a series in the book edit
+ * form, never on mount. That is why its consuming hook uses `useLazyQuery`
+ * rather than `useQuery`; see that hook's doc comment for the variables
+ * trap this shape guards against.
+ */
+export const SeriesNextIndexDocument = graphql(`
+  query SeriesNextIndex($libraryId: ID!, $name: String!) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        seriesNextIndex(name: $name)
+      }
+    }
+  }
+`);

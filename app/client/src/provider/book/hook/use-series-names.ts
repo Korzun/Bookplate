@@ -1,43 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@apollo/client/react';
 
-import { useWithTargetUser } from '~/provider/library-target';
-
-import { apiFetch } from '../../../lib/api-fetch';
-
-type Result = { url: string; series: string[] } | { url: string; error: string };
+import { SeriesNamesDocument } from '~/graphql/library';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
- * Fetches the library's series names already ordered by the server-computed sort
- * key (leading articles such as "the", "a", "an" are stripped server-side). Used
- * to populate the series autocomplete in the book edit form.
+ * The library's series names, ordered as `Library.series` returns them
+ * (the server-computed sort key that strips leading articles such as "the",
+ * "a", "an" already lives server-side — this hook does no reordering of its
+ * own). Feeds the series autocomplete in the book edit form.
+ *
+ * Same `libraryId`-gated shape `useLibrarySubjects` follows: skips the query
+ * while `libraryId` is `undefined` (an admin with no library selected has
+ * nothing to root `node(id:)` on), and folds `useCurrentLibraryId`'s own
+ * `loading` into this hook's `loading` — a SKIPPED `useQuery` reports
+ * `loading: false`, and without folding that in, a caller reading `loading`
+ * during the cold `ViewerBootstrap` round trip (`libraryId` still
+ * resolving) would see `[], loading: false`: a false "no series yet" read.
+ *
+ * Preserves the previous REST hook's tuple shape: `error` reports Apollo's
+ * own `error?.message`, matching the settled error-surfacing policy.
  */
 export const useSeriesNames = (): [string[], boolean, string | undefined] => {
-  const [result, setResult] = useState<Result | null>(null);
-  const withTargetUser = useWithTargetUser();
-  const url = withTargetUser('/api/series');
+  const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data, loading, error } = useQuery(SeriesNamesDocument, {
+    variables: { libraryId: libraryId ?? '' },
+    skip: libraryId === undefined,
+  });
 
-    apiFetch(url)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch series');
-        return res.json() as Promise<{ series: string[] }>;
-      })
-      .then((data) => {
-        if (!cancelled) setResult({ url, series: data.series });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setResult({ url, error: err instanceof Error ? err.message : 'Unknown error' });
-      });
+  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const names = library?.series.map((series) => series.name) ?? [];
 
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  if (result === null || result.url !== url) return [[], true, undefined];
-  if ('error' in result) return [[], false, result.error];
-  return [result.series, false, undefined];
+  return [names, loading || libraryIdLoading, error?.message];
 };

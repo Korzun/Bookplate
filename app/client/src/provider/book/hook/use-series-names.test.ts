@@ -1,53 +1,98 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MockedResponse } from '@apollo/client/testing';
+import { waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
-import { ApolloTestProvider } from '~/test-utils';
+import type { SeriesNamesQuery } from '~/gql/graphql';
+import { SeriesNamesDocument } from '~/graphql/library';
+import { renderHookWithApollo } from '~/test-utils';
 
 import { useSeriesNames } from './use-series-names';
 
-describe('useSeriesNames', () => {
-  afterEach(() => vi.unstubAllGlobals());
+const LIBRARY_ID = 'LIB-1';
 
-  it('fetches GET /api/series on mount and returns the names in server order', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ series: ['Expanse', 'A Banner', 'The Zone'] }),
-      })
-    );
-    const { result } = renderHook(() => useSeriesNames(), { wrapper: ApolloTestProvider });
-    await waitFor(() => expect(result.current[0]).toEqual(['Expanse', 'A Banner', 'The Zone']));
-    expect(fetch).toHaveBeenCalledWith('/api/series', expect.anything());
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
+
+vi.mock('~/provider/library-target', () => ({
+  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
+}));
+
+const seriesMock = (names: string[]): MockedResponse<SeriesNamesQuery> => ({
+  request: { query: SeriesNamesDocument, variables: { libraryId: LIBRARY_ID } },
+  result: {
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        series: names.map((name, index) => ({
+          __typename: 'Series' as const,
+          id: `SERIES-${index}`,
+          name,
+        })),
+      },
+    },
+  },
+});
+
+const errorMock = (): MockedResponse<SeriesNamesQuery> => ({
+  request: { query: SeriesNamesDocument, variables: { libraryId: LIBRARY_ID } },
+  error: new Error('Failed to fetch series'),
+});
+
+const renderProbe = (mocks: MockedResponse[]) => renderHookWithApollo(useSeriesNames, mocks);
+
+describe('useSeriesNames', () => {
+  it('fetches Library.series and returns the names in server order', async () => {
+    const { result } = renderProbe([seriesMock(['Expanse', 'A Banner', 'The Zone'])]);
+    await waitFor(() => expect(result.current?.[0]).toEqual(['Expanse', 'A Banner', 'The Zone']));
   });
 
   it('starts with loading true', () => {
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    const { result } = renderHook(() => useSeriesNames(), { wrapper: ApolloTestProvider });
-    expect(result.current[1]).toBe(true);
+    const { result } = renderProbe([seriesMock([])]);
+    expect(result.current?.[1]).toBe(true);
   });
 
   it('sets loading false after fetch completes', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ series: [] }),
-      })
-    );
-    const { result } = renderHook(() => useSeriesNames(), { wrapper: ApolloTestProvider });
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    const { result } = renderProbe([seriesMock([])]);
+    await waitFor(() => expect(result.current?.[1]).toBe(false));
   });
 
-  it('sets error string on non-ok response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
-    const { result } = renderHook(() => useSeriesNames(), { wrapper: ApolloTestProvider });
-    await waitFor(() => expect(result.current[2]).toBe('Failed to fetch series'));
+  it('sets error string on a failed fetch', async () => {
+    const { result } = renderProbe([errorMock()]);
+    await waitFor(() => expect(result.current?.[2]).toBe('Failed to fetch series'));
   });
 
   it('returns empty array by default', () => {
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
-    const { result } = renderHook(() => useSeriesNames(), { wrapper: ApolloTestProvider });
-    expect(result.current[0]).toEqual([]);
+    const { result } = renderProbe([seriesMock(['Expanse'])]);
+    expect(result.current?.[0]).toEqual([]);
+  });
+
+  it('does not query when there is no library id', () => {
+    currentLibraryId = undefined;
+    try {
+      // No mocks: if the hook queried anyway, MockLink would throw "No more
+      // mocked responses" and fail this test loudly rather than pass vacuously.
+      const { result } = renderProbe([]);
+
+      expect(result.current?.[1]).toBe(false);
+      expect(result.current?.[0]).toEqual([]);
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+    }
+  });
+
+  it('reports loading while useCurrentLibraryId itself is still resolving, even though the query is skipped', () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = true;
+    try {
+      const { result } = renderProbe([]);
+
+      expect(result.current?.[1]).toBe(true);
+      expect(result.current?.[0]).toEqual([]);
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+      currentLibraryIdLoading = false;
+    }
   });
 });
