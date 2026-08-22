@@ -35,6 +35,8 @@ describe('stageUpload', () => {
     await stageUpload(file, 'epub');
 
     expect(mockApiFetch.mock.calls[0][0]).toBe('/api/books/replace-staging');
+    const body = (mockApiFetch.mock.calls[0][1] as RequestInit).body as FormData;
+    expect(body.get('file')).toBe(file);
   });
 
   it('applies withTargetUser to the URL when given', async () => {
@@ -66,5 +68,16 @@ describe('stageUpload', () => {
     } as unknown as Response);
 
     await expect(stageUpload(file, 'cover')).rejects.toThrow(/cover/i);
+  });
+
+  it('rejects with a generic message on non-JSON error for epub', async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: false,
+      json: async () => {
+        throw new Error('not json');
+      },
+    } as unknown as Response);
+
+    await expect(stageUpload(file, 'epub')).rejects.toThrow(/file/i);
   });
 });
