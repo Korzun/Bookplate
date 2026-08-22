@@ -1,6 +1,8 @@
 export { useBook } from './use-book';
 export { useBookDetail } from './use-book-detail';
 export type { BookDetail, UseBookDetail } from './use-book-detail';
+export { useBookEdit } from './use-book-edit';
+export type { BookEditBook, UseBookEdit } from './use-book-edit';
 export { useBookList } from './use-book-list';
 export { useBookListFilter } from './use-book-list-filter';
 export { useBookListItems } from './use-book-list-items';

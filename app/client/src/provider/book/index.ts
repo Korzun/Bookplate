@@ -1,6 +1,7 @@
 export {
   useBook,
   useBookDetail,
+  useBookEdit,
   useBookList,
   useBookListFilter,
   useBookListItems,
@@ -40,6 +41,8 @@ export type {
   ReplaceAnalysis,
   BookDetail,
   UseBookDetail,
+  BookEditBook,
+  UseBookEdit,
   UseBookValidation,
 } from './hook';
 export type {
