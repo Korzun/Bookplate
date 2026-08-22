@@ -14,9 +14,9 @@ import {
   TextInput,
 } from '~/control';
 import type { FieldRow } from '~/control';
-import type { Book } from '~/provider/book';
+import type { BookEditBook } from '~/provider/book';
 import {
-  usePatchBookMetadata,
+  useUpdateBookMetadata,
   useLibrarySubjects,
   useSeriesNames,
   useFetchSeriesNextIndex,
@@ -30,29 +30,10 @@ import { useStyle } from './style';
 type IdentifierRow = { _key: string; scheme: string; value: string };
 
 type Props = {
-  original: Book;
-  /**
-   * RAW resolved id (`useBook`'s response always carries the raw content
-   * hash — see `use-fetch-book.ts`'s doc comment). Used ONLY for
-   * `patchBookMetadata`, which accepts either kind; NEVER pass this to
-   * `path.book()` — `page/book` is on GraphQL now and 404s on a raw id.
-   */
-  id: string;
-  /**
-   * Relay GLOBAL id — `page/book-edit`'s own URL param, unchanged (2026-08-13
-   * final review, C-2). Used for the Cancel button's `navigate(path.
-   * book(...))`: `page/book`'s `Library.book(id: globalID!)` argument
-   * requires this kind, not `id` above. Save's own post-write navigation
-   * (`handleSave`, below) does NOT use this prop — it navigates with the
-   * `globalId` field `patchBookMetadata`'s response now carries (C-2
-   * unblock: the server computes it via `routes/ui.ts`'s `bookGlobalId`
-   * helper), since editing metadata rotates the id and this prop's value
-   * would be stale by the time Save completes.
-   */
-  bookGlobalId: string;
+  book: BookEditBook;
 };
 
-export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
+export const BookEditForm = ({ book }: Props) => {
   const navigate = useNavigate();
   const styles = useStyle();
   // Unique id ties the footer-slot Save action to this form by construction,
@@ -64,53 +45,53 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
     setIsEditValid((previous) => ({ ...previous, [fieldName]: newValid }));
   }, []);
 
-  const [patchBookMetadata, , saveError, saveErrorMessage] = usePatchBookMetadata();
+  const [updateBookMetadata, , saveErrorMessage] = useUpdateBookMetadata();
   const [librarySubjects] = useLibrarySubjects();
   const [seriesOptions, seriesLoading] = useSeriesNames();
 
   const showToast = useToast();
   // Surface save failures the same way the page surfaces load failures. Without
-  // this the 4xx/5xx body was discarded and handleSave navigated away anyway,
-  // so a failed edit looked like a silent no-op.
+  // this the failure was discarded and handleSave navigated away anyway, so a
+  // failed edit looked like a silent no-op.
   useEffect(() => {
-    if (saveError) {
-      showToast(saveErrorMessage ?? 'Failed to save changes.', 'error');
+    if (saveErrorMessage !== undefined) {
+      showToast(saveErrorMessage, 'error');
     }
-  }, [saveError, saveErrorMessage, showToast]);
+  }, [saveErrorMessage, showToast]);
 
   const [cover, setCover] = useState<File | undefined>(undefined);
 
-  const [title, setTitle] = useState<string | undefined>(original.title);
+  const [title, setTitle] = useState<string | undefined>(book.title);
   const handleTitleChange = useCallback((newTitle: string | undefined) => {
     setTitle(newTitle);
   }, []);
 
-  const [author, setAuthor] = useState<string | undefined>(original.author);
+  const [author, setAuthor] = useState<string | undefined>(book.author);
   const handleAuthorChange = useCallback((newAuthor: string | undefined) => {
     setAuthor(newAuthor);
   }, []);
 
-  const [titleSort, setTitleSort] = useState<string | undefined>(original.titleSort);
+  const [titleSort, setTitleSort] = useState<string | undefined>(book.titleSort);
   const handleTitleSortChange = useCallback((newTitleSort: string | undefined) => {
     setTitleSort(newTitleSort);
   }, []);
 
-  const [authorSort, setAuthorSort] = useState<string | undefined>(original.authorSort);
+  const [authorSort, setAuthorSort] = useState<string | undefined>(book.authorSort);
   const handleAuthorSortChange = useCallback((newAuthorSort: string | undefined) => {
     setAuthorSort(newAuthorSort);
   }, []);
 
-  const [publishDate, setPublishDate] = useState<string | undefined>(original.publishDate);
+  const [publishDate, setPublishDate] = useState<string | undefined>(book.publishDate);
   const handlePublishDateChange = useCallback((newPublishDate: string | undefined) => {
     setPublishDate(newPublishDate);
   }, []);
 
-  const [publisher, setPublisher] = useState<string | undefined>(original.publisher);
+  const [publisher, setPublisher] = useState<string | undefined>(book.publisher);
   const handlePublisherChange = useCallback((newPublisher: string | undefined) => {
     setPublisher(newPublisher);
   }, []);
 
-  const [isSeries, setIsSeries] = useState<boolean>(!!original.series);
+  const [isSeries, setIsSeries] = useState<boolean>(!!book.series);
   const handleIsSeriesChange = useCallback((newIsSeries: boolean) => {
     setIsSeries(newIsSeries);
   }, []);
@@ -118,8 +99,11 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
   const fetchSeriesNextIndex = useFetchSeriesNextIndex();
   const seriesRequestRef = useRef<string | undefined>(undefined);
 
-  const [series, setSeries] = useState<string | undefined>(original.series);
-  const [seriesIndex, setSeriesIndex] = useState<number | undefined>(original.seriesIndex);
+  // `book.series` is a `Series` object (`{ id, name }`) or `null`, not a bare
+  // string — the `series` state, the diff below, and `isSeries` above all
+  // read `.name` off it rather than treating it as the string itself.
+  const [series, setSeries] = useState<string | undefined>(book.series?.name);
+  const [seriesIndex, setSeriesIndex] = useState<number | undefined>(book.seriesIndex);
 
   const handleSeriesChange = useCallback(
     (newSeries: string | undefined) => {
@@ -149,15 +133,15 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
     setSeriesIndex(index);
   }, []);
 
-  const [description, setDescription] = useState<string | undefined>(original.description ?? '');
+  const [description, setDescription] = useState<string>(book.description);
   const handleDescriptionChange = useCallback((newDescription: string | undefined) => {
-    setDescription(newDescription);
+    setDescription(newDescription ?? '');
   }, []);
 
-  const [subjects, setSubjects] = useState<string[]>(original.subjects);
+  const [subjects, setSubjects] = useState<string[]>(book.subjects);
 
   const [identifiers, setIdentifiers] = useState<IdentifierRow[]>(() =>
-    original.identifiers.map((identifier) => ({
+    book.identifiers.map((identifier) => ({
       scheme: identifier.scheme,
       value: identifier.value,
       _key: generateUUID(),
@@ -167,46 +151,42 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
   async function handleSave() {
     const newSubjects = subjects;
     const newIdentifiers = identifiers.map((row) => ({ scheme: row.scheme, value: row.value }));
-    const originalSeriesIndex = original.seriesIndex !== 0 ? String(original.seriesIndex) : '';
+    const originalSeriesName = book.series?.name;
+    const originalSeriesIndex = book.seriesIndex !== 0 ? String(book.seriesIndex) : '';
 
-    const patched = await patchBookMetadata(id, {
+    const patched = await updateBookMetadata(book.id, {
       cover,
-      author: author && author.trim() !== original.author ? author.trim() : undefined,
-      title: title && title.trim() !== original.title ? title.trim() : undefined,
+      author: author && author.trim() !== book.author ? author.trim() : undefined,
+      title: title && title.trim() !== book.title ? title.trim() : undefined,
       titleSort:
-        titleSort !== undefined && titleSort.trim() !== (original.titleSort ?? '')
+        titleSort !== undefined && titleSort.trim() !== book.titleSort
           ? titleSort.trim()
           : undefined,
       authorSort:
-        authorSort !== undefined && authorSort.trim() !== (original.authorSort ?? '')
+        authorSort !== undefined && authorSort.trim() !== book.authorSort
           ? authorSort.trim()
           : undefined,
-      publishDate:
-        (publishDate ?? '') !== (original.publishDate ?? '') ? (publishDate ?? '') : undefined,
-      publisher:
-        publisher && publisher.trim() !== original.publisher ? publisher.trim() : undefined,
-      series: series && series.trim() !== original.series ? series.trim() : undefined,
+      publishDate: (publishDate ?? '') !== book.publishDate ? (publishDate ?? '') : undefined,
+      publisher: publisher && publisher.trim() !== book.publisher ? publisher.trim() : undefined,
+      series: series && series.trim() !== originalSeriesName ? series.trim() : undefined,
       seriesIndex:
         seriesIndex && seriesIndex.toString() !== originalSeriesIndex ? seriesIndex : undefined,
       description:
-        description && description.trim() !== (original.description ?? '')
-          ? description.trim()
-          : undefined,
-      subjects: !areStringArraysIdentical(newSubjects, original.subjects) ? newSubjects : undefined,
-      identifiers: !areObjectArraysIdentical(newIdentifiers, original.identifiers)
+        description && description.trim() !== book.description ? description.trim() : undefined,
+      subjects: !areStringArraysIdentical(newSubjects, book.subjects) ? newSubjects : undefined,
+      identifiers: !areObjectArraysIdentical(newIdentifiers, book.identifiers)
         ? newIdentifiers
         : undefined,
     });
     // A failed save returns undefined (the effect above shows why); stay on the
     // form so the user can retry rather than navigating away as if it worked.
     if (patched === undefined) return;
-    // `.globalId`, not `.id` (2026-08-13 final review, C-2 — human ruling,
-    // Option 1, fixed): editing metadata changes the content hash, so
-    // `.id` (raw) is a NEW id `page/book` (GraphQL) can't resolve — its
-    // `Library.book` argument requires a Relay global id. `.globalId` is
-    // that id, computed server-side (`routes/ui.ts`'s `bookGlobalId`), not
-    // encoded here.
-    navigate(path.book(patched.globalId));
+    // `.id` — the mutation payload's own `id` field, already a Relay GLOBAL
+    // id (`graphql/book-edit.ts`'s `BookUpdateMetadataDocument`) — not
+    // `.documentId` (the raw content hash): editing metadata rewrites the
+    // EPUB file, changing its content hash and therefore the global id too,
+    // so `page/book` (GraphQL) needs the NEW one, not the pre-save value.
+    navigate(path.book(patched.id));
   }
 
   const [, submitAction, isPending] = useActionState(async () => {
@@ -216,7 +196,7 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
 
   return (
     <>
-      <h1 className={styles.heading}>Edit Metadata — {original.title}</h1>
+      <h1 className={styles.heading}>Edit Metadata — {book.title}</h1>
 
       <form id={formId} className={styles.form} action={submitAction}>
         <Card>
@@ -332,7 +312,12 @@ export const BookEditForm = ({ original, id, bookGlobalId }: Props) => {
         items={[
           {
             label: 'Cancel',
-            onClick: () => navigate(path.book(bookGlobalId)),
+            // `book.id` — the GraphQL book's own id field, already a Relay
+            // GLOBAL id — not `documentId`: `page/book` (GraphQL) 404s on a
+            // raw id. There's no longer a separate `bookGlobalId` prop; the
+            // form's `book` IS the GraphQL book, so this is the only id it
+            // needs.
+            onClick: () => navigate(path.book(book.id)),
             disabled: isPending,
           },
           {

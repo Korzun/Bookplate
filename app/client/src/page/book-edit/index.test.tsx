@@ -1,112 +1,251 @@
-import { screen } from '@testing-library/react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { renderWithProviders } from '~/test-utils';
+import { act, screen, waitFor } from '@testing-library/react';
+import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const navigate = vi.fn();
-const dismissAllProposals = vi.fn();
-const mockUsePendingFixesForBook = vi.fn();
-const mockBookEditForm = vi.fn();
 
-// `useParams().id` deliberately differs from `bookReturn.id` below — a
-// Relay global id, standing in for the URL param a future grid→edit link
-// would produce (final-branch-review I-3).
+// `useParams().id` is the Relay GLOBAL id `page/book` links here with
+// (`path.bookEdit(book.id)`). Deliberately a different literal shape from
+// `DOCUMENT_ID` below (a raw content hash) so a test asserting on one can
+// never pass by coincidentally matching the other.
+const GLOBAL_ID = 'Qm9vazox';
+const LIBRARY_ID = 'TGlicmFyeTox';
+const DOCUMENT_ID = 'a'.repeat(32);
+
 vi.mock('react-router', async (orig) => ({
   ...(await orig<typeof import('react-router')>()),
-  useParams: () => ({ id: 'global-b1' }),
+  useParams: () => ({ id: GLOBAL_ID }),
   useNavigate: () => navigate,
 }));
-let bookReturn: unknown = { id: 'b1', title: 'X', valid: true };
-vi.mock('~/provider/book', () => ({
-  useBook: () => [bookReturn, false, false, undefined],
-}));
-// `~/provider/toast` is left unmocked: `renderWithProviders` supplies a real
-// `ToastProvider`, and `errorMessage` is undefined in our fixture so the
-// page's toast effect never fires.
-const pending = {
-  id: '1',
-  bookId: 'b1',
-  fileName: 'a.epub',
-  fileSize: 1,
-  status: 'done',
-  bytesUploaded: 1,
-  proposals: [{}],
-};
-let pendingReturn: unknown = pending;
-vi.mock('~/provider/upload', () => ({
-  usePendingFixesForBook: (bookId: string | undefined) => {
-    mockUsePendingFixesForBook(bookId);
-    return pendingReturn;
-  },
-  useUploadQueue: () => ({ dismissAllProposals }),
-}));
+
+// `useBookEdit` (and, transitively through `useUploadQueueEngine`,
+// `usePatchBookMetadata`'s siblings) all root through `useCurrentLibraryId` —
+// stubbed the same way `page/book`'s own test stubs it, so these tests stay
+// focused on `BookEditDocument` rather than also exercising the bootstrap
+// query. `useWithTargetUser` is stubbed too: the real `UploadProvider` below
+// reaches it via `useUploadQueueEngine`.
+vi.mock('~/provider/library-target', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/provider/library-target')>();
+  return {
+    ...actual,
+    useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+    useWithTargetUser: () =>
+      Object.assign((url: string) => url, { ready: true, username: undefined }),
+  };
+});
+
+const mockBookEditForm = vi.fn();
 vi.mock('~/component', () => ({
   Page: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  BookEditForm: (props: { id: string }) => {
+  BookEditForm: (props: { book: unknown }) => {
     mockBookEditForm(props);
     return <div>EDIT FORM</div>;
   },
 }));
 
+import { BookEditDocument } from '~/graphql/book-edit';
+import { UploadProvider } from '~/provider/upload';
+import { renderWithApollo } from '~/test-utils';
+
+import { BookEditPage } from './index';
+
+function bookData(overrides: Record<string, unknown> = {}) {
+  return {
+    __typename: 'Book' as const,
+    id: GLOBAL_ID,
+    documentId: DOCUMENT_ID,
+    title: 'X',
+    titleSort: '',
+    author: '',
+    authorSort: '',
+    description: '',
+    publisher: '',
+    publishDate: '',
+    seriesIndex: 0,
+    subjects: [],
+    series: null,
+    identifiers: [],
+    validation: { __typename: 'Validation' as const, id: GLOBAL_ID, valid: true },
+    ...overrides,
+  };
+}
+
+function bookEditMock(bookOverrides: Record<string, unknown> | null = {}) {
+  return {
+    request: { query: BookEditDocument, variables: { libraryId: LIBRARY_ID, bookId: GLOBAL_ID } },
+    result: {
+      data: {
+        __typename: 'Query' as const,
+        node: {
+          __typename: 'Library' as const,
+          id: LIBRARY_ID,
+          book: bookOverrides === null ? null : bookData(bookOverrides),
+        },
+      },
+    },
+  };
+}
+
+function proposalFor(bookId: string) {
+  return {
+    bookId,
+    fileName: 'a.epub',
+    fileSize: 1,
+    autoFixes: [],
+    appliedFixes: [],
+    proposals: [{ field: 'title', kind: 'x', from: 'a', to: 'b', changes: {} }],
+    undo: null,
+  };
+}
+
+let pendingFixesRows: unknown[] = [];
+let fetchMock: ReturnType<typeof vi.fn>;
+
+function stubFetch() {
+  fetchMock = vi.fn().mockImplementation((input: unknown) => {
+    const url = String(input);
+    if (url.includes('/api/config')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+      });
+    }
+    if (url.includes('/api/books/pending-fixes')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(pendingFixesRows) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+}
+
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn();
   HTMLDialogElement.prototype.close = vi.fn();
 });
+
 beforeEach(() => {
   navigate.mockClear();
-  dismissAllProposals.mockClear();
-  mockUsePendingFixesForBook.mockClear();
   mockBookEditForm.mockClear();
-  pendingReturn = pending;
-  bookReturn = { id: 'b1', title: 'X', valid: true };
+  pendingFixesRows = [];
+  stubFetch();
 });
 
-async function renderPage() {
-  const { BookEditPage } = await import('./index');
-  return renderWithProviders(<BookEditPage />);
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// `UploadProvider` is the REAL provider (`~/provider/upload`), not a mocked
+// module — composing the harness the way `App.tsx` composes it. A page-level
+// mock of `usePendingFixesForBook`/`useUploadQueue` would let
+// `dismissAllProposals` (and the pending-fix match itself) become a
+// disconnected no-op that no test could ever catch regressing, which is
+// exactly the class of bug a prior migration step shipped.
+function renderPage(mocks: unknown[] = [bookEditMock()]) {
+  return renderWithApollo(
+    <UploadProvider>
+      <BookEditPage />
+    </UploadProvider>,
+    { mocks: mocks as never }
+  );
 }
 
-describe('BookEditPage fix guard', () => {
+describe('BookEditPage', () => {
+  it('shows a loading state while the book query is in flight', async () => {
+    renderPage([{ ...bookEditMock(), delay: 100_000 }]);
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+  });
+
+  it('shows Loading… (never the guard modal) while the book is still resolving, even with a matching pending fix queued', async () => {
+    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
+    renderPage([{ ...bookEditMock(), delay: 100_000 }]);
+
+    // Let the real UploadProvider's pending-fixes GET settle so `items` is
+    // genuinely seeded before asserting the guard still doesn't show —
+    // proving `usePendingFixesForBook(undefined)` short-circuits while the
+    // book itself hasn't resolved, not merely that the queue is empty.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('pending-fixes'),
+        expect.anything()
+      )
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByText('Review fixes')).toBeNull();
+  });
+
+  it('shows "Book not found." for a null book', async () => {
+    renderPage([bookEditMock(null)]);
+    expect(await screen.findByText('Book not found.')).toBeInTheDocument();
+  });
+
+  // Checked BEFORE "Book not found." — a transport failure also leaves
+  // `book` `undefined`, and OR-ing it into the not-found branch would
+  // misreport a network failure as the book genuinely not existing (the same
+  // ordering `page/series` and `page/book` both use, each citing the other).
+  it('shows a distinct message on a transport failure, not "Book not found."', async () => {
+    renderPage([
+      {
+        request: {
+          query: BookEditDocument,
+          variables: { libraryId: LIBRARY_ID, bookId: GLOBAL_ID },
+        },
+        error: new Error('network down'),
+      },
+    ]);
+    expect(await screen.findByText('Failed to load book.')).toBeInTheDocument();
+    expect(screen.queryByText('Book not found.')).not.toBeInTheDocument();
+  });
+
+  it('blocks editing when the book has never been validated (validation: null)', async () => {
+    renderPage([bookEditMock({ validation: null })]);
+    expect(await screen.findByText(/must pass validation/i)).toBeInTheDocument();
+    expect(screen.queryByText('EDIT FORM')).toBeNull();
+  });
+
+  it('blocks editing when validation.valid is false', async () => {
+    renderPage([
+      bookEditMock({
+        validation: { __typename: 'Validation' as const, id: GLOBAL_ID, valid: false },
+      }),
+    ]);
+    expect(await screen.findByText(/must pass validation/i)).toBeInTheDocument();
+    expect(screen.queryByText('EDIT FORM')).toBeNull();
+  });
+
   it('shows the guard modal (not the form) when fixes are pending', async () => {
-    await renderPage();
-    expect(screen.getByText('Review fixes')).toBeTruthy();
+    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
+    renderPage();
+    expect(await screen.findByText('Review fixes')).toBeInTheDocument();
     expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
+
   it('shows the form when no fixes are pending', async () => {
-    pendingReturn = undefined;
-    await renderPage();
-    expect(screen.getByText('EDIT FORM')).toBeTruthy();
-  });
-  it('shows the blocked message (not the form) when the book is not valid', async () => {
-    pendingReturn = undefined;
-    bookReturn = { id: 'b1', title: 'X', valid: false };
-    await renderPage();
-    expect(screen.getByText(/must pass validation/i)).toBeTruthy();
-    expect(screen.queryByText('EDIT FORM')).toBeNull();
+    renderPage();
+    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
   });
 
-  // Final-branch-review I-3: the URL param (`useParams().id`, mocked above
-  // as `'global-b1'` — standing in for a Relay global id) must never reach
-  // `usePendingFixesForBook` or `BookEditForm`'s `id` prop. Both need the
-  // RAW id `useBook` already resolved (`bookReturn.id`, `'b1'`) —
-  // `usePendingFixesForBook` matches against the upload queue's raw
-  // `bookId`, and `BookEditForm` forwards `id` straight into
-  // `patchBookMetadata`, which hits `PATCH /api/books/:id/metadata` (a
-  // route that does not accept global ids).
-  it("calls usePendingFixesForBook and BookEditForm with the book's resolved raw id, not the URL param", async () => {
-    pendingReturn = undefined;
-    await renderPage();
-
-    expect(mockUsePendingFixesForBook).toHaveBeenCalledWith('b1');
-    expect(mockUsePendingFixesForBook).not.toHaveBeenCalledWith('global-b1');
-    expect(mockBookEditForm).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1' }));
+  // Deliberately seeds the pending-fix row keyed by the GLOBAL id, a literal
+  // that could only ever match if the page fed the guard the wrong kind of
+  // id. The real book's raw id is `DOCUMENT_ID`, a completely different
+  // literal, so the guard must NOT fire here — proving the page feeds
+  // `usePendingFixesForBook` `book.documentId`, never `book.id`/the URL param.
+  it('feeds the pending-fix guard the RAW documentId, never the global id', async () => {
+    pendingFixesRows = [proposalFor(GLOBAL_ID)];
+    renderPage();
+    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
+    expect(screen.queryByText('Review fixes')).toBeNull();
   });
 
-  it('passes undefined to usePendingFixesForBook while the book has not resolved yet', async () => {
-    bookReturn = undefined;
-    pendingReturn = undefined;
-    await renderPage();
-
-    expect(mockUsePendingFixesForBook).toHaveBeenCalledWith(undefined);
+  it("passes the book straight through to BookEditForm's book prop", async () => {
+    renderPage();
+    await waitFor(() => expect(mockBookEditForm).toHaveBeenCalled());
+    expect(mockBookEditForm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        book: expect.objectContaining({ id: GLOBAL_ID, documentId: DOCUMENT_ID }),
+      })
+    );
   });
 });
