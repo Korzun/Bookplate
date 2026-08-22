@@ -1147,6 +1147,48 @@ describe('POST /api/books/upload', () => {
     expect(books[0].seriesIndex).toBe(3);
   });
 
+  // Task 7 (book-edit spec): `fix-review`'s Edit link needs a Relay global
+  // id for a book whose only proposals are flag-only (`to: null`) —
+  // produced right here, at upload-analysis time, before any later PATCH
+  // ever runs. `patchBookMetadata`'s own `globalId` (step 6's C-2 fix)
+  // can't cover this case, so this response must carry one directly.
+  it('each upload result carries a globalId that Library.book resolves to the SAME book', async () => {
+    const epubBuf = makeEpub({ title: 'Global Id Upload Book', author: 'A' });
+    const token = await loginAlice();
+    const res = await request(app)
+      .post('/api/books/upload')
+      .attach('files', epubBuf, 'globalid.epub')
+      .set(...bearer(token));
+    expect(res.status).toBe(200);
+    const result = res.body.results[0] as { bookId: string; globalId: string };
+    // Unmistakable from the pre-existing raw `bookId` field — same naming
+    // rule the metadata/replace responses already follow.
+    expect(result.globalId).not.toBe(result.bookId);
+    expect(result.globalId).toBe(bookGlobalId(aliceId, result.bookId));
+
+    // THE ROUND TRIP: feed the response's OWN globalId into a REAL
+    // `Library.book` query over the same db this upload just wrote to —
+    // proves the id this route emits is one `page/book-edit` can actually
+    // use, not just a well-formed-looking string.
+    const aliceViewer: Viewer = {
+      userId: aliceId,
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    };
+    const gqlResult = await gqlExecute(
+      `{ viewer { library { book(id: "${result.globalId}") { id title } } } }`,
+      aliceViewer
+    );
+    expect(gqlResult.errors).toBeUndefined();
+    const data = gqlResult.data as {
+      viewer: { library: { book: { id: string; title: string } | null } };
+    };
+    expect(data.viewer.library.book).not.toBeNull();
+    expect(data.viewer.library.book!.title).toBe('Global Id Upload Book');
+    expect(data.viewer.library.book!.id).toBe(result.globalId);
+  });
+
   it('accepts a valid .epub with cover', async () => {
     const coverBuf = Buffer.from('fake-jpeg-data');
     const epubBuf = makeEpub({
@@ -5083,5 +5125,66 @@ describe('pending-fixes endpoints', () => {
       .get('/api/books/pending-fixes?user=someoneelse')
       .set(...bearer(token));
     expect(res.status).toBe(403);
+  });
+
+  // Task 7 (book-edit spec): the upload queue reseeds itself from this
+  // endpoint on page reload — a raw `bookId` alone leaves the reseeded
+  // item unable to build a working Edit link (`Library.book` needs a
+  // global id). Uses a deliberately literal raw id here (unlike the
+  // upload-response test above, where the hash is content-derived) so a
+  // coincidental match between raw and global forms can't hide a bug.
+  it('each row carries a globalId that Library.book resolves to the SAME book', async () => {
+    const token = await loginAlice();
+    const bookId = 'pf-book-gid-literal';
+    fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
+    await bookStore.addBook(
+      aliceOwner,
+      bookId,
+      stage(bookId, makeEpub({ title: 'Pending Fix Global Id Title', author: 'A' })),
+      { ...FAKE_META, title: 'Pending Fix Global Id Title', author: 'A' }
+    );
+    await request(app)
+      .put(`/api/books/${bookId}/pending-fixes`)
+      .set(...bearer(token))
+      .send({
+        fileName: 'x.epub',
+        fileSize: 10,
+        state: {
+          autoFixes: [],
+          appliedFixes: [],
+          proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
+          undo: null,
+        },
+      });
+
+    const list = await request(app)
+      .get('/api/books/pending-fixes')
+      .set(...bearer(token));
+    expect(list.status).toBe(200);
+    const row = list.body[0] as { bookId: string; globalId: string };
+    expect(row.bookId).toBe(bookId);
+    // Unmistakable from the pre-existing raw `bookId` field.
+    expect(row.globalId).not.toBe(row.bookId);
+    expect(row.globalId).toBe(bookGlobalId(aliceId, bookId));
+
+    // THE ROUND TRIP: feed the response's OWN globalId into a REAL
+    // `Library.book` query over the same db this row was read from.
+    const aliceViewer: Viewer = {
+      userId: aliceId,
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+    };
+    const gqlResult = await gqlExecute(
+      `{ viewer { library { book(id: "${row.globalId}") { id title } } } }`,
+      aliceViewer
+    );
+    expect(gqlResult.errors).toBeUndefined();
+    const data = gqlResult.data as {
+      viewer: { library: { book: { id: string; title: string } | null } };
+    };
+    expect(data.viewer.library.book).not.toBeNull();
+    expect(data.viewer.library.book!.title).toBe('Pending Fix Global Id Title');
+    expect(data.viewer.library.book!.id).toBe(row.globalId);
   });
 });

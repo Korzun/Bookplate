@@ -990,6 +990,7 @@ export function createUiRouter(
       const results: {
         filename: string;
         bookId: string;
+        globalId: string;
         applied: MetadataFix[];
         proposals: MetadataFix[];
       }[] = [];
@@ -1129,7 +1130,19 @@ export function createUiRouter(
 
         thumbnailQueue.enqueue(owner.userId, finalId);
         uploaded.push(file.originalname);
-        results.push({ filename: file.originalname, bookId: finalId, applied, proposals });
+        // `globalId` (Task 7, book-edit spec): `fix-review`'s Edit link
+        // needs a Relay global id for books whose only proposals are
+        // flag-only (`to: null`) — produced right here, at upload-analysis
+        // time, before any later PATCH ever runs. Same `bookGlobalId`
+        // helper the metadata/replace responses already use (step 6's C-2
+        // fix), applied additively — `bookId` keeps meaning the raw hash.
+        results.push({
+          filename: file.originalname,
+          bookId: finalId,
+          globalId: bookGlobalId(owner, finalId),
+          applied,
+          proposals,
+        });
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);
       res.json({ uploaded, results });
@@ -1142,7 +1155,13 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
-      res.json(await bookStore.getPendingFixes(owner));
+      const rows = await bookStore.getPendingFixes(owner);
+      // `globalId` (Task 7, book-edit spec): this endpoint reseeds the
+      // upload queue on page reload — a raw `bookId` alone can't build a
+      // working Edit link once `page/book-edit` requires a Relay global id.
+      // Same `bookGlobalId` helper the metadata/replace responses already
+      // use, applied additively per row — `bookId` keeps meaning the raw hash.
+      res.json(rows.map((row) => ({ ...row, globalId: bookGlobalId(owner, row.bookId) })));
     })
   );
 
