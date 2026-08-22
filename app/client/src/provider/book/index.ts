@@ -19,6 +19,7 @@ export {
   useSeriesNames,
   useFetchSeriesNextIndex,
   useStandaloneBookList,
+  useUpdateBookMetadata,
   useUploadBookList,
   useUploadQueueEngine,
   useValidateBook,
@@ -44,6 +45,9 @@ export type {
   BookEditBook,
   UseBookEdit,
   UseBookValidation,
+  BookEditPatch,
+  UpdatedBook,
+  UseUpdateBookMetadata,
 } from './hook';
 export type {
   UndoSnapshot,

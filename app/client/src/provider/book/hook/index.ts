@@ -23,6 +23,8 @@ export { useSeriesNames } from './use-series-names';
 export { useFetchSeriesNextIndex } from './use-fetch-series-next-index';
 export type { FetchSeriesNextIndex } from './use-fetch-series-next-index';
 export { useStandaloneBookList } from './use-standalone-book-list';
+export { useUpdateBookMetadata } from './use-update-book-metadata';
+export type { BookEditPatch, UpdatedBook, UseUpdateBookMetadata } from './use-update-book-metadata';
 export { useUploadBookList } from './use-upload-book-list';
 export { useUploadQueueEngine, fixKey } from './use-upload-queue';
 export { useValidateBook } from './use-validate-book';
