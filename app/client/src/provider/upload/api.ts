@@ -11,6 +11,10 @@ export type PendingFixState = {
 
 export type PendingFixDto = {
   bookId: string;
+  /** Relay global id for `bookId` (Task 7, book-edit spec) — lets a
+   * reseeded item build a working Edit link without the client ever
+   * encoding one itself. */
+  globalId: string;
   fileName: string;
   fileSize: number;
 } & PendingFixState;

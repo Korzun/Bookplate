@@ -42,7 +42,8 @@ export const UploadItem = ({
 }: Props) => {
   const styles = useStyle();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookId } = item;
+  const { fileName, fileSize, status, bytesUploaded, errorMessage, validation, bookGlobalId } =
+    item;
   const autoFixes = item.autoFixes ?? [];
   const appliedFixes = item.appliedFixes ?? [];
   const proposals = item.proposals ?? [];
@@ -140,7 +141,7 @@ export const UploadItem = ({
               onUndo={onUndo}
               undo={item.undo}
               disabled={actionsDisabled}
-              bookId={bookId}
+              bookGlobalId={bookGlobalId}
               showEditLink
             />
           )}

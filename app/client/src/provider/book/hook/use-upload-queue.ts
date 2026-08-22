@@ -36,6 +36,15 @@ export type UploadItem = {
   errorMessage?: string;
   validation?: ValidationFailure;
   bookId?: string;
+  /** Relay global id for `bookId` (Task 7, book-edit spec). Kept alongside
+   * the raw id, never in place of it — every other REST call this queue
+   * makes still needs `bookId` raw (see `bookId`'s own callers below). Used
+   * ONLY to build `FixReview`'s Edit link, which needs a global id because
+   * `page/book-edit` queries `Library.book(id:)`. Populated from whichever
+   * response most recently supplied one: the upload result, a pending-fix
+   * reseed row, or a successful `patchBookMetadata` call — never derived
+   * client-side. */
+  bookGlobalId?: string;
   /** High-confidence fixes the server applied during upload (informational). */
   autoFixes?: MetadataFix[];
   appliedFixes?: MetadataFix[];
@@ -196,6 +205,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
         status: 'done' as const,
         bytesUploaded: r.fileSize,
         bookId: r.bookId,
+        bookGlobalId: r.globalId,
         autoFixes: r.autoFixes,
         appliedFixes: r.appliedFixes,
         proposals: r.proposals,
@@ -290,6 +300,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
                     status: 'done' as const,
                     bytesUploaded: item.fileSize,
                     bookId: result?.bookId,
+                    bookGlobalId: result?.globalId,
                     autoFixes: result?.applied ?? [],
                     appliedFixes: [],
                     proposals: result?.proposals ?? [],
@@ -420,9 +431,12 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
             ? {
                 ...i,
                 // `.id` (raw) — the upload queue's own `bookId` is always
-                // raw (matches every other REST call it makes); `.globalId`
-                // is not this caller's concern.
+                // raw (matches every other REST call it makes). `.globalId`
+                // is threaded into `bookGlobalId` too (Task 7, book-edit
+                // spec) so a still-pending flag-only proposal's Edit link
+                // stays correct after this item's raw id rotates.
                 bookId: patched.id,
+                bookGlobalId: patched.globalId,
                 proposals: (i.proposals ?? []).filter((p) => !applied.has(fixKey(p))),
                 appliedFixes: [...(i.appliedFixes ?? []), ...fixes],
               }
@@ -533,10 +547,12 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
 
       if (!item.bookId) return false;
       let revertedId = item.bookId;
+      let revertedGlobalId = item.bookGlobalId;
       if (snap.originalMetadata) {
         const patched = await patchBookMetadata(item.bookId, snap.originalMetadata);
         if (patched === undefined) return false; // revert failed — keep applied state + undo
         revertedId = patched.id; // raw — the `/lineage` REST call below needs raw
+        revertedGlobalId = patched.globalId;
       }
       try {
         await apiFetch(
@@ -552,6 +568,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
             ? {
                 ...i,
                 bookId: revertedId,
+                bookGlobalId: revertedGlobalId,
                 proposals: snap.proposals,
                 appliedFixes: snap.appliedFixes,
                 undo: undefined,

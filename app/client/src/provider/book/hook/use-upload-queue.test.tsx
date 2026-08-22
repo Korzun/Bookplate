@@ -338,6 +338,52 @@ describe('useUploadQueueEngine', () => {
     expect(result.current.items[1].file.name).toBe('b.epub');
   });
 
+  // Task 7 (book-edit spec): a page reload reseeds the queue from
+  // GET /api/books/pending-fixes — the OTHER path (besides a fresh upload)
+  // that can surface a flag-only proposal's Edit link with no patch ever
+  // having run. Deliberately distinct raw/global literals.
+  it('seeds an item from getPendingFixes with the row globalId as bookGlobalId', async () => {
+    vi.mocked(fetch).mockImplementation((input: unknown) => {
+      const url = String(input);
+      if (url === '/api/config') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
+        }) as unknown as Promise<Response>;
+      }
+      if (url.includes('/api/books/pending-fixes')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              {
+                bookId: 'seed-raw-hash',
+                globalId: 'SEED-GLOBAL-ID',
+                fileName: 'seed.epub',
+                fileSize: 42,
+                autoFixes: [],
+                appliedFixes: [],
+                proposals: [makeFix({ to: null })],
+                undo: null,
+              },
+            ]),
+        }) as unknown as Promise<Response>;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
+      }) as unknown as Promise<Response>;
+    });
+
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.items[0].bookId).toBe('seed-raw-hash');
+    expect(result.current.items[0].bookGlobalId).toBe('SEED-GLOBAL-ID');
+  });
+
   it('starts at most maxConcurrentUploads uploads simultaneously', async () => {
     const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
 
@@ -707,9 +753,44 @@ describe('useUploadQueueEngine', () => {
     expect(result.current.items[0].proposals).toEqual([proposal]);
   });
 
+  // Task 7 (book-edit spec): a flag-only (`to: null`) proposal's Edit link
+  // needs a global id right here, at upload completion — before any patch
+  // could otherwise supply one. Deliberately distinct raw/global literals
+  // so a coincidental match can't hide the wrong one being threaded.
+  it('upload success threads the result globalId into bookGlobalId', async () => {
+    const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.addFiles(makeFileList('a.epub'));
+    });
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [
+        {
+          filename: 'a.epub',
+          bookId: 'raw-hash-1',
+          globalId: 'GLOBAL-ID-1',
+          applied: [],
+          proposals: [],
+        },
+      ],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    expect(result.current.items[0].bookId).toBe('raw-hash-1');
+    expect(result.current.items[0].bookGlobalId).toBe('GLOBAL-ID-1');
+  });
+
   it('applyFix moves the fix from proposals to appliedFixes and updates bookId on success', async () => {
     const fix = makeFix();
-    stubFetchWithPatch({ ok: true, body: { id: 'book-2' } });
+    stubFetchWithPatch({ ok: true, body: { id: 'book-2', globalId: 'GLOBAL-book-2' } });
 
     const { result } = renderHook(() => useUploadQueueEngine(), { wrapper: makeWrapper() });
     await act(async () => {
@@ -737,6 +818,9 @@ describe('useUploadQueueEngine', () => {
 
     expect(succeeded).toBe(true);
     expect(result.current.items[0].bookId).toBe('book-2');
+    // Distinct from `bookId` above — proves the PATCH response's OWN
+    // `globalId` was threaded through, not re-derived from `bookId`.
+    expect(result.current.items[0].bookGlobalId).toBe('GLOBAL-book-2');
     expect(result.current.items[0].proposals).toEqual([]);
     expect(result.current.items[0].appliedFixes).toEqual([fix]);
   });
@@ -780,8 +864,8 @@ describe('useUploadQueueEngine', () => {
     stubFetchForApplyAll({
       original,
       patchResponses: [
-        { ok: true, body: { id: 'book-2' } },
-        { ok: true, body: { id: 'book-3' } },
+        { ok: true, body: { id: 'book-2', globalId: 'GLOBAL-book-2' } },
+        { ok: true, body: { id: 'book-3', globalId: 'GLOBAL-book-3' } },
       ],
     });
 
@@ -789,6 +873,8 @@ describe('useUploadQueueEngine', () => {
       await result.current.applyAllProposals(id);
     });
     expect(result.current.items[0].bookId).toBe('book-2');
+    // Distinct from `bookId` — the PATCH response's own `globalId`, not derived.
+    expect(result.current.items[0].bookGlobalId).toBe('GLOBAL-book-2');
     expect(result.current.items[0].undo?.kind).toBe('apply');
     expect(result.current.items[0].undo?.originalMetadata).toMatchObject({
       author: 'Original Author',
@@ -801,6 +887,9 @@ describe('useUploadQueueEngine', () => {
     expect(result.current.items[0].proposals).toEqual(before);
     expect(result.current.items[0].undo).toBeUndefined();
     expect(result.current.items[0].bookId).toBe('book-3');
+    // The revert PATCH also mints a fresh globalId — it must follow bookId,
+    // not go stale at the pre-revert value.
+    expect(result.current.items[0].bookGlobalId).toBe('GLOBAL-book-3');
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/books\/book-3\/lineage/),
       expect.objectContaining({ method: 'DELETE' })

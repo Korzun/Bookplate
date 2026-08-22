@@ -199,7 +199,11 @@ describe('UploadItem metadata fixes', () => {
     makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
+      // Deliberately distinct from `bookGlobalId` below — a coincidental
+      // match couldn't tell a correct Edit link (global id) from a
+      // regressed one (raw hash) apart.
       bookId: 'abc',
+      bookGlobalId: 'global-xyz',
       appliedFixes,
       proposals,
     });
@@ -325,7 +329,11 @@ describe('UploadItem metadata fixes', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
     // The title-is-filename proposal has to === null -> an Edit link to the book page.
     const editLink = screen.getByRole('link', { name: /edit/i });
-    expect(editLink).toHaveAttribute('href', expect.stringContaining('abc'));
+    // The link must use the GLOBAL id (`page/book-edit` queries
+    // `Library.book(id:)`, which requires one) — never the raw content
+    // hash the upload queue otherwise keys everything by.
+    expect(editLink).toHaveAttribute('href', expect.stringContaining('global-xyz'));
+    expect(editLink.getAttribute('href')).not.toContain('abc');
     // Only one actionable proposal -> only one Accept button (the flag-only row has none).
     expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(1);
   });

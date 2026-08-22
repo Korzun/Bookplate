@@ -76,7 +76,7 @@ describe('FixReview', () => {
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
         onApplyAll={onApplyAll}
-        bookId="abc"
+        bookGlobalId="abc"
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /accept all/i }));
@@ -92,7 +92,7 @@ describe('FixReview', () => {
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
         onDismissAll={onDismissAll}
-        bookId="abc"
+        bookGlobalId="abc"
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /reject all/i }));
@@ -106,7 +106,7 @@ describe('FixReview', () => {
         appliedFixes={[]}
         proposals={[flagOnlyProposal]}
         {...noop}
-        bookId="abc"
+        bookGlobalId="abc"
       />
     );
     expect(screen.getByText('needs review')).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe('FixReview', () => {
         appliedFixes={[]}
         proposals={[flagOnlyProposal]}
         {...noop}
-        bookId="abc"
+        bookGlobalId="abc"
         showEditLink={false}
       />
     );
@@ -153,7 +153,7 @@ describe('FixReview', () => {
         appliedFixes={[]}
         proposals={[actionableProposal, flagOnlyProposal]}
         {...noop}
-        bookId="abc"
+        bookGlobalId="abc"
         disabled
       />
     );

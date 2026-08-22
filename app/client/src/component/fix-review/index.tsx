@@ -24,9 +24,17 @@ interface Props {
    * page-level "Accept all" is applying across the whole queue, so a
    * per-card decision can't race the in-flight sweep. */
   disabled?: boolean;
-  bookId?: string;
+  /** Relay global id for the book this row's proposals belong to, used ONLY
+   * to build the Edit link's `path.bookEdit(...)` href — `page/book-edit`
+   * queries `Library.book(id:)`, which requires a Relay global id, not the
+   * raw content hash the upload queue otherwise keys everything by (Task 7,
+   * book-edit spec — this prop was named `bookId` and fed the raw hash
+   * until then, which broke the Edit link the moment `page/book-edit`
+   * moved off REST). Callers must resolve one before rendering this, never
+   * derive it here — the client never encodes or decodes a Relay global id. */
+  bookGlobalId?: string;
   /** Whether a to===null (flag-only) proposal offers an Edit link to the book
-   * page. Defaults to true; only takes effect when `bookId` is given. */
+   * page. Defaults to true; only takes effect when `bookGlobalId` is given. */
   showEditLink?: boolean;
 }
 
@@ -60,7 +68,7 @@ export const FixReview = ({
   onUndo,
   undo,
   disabled,
-  bookId,
+  bookGlobalId,
   showEditLink = true,
 }: Props) => {
   const styles = useStyle();
@@ -235,8 +243,8 @@ export const FixReview = ({
                   </Fragment>
                 ) : (
                   showEditLink &&
-                  bookId && (
-                    <Link to={path.bookEdit(bookId)} className={styles.editLink}>
+                  bookGlobalId && (
+                    <Link to={path.bookEdit(bookGlobalId)} className={styles.editLink}>
                       Edit
                     </Link>
                   )

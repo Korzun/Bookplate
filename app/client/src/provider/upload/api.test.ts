@@ -13,6 +13,9 @@ describe('pending-fixes api', () => {
     const rows = [
       {
         bookId: 'b1',
+        // Task 7 (book-edit spec): deliberately distinct from `bookId` so a
+        // coincidental match couldn't mask a dropped/mixed-up field.
+        globalId: 'GLOBAL-b1',
         fileName: 'x',
         fileSize: 1,
         autoFixes: [],
@@ -23,7 +26,9 @@ describe('pending-fixes api', () => {
     ];
     const fetchMock = vi.fn(async (..._args: FetchArgs) => ({ ok: true, json: async () => rows }));
     vi.stubGlobal('fetch', fetchMock as never);
-    expect(await getPendingFixes(withUser)).toEqual(rows);
+    const result = await getPendingFixes(withUser);
+    expect(result).toEqual(rows);
+    expect(result[0].globalId).toBe('GLOBAL-b1');
     expect(fetchMock.mock.calls[0][0]).toContain('/api/books/pending-fixes?user=alice');
   });
 
