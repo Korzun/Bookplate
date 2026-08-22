@@ -11,8 +11,8 @@ import { graphql } from '~/gql';
  * the pending-fix guard, which reads the upload queue's raw-keyed in-memory
  * items and stays on REST until step 9 — see `page/book-edit`'s own comment.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 33 (33.0%), complexity
- * 33 (0.1%) of budget — comfortably under the 70% gate on both axes, no
+ * Measured (`npm run test:cost -w app/server`): breadth 31 (31.0%), complexity
+ * 31 (0.1%) of budget — comfortably under the 70% gate on both axes, no
  * trimming needed.
  */
 export const BookEditDocument = graphql(`
@@ -33,8 +33,6 @@ export const BookEditDocument = graphql(`
           publishDate
           seriesIndex
           subjects
-          hasCover
-          coverUrl
           series {
             id
             name
@@ -70,8 +68,8 @@ export const BookEditDocument = graphql(`
  * `StagedUploadNotFoundError` — all five error members below match exactly,
  * and each `implements UserError` with its own `message: String!` field.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 37 (37.0%), complexity
- * 37 (0.1%) of budget — comfortably under the 70% gate on both axes.
+ * Measured (`npm run test:cost -w app/server`): breadth 35 (35.0%), complexity
+ * 35 (0.1%) of budget — comfortably under the 70% gate on both axes.
  */
 export const BookUpdateMetadataDocument = graphql(`
   mutation BookUpdateMetadata($input: BookUpdateMetadataInput!) {
@@ -90,8 +88,6 @@ export const BookUpdateMetadataDocument = graphql(`
           publishDate
           seriesIndex
           subjects
-          hasCover
-          coverUrl
           series {
             id
             name
