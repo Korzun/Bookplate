@@ -1,0 +1,263 @@
+import { graphql } from '~/gql';
+
+/**
+ * One progress row. `book` is NULLABLE by design — a device syncs progress for
+ * documents that are not in this library, and those rows still render with the
+ * raw `document` hash and no book link.
+ *
+ * `id` is `Progress`'s computed global id — the cache key AND `progressDelete`'s
+ * argument. It is deliberately NOT resolvable through `node(id:)`; `Progress` is
+ * not a `Node`. `document` is the RAW content hash and is what `progressSet`
+ * takes.
+ */
+export const ProgressRowFragment = graphql(`
+  fragment ProgressRowFragment on Progress {
+    id
+    document
+    percentage
+    currentChapter
+    device
+    timestamp
+    book {
+      id
+      title
+      author
+      hasCover
+      thumbnailUrl(width: 88)
+    }
+  }
+`);
+
+/**
+ * The viewer's own progress. `first: 50` matches
+ * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the cap is 100.
+ * Forward-only — `Library.progress` rejects `last`/`before`.
+ *
+ * `$first` is a VARIABLE, so `Library.progress` prices at its `maxSize` (100),
+ * not the 50 the page actually passes (`cost-limit.ts`'s `multiplierFor` prices
+ * a variable-valued `first`/`last` at the field's max, not its default).
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 32 (32.0%), complexity
+ * 2507 (7.6%) of budget.
+ */
+export const MyProgressListDocument = graphql(`
+  query MyProgressList($libraryId: ID!, $first: Int!, $after: String) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        progress(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              ...ProgressRowFragment
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * The collapsed card's subtitle, with NO rows fetched.
+ *
+ * `viewer.user`, not `Query.user(id:)` — the latter is admin-only and refuses a
+ * non-admin even for their own id. `Viewer.user` is NULLABLE and is null for the
+ * config-based admin, which has no `User` row (the same reason `viewer.library`
+ * is null for it).
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 7 (7.0%), complexity 7
+ * (0.0%) of budget.
+ */
+export const MyProgressCountDocument = graphql(`
+  query MyProgressCount {
+    viewer {
+      user {
+        id
+        progressCount
+      }
+    }
+  }
+`);
+
+/**
+ * An admin viewing ANOTHER user's progress. Roots at `Query.user(id:)`, not
+ * `node(id: $libraryId)` — the target is a different user's library, and
+ * `UserRow` already holds their `userId`. `Query.user(id:)` is admin-only, which
+ * is correct here: this row renders only for admins.
+ *
+ * Same `$first`-is-a-variable pricing as `MyProgressListDocument` above: the
+ * `progress` connection prices at `maxSize` (100), not the 50 passed.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 33 (33.0%), complexity
+ * 2508 (7.6%) of budget.
+ */
+export const UserProgressListDocument = graphql(`
+  query UserProgressList($userId: ID!, $first: Int!, $after: String) {
+    user(id: $userId) {
+      id
+      library {
+        id
+        progress(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              ...ProgressRowFragment
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * `ProgressSetResult` genuinely has two members (schema-verified,
+ * `app/server/graphql/schema.generated.graphql`): `ProgressSetPayload` and
+ * `InvalidInputError` — unlike `ProgressDeleteResult` below, which has only
+ * one. Both branches are selected; omitting `InvalidInputError` would
+ * silently swallow a real rejected-input error at runtime.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 26 (26.0%), complexity
+ * 26 (0.1%) of budget.
+ */
+export const ProgressSetDocument = graphql(`
+  mutation ProgressSet($input: ProgressSetInput!) {
+    progressSet(input: $input) {
+      __typename
+      ... on ProgressSetPayload {
+        progress {
+          id
+          ...ProgressRowFragment
+        }
+        library {
+          id
+        }
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);
+
+/**
+ * `ProgressDeleteResult` is a single-member union today (schema-verified,
+ * `app/server/graphql/schema.generated.graphql`) — no error branch is added,
+ * matching the "no speculative error members" rule (spec 1's
+ * traced-union-drop precedent).
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 8 (8.0%), complexity 8
+ * (0.0%) of budget.
+ */
+export const ProgressDeleteDocument = graphql(`
+  mutation ProgressDelete($id: ID!) {
+    progressDelete(input: { id: $id }) {
+      __typename
+      ... on ProgressDeletePayload {
+        deletedId
+        library {
+          id
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * `BookLinkDocumentResult` genuinely has four error members plus the payload
+ * (schema-verified, `app/server/graphql/schema.generated.graphql`):
+ * `DocumentAlreadyLinkedError`, `DocumentIsBookError`, `InvalidInputError`,
+ * and `SelfLinkError`, each `implements UserError` and exposes `message`. All
+ * four are selected here.
+ *
+ * `book { id lineage { oldId newId type } }` re-selects the full lineage list
+ * so Apollo's own normalization overwrites the array on the existing
+ * `Book:<id>` entity, matching `BookUnlinkDocumentDocument`'s convention
+ * (`graphql/book.ts`).
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 20 (20.0%), complexity
+ * 96 (0.3%) of budget.
+ */
+export const BookLinkDocumentDocument = graphql(`
+  mutation BookLinkDocument($id: ID!, $documentId: String!) {
+    bookLinkDocument(input: { id: $id, documentId: $documentId }) {
+      __typename
+      ... on BookLinkDocumentPayload {
+        book {
+          id
+          lineage {
+            oldId
+            newId
+            type
+          }
+        }
+      }
+      ... on DocumentAlreadyLinkedError {
+        message
+      }
+      ... on DocumentIsBookError {
+        message
+      }
+      ... on SelfLinkError {
+        message
+      }
+      ... on InvalidInputError {
+        message
+      }
+    }
+  }
+`);
+
+/**
+ * The link modal's book picker. Server-side filtered via `LibraryFilter.query`
+ * — `entryType` was NOT added here despite the brief's original draft: the
+ * `LibraryEntryType` enum (schema-verified,
+ * `app/server/graphql/schema.generated.graphql`) has only `SERIES` and
+ * `STANDALONE`, distinguishing a grouped series row from an ungrouped book
+ * row — there is no `BOOK` value, and no combination of the two selects
+ * "every book, grouped or not." `Library.entries` returns the `LibraryEntry`
+ * union (`Book | Series`) regardless, so the picker narrows on `__typename`
+ * instead, exactly as the REST-replacement note below describes; a book that
+ * is grouped into a series surfaces via that series's row, unchanged from
+ * before this task.
+ *
+ * Replaces a fetch-the-whole-library-then-filter-locally REST hook with a
+ * server-side `query` filter and a literal `first: 20` page size.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 16 (16.0%), complexity
+ * 187 (0.6%) of budget.
+ */
+export const LinkPickerBooksDocument = graphql(`
+  query LinkPickerBooks($libraryId: ID!, $query: String) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        entries(first: 20, filter: { query: $query }) {
+          edges {
+            node {
+              __typename
+              ... on Book {
+                id
+                title
+                author
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
