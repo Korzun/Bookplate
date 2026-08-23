@@ -11,6 +11,7 @@ import type { TokenStore } from '../services/token-store';
 import type { UserStore } from '../services/user-store';
 import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
+import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
 import {
   createChapterSpineMapLoader,
   type ChapterSpineMapLoader,
@@ -95,6 +96,7 @@ export type Context = {
   loadChapterSpineMap: ChapterSpineMapLoader;
   loadSeriesProgress: SeriesProgressLoader;
   loadValidationCounts: ValidationCountsLoader;
+  loadBookByDocument: BookByDocumentLoader;
 };
 
 export type ContextDeps = {
@@ -142,4 +144,5 @@ export const createContext =
     loadChapterSpineMap: createChapterSpineMapLoader(deps.prisma),
     loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
     loadValidationCounts: createValidationCountsLoader(deps.prisma),
+    loadBookByDocument: createBookByDocumentLoader(deps.prisma),
   });

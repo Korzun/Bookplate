@@ -1,6 +1,12 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { deriveCurrentChapter, epochSecondsToDate } from '../../derive';
+// `../book/model`, not `../book`: `book/index.ts` also side-effect-imports
+// `book/mutation/*.ts` — importing the defining module rather than the
+// index keeps a model-to-model reference from dragging that whole surface
+// into the require graph. Same rule every other entity-directory import in
+// this schema follows; see `library/model.ts`'s identical note.
+import { model as book } from '../book/model';
 import { builder } from '../builder';
 
 /**
@@ -101,3 +107,43 @@ export const model = builder.prismaObject('Progress', {
     }),
   }),
 });
+
+/**
+ * `book` is split out of the `fields:` callback above and registered via
+ * `builder.prismaObjectField` instead, per the prisma plugin's own README
+ * ("Circular references", §"Type variants"): `Progress` referencing `Book`
+ * inside its OWN initial `fields:` callback, while `book/model.ts`
+ * symmetrically references `Progress` inside ITS initial `fields:` callback
+ * (`Book.progress`), is the "2 prisma object refs reference each other"
+ * case the README warns about — TypeScript cannot resolve `model`'s
+ * exported type on either side without first resolving the other's, which
+ * itself isn't resolvable without the first. Confirmed empirically: with
+ * `book` inline above, `tsc --noEmit` fails with ~150 cascading errors
+ * across unrelated files that read `Book`'s prisma type (the same
+ * `any`-degradation `linked-document/model.ts`'s doc comment describes for
+ * the identical hazard on the `Book`↔`LinkedDocument` edge). Moving this
+ * one field out here means the `fields:` callback above no longer
+ * references `book` at all, so `model`'s exported type resolves cleanly —
+ * and `book/model.ts`'s `Book.progress` field (which references `model`
+ * from this file) resolves cleanly in turn, breaking the cycle. This call
+ * still imports `book` from `../book/model` (needed for `type: book`) and
+ * still runs after that whole module has finished loading, exactly like
+ * the field would have inline; only the TYPE-CHECKING order changes, not
+ * the runtime shape of the schema — confirmed by `graphql:schema`'s SDL
+ * diff being identical before and after this split.
+ */
+builder.prismaObjectField('Progress', 'book', (t) =>
+  t.field({
+    type: book,
+    nullable: true,
+    description:
+      'The library book this reading position belongs to, or null when the ' +
+      'document is not in this library at all — a KOReader device syncs ' +
+      'progress for whatever it is reading, including books never imported ' +
+      'here. Those rows still render; they simply have no book to link to. ' +
+      'Mirrors `LinkedDocument.oldBook`/`newBook`: a raw content hash for ' +
+      'display (`document`) beside a resolvable edge for navigation.',
+    resolve: (progress, _args, context) =>
+      context.loadBookByDocument(progress.userId, progress.document),
+  })
+);

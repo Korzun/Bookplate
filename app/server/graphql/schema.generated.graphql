@@ -652,6 +652,10 @@ type PendingFixState {
 }
 
 type Progress {
+  """
+  The library book this reading position belongs to, or null when the document is not in this library at all — a KOReader device syncs progress for whatever it is reading, including books never imported here. Those rows still render; they simply have no book to link to. Mirrors `LinkedDocument.oldBook`/`newBook`: a raw content hash for display (`document`) beside a resolvable edge for navigation.
+  """
+  book: Book
   currentChapter: Int
   device: String!
   deviceId: String!

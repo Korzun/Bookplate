@@ -274,6 +274,104 @@ describe('Progress', () => {
     expect(result.errors).toBeDefined();
     expect(result.errors!.length).toBeGreaterThan(0);
   }, 2000);
+
+  it('resolves `book` for a progress row whose document is a library book', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { progress(first: 10) { edges { node { book { id title } } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const edges = (
+      result.data as {
+        viewer: {
+          library: {
+            progress: { edges: { node: { book: { id: string; title: string } | null } }[] };
+          };
+        };
+      }
+    ).viewer.library.progress.edges;
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.node.book).toEqual({
+      id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+      title: 'Read Me',
+    });
+  });
+
+  it('resolves `book` as null when the document is not in the library — e.g. a KOReader device syncing a book never imported here', async () => {
+    await harness.prisma.progress.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        document: 'not-imported-hash',
+        progress: '/x',
+        percentage: 0.2,
+        device: 'Kobo',
+        deviceId: 'dev-2',
+        timestamp: 1_700_000_100,
+      },
+    });
+
+    const result = await harness.execute(
+      '{ viewer { library { progress(first: 10) { edges { node { document book { title } } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const edges = (
+      result.data as {
+        viewer: {
+          library: {
+            progress: { edges: { node: { document: string; book: unknown } }[] };
+          };
+        };
+      }
+    ).viewer.library.progress.edges;
+    const orphan = edges.find((e) => e.node.document === 'not-imported-hash');
+    expect(orphan?.node.book ?? null).toBeNull();
+  });
+
+  // `Progress.book` used to be reachable only via a per-row lookup, a
+  // textbook N+1 across a page of progress rows. It now goes through
+  // `context.loadBookByDocument`, a request-scoped batching loader (see
+  // `book-by-document-loader.ts`) — this asserts the batching actually
+  // happens, not merely that the loader exists. Seeds at least three rows:
+  // a single-row fixture would pass even with no batching at all.
+  it('batches Progress.book across a page of progress rows into a single query', async () => {
+    for (let i = 0; i < 5; i++) {
+      const id = `batch-book-${i}`.padStart(32, '0');
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id,
+          title: `Batch Book ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      await harness.prisma.progress.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          document: id,
+          progress: '/x',
+          percentage: 0.1 * i,
+          device: 'Kobo',
+          deviceId: 'dev-1',
+          timestamp: 1_700_000_200 + i,
+        },
+      });
+    }
+
+    const findManySpy = vi.spyOn(harness.prisma.book, 'findMany');
+
+    const result = await harness.execute(
+      '{ viewer { library { progress(first: 10) { edges { node { book { title } } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(findManySpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 const PROGRESS_QUERY = `

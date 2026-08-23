@@ -18,6 +18,7 @@ import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
+import { createBookByDocumentLoader } from './book-by-document-loader';
 import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
 import type { Context, Stores, Viewer } from './context';
 import { createOwnerLoader } from './owner';
@@ -165,6 +166,7 @@ export const createHarness = async (): Promise<Harness> => {
       loadChapterSpineMap: createChapterSpineMapLoader(prisma),
       loadSeriesProgress: createSeriesProgressLoader(prisma),
       loadValidationCounts: createValidationCountsLoader(prisma),
+      loadBookByDocument: createBookByDocumentLoader(prisma),
     };
     const result = await graphql({
       schema,
