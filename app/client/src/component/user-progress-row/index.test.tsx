@@ -124,6 +124,7 @@ const deleteSuccessMock = (
         __typename: 'ProgressDeletePayload',
         deletedId: progressId,
         library: { __typename: 'Library', id: 'lib-1' },
+        user: { __typename: 'User', id: 'user-1', progressCount: 0 },
       },
     },
   },
