@@ -31,10 +31,15 @@ type PendingLookup = {
  * returned in a second `findMany` — two queries regardless of how many
  * series (or books per series) are in the batch.
  *
- * SEMANTICS — matches `calculateSeriesProgressPercent`
- * (`app/client/src/provider/progress/helper.ts`), the client-side
+ * SEMANTICS — matches `calculateSeriesProgressPercent`, the client-side
  * computation `useMySeriesProgress` used before grid rows went fetch-free
- * (task 7): the unweighted MEAN of each member book's progress percentage,
+ * (task 7). That helper (`app/client/src/provider/progress/helper.ts`) is
+ * GONE — deleted with `ProgressProvider` and the step-8 bridge (final
+ * whole-branch review, docs-only fix: two stale citations of it survived
+ * task 8's stale-doc sweep, which only walked the client) — so THIS
+ * doc comment is now the authority for the semantics it used to match, not
+ * a pointer to one. Recorded here in full: the unweighted MEAN of each
+ * member book's progress percentage,
  * treating a book with no `Progress` row as 0%, and `null` — not 0 — when
  * NONE of the series' books have any progress row (an unstarted series
  * reads as "no badge", not "0%"). A series with zero books (bookCount 0, an

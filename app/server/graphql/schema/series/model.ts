@@ -20,12 +20,15 @@ export const model = builder.prismaNode('Series', {
      * books — the unweighted mean of each book's `Progress.percentage`
      * (missing progress counts as 0%), or `null` when NONE of the series'
      * books have a progress row at all (an unstarted series, not a 0% one).
-     * Exactly `calculateSeriesProgressPercent`
-     * (`app/client/src/provider/progress/helper.ts`), the computation
+     * Exactly `calculateSeriesProgressPercent`, the computation
      * `useMySeriesProgress` used client-side before grid rows went
      * fetch-free (task 7 dropped `SeriesRow`'s progress badge for exactly
      * this reason — no such field existed on either transport; task 14
-     * restores it here).
+     * restores it here). That helper (`app/client/src/provider/progress/
+     * helper.ts`) no longer exists — deleted with `ProgressProvider` and
+     * the step-8 bridge (final whole-branch review, docs-only fix); the
+     * full semantics are spelled out directly in `series-progress-loader.ts`'s
+     * own doc comment, this field's `resolve` below.
      *
      * Named `progressPercentage`, not the bare `progress` this field
      * carried in an earlier revision of this task (review round 1) — a
