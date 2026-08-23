@@ -123,6 +123,21 @@ const payload = builder.objectRef<ProgressSetPayloadShape>('ProgressSetPayload')
         }),
     }),
     library: t.field({ type: library, resolve: (result) => result.owner }),
+    // `owner.userId` is exactly `context.viewer.userId` here (this mutation
+    // has no admin write path — see the field's own doc comment below), so
+    // this always resolves the CALLER's own `User` row. Same resolver shape
+    // as `Library.user` (`library/model.ts`): a fresh `findUniqueOrThrow` by
+    // id, not a cached/DTO value, so `User.progressCount`
+    // (`t.relationCount('progresses')`) reads the row's CURRENT count —
+    // i.e. the one this mutation's own write just changed. Lets the client
+    // normalize the count straight onto the already-cached `User:<id>`
+    // entity (`graphql/progress.ts`'s `ProgressSetDocument`, I-2) instead of
+    // hand-rolling a client-side increment.
+    user: t.field({
+      type: user,
+      resolve: (result, _args, context) =>
+        context.prisma.user.findUniqueOrThrow({ where: { id: result.owner.userId } }),
+    }),
   }),
 });
 

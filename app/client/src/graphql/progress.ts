@@ -132,8 +132,20 @@ export const UserProgressListDocument = graphql(`
  * one. Both branches are selected; omitting `InvalidInputError` would
  * silently swallow a real rejected-input error at runtime.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 26 (26.0%), complexity
- * 26 (0.1%) of budget.
+ * `user { id progressCount }` (I-2, final whole-branch review): the profile
+ * card's "N books synced" subtitle (`MyProgressCountDocument`, read off the
+ * SAME `Viewer.user`/`User:<id>` entity) and the admin's per-row subtitle
+ * (`UserListDocument`) both key off `User.progressCount`. Neither this
+ * document nor `ProgressDeleteDocument` below wrote to a `User` at all
+ * before this fix, so a set/delete left those subtitles stale until an
+ * unrelated refetch. No hand-written `update` is needed for it: `id` is
+ * enough for Apollo to identify the ALREADY-cached `User:<id>` entity (every
+ * signed-in viewer has been through `ViewerBootstrapDocument` or
+ * `UserListDocument` by the time this mutation is reachable), and normal
+ * normalization overwrites `progressCount` on it directly.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 30 (30.0%), complexity
+ * 30 (0.1%) of budget.
  */
 export const ProgressSetDocument = graphql(`
   mutation ProgressSet($input: ProgressSetInput!) {
@@ -146,6 +158,10 @@ export const ProgressSetDocument = graphql(`
         }
         library {
           id
+        }
+        user {
+          id
+          progressCount
         }
       }
       ... on InvalidInputError {
@@ -161,8 +177,16 @@ export const ProgressSetDocument = graphql(`
  * matching the "no speculative error members" rule (spec 1's
  * traced-union-drop precedent).
  *
- * Measured (`npm run test:cost -w app/server`): breadth 8 (8.0%), complexity 8
- * (0.0%) of budget.
+ * `user { id progressCount }` (I-2, final whole-branch review): see
+ * `ProgressSetDocument`'s identical note above — same reasoning, and it
+ * matters MORE here, since `progressDelete` is admin-capable
+ * (`ProgressDeleteInput.id` can name another user's row): the payload's
+ * `user` is the row's actual OWNER (decoded server-side from the input id),
+ * never the admin caller, so this is what makes normalization decrement the
+ * RIGHT person's count.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 12 (12.0%), complexity
+ * 12 (0.0%) of budget.
  */
 export const ProgressDeleteDocument = graphql(`
   mutation ProgressDelete($id: ID!) {
@@ -172,6 +196,10 @@ export const ProgressDeleteDocument = graphql(`
         deletedId
         library {
           id
+        }
+        user {
+          id
+          progressCount
         }
       }
     }

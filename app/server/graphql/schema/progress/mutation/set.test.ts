@@ -94,6 +94,59 @@ describe('Mutation.progressSet', () => {
     expect(row?.percentage).toBe(0.5);
   });
 
+  // I-2 (final whole-branch review): `User.progressCount` must move in the
+  // SAME response that creates the row, so the client can normalize it onto
+  // the already-cached `User:<id>` entity without a second round trip. Two
+  // documents (not one) so this can't pass by coincidence of `progressCount`
+  // defaulting to 1 either way.
+  it('I-2: exposes the owning User with progressCount reflecting the just-written row', async () => {
+    await seedBook(harness.aliceOwner.userId, 'dune.epub', SPINE_MAP);
+    await seedBook(harness.aliceOwner.userId, 'foundation.epub', SPINE_MAP);
+
+    const first = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: {
+          userId: harness.aliceGlobalId,
+          document: 'dune.epub',
+          currentChapter: 1,
+          percentage: 0.1,
+        },
+      },
+    });
+    expect(first.errors).toBeUndefined();
+
+    const result = await harness.execute(
+      `
+        mutation Set($input: ProgressSetInput!) {
+          progressSet(input: $input) {
+            __typename
+            ... on ProgressSetPayload {
+              user { id progressCount }
+            }
+          }
+        }
+      `,
+      {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            userId: harness.aliceGlobalId,
+            document: 'foundation.epub',
+            currentChapter: 1,
+            percentage: 0.1,
+          },
+        },
+      }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressSet).toEqual({
+      __typename: 'ProgressSetPayload',
+      user: { id: harness.aliceGlobalId, progressCount: 2 },
+    });
+  });
+
   it('upserts: a second call for the same document updates the existing row rather than erroring', async () => {
     const first = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

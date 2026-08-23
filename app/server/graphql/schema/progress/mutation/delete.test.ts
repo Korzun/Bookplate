@@ -155,6 +155,41 @@ describe('Mutation.progressDelete', () => {
     expect(await documentsOf(harness.bobOwner.userId)).toEqual(['shared.epub']);
   });
 
+  // I-2 (final whole-branch review): the ADMIN case is the one that matters
+  // — `owner` here is the DECODED owner from the input id, not the caller,
+  // so `user` must resolve to alice (whose progressCount just moved), never
+  // the admin (who has no `User` row at all — resolving the caller would
+  // throw `findUniqueOrThrow`, since a config-based admin has no matching
+  // row, giving this a clean failure signal rather than a silently wrong
+  // count).
+  it('I-2: exposes the deleted row’s owner (not the admin caller) with the decremented progressCount', async () => {
+    await seedProgress(harness.aliceOwner.userId, 'dune.epub');
+    await seedProgress(harness.aliceOwner.userId, 'foundation.epub');
+
+    const result = await harness.execute(
+      `
+        mutation Delete($input: ProgressDeleteInput!) {
+          progressDelete(input: $input) {
+            __typename
+            ... on ProgressDeletePayload {
+              user { id progressCount }
+            }
+          }
+        }
+      `,
+      {
+        viewer: harness.adminViewer,
+        variables: { input: { id: progressId(harness.aliceOwner.userId, 'dune.epub') } },
+      }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.progressDelete).toEqual({
+      __typename: 'ProgressDeletePayload',
+      user: { id: harness.aliceGlobalId, progressCount: 1 },
+    });
+  });
+
   it('refuses a Progress id whose userId component names no user', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

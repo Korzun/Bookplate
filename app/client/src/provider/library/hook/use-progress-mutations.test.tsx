@@ -1,5 +1,6 @@
 import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
 import { gql } from '@apollo/client';
+import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -9,6 +10,10 @@ import type {
   BookLinkDocumentMutation,
   BookLinkDocumentMutationVariables,
   LineageType,
+  MyProgressCountQuery,
+  MyProgressCountQueryVariables,
+  MyProgressListQuery,
+  MyProgressListQueryVariables,
   ProgressDeleteMutation,
   ProgressDeleteMutationVariables,
   ProgressRowFragmentFragment,
@@ -19,6 +24,7 @@ import type {
 } from '~/gql/graphql';
 import {
   BookLinkDocumentDocument,
+  MyProgressCountDocument,
   MyProgressListDocument,
   ProgressDeleteDocument,
   ProgressRowFragment,
@@ -79,6 +85,7 @@ const progressRow = (
     currentChapter: number;
     device: string;
     timestamp: string;
+    book: ProgressNode['book'];
   }> = {}
 ): ProgressNode => ({
   __typename: 'Progress',
@@ -88,7 +95,7 @@ const progressRow = (
   currentChapter: overrides.currentChapter ?? 1,
   device: overrides.device ?? 'Kobo',
   timestamp: overrides.timestamp ?? '2026-01-01T00:00:00.000Z',
-  book: null,
+  book: overrides.book ?? null,
 });
 
 const seedMyProgressList = (
@@ -115,12 +122,29 @@ const seedMyProgressList = (
     },
   });
 
+/** I-2: seeds `MyProgressCountDocument`'s cache entry the way the collapsed profile card would — so a test can prove a set/delete mutation's `user.progressCount` reaches this SAME entity purely through normalization. */
+const seedMyProgressCount = (client: ApolloClient, userId: string, progressCount: number) =>
+  client.writeQuery({
+    query: MyProgressCountDocument,
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        user: { __typename: 'User', id: userId, progressCount },
+      },
+    },
+  });
+
 const progressSetSuccessMock = (args: {
   document: string;
   progressId: string;
   currentChapter: number;
   percentage: number;
   userId?: string;
+  /** I-1: attaches the returned `Progress` to a `Book`, matching the shape a first-time set for a known book returns. */
+  book?: ProgressNode['book'];
+  /** I-2: the payload's `user.progressCount` after this set — defaults to a plausible post-write value. */
+  progressCount?: number;
 }): MockedResponse<ProgressSetMutation, ProgressSetMutationVariables> => ({
   request: {
     query: ProgressSetDocument,
@@ -150,15 +174,22 @@ const progressSetSuccessMock = (args: {
           currentChapter: args.currentChapter,
           device: 'Web',
           timestamp: '2026-08-23T00:00:00.000Z',
+          book: args.book,
         }),
         library: { __typename: 'Library', id: LIBRARY_ID },
+        user: {
+          __typename: 'User',
+          id: args.userId ?? VIEWER_USER_ID,
+          progressCount: args.progressCount ?? 1,
+        },
       },
     },
   },
 });
 
 const progressDeleteSuccessMock = (
-  progressId: string
+  progressId: string,
+  overrides: Partial<{ userId: string; progressCount: number }> = {}
 ): MockedResponse<ProgressDeleteMutation, ProgressDeleteMutationVariables> => ({
   request: { query: ProgressDeleteDocument, variables: { id: progressId } },
   result: {
@@ -168,6 +199,11 @@ const progressDeleteSuccessMock = (
         __typename: 'ProgressDeletePayload',
         deletedId: progressId,
         library: { __typename: 'Library', id: LIBRARY_ID },
+        user: {
+          __typename: 'User',
+          id: overrides.userId ?? VIEWER_USER_ID,
+          progressCount: overrides.progressCount ?? 0,
+        },
       },
     },
   },
@@ -214,6 +250,120 @@ describe('useSetMyProgress', () => {
     const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
     expect(edges).toHaveLength(2);
     expect(edges?.map((e) => e.node.id)).toContain(NEW_PROGRESS_ID);
+  });
+
+  // I-1 (final whole-branch review): a FIRST-TIME set for a book with no
+  // prior progress row left `Book.progress` cached as the `null` the server
+  // returned before anything existed — nothing overwrote it afterwards, so
+  // `page/book`'s progressbar, "Clear Progress", the library grid, and the
+  // series page all kept showing no progress for the rest of the session.
+  // Every OTHER set-progress test in this file uses a fixture whose
+  // `Book.progress` is either absent or already non-null, which is why this
+  // gap survived task review: this is the one test that seeds a `Book`
+  // entity with `progress: null` BEFORE the set, mirroring
+  // `useDeleteProgress`'s own "nulls Book.progress..." test in reverse.
+  it('inserts a Book.progress reference when a first-time set has no prior cached progress', async () => {
+    const NEW_DOCUMENT = 'brand-new-doc-hash-000000000000';
+    const NEW_PROGRESS_ID = 'progress-brand-new';
+    const BOOK_ID = 'book-42';
+
+    const { result, client } = renderHookWithApollo(() => useSetMyProgress(NEW_DOCUMENT), [
+      viewerBootstrapMock(VIEWER_USER_ID),
+      progressSetSuccessMock({
+        document: NEW_DOCUMENT,
+        progressId: NEW_PROGRESS_ID,
+        currentChapter: 2,
+        percentage: 0.3,
+        book: {
+          __typename: 'Book',
+          id: BOOK_ID,
+          title: 'Dune',
+          author: 'Frank Herbert',
+          hasCover: true,
+          thumbnailUrl: 'thumb.png',
+        },
+      }),
+    ] as MockedResponse[]);
+    await waitForViewerBootstrap(client);
+
+    // Seeds the Book entity the way `BookDetailDocument`/`BookRowFragment`
+    // would cache it BEFORE any progress exists: `progress: null`, exactly
+    // the shape `useDeleteProgress`'s own "nulls Book.progress..." test
+    // writes on the other side of the same field.
+    act(() => {
+      client.cache.writeFragment({
+        id: client.cache.identify({ __typename: 'Book', id: BOOK_ID }),
+        fragment: gql`
+          fragment BookNoProgressForTest on Book {
+            id
+            progress {
+              id
+            }
+          }
+        `,
+        data: { __typename: 'Book', id: BOOK_ID, progress: null },
+      });
+    });
+
+    await act(async () => {
+      await result.current?.setProgress({ currentChapter: 2, percentage: 0.3 });
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    const bookRead = client.cache.readFragment({
+      id: client.cache.identify({ __typename: 'Book', id: BOOK_ID }),
+      fragment: gql`
+        fragment BookProgressAfterSetForTest on Book {
+          id
+          progress {
+            id
+            percentage
+            currentChapter
+          }
+        }
+      `,
+    });
+    expect(bookRead).toEqual({
+      __typename: 'Book',
+      id: BOOK_ID,
+      progress: {
+        __typename: 'Progress',
+        id: NEW_PROGRESS_ID,
+        percentage: 0.3,
+        currentChapter: 2,
+      },
+    });
+  });
+
+  // I-2 (final whole-branch review): the profile card's "N books synced"
+  // subtitle (`MyProgressCountDocument`) reads `Viewer.user.progressCount`
+  // off the SAME `User:<id>` entity `progressSet`'s new `user` field
+  // targets — asserted directly against that OTHER query's cache read, not
+  // just against `progressSet`'s own response, to pin the "normalization
+  // suffices, no hand-written update" claim per this migration's rule.
+  it('normalizes user.progressCount onto the already-cached User entity after a set, without a hand-written update', async () => {
+    const { result, client } = renderHookWithApollo(() => useSetMyProgress('doc-1'), [
+      viewerBootstrapMock(VIEWER_USER_ID),
+      progressSetSuccessMock({
+        document: 'doc-1',
+        progressId: 'progress-1',
+        currentChapter: 1,
+        percentage: 0.1,
+        progressCount: 6,
+      }),
+    ] as MockedResponse[]);
+    await waitForViewerBootstrap(client);
+    act(() => seedMyProgressCount(client, VIEWER_USER_ID, 5));
+
+    await act(async () => {
+      await result.current?.setProgress({ currentChapter: 1, percentage: 0.1 });
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    const cached = client.cache.readQuery<MyProgressCountQuery, MyProgressCountQueryVariables>({
+      query: MyProgressCountDocument,
+    });
+    expect(cached?.viewer.user?.progressCount).toBe(6);
   });
 
   // The other half of point #1 in this hook's doc comment: when the set
@@ -429,6 +579,34 @@ describe('useDeleteProgress', () => {
     const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
     expect(edges).toHaveLength(1);
     expect(edges?.[0]?.node.id).toBe(KEEP_ID);
+  });
+
+  // I-2 (final whole-branch review): same claim as `useSetMyProgress`'s
+  // identical test, the delete side — asserted against
+  // `MyProgressCountDocument`'s OWN cache read, not `progressDelete`'s
+  // response, so a hand-written `update` reaching into that query (rather
+  // than normalization doing it for free) can't make this pass by accident.
+  it('normalizes user.progressCount onto the already-cached User entity after a delete, without a hand-written update', async () => {
+    const DELETE_ID = 'progress-delete-count';
+
+    const { result, client } = renderHookWithApollo(
+      () => useDeleteProgress(),
+      [progressDeleteSuccessMock(DELETE_ID, { progressCount: 4 })]
+    );
+    act(() => {
+      seedMyProgressList(client, [{ cursor: DELETE_ID, node: progressRow({ id: DELETE_ID }) }]);
+      seedMyProgressCount(client, VIEWER_USER_ID, 5);
+    });
+
+    await act(async () => {
+      await result.current?.deleteProgress(DELETE_ID);
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    const cached = client.cache.readQuery<MyProgressCountQuery, MyProgressCountQueryVariables>({
+      query: MyProgressCountDocument,
+    });
+    expect(cached?.viewer.user?.progressCount).toBe(4);
   });
 
   // Task 7 (`page/book` teardown): `BookDetailDocument` reads `Book.progress`

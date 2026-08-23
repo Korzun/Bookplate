@@ -2,6 +2,7 @@ import type { Reference } from '@apollo/client';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 
+import { useFragment } from '~/gql';
 import type {
   BookLinkDocumentMutation,
   ProgressDeleteMutation,
@@ -10,6 +11,7 @@ import type {
 import {
   BookLinkDocumentDocument,
   ProgressDeleteDocument,
+  ProgressRowFragment,
   ProgressSetDocument,
 } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
@@ -95,6 +97,30 @@ export type UseLinkProgress = {
  *   entity is written and readable on its own, but
  *   `client.cache.readQuery(MyProgressListDocument)` still returns only the
  *   pre-existing edge; the new row never appears in the list. Restored.
+ *
+ *   3. **I-1 (final whole-branch review)**: point 1 above only covers a
+ *      `Progress` entity that's already CACHED under `Progress:<id>` — it
+ *      says nothing about `Book.progress`, a SEPARATE field on a SEPARATE
+ *      entity (`Book:<bookId>`) that `page/book`, the library grid
+ *      (`BookRowFragment`), and the series page (`SeriesBookRowFragment`)
+ *      all read. For a book with NO prior progress row, the server had
+ *      previously returned `progress: null` there, Apollo cached that, and
+ *      nothing overwrote it — the new percentage was invisible on all three
+ *      screens for the rest of the session, even though `Progress:<id>`
+ *      itself was written correctly. `ProgressRowFragment` already selects
+ *      `book { id }` on the returned `progress` (no new server field
+ *      needed), so this inserts a REFERENCE into `Book:<bookId>.progress`
+ *      the same way point 2 inserts one into `Library.progress`'s edges —
+ *      `useFragment` un-masks the mutation's own `progress` field to reach
+ *      `.book.id` (an identity cast at runtime, not an actual hook; see
+ *      `gql/fragment-masking.ts`), safe to call from inside this
+ *      non-render `update` callback.
+ *
+ *   **Seen-to-fail**: deleting this `Book.progress` `cache.modify` call
+ *   leaves "inserts a Book.progress reference when a first-time set has no
+ *   prior cached progress" failing — `Book:<bookId>.progress` reads back
+ *   `null`, the value seeded before the set, instead of a reference to the
+ *   new `Progress` entity. Restored.
  *
  * The old hook's ROLLBACK-on-failure has no analogue here: nothing is
  * written to the cache before the request settles (no optimistic response is
@@ -196,6 +222,22 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
                 },
               },
             });
+
+            // I-1: see this hook's own doc comment, point 3 — a first-time
+            // set for a book with no prior progress row otherwise leaves
+            // `Book.progress` cached as the `null` the server returned
+            // before anything existed.
+            const unmaskedProgress = useFragment(ProgressRowFragment, result.payload.progress);
+            const bookId = unmaskedProgress.book?.id;
+            if (bookId) {
+              cache.modify({
+                id: cache.identify({ __typename: 'Book', id: bookId }),
+                fields: {
+                  progress: (_existing, { toReference }) =>
+                    toReference(unmaskedProgress) ?? null,
+                },
+              });
+            }
           },
         });
 

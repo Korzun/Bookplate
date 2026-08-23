@@ -679,6 +679,7 @@ input ProgressDeleteInput {
 type ProgressDeletePayload {
   deletedId: ID!
   library: Library!
+  user: User!
 }
 
 union ProgressDeleteResult = ProgressDeletePayload
@@ -699,6 +700,7 @@ input ProgressSetInput {
 type ProgressSetPayload {
   library: Library!
   progress: Progress!
+  user: User!
 }
 
 union ProgressSetResult = InvalidInputError | ProgressSetPayload

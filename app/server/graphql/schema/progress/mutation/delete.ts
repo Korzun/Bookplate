@@ -4,6 +4,7 @@ import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library/model';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
+import { model as user } from '../../user/model';
 
 /**
  * One opaque `Progress` global ID, replacing the `(userId, document)` pair.
@@ -72,6 +73,19 @@ const payload = builder.objectRef<ProgressDeletePayloadShape>('ProgressDeletePay
   fields: (t) => ({
     deletedId: t.exposeID('deletedId'),
     library: t.field({ type: library, resolve: (result) => result.owner }),
+    // `progressDelete` IS admin-capable (`isOwnerOrAdmin`, above) — `owner`
+    // here is the DECODED owner the input id carried, not necessarily the
+    // caller, so this resolves the row's actual OWNER, never the admin who
+    // issued the delete. That is exactly why this field exists server-side
+    // rather than as a client-side counter decrement (I-2): a client-side
+    // tweak to "the viewer's own User" would decrement the wrong person's
+    // count when an admin deletes someone else's row. Same resolver shape
+    // as `ProgressSetPayload.user` / `Library.user`.
+    user: t.field({
+      type: user,
+      resolve: (result, _args, context) =>
+        context.prisma.user.findUniqueOrThrow({ where: { id: result.owner.userId } }),
+    }),
   }),
 });
 
