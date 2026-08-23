@@ -1,10 +1,11 @@
 import cx from 'classnames';
 import { Fragment, useCallback, useState } from 'react';
 
-import { Button, ConfirmModal } from '~/control';
+import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
 import { ProgressRowFragment } from '~/graphql/progress';
 import { AlertOctagonIcon } from '~/icon';
+import { useUsername } from '~/provider/auth';
 import { useDeleteProgress } from '~/provider/library';
 import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
@@ -27,15 +28,22 @@ interface MyProgressRowProps {
  *
  * `book` is NULLABLE — a device syncs progress for documents not in this
  * library. That row still renders, using the raw `document` hash in place
- * of a title and with NO Link affordance: the link-to-book workflow
- * (`LinkProgressModal` rewired onto `bookLinkDocument` +
- * `LinkPickerBooksDocument`) is a later task's job (design spec §6), so this
- * row does not offer a way to resolve an orphan — it only shows that one
- * exists, via the same orphan hint icon the REST row used. The REST row's
- * "Link" button (opening `LinkProgressModal`) is dropped here rather than
- * carried forward wired to the old REST-backed modal, which would have kept
- * this component importing `~/provider/progress` — exactly what this
- * migration step is retiring callers of.
+ * of a title, WITH the same "Link" affordance the REST row offered: opening
+ * `LinkProgressModal` so the orphan can be resolved to a book. Fix round 1
+ * (review of this task) corrected an earlier version of this component that
+ * dropped the button entirely — design spec §6 assigns the MODAL'S
+ * INTERNALS (its book picker onto `LinkPickerBooksDocument`, its link
+ * action onto `bookLinkDocument`) to a later task, not the affordance that
+ * opens it. `LinkProgressModal` itself is UNTOUCHED here and still reads
+ * `~/provider/progress`'s old REST-backed `useUserBookList`/`useLinkProgress`
+ * under the hood — this component only restores the opener (the `Button` +
+ * `showLinkModal` state + the modal mount), exactly as the REST row did,
+ * passing `documentId={row.document}` (the raw hash `LinkProgressModal`
+ * already expects) and `username` off `useUsername()`. Migrating the
+ * modal's internals onto the new GraphQL mutations stays that later task's
+ * job — when it lands, the modal will also need this row's `Progress.id`
+ * (the new `useLinkProgress`'s signature is `link(documentId, progressId)`),
+ * which is that task's prop change to make, not this one's.
  *
  * No `titleSort` preference: `ProgressRowFragment` selects `book { title
  * ... }` only, no sort title — unlike the REST `Book` shape this row used
@@ -44,10 +52,12 @@ interface MyProgressRowProps {
 export const MyProgressRow = ({ progress }: MyProgressRowProps) => {
   const styles = useStyle();
   const row = useFragment(ProgressRowFragment, progress);
+  const [username] = useUsername();
   const { deleteProgress, deleting } = useDeleteProgress();
   const showToast = useToast();
 
   const [showClearModal, setShowClearModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   const handleClear = useCallback(() => setShowClearModal(true), []);
   const handleCancelClear = useCallback(() => setShowClearModal(false), []);
@@ -97,6 +107,11 @@ export const MyProgressRow = ({ progress }: MyProgressRowProps) => {
           <span className={styles.title}>{bookTitle}</span>
         </div>
         <div className={styles.metadata}>{metadataList.join(' · ')}</div>
+        {isUnresolved && (
+          <Button type="link" onClick={() => setShowLinkModal(true)}>
+            Link
+          </Button>
+        )}
         <Button type="link" danger onClick={handleClear} loading={deleting}>
           Clear
         </Button>
@@ -114,6 +129,14 @@ export const MyProgressRow = ({ progress }: MyProgressRowProps) => {
         >
           This will remove your synced reading progress for <strong>{bookTitle}</strong>.
         </ConfirmModal>
+      )}
+      {showLinkModal && username !== undefined && (
+        <LinkProgressModal
+          isOpen
+          documentId={row.document}
+          username={username}
+          onClose={() => setShowLinkModal(false)}
+        />
       )}
     </Fragment>
   );

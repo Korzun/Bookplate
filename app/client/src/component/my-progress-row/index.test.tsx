@@ -19,6 +19,20 @@ import { renderWithApollo } from '~/test-utils';
 
 import { MyProgressRow } from './index';
 
+// `LinkProgressModal` is untouched by this task (still REST-backed via
+// `~/provider/progress`'s `useUserBookList`/`useLinkProgress` internally) —
+// stubbed here exactly like the pre-migration row's own test file did, so
+// these tests exercise the OPENER (the Button + `showLinkModal` state) this
+// task owns, not the modal's internals, which stay a later task's.
+vi.mock('~/control', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/control')>();
+  return {
+    ...actual,
+    LinkProgressModal: ({ isOpen }: { isOpen: boolean }) =>
+      isOpen ? <div>link-progress-modal</div> : null,
+  };
+});
+
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
     this.setAttribute('open', '');
@@ -234,28 +248,17 @@ describe('MyProgressRow', () => {
     expect(screen.getByText('Dune')).toBeInTheDocument();
   });
 
-  // Inapplicable (was "does not show a Link button while the book is
-  // loading"): fetch-free rows have no per-row loading state to begin with
-  // — `book` arrives already resolved as part of the parent connection page
-  // (`use-my-progress-list.ts`), and there is no Link button at all any
-  // more (see the null-book test below and its doc comment).
-  //
-  // Inapplicable (was "shows a Link button when the progress is
-  // unresolved" / "opens the link modal when Link is clicked"): the
-  // link-to-book workflow (`LinkProgressModal`, wired to the NEW
-  // `bookLinkDocument` mutation and `LinkPickerBooksDocument`) is a later
-  // task's job per the design spec's §6 — this task only migrates the read
-  // (`ProgressRowFragment`) and delete (`progressDelete`) halves of the
-  // row, matching the wiring brief's explicit instruction: a null-book row
-  // renders "the raw document and no book link" — the exact phrase
-  // `ProgressRowFragment`'s own doc comment already uses. Folded into the
-  // null-book test below, which asserts no Link button renders either way.
-  it('renders a row whose book is null using the raw document, with no book link', () => {
+  // Fix round 1: this row still renders "the raw document" for a null
+  // `book` — that part of the original assertion stands — but it is NOT
+  // "with no book link" any more. The Link BUTTON (the affordance that
+  // OPENS `LinkProgressModal`) is restored below; only the modal's
+  // internals stay deferred to a later task (design spec §6). See the
+  // component's own doc comment for the corrected reasoning.
+  it('renders a row whose book is null using the raw document', () => {
     const row = progressRow({ document: 'orphan-doc-hash', book: null });
     renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
     expect(screen.getByText('orphan-doc-hash')).toBeInTheDocument();
     expect(screen.queryByText('Dune')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^link$/i })).not.toBeInTheDocument();
   });
 
   it('does not show a Link button for a resolved book', () => {
@@ -263,6 +266,38 @@ describe('MyProgressRow', () => {
       <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
     );
     expect(screen.queryByRole('button', { name: /^link$/i })).not.toBeInTheDocument();
+  });
+
+  // Restored (fix round 1): was judged inapplicable when the Link button
+  // itself was mistakenly dropped. `isUnresolved` (`row.book === null`) is
+  // the only gate on the button now — there is no per-row loading state to
+  // additionally check (see the next test's doc comment).
+  it('shows a Link button when the book is null', () => {
+    const row = progressRow({ book: null });
+    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
+    expect(screen.getByRole('button', { name: /^link$/i })).toBeInTheDocument();
+  });
+
+  // Inapplicable (was "does not show a Link button while the book is
+  // loading"): fetch-free rows have no per-row loading state at all —
+  // `book` arrives already resolved (or genuinely `null`) as part of the
+  // parent connection page (`use-my-progress-list.ts`), so there is no
+  // intermediate "still resolving" state for the button to be gated against.
+
+  // Restored (fix round 1): was judged inapplicable alongside the button
+  // itself. `LinkProgressModal` is stubbed above (this task does not touch
+  // its internals — still REST-backed); `username` must be defined for the
+  // modal to mount (`showLinkModal && username !== undefined`, mirroring
+  // the pre-migration row), hence the explicit `user` override here.
+  it('opens the link modal when Link is clicked', async () => {
+    const row = progressRow({ book: null });
+    const user = userEvent.setup();
+    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />, {
+      user: { username: 'alice', isAdmin: false },
+    });
+    expect(screen.queryByText('link-progress-modal')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^link$/i }));
+    expect(screen.getByText('link-progress-modal')).toBeInTheDocument();
   });
 
   it('shows the orphan hint icon when the book is null', () => {
