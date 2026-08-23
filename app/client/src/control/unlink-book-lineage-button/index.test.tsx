@@ -91,10 +91,16 @@ describe('UnlinkBookLineageButton', () => {
     await userEvent.click(screen.getByRole('button', { name: /unlink/i }));
     await userEvent.click(getConfirmButton());
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    // `onSuccess` fires BETWEEN two React commits — the handler queues the
+    // modal close before calling it and `setUnlinking(false)` after — so
+    // sampling the DOM once after the wait resolves is racy. Both assertions
+    // retry together instead. (Observed failing under full-suite load.)
     // A closed `<dialog>` (no `open` attribute) is excluded from the
     // accessibility tree by default — its absence here IS the "closed" proof.
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
   });
 
   it('surfaces the mutation error message and does not call onSuccess', async () => {

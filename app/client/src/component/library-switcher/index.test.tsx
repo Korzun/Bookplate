@@ -74,8 +74,13 @@ it("stores the selected user's library id, not their username", async () => {
 it('clears a persisted target whose library id is missing from the loaded user list', async () => {
   localStorage.setItem('library-target-id', 'lib-ghost');
   renderAsAdmin(<LibrarySwitcher />);
-  await waitFor(() => expect(localStorage.getItem('library-target-id')).toBeNull());
-  expect(screen.getByRole('button', { name: 'Select library…' })).toBeInTheDocument();
+  // The clear lands in an effect and the relabelled button in a later commit,
+  // so these must retry together — asserting the DOM once after a wait keyed
+  // on non-DOM state is the same race that flaked unlink-book-lineage-button.
+  await waitFor(() => {
+    expect(localStorage.getItem('library-target-id')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Select library…' })).toBeInTheDocument();
+  });
 });
 
 it('keeps a persisted target present in the loaded user list', async () => {
