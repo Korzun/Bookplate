@@ -91,17 +91,35 @@ describe('MyProgress', () => {
     await waitFor(() => expect(screen.getByText('1 book synced')).toBeInTheDocument());
   });
 
-  // Brief-required, verbatim mechanism: `MockLink` throws on an unmatched
-  // operation, so supplying ONLY the count mock (no `MyProgressList` mock at
-  // all) is what proves the list query never fired while collapsed — if
-  // `MyProgressContent` were mounted regardless of `Card`'s collapsed state,
-  // it would try to run `MyProgressList` against a `MockLink` with no
-  // matching mock and throw "No more mocked responses", failing this test
-  // loudly rather than passing vacuously.
+  // Fix round 2: `MockLink`'s unmatched-operation path resolves through the
+  // Observable as an ASYNC GraphQL error (`throwError(...)`,
+  // `mockLink.js`), not a synchronous throw that aborts the test — so if
+  // `MyProgressContent` were wrongly mounted while collapsed, it would not
+  // crash this test. It would instead see `useMyProgressList`'s `error` set
+  // and `rows.length === 0`, and render "Error loading progress"
+  // (`my-progress-content/index.tsx`'s error branch) rather than "No
+  // progress synced" (the empty branch) — so asserting only the LATTER's
+  // absence, as an earlier version of this test did, passed whether the bug
+  // existed or not: neither string is ever reachable from an empty
+  // `mocks: [countMock(2)]` array regardless of whether `MyProgressContent`
+  // mounted.
+  //
+  // What's actually load-bearing: `Card` does not render its children into
+  // the tree AT ALL while collapsed (`visibleChildren = isCollapsible ?
+  // (isExpanded ? children : null) : children`, `component/card/index.tsx`)
+  // — so the `<div className={styles.content}>` THIS component (`MyProgress`,
+  // not `MyProgressContent`) wraps around `<MyProgressContent />` never
+  // mounts either. Querying for that wrapper's presence, rather than for
+  // any one of `MyProgressContent`'s several possible rendered strings
+  // (loading / error / empty / rows), catches EVERY one of those cases at
+  // once: if `MyProgressContent` were wrongly mounted, this element would
+  // exist (containing "Error loading progress" per the reasoning above,
+  // but this assertion does not even need to know which string) and the
+  // test would fail.
   it('fetches no rows while the card is collapsed', async () => {
-    renderWithApollo(<MyProgress />, { mocks: [countMock(2)] });
+    const { container } = renderWithApollo(<MyProgress />, { mocks: [countMock(2)] });
     await waitFor(() => expect(screen.getByText('2 books synced')).toBeInTheDocument());
-    expect(screen.queryByText('No progress synced')).not.toBeInTheDocument();
+    expect(container.querySelector('[class*="content"]')).not.toBeInTheDocument();
   });
 
   // Brief-required: expanding the card (clicking its collapsible header)
