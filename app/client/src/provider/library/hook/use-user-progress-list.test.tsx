@@ -134,6 +134,23 @@ describe('useUserProgressList', () => {
     expect(VIEWER_ID).not.toBe(TARGET_USER_ID);
   });
 
+  // Brief-required (Task 6, link modal): `libraryId` comes off this SAME
+  // query's `user.library.id` — not `useCurrentLibraryId()`'s admin
+  // `library-target` selection, which is a single global choice unrelated
+  // to any one row on the Users page. `UserRowContent` threads this into
+  // `UserProgressRow`/`LinkProgressModal`.
+  it("returns the target user's library id from the same query", async () => {
+    const result = renderProbe(TARGET_USER_ID, [
+      firstPageMock(TARGET_USER_ID, [{ cursor: 'c1', node: progressNode('p1') }], {
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    expect(result.current?.libraryId).toBe(`lib-for-${TARGET_USER_ID}`);
+  });
+
   it('appends the next page via loadMore without dropping the first', async () => {
     const result = renderProbe(TARGET_USER_ID, [
       firstPageMock(TARGET_USER_ID, [{ cursor: 'c1', node: progressNode('p1') }], {

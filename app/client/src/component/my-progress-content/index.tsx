@@ -25,9 +25,11 @@ import { useStyle } from './style';
 export const MyProgressContent = () => {
   const styles = useStyle();
 
-  const { rows, loading, error, hasNextPage, loadMore, loadingMore } = useMyProgressList({
-    skip: false,
-  });
+  const { rows, loading, error, hasNextPage, loadMore, loadingMore, libraryId } = useMyProgressList(
+    {
+      skip: false,
+    }
+  );
 
   if (loading) {
     return <div className={styles.message}>Loading...</div>;
@@ -45,7 +47,7 @@ export const MyProgressContent = () => {
   return (
     <Fragment>
       {rows.map((row) => (
-        <MyProgressRow key={row.id} progress={row} />
+        <MyProgressRow key={row.id} progress={row} libraryId={libraryId} />
       ))}
       {hasNextPage && (
         <Button type="link" onClick={loadMore} loading={loadingMore}>

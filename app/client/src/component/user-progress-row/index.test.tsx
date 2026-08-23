@@ -19,12 +19,11 @@ import { renderWithApollo } from '~/test-utils';
 
 import { UserProgressRow } from './index';
 
-// `LinkProgressModal` is untouched by this task (still REST-backed via
-// `~/provider/progress`'s `useUserBookList`/`useLinkProgress` internally) —
+// `LinkProgressModal`'s own internals (Task 6, GraphQL-backed) have their own
+// dedicated test file (`control/link-progress-modal/index.test.tsx`) —
 // stubbed here exactly like `MyProgressRow`'s own test file does, so these
-// tests exercise the OPENER (the Button + `showLinkModal` state) this task
-// owns, not the modal's internals, which stay a later task's (design spec
-// §6).
+// tests exercise only the OPENER this row owns (the `Button` + `showLinkModal`
+// state + the `libraryId`/`progressId` props it passes).
 vi.mock('~/control', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/control')>();
   return {
@@ -150,6 +149,7 @@ describe('UserProgressRow', () => {
       <UserProgressRow
         progress={makeFragmentData(progressRow(), ProgressRowFragment)}
         username="alice"
+        libraryId="lib-1"
       />
     );
     expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
@@ -162,6 +162,7 @@ describe('UserProgressRow', () => {
       <UserProgressRow
         progress={makeFragmentData(progressRow(), ProgressRowFragment)}
         username="alice"
+        libraryId="lib-1"
       />
     );
     await user.click(screen.getByRole('button', { name: /clear/i }));
@@ -185,7 +186,11 @@ describe('UserProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1', document: 'doc-hash-1' });
     const { client } = renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />,
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />,
       { mocks: [deleteSuccessMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -204,6 +209,7 @@ describe('UserProgressRow', () => {
       <UserProgressRow
         progress={makeFragmentData(progressRow(), ProgressRowFragment)}
         username="alice"
+        libraryId="lib-1"
       />
     );
     await user.click(screen.getByRole('button', { name: /clear/i }));
@@ -216,7 +222,11 @@ describe('UserProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1' });
     const { client } = renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />,
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />,
       { mocks: [deleteSuccessMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -233,7 +243,11 @@ describe('UserProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1' });
     const { client } = renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />,
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />,
       { mocks: [deleteErrorMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -263,7 +277,11 @@ describe('UserProgressRow', () => {
       },
     });
     renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />
     );
     expect(screen.getByText('Dune')).toBeInTheDocument();
   });
@@ -274,7 +292,11 @@ describe('UserProgressRow', () => {
   it('renders a row whose book is null using the raw document', () => {
     const row = progressRow({ document: 'orphan-doc-hash', book: null });
     renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />
     );
     expect(screen.getByText('orphan-doc-hash')).toBeInTheDocument();
     expect(screen.queryByText('Dune')).not.toBeInTheDocument();
@@ -287,7 +309,11 @@ describe('UserProgressRow', () => {
   it('shows a Link button when the book is null', () => {
     const row = progressRow({ book: null });
     renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />
     );
     expect(screen.getByRole('button', { name: /^link$/i })).toBeInTheDocument();
   });
@@ -298,6 +324,7 @@ describe('UserProgressRow', () => {
       <UserProgressRow
         progress={makeFragmentData(progressRow(), ProgressRowFragment)}
         username="alice"
+        libraryId="lib-1"
       />
     );
     expect(screen.queryByRole('button', { name: /^link$/i })).not.toBeInTheDocument();
@@ -331,18 +358,43 @@ describe('UserProgressRow', () => {
     const row = progressRow({ book: null });
     const user = userEvent.setup();
     renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />
     );
     expect(screen.queryByText('link-progress-modal')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^link$/i }));
     expect(screen.getByText('link-progress-modal')).toBeInTheDocument();
   });
 
+  // Brief-required prop-change coverage: without `libraryId` there is no
+  // valid `node(id: $libraryId)` for the picker to root on — the modal must
+  // not mount at all rather than mount with a broken/empty id.
+  it('does not open the link modal when libraryId is undefined', async () => {
+    const row = progressRow({ book: null });
+    const user = userEvent.setup();
+    renderWithApollo(
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId={undefined}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /^link$/i }));
+    expect(screen.queryByText('link-progress-modal')).not.toBeInTheDocument();
+  });
+
   // Ported as-is.
   it('shows the orphan hint icon when the book is null', () => {
     const row = progressRow({ book: null });
     renderWithApollo(
-      <UserProgressRow progress={makeFragmentData(row, ProgressRowFragment)} username="alice" />
+      <UserProgressRow
+        progress={makeFragmentData(row, ProgressRowFragment)}
+        username="alice"
+        libraryId="lib-1"
+      />
     );
     expect(screen.getByLabelText('Unlinked progress')).toBeInTheDocument();
   });
@@ -353,6 +405,7 @@ describe('UserProgressRow', () => {
       <UserProgressRow
         progress={makeFragmentData(progressRow(), ProgressRowFragment)}
         username="alice"
+        libraryId="lib-1"
       />
     );
     expect(screen.queryByLabelText('Unlinked progress')).not.toBeInTheDocument();

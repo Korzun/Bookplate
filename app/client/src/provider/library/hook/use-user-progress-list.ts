@@ -35,6 +35,18 @@ export type UseUserProgressList = {
   hasNextPage: boolean;
   loadMore: () => void;
   loadingMore: boolean;
+  /**
+   * The target user's Library global id, off this SAME query's `user.library.id`
+   * (already selected in `UserProgressListDocument`, not a second fetch).
+   * `undefined` until the first page resolves. `UserRowContent` threads this
+   * through to `UserProgressRow` so `LinkProgressModal` can root its book
+   * picker (`LinkPickerBooksDocument`'s `node(id: $libraryId)`) at the
+   * TARGET user's library — not `useCurrentLibraryId()`'s admin `library-target`
+   * selection, which is a single global choice unrelated to any one row on
+   * the Users page (see `control/link-progress-modal`'s own doc comment for
+   * the full reasoning).
+   */
+  libraryId: string | undefined;
 };
 
 /**
@@ -117,5 +129,6 @@ export const useUserProgressList = (
     hasNextPage,
     loadMore,
     loadingMore,
+    libraryId: library?.id,
   };
 };

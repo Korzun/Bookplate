@@ -1,69 +1,135 @@
+import { useQuery } from '@apollo/client/react';
 import cx from 'classnames';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { useLinkProgress } from '~/provider/progress';
+import { LinkPickerBooksDocument } from '~/graphql/progress';
+import { useLinkProgress } from '~/provider/library';
 
 import { Button } from '../button';
 import { useModalDialog } from '../use-modal-dialog';
 import { useStyle } from './style';
-import { useUserBookList } from './use-user-book-list';
 
 type LinkProgressModalProps = {
   isOpen: boolean;
+  /** The orphan row's raw document hash — what `bookLinkDocument` takes. */
   documentId: string;
-  username: string;
+  /**
+   * The Relay global id of the Library to pick a book FROM — the viewer's
+   * own library (`MyProgressRow`) or the target user's (`UserProgressRow`).
+   * Roots `LinkPickerBooksDocument`'s `node(id: $libraryId)`.
+   */
+  libraryId: string;
+  /**
+   * The orphan row's `Progress.id` — the caller already has it (this modal
+   * is only ever opened from a component rendering that exact row). Passed
+   * straight through as `useLinkProgress`'s second `link` argument, which
+   * uses it to evict the stale orphan entity from the cache on success.
+   */
+  progressId: string;
   onClose: () => void;
 };
 
+/**
+ * Unchanged from `use-search-suggestions.ts`'s own `DEBOUNCE_MS` — the one
+ * other place in this codebase that turns typed input into a server-side
+ * filtered query. No shared debounce helper exists in this codebase (only
+ * that one prior inline `setTimeout` implementation), so this mirrors that
+ * shape directly rather than introducing a new abstraction for a second use.
+ */
+const DEBOUNCE_MS = 200;
+
+/**
+ * Replaces the REST version's `useUserBookList` (fetch-the-whole-library,
+ * filter client-side as you type) with `LinkPickerBooksDocument`, filtered
+ * SERVER-SIDE via `LibraryFilter.query` — the same mechanism the library
+ * grid's search uses (`useLibraryEntries`). That is a real interaction
+ * change (a round trip per query instead of an instant local filter), so
+ * the typed input is debounced (`DEBOUNCE_MS`) before it becomes a query
+ * variable — mirroring `useSearchSuggestions`'s identical shape: `filter`
+ * is the raw input, `debouncedFilter` only ever advances from inside the
+ * `setTimeout` callback, and clearing/replacing the pending timer on every
+ * keystroke is what makes a fast typist collapse into one request instead
+ * of one per character.
+ *
+ * `Library.entries` returns the `LibraryEntry` union (`Book | Series`) —
+ * `LinkPickerBooksDocument`'s own doc comment explains why `entryType` is
+ * NOT set (no `BOOK` value on `LibraryEntryType`, and `STANDALONE` would
+ * silently hide every series-grouped book). This component narrows on
+ * `__typename === 'Book'` after the fetch, discarding any `Series` entries
+ * the union-typed connection returns.
+ *
+ * **Load more**: offered, matching every other paginated list in this app
+ * (`MyProgressContent`, `UserRowContent`, the library grid). The document
+ * fetches `first: 100` per page — since a `Series`-heavy library can dilute
+ * a page with entries this component discards, AND the initial (unfiltered)
+ * fetch can legitimately exceed 100 books, omitting a way to reach further
+ * pages would silently hide real books from the picker. `hasNextPage`/
+ * `fetchMore` are cheap to wire (the document already carries `pageInfo`/
+ * `cursor` for exactly this) and keep this modal consistent with the rest
+ * of the app's list affordances rather than a special case.
+ *
+ * `useLinkProgress(selectedBookId ?? '')`'s `link(documentId, progressId)`
+ * both selects the target book (this modal's job) and evicts the stale
+ * orphan `Progress` entity from the cache on success (that hook's own job —
+ * see `use-progress-mutations.ts`'s doc comment) — without `progressId`,
+ * the link succeeds server-side but the row keeps rendering as an orphan
+ * until something else happens to refetch it.
+ */
 export function LinkProgressModal({
   isOpen,
   documentId,
-  username,
+  libraryId,
+  progressId,
   onClose,
 }: LinkProgressModalProps) {
   const styles = useStyle();
 
-  const [books, booksLoading, booksError, booksErrorMessage] = useUserBookList(username, isOpen);
-  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [debouncedFilter, setDebouncedFilter] = useState('');
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const [link, linking, linkError, linkErrorMessage] = useLinkProgress(
-    selectedBookId ?? '',
-    username
-  );
-
-  const pendingRef = useRef(false);
-  const wasBusyRef = useRef(false);
-
-  // Close after a successful link
   useEffect(() => {
-    if (!pendingRef.current) return;
-    if (linking) {
-      wasBusyRef.current = true;
-      return;
-    }
-    if (wasBusyRef.current) {
-      wasBusyRef.current = false;
-      pendingRef.current = false;
-      if (!linkError) onClose();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linking, linkError]);
+    const timer = setTimeout(() => setDebouncedFilter(filter.trim()), DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [filter]);
 
-  const filteredBooks = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return books;
-    return books.filter(
-      (b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
-    );
-  }, [books, filter]);
+  const {
+    data,
+    loading,
+    error: queryError,
+    fetchMore,
+  } = useQuery(LinkPickerBooksDocument, {
+    variables: { libraryId, query: debouncedFilter || undefined },
+    skip: !isOpen,
+  });
 
-  const handleConfirm = useCallback(() => {
+  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const books = useMemo(
+    () =>
+      (library?.entries.edges ?? [])
+        .map((edge) => edge.node)
+        .filter(
+          (node): node is Extract<typeof node, { __typename: 'Book' }> => node.__typename === 'Book'
+        ),
+    [library]
+  );
+  const hasNextPage = library?.entries.pageInfo.hasNextPage ?? false;
+  const endCursor = library?.entries.pageInfo.endCursor ?? undefined;
+
+  const handleLoadMore = useCallback(() => {
+    if (!hasNextPage || loadingMore) return;
+    setLoadingMore(true);
+    void fetchMore({ variables: { after: endCursor } }).finally(() => setLoadingMore(false));
+  }, [fetchMore, hasNextPage, endCursor, loadingMore]);
+
+  const { link, linking, error: linkError } = useLinkProgress(selectedBookId ?? '');
+
+  const handleConfirm = useCallback(async () => {
     if (!selectedBookId) return;
-    pendingRef.current = true;
-    wasBusyRef.current = false;
-    void link(documentId);
-  }, [selectedBookId, link, documentId]);
+    const ok = await link(documentId, progressId);
+    if (ok) onClose();
+  }, [selectedBookId, link, documentId, progressId, onClose]);
 
   const handleCancel = useCallback(() => onClose(), [onClose]);
   // Escape dismisses the modal the same way the Cancel button does.
@@ -95,16 +161,16 @@ export function LinkProgressModal({
             autoFocus
           />
           <ul className={styles.bookList}>
-            {booksLoading ? (
+            {loading ? (
               <li className={styles.emptyMessage}>Loading books…</li>
-            ) : booksError ? (
+            ) : queryError ? (
               <li className={styles.emptyMessage}>
-                {booksErrorMessage ?? 'Failed to load books.'}
+                {queryError.message || 'Failed to load books.'}
               </li>
-            ) : filteredBooks.length === 0 ? (
+            ) : books.length === 0 ? (
               <li className={styles.emptyMessage}>No books match.</li>
             ) : (
-              filteredBooks.map((book) => (
+              books.map((book) => (
                 <li
                   key={book.id}
                   className={cx(styles.bookItem, {
@@ -123,11 +189,12 @@ export function LinkProgressModal({
               ))
             )}
           </ul>
-          {linkError && (
-            <div className={styles.error}>
-              {linkErrorMessage ?? 'Something went wrong. Please try again.'}
-            </div>
+          {hasNextPage && (
+            <Button type="link" onClick={handleLoadMore} loading={loadingMore}>
+              Load more
+            </Button>
           )}
+          {linkError && <div className={styles.error}>{linkError}</div>}
         </div>
         <div className={styles.footer}>
           <Button type="text" onClick={handleCancel} radius="modal">
@@ -135,11 +202,9 @@ export function LinkProgressModal({
           </Button>
           <Button
             type="primary"
-            disabled={
-              !selectedBookId || !filteredBooks.some((b) => b.id === selectedBookId) || linking
-            }
+            disabled={!selectedBookId || !books.some((b) => b.id === selectedBookId) || linking}
             loading={linking}
-            onClick={handleConfirm}
+            onClick={() => void handleConfirm()}
             radius="modal"
           >
             Link

@@ -19,11 +19,11 @@ import { renderWithApollo } from '~/test-utils';
 
 import { MyProgressRow } from './index';
 
-// `LinkProgressModal` is untouched by this task (still REST-backed via
-// `~/provider/progress`'s `useUserBookList`/`useLinkProgress` internally) —
-// stubbed here exactly like the pre-migration row's own test file did, so
-// these tests exercise the OPENER (the Button + `showLinkModal` state) this
-// task owns, not the modal's internals, which stay a later task's.
+// `LinkProgressModal`'s own internals (Task 6, GraphQL-backed) have their own
+// dedicated test file (`control/link-progress-modal/index.test.tsx`) —
+// stubbed here so these tests exercise only the OPENER this row owns (the
+// `Button` + `showLinkModal` state + the `libraryId`/`progressId` props it
+// passes) without also satisfying the modal's own data requirements.
 vi.mock('~/control', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/control')>();
   return {
@@ -146,7 +146,10 @@ const clickConfirmClear = async (user: ReturnType<typeof userEvent.setup>) => {
 describe('MyProgressRow', () => {
   it('renders a Clear button when progress is loaded', () => {
     renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
+      <MyProgressRow
+        progress={makeFragmentData(progressRow(), ProgressRowFragment)}
+        libraryId="lib-1"
+      />
     );
     expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
   });
@@ -154,7 +157,10 @@ describe('MyProgressRow', () => {
   it('opens the confirm modal when Clear is clicked', async () => {
     const user = userEvent.setup();
     renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
+      <MyProgressRow
+        progress={makeFragmentData(progressRow(), ProgressRowFragment)}
+        libraryId="lib-1"
+      />
     );
     await user.click(screen.getByRole('button', { name: /clear/i }));
     expect(screen.getByText(/clear reading progress\?/i)).toBeInTheDocument();
@@ -173,7 +179,7 @@ describe('MyProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1', document: 'doc-hash-1' });
     const { client } = renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />,
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />,
       { mocks: [deleteSuccessMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -188,7 +194,10 @@ describe('MyProgressRow', () => {
   it('closes the modal when Cancel is clicked', async () => {
     const user = userEvent.setup();
     renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
+      <MyProgressRow
+        progress={makeFragmentData(progressRow(), ProgressRowFragment)}
+        libraryId="lib-1"
+      />
     );
     await user.click(screen.getByRole('button', { name: /clear/i }));
     await user.click(screen.getByRole('button', { name: /cancel/i }));
@@ -199,7 +208,7 @@ describe('MyProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1' });
     const { client } = renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />,
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />,
       { mocks: [deleteSuccessMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -213,7 +222,7 @@ describe('MyProgressRow', () => {
     const user = userEvent.setup();
     const row = progressRow({ id: 'progress-1' });
     const { client } = renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />,
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />,
       { mocks: [deleteErrorMock('progress-1')] }
     );
     seedProgressEntity(client, row);
@@ -244,7 +253,9 @@ describe('MyProgressRow', () => {
         thumbnailUrl: '',
       },
     });
-    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />
+    );
     expect(screen.getByText('Dune')).toBeInTheDocument();
   });
 
@@ -256,14 +267,19 @@ describe('MyProgressRow', () => {
   // component's own doc comment for the corrected reasoning.
   it('renders a row whose book is null using the raw document', () => {
     const row = progressRow({ document: 'orphan-doc-hash', book: null });
-    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />
+    );
     expect(screen.getByText('orphan-doc-hash')).toBeInTheDocument();
     expect(screen.queryByText('Dune')).not.toBeInTheDocument();
   });
 
   it('does not show a Link button for a resolved book', () => {
     renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
+      <MyProgressRow
+        progress={makeFragmentData(progressRow(), ProgressRowFragment)}
+        libraryId="lib-1"
+      />
     );
     expect(screen.queryByRole('button', { name: /^link$/i })).not.toBeInTheDocument();
   });
@@ -274,7 +290,9 @@ describe('MyProgressRow', () => {
   // additionally check (see the next test's doc comment).
   it('shows a Link button when the book is null', () => {
     const row = progressRow({ book: null });
-    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />
+    );
     expect(screen.getByRole('button', { name: /^link$/i })).toBeInTheDocument();
   });
 
@@ -292,23 +310,41 @@ describe('MyProgressRow', () => {
   it('opens the link modal when Link is clicked', async () => {
     const row = progressRow({ book: null });
     const user = userEvent.setup();
-    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />, {
-      user: { username: 'alice', isAdmin: false },
-    });
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />
+    );
     expect(screen.queryByText('link-progress-modal')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^link$/i }));
     expect(screen.getByText('link-progress-modal')).toBeInTheDocument();
   });
 
+  // Brief-required prop-change coverage: without `libraryId` there is no
+  // valid `node(id: $libraryId)` for the picker to root on — the modal must
+  // not mount at all rather than mount with a broken/empty id.
+  it('does not open the link modal when libraryId is undefined', async () => {
+    const row = progressRow({ book: null });
+    const user = userEvent.setup();
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId={undefined} />
+    );
+    await user.click(screen.getByRole('button', { name: /^link$/i }));
+    expect(screen.queryByText('link-progress-modal')).not.toBeInTheDocument();
+  });
+
   it('shows the orphan hint icon when the book is null', () => {
     const row = progressRow({ book: null });
-    renderWithApollo(<MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} />);
+    renderWithApollo(
+      <MyProgressRow progress={makeFragmentData(row, ProgressRowFragment)} libraryId="lib-1" />
+    );
     expect(screen.getByLabelText('Unlinked progress')).toBeInTheDocument();
   });
 
   it('does not show the orphan hint icon for a resolved book', () => {
     renderWithApollo(
-      <MyProgressRow progress={makeFragmentData(progressRow(), ProgressRowFragment)} />
+      <MyProgressRow
+        progress={makeFragmentData(progressRow(), ProgressRowFragment)}
+        libraryId="lib-1"
+      />
     );
     expect(screen.queryByLabelText('Unlinked progress')).not.toBeInTheDocument();
   });

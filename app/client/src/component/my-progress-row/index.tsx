@@ -5,7 +5,6 @@ import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
 import { ProgressRowFragment } from '~/graphql/progress';
 import { AlertOctagonIcon } from '~/icon';
-import { useUsername } from '~/provider/auth';
 import { useDeleteProgress } from '~/provider/library';
 import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
@@ -15,6 +14,14 @@ import { useStyle } from './style';
 
 interface MyProgressRowProps {
   progress: FragmentType<typeof ProgressRowFragment>;
+  /**
+   * The viewer's own Library global id, off `MyProgressContent`'s
+   * `useMyProgressList()` — the SAME id that list itself is rooted on, not a
+   * second `useCurrentLibraryId()` call per row. Threaded straight into
+   * `LinkProgressModal`'s picker (`LinkPickerBooksDocument`'s
+   * `node(id: $libraryId)`).
+   */
+  libraryId: string | undefined;
 }
 
 /**
@@ -30,29 +37,23 @@ interface MyProgressRowProps {
  * library. That row still renders, using the raw `document` hash in place
  * of a title, WITH the same "Link" affordance the REST row offered: opening
  * `LinkProgressModal` so the orphan can be resolved to a book. Fix round 1
- * (review of this task) corrected an earlier version of this component that
- * dropped the button entirely — design spec §6 assigns the MODAL'S
- * INTERNALS (its book picker onto `LinkPickerBooksDocument`, its link
- * action onto `bookLinkDocument`) to a later task, not the affordance that
- * opens it. `LinkProgressModal` itself is UNTOUCHED here and still reads
- * `~/provider/progress`'s old REST-backed `useUserBookList`/`useLinkProgress`
- * under the hood — this component only restores the opener (the `Button` +
- * `showLinkModal` state + the modal mount), exactly as the REST row did,
- * passing `documentId={row.document}` (the raw hash `LinkProgressModal`
- * already expects) and `username` off `useUsername()`. Migrating the
- * modal's internals onto the new GraphQL mutations stays that later task's
- * job — when it lands, the modal will also need this row's `Progress.id`
- * (the new `useLinkProgress`'s signature is `link(documentId, progressId)`),
- * which is that task's prop change to make, not this one's.
+ * (review of an earlier task) corrected a version of this component that
+ * dropped the button entirely.
+ *
+ * `LinkProgressModal` is now GraphQL-backed (Task 6): the modal takes
+ * `libraryId` (this row's own `libraryId` prop, off `MyProgressContent`'s
+ * `useMyProgressList()`) and `progressId={row.id}` instead of the old REST
+ * modal's `username` — see the modal's own doc comment for why. `useUsername`
+ * is gone from this component for the same reason: it existed only to feed
+ * the old modal's `username` prop.
  *
  * No `titleSort` preference: `ProgressRowFragment` selects `book { title
  * ... }` only, no sort title — unlike the REST `Book` shape this row used
  * to read via `useBook`.
  */
-export const MyProgressRow = ({ progress }: MyProgressRowProps) => {
+export const MyProgressRow = ({ progress, libraryId }: MyProgressRowProps) => {
   const styles = useStyle();
   const row = useFragment(ProgressRowFragment, progress);
-  const [username] = useUsername();
   const { deleteProgress, deleting } = useDeleteProgress();
   const showToast = useToast();
 
@@ -130,11 +131,12 @@ export const MyProgressRow = ({ progress }: MyProgressRowProps) => {
           This will remove your synced reading progress for <strong>{bookTitle}</strong>.
         </ConfirmModal>
       )}
-      {showLinkModal && username !== undefined && (
+      {showLinkModal && libraryId !== undefined && (
         <LinkProgressModal
           isOpen
           documentId={row.document}
-          username={username}
+          libraryId={libraryId}
+          progressId={row.id}
           onClose={() => setShowLinkModal(false)}
         />
       )}

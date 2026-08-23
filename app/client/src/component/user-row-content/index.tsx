@@ -31,9 +31,10 @@ interface UserRowContentProps {
 export const UserRowContent = ({ userId, username }: UserRowContentProps) => {
   const styles = useStyle();
 
-  const { rows, loading, error, hasNextPage, loadMore, loadingMore } = useUserProgressList(userId, {
-    skip: false,
-  });
+  const { rows, loading, error, hasNextPage, loadMore, loadingMore, libraryId } =
+    useUserProgressList(userId, {
+      skip: false,
+    });
 
   if (loading) {
     return <div className={styles.message}>Loading...</div>;
@@ -51,7 +52,7 @@ export const UserRowContent = ({ userId, username }: UserRowContentProps) => {
   return (
     <Fragment>
       {rows.map((row) => (
-        <UserProgressRow key={row.id} progress={row} username={username} />
+        <UserProgressRow key={row.id} progress={row} username={username} libraryId={libraryId} />
       ))}
       {hasNextPage && (
         <Button type="link" onClick={loadMore} loading={loadingMore}>

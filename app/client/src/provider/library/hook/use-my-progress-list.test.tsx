@@ -106,6 +106,21 @@ describe('useMyProgressList', () => {
     expect(result.current?.hasNextPage).toBe(false);
   });
 
+  // Brief-required (Task 6, link modal): `libraryId` is exposed off this
+  // hook's own `useCurrentLibraryId()` call — not a second resolution — so
+  // `MyProgressContent` can thread it into `MyProgressRow`/`LinkProgressModal`.
+  it('returns the current library id', async () => {
+    const result = renderProbe([
+      firstPageMock([{ cursor: 'c1', node: progressNode('p1') }], {
+        hasNextPage: false,
+        endCursor: null,
+      }),
+    ]);
+
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    expect(result.current?.libraryId).toBe(LIBRARY_ID);
+  });
+
   it('appends the next page via loadMore without dropping the first', async () => {
     const result = renderProbe([
       firstPageMock([{ cursor: 'c1', node: progressNode('p1') }], {

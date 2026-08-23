@@ -16,6 +16,16 @@ interface UserProgressRowProps {
   progress: FragmentType<typeof ProgressRowFragment>;
   /** The TARGET user's username — never the viewer's own. */
   username: string;
+  /**
+   * The TARGET user's Library global id, off `UserRowContent`'s
+   * `useUserProgressList(userId, ...)` — that hook's own `user.library.id`
+   * (already part of `UserProgressListDocument`, not a second fetch).
+   * Threaded into `LinkProgressModal`'s picker (`LinkPickerBooksDocument`'s
+   * `node(id: $libraryId)`) so it roots on the TARGET user's library, not
+   * `useCurrentLibraryId()`'s admin `library-target` selection — a single
+   * global choice unrelated to any one row on the Users page.
+   */
+  libraryId: string | undefined;
 }
 
 /**
@@ -33,18 +43,13 @@ interface UserProgressRowProps {
  * library. That row still renders, using the raw `document` hash in place
  * of a title, WITH the same "Link" affordance the REST row offered: opening
  * `LinkProgressModal` so the orphan can be resolved to a book.
- * `LinkProgressModal` itself is UNTOUCHED here and still reads
- * `~/provider/progress`'s old REST-backed `useUserBookList`/`useLinkProgress`
- * under the hood — this component only owns the opener (the `Button` +
- * `showLinkModal` state + the modal mount), passing `documentId={row.document}`
- * (the raw hash `LinkProgressModal` already expects) and the TARGET
- * `username` prop (never the viewer's own — that distinction is exactly why
- * this component takes `username` as a prop instead of reading
- * `useUsername()` the way `MyProgressRow` does for the viewer's own row).
- * Migrating the modal's internals onto the new GraphQL mutations stays a
- * later task's job (design spec §6) — when it lands, the modal will also
- * need this row's `Progress.id`, which is that task's prop change to make,
- * not this one's.
+ *
+ * `LinkProgressModal` is now GraphQL-backed (Task 6): it takes `libraryId`
+ * (this row's own `libraryId` prop, the TARGET user's library, never the
+ * viewer's own) and `progressId={row.id}` instead of the old REST modal's
+ * `username`. `username` itself stays a required prop here regardless — it
+ * still feeds the Clear confirm modal's copy below, unrelated to the link
+ * picker.
  *
  * The REST version of this row additionally gated the Link button on
  * `useIsAdmin()`. That client-side check has no analogue here: this
@@ -60,7 +65,7 @@ interface UserProgressRowProps {
  * ... }` only, no sort title — unlike the REST `Book` shape this row used
  * to read via `useBook`.
  */
-export const UserProgressRow = ({ progress, username }: UserProgressRowProps) => {
+export const UserProgressRow = ({ progress, username, libraryId }: UserProgressRowProps) => {
   const styles = useStyle();
   const row = useFragment(ProgressRowFragment, progress);
   const { deleteProgress, deleting } = useDeleteProgress();
@@ -141,11 +146,12 @@ export const UserProgressRow = ({ progress, username }: UserProgressRowProps) =>
           <strong>{bookTitle}</strong>.
         </ConfirmModal>
       )}
-      {showLinkModal && (
+      {showLinkModal && libraryId !== undefined && (
         <LinkProgressModal
           isOpen
           documentId={row.document}
-          username={username}
+          libraryId={libraryId}
+          progressId={row.id}
           onClose={() => setShowLinkModal(false)}
         />
       )}

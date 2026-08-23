@@ -48,6 +48,15 @@ export type UseMyProgressList = {
   hasNextPage: boolean;
   loadMore: () => void;
   loadingMore: boolean;
+  /**
+   * The viewer's own Library global id, off this hook's own
+   * `useCurrentLibraryId()` call — not a second resolution. `MyProgressContent`
+   * threads this through to `MyProgressRow` so `LinkProgressModal` can root
+   * its book picker (`LinkPickerBooksDocument`'s `node(id: $libraryId)`) at
+   * the same library this list itself reads from, without `MyProgressRow`
+   * calling `useCurrentLibraryId()` a second time per row.
+   */
+  libraryId: string | undefined;
 };
 
 /**
@@ -130,5 +139,6 @@ export const useMyProgressList = ({ skip }: { skip: boolean }): UseMyProgressLis
     hasNextPage,
     loadMore,
     loadingMore,
+    libraryId,
   };
 };
