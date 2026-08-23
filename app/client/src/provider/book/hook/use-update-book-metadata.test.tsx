@@ -8,6 +8,7 @@ import type {
   BookUpdateMetadataMutationVariables,
 } from '~/gql/graphql';
 import { BookEditDocument, BookUpdateMetadataDocument } from '~/graphql/book-edit';
+import { LibraryEntriesDocument } from '~/graphql/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));
@@ -15,11 +16,15 @@ vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));
 const { stageUpload } = await import('~/lib/staged-upload');
 const mockStage = vi.mocked(stageUpload);
 
-const { useUpdateBookMetadata } = await import('./use-update-book-metadata');
-
 const LIBRARY_ID = 'TGlicmFyeTox';
 const BOOK_ID = 'Qm9vazox';
 const NEW_BOOK_ID = 'Qm9vazoy';
+
+vi.mock('~/provider/library-target', () => ({
+  useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+}));
+
+const { useUpdateBookMetadata } = await import('./use-update-book-metadata');
 
 const cover = new File(['bytes'], 'cover.jpg', { type: 'image/jpeg' });
 
@@ -97,6 +102,55 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
           series: null,
           identifiers: [],
           validation: null,
+        },
+      },
+    },
+  });
+
+const libraryEntriesVariables = { libraryId: LIBRARY_ID, first: 20, filter: undefined };
+
+// Deliberately UNANNOTATED (no `: LibraryEntryNode` return type): the masked
+// `node` field expects a `$fragmentRefs`-wrapped shape, not these plain
+// fields directly, and a literal returned under an explicit annotation would
+// fail TypeScript's excess-property check. Passing this as a plain (non-
+// literal) value through `bookRowNode(id)` sidesteps that the same way
+// `use-delete-book.test.tsx`'s `standaloneBook` const does.
+const bookRowNode = (id: string) => ({
+  __typename: 'Book' as const,
+  id,
+  title: 'Dune',
+  author: 'Herbert',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+});
+
+// Seeds a `LibraryEntries` read (the grid's own query) so the invalidation
+// tests below prove the CACHE was actually invalidated, not merely that the
+// mutation resolved — mirrors `use-delete-book.test.tsx`'s `seedLibraryEntries`.
+const seedLibraryEntries = (
+  client: ReturnType<typeof renderHookWithApollo>['client'],
+  id: string
+) =>
+  client.writeQuery({
+    query: LibraryEntriesDocument,
+    variables: libraryEntriesVariables,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [
+            {
+              __typename: 'LibraryEntriesConnectionEdge' as const,
+              cursor: 'c1',
+              node: bookRowNode(id),
+            },
+          ],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
         },
       },
     },
@@ -235,6 +289,104 @@ describe('useUpdateBookMetadata', () => {
     expect(Object.keys(extracted)).toContain(`Book:${BOOK_ID}`);
     const entity = extracted[`Book:${BOOK_ID}`] as { title: string };
     expect(entity.title).toBe('New');
+  });
+
+  // I-1 (whole-branch review): a successful save used to leave the grid's
+  // `Library.entries` connection untouched, so the edited book's now-stale
+  // row (wrong title/sort position/series grouping) — or, when the id
+  // rotated, an outright DANGLING edge pointing at an evicted `Book` — lived
+  // on in the cache until a hard reload. Asserted against the cache itself
+  // (`readQuery` returns `null`, meaning the next read is forced to the
+  // network), not a call count, per this task's instruction.
+  it('invalidates the LibraryEntries connection so a subsequent read misses the cache (id rotates)', async () => {
+    const mutationMock: MockedResponse<
+      BookUpdateMetadataMutation,
+      BookUpdateMetadataMutationVariables
+    > = {
+      request: {
+        query: BookUpdateMetadataDocument,
+        variables: { input: { id: BOOK_ID, title: 'New' } },
+      },
+      result: { data: updatePayload({ id: NEW_BOOK_ID, title: 'New' }) },
+    };
+
+    const { result, client } = renderHookWithApollo(() => useUpdateBookMetadata(), [mutationMock]);
+    act(() => seedLibraryEntries(client, BOOK_ID));
+
+    await act(async () => {
+      await result.current?.[0](BOOK_ID, { title: 'New' });
+    });
+
+    const cached = client.cache.readQuery({
+      query: LibraryEntriesDocument,
+      variables: libraryEntriesVariables,
+    });
+    expect(cached).toBeNull();
+  });
+
+  // The unconditional half of the fix: a title/author/series edit can move a
+  // row's sort position or series grouping — which `BookRowFragment` renders
+  // — even when the id happens to hold. This must invalidate `entries` just
+  // as much as an id rotation does; it is what makes the eviction
+  // UNCONDITIONAL rather than gated on `payload.book.id !== bookId`.
+  it('invalidates the LibraryEntries connection even when the id is unchanged', async () => {
+    const mutationMock: MockedResponse<
+      BookUpdateMetadataMutation,
+      BookUpdateMetadataMutationVariables
+    > = {
+      request: {
+        query: BookUpdateMetadataDocument,
+        variables: { input: { id: BOOK_ID, title: 'New' } },
+      },
+      result: { data: updatePayload({ id: BOOK_ID, title: 'New' }) },
+    };
+
+    const { result, client } = renderHookWithApollo(() => useUpdateBookMetadata(), [mutationMock]);
+    act(() => seedLibraryEntries(client, BOOK_ID));
+
+    await act(async () => {
+      await result.current?.[0](BOOK_ID, { title: 'New' });
+    });
+
+    const cached = client.cache.readQuery({
+      query: LibraryEntriesDocument,
+      variables: libraryEntriesVariables,
+    });
+    expect(cached).toBeNull();
+  });
+
+  it('does not touch the LibraryEntries connection on a failed save', async () => {
+    const mutationMock: MockedResponse<
+      BookUpdateMetadataMutation,
+      BookUpdateMetadataMutationVariables
+    > = {
+      request: {
+        query: BookUpdateMetadataDocument,
+        variables: { input: { id: BOOK_ID, title: 'New' } },
+      },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          bookUpdateMetadata: {
+            __typename: 'BookHashCollisionError',
+            message: 'This book collides with another book already in the library.',
+          },
+        },
+      },
+    };
+
+    const { result, client } = renderHookWithApollo(() => useUpdateBookMetadata(), [mutationMock]);
+    act(() => seedLibraryEntries(client, BOOK_ID));
+
+    await act(async () => {
+      await result.current?.[0](BOOK_ID, { title: 'New' });
+    });
+
+    const cached = client.cache.readQuery({
+      query: LibraryEntriesDocument,
+      variables: libraryEntriesVariables,
+    });
+    expect(cached).not.toBeNull();
   });
 
   it('maps BookHashCollisionError to errorMessage and resolves undefined', async () => {
