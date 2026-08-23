@@ -52,7 +52,7 @@ export const UserRow = ({ userId, username }: UserRowProps) => {
         }
       >
         <div className={styles.content}>
-          <UserRowContent username={username} />
+          <UserRowContent userId={userId} username={username} />
         </div>
       </Card>
       <ConfirmModal
