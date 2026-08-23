@@ -29,13 +29,16 @@ export const ProgressRowFragment = graphql(`
 `);
 
 /**
- * The viewer's own progress. `first: 50` matches
- * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the cap is 100.
- * Forward-only — `Library.progress` rejects `last`/`before`.
+ * The viewer's own progress. Forward-only — `Library.progress` rejects
+ * `last`/`before`. Callers should pass `first: 50`, matching
+ * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the server's cap is 100.
  *
- * `$first` is a VARIABLE, so `Library.progress` prices at its `maxSize` (100),
- * not the 50 the page actually passes (`cost-limit.ts`'s `multiplierFor` prices
- * a variable-valued `first`/`last` at the field's max, not its default).
+ * `$first` is a VARIABLE in this document (not a literal), so
+ * `Library.progress` is PRICED at its `maxSize` (100) regardless of what a
+ * caller actually passes (`cost-limit.ts`'s `multiplierFor` prices a
+ * variable-valued `first`/`last` at the field's max, not its default) — the
+ * measured numbers below already reflect that worst case, not the 50 a
+ * well-behaved caller sends.
  *
  * Measured (`npm run test:cost -w app/server`): breadth 32 (32.0%), complexity
  * 2507 (7.6%) of budget.
@@ -222,31 +225,46 @@ export const BookLinkDocumentDocument = graphql(`
 
 /**
  * The link modal's book picker. Server-side filtered via `LibraryFilter.query`
- * — `entryType` was NOT added here despite the brief's original draft: the
- * `LibraryEntryType` enum (schema-verified,
+ * — `entryType` was deliberately NOT added, despite the brief's original
+ * draft: the `LibraryEntryType` enum (schema-verified,
  * `app/server/graphql/schema.generated.graphql`) has only `SERIES` and
- * `STANDALONE`, distinguishing a grouped series row from an ungrouped book
- * row — there is no `BOOK` value, and no combination of the two selects
- * "every book, grouped or not." `Library.entries` returns the `LibraryEntry`
- * union (`Book | Series`) regardless, so the picker narrows on `__typename`
- * instead, exactly as the REST-replacement note below describes; a book that
- * is grouped into a series surfaces via that series's row, unchanged from
- * before this task.
+ * `STANDALONE`, no `BOOK` value. `STANDALONE` looks like the obvious
+ * substitute but is wrong, not just imprecise — `entries-filter.test.ts:172`
+ * proves it returns ONLY ungrouped books, so filtering by it would silently
+ * hide every series-grouped book from the picker, which is worse than no
+ * filter at all for a "link this document to a book" flow.
+ *
+ * That means `Library.entries` is queried unfiltered by type, so a page can
+ * be diluted with `Series` entries this document doesn't select (it only
+ * has an inline fragment on `Book`) — a `Series`-heavy library can return
+ * materially fewer than `first` usable rows. The compensation is `first:
+ * 100` (`CONNECTION_LIMITS.libraryEntries.maxSize`, the most the server will
+ * serve — schema-verified, `app/server/graphql/schema/pagination.ts:186`)
+ * plus `pageInfo`/`cursor` so a caller CAN page past a dilute page if it
+ * needs to. Raising the literal page size from 20 to 100 is free on the
+ * tight axis: breadth counts selected fields, unweighted by any connection
+ * multiplier, so it costs zero additional breadth — only complexity moves,
+ * and only moderately (fans a fixed per-edge cost ×100 instead of ×20). This
+ * document does not decide whether the picker actually offers a "Load more"
+ * — that is left to whichever task wires up the UI.
  *
  * Replaces a fetch-the-whole-library-then-filter-locally REST hook with a
- * server-side `query` filter and a literal `first: 20` page size.
+ * server-side `query` filter and a `first: 100` page size (moved off the
+ * REST hook's implicit "fetch everything" behavior onto the same
+ * `after`-only forward pagination every other list document here uses).
  *
- * Measured (`npm run test:cost -w app/server`): breadth 16 (16.0%), complexity
- * 187 (0.6%) of budget.
+ * Measured (`npm run test:cost -w app/server`): breadth 21 (21.0%), complexity
+ * 1407 (4.3%) of budget.
  */
 export const LinkPickerBooksDocument = graphql(`
-  query LinkPickerBooks($libraryId: ID!, $query: String) {
+  query LinkPickerBooks($libraryId: ID!, $query: String, $after: String) {
     node(id: $libraryId) {
       id
       ... on Library {
         id
-        entries(first: 20, filter: { query: $query }) {
+        entries(first: 100, after: $after, filter: { query: $query }) {
           edges {
+            cursor
             node {
               __typename
               ... on Book {
@@ -255,6 +273,10 @@ export const LinkPickerBooksDocument = graphql(`
                 author
               }
             }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
           }
         }
       }
