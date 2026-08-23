@@ -23,8 +23,12 @@ export type UseRegenChapters = [
 /**
  * The REST-era `renameProgressKey` call is GONE along with the REST progress
  * map it renamed keys in — `ProgressContext` is not touched by this hook at
- * all anymore. Progress lives in its own not-yet-migrated REST hooks
- * (untouched per Global Constraints); nothing here bridges to them.
+ * all anymore. Progress now lives entirely over GraphQL (`provider/progress/`
+ * deleted, step 8); nothing here bridges to it. An id rotation from a chapter
+ * regen keeps a book's `Progress` row attached the same server-side way a
+ * metadata-save or replace rotation does — `BookStore.resolveBookId`/
+ * `reimportBook` (`app/server/services/book-store.ts`) — so there is nothing
+ * for a client-side hook to do here regardless.
  *
  * `BookRegenChaptersResult` genuinely has two error members
  * (schema-verified against `app/server/graphql/schema/book/mutation/

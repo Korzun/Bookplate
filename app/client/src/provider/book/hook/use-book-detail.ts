@@ -69,10 +69,16 @@ export type UseBookDetail = {
   /** Apollo's `error?.message` — see this file's doc comment for what it covers. */
   error: string | undefined;
   /**
-   * Forwarded straight from `useQuery`. Not decoration: a later task uses
-   * this to bridge a REST progress write back onto this GraphQL read (the
-   * progress mutation hasn't migrated yet, so the page needs a way to
-   * re-pull `book.progress` after that REST call succeeds).
+   * Forwarded straight from `useQuery`. Used to serve as the STEP-8 BRIDGE —
+   * `page/book`'s `onSaved={refetch}` re-pulled `book.progress` after
+   * `SetProgressModal`'s REST write, back when the progress mutation hadn't
+   * migrated yet and Apollo's own cache had no way to hear about it. Step 8
+   * deleted that bridge: `progressSet`/`progressDelete` now normalize onto
+   * the same `Progress` entity this query reads, so `page/book` no longer
+   * calls `refetch` at all (proven by a test with exactly one `BookDetail`
+   * mock — a refetch would be an unmatched operation). Kept on the return
+   * type as a plain, tested escape hatch (`use-book-detail.test.tsx`'s
+   * "refetch re-issues the query"), not because anything currently needs it.
    */
   refetch: () => void;
 };
