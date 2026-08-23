@@ -68,12 +68,15 @@ const DEBOUNCE_MS = 200;
  * `cursor` for exactly this) and keep this modal consistent with the rest
  * of the app's list affordances rather than a special case.
  *
- * `useLinkProgress(selectedBookId ?? '')`'s `link(documentId, progressId)`
- * both selects the target book (this modal's job) and evicts the stale
- * orphan `Progress` entity from the cache on success (that hook's own job —
- * see `use-progress-mutations.ts`'s doc comment) — without `progressId`,
- * the link succeeds server-side but the row keeps rendering as an orphan
- * until something else happens to refetch it.
+ * `useLinkProgress(selectedBookId ?? '', libraryId)`'s `link(documentId,
+ * progressId)` both selects the target book (this modal's job) and evicts
+ * the stale orphan `Progress` entity plus the owning `Library.progress`
+ * connection field from the cache on success (that hook's own job — see
+ * `use-progress-mutations.ts`'s doc comment, I-3) — without `libraryId`, the
+ * hook has no `Library` to invalidate, and the just-linked row would vanish
+ * from the list instead of reappearing attached to its book; without
+ * `progressId`, the link succeeds server-side but the stale orphan entity
+ * lingers.
  */
 export function LinkProgressModal({
   isOpen,
@@ -116,14 +119,32 @@ export function LinkProgressModal({
   );
   const hasNextPage = library?.entries.pageInfo.hasNextPage ?? false;
   const endCursor = library?.entries.pageInfo.endCursor ?? undefined;
+  const [loadMoreError, setLoadMoreError] = useState<string | undefined>(undefined);
 
+  // A bare `.finally()` re-propagates a rejection, and `void` does not catch
+  // it — a failed "Load more" here was an unhandled promise rejection AND a
+  // silent no-op (the button's `loading` state cleared, but nothing told the
+  // user it failed). Both `MyProgressContent`'s and `UserRowContent`'s list
+  // hooks (`use-my-progress-list.ts`, `use-user-progress-list.ts`) already
+  // catch and surface an identical `fetchMore` failure; this mirrors that
+  // shape instead of leaving this modal the one unguarded promise on the
+  // branch.
   const handleLoadMore = useCallback(() => {
     if (!hasNextPage || loadingMore) return;
     setLoadingMore(true);
-    void fetchMore({ variables: { after: endCursor } }).finally(() => setLoadingMore(false));
+    setLoadMoreError(undefined);
+    void (async () => {
+      try {
+        await fetchMore({ variables: { after: endCursor } });
+      } catch (err) {
+        setLoadMoreError(err instanceof Error ? err.message : 'Failed to load more books');
+      } finally {
+        setLoadingMore(false);
+      }
+    })();
   }, [fetchMore, hasNextPage, endCursor, loadingMore]);
 
-  const { link, linking, error: linkError } = useLinkProgress(selectedBookId ?? '');
+  const { link, linking, error: linkError } = useLinkProgress(selectedBookId ?? '', libraryId);
 
   const handleConfirm = useCallback(async () => {
     if (!selectedBookId) return;
@@ -194,6 +215,7 @@ export function LinkProgressModal({
               Load more
             </Button>
           )}
+          {loadMoreError && <div className={styles.error}>{loadMoreError}</div>}
           {linkError && <div className={styles.error}>{linkError}</div>}
         </div>
         <div className={styles.footer}>

@@ -2,7 +2,16 @@ import type { Reference } from '@apollo/client';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 
-import { useFragment } from '~/gql';
+// Aliased on import: `useFragment` (`gql/fragment-masking.ts`) is an
+// identity-cast helper, not an actual React hook (see its own doc comment),
+// but its NAME still trips `react-hooks/rules-of-hooks` wherever it's
+// called from a non-hook, non-component function — exactly the position
+// `useSetMyProgress`'s `update` callback below needs it in (a plain
+// closure passed to `useMutation`, not a hook or component itself). Every
+// other call site in this codebase calls it unaliased, directly in a
+// component/hook body, where the rule doesn't fire; this is the one place
+// that can't.
+import { useFragment as unmaskFragment } from '~/gql';
 import type {
   BookLinkDocumentMutation,
   ProgressDeleteMutation,
@@ -111,7 +120,8 @@ export type UseLinkProgress = {
  *      `book { id }` on the returned `progress` (no new server field
  *      needed), so this inserts a REFERENCE into `Book:<bookId>.progress`
  *      the same way point 2 inserts one into `Library.progress`'s edges —
- *      `useFragment` un-masks the mutation's own `progress` field to reach
+ *      `unmaskFragment` (aliased `useFragment`, see this file's own import
+ *      comment) un-masks the mutation's own `progress` field to reach
  *      `.book.id` (an identity cast at runtime, not an actual hook; see
  *      `gql/fragment-masking.ts`), safe to call from inside this
  *      non-render `update` callback.
@@ -227,14 +237,13 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
             // set for a book with no prior progress row otherwise leaves
             // `Book.progress` cached as the `null` the server returned
             // before anything existed.
-            const unmaskedProgress = useFragment(ProgressRowFragment, result.payload.progress);
+            const unmaskedProgress = unmaskFragment(ProgressRowFragment, result.payload.progress);
             const bookId = unmaskedProgress.book?.id;
             if (bookId) {
               cache.modify({
                 id: cache.identify({ __typename: 'Book', id: bookId }),
                 fields: {
-                  progress: (_existing, { toReference }) =>
-                    toReference(unmaskedProgress) ?? null,
+                  progress: (_existing, { toReference }) => toReference(unmaskedProgress) ?? null,
                 },
               });
             }
@@ -419,31 +428,62 @@ export const useDeleteProgress = (): UseDeleteProgress => {
  *     must be pinned by a cache assertion, not just left as an absence of
  *     code).
  *
- *   - The re-keyed ORPHAN PROGRESS ENTRY's replacement is a `cache.evict`,
- *     not a re-key: `BookLinkDocumentPayload` carries no `progress` field at
- *     all (schema-verified, `link-document.ts:65-90` — only `book`), so the
- *     mutation's own response gives the client no `Progress` id to act on.
- *     But the CALLER already has one: `link` is only ever invoked from a
- *     component rendering the exact orphan row it's offering to link (there
- *     is no other UI path to this action), so `progressId` rides in as this
- *     hook's own second argument rather than being derived from the
- *     response. On success, `cache.evict` that `Progress:<progressId>`
- *     entity + `cache.gc()` — mirroring `useDeleteProgress`'s identical
- *     evict-the-entity-and-let-the-connection-self-heal shape. Without this,
- *     the stale orphan `Progress:<id>` (still `book: null`) survives
- *     untouched and the row renders as if nothing happened; the server DID
- *     migrate it (`book-store.ts`'s `linkDocument` transaction), the CACHE
- *     just never heard about it. Evicting the orphan is sufficient — a new
- *     `Progress` edge for the now-linked book, if any, arrives through
- *     `useSetMyProgress`'s own connection-insert the next time it's needed,
- *     not through this hook.
+ *   - The re-keyed ORPHAN PROGRESS ENTRY's replacement was originally a
+ *     single-entity `cache.evict` alone (`cache.evict({ id: cache.identify({
+ *     __typename: 'Progress', id: progressId }) })` + `cache.gc()`),
+ *     mirroring `useDeleteProgress`'s evict-the-entity-and-let-the-
+ *     connection-self-heal shape. **That undersold what the server actually
+ *     did** (I-3, final whole-branch review): `Progress.id` is derived from
+ *     the compound key `[userId, document]` (`progress/mutation/delete.ts`'s
+ *     `decodeProgressId`), and `linkDocument`'s own transaction
+ *     (`book-store.ts`) DELETES the orphan row and CREATES a new one keyed
+ *     to `document: bookId` — so the linked row gets a NEW global id the
+ *     client never learns (`BookLinkDocumentPayload` carries only `book`).
+ *     Evicting only the old, now-nonexistent entity left the connection
+ *     with one fewer edge and nothing to replace it: the row the user just
+ *     linked disappeared from the list instead of re-appearing attached to
+ *     its book, until an unrelated full reload happened to refetch it.
  *
- *   **Seen-to-fail**: deleting the `cache.evict`/`cache.gc()` lines below
- *   leaves "evicts the stale orphan Progress entity from the cache after a
- *   link" failing — `Progress:<progressId>` survives in `cache.extract()`
- *   instead of disappearing. Restored.
+ *     The fix ADDS a FIELD-level evict alongside the existing entity-level
+ *     one — the same TWO-evictions shape `useDeleteBook` already uses for
+ *     the identical reason (`use-delete-book.ts`'s doc comment, points 1
+ *     and 2: evict the now-gone entity itself, AND evict the owning
+ *     connection field when the entity's removal has a side effect the
+ *     connection can't self-heal from). The entity evict here still matters
+ *     on its own — it drops the stale `Progress:<progressId>` (`book: null`)
+ *     immediately, in case anything besides `Library.progress` ever holds a
+ *     direct reference to it. The field evict is the actual I-3 fix: the
+ *     caller supplies the owning `libraryId` (this hook's second argument;
+ *     `LinkProgressModal` already held it as a prop, for
+ *     `LinkPickerBooksDocument`), and evicting `Library.progress` wholesale
+ *     forces the next read to miss the cache and refetch. `Library.progress`
+ *     carries no `keyArgs` (`cacheConfig`, `graphql/progress.ts`'s own doc
+ *     comments), so this one evict invalidates BOTH `MyProgressListDocument`
+ *     and `UserProgressListDocument`'s cached page for that library — the
+ *     refetch it forces is what brings the row back correctly attached to
+ *     its book, under its real (new) id, instead of leaving a hole where
+ *     the evicted entity's edge used to be.
+ *
+ *     **Invariant this relies on, not itself enforced here**: `link` must
+ *     only ever be called with a `progressId` for a row whose `book` is
+ *     `null` — i.e. a genuine orphan, not one some `Book.progress` field
+ *     already points at. Today that's guaranteed by two CALLERS, not this
+ *     hook: `MyProgressRow`/`UserProgressRow` render the "Link" affordance
+ *     only when `row.book === null`, and by construction such a row is never
+ *     the target of a `Book.progress` reference. If that ever stopped being
+ *     true, this hook would leave a stale `Book.progress` reference to the
+ *     just-evicted entity dangling — it has no equivalent of
+ *     `useDeleteProgress`'s scan-and-null-Book step, because it has never
+ *     needed one under the invariant above.
+ *
+ *   **Seen-to-fail**: deleting the `fieldName: 'progress'` `cache.evict`
+ *   call below (leaving only the entity-level evict) leaves "re-fetches
+ *   Library.progress after a link so the row reappears attached to its
+ *   book" failing — the connection's cached page survives with one fewer
+ *   edge and no network refetch is ever triggered, so the just-linked row
+ *   never comes back. Restored.
  */
-export const useLinkProgress = (bookGlobalId: string): UseLinkProgress => {
+export const useLinkProgress = (bookGlobalId: string, libraryId: string): UseLinkProgress => {
   const [runLink] = useMutation(BookLinkDocumentDocument);
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -466,6 +506,10 @@ export const useLinkProgress = (bookGlobalId: string): UseLinkProgress => {
             if (result.status !== 'ok') return;
 
             cache.evict({ id: cache.identify({ __typename: 'Progress', id: progressId }) });
+            cache.evict({
+              id: cache.identify({ __typename: 'Library', id: libraryId }),
+              fieldName: 'progress',
+            });
             cache.gc();
           },
         });
@@ -491,7 +535,7 @@ export const useLinkProgress = (bookGlobalId: string): UseLinkProgress => {
         setLinking(false);
       }
     },
-    [runLink, linking, bookGlobalId]
+    [runLink, linking, bookGlobalId, libraryId]
   );
 
   return useMemo(() => ({ link, linking, error }), [link, linking, error]);

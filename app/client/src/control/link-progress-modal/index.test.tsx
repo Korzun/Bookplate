@@ -277,4 +277,35 @@ describe('LinkProgressModal', () => {
     await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
+
+  // Final whole-branch review, "the branch's one unguarded promise":
+  // `handleLoadMore`'s original `void fetchMore(...).finally(...)` re-throws
+  // a rejection past `void` (`.finally` doesn't swallow it) — a failed
+  // "Load more" was an unhandled rejection AND a silent no-op, unlike
+  // `MyProgressContent`'s/`UserRowContent`'s own list hooks, which both
+  // catch and surface the identical failure. This proves the fix: the
+  // failure surfaces as a message, and (implicitly, since vitest fails a
+  // test on an unhandled rejection) does not escape as one.
+  it('surfaces a failed Load more as a message instead of an unhandled rejection', async () => {
+    renderModal({}, [
+      pickerMock(undefined, [bookEdge('book-1', 'Dune', 'Frank Herbert')], {
+        hasNextPage: true,
+        endCursor: 'book-1',
+      }),
+      {
+        request: {
+          query: LinkPickerBooksDocument,
+          variables: { libraryId: LIBRARY_ID, query: undefined, after: 'book-1' },
+        },
+        error: new Error('Network error'),
+      },
+    ]);
+
+    await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument());
+  });
 });
