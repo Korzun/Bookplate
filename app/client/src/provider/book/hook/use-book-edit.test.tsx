@@ -13,8 +13,10 @@ const BOOK_ID = 'Qm9vazox';
 // (`~/provider/library-target`) — stubbed the same way
 // `use-book-detail.test.tsx` stubs it, so these tests stay focused on
 // `BookEditDocument` alone rather than also exercising the bootstrap query.
-const currentLibraryId: string | undefined = LIBRARY_ID;
-const currentLibraryIdLoading = false;
+// `let`, not `const`: the two tests below vary both to exercise the
+// "library id not yet resolved" window, mirroring `use-series-names.test.ts`.
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
 
 vi.mock('~/provider/library-target', () => ({
   useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
@@ -115,5 +117,33 @@ describe('useBookEdit', () => {
     await waitFor(() => expect(result.current?.loading).toBe(false));
     expect(result.current?.book?.series).toBeNull();
     expect(result.current?.error).toBeUndefined();
+  });
+
+  it('does not query when there is no library id', () => {
+    currentLibraryId = undefined;
+    try {
+      // No mocks: if the hook queried anyway, MockLink would throw "No more
+      // mocked responses" and fail this test loudly rather than pass vacuously.
+      const { result } = renderHookWithApollo(() => useBookEdit(BOOK_ID), []);
+
+      expect(result.current?.loading).toBe(false);
+      expect(result.current?.book).toBeUndefined();
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+    }
+  });
+
+  it('reports loading while useCurrentLibraryId itself is still resolving, even though the query is skipped', () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = true;
+    try {
+      const { result } = renderHookWithApollo(() => useBookEdit(BOOK_ID), []);
+
+      expect(result.current?.loading).toBe(true);
+      expect(result.current?.book).toBeUndefined();
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+      currentLibraryIdLoading = false;
+    }
   });
 });
