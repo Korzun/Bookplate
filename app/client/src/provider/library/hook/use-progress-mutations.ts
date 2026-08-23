@@ -49,7 +49,14 @@ export type UseDeleteProgress = {
 };
 
 export type UseLinkProgress = {
-  link: (documentId: string) => Promise<boolean>;
+  /**
+   * `progressId` is the `Progress.id` of the orphan row being linked — the
+   * caller already has it, since this is only ever invoked from a component
+   * rendering that exact row to offer the "link" action in the first place.
+   * See this hook's own doc comment for why the mutation's response alone
+   * cannot supply it.
+   */
+  link: (documentId: string, progressId: string) => Promise<boolean>;
   linking: boolean;
   error: string | undefined;
 };
@@ -331,18 +338,29 @@ export const useDeleteProgress = (): UseDeleteProgress => {
  *     must be pinned by a cache assertion, not just left as an absence of
  *     code).
  *
- *   - The re-keyed ORPHAN PROGRESS ENTRY has NO replacement here, and this is
- *     a known gap, not an oversight: `BookLinkDocumentPayload` carries no
- *     `progress` field at all (schema-verified) — the server DOES migrate
- *     the orphan `Progress` row as part of `linkDocument`'s own transaction
- *     (`book-store.ts`), but this mutation's response gives the client
- *     nothing to act on (no old/new `Progress` id, no `library { id }` to
- *     evict a connection field on). The stale orphan `Progress:<old-id>`
- *     entity can linger in the cache — with its `book` field still null —
- *     until something else re-fetches the progress list. Left for a later
- *     task: fixing it needs either a schema change (returning the migrated
- *     `Progress`/its old id) or a blunt whole-connection evict this payload
- *     shape doesn't support cheaply.
+ *   - The re-keyed ORPHAN PROGRESS ENTRY's replacement is a `cache.evict`,
+ *     not a re-key: `BookLinkDocumentPayload` carries no `progress` field at
+ *     all (schema-verified, `link-document.ts:65-90` — only `book`), so the
+ *     mutation's own response gives the client no `Progress` id to act on.
+ *     But the CALLER already has one: `link` is only ever invoked from a
+ *     component rendering the exact orphan row it's offering to link (there
+ *     is no other UI path to this action), so `progressId` rides in as this
+ *     hook's own second argument rather than being derived from the
+ *     response. On success, `cache.evict` that `Progress:<progressId>`
+ *     entity + `cache.gc()` — mirroring `useDeleteProgress`'s identical
+ *     evict-the-entity-and-let-the-connection-self-heal shape. Without this,
+ *     the stale orphan `Progress:<id>` (still `book: null`) survives
+ *     untouched and the row renders as if nothing happened; the server DID
+ *     migrate it (`book-store.ts`'s `linkDocument` transaction), the CACHE
+ *     just never heard about it. Evicting the orphan is sufficient — a new
+ *     `Progress` edge for the now-linked book, if any, arrives through
+ *     `useSetMyProgress`'s own connection-insert the next time it's needed,
+ *     not through this hook.
+ *
+ *   **Seen-to-fail**: deleting the `cache.evict`/`cache.gc()` lines below
+ *   leaves "evicts the stale orphan Progress entity from the cache after a
+ *   link" failing — `Progress:<progressId>` survives in `cache.extract()`
+ *   instead of disappearing. Restored.
  */
 export const useLinkProgress = (bookGlobalId: string): UseLinkProgress => {
   const [runLink] = useMutation(BookLinkDocumentDocument);
@@ -350,14 +368,26 @@ export const useLinkProgress = (bookGlobalId: string): UseLinkProgress => {
   const [error, setError] = useState<string | undefined>();
 
   const link = useCallback(
-    async (documentId: string): Promise<boolean> => {
+    async (documentId: string, progressId: string): Promise<boolean> => {
       if (linking) return false;
 
       setLinking(true);
       setError(undefined);
 
       try {
-        const { data } = await runLink({ variables: { id: bookGlobalId, documentId } });
+        const { data } = await runLink({
+          variables: { id: bookGlobalId, documentId },
+          update: (cache, { data: mutationData }) => {
+            const result = unwrapResult<BookLinkDocumentPayload>(
+              mutationData?.bookLinkDocument,
+              'BookLinkDocumentPayload'
+            );
+            if (result.status !== 'ok') return;
+
+            cache.evict({ id: cache.identify({ __typename: 'Progress', id: progressId }) });
+            cache.gc();
+          },
+        });
 
         const result = unwrapResult<BookLinkDocumentPayload>(
           data?.bookLinkDocument,

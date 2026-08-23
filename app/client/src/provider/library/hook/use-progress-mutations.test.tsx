@@ -7,6 +7,7 @@ import { useFragment } from '~/gql';
 import type {
   BookLinkDocumentMutation,
   BookLinkDocumentMutationVariables,
+  LineageType,
   ProgressDeleteMutation,
   ProgressDeleteMutationVariables,
   ProgressRowFragmentFragment,
@@ -287,6 +288,45 @@ describe('useSetMyProgress', () => {
     expect(result.current?.error).toBe('Network error');
   });
 
+  // The typed-union error branch: `ProgressSetResult` is a two-member union
+  // (`ProgressSetPayload | InvalidInputError`), and `useLinkProgress` already
+  // covers its own typed-error branch (`DocumentAlreadyLinkedError`) — this
+  // closes the same gap here so the ladder's `result.status === 'error'`
+  // path isn't only exercised via a thrown exception.
+  it('maps InvalidInputError to an error message', async () => {
+    const { result, client } = renderHookWithApollo(() => useSetMyProgress('doc-1'), [
+      viewerBootstrapMock(VIEWER_USER_ID),
+      {
+        request: {
+          query: ProgressSetDocument,
+          variables: {
+            input: {
+              document: 'doc-1',
+              userId: VIEWER_USER_ID,
+              currentChapter: 1,
+              percentage: 0.1,
+            },
+          },
+        },
+        result: {
+          data: {
+            __typename: 'Mutation',
+            progressSet: {
+              __typename: 'InvalidInputError',
+              message: 'percentage must be between 0 and 1',
+            },
+          },
+        },
+      },
+    ] as MockedResponse[]);
+    await waitForViewerBootstrap(client);
+
+    const ok = await act(() => result.current!.setProgress({ currentChapter: 1, percentage: 0.1 }));
+
+    expect(ok).toBe(false);
+    expect(result.current?.error).toBe('percentage must be between 0 and 1');
+  });
+
   it('does not fire a second mutation while one is in flight', async () => {
     const { result, client } = renderHookWithApollo(() => useSetMyProgress('doc-1'), [
       viewerBootstrapMock(VIEWER_USER_ID),
@@ -482,6 +522,17 @@ describe('useDeleteProgress', () => {
 
 describe('useLinkProgress', () => {
   const BOOK_GLOBAL_ID = 'book-global-1';
+  const ORPHAN_PROGRESS_ID = 'progress-orphan';
+
+  const linkSuccessData = (
+    lineage: { __typename: 'LinkedDocument'; oldId: string; newId: string; type: LineageType }[]
+  ): BookLinkDocumentMutation => ({
+    __typename: 'Mutation',
+    bookLinkDocument: {
+      __typename: 'BookLinkDocumentPayload',
+      book: { __typename: 'Book', id: BOOK_GLOBAL_ID, lineage },
+    },
+  });
 
   it('returns initial linking/error state', () => {
     const { result } = renderHookWithApollo(() => useLinkProgress(BOOK_GLOBAL_ID), []);
@@ -512,37 +563,30 @@ describe('useLinkProgress', () => {
       ]
     );
 
-    const ok = await act(() => result.current!.link('doc-1'));
+    const ok = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
 
     expect(ok).toBe(false);
     expect(result.current?.error).toBe('This document is already linked to another book');
   });
 
   it('does not fire a second mutation while one is in flight', async () => {
-    const successData: BookLinkDocumentMutation = {
-      __typename: 'Mutation',
-      bookLinkDocument: {
-        __typename: 'BookLinkDocumentPayload',
-        book: { __typename: 'Book', id: BOOK_GLOBAL_ID, lineage: [] },
-      },
-    };
     const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
       request: {
         query: BookLinkDocumentDocument,
         variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
       },
-      result: { data: successData },
+      result: { data: linkSuccessData([]) },
       delay: 20,
     };
 
     const { result } = renderHookWithApollo(() => useLinkProgress(BOOK_GLOBAL_ID), [mock]);
 
     act(() => {
-      void result.current?.link('doc-1');
+      void result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
     });
     await waitFor(() => expect(result.current?.linking).toBe(true));
 
-    const secondCallOk = await act(() => result.current!.link('doc-1'));
+    const secondCallOk = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
     expect(secondCallOk).toBe(false);
     expect(result.current?.error).toBeUndefined();
 
@@ -555,31 +599,22 @@ describe('useLinkProgress', () => {
   // re-selected in full, so Apollo overwrites the existing `Book:<id>`
   // entity's `lineage` field on its own.
   it('normalizes the returned book.lineage onto the Book entity without a hand-written update', async () => {
-    const successData: BookLinkDocumentMutation = {
-      __typename: 'Mutation',
-      bookLinkDocument: {
-        __typename: 'BookLinkDocumentPayload',
-        book: {
-          __typename: 'Book',
-          id: BOOK_GLOBAL_ID,
-          lineage: [
-            { __typename: 'LinkedDocument', oldId: 'doc-1', newId: BOOK_GLOBAL_ID, type: 'EDIT' },
-          ],
-        },
-      },
-    };
     const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
       request: {
         query: BookLinkDocumentDocument,
         variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
       },
-      result: { data: successData },
+      result: {
+        data: linkSuccessData([
+          { __typename: 'LinkedDocument', oldId: 'doc-1', newId: BOOK_GLOBAL_ID, type: 'EDIT' },
+        ]),
+      },
     };
 
     const { result, client } = renderHookWithApollo(() => useLinkProgress(BOOK_GLOBAL_ID), [mock]);
 
     await act(async () => {
-      await result.current?.link('doc-1');
+      await result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
     });
 
     expect(result.current?.error).toBeUndefined();
@@ -588,6 +623,47 @@ describe('useLinkProgress', () => {
     expect(bookEntity?.lineage).toEqual([
       { __typename: 'LinkedDocument', oldId: 'doc-1', newId: BOOK_GLOBAL_ID, type: 'EDIT' },
     ]);
+  });
+
+  // Fix round 1: the reviewer traced that with no eviction, a linked orphan
+  // row rendered from `MyProgressListDocument` shows exactly what it showed
+  // before the link — the server migrates the orphan `Progress` row inside
+  // `linkDocument`'s own transaction, but the CACHE never hears about it,
+  // since `BookLinkDocumentPayload` carries no `progress` field at all
+  // (schema-verified). `progressId` is threaded in as `link`'s second
+  // argument — the caller already has it, since this is only ever invoked
+  // from a component rendering that exact orphan row — and evicted directly,
+  // the same shape `useDeleteProgress` uses.
+  it('evicts the stale orphan Progress entity from the cache after a link', async () => {
+    const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
+      request: {
+        query: BookLinkDocumentDocument,
+        variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
+      },
+      result: { data: linkSuccessData([]) },
+    };
+
+    const { result, client } = renderHookWithApollo(() => useLinkProgress(BOOK_GLOBAL_ID), [mock]);
+    act(() =>
+      seedMyProgressList(client, [
+        { cursor: ORPHAN_PROGRESS_ID, node: progressRow({ id: ORPHAN_PROGRESS_ID }) },
+      ])
+    );
+
+    await act(async () => {
+      await result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).not.toContain(`Progress:${ORPHAN_PROGRESS_ID}`);
+
+    const cached = client.cache.readQuery({
+      query: MyProgressListDocument,
+      variables: myProgressListVariables,
+    });
+    const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
+    expect(edges).toHaveLength(0);
   });
 
   it('sets error and returns false when the mutation throws', async () => {
@@ -604,7 +680,7 @@ describe('useLinkProgress', () => {
       ]
     );
 
-    const ok = await act(() => result.current!.link('doc-1'));
+    const ok = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
 
     expect(ok).toBe(false);
     expect(result.current?.error).toBe('Network error');
