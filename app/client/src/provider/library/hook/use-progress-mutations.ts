@@ -256,6 +256,31 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
  * `Progress` entity and its edge both survive in the cache untouched, so a
  * subsequent `readQuery` for the connection still lists the deleted row.
  * Restored.
+ *
+ * **Task 7 addition**: `page/book`'s `BookDetailDocument` reads `Book.progress`
+ * as a plain OBJECT field (`{ id percentage currentChapter }`), which Apollo
+ * still normalizes as a `Reference` to the `Progress` entity (any object with
+ * an `id` is). Evicting that entity, as above, leaves the reference dangling
+ * — the owning `Book` becomes cache-INCOMPLETE, and `useBookDetail`'s
+ * cache-first `useQuery` reacts to an incomplete read by refetching over the
+ * network, which in `page/book/index.test.tsx`'s own coverage flips the whole
+ * page to "Failed to load book." (no guaranteed mock for that refetch; in
+ * production, a pointless real round trip at best).
+ *
+ * The deleted `Progress` entity is NOT a reliable source for its own `book`
+ * link to null out directly: `BookDetailDocument` normalizes it with only
+ * `{ id percentage currentChapter }` (no `book` sub-selection, since the
+ * owning `Book` is already known on that path) — a book-detail-page-only
+ * session never caches enough of the row for `cache.readFragment` to read a
+ * `book` field back out of it. So this scans the EXTRACTED store for the
+ * `Book` entity that HOLDS the dangling reference (the referring side, not
+ * the referenced side) and nulls its `progress` field directly, before the
+ * evict below removes the referenced data.
+ *
+ * **Seen-to-fail**: deleting the scan-and-null block leaves `page/book`'s
+ * "issues progressDelete against the Progress global id..." test failing —
+ * the page falls back to "Failed to load book." after a clean delete.
+ * Restored.
  */
 export const useDeleteProgress = (): UseDeleteProgress => {
   const [runDelete] = useMutation(ProgressDeleteDocument);
@@ -279,9 +304,23 @@ export const useDeleteProgress = (): UseDeleteProgress => {
             );
             if (result.status !== 'ok') return;
 
-            cache.evict({
-              id: cache.identify({ __typename: 'Progress', id: result.payload.deletedId }),
+            const progressKey = cache.identify({
+              __typename: 'Progress',
+              id: result.payload.deletedId,
             });
+            if (progressKey) {
+              const extracted = cache.extract() as Record<
+                string,
+                { progress?: Reference } | undefined
+              >;
+              for (const [key, value] of Object.entries(extracted)) {
+                if (key.startsWith('Book:') && value?.progress?.__ref === progressKey) {
+                  cache.modify({ id: key, fields: { progress: () => null } });
+                }
+              }
+            }
+
+            cache.evict({ id: progressKey });
             cache.gc();
           },
         });

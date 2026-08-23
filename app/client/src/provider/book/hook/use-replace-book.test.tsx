@@ -6,8 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ValidationReport } from '~/lib/severity';
 import { ApolloTestProvider } from '~/test-utils';
 
-import { Context as ProgressContext } from '../../progress/context';
-import type { ProgressList, UserProgressList } from '../../progress/type';
 import { Context } from '../context';
 import type { Book, BookList, MetadataFix } from '../type';
 import type { ReplaceAnalysis } from './use-replace-book';
@@ -70,7 +68,6 @@ function makeFile(name = 'replacement.epub'): File {
 
 type WrapperOptions = {
   initialBooks?: Book[];
-  initialProgress?: ProgressList;
   setBookListFetched?: (fetched: boolean) => void;
   setBookListItems?: (
     updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]
@@ -79,7 +76,6 @@ type WrapperOptions = {
 
 function makeWrapper({
   initialBooks = [],
-  initialProgress = {},
   setBookListFetched = () => {},
   setBookListItems = () => {},
 }: WrapperOptions = {}) {
@@ -91,62 +87,33 @@ function makeWrapper({
       (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
       []
     );
-    const [progressList, setProgressListRaw] = useState<ProgressList>(initialProgress);
-    const setProgressForUsername = useCallback((username: string, data: UserProgressList) => {
-      setProgressListRaw((prev) => ({ ...prev, [username]: data }));
-    }, []);
-    const renameProgressKey = useCallback((oldId: string, newId: string) => {
-      setProgressListRaw((prev) => {
-        const next = { ...prev };
-        for (const username of Object.keys(next)) {
-          const userProgress = next[username];
-          if (userProgress && oldId in userProgress) {
-            const { [oldId]: oldEntry, ...rest } = userProgress;
-            next[username] = { ...rest, [newId]: { ...oldEntry, document: newId } };
-          }
-        }
-        return next;
-      });
-    }, []);
     return (
       <ApolloTestProvider>
-        <ProgressContext.Provider
+        <Context.Provider
           value={{
-            progressList,
-            loadingByUsername: {},
-            errorByUsername: {},
-            setProgressForUsername,
-            setLoadingForUsername: () => {},
-            setErrorForUsername: () => {},
-            renameProgressKey,
+            bookList,
+            bookListFetched: true,
+            bookListLoading: false,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(),
+            setBookList,
+            setBookListFetched,
+            setBookListLoading: () => {},
+            setBookListError: () => {},
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds: () => {},
+            bookListItems: [],
+            setBookListItems,
+            bookListFilter: {},
+            setBookListFilter: () => {},
           }}
         >
-          <Context.Provider
-            value={{
-              bookList,
-              bookListFetched: true,
-              bookListLoading: false,
-              bookListError: undefined,
-              loadingByBookId: {},
-              errorByBookId: {},
-              completeBookIds: new Set(),
-              setBookList,
-              setBookListFetched,
-              setBookListLoading: () => {},
-              setBookListError: () => {},
-              setLoadingForBook: () => {},
-              setErrorForBook: () => {},
-              setBookComplete: () => {},
-              clearCompleteBookIds: () => {},
-              bookListItems: [],
-              setBookListItems,
-              bookListFilter: {},
-              setBookListFilter: () => {},
-            }}
-          >
-            {children}
-          </Context.Provider>
-        </ProgressContext.Provider>
+          {children}
+        </Context.Provider>
       </ApolloTestProvider>
     );
   };
@@ -169,43 +136,31 @@ function makeWrapperWithBookList(bookList: BookList) {
     );
     return (
       <ApolloTestProvider>
-        <ProgressContext.Provider
+        <Context.Provider
           value={{
-            progressList: {},
-            loadingByUsername: {},
-            errorByUsername: {},
-            setProgressForUsername: () => {},
-            setLoadingForUsername: () => {},
-            setErrorForUsername: () => {},
-            renameProgressKey: () => {},
+            bookList: state,
+            bookListFetched: true,
+            bookListLoading: false,
+            bookListError: undefined,
+            loadingByBookId: {},
+            errorByBookId: {},
+            completeBookIds: new Set(['global-1']),
+            setBookList,
+            setBookListFetched: () => {},
+            setBookListLoading: () => {},
+            setBookListError: () => {},
+            setLoadingForBook: () => {},
+            setErrorForBook: () => {},
+            setBookComplete: () => {},
+            clearCompleteBookIds: () => {},
+            bookListItems: [],
+            setBookListItems: () => {},
+            bookListFilter: {},
+            setBookListFilter: () => {},
           }}
         >
-          <Context.Provider
-            value={{
-              bookList: state,
-              bookListFetched: true,
-              bookListLoading: false,
-              bookListError: undefined,
-              loadingByBookId: {},
-              errorByBookId: {},
-              completeBookIds: new Set(['global-1']),
-              setBookList,
-              setBookListFetched: () => {},
-              setBookListLoading: () => {},
-              setBookListError: () => {},
-              setLoadingForBook: () => {},
-              setErrorForBook: () => {},
-              setBookComplete: () => {},
-              clearCompleteBookIds: () => {},
-              bookListItems: [],
-              setBookListItems: () => {},
-              bookListFilter: {},
-              setBookListFilter: () => {},
-            }}
-          >
-            {children}
-          </Context.Provider>
-        </ProgressContext.Provider>
+          {children}
+        </Context.Provider>
       </ApolloTestProvider>
     );
   };
@@ -323,23 +278,15 @@ describe('useReplaceBook', () => {
       expect(result.current.ctx.bookList['1'].title).toBe('Replaced');
     });
 
-    it('removes the old key and renames the progress key when the returned id differs', async () => {
+    it('removes the old bookList key when the returned id differs', async () => {
       const updated = makeBook({ id: '2', title: 'Replaced' });
-      const initialProgress: ProgressList = {
-        alice: { '1': { document: '1', percentage: 0.5 } },
-      };
       vi.stubGlobal(
         'fetch',
         vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
       );
-      const { result } = renderHook(
-        () => ({
-          hook: useReplaceBook(),
-          ctx: useContext(Context),
-          progress: useContext(ProgressContext),
-        }),
-        { wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })], initialProgress }) }
-      );
+      const { result } = renderHook(() => ({ hook: useReplaceBook(), ctx: useContext(Context) }), {
+        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
+      });
 
       await act(async () => {
         await result.current.hook.commitReplacement('1', makeFile(), []);
@@ -347,8 +294,6 @@ describe('useReplaceBook', () => {
 
       expect(result.current.ctx.bookList['1']).toBeUndefined();
       expect(result.current.ctx.bookList['2']).toBeDefined();
-      expect(result.current.progress.progressList['alice']['1']).toBeUndefined();
-      expect(result.current.progress.progressList['alice']['2']).toBeDefined();
     });
 
     // Task 8 review round 2: `id` here is always the resolved raw id

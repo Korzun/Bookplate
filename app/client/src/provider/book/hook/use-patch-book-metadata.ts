@@ -3,7 +3,6 @@ import { useCallback, use, useMemo, useState } from 'react';
 import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
-import { Context as ProgressContext } from '../../progress/context';
 import { Context } from '../context';
 import { Book } from '../type';
 
@@ -46,7 +45,6 @@ export type UsePatchBookMetadata = [
 ];
 export const usePatchBookMetadata = (): UsePatchBookMetadata => {
   const { setBookList, setBookListFetched, setBookListItems } = use(Context);
-  const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -122,7 +120,6 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
           next[updatedBook.id] = updatedBook;
           return next;
         });
-        if (updatedBook.id !== bookId) renameProgressKey(bookId, updatedBook.id);
         setBookListFetched(false);
         setBookListItems(() => []);
         return { id: updatedBook.id, globalId: updatedBook.globalId };
@@ -135,7 +132,7 @@ export const usePatchBookMetadata = (): UsePatchBookMetadata => {
         setLoading(false);
       }
     },
-    [withTargetUser, loading, setBookList, setBookListFetched, setBookListItems, renameProgressKey]
+    [withTargetUser, loading, setBookList, setBookListFetched, setBookListItems]
   );
 
   return useMemo(

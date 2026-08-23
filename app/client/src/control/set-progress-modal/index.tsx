@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useDeleteMyProgress, useSetMyProgress } from '~/provider/progress';
+import { useDeleteProgress, useSetMyProgress } from '~/provider/library';
 
 import { Button } from '../button';
 import { ProportionalChapterSlider } from '../proportional-chapter-slider';
@@ -10,54 +10,53 @@ import { useStyle } from './style';
 type SetProgressModalProps = {
   isOpen: boolean;
   /**
-   * RAW content hash — the key `ProgressProvider`'s REST map uses
-   * (`Progress.document`, `use-fetch-my-progress-list.ts`'s `merged[p.
-   * document] = p`). Both `useSetMyProgress` and `useDeleteMyProgress` write
-   * and look up against this exact string; NEVER pass a Relay global id
-   * here (2026-08-13 final review, C-1/I-1) — `page/book`'s `Book.id` — a
-   * global id would silently miss every existing REST progress row (delete
-   * finds nothing to clear) and, on save, create a phantom second row keyed
-   * by the wrong id (`MyProgressContent` renders one row per map entry,
-   * so a save under the wrong key duplicates the book in the profile list
-   * for the rest of the session). Use `Book.documentId`.
+   * RAW content hash — `progressSet`'s `document` input (`Progress.document`
+   * — see `graphql/progress.ts`'s `ProgressRowFragment` doc comment).
+   * `useSetMyProgress` writes against this exact string; NEVER pass a Relay
+   * global id here (2026-08-13 final review, C-1/I-1) — `page/book`'s
+   * `Book.id` — the server resolves `document` as a raw content hash, not a
+   * global id. Use `Book.documentId`.
    */
   documentId: string;
+  /**
+   * The Relay global `Progress.id` for this book's own row, when one exists
+   * — `page/book` passes `book.progress?.id` (`BookDetailDocument` already
+   * selects it). `useDeleteProgress` takes this, NOT `documentId` or
+   * `Book.id`: `progressDelete` authorises the DECODED owner the id itself
+   * carries, so the wrong KIND of id either 404s or (worse) targets a
+   * different row entirely. `undefined` whenever the book has no progress
+   * row yet — "Clear Progress" is unreachable in that state anyway (see
+   * `isClearing` below, gated on `hasExistingProgress`), so `handleConfirm`
+   * guards on it defensively rather than asserting it's always present.
+   */
+  progressId?: string;
   chapterCount: number;
   initialChapter: number;
   chapterSpineMap?: number[];
   chapterNames?: string[];
   onClose: () => void;
-  /**
-   * STEP-8 BRIDGE — delete this when the progress hooks move to GraphQL.
-   * `SetProgressModal` writes through `ProgressProvider` (REST); this page reads
-   * `Book.progress` from the Apollo cache. Nothing connects the two, so without
-   * this refetch a save leaves the displayed percentage stale until a reload.
-   * Once `progressSet` is a GraphQL mutation its payload normalizes onto the same
-   * `Progress` entity and this prop, and the refetch, become dead weight.
-   */
-  onSaved?: () => void;
 };
 
 export function SetProgressModal({
   isOpen,
   documentId,
+  progressId,
   chapterCount,
   initialChapter,
   chapterSpineMap = [],
   chapterNames = [],
   onClose,
-  onSaved,
 }: SetProgressModalProps) {
   const styles = useStyle();
   const [selectedChapter, setSelectedChapter] = useState(initialChapter);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
 
-  const [setMyProgress, saving, saveError, saveErrorMessage] = useSetMyProgress(documentId);
-  const [deleteMyProgress, deleting, deleteError, deleteErrorMessage] = useDeleteMyProgress();
+  const { setProgress, saving, error: saveError } = useSetMyProgress(documentId);
+  const { deleteProgress, deleting, error: deleteError } = useDeleteProgress();
 
   const isBusy = saving || deleting;
-  const hasError = saveError || deleteError;
-  const errorText = saveErrorMessage ?? deleteErrorMessage;
+  const hasError = saveError !== undefined || deleteError !== undefined;
+  const errorText = saveError ?? deleteError;
 
   // Refs to track the busy transition so we can close after a successful operation
   const pendingRef = useRef(false);
@@ -74,7 +73,6 @@ export function SetProgressModal({
       wasBusyRef.current = false;
       pendingRef.current = false;
       if (!hasError) {
-        onSaved?.();
         onClose();
       }
     }
@@ -82,19 +80,28 @@ export function SetProgressModal({
   }, [isBusy, hasError]);
 
   const handleConfirm = useCallback(() => {
-    pendingRef.current = true;
-    wasBusyRef.current = false;
     if (selectedChapter === 0) {
-      deleteMyProgress(documentId);
-    } else if (selectedChapter > chapterCount) {
-      setMyProgress({ currentChapter: chapterCount, percentage: 1.0 });
+      // See `progressId`'s own doc comment — "Clear Progress" is disabled
+      // (via `isNoop`) whenever there is no existing progress to clear, so
+      // this is only reachable when `progressId` is defined; guarded here
+      // rather than asserted.
+      if (progressId === undefined) return;
+      pendingRef.current = true;
+      wasBusyRef.current = false;
+      void deleteProgress(progressId);
     } else {
-      setMyProgress({
-        currentChapter: selectedChapter,
-        percentage: selectedChapter / chapterCount,
-      });
+      pendingRef.current = true;
+      wasBusyRef.current = false;
+      if (selectedChapter > chapterCount) {
+        void setProgress({ currentChapter: chapterCount, percentage: 1.0 });
+      } else {
+        void setProgress({
+          currentChapter: selectedChapter,
+          percentage: selectedChapter / chapterCount,
+        });
+      }
     }
-  }, [selectedChapter, documentId, chapterCount, setMyProgress, deleteMyProgress]);
+  }, [selectedChapter, progressId, chapterCount, setProgress, deleteProgress]);
 
   const handleCancel = useCallback(() => onClose(), [onClose]);
   // Escape dismisses the modal the same way the Cancel button does.

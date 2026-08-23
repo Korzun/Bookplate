@@ -1,4 +1,5 @@
 import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
+import { gql } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -428,6 +429,70 @@ describe('useDeleteProgress', () => {
     const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
     expect(edges).toHaveLength(1);
     expect(edges?.[0]?.node.id).toBe(KEEP_ID);
+  });
+
+  // Task 7 (`page/book` teardown): `BookDetailDocument` reads `Book.progress`
+  // as a plain object (`{ id percentage currentChapter }`, no `book`
+  // sub-selection on the `Progress` side), which Apollo still normalizes as
+  // a `Reference` — evicting the referenced `Progress` entity without also
+  // clearing this field would leave `Book:<id>` cache-incomplete, driving a
+  // pointless (or, in a test, unmocked and failing) refetch the next time
+  // anything reads it. `writeFragment` seeds the `Book` entity the same
+  // shape-only way `BookDetailDocument` would (no `Progress.book` link
+  // cached at all), matching the scenario this hook's own doc comment
+  // describes as unrecoverable via `readFragment` on the `Progress` side.
+  it('nulls Book.progress when the deleted row is referenced from a cached Book entity', async () => {
+    const PROGRESS_ID = 'progress-1';
+    const BOOK_ID = 'book-1';
+
+    const { result, client } = renderHookWithApollo(
+      () => useDeleteProgress(),
+      [progressDeleteSuccessMock(PROGRESS_ID)]
+    );
+
+    act(() => {
+      client.cache.writeFragment({
+        id: client.cache.identify({ __typename: 'Book', id: BOOK_ID }),
+        fragment: gql`
+          fragment BookWithProgressForTest on Book {
+            id
+            progress {
+              id
+              percentage
+              currentChapter
+            }
+          }
+        `,
+        data: {
+          __typename: 'Book',
+          id: BOOK_ID,
+          progress: {
+            __typename: 'Progress',
+            id: PROGRESS_ID,
+            percentage: 0.5,
+            currentChapter: 3,
+          },
+        },
+      });
+    });
+
+    await act(async () => {
+      await result.current?.deleteProgress(PROGRESS_ID);
+    });
+
+    expect(result.current?.error).toBeUndefined();
+    const bookRead = client.cache.readFragment({
+      id: client.cache.identify({ __typename: 'Book', id: BOOK_ID }),
+      fragment: gql`
+        fragment BookProgressOnlyForTest on Book {
+          id
+          progress {
+            id
+          }
+        }
+      `,
+    });
+    expect(bookRead).toEqual({ __typename: 'Book', id: BOOK_ID, progress: null });
   });
 
   it('maps a delete failure to an error message and leaves the row in place', async () => {

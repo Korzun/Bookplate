@@ -4,7 +4,6 @@ import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/sev
 import { useWithTargetUser } from '~/provider/library-target';
 
 import { apiFetch } from '../../../lib/api-fetch';
-import { Context as ProgressContext } from '../../progress/context';
 import { Context } from '../context';
 import { Book, MetadataFix } from '../type';
 
@@ -43,7 +42,6 @@ export interface UseReplaceBook {
 
 export const useReplaceBook = (): UseReplaceBook => {
   const { setBookList, setBookListFetched, setBookListItems } = use(Context);
-  const { renameProgressKey } = use(ProgressContext);
   const withTargetUser = useWithTargetUser();
   const [analyzing, setAnalyzing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -135,14 +133,6 @@ export const useReplaceBook = (): UseReplaceBook => {
           next[updated.id] = updated;
           return next;
         });
-        // Same root cause: `id` is global, `renameProgressKey`'s internal
-        // `oldId in userProgress` check is keyed by the RAW documentId
-        // (`ProgressProvider`'s REST map, post C-1's fix) — so this now
-        // fires on every replace (`updated.id` is raw, so `!==` is
-        // vacuously always true) but its own guard never finds a match.
-        // Harmless dead weight, not a corruption risk: unlike the sweep
-        // above, nothing here silently keeps stale data around.
-        if (updated.id !== id) renameProgressKey(id, updated.id);
         setBookListFetched(false);
         setBookListItems(() => []);
         setCommitError(undefined);
@@ -153,14 +143,7 @@ export const useReplaceBook = (): UseReplaceBook => {
         setCommitting(false);
       }
     },
-    [
-      withTargetUser,
-      committing,
-      setBookList,
-      setBookListFetched,
-      setBookListItems,
-      renameProgressKey,
-    ]
+    [withTargetUser, committing, setBookList, setBookListFetched, setBookListItems]
   );
 
   return useMemo(

@@ -41,8 +41,9 @@ vi.mock('~/provider/library-target', () => ({
 import { makeFragmentData } from '~/gql';
 import type { LineageEntryFragmentFragment } from '~/gql/graphql';
 import { BookDetailDocument, BookValidateDocument, LineageEntryFragment } from '~/graphql/book';
+import { ProgressDeleteDocument, ProgressSetDocument } from '~/graphql/progress';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { apiFetch } from '~/lib/api-fetch';
-import { ProgressProvider } from '~/provider/progress';
 import { renderWithApollo } from '~/test-utils';
 
 const mockApiFetch = vi.mocked(apiFetch);
@@ -72,24 +73,15 @@ beforeEach(() => {
   replaceModalSpy.mockClear();
   URL.createObjectURL = vi.fn(() => 'blob:test-cover');
   URL.revokeObjectURL = vi.fn();
-  // Differentiated by method, not a single blanket `mockResolvedValue`: the
-  // "clear progress" regression test below needs a real `DELETE` → `204`
-  // round trip (`useDeleteMyProgress` checks `response.status !== 204`
-  // specifically), which a bare `{ ok: true }` doesn't satisfy. Every other
-  // caller (the cover `blob()` fetch, `PUT` progress saves) only ever checks
-  // `.ok`/`.blob()`, so folding them into one implementation is safe.
-  mockApiFetch.mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
-    if (init?.method === 'DELETE') {
-      return Promise.resolve({ ok: true, status: 204 } as Response);
-    }
-    if (init?.method === 'PUT') {
-      return Promise.resolve({ ok: true } as Response);
-    }
-    return Promise.resolve({
+  // Progress reads/writes are GraphQL now (Apollo mocks, not `apiFetch`) —
+  // the only real `apiFetch` consumer left in this page's render tree is the
+  // cover `blob()` fetch (`useAuthorizedSrc`).
+  mockApiFetch.mockImplementation(() =>
+    Promise.resolve({
       ok: true,
       blob: () => Promise.resolve(new Blob(['cover'], { type: 'image/jpeg' })),
-    } as Response);
-  });
+    } as Response)
+  );
 });
 
 afterEach(() => {
@@ -270,20 +262,7 @@ async function renderPage(
   options: Partial<Parameters<typeof renderWithApollo>[1]> = {}
 ) {
   const { BookPage } = await import('./index');
-  // `ProgressProvider` is only mounted at the real app root (`App.tsx`), not
-  // by `renderWithApollo`/`renderWithProviders` — every `SetProgressModal`
-  // hook otherwise runs against `provider/progress/context.ts`'s DEFAULT
-  // context value, whose setters are all no-ops. That silently defeated any
-  // attempt to assert on a save-then-clear round trip (the "clear progress"
-  // regression test below): the save's optimistic write never actually
-  // landed anywhere for a later delete to find. Wrapping here matches how
-  // this page is really composed in production.
-  return renderWithApollo(
-    <ProgressProvider>
-      <BookPage />
-    </ProgressProvider>,
-    { ...options, mocks }
-  );
+  return renderWithApollo(<BookPage />, { ...options, mocks });
 }
 
 // `PageActionsMenu` (`~/control/page-actions-menu`) always renders an "all
@@ -525,23 +504,102 @@ describe('BookPage', () => {
     });
   });
 
-  // Task 12 (STEP-8 BRIDGE, see `SetProgressModal`'s `onSaved` doc comment):
-  // `SetProgressModal` still writes progress through `ProgressProvider` over
-  // REST (that migration is step 8); `book.progress` here comes off the
-  // Apollo cache. These two tests need a real `username` — unlike every
-  // other `renderPage` call above, which relies on `renderWithProviders`'
-  // default anonymous user — because `useSetMyProgress` no-ops (never
-  // resolves `saving`) when `username` is `undefined`.
-  describe('set progress bridge', () => {
-    const at = (percentage: number) =>
-      bookMock({
-        progress: {
-          __typename: 'Progress' as const,
-          id: 'UHJvZ3Jlc3M6MQ==',
-          percentage,
-          currentChapter: 3,
+  // Task 7 (teardown): `SetProgressModal` now writes/deletes progress
+  // through `useSetMyProgress`/`useDeleteProgress` (GraphQL), and
+  // `progressSet`'s payload normalizes onto the SAME `Progress` entity
+  // `book.progress` reads off the Apollo cache — the STEP-8 BRIDGE
+  // (`onSaved`/`refetch`) these tests used to exercise is gone, along with
+  // `ProgressProvider`. These tests need a real, non-admin `username` —
+  // unlike every other `renderPage` call above, which relies on
+  // `renderWithProviders`' default anonymous user — because `isAdmin: true`
+  // hides the "progress" metadata row/`progressbar` entirely (`page/book`'s
+  // own `if (!isAdmin)` gate), not because of anything progress-hook-
+  // specific this time.
+  describe('set progress', () => {
+    const PROGRESS_ID = 'UHJvZ3Jlc3M6MQ=='; // Progress:1 — matches bookMock()'s default.
+    const VIEWER_USER_ID = 'VXNlcjox'; // User:1
+
+    // `useSetMyProgress` reads the viewer's `User.id` off an unconditional
+    // `ViewerBootstrapDocument` query fired the moment `SetProgressModal`
+    // mounts (i.e. as soon as the modal opens, whether or not it's ever
+    // saved) — every test below that opens the modal needs this mock, same
+    // as `use-progress-mutations.test.tsx`'s own `viewerBootstrapMock`.
+    const viewerBootstrapMock = (): MockedResponse => ({
+      request: { query: ViewerBootstrapDocument },
+      result: {
+        data: {
+          __typename: 'Query',
+          viewer: {
+            __typename: 'Viewer',
+            username: 'le',
+            isAdmin: false,
+            mustChangePassword: false,
+            user: { __typename: 'User', id: VIEWER_USER_ID },
+            library: { __typename: 'Library', id: LIBRARY_ID },
+          },
         },
-      });
+      },
+    });
+
+    // `progressSet`'s response re-selects the full `ProgressRowFragment` —
+    // see `use-progress-mutations.ts`'s own doc comment for why that's what
+    // lets Apollo's normalization alone update `book.progress` in place.
+    const progressSetMock = (args: {
+      currentChapter: number;
+      percentage: number;
+    }): MockedResponse => ({
+      request: {
+        query: ProgressSetDocument,
+        variables: {
+          input: {
+            document: DOCUMENT_ID,
+            userId: VIEWER_USER_ID,
+            currentChapter: args.currentChapter,
+            percentage: args.percentage,
+          },
+        },
+      },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          progressSet: {
+            __typename: 'ProgressSetPayload',
+            progress: {
+              __typename: 'Progress',
+              id: PROGRESS_ID,
+              document: DOCUMENT_ID,
+              percentage: args.percentage,
+              currentChapter: args.currentChapter,
+              device: 'Web',
+              timestamp: '2026-08-23T00:00:00.000Z',
+              book: {
+                __typename: 'Book',
+                id: BOOK_ID,
+                title: 'A Wizard of Earthsea',
+                author: 'Le Guin',
+                hasCover: true,
+                thumbnailUrl: '/api/books/1/cover?user=le&v=1',
+              },
+            },
+            library: { __typename: 'Library', id: LIBRARY_ID },
+          },
+        },
+      },
+    });
+
+    const progressDeleteMock = (): MockedResponse => ({
+      request: { query: ProgressDeleteDocument, variables: { id: PROGRESS_ID } },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          progressDelete: {
+            __typename: 'ProgressDeletePayload',
+            deletedId: PROGRESS_ID,
+            library: { __typename: 'Library', id: LIBRARY_ID },
+          },
+        },
+      },
+    });
 
     // `SetProgressModal` is a real `<dialog>`; `showModal` is stubbed to a
     // no-op in `beforeAll` above (jsdom has no dialog rendering support), so
@@ -582,98 +640,102 @@ describe('BookPage', () => {
       return sliderRoot;
     }
 
-    it('refreshes the displayed progress after the set-progress modal saves', async () => {
-      await renderPage([at(0.2), at(0.6)], { user: { username: 'le', isAdmin: false } });
+    // Step 7's bridge-removal proof: ONE `BookDetail` mock only — a refetch
+    // would be a SECOND `BookDetail` operation with no matching mock left,
+    // which `MockLink` (`showWarnings` left on by `renderWithApollo`) would
+    // error as "No more mocked responses". The percentage must instead
+    // update from `progressSet`'s own payload normalizing onto the SAME
+    // `Progress:<id>` entity `book.progress` reads — that is what replaced
+    // `onSaved`/`refetch`. Clicking Save without touching the slider re-saves
+    // the CURRENT chapter (3 of 12 = 0.25), a different percentage than the
+    // fixture's 0.2, so a stale display is distinguishable from a live one.
+    it('updates the displayed percentage after a save, with no refetch', async () => {
+      const { client } = await renderPage(
+        [
+          bookMock(),
+          viewerBootstrapMock(),
+          progressSetMock({ currentChapter: 3, percentage: 0.25 }),
+        ],
+        { user: { username: 'le', isAdmin: false } }
+      );
 
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
       expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
 
       await selectMenuItem(/^set progress$/i);
       const modal = await getSetProgressDialog();
+      // `useSetMyProgress` reads `userId` off `ViewerBootstrapDocument`; wait
+      // for that query to land before Save, or `setProgress` takes its
+      // "not signed in" branch and never calls the mutation at all — the
+      // same wait `use-progress-mutations.test.tsx`'s own
+      // `waitForViewerBootstrap` performs.
+      await waitFor(() =>
+        expect(client.cache.readQuery({ query: ViewerBootstrapDocument })).not.toBeNull()
+      );
       await userEvent.click(modal.getByRole('button', { name: /save/i, hidden: true }));
 
       await waitFor(() =>
-        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60')
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
       );
     });
 
-    it('does not refetch when the modal is dismissed without saving', async () => {
-      // Only ONE mock in the list. If `onSaved` fired on Cancel too (the bug
-      // this guards against), the resulting refetch would be a SECOND
-      // `BookDetail` operation with no matching mock left — `MockLink`
-      // (`showWarnings` left on by `renderWithApollo`) logs "No more mocked
-      // responses" and errors that operation's observable. That error
-      // populates `useBookDetail`'s `error`, which flips this page from its
-      // normal content to the "Failed to load book." branch — unmounting
-      // `progressbar` entirely. So the `waitFor` below is the actual check:
-      // not a literal DOM match on the warning text (this page never renders
-      // `error.message`), but the progressbar surviving, unchanged, rather
-      // than the whole page going to the error state.
-      await renderPage([at(0.2)], { user: { username: 'le', isAdmin: false } });
+    it('does not call the mutation when the modal is dismissed without saving', async () => {
+      // No `ProgressSetDocument`/`ProgressDeleteDocument` mock supplied — if
+      // Cancel fired either, `MockLink` would error that operation with "No
+      // more mocked responses" instead. The assertions below (the
+      // progressbar unchanged, the heading still present) are the actual
+      // check that nothing broke as a side effect.
+      await renderPage([bookMock(), viewerBootstrapMock()], {
+        user: { username: 'le', isAdmin: false },
+      });
 
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
       await selectMenuItem(/^set progress$/i);
       const modal = await getSetProgressDialog();
       await userEvent.click(modal.getByRole('button', { name: /cancel/i, hidden: true }));
 
-      await waitFor(() =>
-        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20')
-      );
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
       expect(screen.getByRole('heading', { name: 'A Wizard of Earthsea' })).toBeInTheDocument();
     });
 
-    // C-1 (2026-08-13 final review): `SetProgressModal` used to be handed
-    // `book.id` — the Relay GLOBAL id — for BOTH `useSetMyProgress` and
-    // `useDeleteMyProgress`, which write/read the REST progress map keyed by
-    // the RAW `documentId`. A save under the wrong key masks the bug (the
-    // save and the later delete agree with EACH OTHER, just not with the
-    // server's real key), so this drives a real save-then-clear round trip
-    // and asserts on the literal URL `useDeleteMyProgress` asked `apiFetch`
-    // for — the only way to actually catch "wrong KIND of id", not merely
-    // "modal closed".
-    it('issues the clear-progress DELETE against the raw documentId, never the global id', async () => {
-      await renderPage([at(0.2), at(0.2)], { user: { username: 'le', isAdmin: false } });
+    // `SetProgressModal` now gets `progressId` from `book.progress?.id` (the
+    // Relay global `Progress.id`) — never `documentId` (the raw content
+    // hash `progressSet` takes) or `Book.id` (the Relay global id for a
+    // DIFFERENT entity). `progressDeleteMock`'s `request.variables.id` is
+    // pinned to `PROGRESS_ID`; if the modal sent either of the other two
+    // instead, `MockLink` would find no matching mock and error the
+    // mutation, and the modal would never close. The final `waitFor` below
+    // is that proof — the same "closes on a clean delete = used a
+    // resolvable id" shape the pre-migration REST version of this test used.
+    it('issues progressDelete against the Progress global id, never documentId or the Book global id', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock(), progressDeleteMock()], {
+        user: { username: 'le', isAdmin: false },
+      });
 
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
-
-      // Save once first — the only way this test populates `ProgressProvider`'s
-      // REST-side map with a real entry to later clear (nothing else in this
-      // render tree issues the REST `GET /api/my/progress` that map would
-      // otherwise come from).
       await selectMenuItem(/^set progress$/i);
-      let modal = await getSetProgressDialog();
-      await userEvent.click(modal.getByRole('button', { name: /save/i, hidden: true }));
-      await waitFor(() => expect(screen.queryByText('Set Progress')).not.toBeInTheDocument());
-      // Waits out the `onSaved` refetch's own `loading` window (Apollo
-      // re-flips `loading` briefly for a `refetch()`, unlike a cache-only
-      // update) — `Page`'s loading branch drops `headerActions` (the "More
-      // actions" trigger) entirely, so the next `selectMenuItem` needs the
-      // refetched content back on screen first.
-      await screen.findAllByRole('button', { name: 'More actions' });
+      const modal = await getSetProgressDialog();
 
-      // Reopen and drag the slider to the leftmost position (chapter 0) to
-      // surface "Clear Progress".
-      await selectMenuItem(/^set progress$/i);
-      modal = await getSetProgressDialog();
+      // Drag the slider to the leftmost position (chapter 0) to surface
+      // "Clear Progress" — the fixture's `progress.currentChapter: 3` makes
+      // `hasExistingProgress` true, so this is reachable without a prior save.
       const sliderRoot = await getSliderRoot();
       fireEvent.pointerDown(sliderRoot, { clientX: 0, pointerId: 1 });
       fireEvent.pointerUp(sliderRoot, { clientX: 0, pointerId: 1 });
 
       await userEvent.click(modal.getByRole('button', { name: /clear progress/i, hidden: true }));
 
-      await waitFor(() =>
-        expect(mockApiFetch).toHaveBeenCalledWith(
-          expect.stringContaining(encodeURIComponent(DOCUMENT_ID)),
-          expect.objectContaining({ method: 'DELETE' })
-        )
-      );
-      expect(mockApiFetch).not.toHaveBeenCalledWith(
-        expect.stringContaining(encodeURIComponent(BOOK_ID)),
-        expect.objectContaining({ method: 'DELETE' })
-      );
-      // The modal closes on a clean delete — proof the DELETE didn't just
-      // fire, it SUCCEEDED against an id the server could resolve.
       await waitFor(() => expect(screen.queryByText('Set Progress')).not.toBeInTheDocument());
+      // `useDeleteProgress` evicts `Progress:<id>` from the cache, which
+      // would otherwise leave `Book.progress` a dangling reference —
+      // confirms that does NOT sour the surrounding page read (no fallback
+      // to "Failed to load book.") and that the indicator visibly reflects
+      // the clear (`ProgressIndicator` renders no `progressbar` role at all
+      // at 0%, only "Not started" text), not just that the mutation itself
+      // succeeded.
+      expect(screen.getByRole('heading', { name: 'A Wizard of Earthsea' })).toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(screen.getByText('Not started')).toBeInTheDocument();
     });
   });
 });
