@@ -158,17 +158,33 @@ function foldProposalsIntoChanges(
 }
 
 /**
- * Mirrors REST's `PUT`/`DELETE /api/books/:id/pending-fixes`
- * (`routes/ui.ts:776-811`) as ONE mutation with an `action` discriminator,
- * per the spec's mutation list, which names only `bookResolvePendingFix` (no
- * separate accept/dismiss pair).
+ * Covers the client's upload-queue operations as ONE mutation with an
+ * `action` discriminator, per the spec's mutation list, which names only
+ * `bookResolvePendingFix` (no separate mutation per action). Of REST's two
+ * pending-fix write routes (`PUT`/`DELETE /api/books/:id/pending-fixes`,
+ * `routes/ui.ts:776-811`), only `CLEAR` is a literal mirror; `DISMISS` and
+ * `ACCEPT` are both new server-side behaviour — see each action's own
+ * paragraph below.
  *
- * **DISMISS is a direct REST mirror.** `DELETE /api/books/:id/pending-fixes`
+ * **CLEAR is a direct REST mirror.** `DELETE /api/books/:id/pending-fixes`
  * is `bookStore.deletePendingFix(owner, id)` unconditionally — no book- or
  * row-existence check at all (traced: `routes/ui.ts:802-811`) — so this
  * branch mirrors that literally: it never touches the EPUB, never checks
  * whether a `PendingFix` row exists, and always succeeds once the book
- * itself resolves.
+ * itself resolves. See the `'clear'` branch below for the implementation.
+ *
+ * **DISMISS is NOT a REST route — it is client-side-only there**
+ * (`dismissAllProposals`, traced in the task report), server-side now. It
+ * removes proposals without applying them: `proposals` is cleared to `[]`
+ * and `undo: { kind: 'dismiss', proposals: <the pre-dismiss proposals>,
+ * appliedFixes: <unchanged> }` is armed so the client's existing undo
+ * affordance can recover them, mirroring how ACCEPT arms its own `kind:
+ * 'apply'` undo on success (see ACCEPT's paragraphs below for the
+ * `upsertPendingFix`/`undo` shape both actions share). It never touches the
+ * EPUB, so unlike ACCEPT it is not gated on `targetBook.valid`. A row whose
+ * `proposals` is already empty is left completely untouched rather than
+ * arming a pointless empty-proposals undo (see the `'dismiss'` branch
+ * below).
  *
  * **ACCEPT is NOT a literal REST mirror — flagged, per the task's escalation
  * instruction — but IS designed to be behaviourally EQUIVALENT to what REST's
@@ -215,8 +231,8 @@ function foldProposalsIntoChanges(
  * gates its own `applyEpubChanges` call (REST's `PATCH .../metadata` 409 —
  * see that file's doc comment): both mutations reach the identical
  * underlying write, so both must respect the identical precondition on it —
- * but only once there is at least one actionable proposal to apply. DISMISS
- * never calls `applyEpubChanges`, so it is not gated.
+ * but only once there is at least one actionable proposal to apply. Neither
+ * DISMISS nor CLEAR ever calls `applyEpubChanges`, so neither is gated.
  *
  * ACCEPT respects the same TTL liveness the read model applies (`Book.
  * pendingFix`, `Library.pendingFixes` — `derive.ts`'s `isLivePendingFix`,
@@ -281,8 +297,9 @@ builder.mutationField('bookResolvePendingFix', (t) =>
     type: result,
     nullable: true,
     description:
-      'Accepts (applies) or dismisses (discards) a book’s pending metadata-fix ' +
-      'proposals. Resolves to null when the book does not exist for the ' +
+      'Resolves a book’s pending metadata-fix proposals: ACCEPT applies them, ' +
+      'DISMISS clears them (arming an undo), or CLEAR deletes the pending-fix ' +
+      'row outright. Resolves to null when the book does not exist for the ' +
       'resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: (_parent, args) => {
