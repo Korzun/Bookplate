@@ -10,6 +10,7 @@ import {
 } from '~/graphql/upload';
 import { stageUpload } from '~/lib/staged-upload';
 import { unwrapResult } from '~/provider/apollo';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { MetadataFix } from '../type';
 
@@ -91,6 +92,35 @@ const toMetadataFix = (f: {
  * If `commitReplacement` is ever called with nothing staged (no prior
  * successful `analyzeReplacement`), it is a no-op that resolves `undefined`
  * without touching the network — there is no staged id to commit.
+ *
+ * **Cache coherence on commit (whole-step review I-1).** A replace is the
+ * single most disruptive write in this provider: it swaps the EPUB, rotates
+ * the content-hash book id, AND rewrites title/author from the new file's
+ * metadata. `commitReplacement`'s `update` therefore does what every sibling
+ * mutation does, for the same two reasons they do it:
+ *
+ *   1. Evicts the current library's whole `Library.entries` field. The new
+ *      title/author decide the row's sort position and series grouping, and
+ *      the rotated id makes the existing edge dangle — neither is something
+ *      `BookReplacePayload` can express (it carries `book` alone). `entries`
+ *      is `relayStylePagination(['filter'])` and `useLibraryEntries` is a
+ *      plain cache-first `useQuery` with nothing refetching it on
+ *      navigation, so without this the grid showed the PRE-replace title
+ *      until a hard reload. The library id comes from
+ *      `useCurrentLibraryId()`, not the payload — unlike `BookDeletePayload`,
+ *      this payload has no `library { id }`. Same "not free" cost
+ *      `useDeleteBook` and `useUpdateBookMetadata` document: it discards
+ *      every page `fetchMore` had accumulated.
+ *   2. Evicts the OLD `Book:<id>` entity when the payload reports a
+ *      different id. Normalization writes the payload into a brand-new
+ *      `Book:<newId>` and cannot know the old one described the same book;
+ *      `cache.gc()` alone will not collect the orphan while a
+ *      `Library.book(id: oldId)` field from a prior /book or /book-edit
+ *      visit still references it. Identical branch and rationale to
+ *      `use-update-book-metadata.ts` and `use-regen-chapters.ts`.
+ *
+ * A failed commit (typed error member, no payload) evicts nothing — the book
+ * was not replaced, so the cached grid is still correct.
  */
 export const useReplaceBook = (): UseReplaceBook => {
   const [runAnalyze] = useMutation(BookAnalyzeReplaceDocument);
@@ -99,6 +129,7 @@ export const useReplaceBook = (): UseReplaceBook => {
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | undefined>(undefined);
   const stagedUploadId = useRef<string | undefined>(undefined);
+  const { libraryId } = useCurrentLibraryId();
 
   const analyzeReplacement = useCallback(
     async (id: string, file: File): Promise<ReplaceAnalysis | undefined> => {
@@ -147,6 +178,25 @@ export const useReplaceBook = (): UseReplaceBook => {
       try {
         const { data } = await runReplace({
           variables: { id, stagedUploadId: staged, acceptedFixKeys },
+          update: (cache, { data: mutationData }) => {
+            const outcome = unwrapResult<BookReplacePayload>(
+              mutationData?.bookReplace,
+              'BookReplacePayload'
+            );
+            if (outcome.status !== 'ok') return;
+
+            // See this hook's doc comment for why both evictions are here.
+            if (libraryId !== undefined) {
+              cache.evict({
+                id: cache.identify({ __typename: 'Library', id: libraryId }),
+                fieldName: 'entries',
+              });
+            }
+            if (outcome.payload.book.id !== id) {
+              cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
+            }
+            cache.gc();
+          },
         });
         const result = unwrapResult<BookReplacePayload>(data?.bookReplace, 'BookReplacePayload');
         if (result.status === 'missing') {
@@ -165,7 +215,7 @@ export const useReplaceBook = (): UseReplaceBook => {
         setCommitting(false);
       }
     },
-    [committing, runReplace]
+    [committing, runReplace, libraryId]
   );
 
   return useMemo(

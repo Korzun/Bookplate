@@ -1,3 +1,4 @@
+import type { NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,8 @@ import type {
   BookReplaceMutation,
   BookReplaceMutationVariables,
 } from '~/gql/graphql';
+import { BookEditDocument } from '~/graphql/book-edit';
+import { LibraryEntriesDocument } from '~/graphql/library';
 import { BookAnalyzeReplaceDocument, BookReplaceDocument } from '~/graphql/upload';
 import { renderHookWithApollo } from '~/test-utils';
 
@@ -26,6 +29,95 @@ const { useReplaceBook } = await import('./use-replace-book');
 const BOOK_GID = 'Qm9vazox';
 const NEW_BOOK_GID = 'Qm9vazoy';
 const STAGED_ID = 'staged-1';
+const LIBRARY_ID = 'TGlicmFyeTox';
+
+// `BookReplacePayload` carries only `book` — no `library { id }` the way
+// `BookDeletePayload` does — so the hook resolves the library to evict from
+// `useCurrentLibraryId()`. Same stub `use-update-book-metadata.test.tsx`
+// uses for the identical reason.
+vi.mock('~/provider/library-target', () => ({
+  useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+}));
+
+const ENTRIES_VARS = { libraryId: LIBRARY_ID, first: 20, filter: undefined };
+
+// Deliberately UNANNOTATED — `LibraryEntriesQuery`'s `Book` node member is
+// masked behind `BookRowFragment`'s `$fragmentRefs`, so an explicitly typed
+// literal fails `tsc`'s excess-property check. Same idiom as
+// `use-update-book-metadata.test.tsx`'s `bookRowNode`.
+const bookRowNode = (id: string) => ({
+  __typename: 'Book' as const,
+  id,
+  title: 'Old Title',
+  author: 'Old Author',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+});
+
+/** Seeds the grid's own connection so the invalidation assertions prove the
+ * CACHE was invalidated, not merely that the mutation resolved. */
+const seedLibraryEntries = (client: ReturnType<typeof renderHookWithApollo>['client']) =>
+  client.writeQuery({
+    query: LibraryEntriesDocument,
+    variables: ENTRIES_VARS,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [
+            {
+              __typename: 'LibraryEntriesConnectionEdge' as const,
+              cursor: 'c1',
+              node: bookRowNode(BOOK_GID),
+            },
+          ],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
+
+const readEntries = (client: ReturnType<typeof renderHookWithApollo>['client']) =>
+  client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS });
+
+/** Seeds a pre-replace `Book:<id>` through the document `page/book-edit`
+ * reads. The `Library.book(id:)` field it creates is what keeps the old
+ * entity alive past `cache.gc()` — the eviction has to name it. */
+const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id: string) =>
+  client.writeQuery({
+    query: BookEditDocument,
+    variables: { libraryId: LIBRARY_ID, bookId: id },
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book',
+          id,
+          documentId: 'a'.repeat(32),
+          title: 'Old Title',
+          titleSort: 'Old Title',
+          author: 'Old Author',
+          authorSort: 'Author, Old',
+          description: '',
+          publisher: '',
+          publishDate: '',
+          seriesIndex: 0,
+          subjects: [],
+          series: null,
+          identifiers: [],
+          validation: null,
+          pendingFix: null,
+        },
+      },
+    },
+  });
 
 const file = new File(['bytes'], 'replacement.epub', { type: 'application/epub+zip' });
 
@@ -213,6 +305,78 @@ describe('useReplaceBook', () => {
 
       expect(mockStage).toHaveBeenCalledTimes(1); // not twice
       expect(replaced?.id).toBe(NEW_BOOK_GID);
+    });
+
+    // REGRESSION (whole-step review I-1). A replace rotates the book id AND
+    // rewrites title/author — exactly what the grid sorts, filters and
+    // renders — yet `runReplace` carried no `update` at all, so `/library`
+    // kept the pre-replace row (and an edge pointing at the old id) until a
+    // hard reload. Every sibling mutation that moves a book in the
+    // connection evicts the field; this one is the only one that changes
+    // what the connection is ordered by.
+    it('evicts the LibraryEntries connection after a successful replace', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result, client } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceMock,
+      ] as MockedResponse[]);
+      act(() => seedLibraryEntries(client));
+      expect(readEntries(client)).not.toBeNull();
+
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+      });
+
+      expect(readEntries(client)).toBeNull();
+    });
+
+    // Same `applyEpubChanges`-style id rotation `use-update-book-metadata.ts`
+    // and `use-fix-actions.ts` handle: normalization writes a brand-new
+    // `Book:<newId>` and cannot know the old entity described the same book,
+    // and `cache.gc()` cannot collect the orphan while a `Library.book(id:)`
+    // field from a prior /book or /book-edit visit still references it.
+    it('evicts the old Book entity when the replace rotates the id', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result, client } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceMock,
+      ] as MockedResponse[]);
+      act(() => seedBook(client, BOOK_GID));
+      expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+      });
+
+      expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+        `Book:${BOOK_GID}`
+      );
+    });
+
+    // The failure half: a typed error carries no payload, so nothing may be
+    // evicted — the book was not replaced and the grid is still correct.
+    it('evicts nothing when the replace fails', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result, client } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceCollisionMock,
+      ] as MockedResponse[]);
+      act(() => seedLibraryEntries(client));
+
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, []);
+      });
+
+      expect(readEntries(client)).not.toBeNull();
     });
 
     it('surfaces a typed replace error and returns undefined', async () => {
