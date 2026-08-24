@@ -16,11 +16,32 @@ type BookResolvePendingFixPayload = Extract<
 
 export type FixKey = { field: string; kind: string; from: string };
 
+/**
+ * What every action resolves.
+ *
+ * `ok` is the old boolean return, unchanged in meaning: `true` on success,
+ * `false` on any typed error or network failure.
+ *
+ * `bookGlobalId` is the book id the SERVER reports back in the payload, which
+ * is NOT necessarily the one that was passed in: a successful `ACCEPT` (and
+ * the `UNDO` of an apply-snapshot) re-imports the rewritten EPUB through
+ * `applyEpubChanges`, minting a new content-hash id and re-keying the
+ * `PendingFix` row under it. Callers that hold the pre-action id must follow
+ * it — the upload queue joins its live transport rows on exactly this id, and
+ * froze at the pre-accept value before whole-step review C-1. Present only
+ * when `ok` is `true` (a typed error carries no payload to read it from).
+ *
+ * This is why the actions no longer resolve a bare `boolean`. The queue's own
+ * public `UseUploadQueue` contract is still boolean — its mappers consume the
+ * id here and hand `ok` on — so `page/upload` is unaffected.
+ */
+export type FixOutcome = { ok: boolean; bookGlobalId?: string };
+
 export type UseFixActions = {
-  acceptFixes: (bookGlobalId: string, fixes?: FixKey[]) => Promise<boolean>;
-  dismissFixes: (bookGlobalId: string, fixes?: FixKey[]) => Promise<boolean>;
-  undoFixes: (bookGlobalId: string) => Promise<boolean>;
-  clearFixes: (bookGlobalId: string) => Promise<boolean>;
+  acceptFixes: (bookGlobalId: string, fixes?: FixKey[]) => Promise<FixOutcome>;
+  dismissFixes: (bookGlobalId: string, fixes?: FixKey[]) => Promise<FixOutcome>;
+  undoFixes: (bookGlobalId: string) => Promise<FixOutcome>;
+  clearFixes: (bookGlobalId: string) => Promise<FixOutcome>;
   error: string | undefined;
 };
 
@@ -32,14 +53,14 @@ export type UseFixActions = {
  *
  * **Mostly no manual cache writes.** The mutation selects `library { id
  * pendingFixes { ... } }`, so Apollo reconciles `usePendingFixes`'s row list
- * from the payload by itself, purely through normalization. The ONE
- * exception is `Library.entries`: ACCEPT and UNDO both rewrite the EPUB and
- * change the metadata the grid sorts and filters on, so both move a book's
- * position in that connection — a move the payload cannot express, so `run`
- * below evicts the field manually for those two actions only. DISMISS and
- * CLEAR touch only the pending-fix row, which the payload's own
- * `library { pendingFixes }` selection already reconciles, so they evict
- * nothing.
+ * from the payload by itself, purely through normalization. The exceptions
+ * are both confined to ACCEPT and UNDO, the two actions that rewrite the
+ * EPUB: `Library.entries` (they change the metadata the grid sorts and
+ * filters on, so both move a book's position in that connection — a move
+ * the payload cannot express) and the OLD `Book:<id>` entity when the id
+ * rotated out from under it. DISMISS and CLEAR touch only the pending-fix
+ * row, which the payload's own `library { pendingFixes }` selection already
+ * reconciles, so they evict nothing.
  *
  * **`fixes` is OMITTED from the variables, not passed as `undefined`, for
  * every bulk action** (`acceptFixes`/`dismissFixes` called with no `fixes`
@@ -53,18 +74,20 @@ export type UseFixActions = {
  * otherwise — can distinguish the two, so nothing here is actually guarding
  * against the `fixes: undefined` form regressing back in.
  *
- * Each action resolves `true` on success and `false` on any typed error
- * (the mutation's own `BookHashCollisionError`/`BookNotValidatedError`/
- * `EpubValidationError` members) or network failure — the same boolean
- * contract `page/upload`'s REST-era `applyFix`/`undo` already expects,
- * which is what lets Task 9 swap this in without reshaping that call site.
+ * Each action resolves a `FixOutcome`: `ok` is `true` on success and `false`
+ * on any typed error (the mutation's own `BookHashCollisionError`/
+ * `BookNotValidatedError`/`EpubValidationError` members) or network failure,
+ * and `bookGlobalId` carries the id the server reports back — see
+ * `FixOutcome`'s own doc comment for why that id is not always the one that
+ * went in. `page/upload`'s REST-era `applyFix`/`undo` boolean contract is
+ * preserved one layer up, in `useUploadQueueEngine`'s mappers.
  */
 export const useFixActions = (): UseFixActions => {
   const [resolve] = useMutation(BookResolvePendingFixDocument);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const run = useCallback(
-    async (id: string, action: PendingFixResolution, fixes?: FixKey[]): Promise<boolean> => {
+    async (id: string, action: PendingFixResolution, fixes?: FixKey[]): Promise<FixOutcome> => {
       setError(undefined);
       try {
         const { data } = await resolve({
@@ -87,6 +110,21 @@ export const useFixActions = (): UseFixActions => {
               id: cache.identify({ __typename: 'Library', id: result.payload.library.id }),
               fieldName: 'entries',
             });
+            // The book id ROTATES whenever the EPUB is rewritten, and
+            // normalization writes the payload into a BRAND-NEW
+            // `Book:<newId>` entity — it cannot know the old one described
+            // the same book. Left alone, `Book:<oldId>` lingers with
+            // pre-accept metadata (and a `pendingFix` holding pre-accept
+            // proposals, which `page/book-edit`'s guard modal reads).
+            // `cache.gc()` below does NOT save us: a `Library.book(id:
+            // oldGid)` field written by any prior /book or /book-edit visit
+            // still REFERENCES the orphan, so it is reachable and never
+            // collected. Same branch, same reason, as
+            // `use-update-book-metadata.ts` and `use-regen-chapters.ts` on
+            // this identical `applyEpubChanges` path (review I-2).
+            if (result.payload.book.id !== id) {
+              cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
+            }
             cache.gc();
           },
         });
@@ -94,12 +132,12 @@ export const useFixActions = (): UseFixActions => {
           data?.bookResolvePendingFix,
           'BookResolvePendingFixPayload'
         );
-        if (result.status === 'ok') return true;
+        if (result.status === 'ok') return { ok: true, bookGlobalId: result.payload.book.id };
         setError(result.status === 'error' ? result.message : 'Failed to update fixes');
-        return false;
+        return { ok: false };
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to update fixes');
-        return false;
+        return { ok: false };
       }
     },
     [resolve]

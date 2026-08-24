@@ -266,6 +266,37 @@ describe('useUploadTransport', () => {
     expect(result.current!.items[2].status).toBe('uploading');
   });
 
+  it('remapBookGlobalId retargets only the items holding the old id', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub'));
+    });
+    await waitFor(() => expect(xhrInstances[1]?.open).toHaveBeenCalled());
+
+    const finish = async (index: number, globalId: string) => {
+      xhrInstances[index].status = 200;
+      xhrInstances[index].responseText = JSON.stringify({
+        results: [{ filename: 'x.epub', globalId }],
+      });
+      await act(async () => {
+        xhrInstances[index].onload?.(new Event('load'));
+        await Promise.resolve();
+      });
+    };
+    await finish(0, 'OLD');
+    await finish(1, 'OTHER');
+
+    act(() => {
+      result.current!.remapBookGlobalId('OLD', 'NEW');
+    });
+
+    expect(result.current!.items[0].bookGlobalId).toBe('NEW');
+    expect(result.current!.items[1].bookGlobalId).toBe('OTHER'); // untouched
+    // Progress/status survive the retarget — the remap rewrites one field.
+    expect(result.current!.items[0].status).toBe('done');
+  });
+
   it('dropItem removes only the targeted row', async () => {
     const { result } = await renderTransport();
 

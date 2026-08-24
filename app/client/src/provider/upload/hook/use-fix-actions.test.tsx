@@ -1,3 +1,4 @@
+import type { NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +8,7 @@ import type {
   BookResolvePendingFixMutationVariables,
   LibraryEntriesQueryVariables,
 } from '~/gql/graphql';
+import { BookEditDocument } from '~/graphql/book-edit';
 import { LibraryEntriesDocument } from '~/graphql/library';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
 import { renderHookWithApollo } from '~/test-utils';
@@ -14,6 +16,10 @@ import { renderHookWithApollo } from '~/test-utils';
 import { useFixActions } from './use-fix-actions';
 
 const BOOK_GID = 'BOOK-1';
+/** The id `BOOK_GID` rotates INTO on a successful ACCEPT/UNDO: both re-import
+ * the rewritten EPUB through `applyEpubChanges`, which mints a new
+ * content-hash book id (`resolve-pending-fix.ts`). */
+const NEW_BOOK_GID = 'BOOK-2';
 const LIBRARY_ID = 'LIB-1';
 
 // Matches `use-library-entries.ts`'s `PAGE_SIZE` default and its
@@ -61,11 +67,50 @@ const seedLibraryEntries = (client: ReturnType<typeof renderHookWithApollo>['cli
 const readEntries = (client: ReturnType<typeof renderHookWithApollo>['client']) =>
   client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS });
 
-const okPayload = () => ({
+const okPayload = (bookId: string = BOOK_GID) => ({
   __typename: 'BookResolvePendingFixPayload' as const,
-  book: { __typename: 'Book' as const, id: BOOK_GID, title: 'Dune', author: 'Frank Herbert' },
+  book: { __typename: 'Book' as const, id: bookId, title: 'Dune', author: 'Frank Herbert' },
   library: { __typename: 'Library' as const, id: LIBRARY_ID, pendingFixes: [] },
 });
+
+/** Seeds a pre-accept `Book:<id>` entity through the same document
+ * `page/book-edit` reads, so the eviction assertions below prove something:
+ * without a pre-existing entity `not.toContain` would pass whether or not
+ * the hand-written `update` ever ran. Seeding it through `Library.book(id:)`
+ * (rather than, say, a grid edge) also reproduces the exact reason
+ * `cache.gc()` alone is NOT enough — that field keeps a REFERENCE to the old
+ * entity alive, so the orphan is never collected and must be evicted by id.
+ * Mirrors `use-update-book-metadata.test.tsx`'s `seedBook`. */
+const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id: string) =>
+  client.writeQuery({
+    query: BookEditDocument,
+    variables: { libraryId: LIBRARY_ID, bookId: id },
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book',
+          id,
+          documentId: 'a'.repeat(32),
+          title: 'Dune',
+          titleSort: 'Dune',
+          author: 'Herbert',
+          authorSort: 'Herbert, Frank',
+          description: '',
+          publisher: '',
+          publishDate: '',
+          seriesIndex: 0,
+          subjects: [],
+          series: null,
+          identifiers: [],
+          validation: null,
+          pendingFix: null,
+        },
+      },
+    },
+  });
 
 type ResolveMock = MockedResponse<
   BookResolvePendingFixMutation,
@@ -123,6 +168,24 @@ const clearMock: ResolveMock = {
   result: { data: { __typename: 'Mutation', bookResolvePendingFix: okPayload() } },
 };
 
+/** What a real ACCEPT returns: the book id has ROTATED. */
+const acceptRotatingMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'ACCEPT' },
+  },
+  result: { data: { __typename: 'Mutation', bookResolvePendingFix: okPayload(NEW_BOOK_GID) } },
+};
+
+/** The UNDO of an apply-snapshot rotates the id for the same reason. */
+const undoRotatingMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'UNDO' },
+  },
+  result: { data: { __typename: 'Mutation', bookResolvePendingFix: okPayload(NEW_BOOK_GID) } },
+};
+
 const acceptCollisionMock: ResolveMock = {
   request: {
     query: BookResolvePendingFixDocument,
@@ -145,13 +208,13 @@ describe('useFixActions', () => {
 
     await expect(
       result.current?.acceptFixes(BOOK_GID, [{ field: 'title', kind: 'replace', from: 'Old' }])
-    ).resolves.toBe(true);
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it('reports a typed error as false and surfaces its message', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [acceptCollisionMock]);
 
-    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toBe(false);
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: false });
     await waitFor(() =>
       expect(result.current?.error).toBe('a book with that content already exists')
     );
@@ -165,25 +228,25 @@ describe('useFixActions', () => {
   it('resolves the bulk action when no fixes are named', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [acceptAllMock]);
 
-    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
   });
 
   it('resolves the dismiss action when no fixes are named', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [dismissAllMock]);
 
-    await expect(result.current?.dismissFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.dismissFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
   });
 
   it('sends the UNDO action', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [undoMock]);
 
-    await expect(result.current?.undoFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.undoFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
   });
 
   it('sends the CLEAR action', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [clearMock]);
 
-    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
   });
 
   it('reports a network failure as false and surfaces its message', async () => {
@@ -200,7 +263,7 @@ describe('useFixActions', () => {
       ]
     );
 
-    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toBe(false);
+    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toMatchObject({ ok: false });
     await waitFor(() => expect(result.current?.error).toBe('network down'));
   });
 
@@ -215,7 +278,7 @@ describe('useFixActions', () => {
     act(() => seedLibraryEntries(client));
     expect(readEntries(client)).not.toBeNull();
 
-    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
 
     expect(readEntries(client)).toBeNull();
   });
@@ -225,7 +288,7 @@ describe('useFixActions', () => {
     act(() => seedLibraryEntries(client));
     expect(readEntries(client)).not.toBeNull();
 
-    await expect(result.current?.undoFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.undoFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
 
     expect(readEntries(client)).toBeNull();
   });
@@ -235,7 +298,7 @@ describe('useFixActions', () => {
     act(() => seedLibraryEntries(client));
     expect(readEntries(client)).not.toBeNull();
 
-    await expect(result.current?.dismissFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.dismissFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
 
     expect(readEntries(client)).not.toBeNull();
   });
@@ -245,9 +308,66 @@ describe('useFixActions', () => {
     act(() => seedLibraryEntries(client));
     expect(readEntries(client)).not.toBeNull();
 
-    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toBe(true);
+    await expect(result.current?.clearFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
 
     expect(readEntries(client)).not.toBeNull();
+  });
+
+  // REGRESSION (whole-step review I-2). ACCEPT/UNDO both re-import the
+  // rewritten EPUB, so the payload's `book.id` may differ from the `id`
+  // argument. Normalization writes a brand-new `Book:<newId>` entity and
+  // cannot know the old one described the same book, so the pre-accept
+  // entity would otherwise linger with stale metadata — and `cache.gc()`
+  // cannot collect it while a `Library.book(id:)` field from a prior /book
+  // or /book-edit visit still references it. Same behaviour
+  // `use-update-book-metadata.ts` and `use-regen-chapters.ts` already have
+  // on the identical `applyEpubChanges` path.
+  it('evicts the old Book entity when ACCEPT rotates the id', async () => {
+    const { result, client } = renderHookWithApollo(() => useFixActions(), [acceptRotatingMock]);
+    act(() => seedBook(client, BOOK_GID));
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
+
+    expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+      `Book:${BOOK_GID}`
+    );
+  });
+
+  it('evicts the old Book entity when UNDO rotates the id', async () => {
+    const { result, client } = renderHookWithApollo(() => useFixActions(), [undoRotatingMock]);
+    act(() => seedBook(client, BOOK_GID));
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+
+    await expect(result.current?.undoFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
+
+    expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+      `Book:${BOOK_GID}`
+    );
+  });
+
+  // The other half of the branch: a no-op ACCEPT (nothing actionable) returns
+  // the SAME book id, and the entity must survive — evicting it would throw
+  // away metadata nothing has replaced.
+  it('keeps the Book entity when ACCEPT does not rotate the id', async () => {
+    const { result, client } = renderHookWithApollo(() => useFixActions(), [acceptAllMock]);
+    act(() => seedBook(client, BOOK_GID));
+
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: true });
+
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+  });
+
+  // The rotated id is what the queue re-keys its live transport item on
+  // (whole-step review C-1) — without it the merge join breaks and the same
+  // book renders as two cards.
+  it('reports the resulting book id so callers can follow a rotation', async () => {
+    const { result } = renderHookWithApollo(() => useFixActions(), [acceptRotatingMock]);
+
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toEqual({
+      ok: true,
+      bookGlobalId: NEW_BOOK_GID,
+    });
   });
 
   // A typed error member (no `library` payload to evict from) must not
@@ -257,7 +377,7 @@ describe('useFixActions', () => {
     act(() => seedLibraryEntries(client));
     expect(readEntries(client)).not.toBeNull();
 
-    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toBe(false);
+    await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toMatchObject({ ok: false });
 
     expect(readEntries(client)).not.toBeNull();
   });

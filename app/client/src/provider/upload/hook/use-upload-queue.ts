@@ -9,7 +9,7 @@ import type { MetadataFix } from '~/provider/book';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
-import type { FixKey } from './use-fix-actions';
+import type { FixKey, FixOutcome } from './use-fix-actions';
 import { useFixActions } from './use-fix-actions';
 import type { PendingFixRow } from './use-pending-fixes';
 import { usePendingFixes } from './use-pending-fixes';
@@ -112,9 +112,12 @@ type ResolvedRow = {
  * Keyed on the server's `PendingFix.id`, DELIBERATELY, not a synthetic stable
  * id: a successful `ACCEPT` that rewrites the EPUB mints a new content-hash
  * book id, and `PendingFix.id` is derived from it, so this row's React key
- * rotates and the row remounts after an accept. That's cosmetic (the row
- * re-renders with the same content) and accepted on purpose — see this
- * migration's spec §4.4. */
+ * rotates and the row remounts after an accept. The REMOUNT is cosmetic (the
+ * row re-renders with the same content) and accepted on purpose — see this
+ * migration's spec §4.4. The rotation ITSELF is not cosmetic, and §4.4 said
+ * so too weakly before review C-1: it also breaks the merge join in
+ * `items` below, which `runRotating` now repairs by remapping the live
+ * transport item onto the new id. */
 const seededRow = (r: ResolvedRow): UploadItem => ({
   id: r.row.id,
   fileName: r.row.fileName,
@@ -137,29 +140,44 @@ const seededRow = (r: ResolvedRow): UploadItem => ({
  * e.g. the instant after upload completes but before the server's
  * `PendingFix` row has round-tripped back through `usePendingFixes`.
  *
- * `everSeen` is a DEFENSIVE guard, not a fix for an observed bug: it
- * distinguishes that transient "no row YET" gap from a row that EXISTED
- * earlier this session and has since vanished, so that IF a row a live item
- * was matched against ever disappears, this falls back to "no proposals"
+ * `everSeen` distinguishes that transient "no row YET" gap from a row this
+ * live item was matched against earlier in the session and is no longer
+ * matched against now — in which case this falls back to "no proposals"
  * rather than resurrecting the transport's stale pre-resolution list.
  *
- * The current server contract does not actually reach the "row vanished
- * while a live item remains" branch: `bookResolvePendingFix`'s ACCEPT and
- * DISMISS both always arm `undo` on success
- * (`app/server/.../resolve-pending-fix.ts`), `BookStore.upsertPendingFix`
- * only deletes a row when `proposals.length === 0 && !state.undo`
- * (`book-store.ts`), and `isLivePendingFix` keeps a resolved-but-undo-armed
- * row live in `Library.pendingFixes` for 7 days (`derive.ts`) — so a normal
- * ACCEPT/DISMISS/UNDO never produces a vanished row while a matching
- * transport item is still around. `CLEAR` is the one path that removes a
- * row, but `dismissCompleted` drops the local transport item in the very
- * same call, so there's no live item left to hit this branch either. The
- * ONLY theoretical trigger is the 7-day TTL lapsing while this tab has
- * stayed open with a matching live item the whole time. Kept anyway because
- * that invariant lives in a different layer (the server) and is enforced
- * nowhere on the client — deleting this guard would make client
- * correctness silently depend on server behaviour a future change could
- * flip without any client-side test catching it. */
+ * **What actually triggers it (corrected — the previous version of this
+ * comment was wrong).** It used to claim the guard was purely defensive and
+ * that its "only theoretical trigger" was `Library.pendingFixes`' 7-day TTL
+ * lapsing with the tab still open. That reasoned exclusively about the row
+ * being DELETED, and missed the case that fires on the first accept of every
+ * live upload: the row being RE-KEYED. A successful ACCEPT (or the UNDO of
+ * an apply-snapshot) re-imports the rewritten EPUB under a new content-hash
+ * book id and `upsertPendingFix`es the row under THAT id — so from this
+ * join's point of view the row the live item was matched against is simply
+ * gone, replaced by a different one it does not yet match.
+ *
+ * `runRotating` below now closes that gap by remapping the live item's
+ * `bookGlobalId` onto the payload's new id (review C-1), but the remap runs
+ * AFTER the mutation resolves, while the payload's re-keyed row list is
+ * normalized into the cache DURING it — leaving exactly one render in which
+ * the live item still holds the pre-accept id and matches nothing. Measured,
+ * not assumed: `use-upload-queue.test.tsx`'s "never flashes the stale
+ * upload-time proposals back while an ACCEPT rotation lands" captures that
+ * render, and with this guard forced to `false` it fails, showing the
+ * upload-time proposals the user just accepted flashing back onto the card.
+ * So the guard is load-bearing, not defensive.
+ *
+ * The row-DELETED reasoning still holds on its own terms and is worth
+ * keeping: `bookResolvePendingFix`'s ACCEPT and DISMISS both always arm
+ * `undo` on success (`app/server/.../resolve-pending-fix.ts`),
+ * `BookStore.upsertPendingFix` only deletes a row when
+ * `proposals.length === 0 && !state.undo` (`book-store.ts`), and
+ * `isLivePendingFix` keeps a resolved-but-undo-armed row live in
+ * `Library.pendingFixes` for 7 days (`derive.ts`); `CLEAR` removes a row but
+ * `dismissCompleted` drops the local transport item in the very same call.
+ * So an outright DELETION under a live item remains reachable only via that
+ * TTL — a second, weaker reason to keep the guard, on top of the rotation
+ * window above, which is the real one. */
 const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolean): UploadItem => {
   const base: UploadItem = {
     id: t.id,
@@ -239,6 +257,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     refetch(); // the new book may have arrived with proposals
   }, [client, libraryId, refetch]);
   const transport = useUploadTransport(onUploaded);
+  const { remapBookGlobalId } = transport;
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,
@@ -273,8 +292,10 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // Every book global id whose `PendingFix` row has been seen at least once
   // in the CURRENT library — updated AFTER each render (`useLayoutEffect`,
   // no deps) so the very next render's `items` computation already reflects
-  // a row that just vanished. See `mergeRow`'s own doc comment for why this
-  // (defensive, not currently reachable) guard exists at all.
+  // a row that just vanished (or, far more often, was re-keyed under a
+  // rotated book id). See `mergeRow`'s own doc comment for what actually
+  // triggers this guard — it is reachable and load-bearing, contrary to what
+  // this file claimed before review C-1.
   //
   // Reset on a `libraryId` change: `UploadProvider` mounts once, unkeyed, at
   // the app root, while `usePendingFixes` is scoped per-library — an admin
@@ -313,29 +334,54 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     [items]
   );
 
-  const applyFix = useCallback(
-    async (itemId: string, fix: MetadataFix): Promise<boolean> => {
+  // The ACCEPT/UNDO half of every mapper below, in one place: run the
+  // resolution, FOLLOW the book id if the server rotated it, and hand the
+  // caller the plain boolean `UseUploadQueue` promises.
+  //
+  // The remap is the fix for whole-step review C-1 and is load-bearing on
+  // the very first accept of any this-session upload. `TransportItem.
+  // bookGlobalId` is written once, in `xhr.onload`, and `items` above joins
+  // the live transport against the server's rows on exactly that string. A
+  // successful ACCEPT (or the UNDO of an apply-snapshot) re-imports the
+  // rewritten EPUB, mints a new content-hash book id, and re-keys the
+  // `PendingFix` row under it — so without this the live item's id points at
+  // a book the server no longer knows: the join matches nothing, the
+  // re-keyed row is emitted as a SECOND card for the same book, `FixReview`'s
+  // Edit link points at a dead id, and every further action on the live card
+  // resolves `missing`.
+  //
+  // DISMISS and CLEAR are deliberately NOT routed through here: neither
+  // calls `applyEpubChanges`, so neither can rotate an id, and pretending
+  // otherwise would suggest a hazard that path does not have.
+  const runRotating = useCallback(
+    async (itemId: string, action: (gid: string) => Promise<FixOutcome>): Promise<boolean> => {
       const gid = globalIdOf(itemId);
       if (!gid) return false;
-      return acceptFixes(gid, [fixKeyOf(fix)]);
+      const outcome = await action(gid);
+      if (outcome.bookGlobalId !== undefined && outcome.bookGlobalId !== gid) {
+        remapBookGlobalId(gid, outcome.bookGlobalId);
+      }
+      return outcome.ok;
     },
-    [globalIdOf, acceptFixes]
+    [globalIdOf, remapBookGlobalId]
+  );
+
+  const applyFix = useCallback(
+    async (itemId: string, fix: MetadataFix): Promise<boolean> =>
+      runRotating(itemId, (gid) => acceptFixes(gid, [fixKeyOf(fix)])),
+    [runRotating, acceptFixes]
   );
 
   const applyAllProposals = useCallback(
-    async (itemId: string): Promise<boolean> => {
-      const gid = globalIdOf(itemId);
-      if (!gid) return false;
-      return acceptFixes(gid);
-    },
-    [globalIdOf, acceptFixes]
+    async (itemId: string): Promise<boolean> => runRotating(itemId, (gid) => acceptFixes(gid)),
+    [runRotating, acceptFixes]
   );
 
   const dismissFix = useCallback(
     async (itemId: string, fix: MetadataFix): Promise<boolean> => {
       const gid = globalIdOf(itemId);
       if (!gid) return false;
-      return dismissFixes(gid, [fixKeyOf(fix)]);
+      return (await dismissFixes(gid, [fixKeyOf(fix)])).ok;
     },
     [globalIdOf, dismissFixes]
   );
@@ -344,18 +390,14 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
     async (itemId: string): Promise<boolean> => {
       const gid = globalIdOf(itemId);
       if (!gid) return false;
-      return dismissFixes(gid);
+      return (await dismissFixes(gid)).ok;
     },
     [globalIdOf, dismissFixes]
   );
 
   const undo = useCallback(
-    async (itemId: string): Promise<boolean> => {
-      const gid = globalIdOf(itemId);
-      if (!gid) return false;
-      return undoFixes(gid);
-    },
-    [globalIdOf, undoFixes]
+    async (itemId: string): Promise<boolean> => runRotating(itemId, undoFixes),
+    [runRotating, undoFixes]
   );
 
   // Removes the local (live) row and, if this book also has a server row,

@@ -25,6 +25,12 @@ import { fixKey, fixKeyOf, useUploadQueueEngine } from './use-upload-queue';
 
 const LIBRARY_ID = 'TGlicmFyeTox';
 const BOOK_GID = 'Qm9vazox';
+/** The id `BOOK_GID` rotates INTO after a successful `ACCEPT` — the server
+ * re-imports the rewritten EPUB, mints a new content-hash book id, and
+ * re-keys the `PendingFix` row (and therefore `PendingFix.id`) under it. See
+ * `resolve-pending-fix.ts`'s `upsertPendingFix(owner, outcome.ok.id, …)` and
+ * `resolve-pending-fix.test.ts`'s "the row lives under the new id". */
+const ROTATED_BOOK_GID = 'Qm9vazoy';
 // Matches `use-library-entries.ts`'s `PAGE_SIZE` default and its
 // `filter: undefined` when no filter is applied — the exact variables the
 // live grid reads `Library.entries` with.
@@ -202,6 +208,47 @@ const resolveMock = (
   },
 });
 
+/** The row the server really returns after an `ACCEPT`: re-keyed under the
+ * ROTATED book id (so both `PendingFix.id` and `book.id` differ from the
+ * pre-accept row), with the applied proposal moved into `appliedFixes` and an
+ * `undo` armed. `resolveMock` above deliberately keeps its unrotated,
+ * `afterRows: []` shape — several tests only care that an action resolves
+ * `true` — so this counterfactual-free variant lives on its own. */
+const rowAfterAccept = {
+  ...pendingFixRow(ROTATED_BOOK_GID, `FIX-${ROTATED_BOOK_GID}`),
+  state: {
+    __typename: 'PendingFixState' as const,
+    autoFixes: [],
+    appliedFixes: [metadataFixDto('title', 'replace', 'Old', 'Dune')],
+    proposals: [],
+    undo: { __typename: 'UndoSnapshot' as const, kind: 'APPLY' as const },
+  },
+};
+
+/** A REALISTIC bulk `ACCEPT`: the payload's `book.id` is the rotated id, and
+ * `library.pendingFixes` carries the row re-keyed under it. */
+const rotatingAcceptMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'ACCEPT' },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookResolvePendingFix: {
+        __typename: 'BookResolvePendingFixPayload',
+        book: {
+          __typename: 'Book',
+          id: ROTATED_BOOK_GID,
+          title: 'Dune',
+          author: 'Frank Herbert',
+        },
+        library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [rowAfterAccept] },
+      },
+    },
+  },
+};
+
 // ── Harness ──────────────────────────────────────────────────────────────────
 
 /** `renderHookWithApollo`'s own `mocks` parameter is generic over a SINGLE
@@ -270,6 +317,112 @@ describe('useUploadQueueEngine', () => {
     await waitFor(() => expect(result.current!.items).toHaveLength(1));
     expect(result.current!.items[0]!.bookGlobalId).toBe(BOOK_GID);
     expect(result.current!.items[0]!.proposals).toHaveLength(1); // from the server row
+  });
+
+  // REGRESSION (whole-step review C-1). `ACCEPT` re-imports the rewritten
+  // EPUB, so the book id — and with it `PendingFix.id` — ROTATES. The live
+  // transport item's `bookGlobalId` was written once, in `xhr.onload`, and
+  // used to be frozen there: the merge join then matched nothing, the
+  // re-keyed server row was emitted as a SECOND card for the same book, and
+  // every action on the now-orphaned live card resolved `missing`.
+  it('follows the book id when ACCEPT rotates it, keeping ONE card', async () => {
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      rotatingAcceptMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+
+    act(() => {
+      // A filename the SEEDED row can't have ('dune.epub') — so the
+      // assertions below distinguish "the live item survived and was
+      // remapped" from "the live item was orphaned and a seeded row took
+      // its place".
+      result.current!.addFiles(fileListOf(new File(['x'], 'live.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await result.current!.applyAllProposals(itemId);
+    });
+
+    // Wait for the rotation to have landed ANYWHERE in the list (order-
+    // independent: pre-fix it landed as an extra seeded row, post-fix it
+    // lands on the live item) before asserting how many cards there are.
+    await waitFor(() =>
+      expect(result.current!.items.some((i) => i.bookGlobalId === ROTATED_BOOK_GID)).toBe(true)
+    );
+    expect(result.current!.items).toHaveLength(1);
+    expect(result.current!.items[0]!.bookGlobalId).toBe(ROTATED_BOOK_GID);
+    expect(result.current!.items[0]!.fileName).toBe('live.epub');
+    expect(result.current!.items[0]!.appliedFixes).toHaveLength(1); // the re-keyed row joined
+    expect(result.current!.items[0]!.undo).toEqual({ kind: 'apply' });
+  });
+
+  // Proves the `everSeen` guard in `mergeRow` is LOAD-BEARING, and pins down
+  // what actually triggers it. During the accept above there is exactly one
+  // render where the payload's re-keyed row list has landed but the remap
+  // has not run yet: the live item still holds the PRE-accept id and matches
+  // no row. Without the guard, that render falls back to the transport's
+  // upload-time `proposals` — the very list the user just accepted — and
+  // flashes them back onto the card. Captured across every render rather
+  // than at a settled point, because the window is one render wide.
+  it('never flashes the stale upload-time proposals back while an ACCEPT rotation lands', async () => {
+    const seen: string[][] = [];
+    const { result } = renderHookWithApollo(
+      () => {
+        const queue = useUploadQueueEngine();
+        for (const item of queue.items) seen.push((item.proposals ?? []).map((p) => p.field));
+        return queue;
+      },
+      [
+        viewerBootstrapMock,
+        pendingFixesMockFor(BOOK_GID),
+        configMock,
+        rotatingAcceptMock,
+      ] as MockedResponse[]
+    );
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'live.epub')));
+    });
+
+    // The upload's OWN response carries a proposal the SERVER row does not
+    // ('publisher' vs the row's 'title'), so a fallback to the transport's
+    // list is unmistakable in the capture below.
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    xhrInstances[0]!.status = 200;
+    xhrInstances[0]!.responseText = JSON.stringify({
+      results: [
+        {
+          filename: 'live.epub',
+          globalId: BOOK_GID,
+          applied: [],
+          proposals: [{ field: 'publisher', kind: 'trim', from: ' P ', to: 'P', changes: {} }],
+        },
+      ],
+    });
+    await act(async () => {
+      xhrInstances[0]!.onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+
+    seen.length = 0; // only the accept's own renders matter
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await result.current!.applyAllProposals(itemId);
+    });
+    await waitFor(() =>
+      expect(result.current!.items.some((i) => i.bookGlobalId === ROTATED_BOOK_GID)).toBe(true)
+    );
+
+    expect(seen.flat()).not.toContain('publisher');
   });
 
   // DEFENSIVE / invariant test, not a regression test for observed server

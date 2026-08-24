@@ -37,6 +37,24 @@ export type UseUploadTransport = {
    * the local half of the old `dismissCompleted`; the server half becomes a
    * `CLEAR` mutation elsewhere. */
   dropItem: (id: string) => void;
+  /** Retargets every item currently holding `oldGid` onto `newGid`.
+   *
+   * A book's id is its CONTENT hash, so any server action that rewrites the
+   * EPUB mints a new one: `ACCEPT` (and the `UNDO` of an apply-snapshot)
+   * re-imports the book through `applyEpubChanges` and re-keys its
+   * `PendingFix` row under the new id
+   * (`app/server/.../resolve-pending-fix.ts`). `bookGlobalId` is written
+   * once, in `xhr.onload` below, and the upload queue JOINS its server rows
+   * on it — so without this the id goes stale on the first accept and the
+   * join silently breaks (whole-step review C-1). The queue calls this from
+   * its `applyFix`/`applyAllProposals`/`undo` mappers with the id the
+   * mutation payload reports back.
+   *
+   * Matching on `bookGlobalId` rather than the session `id` is deliberate:
+   * the same book can legitimately occupy more than one live row (a user
+   * dropping the same file twice in one session), and all of them must
+   * follow the rotation. A no-op when nothing matches. */
+  remapBookGlobalId: (oldGid: string, newGid: string) => void;
 };
 
 /** Internal item shape — carries the picked `File` alongside the publicly
@@ -194,5 +212,11 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
-  return { items, addFiles, dropItem };
+  const remapBookGlobalId = useCallback((oldGid: string, newGid: string) => {
+    setItems((prev) =>
+      prev.map((i) => (i.bookGlobalId === oldGid ? { ...i, bookGlobalId: newGid } : i))
+    );
+  }, []);
+
+  return { items, addFiles, dropItem, remapBookGlobalId };
 };
