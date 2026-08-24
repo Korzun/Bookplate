@@ -51,6 +51,14 @@ export type UseCurrentLibraryId = {
  * clear while `targetLoading` is true is what stops a perfectly valid
  * selection from being wiped on every single mount before its own read has
  * even come back.
+ *
+ * **The `error` guard (fix round 1) matters for the exact same reason.** A
+ * network/GraphQL error ALSO reports `loading: false, data: undefined` —
+ * shape-identical to "resolved to nothing" once the loaded-guard above has
+ * already let it through. An error means "could not find out", not "does
+ * not exist"; only the second justifies clearing a real admin's selection.
+ * This mirrors `component/library-switcher`'s own `hasError` guard on its
+ * sibling self-heal effect exactly.
  */
 export const useCurrentLibraryId = (): UseCurrentLibraryId => {
   const [targetLibraryId, setTargetLibraryId] = useLibraryTarget();
@@ -58,18 +66,22 @@ export const useCurrentLibraryId = (): UseCurrentLibraryId => {
   const isAdmin = data?.viewer.isAdmin ?? false;
 
   const resolvingTarget = isAdmin && targetLibraryId !== undefined;
-  const { data: targetData, loading: targetLoading } = useQuery(LibraryTargetResolveDocument, {
+  const {
+    data: targetData,
+    loading: targetLoading,
+    error: targetError,
+  } = useQuery(LibraryTargetResolveDocument, {
     variables: { libraryId: targetLibraryId ?? '' },
     skip: !resolvingTarget,
   });
 
   useEffect(() => {
-    if (!resolvingTarget || targetLoading) return;
+    if (!resolvingTarget || targetLoading || targetError) return;
     const node = targetData?.node;
     if (node === null || node === undefined || node.__typename !== 'Library') {
       setTargetLibraryId(undefined);
     }
-  }, [resolvingTarget, targetLoading, targetData, setTargetLibraryId]);
+  }, [resolvingTarget, targetLoading, targetError, targetData, setTargetLibraryId]);
 
   return { libraryId: isAdmin ? targetLibraryId : data?.viewer.library?.id, loading };
 };

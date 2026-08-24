@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { LibraryTargetResolveDocument } from '~/graphql/library';
@@ -182,6 +182,43 @@ describe('useCurrentLibraryId', () => {
     ]);
 
     await Promise.resolve();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('lib-alice');
+  });
+
+  it('does NOT clear a valid target when the resolving query errors (fix round 1)', async () => {
+    // A network/GraphQL error reports `loading: false, data: undefined` —
+    // SHAPE-IDENTICAL to "the node resolved to nothing" unless `error` is
+    // checked. An error means "could not find out", not "does not exist",
+    // and only the latter justifies clearing a real admin's selection —
+    // the same distinction `component/library-switcher`'s own `hasError`
+    // guard already draws for its sibling self-heal.
+    localStorage.setItem(STORAGE_KEY, 'lib-alice');
+
+    const result = renderCurrentLibraryId([
+      viewerMock(null, true),
+      {
+        request: {
+          query: LibraryTargetResolveDocument,
+          variables: { libraryId: 'lib-alice' },
+        },
+        error: new Error('network down'),
+      },
+    ]);
+
+    // `result.current?.loading` reflects ONLY `ViewerBootstrapDocument` — the
+    // resolve query doesn't even START until `resolvingTarget` flips true
+    // AFTER that first query settles (`isAdmin` is unknown, so `skip` stays
+    // true, until then), so it cannot have errored yet the instant this
+    // first `waitFor` resolves. Asserting right there would pass vacuously
+    // whether or not the bug is present, since the resolve query would
+    // still be in flight either way. The extra real-time wait below (well
+    // past `MockLink`'s default `realisticDelay`, up to 50ms per hop, for
+    // BOTH sequential hops) is what actually gives the buggy effect a
+    // chance to fire before the final assertion.
+    await waitFor(() => expect(result.current?.loading).toBe(false));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
     expect(localStorage.getItem(STORAGE_KEY)).toBe('lib-alice');
   });
 });
