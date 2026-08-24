@@ -3,7 +3,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { CardDivider, FixReview, UploadZone } from '~/component';
 import { CheckIcon } from '~/icon';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
-import { fixKey, useReplaceBook } from '~/provider/book';
+import { useReplaceBook } from '~/provider/book';
+import { fixKey } from '~/provider/upload';
 
 import { ConfirmModal } from '../confirm-modal';
 import { SeverityCounts } from '../severity-counts';

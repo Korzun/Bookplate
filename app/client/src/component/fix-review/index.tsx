@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 
 import { Button } from '~/control';
 import { CheckIcon } from '~/icon';
-import type { MetadataFix, UndoSnapshot } from '~/provider/book';
+import type { MetadataFix } from '~/provider/book';
+import type { UndoSnapshot } from '~/provider/upload';
 import { path } from '~/router';
 
 import { CardDivider } from '../card-divider';

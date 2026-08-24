@@ -12,7 +12,6 @@ export {
   useFetchBook,
   useFetchBookList,
   useLibrarySubjects,
-  usePatchBookMetadata,
   useRegenChapters,
   useReplaceBook,
   useScanLibrary,
@@ -21,9 +20,7 @@ export {
   useStandaloneBookList,
   useUpdateBookMetadata,
   useUploadBookList,
-  useUploadQueueEngine,
   useValidateBook,
-  fixKey,
 } from './hook';
 export { BookProvider } from './provider';
 export type {
@@ -49,12 +46,6 @@ export type {
   UpdatedBook,
   UseUpdateBookMetadata,
 } from './hook';
-export type {
-  UndoSnapshot,
-  UploadItem,
-  UploadItemStatus,
-  UseUploadQueue,
-} from './hook/use-upload-queue';
 export type {
   Severity,
   ValidationMessage,

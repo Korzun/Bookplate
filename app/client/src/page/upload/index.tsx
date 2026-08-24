@@ -4,9 +4,9 @@ import { Link } from 'react-router';
 import { Page, UploadItem, UploadZone } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
 import { useIsAdmin } from '~/provider/auth';
-import type { UploadItem as UploadItemType } from '~/provider/book';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
+import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { useUploadQueue } from '~/provider/upload';
 import { useUserList } from '~/provider/user';
 import { path } from '~/router';
@@ -101,7 +101,7 @@ export const UploadPage = () => {
 
   const handleRejectAll = useCallback(() => {
     for (const item of items) {
-      if ((item.proposals?.length ?? 0) > 0) dismissAllProposals(item.id);
+      if ((item.proposals?.length ?? 0) > 0) void dismissAllProposals(item.id);
     }
   }, [items, dismissAllProposals]);
 
@@ -166,12 +166,12 @@ export const UploadPage = () => {
                 const ok = await applyAllProposals(item.id);
                 if (!ok) showToast("Couldn't apply fixes", 'error');
               }}
-              onDismissAll={() => dismissAllProposals(item.id)}
+              onDismissAll={() => void dismissAllProposals(item.id)}
               onUndo={async () => {
                 const ok = await undo(item.id);
                 if (!ok) showToast("Couldn't undo", 'error');
               }}
-              onDismissFix={(fix) => dismissFix(item.id, fix)}
+              onDismissFix={(fix) => void dismissFix(item.id, fix)}
               onDismissCompleted={() => dismissCompleted(item.id)}
             />
           ))}

@@ -1,3 +1,4 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { act, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,11 +19,12 @@ vi.mock('react-router', async (orig) => ({
 }));
 
 // `useBookEdit` (and, transitively through `useUploadQueueEngine`,
-// `usePatchBookMetadata`'s siblings) all root through `useCurrentLibraryId` —
+// `usePendingFixes`'s siblings) all root through `useCurrentLibraryId` —
 // stubbed the same way `page/book`'s own test stubs it, so these tests stay
-// focused on `BookEditDocument` rather than also exercising the bootstrap
-// query. `useWithTargetUser` is stubbed too: the real `UploadProvider` below
-// reaches it via `useUploadQueueEngine`.
+// focused on `BookEditDocument`/`LibraryPendingFixesDocument` rather than
+// also exercising the bootstrap query. `useWithTargetUser` is stubbed too:
+// the real `UploadProvider` below reaches it via `useUploadQueueEngine`'s
+// `useUploadTransport`.
 vi.mock('~/provider/library-target', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/provider/library-target')>();
   return {
@@ -43,6 +45,7 @@ vi.mock('~/component', () => ({
 }));
 
 import { BookEditDocument } from '~/graphql/book-edit';
+import { LibraryPendingFixesDocument, UploadConfigDocument } from '~/graphql/upload';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
 
@@ -85,37 +88,58 @@ function bookEditMock(bookOverrides: Record<string, unknown> | null = {}) {
   };
 }
 
-function proposalFor(bookId: string) {
+/** A `PendingFix` row for `bookGlobalId` — this task's own merge (Task 8)
+ * makes `bookGlobalId` the only book identifier `usePendingFixesForBook`
+ * matches against, replacing the old REST row's raw `bookId`. */
+function proposalFor(bookGlobalId: string) {
   return {
-    bookId,
+    __typename: 'PendingFix' as const,
+    id: `FIX-${bookGlobalId}`,
     fileName: 'a.epub',
     fileSize: 1,
-    autoFixes: [],
-    appliedFixes: [],
-    proposals: [{ field: 'title', kind: 'x', from: 'a', to: 'b', changes: {} }],
-    undo: null,
+    book: { __typename: 'Book' as const, id: bookGlobalId, title: 'X', author: 'Y' },
+    state: {
+      __typename: 'PendingFixState' as const,
+      autoFixes: [],
+      appliedFixes: [],
+      proposals: [
+        {
+          __typename: 'MetadataFix' as const,
+          field: 'title',
+          kind: 'x',
+          from: 'a',
+          to: 'b',
+          reason: null,
+          fromChips: null,
+          toChips: null,
+          changes: null,
+        },
+      ],
+      undo: null,
+    },
   };
 }
 
-let pendingFixesRows: unknown[] = [];
-let fetchMock: ReturnType<typeof vi.fn>;
+let pendingFixesRows: ReturnType<typeof proposalFor>[] = [];
 
-function stubFetch() {
-  fetchMock = vi.fn().mockImplementation((input: unknown) => {
-    const url = String(input);
-    if (url.includes('/api/config')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
-      });
-    }
-    if (url.includes('/api/books/pending-fixes')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(pendingFixesRows) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  });
-  vi.stubGlobal('fetch', fetchMock);
+function pendingFixesMock(): MockedResponse {
+  return {
+    request: { query: LibraryPendingFixesDocument, variables: { libraryId: LIBRARY_ID } },
+    result: {
+      data: {
+        __typename: 'Query',
+        node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: pendingFixesRows },
+      },
+    },
+  };
 }
+
+const configMock: MockedResponse = {
+  request: { query: UploadConfigDocument },
+  result: {
+    data: { __typename: 'Query', config: { __typename: 'Config', maxConcurrentUploads: 2 } },
+  },
+};
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn();
@@ -126,7 +150,6 @@ beforeEach(() => {
   navigate.mockClear();
   mockBookEditForm.mockClear();
   pendingFixesRows = [];
-  stubFetch();
 });
 
 afterEach(() => {
@@ -144,7 +167,7 @@ function renderPage(mocks: unknown[] = [bookEditMock()]) {
     <UploadProvider>
       <BookEditPage />
     </UploadProvider>,
-    { mocks: mocks as never }
+    { mocks: [...(mocks as MockedResponse[]), pendingFixesMock(), configMock] }
   );
 }
 
@@ -155,18 +178,21 @@ describe('BookEditPage', () => {
   });
 
   it('shows Loading… (never the guard modal) while the book is still resolving, even with a matching pending fix queued', async () => {
-    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
-    renderPage([{ ...bookEditMock(), delay: 100_000 }]);
+    pendingFixesRows = [proposalFor(GLOBAL_ID)];
+    const { client } = renderPage([{ ...bookEditMock(), delay: 100_000 }]);
 
-    // Let the real UploadProvider's pending-fixes GET settle so `items` is
-    // genuinely seeded before asserting the guard still doesn't show —
-    // proving `usePendingFixesForBook(undefined)` short-circuits while the
-    // book itself hasn't resolved, not merely that the queue is empty.
+    // Let the real UploadProvider's `LibraryPendingFixesDocument` query
+    // settle so `items` is genuinely seeded before asserting the guard still
+    // doesn't show — proving `usePendingFixesForBook(undefined)`
+    // short-circuits while the book itself hasn't resolved, not merely that
+    // the queue is empty.
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('pending-fixes'),
-        expect.anything()
-      )
+      expect(
+        client.cache.readQuery({
+          query: LibraryPendingFixesDocument,
+          variables: { libraryId: LIBRARY_ID },
+        })
+      ).not.toBeNull()
     );
     await act(async () => {
       await Promise.resolve();
@@ -216,7 +242,7 @@ describe('BookEditPage', () => {
   });
 
   it('shows the guard modal (not the form) when fixes are pending', async () => {
-    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
+    pendingFixesRows = [proposalFor(GLOBAL_ID)];
     renderPage();
     expect(await screen.findByText('Review fixes')).toBeInTheDocument();
     expect(screen.queryByText('EDIT FORM')).toBeNull();
@@ -227,13 +253,16 @@ describe('BookEditPage', () => {
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
   });
 
-  // Deliberately seeds the pending-fix row keyed by the GLOBAL id, a literal
-  // that could only ever match if the page fed the guard the wrong kind of
-  // id. The real book's raw id is `DOCUMENT_ID`, a completely different
-  // literal, so the guard must NOT fire here — proving the page feeds
-  // `usePendingFixesForBook` `book.documentId`, never `book.id`/the URL param.
-  it('feeds the pending-fix guard the RAW documentId, never the global id', async () => {
-    pendingFixesRows = [proposalFor(GLOBAL_ID)];
+  // Deliberately seeds the pending-fix row keyed by the RAW documentId, a
+  // literal that could only ever match if the page fed the guard the wrong
+  // kind of id (Task 8 R1 flipped this from the old REST-era test, which
+  // proved the opposite: that the page fed the queue the raw id, never the
+  // global one). The real book's global id is `GLOBAL_ID`, a completely
+  // different literal, so the guard must NOT fire here — proving the page
+  // feeds `usePendingFixesForBook` `book.id` (the GLOBAL id), never
+  // `book.documentId`.
+  it('feeds the pending-fix guard the GLOBAL id, never the raw documentId', async () => {
+    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
     renderPage();
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
     expect(screen.queryByText('Review fixes')).toBeNull();

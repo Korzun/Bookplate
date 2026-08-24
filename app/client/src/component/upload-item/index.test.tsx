@@ -1,7 +1,8 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { MetadataFix, UploadItem as UploadItemType } from '~/provider/book';
+import type { MetadataFix } from '~/provider/book';
+import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadItem } from './index';
@@ -9,7 +10,6 @@ import { UploadItem } from './index';
 function makeItem(overrides: Partial<UploadItemType>): UploadItemType {
   return {
     id: '1',
-    file: new File(['x'.repeat(1_048_576)], 'test.epub'), // 1 MB
     fileName: 'test.epub',
     fileSize: 1_048_576,
     status: 'queued',
@@ -44,7 +44,6 @@ describe('UploadItem', () => {
     renderWithProviders(
       <UploadItem
         item={makeItem({
-          file: undefined,
           fileName: 'restored.epub',
           fileSize: 1_048_576,
           status: 'done',
@@ -199,10 +198,6 @@ describe('UploadItem metadata fixes', () => {
     makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      // Deliberately distinct from `bookGlobalId` below — a coincidental
-      // match couldn't tell a correct Edit link (global id) from a
-      // regressed one (raw hash) apart.
-      bookId: 'abc',
       bookGlobalId: 'global-xyz',
       appliedFixes,
       proposals,
@@ -228,7 +223,7 @@ describe('UploadItem metadata fixes', () => {
     ];
     renderWithProviders(
       <UploadItem
-        item={makeItem({ status: 'done', bytesUploaded: 1_048_576, bookId: 'abc', autoFixes })}
+        item={makeItem({ status: 'done', bytesUploaded: 1_048_576, autoFixes })}
         {...noop}
       />
     );
@@ -273,7 +268,6 @@ describe('UploadItem metadata fixes', () => {
         item={makeItem({
           status: 'done',
           bytesUploaded: 1_048_576,
-          bookId: 'abc',
           appliedFixes: [],
           proposals: [subjectsFix],
         })}
@@ -304,7 +298,6 @@ describe('UploadItem metadata fixes', () => {
     const item = makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      bookId: 'abc',
       appliedFixes: [],
       proposals: [
         subjectFix('Sci-Fi & Fantasy', ['Sci-Fi', 'Fantasy']),
@@ -329,11 +322,11 @@ describe('UploadItem metadata fixes', () => {
     renderWithProviders(<UploadItem item={doneItem()} {...noop} />);
     // The title-is-filename proposal has to === null -> an Edit link to the book page.
     const editLink = screen.getByRole('link', { name: /edit/i });
-    // The link must use the GLOBAL id (`page/book-edit` queries
-    // `Library.book(id:)`, which requires one) — never the raw content
-    // hash the upload queue otherwise keys everything by.
+    // The link must use `bookGlobalId` (`page/book-edit` queries
+    // `Library.book(id:)`, which requires a Relay global id) — the only book
+    // identifier an `UploadItem` carries at all now (Task 8: no raw book id
+    // anywhere under `provider/upload/`).
     expect(editLink).toHaveAttribute('href', expect.stringContaining('global-xyz'));
-    expect(editLink.getAttribute('href')).not.toContain('abc');
     // Only one actionable proposal -> only one Accept button (the flag-only row has none).
     expect(screen.getAllByRole('button', { name: /^accept$/i })).toHaveLength(1);
   });
@@ -355,7 +348,6 @@ describe('UploadItem metadata fixes', () => {
         item={makeItem({
           status: 'done',
           bytesUploaded: 1_048_576,
-          bookId: 'abc',
           appliedFixes: [],
           proposals: twoActionable,
         })}
@@ -389,10 +381,9 @@ describe('UploadItem metadata fixes', () => {
     const item = makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      bookId: 'abc',
       proposals: [],
       appliedFixes: [],
-      undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
+      undo: { kind: 'dismiss' },
     });
     renderWithProviders(<UploadItem item={item} {...noop} />);
     // Undo label reflects the action kind.
@@ -411,9 +402,8 @@ describe('UploadItem metadata fixes', () => {
     const undoItem = makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      bookId: 'abc',
       proposals: [],
-      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+      undo: { kind: 'apply' },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
     fireEvent.click(screen.getByRole('button', { name: /^undo accept$/i }));
@@ -431,9 +421,8 @@ describe('UploadItem metadata fixes', () => {
     const undoItem = makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      bookId: 'abc',
       proposals: [],
-      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+      undo: { kind: 'apply' },
     });
     renderWithProviders(<UploadItem item={undoItem} {...noop} onUndo={onUndo} />);
     const undoBtn = screen.getByRole('button', { name: /^undo accept$/i });
@@ -456,7 +445,6 @@ describe('UploadItem metadata fixes', () => {
     const item = makeItem({
       status: 'done',
       bytesUploaded: 1_048_576,
-      bookId: 'abc',
       appliedFixes: [
         {
           field: 'titleSort',
@@ -467,7 +455,7 @@ describe('UploadItem metadata fixes', () => {
         },
       ],
       proposals: [],
-      undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+      undo: { kind: 'apply' },
     });
     renderWithProviders(<UploadItem item={item} {...noop} />);
     const divider = screen.getByText('Suggested fixes');
@@ -499,7 +487,7 @@ describe('UploadItem metadata fixes', () => {
           status: 'done',
           bytesUploaded: 1_048_576,
           proposals: [],
-          undo: { kind: 'apply', proposals: [], appliedFixes: [] },
+          undo: { kind: 'apply' },
         })}
         {...noop}
         onDismissCompleted={onDismissCompleted}
@@ -515,7 +503,6 @@ describe('UploadItem metadata fixes', () => {
         item={makeItem({
           status: 'done',
           bytesUploaded: 1_048_576,
-          bookId: 'abc',
           appliedFixes: [
             {
               field: 'document',

@@ -2,8 +2,8 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValidationReport } from '~/lib/severity';
-import { fixKey } from '~/provider/book';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
+import { fixKey } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadReplaceModal } from './index';

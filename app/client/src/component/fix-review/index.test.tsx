@@ -138,7 +138,7 @@ describe('FixReview', () => {
         proposals={[]}
         {...noop}
         onUndo={onUndo}
-        undo={{ kind: 'dismiss', proposals: [], appliedFixes: [] }}
+        undo={{ kind: 'dismiss' }}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /^undo reject$/i }));
@@ -182,7 +182,7 @@ describe('FixReview', () => {
         proposals={[]}
         {...noop}
         onUndo={onUndo}
-        undo={{ kind: 'apply', proposals: [], appliedFixes: [] }}
+        undo={{ kind: 'apply' }}
       />
     );
     const undoBtn = screen.getByRole('button', { name: /^undo accept$/i });

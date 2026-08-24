@@ -3,7 +3,8 @@ import { Fragment, useState } from 'react';
 
 import { Button, SeverityCounts, ValidationDetailModal } from '~/control';
 import { CheckIcon, CircleXIcon, ClockIcon, SpinnerIcon } from '~/icon';
-import type { MetadataFix, UploadItem as UploadItemType, UploadItemStatus } from '~/provider/book';
+import type { MetadataFix } from '~/provider/book';
+import type { UploadItem as UploadItemType, UploadItemStatus } from '~/provider/upload';
 
 import { Card } from '../card';
 import { FixReview } from '../fix-review';

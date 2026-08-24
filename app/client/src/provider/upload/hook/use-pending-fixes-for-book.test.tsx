@@ -2,19 +2,18 @@ import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import type { UploadItem, UseUploadQueue } from '~/provider/book';
-
 import { UploadContext } from '../context';
 import { usePendingFixesForBook } from './use-pending-fixes-for-book';
 import { useUploadBadge } from './use-upload-badge';
+import type { UploadItem, UseUploadQueue } from './use-upload-queue';
 
 const base: UseUploadQueue = {
   items: [],
   addFiles: () => {},
   applyFix: async () => false,
   applyAllProposals: async () => false,
-  dismissAllProposals: () => {},
-  dismissFix: () => {},
+  dismissAllProposals: async () => false,
+  dismissFix: async () => false,
   undo: async () => false,
   dismissCompleted: () => {},
 };
@@ -40,20 +39,20 @@ const prop = { field: 'title', kind: 'x', from: 'a', to: 'b', changes: {} } as n
 
 describe('usePendingFixesForBook', () => {
   it('returns the item when that book has pending proposals', () => {
-    const items = [item({ bookId: 'b1', proposals: [prop] })];
+    const items = [item({ bookGlobalId: 'b1', proposals: [prop] })];
     const { result } = renderHook(() => usePendingFixesForBook('b1'), {
       wrapper: wrapperFor(items),
     });
-    expect(result.current?.bookId).toBe('b1');
+    expect(result.current?.bookGlobalId).toBe('b1');
   });
   it('returns undefined when the book has no pending proposals', () => {
-    const items = [item({ bookId: 'b1', proposals: [] })];
+    const items = [item({ bookGlobalId: 'b1', proposals: [] })];
     const { result } = renderHook(() => usePendingFixesForBook('b1'), {
       wrapper: wrapperFor(items),
     });
     expect(result.current).toBeUndefined();
   });
-  it('returns undefined for an unknown / missing bookId', () => {
+  it('returns undefined for an unknown / missing bookGlobalId', () => {
     const { result } = renderHook(() => usePendingFixesForBook(undefined), {
       wrapper: wrapperFor([]),
     });
@@ -64,8 +63,8 @@ describe('usePendingFixesForBook', () => {
 describe('useUploadBadge', () => {
   it('counts items with pending proposals', () => {
     const items = [
-      item({ bookId: 'b1', proposals: [prop] }),
-      item({ id: '2', bookId: 'b2', proposals: [prop] }),
+      item({ bookGlobalId: 'b1', proposals: [prop] }),
+      item({ id: '2', bookGlobalId: 'b2', proposals: [prop] }),
     ];
     const { result } = renderHook(() => useUploadBadge(), { wrapper: wrapperFor(items) });
     expect(result.current).toEqual({ count: 2, active: false });

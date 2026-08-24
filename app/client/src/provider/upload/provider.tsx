@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { useUploadQueueEngine } from '~/provider/book';
-
 import { UploadContext } from './context';
+import { useUploadQueueEngine } from './hook/use-upload-queue';
 
 export type UploadProviderProps = { children: ReactNode };
 

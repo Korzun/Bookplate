@@ -14,15 +14,16 @@ export const BookEditPage = () => {
   const navigate = useNavigate();
 
   const { book, loading, error } = useBookEdit(id!);
-  // `book?.documentId` — the RAW content hash `BookEditDocument` resolves —
-  // not `book?.id`/the URL param (both Relay GLOBAL ids). The upload queue
-  // always keys its items by the raw id (`use-pending-fixes-for-book.ts`
-  // matches against `item.bookId`), so feeding it a global id would silently
-  // miss a real pending-fix conflict. `book` isn't defined yet on the first
-  // render while `useBookEdit` is still loading — passing `undefined` is
-  // correct there too: `usePendingFixesForBook` already treats a missing id
-  // as "no conflict" until there's a real raw id to check.
-  const pendingItem = usePendingFixesForBook(book?.documentId);
+  // `book?.id` — the Relay GLOBAL id (2026-08-24, Task 8 R1 — controller
+  // ruling): the upload queue lost `bookId` in the merge onto GraphQL and
+  // now keys every item by `bookGlobalId` only
+  // (`use-pending-fixes-for-book.ts` matches against `item.bookGlobalId`),
+  // so feeding it the raw `documentId` would silently miss a real
+  // pending-fix conflict. `book` isn't defined yet on the first render while
+  // `useBookEdit` is still loading — passing `undefined` is correct there
+  // too: `usePendingFixesForBook` already treats a missing id as "no
+  // conflict" until there's a real global id to check.
+  const pendingItem = usePendingFixesForBook(book?.id);
   const { dismissAllProposals } = useUploadQueue();
 
   if (loading) {
@@ -68,7 +69,7 @@ export const BookEditPage = () => {
         <UploadFixGuardModal
           isOpen
           onReview={() => navigate(path.upload())}
-          onDismissAndEdit={() => dismissAllProposals(pendingItem.id)}
+          onDismissAndEdit={() => void dismissAllProposals(pendingItem.id)}
           onCancel={() => navigate(path.library())}
         />
       ) : (

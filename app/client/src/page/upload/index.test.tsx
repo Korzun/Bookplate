@@ -1,6 +1,12 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type {
+  BookResolvePendingFixMutation,
+  BookResolvePendingFixMutationVariables,
+} from '~/gql/graphql';
+import { BookResolvePendingFixDocument } from '~/graphql/upload';
 import type { MetadataFix } from '~/provider/book';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
@@ -34,6 +40,38 @@ function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
     to: 'Herbert, Frank',
     changes: { authorSort: 'Herbert, Frank' },
     ...overrides,
+  };
+}
+
+/** An `ACCEPT`-all `BookResolvePendingFixDocument` mock for `bookGlobalId`,
+ * `onResolve` firing once per actual mutation call — used to prove a
+ * re-entrant "Accept all" click only fires the mutation once, and to gate
+ * (via `delay`) the window a bulk apply stays "in flight" for. */
+function acceptAllMock(
+  bookGlobalId: string,
+  onResolve: () => void = () => {},
+  delay = 0
+): MockedResponse<BookResolvePendingFixMutation, BookResolvePendingFixMutationVariables> {
+  return {
+    request: {
+      query: BookResolvePendingFixDocument,
+      variables: { id: bookGlobalId, action: 'ACCEPT' },
+    },
+    delay,
+    maxUsageCount: 2, // deliberately > 1: a re-entrancy regression should show up as onResolve firing twice, not as a "no more mocked responses" error masking the real assertion
+    result: () => {
+      onResolve();
+      return {
+        data: {
+          __typename: 'Mutation',
+          bookResolvePendingFix: {
+            __typename: 'BookResolvePendingFixPayload',
+            book: { __typename: 'Book', id: bookGlobalId, title: 'X', author: 'Y' },
+            library: { __typename: 'Library', id: 'LIB-1', pendingFixes: [] },
+          },
+        },
+      };
+    },
   };
 }
 
@@ -306,11 +344,13 @@ describe('UploadPage — Accept all / Reject all', () => {
 
   it('ignores a re-entrant Accept all click while the first is still in flight', async () => {
     const fix = makeFix();
+    let acceptCalls = 0;
 
     renderWithApollo(
       <UploadProvider>
         <UploadPage />
-      </UploadProvider>
+      </UploadProvider>,
+      { mocks: [acceptAllMock('GID-1', () => acceptCalls++)] }
     );
     await act(async () => {
       await Promise.resolve();
@@ -326,7 +366,9 @@ describe('UploadPage — Accept all / Reject all', () => {
     expect(xhrInstances).toHaveLength(1);
     xhrInstances[0].status = 200;
     xhrInstances[0].responseText = JSON.stringify({
-      results: [{ filename: 'p1.epub', bookId: 'book-1', applied: [], proposals: [fix] }],
+      results: [
+        { filename: 'p1.epub', bookId: 'book-1', globalId: 'GID-1', applied: [], proposals: [fix] },
+      ],
     });
     await act(async () => {
       xhrInstances[0].onload?.(new Event('load'));
@@ -346,7 +388,7 @@ describe('UploadPage — Accept all / Reject all', () => {
     // both click handlers run against the same pre-click snapshot. This
     // simulates a rapid re-entrant double-click while the first invocation is
     // still inside its unresolved async chain, and pins the guarantee that it
-    // can't kick off a second, parallel PATCH wave over the same items.
+    // can't kick off a second, parallel mutation wave over the same items.
     await act(async () => {
       fireEvent.click(acceptAllBtn);
       fireEvent.click(acceptAllBtn);
@@ -356,58 +398,36 @@ describe('UploadPage — Accept all / Reject all', () => {
       await Promise.resolve();
     });
 
+    // `usePendingFixes` never got a resolved library id in this harness (no
+    // `ViewerBootstrapDocument` mock), so the mutation's own cache write is
+    // never observed by an active query — the proposal stays visible exactly
+    // once, same as before the click. `acceptCalls` below is the real proof
+    // of the guard.
     await waitFor(() => {
       expect(screen.getAllByText(/Herbert, Frank/)).toHaveLength(1);
     });
 
     // Without the guard, the second (re-entrant) invocation independently
-    // applies the same proposal again, doubling the PATCH wave.
-    const patchCalls = vi
-      .mocked(fetch)
-      .mock.calls.filter(
-        ([input, init]) => String(input).includes('/metadata') && init?.method === 'PATCH'
-      );
-    expect(patchCalls).toHaveLength(1);
+    // fires `acceptFixes` again, doubling the mutation wave. `acceptAllMock`
+    // allows up to two uses precisely so a regression here shows up as this
+    // count, not as an unrelated "no more mocked responses" error.
+    expect(acceptCalls).toBe(1);
   });
 
   it('disables per-upload Accept/Reject while Accept all is applying, then frees them on completion', async () => {
     const fix = makeFix();
 
-    // Gate the PATCH so the Accept all stays mid-apply until we release it.
-    let resolvePatch!: () => void;
-    const patchGate = new Promise<void>((r) => {
-      resolvePatch = r;
-    });
-    // Re-stub via vi.stubGlobal (untyped, like the beforeEach) rather than
-    // vi.mocked(fetch).mockImplementation, whose signature would demand full
-    // Response objects. afterEach's vi.unstubAllGlobals resets it.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((input: unknown, init?: RequestInit) => {
-        const url = String(input);
-        if (url === '/api/config') {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ maxConcurrentUploads: 2 }),
-          });
-        }
-        if (url.includes('/metadata') && init?.method === 'PATCH') {
-          return patchGate.then(() => ({
-            ok: true,
-            json: () => Promise.resolve({ id: 'book-1' }),
-          }));
-        }
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
-        });
-      })
-    );
-
+    // `delay: 20` keeps the mutation "in flight" for a beat — long enough to
+    // observe the locked state before it resolves — matching this codebase's
+    // established `delay: 20` idiom for exactly this kind of assertion (see
+    // e.g. `use-update-book-metadata.test.tsx`'s "sets saving true during the
+    // request" test). The disabling itself happens synchronously on click
+    // (React state, not a network round trip), so no manual gate is needed.
     renderWithApollo(
       <UploadProvider>
         <UploadPage />
-      </UploadProvider>
+      </UploadProvider>,
+      { mocks: [acceptAllMock('GID-1', () => {}, 20)] }
     );
     await act(async () => {
       await Promise.resolve();
@@ -422,7 +442,9 @@ describe('UploadPage — Accept all / Reject all', () => {
 
     xhrInstances[0].status = 200;
     xhrInstances[0].responseText = JSON.stringify({
-      results: [{ filename: 'p1.epub', bookId: 'book-1', applied: [], proposals: [fix] }],
+      results: [
+        { filename: 'p1.epub', bookId: 'book-1', globalId: 'GID-1', applied: [], proposals: [fix] },
+      ],
     });
     await act(async () => {
       xhrInstances[0].onload?.(new Event('load'));
@@ -440,26 +462,32 @@ describe('UploadPage — Accept all / Reject all', () => {
       await Promise.resolve();
     });
 
-    // While the (gated) apply is in flight, the card's own Accept/Reject lock.
-    await waitFor(() =>
+    // While the (delayed) apply is in flight, the card's own Accept/Reject
+    // lock. Both checked inside the SAME `waitFor` callback — a second,
+    // separately-scheduled assertion could observe the mutation's `delay`
+    // having already elapsed between the two checks under a slow/loaded
+    // test run, since `waitFor` itself yields to the event loop while
+    // polling.
+    await waitFor(() => {
       expect(screen.getByRole('button', { name: /^accept$/i })).toHaveAttribute(
         'aria-disabled',
         'true'
-      )
-    );
-    expect(screen.getByRole('button', { name: /^reject$/i })).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
-
-    // Releasing the PATCH completes the apply; the proposal resolves and its
-    // Accept/Reject controls disappear (the guard has lifted).
-    await act(async () => {
-      resolvePatch();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      );
+      expect(screen.getByRole('button', { name: /^reject$/i })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
     });
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^accept$/i })).toBeNull());
+
+    // Once the mutation resolves, the bulk apply completes and the guard
+    // lifts — the card's own Accept/Reject re-enable. (This harness has no
+    // resolved library id, so `usePendingFixes` never actively watches the
+    // mutation's cache write; the proposal itself staying listed — rather
+    // than disappearing — is a harness artifact, not what this test is
+    // about. `dismissFix`/`applyFix` mock-driven end-to-end resolution is
+    // covered by `use-upload-queue.test.tsx`'s own merge tests.)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^accept$/i })).not.toHaveAttribute('aria-disabled')
+    );
   });
 });

@@ -1,62 +1,105 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockedResponse } from '@apollo/client/testing';
+import { screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-import { BookProvider } from '~/provider/book';
-import { LibraryTargetProvider } from '~/provider/library-target';
-import { ApolloTestProvider } from '~/test-utils';
+import type {
+  LibraryPendingFixesQuery,
+  LibraryPendingFixesQueryVariables,
+  UploadConfigQuery,
+  ViewerBootstrapQuery,
+} from '~/gql/graphql';
+import { LibraryPendingFixesDocument, UploadConfigDocument } from '~/graphql/upload';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import { renderWithApollo } from '~/test-utils';
 
 import { useUploadQueue } from './hook';
 import { UploadProvider } from './provider';
+
+const LIBRARY_ID = 'TGlicmFyeTox';
+
+const viewerBootstrapMock: MockedResponse<ViewerBootstrapQuery> = {
+  request: { query: ViewerBootstrapDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        username: 'u',
+        isAdmin: false,
+        mustChangePassword: false,
+        user: { __typename: 'User', id: 'VXNlcjox' },
+        library: { __typename: 'Library', id: LIBRARY_ID },
+      },
+    },
+  },
+};
+
+const configMock: MockedResponse<UploadConfigQuery> = {
+  request: { query: UploadConfigDocument },
+  result: {
+    data: { __typename: 'Query', config: { __typename: 'Config', maxConcurrentUploads: 3 } },
+  },
+};
+
+// The row is built by an unannotated factory (matching `use-pending-fixes
+// .test.tsx`'s own convention) rather than written as an inline literal
+// directly under the `MockedResponse<LibraryPendingFixesQuery, …>`-typed
+// value below — assigning a fresh object literal straight into that position
+// hits `Unmasked<>`'s masked-shape check (`PendingFix.id` "doesn't exist" on
+// the still-masked fragment type); a variable reference gets ordinary
+// (non-strict) structural assignability instead.
+const pendingFixRow = () => ({
+  __typename: 'PendingFix' as const,
+  id: 'FIX-b1',
+  fileName: 'x.epub',
+  fileSize: 10,
+  book: { __typename: 'Book' as const, id: 'b1', title: 'X', author: 'Y' },
+  state: {
+    __typename: 'PendingFixState' as const,
+    autoFixes: [],
+    appliedFixes: [],
+    proposals: [
+      {
+        __typename: 'MetadataFix' as const,
+        field: 'title',
+        kind: 'k',
+        from: 'a',
+        to: 'b',
+        reason: null,
+        fromChips: null,
+        toChips: null,
+        changes: null,
+      },
+    ],
+    undo: null,
+  },
+});
+
+const pendingFixesMock: MockedResponse<
+  LibraryPendingFixesQuery,
+  LibraryPendingFixesQueryVariables
+> = {
+  request: { query: LibraryPendingFixesDocument, variables: { libraryId: LIBRARY_ID } },
+  result: {
+    data: {
+      __typename: 'Query',
+      node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [pendingFixRow()] },
+    },
+  },
+};
 
 function Probe() {
   const { items } = useUploadQueue();
   return <div>count:{items.length}</div>;
 }
 
-beforeEach(() => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (String(url).includes('/api/books/pending-fixes')) {
-        return {
-          ok: true,
-          json: async () => [
-            {
-              bookId: 'b1',
-              fileName: 'x.epub',
-              fileSize: 10,
-              autoFixes: [],
-              appliedFixes: [],
-              proposals: [{ field: 'title', kind: 'k', from: 'a', to: 'b', changes: {} }],
-              undo: null,
-            },
-          ],
-        };
-      }
-      return { ok: true, json: async () => ({ maxConcurrentUploads: 3 }) };
-    }) as never
-  );
-});
-afterEach(() => {
-  localStorage.clear();
-  vi.unstubAllGlobals();
-});
-
 describe('UploadProvider', () => {
   it('seeds the queue from the server pending-fixes on mount', async () => {
-    render(
-      <ApolloTestProvider>
-        <MemoryRouter>
-          <LibraryTargetProvider>
-            <BookProvider>
-              <UploadProvider>
-                <Probe />
-              </UploadProvider>
-            </BookProvider>
-          </LibraryTargetProvider>
-        </MemoryRouter>
-      </ApolloTestProvider>
+    renderWithApollo(
+      <UploadProvider>
+        <Probe />
+      </UploadProvider>,
+      { mocks: [viewerBootstrapMock, pendingFixesMock, configMock] }
     );
 
     expect(await screen.findByText('count:1')).toBeTruthy();
