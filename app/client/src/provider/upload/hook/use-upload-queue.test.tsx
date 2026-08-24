@@ -5,11 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
+  LibraryEntriesQuery,
+  LibraryEntriesQueryVariables,
   LibraryPendingFixesQuery,
   LibraryPendingFixesQueryVariables,
   UploadConfigQuery,
   ViewerBootstrapQuery,
 } from '~/gql/graphql';
+import { LibraryEntriesDocument } from '~/graphql/library';
 import {
   BookResolvePendingFixDocument,
   LibraryPendingFixesDocument,
@@ -22,6 +25,14 @@ import { fixKey, fixKeyOf, useUploadQueueEngine } from './use-upload-queue';
 
 const LIBRARY_ID = 'TGlicmFyeTox';
 const BOOK_GID = 'Qm9vazox';
+// Matches `use-library-entries.ts`'s `PAGE_SIZE` default and its
+// `filter: undefined` when no filter is applied — the exact variables the
+// live grid reads `Library.entries` with.
+const ENTRIES_VARS: LibraryEntriesQueryVariables = {
+  libraryId: LIBRARY_ID,
+  first: 20,
+  filter: undefined,
+};
 
 // ── XHR mock ─────────────────────────────────────────────────────────────────
 // Same stub `use-upload-transport.test.tsx` uses — this file drives the same
@@ -114,6 +125,46 @@ const pendingFixesMockFor = (bookGid: string, fixId?: string): PendingFixesMock 
     },
   },
 });
+
+// Deliberately UNANNOTATED (unlike `entriesMock` below): `node`'s `Book`
+// member is masked (its fields sit behind `BookRowFragment`'s
+// `$fragmentRefs`, per `LibraryEntriesQuery`'s own generated type), so an
+// explicit `LibraryEntryNode`-typed literal fails `tsc`'s excess-property
+// check on `id`/`title`/etc. Assigning this UNTYPED, inferred object into
+// `entriesMock`'s `node` field below sidesteps that check entirely — excess
+// properties are only flagged on a literal checked directly against its
+// target type, not on a pre-inferred variable reference. Same idiom
+// `use-delete-book.test.tsx`'s `standaloneBook` uses.
+const seededBookNode = {
+  __typename: 'Book' as const,
+  id: 'SEEDED-BOOK',
+  title: 'Seeded',
+  author: 'Someone',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+};
+
+const entriesMock: MockedResponse<LibraryEntriesQuery, LibraryEntriesQueryVariables> = {
+  request: { query: LibraryEntriesDocument, variables: ENTRIES_VARS },
+  result: {
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [
+            { __typename: 'LibraryEntriesConnectionEdge', cursor: 'c1', node: seededBookNode },
+          ],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  },
+};
 
 const emptyPendingFixesMock: PendingFixesMock = {
   request: { query: LibraryPendingFixesDocument, variables: { libraryId: LIBRARY_ID } },
@@ -435,6 +486,36 @@ describe('useUploadQueueEngine', () => {
     });
 
     await waitFor(() => expect(result.current!.items).toHaveLength(0));
+  });
+
+  it('invalidates the LibraryEntries connection after a completed upload, so the grid refetches', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      entriesMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    // Seed the connection, then prove it is really in the cache — otherwise
+    // a broken assertion below could "pass" against a cache that was empty
+    // all along.
+    await client.query({ query: LibraryEntriesDocument, variables: ENTRIES_VARS });
+    expect(
+      client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS })
+    ).not.toBeNull();
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    await waitFor(() =>
+      expect(
+        client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS })
+      ).toBeNull()
+    );
   });
 });
 

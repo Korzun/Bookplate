@@ -1,7 +1,8 @@
-import { waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { LibraryEntriesQueryVariables } from '~/gql/graphql';
+import { LibraryEntriesDocument } from '~/graphql/library';
 import {
   LibraryScanDocument,
   LibraryScanStatusDocument,
@@ -9,7 +10,6 @@ import {
 } from '~/graphql/scan';
 import { renderWithApollo } from '~/test-utils';
 
-import { Context } from '../context';
 import { useScanLibrary } from './use-scan-library';
 import { useScanProgress } from './use-scan-progress';
 
@@ -20,8 +20,57 @@ vi.mock('~/provider/library-target', () => ({
   useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
 }));
 
-const fetchBookList = vi.fn();
-vi.mock('./use-fetch-book-list', () => ({ useFetchBookList: () => fetchBookList }));
+// Matches `use-library-entries.ts`'s `PAGE_SIZE` default and its
+// `filter: undefined` when no filter is applied — the exact variables the
+// live grid reads `Library.entries` with.
+const ENTRIES_VARS: LibraryEntriesQueryVariables = {
+  libraryId: LIBRARY_ID,
+  first: 20,
+  filter: undefined,
+};
+
+// Deliberately UNANNOTATED: `LibraryEntriesQuery`'s `Book` node member is
+// masked (its fields sit behind `BookRowFragment`'s `$fragmentRefs`), so an
+// explicitly typed literal here fails `tsc`'s excess-property check on
+// `id`/`title`/etc. Letting this infer, then passing it through
+// `seedLibraryEntries` below via a variable reference (not a literal),
+// sidesteps that check — same idiom `use-delete-book.test.tsx`'s
+// `standaloneBook` uses.
+const seededBook = {
+  __typename: 'Book' as const,
+  id: 'SEEDED-BOOK',
+  title: 'Seeded',
+  author: 'Someone',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+};
+
+/** Writes DIRECTLY into the cache (no network mock), synchronously, right
+ * after render — a `client.query()` network seed would race the
+ * `LibraryScanStatusDocument` mock's own resolution: this test's `COMPLETED`
+ * status arrives over the SAME kind of timer-scheduled mock response, and
+ * whichever timer fires first is not guaranteed. Seeding synchronously
+ * before any `await` yields to the event loop sidesteps the race entirely —
+ * same idiom as `use-delete-book.test.tsx`'s `seedLibraryEntries`. */
+const seedLibraryEntries = (client: ReturnType<typeof renderWithApollo>['client']) =>
+  client.writeQuery({
+    query: LibraryEntriesDocument,
+    variables: ENTRIES_VARS,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [{ __typename: 'LibraryEntriesConnectionEdge', cursor: 'c1', node: seededBook }],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
 
 const status = (overrides: Record<string, unknown>) => ({
   __typename: 'ScanStatus' as const,
@@ -65,8 +114,6 @@ const silentStream = {
   delay: 100_000,
 };
 
-const clearCompleteBookIds = vi.fn();
-
 const renderScanLibrary = (mocks: NonNullable<Parameters<typeof renderWithApollo>[1]>['mocks']) => {
   const result: { current?: ReturnType<typeof useScanLibrary> } = {};
   // Test-only readiness signal: `useScanLibrary`'s tuple never exposes the
@@ -82,16 +129,8 @@ const renderScanLibrary = (mocks: NonNullable<Parameters<typeof renderWithApollo
     ready.current = useScanProgress(LIBRARY_ID).userId;
     return null;
   };
-  const Wrapper = ({ children }: { children: ReactNode }) => (
-    <Context.Provider value={{ clearCompleteBookIds } as never}>{children}</Context.Provider>
-  );
-  renderWithApollo(
-    <Wrapper>
-      <Probe />
-    </Wrapper>,
-    { mocks }
-  );
-  return { result, ready };
+  const { client } = renderWithApollo(<Probe />, { mocks });
+  return { result, ready, client };
 };
 
 describe('useScanLibrary', () => {
@@ -156,11 +195,8 @@ describe('useScanLibrary', () => {
     expect(result.current?.[4]).toBeUndefined();
   });
 
-  it('refreshes the book list once when a scan completes', async () => {
-    fetchBookList.mockClear();
-    clearCompleteBookIds.mockClear();
-
-    renderScanLibrary([
+  it('invalidates the LibraryEntries connection when a scan completes, so the grid refetches', async () => {
+    const { client } = renderScanLibrary([
       statusMock(
         status({
           state: 'COMPLETED',
@@ -175,8 +211,20 @@ describe('useScanLibrary', () => {
       silentStream,
     ]);
 
-    await waitFor(() => expect(fetchBookList).toHaveBeenCalledTimes(1));
-    expect(clearCompleteBookIds).toHaveBeenCalledTimes(1);
+    // Seed the connection synchronously, before the `LibraryScanStatusDocument`
+    // mock's own timer has a chance to fire (see `seedLibraryEntries`'s doc
+    // comment), then prove it is really in the cache — otherwise a broken
+    // assertion below could "pass" against a cache that was empty all along.
+    act(() => seedLibraryEntries(client));
+    expect(
+      client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS })
+    ).not.toBeNull();
+
+    await waitFor(() =>
+      expect(
+        client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS })
+      ).toBeNull()
+    );
   });
 
   it('surfaces a failed scan with its message', async () => {

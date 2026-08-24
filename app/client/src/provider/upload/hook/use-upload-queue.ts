@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react';
 import { use, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useFragment } from '~/gql';
@@ -215,11 +216,29 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
  */
 export const useUploadQueueEngine = (): UseUploadQueue => {
   const { rows, refetch } = usePendingFixes();
-  const transport = useUploadTransport(() => refetch());
   const { acceptFixes, dismissFixes, undoFixes, clearFixes } = useFixActions();
-  // Read only to key `seenBookIdsRef`'s reset below — `usePendingFixes`
+  const client = useApolloClient();
+  // Also read to key `seenBookIdsRef`'s reset below — `usePendingFixes`
   // already resolves the same id internally via this same hook.
   const { libraryId } = useCurrentLibraryId();
+
+  // The upload lands over XHR, so there is no mutation payload for Apollo to
+  // reconcile from — the invalidation has to be explicit. Same field-level
+  // eviction `use-delete-book` performs, and for the same reason: the new
+  // book's position in a sorted, filtered, paginated connection is the
+  // server's to decide, so the only correct move is to drop the stored
+  // connection and let the next read miss.
+  const onUploaded = useCallback(() => {
+    if (libraryId !== undefined) {
+      client.cache.evict({
+        id: client.cache.identify({ __typename: 'Library', id: libraryId }),
+        fieldName: 'entries',
+      });
+      client.cache.gc();
+    }
+    refetch(); // the new book may have arrived with proposals
+  }, [client, libraryId, refetch]);
+  const transport = useUploadTransport(onUploaded);
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,

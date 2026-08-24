@@ -30,11 +30,16 @@ export type UseFixActions = {
  * `BookResolvePendingFixDocument` mutation, matching the server's own
  * `PendingFixResolution` enum one-to-one.
  *
- * **No manual cache writes.** The mutation selects `library { id
+ * **Mostly no manual cache writes.** The mutation selects `library { id
  * pendingFixes { ... } }`, so Apollo reconciles `usePendingFixes`'s row list
- * from the payload by itself, purely through normalization — a later task
- * (the library grid's `entries` connection) adds the one eviction the
- * payload genuinely cannot express, but that is out of scope here.
+ * from the payload by itself, purely through normalization. The ONE
+ * exception is `Library.entries`: ACCEPT and UNDO both rewrite the EPUB and
+ * change the metadata the grid sorts and filters on, so both move a book's
+ * position in that connection — a move the payload cannot express, so `run`
+ * below evicts the field manually for those two actions only. DISMISS and
+ * CLEAR touch only the pending-fix row, which the payload's own
+ * `library { pendingFixes }` selection already reconciles, so they evict
+ * nothing.
  *
  * **`fixes` is OMITTED from the variables, not passed as `undefined`, for
  * every bulk action** (`acceptFixes`/`dismissFixes` called with no `fixes`
@@ -66,6 +71,24 @@ export const useFixActions = (): UseFixActions => {
           // `fixes` is OMITTED, not passed as undefined, for bulk actions —
           // see this hook's own doc comment.
           variables: fixes === undefined ? { id, action } : { id, action, fixes },
+          update: (cache, { data: mutationData }) => {
+            // ACCEPT applies metadata; UNDO reverts it. Both change the
+            // fields the grid sorts and filters on, so both move the book's
+            // position in the connection. DISMISS and CLEAR only touch the
+            // pending-fix row, which the payload's own `library {
+            // pendingFixes }` selection already reconciles.
+            if (action !== 'ACCEPT' && action !== 'UNDO') return;
+            const result = unwrapResult<BookResolvePendingFixPayload>(
+              mutationData?.bookResolvePendingFix,
+              'BookResolvePendingFixPayload'
+            );
+            if (result.status !== 'ok') return;
+            cache.evict({
+              id: cache.identify({ __typename: 'Library', id: result.payload.library.id }),
+              fieldName: 'entries',
+            });
+            cache.gc();
+          },
         });
         const result = unwrapResult<BookResolvePendingFixPayload>(
           data?.bookResolvePendingFix,

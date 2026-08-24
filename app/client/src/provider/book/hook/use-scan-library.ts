@@ -1,11 +1,9 @@
-import { useMutation } from '@apollo/client/react';
-import { useCallback, use, useEffect, useMemo, useRef, useState } from 'react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { LibraryScanDocument } from '~/graphql/scan';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
-import { Context } from '../context';
-import { useFetchBookList } from './use-fetch-book-list';
 import { useScanProgress } from './use-scan-progress';
 
 export type ScanResult = {
@@ -40,8 +38,7 @@ export type UseScanLibrary =
  * driven by the terminal status.
  */
 export const useScanLibrary = (): UseScanLibrary => {
-  const { clearCompleteBookIds } = use(Context);
-  const fetchBookList = useFetchBookList();
+  const client = useApolloClient();
   const { libraryId } = useCurrentLibraryId();
   const { status, userId, error: progressError } = useScanProgress(libraryId);
 
@@ -85,14 +82,24 @@ export const useScanLibrary = (): UseScanLibrary => {
   }, [running, userId, startScan]);
 
   // Fire the completion side effects once per finished job, not on every
-  // re-render while the terminal status stays in the cache.
+  // re-render while the terminal status stays in the cache. A scan can add
+  // or remove many books at once, so — like an upload's `onUploaded` and a
+  // fix's ACCEPT/UNDO — the grid's `Library.entries` connection is evicted
+  // outright rather than patched: there is no scan-result payload shaped to
+  // reconcile individual edges from, and the new set's ordering is the
+  // server's to decide.
   const completedJobRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (status?.state !== 'COMPLETED' || status.id === completedJobRef.current) return;
     completedJobRef.current = status.id;
-    clearCompleteBookIds();
-    void fetchBookList();
-  }, [status?.state, status?.id, clearCompleteBookIds, fetchBookList]);
+    if (libraryId !== undefined) {
+      client.cache.evict({
+        id: client.cache.identify({ __typename: 'Library', id: libraryId }),
+        fieldName: 'entries',
+      });
+      client.cache.gc();
+    }
+  }, [status?.state, status?.id, client, libraryId]);
 
   const scanResult = useMemo<ScanResult | undefined>(() => {
     if (status?.state !== 'COMPLETED') return undefined;
