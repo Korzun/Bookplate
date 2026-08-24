@@ -641,6 +641,7 @@ type PendingFix {
 
 enum PendingFixResolution {
   ACCEPT
+  CLEAR
   DISMISS
 }
 

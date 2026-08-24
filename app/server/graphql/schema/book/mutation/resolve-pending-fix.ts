@@ -299,7 +299,10 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       const targetBook = await context.stores.book.getBookById(owner, bookId);
       if (targetBook === null) return null;
 
-      if (args.input.action === 'dismiss') {
+      if (args.input.action === 'clear') {
+        // The literal successor to REST's unconditional
+        // `DELETE /api/books/:id/pending-fixes` — no row-existence check, no
+        // EPUB access, always succeeds once the book itself resolves.
         await context.stores.book.deletePendingFix(owner, targetBook.id);
         return {
           __typename: 'BookResolvePendingFixPayload' as const,
@@ -320,6 +323,36 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       }
 
       const state = parsePendingFixState(row.state);
+
+      if (args.input.action === 'dismiss') {
+        // Client-side-only in REST (`dismissAllProposals`); server-side now.
+        // Never touches the EPUB, so no `valid` gate.
+        if (state.proposals.length === 0) {
+          return {
+            __typename: 'BookResolvePendingFixPayload' as const,
+            owner,
+            bookId: targetBook.id,
+          };
+        }
+        await context.stores.book.upsertPendingFix(
+          owner,
+          targetBook.id,
+          row.fileName,
+          row.fileSize,
+          {
+            autoFixes: state.autoFixes,
+            appliedFixes: state.appliedFixes,
+            proposals: [],
+            undo: { kind: 'dismiss', proposals: state.proposals, appliedFixes: state.appliedFixes },
+          }
+        );
+        return {
+          __typename: 'BookResolvePendingFixPayload' as const,
+          owner,
+          bookId: targetBook.id,
+        };
+      }
+
       // Review I-2: only proposals REST's client would itself apply
       // (`p.to !== null`, `use-upload-queue.ts:421`) — an advisory-only
       // proposal folds to an empty `EpubChanges` and must not trigger a

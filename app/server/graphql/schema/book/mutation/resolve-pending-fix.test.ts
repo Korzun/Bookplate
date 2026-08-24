@@ -144,7 +144,7 @@ const MUTATION = `
 
 describe('Mutation.bookResolvePendingFix', () => {
   describe('DISMISS', () => {
-    it('discards a live pending fix without touching the book', async () => {
+    it('DISMISS clears proposals and arms a dismiss undo, leaving the row in place', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
       await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
 
@@ -156,14 +156,35 @@ describe('Mutation.bookResolvePendingFix', () => {
       });
 
       expect(result.errors).toBeUndefined();
-      const data = result.data?.bookResolvePendingFix as {
-        __typename: string;
-        book: { title: string; pendingFix: unknown };
+      // The EPUB is never touched by a dismiss.
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched');
+
+      const row = await pendingFixRowFor(BOOK_ID);
+      expect(row).not.toBeNull(); // the OLD behaviour deleted it — this is the change
+      const state = JSON.parse(String(row!.state)) as {
+        proposals: unknown[];
+        undo: { kind: string; proposals: unknown[] };
       };
-      expect(data.__typename).toBe('BookResolvePendingFixPayload');
-      expect(data.book.title).toBe('Untouched');
-      expect(data.book.pendingFix).toBeNull();
-      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+      expect(state.proposals).toEqual([]);
+      expect(state.undo.kind).toBe('dismiss');
+      expect(state.undo.proposals).toHaveLength(1); // the dismissed proposal is recoverable
+    });
+
+    it('DISMISS on a row with no proposals leaves it untouched rather than arming an empty undo', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [], appliedFixes: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'DISMISS' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const row = await pendingFixRowFor(BOOK_ID);
+      const state = JSON.parse(String(row!.state)) as { undo: unknown };
+      expect(state.undo).toBeNull();
     });
 
     // Traced (schema-design review S1): this mutation invalidates
@@ -192,7 +213,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(data.library).toEqual({ user: { username: 'alice' } });
     });
 
-    it('is a harmless no-op when no pending fix row exists, mirroring REST’s unconditional DELETE', async () => {
+    it('is a harmless no-op when no pending fix row exists', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'No Row');
 
       const result = await harness.execute(MUTATION, {
@@ -205,6 +226,66 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookResolvePendingFix as { __typename: string };
       expect(data.__typename).toBe('BookResolvePendingFixPayload');
+    });
+  });
+
+  describe('CLEAR', () => {
+    it('CLEAR deletes the row outright', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'CLEAR' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched');
+      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
+    });
+
+    it('CLEAR on a book with no pending-fix row succeeds as a no-op', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'CLEAR' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(result.data?.bookResolvePendingFix).not.toBeNull();
+    });
+
+    // Retargeted from DISMISS (pre-reshape, `DISMISS` deleted the row
+    // unconditionally — see the model's doc comment): preserved rather than
+    // deleted, with only the action changed, so this test still proves
+    // `CLEAR` really is the old `DISMISS` behaviour, including the
+    // GraphQL-response shape (`book.pendingFix` reading back null, not just
+    // the raw store row).
+    it('discards a live pending fix without touching the book', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'CLEAR' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as {
+        __typename: string;
+        book: { title: string; pendingFix: unknown };
+      };
+      expect(data.__typename).toBe('BookResolvePendingFixPayload');
+      expect(data.book.title).toBe('Untouched');
+      expect(data.book.pendingFix).toBeNull();
+      expect(await pendingFixRowFor(BOOK_ID)).toBeNull();
     });
   });
 
@@ -356,7 +437,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     // client, which does not issue a request when nothing survives its own
     // `p.to !== null` filter, and equally does not delete an
     // already-resolved or expired-undo-only row merely because ACCEPT was
-    // invoked on it (only DISMISS ever deletes).
+    // invoked on it (only CLEAR ever deletes).
     it('is a no-op and leaves the row untouched when the pending fix has no proposals and no undo', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'No Proposals');
       await seedPendingFix(BOOK_ID, {});
