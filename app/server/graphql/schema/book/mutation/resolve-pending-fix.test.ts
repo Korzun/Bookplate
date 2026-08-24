@@ -422,6 +422,38 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(reimportSpy).not.toHaveBeenCalled();
     });
 
+    it('arms the undo snapshot with the pre-accept metadata so UNDO has something to revert to', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
+        },
+      });
+      expect(result.errors).toBeUndefined();
+
+      // The row FK-cascades onto the new content-hash id, so read it back by
+      // whatever id the mutation reports rather than the pre-accept BOOK_ID.
+      const newId = rawBookId(
+        (result.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+      const row = await pendingFixRowFor(newId);
+      expect(row).not.toBeNull();
+
+      const state = JSON.parse(String(row!.state)) as {
+        undo: { originalMetadata?: Record<string, unknown> };
+      };
+      expect(state.undo.originalMetadata).toEqual({
+        title: 'Old Title',
+        titleSort: '',
+        author: 'Seed Author',
+        authorSort: '',
+        subjects: [],
+      });
+    });
+
     it('returns BookNotValidatedError with a null validation and changes nothing when the book was never validated', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
         valid: null,

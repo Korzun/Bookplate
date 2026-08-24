@@ -370,7 +370,24 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         autoFixes: state.autoFixes,
         appliedFixes: [...state.appliedFixes, ...actionable],
         proposals: state.proposals.filter((fix) => fix.to === null),
-        undo: { kind: 'apply', proposals: state.proposals, appliedFixes: state.appliedFixes },
+        undo: {
+          kind: 'apply',
+          proposals: state.proposals,
+          appliedFixes: state.appliedFixes,
+          // Captured from the PRE-edit book, which this resolver already holds — no
+          // extra read. These are the same five editable fields REST's client
+          // snapshotted for itself before patching (`fetchBookSnapshot`,
+          // `use-upload-queue.ts`); `UNDO` (this mutation's own action) is the only
+          // reader, so it is persisted but deliberately NOT exposed on the GraphQL
+          // `UndoSnapshot` type — see the step-9 spec §3.1.
+          originalMetadata: {
+            title: targetBook.title,
+            titleSort: targetBook.titleSort,
+            author: targetBook.author,
+            authorSort: targetBook.authorSort,
+            subjects: targetBook.subjects,
+          },
+        },
       });
 
       return {
