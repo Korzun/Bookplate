@@ -191,6 +191,41 @@ describe('parsePendingFixState', () => {
     expect(parsePendingFixState(json).undo).toBeNull();
   });
 
+  // Not exposed on the GraphQL `UndoSnapshot` type (`undo-snapshot/model.ts`),
+  // but `UNDO` (`book/mutation/resolve-pending-fix.ts`) reads it server-side
+  // straight off this parser's output via `parsePendingFixState`, so it must
+  // survive the round trip even though nothing here ever reads it back out
+  // through GraphQL.
+  it('round-trips an apply undo snapshot’s originalMetadata', () => {
+    const originalMetadata = {
+      title: 'Old Title',
+      titleSort: '',
+      author: 'Some Author',
+      authorSort: '',
+      subjects: ['Fiction'],
+    };
+    const json = JSON.stringify({
+      undo: { kind: 'apply', proposals: [], appliedFixes: [], originalMetadata },
+    });
+    expect(parsePendingFixState(json).undo).toEqual({
+      kind: 'apply',
+      proposals: [],
+      appliedFixes: [],
+      originalMetadata,
+    });
+  });
+
+  it('drops a non-object originalMetadata rather than throwing', () => {
+    const json = JSON.stringify({
+      undo: { kind: 'apply', proposals: [], appliedFixes: [], originalMetadata: 'nope' },
+    });
+    expect(parsePendingFixState(json).undo).toEqual({
+      kind: 'apply',
+      proposals: [],
+      appliedFixes: [],
+    });
+  });
+
   // Beyond the listed cases: nonsense several levels deep must not throw, and
   // must degrade field-by-field rather than dropping the whole state.
   it('is total against deeply nested junk', () => {

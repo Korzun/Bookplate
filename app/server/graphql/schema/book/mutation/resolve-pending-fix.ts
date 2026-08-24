@@ -162,9 +162,9 @@ function foldProposalsIntoChanges(
  * `action` discriminator, per the spec's mutation list, which names only
  * `bookResolvePendingFix` (no separate mutation per action). Of REST's two
  * pending-fix write routes (`PUT`/`DELETE /api/books/:id/pending-fixes`,
- * `routes/ui.ts:776-811`), only `CLEAR` is a literal mirror; `DISMISS` and
- * `ACCEPT` are both new server-side behaviour — see each action's own
- * paragraph below.
+ * `routes/ui.ts:776-811`), only `CLEAR` is a literal mirror; `DISMISS`,
+ * `ACCEPT`, and `UNDO` are all new server-side behaviour — see each action's
+ * own paragraph below.
  *
  * **CLEAR is a direct REST mirror.** `DELETE /api/books/:id/pending-fixes`
  * is `bookStore.deletePendingFix(owner, id)` unconditionally — no book- or
@@ -286,6 +286,47 @@ function foldProposalsIntoChanges(
  * unbatched, one-off mutation read has no batching benefit to lose by going
  * straight to Prisma instead.
  *
+ * **UNDO is NOT a REST route either — REST's client did undo itself**: re-PATCH
+ * the original metadata, `DELETE` the book's lineage, restore the proposal
+ * list locally (`use-upload-queue.ts`'s undo affordance, traced in the task
+ * report). With the server owning fix state, none of those three halves can
+ * be done client-side any more — there is no state-write mutation left for
+ * the client to call and it no longer holds `originalMetadata` at all — so
+ * `UNDO` reproduces all three server-side, keyed off whichever `undo`
+ * snapshot (`Task 2`'s hoisted `row`/`state` read) is currently armed:
+ *
+ * - **No snapshot armed** (`state.undo === null`, e.g. a double-undo or a
+ *   post-CLEAR row): a strict no-op, same convention as ACCEPT's/DISMISS's
+ *   own "nothing to do" branches — REST's client returned `true` here without
+ *   even issuing a request, so this mirrors that rather than fabricating an
+ *   error for it.
+ * - **A `dismiss` snapshot**: pure state restoration — the EPUB is never
+ *   touched, so unlike the `apply` case below there is no `targetBook.valid`
+ *   gate and no `applyEpubChanges` call.
+ * - **An `apply` snapshot**: additionally reverts metadata through the exact
+ *   same `applyEpubChanges` path ACCEPT uses (with the snapshot's persisted
+ *   `originalMetadata` — the five editable fields ACCEPT captured from the
+ *   PRE-edit book, see ACCEPT's own paragraph above — folded in as the
+ *   target `EpubChanges`), so it inherits ACCEPT's identical `targetBook.
+ *   valid` gate and identical typed failures (`BookHashCollisionError` /
+ *   `EpubValidationError`). A typed failure returns BEFORE
+ *   `upsertPendingFix` runs, leaving the snapshot armed exactly like every
+ *   other typed-failure branch in this schema leaves its row untouched — a
+ *   failed revert must not strand the book in the applied state with no way
+ *   back. A successful revert best-effort clears the book's organic edit
+ *   lineage (`BookStore.clearEditLineage`) the same way REST's client's
+ *   `DELETE` did, but — mirroring that client's own fire-and-forget
+ *   tolerance — the revert stands even if that cleanup throws, since the
+ *   metadata is already back by the time it runs.
+ *
+ * Either way, on success the row is rewritten with the snapshot's `proposals`/
+ * `appliedFixes` restored and `undo: null` — the mirror image of what DISMISS/
+ * ACCEPT arm on their own way in. Because `undo` is `null` here,
+ * `upsertPendingFix`'s "resolved ⟹ delete" rule (`book-store.ts:661-665`)
+ * DOES fire when the restored `proposals` is also empty (a `dismiss` snapshot
+ * that itself held nothing) — correct: a row with nothing pending and nothing
+ * armed has no reason to exist.
+ *
  * Input is the `Book` global ID plus `action` (design doc's 10-mutation
  * input collapse), the id decoded with the same `parseCompoundId`/
  * `NO_MATCH_USER_ID` convention `bookValidate` established — see that file's
@@ -297,10 +338,11 @@ builder.mutationField('bookResolvePendingFix', (t) =>
     type: result,
     nullable: true,
     description:
-      'Resolves a book’s pending metadata-fix proposals: ACCEPT applies them, ' +
-      'DISMISS clears them (arming an undo), or CLEAR deletes the pending-fix ' +
-      'row outright. Resolves to null when the book does not exist for the ' +
-      'resolved owner.',
+      'Resolves a book’s pending metadata-fix proposals: ACCEPT applies them ' +
+      '(arming an undo), DISMISS clears them (arming an undo), UNDO reverts ' +
+      'whichever of those two an armed undo snapshot recorded, or CLEAR deletes ' +
+      'the pending-fix row outright. Resolves to null when the book does not ' +
+      'exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: (_parent, args) => {
       const parsed = parseCompoundId(args.input.id.id);
@@ -341,6 +383,14 @@ builder.mutationField('bookResolvePendingFix', (t) =>
 
       const state = parsePendingFixState(row.state);
 
+      // Hoisted so UNDO's `apply`-snapshot revert and ACCEPT can share one
+      // instance — both reach the identical `applyEpubChanges` call.
+      const deps: ApplyEpubChangesDeps = {
+        bookStore: context.stores.book,
+        validationStore: context.stores.validation,
+        validationThreshold: context.config.validationThreshold,
+      };
+
       if (args.input.action === 'dismiss') {
         // Client-side-only in REST (`dismissAllProposals`); server-side now.
         // Never touches the EPUB, so no `valid` gate.
@@ -370,6 +420,64 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         };
       }
 
+      if (args.input.action === 'undo') {
+        const snapshot = state.undo;
+        if (snapshot === null) {
+          // Nothing armed — a double-undo or an expired row. REST's client
+          // returned `true` here without a request; mirror that as a no-op
+          // rather than fabricating an error.
+          return {
+            __typename: 'BookResolvePendingFixPayload' as const,
+            owner,
+            bookId: targetBook.id,
+          };
+        }
+
+        let revertedId = targetBook.id;
+
+        if (snapshot.kind === 'apply' && snapshot.originalMetadata !== undefined) {
+          if (targetBook.valid !== true) {
+            return bookNotValidatedError(owner, targetBook.id);
+          }
+          const outcome = await toResult<Book, BookHashCollisionError | EpubValidationError>(
+            () =>
+              applyEpubChanges(deps, owner, targetBook, snapshot.originalMetadata as EpubChanges),
+            [BookHashCollisionError, EpubValidationError]
+          );
+          if ('err' in outcome) {
+            if (outcome.err instanceof BookHashCollisionError) {
+              return bookHashCollisionError(outcome.err, owner);
+            }
+            if (outcome.err instanceof EpubValidationError) {
+              return epubValidationError(outcome.err);
+            }
+            return assertUnreachableStoreError(outcome.err);
+          }
+          revertedId = outcome.ok.id;
+
+          // Best-effort, exactly like REST's client: the revert stands even if
+          // lineage cleanup fails, because the metadata is already back.
+          try {
+            await context.stores.book.clearEditLineage(owner, revertedId);
+          } catch {
+            // intentionally swallowed — see above
+          }
+        }
+
+        await context.stores.book.upsertPendingFix(owner, revertedId, row.fileName, row.fileSize, {
+          autoFixes: state.autoFixes,
+          appliedFixes: snapshot.appliedFixes,
+          proposals: snapshot.proposals,
+          undo: null,
+        });
+
+        return {
+          __typename: 'BookResolvePendingFixPayload' as const,
+          owner,
+          bookId: revertedId,
+        };
+      }
+
       // Review I-2: only proposals REST's client would itself apply
       // (`p.to !== null`, `use-upload-queue.ts:421`) — an advisory-only
       // proposal folds to an empty `EpubChanges` and must not trigger a
@@ -389,12 +497,6 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       }
 
       const changes = foldProposalsIntoChanges(actionable, targetBook.subjects);
-
-      const deps: ApplyEpubChangesDeps = {
-        bookStore: context.stores.book,
-        validationStore: context.stores.validation,
-        validationThreshold: context.config.validationThreshold,
-      };
 
       const outcome = await toResult<Book, BookHashCollisionError | EpubValidationError>(
         () => applyEpubChanges(deps, owner, targetBook, changes),

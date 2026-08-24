@@ -616,6 +616,178 @@ describe('Mutation.bookResolvePendingFix', () => {
     });
   });
 
+  describe('UNDO', () => {
+    it('UNDO after a dismiss restores the proposals and clears the snapshot', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, {
+        proposals: [],
+        undo: { kind: 'dismiss', proposals: [TITLE_PROPOSAL], appliedFixes: [] },
+      });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'UNDO' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched');
+
+      const state = JSON.parse(String((await pendingFixRowFor(BOOK_ID))!.state)) as {
+        proposals: unknown[];
+        undo: unknown;
+      };
+      expect(state.proposals).toHaveLength(1);
+      expect(state.undo).toBeNull();
+    });
+
+    it('UNDO after an accept reverts the metadata to the captured original', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const accepted = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
+        },
+      });
+      const acceptedId = rawBookId(
+        (accepted.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+      // Guard the premise: the accept really did change the title, so the revert
+      // below is proving something.
+      expect(await titleOf(harness.aliceOwner.userId, acceptedId)).toBe('New Title');
+
+      const undone = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, acceptedId), action: 'UNDO' },
+        },
+      });
+
+      expect(undone.errors).toBeUndefined();
+      const revertedId = rawBookId(
+        (undone.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+      expect(await titleOf(harness.aliceOwner.userId, revertedId)).toBe('Old Title');
+
+      const state = JSON.parse(String((await pendingFixRowFor(revertedId))!.state)) as {
+        proposals: unknown[];
+        appliedFixes: unknown[];
+        undo: unknown;
+      };
+      expect(state.proposals).toHaveLength(1); // the proposal is back on offer
+      expect(state.appliedFixes).toEqual([]);
+      expect(state.undo).toBeNull();
+    });
+
+    it('UNDO with no armed snapshot is a no-op, not an error', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'UNDO' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const state = JSON.parse(String((await pendingFixRowFor(BOOK_ID))!.state)) as {
+        proposals: unknown[];
+      };
+      expect(state.proposals).toHaveLength(1); // untouched
+    });
+
+    it('a failed UNDO leaves the snapshot armed so the user can retry', async () => {
+      // Spec §9.3: UNDO routes through applyEpubChanges, so it can fail the same
+      // two ways ACCEPT can. A failure that consumed the snapshot would strand the
+      // book in the applied state with no way back.
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Applied Title');
+      await seedPendingFix(BOOK_ID, {
+        proposals: [],
+        appliedFixes: [TITLE_PROPOSAL],
+        undo: {
+          kind: 'apply',
+          proposals: [TITLE_PROPOSAL],
+          appliedFixes: [],
+          originalMetadata: {
+            title: 'Old Title',
+            titleSort: '',
+            author: '',
+            authorSort: '',
+            subjects: [],
+          },
+        },
+      });
+      (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new EpubValidationError(
+          [{ id: 'RSC-005', severity: 'FATAL', message: 'unparseable' }],
+          { ...EMPTY_COUNTS, FATAL: 1 },
+          'ERROR'
+        )
+      );
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'UNDO' },
+        },
+      });
+
+      expect((result.data?.bookResolvePendingFix as { __typename: string }).__typename).toBe(
+        'EpubValidationError'
+      );
+      // The row is untouched: the snapshot survives for a second attempt.
+      const state = JSON.parse(String((await pendingFixRowFor(BOOK_ID))!.state)) as {
+        undo: { kind: string } | null;
+      };
+      expect(state.undo?.kind).toBe('apply');
+    });
+
+    it('UNDO clears the book’s organic edit lineage', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const accepted = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
+        },
+      });
+      const acceptedId = rawBookId(
+        (accepted.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+      // The accept rotated the id, which is exactly what writes an organic
+      // lineage row — assert the premise before asserting the clear. The
+      // real Prisma model backing `book_id_history` is `BookIdHistory`
+      // (`prisma/schema.prisma`), keyed by `oldId`/`currentId`, with the
+      // organic-edit discriminator `type: 'edit'` (the column's own
+      // `@default("edit")`, written by `reimportBook`'s lineage INSERT,
+      // `book-store.ts:906-909`) versus `'merge'` for manual links
+      // (`linkDocument`, `book-store.ts:609`) — NOT the illustrative
+      // `bookLineage`/`type: 'edit'` model name from the brief.
+      expect(
+        await harness.prisma.bookIdHistory.count({
+          where: { userId: harness.aliceOwner.userId, currentId: acceptedId, type: 'edit' },
+        })
+      ).toBeGreaterThan(0);
+
+      await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, acceptedId), action: 'UNDO' },
+        },
+      });
+
+      const revertedRows = await harness.prisma.bookIdHistory.count({
+        where: { userId: harness.aliceOwner.userId, type: 'edit' },
+      });
+      expect(revertedRows).toBe(0);
+    });
+  });
+
   it('resolves to null when the book does not exist for the resolved owner', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

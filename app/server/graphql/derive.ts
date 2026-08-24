@@ -154,11 +154,20 @@ const parseUndoSnapshot = (value: unknown): UndoSnapshot | null => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
   if (!isUndoKind(v.kind)) return null;
-  return {
+  const snapshot: UndoSnapshot = {
     kind: v.kind,
     proposals: parseMetadataFixArray(v.proposals),
     appliedFixes: parseMetadataFixArray(v.appliedFixes),
   };
+  // Not exposed on the GraphQL `UndoSnapshot` type (`undo-snapshot/model.ts`'s
+  // own note), but it MUST survive this parse regardless: `UNDO` (`book/
+  // mutation/resolve-pending-fix.ts`) is a server-side-only reader of this
+  // exact field, reached through this same parser via `parsePendingFixState`.
+  // Reuses `isChangesRecord` rather than a bespoke validator — `originalMetadata`
+  // and `MetadataFix['changes']` are the identical `Record<string, string |
+  // string[]>` shape.
+  if (isChangesRecord(v.originalMetadata)) snapshot.originalMetadata = v.originalMetadata;
+  return snapshot;
 };
 
 /**
