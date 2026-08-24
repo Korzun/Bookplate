@@ -221,11 +221,24 @@ describe('useUploadQueueEngine', () => {
     expect(result.current!.items[0]!.proposals).toHaveLength(1); // from the server row
   });
 
-  it("shows no proposals (not the upload response's stale ones) once the server row for a resolved book disappears", async () => {
+  // DEFENSIVE / invariant test, not a regression test for observed server
+  // behaviour: the real `bookResolvePendingFix` resolver always arms `undo`
+  // on a successful ACCEPT/DISMISS, and `isLivePendingFix` keeps such a row
+  // live in `Library.pendingFixes` for 7 days — so the server does NOT
+  // actually return an empty `pendingFixes` list right after an ACCEPT the
+  // way `resolveMock('ACCEPT', undefined, [])` below does. This mock is a
+  // deliberately invariant-violating stand-in for the one path that
+  // COULD, in theory, make a row vanish out from under a still-live
+  // transport item (the 7-day TTL lapsing) — see `mergeRow`'s own doc
+  // comment in `use-upload-queue.ts` for the full reachability analysis.
+  // The assertion below is about what the CLIENT does if that ever
+  // happens, not a claim that it happens today.
+  it("defensively shows no proposals — not the upload response's stale ones — if a matched server row ever vanishes", async () => {
     // The upload's OWN response carries a DIFFERENT, non-empty proposal
-    // (`author`) than the row's (`title`) — proving, once the row disappears
-    // after a full resolution, the merge shows nothing pending rather than
-    // falling back to this stale upload-time list.
+    // (`author`) than the row's (`title`) — proving that IF the row vanishes
+    // after "resolution" (per the mock above, not real server behaviour),
+    // the merge shows nothing pending rather than falling back to this
+    // stale upload-time list.
     const { result } = renderEngine([
       viewerBootstrapMock,
       pendingFixesMockFor(BOOK_GID),

@@ -5,6 +5,7 @@ import type { UndoKind } from '~/gql/graphql';
 import { MetadataFixFragment } from '~/graphql/upload';
 import type { ValidationFailure } from '~/lib/severity';
 import type { MetadataFix } from '~/provider/book';
+import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
 import type { FixKey } from './use-fix-actions';
@@ -135,14 +136,29 @@ const seededRow = (r: ResolvedRow): UploadItem => ({
  * e.g. the instant after upload completes but before the server's
  * `PendingFix` row has round-tripped back through `usePendingFixes`.
  *
- * `everSeen` distinguishes that transient "no row YET" gap from a row that
- * EXISTED earlier this session and is gone now because every fix on it was
- * resolved — the server deletes a `PendingFix` row once nothing is left
- * pending (matches the old REST engine's own `if (resolved) { …
- * deletePendingFix() }`). Without this check, a book whose fixes were fully
- * accepted/dismissed would revert to showing its stale pre-resolution
- * proposals forever, because the transport item itself never learns its
- * fixes were resolved — only the (now-vanished) row carried that update. */
+ * `everSeen` is a DEFENSIVE guard, not a fix for an observed bug: it
+ * distinguishes that transient "no row YET" gap from a row that EXISTED
+ * earlier this session and has since vanished, so that IF a row a live item
+ * was matched against ever disappears, this falls back to "no proposals"
+ * rather than resurrecting the transport's stale pre-resolution list.
+ *
+ * The current server contract does not actually reach the "row vanished
+ * while a live item remains" branch: `bookResolvePendingFix`'s ACCEPT and
+ * DISMISS both always arm `undo` on success
+ * (`app/server/.../resolve-pending-fix.ts`), `BookStore.upsertPendingFix`
+ * only deletes a row when `proposals.length === 0 && !state.undo`
+ * (`book-store.ts`), and `isLivePendingFix` keeps a resolved-but-undo-armed
+ * row live in `Library.pendingFixes` for 7 days (`derive.ts`) — so a normal
+ * ACCEPT/DISMISS/UNDO never produces a vanished row while a matching
+ * transport item is still around. `CLEAR` is the one path that removes a
+ * row, but `dismissCompleted` drops the local transport item in the very
+ * same call, so there's no live item left to hit this branch either. The
+ * ONLY theoretical trigger is the 7-day TTL lapsing while this tab has
+ * stayed open with a matching live item the whole time. Kept anyway because
+ * that invariant lives in a different layer (the server) and is enforced
+ * nowhere on the client — deleting this guard would make client
+ * correctness silently depend on server behaviour a future change could
+ * flip without any client-side test catching it. */
 const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolean): UploadItem => {
   const base: UploadItem = {
     id: t.id,
@@ -201,6 +217,9 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   const { rows, refetch } = usePendingFixes();
   const transport = useUploadTransport(() => refetch());
   const { acceptFixes, dismissFixes, undoFixes, clearFixes } = useFixActions();
+  // Read only to key `seenBookIdsRef`'s reset below — `usePendingFixes`
+  // already resolves the same id internally via this same hook.
+  const { libraryId } = useCurrentLibraryId();
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,
@@ -233,11 +252,27 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   }, [rows, autoFixesFlat, appliedFixesFlat, proposalsFlat]);
 
   // Every book global id whose `PendingFix` row has been seen at least once
-  // this session — updated AFTER each render (`useLayoutEffect`, no deps) so
-  // the very next render's `items` computation already reflects a row that
-  // just vanished. See `mergeRow`'s own doc comment for why this matters.
+  // in the CURRENT library — updated AFTER each render (`useLayoutEffect`,
+  // no deps) so the very next render's `items` computation already reflects
+  // a row that just vanished. See `mergeRow`'s own doc comment for why this
+  // (defensive, not currently reachable) guard exists at all.
+  //
+  // Reset on a `libraryId` change: `UploadProvider` mounts once, unkeyed, at
+  // the app root, while `usePendingFixes` is scoped per-library — an admin
+  // switching library targets would otherwise leave this set growing
+  // unboundedly for the tab's whole lifetime across every library visited.
+  // Book global ids encode their owning library, so a stale entry from a
+  // PRIOR library could never actually match a CURRENT item's
+  // `bookGlobalId` either way — this reset is memory hygiene, not a
+  // behaviour fix; nothing observable through `items` depends on it (see
+  // this task's fix-round-1 report for why no test covers it).
   const seenBookIdsRef = useRef(new Set<string>());
+  const seenLibraryIdRef = useRef(libraryId);
   useLayoutEffect(() => {
+    if (seenLibraryIdRef.current !== libraryId) {
+      seenBookIdsRef.current = new Set();
+      seenLibraryIdRef.current = libraryId;
+    }
     for (const r of resolvedRows) seenBookIdsRef.current.add(r.row.book.id);
   });
 
