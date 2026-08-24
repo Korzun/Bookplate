@@ -18,20 +18,15 @@ vi.mock('react-router', async (orig) => ({
   useNavigate: () => navigate,
 }));
 
-// `useBookEdit` (and, transitively through `useUploadQueueEngine`,
-// `usePendingFixes`'s siblings) all root through `useCurrentLibraryId` —
-// stubbed the same way `page/book`'s own test stubs it, so these tests stay
-// focused on `BookEditDocument`/`LibraryPendingFixesDocument` rather than
-// also exercising the bootstrap query. `useWithTargetUser` is stubbed too:
-// the real `UploadProvider` below reaches it via `useUploadQueueEngine`'s
-// `useUploadTransport`.
+// `useBookEdit` roots through `useCurrentLibraryId` — stubbed the same way
+// `page/book`'s own test stubs it, so these tests stay focused on
+// `BookEditDocument`/`BookResolvePendingFixDocument` rather than also
+// exercising the bootstrap query.
 vi.mock('~/provider/library-target', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/provider/library-target')>();
   return {
     ...actual,
     useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
-    useWithTargetUser: () =>
-      Object.assign((url: string) => url, { ready: true, username: undefined }),
   };
 });
 
@@ -45,11 +40,36 @@ vi.mock('~/component', () => ({
 }));
 
 import { BookEditDocument } from '~/graphql/book-edit';
-import { LibraryPendingFixesDocument, UploadConfigDocument } from '~/graphql/upload';
-import { UploadProvider } from '~/provider/upload';
+import { BookResolvePendingFixDocument } from '~/graphql/upload';
 import { renderWithApollo } from '~/test-utils';
 
 import { BookEditPage } from './index';
+
+/** A `pendingFix` selection (`BookEditDocument`'s own inline field, Task
+ * 11 — no `usePendingFixesForBook`/`LibraryPendingFixesDocument` lookup
+ * anymore: the guard now reads straight off the book this page already
+ * loads). `proposals` non-empty is what makes it a real conflict. */
+function pendingFixOf(proposals: unknown[] = [proposal()]) {
+  return {
+    __typename: 'PendingFix' as const,
+    id: `FIX-${GLOBAL_ID}`,
+    state: { __typename: 'PendingFixState' as const, proposals },
+  };
+}
+
+function proposal() {
+  return {
+    __typename: 'MetadataFix' as const,
+    field: 'title',
+    kind: 'x',
+    from: 'a',
+    to: 'b',
+    reason: null,
+    fromChips: null,
+    toChips: null,
+    changes: null,
+  };
+}
 
 function bookData(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,6 +88,7 @@ function bookData(overrides: Record<string, unknown> = {}) {
     series: null,
     identifiers: [],
     validation: { __typename: 'Validation' as const, id: GLOBAL_ID, valid: true },
+    pendingFix: null,
     ...overrides,
   };
 }
@@ -88,58 +109,49 @@ function bookEditMock(bookOverrides: Record<string, unknown> | null = {}) {
   };
 }
 
-/** A `PendingFix` row for `bookGlobalId` — this task's own merge (Task 8)
- * makes `bookGlobalId` the only book identifier `usePendingFixesForBook`
- * matches against, replacing the old REST row's raw `bookId`. */
-function proposalFor(bookGlobalId: string) {
+/** The dismiss mutation's own response: `library.pendingFixes` is what the
+ * ACTUAL document selects (`graphql/upload.ts`'s doc comment) — it does not
+ * re-select `book.pendingFix` directly, so this proves the guard clears
+ * through ordinary cache normalization (the resolved row shares the same
+ * `PendingFix:<id>` entity `Book.pendingFix` points at), not a hand-written
+ * `update`. */
+function dismissMock(): MockedResponse {
   return {
-    __typename: 'PendingFix' as const,
-    id: `FIX-${bookGlobalId}`,
-    fileName: 'a.epub',
-    fileSize: 1,
-    book: { __typename: 'Book' as const, id: bookGlobalId, title: 'X', author: 'Y' },
-    state: {
-      __typename: 'PendingFixState' as const,
-      autoFixes: [],
-      appliedFixes: [],
-      proposals: [
-        {
-          __typename: 'MetadataFix' as const,
-          field: 'title',
-          kind: 'x',
-          from: 'a',
-          to: 'b',
-          reason: null,
-          fromChips: null,
-          toChips: null,
-          changes: null,
-        },
-      ],
-      undo: null,
+    request: {
+      query: BookResolvePendingFixDocument,
+      variables: { id: GLOBAL_ID, action: 'DISMISS' },
     },
-  };
-}
-
-let pendingFixesRows: ReturnType<typeof proposalFor>[] = [];
-
-function pendingFixesMock(): MockedResponse {
-  return {
-    request: { query: LibraryPendingFixesDocument, variables: { libraryId: LIBRARY_ID } },
     result: {
       data: {
-        __typename: 'Query',
-        node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: pendingFixesRows },
+        __typename: 'Mutation' as const,
+        bookResolvePendingFix: {
+          __typename: 'BookResolvePendingFixPayload' as const,
+          book: { __typename: 'Book' as const, id: GLOBAL_ID, title: 'X', author: '' },
+          library: {
+            __typename: 'Library' as const,
+            id: LIBRARY_ID,
+            pendingFixes: [
+              {
+                __typename: 'PendingFix' as const,
+                id: `FIX-${GLOBAL_ID}`,
+                fileName: 'a.epub',
+                fileSize: 1,
+                book: { __typename: 'Book' as const, id: GLOBAL_ID, title: 'X', author: '' },
+                state: {
+                  __typename: 'PendingFixState' as const,
+                  autoFixes: [],
+                  appliedFixes: [],
+                  proposals: [],
+                  undo: { __typename: 'UndoSnapshot' as const, kind: 'DISMISS' as const },
+                },
+              },
+            ],
+          },
+        },
       },
     },
   };
 }
-
-const configMock: MockedResponse = {
-  request: { query: UploadConfigDocument },
-  result: {
-    data: { __typename: 'Query', config: { __typename: 'Config', maxConcurrentUploads: 2 } },
-  },
-};
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = vi.fn();
@@ -149,57 +161,20 @@ beforeAll(() => {
 beforeEach(() => {
   navigate.mockClear();
   mockBookEditForm.mockClear();
-  pendingFixesRows = [];
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// `UploadProvider` is the REAL provider (`~/provider/upload`), not a mocked
-// module — composing the harness the way `App.tsx` composes it. A page-level
-// mock of `usePendingFixesForBook`/`useUploadQueue` would let
-// `dismissAllProposals` (and the pending-fix match itself) become a
-// disconnected no-op that no test could ever catch regressing, which is
-// exactly the class of bug a prior migration step shipped.
 function renderPage(mocks: unknown[] = [bookEditMock()]) {
-  return renderWithApollo(
-    <UploadProvider>
-      <BookEditPage />
-    </UploadProvider>,
-    { mocks: [...(mocks as MockedResponse[]), pendingFixesMock(), configMock] }
-  );
+  return renderWithApollo(<BookEditPage />, { mocks: mocks as MockedResponse[] });
 }
 
 describe('BookEditPage', () => {
   it('shows a loading state while the book query is in flight', async () => {
     renderPage([{ ...bookEditMock(), delay: 100_000 }]);
     expect(screen.getByText('Loading…')).toBeInTheDocument();
-  });
-
-  it('shows Loading… (never the guard modal) while the book is still resolving, even with a matching pending fix queued', async () => {
-    pendingFixesRows = [proposalFor(GLOBAL_ID)];
-    const { client } = renderPage([{ ...bookEditMock(), delay: 100_000 }]);
-
-    // Let the real UploadProvider's `LibraryPendingFixesDocument` query
-    // settle so `items` is genuinely seeded before asserting the guard still
-    // doesn't show — proving `usePendingFixesForBook(undefined)`
-    // short-circuits while the book itself hasn't resolved, not merely that
-    // the queue is empty.
-    await waitFor(() =>
-      expect(
-        client.cache.readQuery({
-          query: LibraryPendingFixesDocument,
-          variables: { libraryId: LIBRARY_ID },
-        })
-      ).not.toBeNull()
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
-    expect(screen.queryByText('Review fixes')).toBeNull();
   });
 
   it('shows "Book not found." for a null book', async () => {
@@ -242,8 +217,7 @@ describe('BookEditPage', () => {
   });
 
   it('shows the guard modal (not the form) when fixes are pending', async () => {
-    pendingFixesRows = [proposalFor(GLOBAL_ID)];
-    renderPage();
+    renderPage([bookEditMock({ pendingFix: pendingFixOf() })]);
     expect(await screen.findByText('Review fixes')).toBeInTheDocument();
     expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
@@ -253,17 +227,11 @@ describe('BookEditPage', () => {
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
   });
 
-  // Deliberately seeds the pending-fix row keyed by the RAW documentId, a
-  // literal that could only ever match if the page fed the guard the wrong
-  // kind of id (Task 8 R1 flipped this from the old REST-era test, which
-  // proved the opposite: that the page fed the queue the raw id, never the
-  // global one). The real book's global id is `GLOBAL_ID`, a completely
-  // different literal, so the guard must NOT fire here — proving the page
-  // feeds `usePendingFixesForBook` `book.id` (the GLOBAL id), never
-  // `book.documentId`.
-  it('feeds the pending-fix guard the GLOBAL id, never the raw documentId', async () => {
-    pendingFixesRows = [proposalFor(DOCUMENT_ID)];
-    renderPage();
+  // A live `PendingFix` row can carry `proposals: []` (fully resolved,
+  // `undo` still armed within `isLivePendingFix`'s TTL) — that is not a
+  // conflict, only a NON-EMPTY proposals list is.
+  it('shows the form, not the guard, when the pending fix has no proposals left', async () => {
+    renderPage([bookEditMock({ pendingFix: pendingFixOf([]) })]);
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
     expect(screen.queryByText('Review fixes')).toBeNull();
   });
@@ -276,5 +244,22 @@ describe('BookEditPage', () => {
         book: expect.objectContaining({ id: GLOBAL_ID, documentId: DOCUMENT_ID }),
       })
     );
+  });
+
+  // Proves `onDismissAndEdit` resolves through `useFixActions` (this book's
+  // own GLOBAL id) rather than a queue-item id, and that the guard clears
+  // via ordinary cache normalization once the mutation's `library
+  // { pendingFixes }` response updates the shared `PendingFix:<id>` entity —
+  // no `UploadProvider`/upload queue involved at all.
+  it('dismisses the pending fix and reveals the edit form, with no UploadProvider mounted', async () => {
+    renderPage([bookEditMock({ pendingFix: pendingFixOf() }), dismissMock()]);
+
+    const dismissButton = await screen.findByText('Dismiss fixes & edit');
+    await act(async () => {
+      dismissButton.click();
+    });
+
+    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
+    expect(screen.queryByText('Review fixes')).toBeNull();
   });
 });

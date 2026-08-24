@@ -5,6 +5,22 @@ import { BookEditDocument } from '~/graphql/book-edit';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
+ * One `MetadataFix` proposal off `BookEditBook.pendingFix`, typed by hand to
+ * match `graphql/book-edit.ts`'s INLINE selection (no `MetadataFixFragment`
+ * spread — see that file's doc comment).
+ */
+export type BookEditPendingFixProposal = {
+  field: string;
+  kind: string;
+  from: string;
+  to: string | null;
+  reason: string | null;
+  fromChips: string[] | null;
+  toChips: string[] | null;
+  changes: unknown;
+};
+
+/**
  * `BookEdit`'s `book` shape, as read off the generated query. Every field is
  * a plain sibling selection (no fragments), so it stays fully typed here —
  * see `graphql/book-edit.ts`'s doc comment for why this document is
@@ -25,6 +41,12 @@ export type BookEditBook = {
   series: { id: string; name: string } | null;
   identifiers: { scheme: string; value: string }[];
   validation: { id: string; valid: boolean } | null;
+  /** Null when this book has no live pending-fix row (`Book.pendingFix`'s
+   * own server-side gate — see `book/model.ts`'s doc comment). A non-null
+   * row with `state.proposals` empty (fully resolved, undo still armed
+   * within the TTL) does NOT count as a guard-worthy conflict — callers
+   * check `state.proposals.length`, not mere presence. */
+  pendingFix: { id: string; state: { proposals: BookEditPendingFixProposal[] } } | null;
 };
 
 export type UseBookEdit = {

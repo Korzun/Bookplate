@@ -102,6 +102,7 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
           series: null,
           identifiers: [],
           validation: null,
+          pendingFix: null,
         },
       },
     },

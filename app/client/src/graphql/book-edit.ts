@@ -7,13 +7,24 @@ import { graphql } from '~/gql';
  * renders, and `BookDetail` already measures breadth 50 (50.0%) against a 70%
  * gate. Two documents keep each screen's selection honest.
  *
- * `documentId` is the display-only RAW content hash. The edit page needs it for
- * the pending-fix guard, which reads the upload queue's raw-keyed in-memory
- * items and stays on REST until step 9 — see `page/book-edit`'s own comment.
+ * `documentId` is the display-only RAW content hash.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 31 (31.0%), complexity
- * 31 (0.1%) of budget — comfortably under the 70% gate on both axes, no
- * trimming needed.
+ * `pendingFix` (Task 11) is the book-edit page's own pending-fix guard: since
+ * this document already loads the whole book, a book with an unresolved
+ * upload fix is answered right here instead of through a second,
+ * queue-keyed lookup (`usePendingFixesForBook`, deleted this task — see its
+ * removal for why a per-book lookup was redundant once this field exists).
+ * The proposal fields are selected INLINE rather than via
+ * `...MetadataFixFragment` (controller ruling, 2026-08-24): every document
+ * file under `graphql/` is self-contained — none spreads a fragment defined
+ * in another file — and `MetadataFixFragment` lives in `graphql/upload.ts`.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 46 (46.0%), complexity
+ * 46 (0.1%) of budget — comfortably under the 70% gate on both axes, no
+ * trimming needed. (Before `pendingFix`: breadth 31 (31.0%), complexity 31
+ * (0.1%) — a +15/+15 delta for the field added here, close to but not
+ * exactly the brief's own standalone estimate for this selection, breadth 14
+ * / complexity 14.)
  */
 export const BookEditDocument = graphql(`
   query BookEdit($libraryId: ID!, $bookId: ID!) {
@@ -44,6 +55,21 @@ export const BookEditDocument = graphql(`
           validation {
             id
             valid
+          }
+          pendingFix {
+            id
+            state {
+              proposals {
+                field
+                kind
+                from
+                to
+                reason
+                fromChips
+                toChips
+                changes
+              }
+            }
           }
         }
       }

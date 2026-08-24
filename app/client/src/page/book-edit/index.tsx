@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { BookEditForm, Page } from '~/component';
 import { UploadFixGuardModal } from '~/component/upload-fix-guard-modal';
 import { useBookEdit } from '~/provider/book';
-import { usePendingFixesForBook, useUploadQueue } from '~/provider/upload';
+import { useFixActions } from '~/provider/upload';
 import { path } from '~/router';
 
 import { useStyle } from './style';
@@ -14,17 +14,24 @@ export const BookEditPage = () => {
   const navigate = useNavigate();
 
   const { book, loading, error } = useBookEdit(id!);
-  // `book?.id` — the Relay GLOBAL id (2026-08-24, Task 8 R1 — controller
-  // ruling): the upload queue lost `bookId` in the merge onto GraphQL and
-  // now keys every item by `bookGlobalId` only
-  // (`use-pending-fixes-for-book.ts` matches against `item.bookGlobalId`),
-  // so feeding it the raw `documentId` would silently miss a real
-  // pending-fix conflict. `book` isn't defined yet on the first render while
-  // `useBookEdit` is still loading — passing `undefined` is correct there
-  // too: `usePendingFixesForBook` already treats a missing id as "no
-  // conflict" until there's a real global id to check.
-  const pendingItem = usePendingFixesForBook(book?.id);
-  const { dismissAllProposals } = useUploadQueue();
+  // The book-edit page's own pending-fix conflict, read straight off this
+  // page's own query (`BookEditDocument`'s `book.pendingFix`, Task 11 —
+  // controller ruling R3) instead of a separate queue-keyed lookup
+  // (`usePendingFixesForBook`, deleted this task — it had exactly one
+  // consumer, this page, and this document already loads the whole book).
+  // A live row with no proposals left (fully resolved, undo still armed
+  // within the TTL) is not a conflict — only a non-empty `proposals` list
+  // is.
+  const pendingItem =
+    book?.pendingFix && book.pendingFix.state.proposals.length > 0 ? book.pendingFix : undefined;
+  // `useFixActions` directly, not `useUploadQueue()`: the dismiss action
+  // only ever needs this book's own GLOBAL id (`book.id`, always in hand
+  // here), never the queue's per-render item id — see this task's report
+  // for the id-mismatch a queue-routed dismiss would have risked for a
+  // book whose upload is still a live transport item in this tab. This is
+  // also what drops the page's dependency on `UploadProvider` entirely, not
+  // merely for conflict detection.
+  const { dismissFixes } = useFixActions();
 
   if (loading) {
     return (
@@ -69,7 +76,7 @@ export const BookEditPage = () => {
         <UploadFixGuardModal
           isOpen
           onReview={() => navigate(path.upload())}
-          onDismissAndEdit={() => void dismissAllProposals(pendingItem.id)}
+          onDismissAndEdit={() => void dismissFixes(book.id)}
           onCancel={() => navigate(path.library())}
         />
       ) : (

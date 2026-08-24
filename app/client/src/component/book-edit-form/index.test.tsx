@@ -75,6 +75,7 @@ const book: BookEditBook = {
   subjects: [],
   identifiers: [],
   validation: { id: 'book-1', valid: true },
+  pendingFix: null,
 };
 
 afterEach(() => {

@@ -5,6 +5,7 @@ export type {
   UndoSnapshot,
   UseUploadQueue,
 } from './use-upload-queue';
-export { usePendingFixesForBook } from './use-pending-fixes-for-book';
+export { useFixActions } from './use-fix-actions';
+export type { UseFixActions } from './use-fix-actions';
 export { useUploadBadge } from './use-upload-badge';
 export type { UploadBadge } from './use-upload-badge';

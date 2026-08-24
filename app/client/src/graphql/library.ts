@@ -168,3 +168,29 @@ export const SeriesNextIndexDocument = graphql(`
     }
   }
 `);
+
+/**
+ * Existence/type check for an admin's stored `targetLibraryId`, backing the
+ * self-heal effect in `useCurrentLibraryId` (Task 11). No inline `... on
+ * Library { ... }` fragment — the ONLY thing this document needs is whether
+ * `node(id:)` resolved at all and, via the auto-injected `__typename`
+ * (`codegen.ts`'s `addTypenameSelectionDocumentTransform`), to WHICH type;
+ * no `Library` field is ever read off the result.
+ *
+ * Re-homed from `useFetchBookList`'s dead 404 branch
+ * (`provider/book/hook/use-fetch-book-list.ts:77`, its last live caller
+ * removed by an earlier task): that REST-era clear fired only when
+ * something happened to call `fetchBookList`. Rooting the same check here
+ * fires wherever the library is actually read, not only from an
+ * action-triggered fetch.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 4 (4.0%), complexity
+ * 4 (0.0%) of budget.
+ */
+export const LibraryTargetResolveDocument = graphql(`
+  query LibraryTargetResolve($libraryId: ID!) {
+    node(id: $libraryId) {
+      id
+    }
+  }
+`);
