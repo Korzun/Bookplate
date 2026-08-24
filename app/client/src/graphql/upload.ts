@@ -66,13 +66,21 @@ export const PendingFixRowFragment = graphql(`
  * `useCurrentLibraryId()` hands out, and that id serves admins (viewing
  * another user's library) and non-admins alike.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 54 (54.0%), complexity
- * 4806 (14.6%) of budget.
+ * `node(id: $libraryId) { id ... on Library { id ... } }` selects `id` at
+ * BOTH levels deliberately, matching `LibraryEntriesDocument`
+ * (`src/graphql/library.ts`): `node` resolves to the `Node` INTERFACE, which
+ * declares its own `id`, and an inline `... on Library { id }` alone
+ * satisfies `Library`'s cache key but not `Node`'s — the interface selection
+ * needs its own `id` for Apollo's normalized cache to key the result
+ * (`src/provider/apollo/selection-ids.test.ts` guards this).
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 55 (55.0%), complexity
+ * 4807 (14.6%) of budget.
  */
 export const LibraryPendingFixesDocument = graphql(`
   query LibraryPendingFixes($libraryId: ID!) {
     node(id: $libraryId) {
-      __typename
+      id
       ... on Library {
         id
         pendingFixes {
