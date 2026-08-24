@@ -1,149 +1,169 @@
-import { useCallback, use, useMemo, useState } from 'react';
+import { useMutation } from '@apollo/client/react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
-import type { Severity, ValidationMessage, ValidationThreshold } from '~/lib/severity';
-import { useWithTargetUser } from '~/provider/library-target';
+import { useFragment as unmaskFragment } from '~/gql';
+import type { BookAnalyzeReplaceMutation, BookReplaceMutation } from '~/gql/graphql';
+import {
+  BookAnalyzeReplaceDocument,
+  BookReplaceDocument,
+  MetadataFixFragment,
+} from '~/graphql/upload';
+import { stageUpload } from '~/lib/staged-upload';
+import { unwrapResult } from '~/provider/apollo';
 
-import { apiFetch } from '../../../lib/api-fetch';
-import { Context } from '../context';
-import { Book, MetadataFix } from '../type';
+import { MetadataFix } from '../type';
+
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated — same shape as `use-update-book-metadata.ts`.
+type BookAnalyzeReplacePayload = Extract<
+  NonNullable<BookAnalyzeReplaceMutation['bookAnalyzeReplace']>,
+  { __typename: 'BookAnalyzeReplacePayload' }
+>;
+type BookReplacePayload = Extract<
+  NonNullable<BookReplaceMutation['bookReplace']>,
+  { __typename: 'BookReplacePayload' }
+>;
 
 export interface ReplaceAnalysis {
   valid: boolean;
-  messages: ValidationMessage[];
-  counts: Record<Severity, number>;
-  threshold: ValidationThreshold;
   autoFixes: MetadataFix[];
   proposals: MetadataFix[];
 }
 
-/**
- * `Book`, plus `globalId` (2026-08-13 final review, C-2 — human ruling,
- * Option 1): replacing the file changes the content hash, so `.id` (raw,
- * unchanged meaning — every existing field on `Book` stays as-is) is a NEW
- * id `page/book` (GraphQL) can't resolve on its own. `.globalId` is the
- * Relay global id for that same new id, computed server-side (`routes/
- * ui.ts`'s `bookGlobalId` helper, the same `encodeGlobalID` formula
- * `book/mutation/delete.ts`'s `deletedId` already uses) — this is what
- * `UploadReplaceModal` now passes to `onReplaced`, not `.id`.
- */
-export type ReplacedBook = Book & { globalId: string };
+/** The bare minimum `bookReplace` resolves — just enough for a caller to
+ * navigate to the post-replace book. `BookReplacePayload.book` also carries
+ * `title`/`author`, but nothing here reads them. */
+export type ReplacedBook = { id: string };
 
 export interface UseReplaceBook {
   analyzeReplacement: (id: string, file: File) => Promise<ReplaceAnalysis | undefined>;
-  commitReplacement: (
-    id: string,
-    file: File,
-    acceptedFixKeys: string[]
-  ) => Promise<ReplacedBook | undefined>;
+  commitReplacement: (id: string, acceptedFixKeys: string[]) => Promise<ReplacedBook | undefined>;
   analyzing: boolean;
   committing: boolean;
   commitError: string | undefined;
 }
 
+/** Mirrors `use-upload-queue.ts`'s own `toMetadataFix` — the same
+ * `MetadataFixFragment` shape unmasked into the local `MetadataFix` type this
+ * provider's consumers (`FixReview`, `SeverityCounts`'s siblings) already
+ * expect. Not imported from there since that module doesn't export it. */
+const toMetadataFix = (f: {
+  field: string;
+  kind: string;
+  from: string;
+  to: string | null;
+  reason: string | null;
+  fromChips: string[] | null;
+  toChips: string[] | null;
+  changes: unknown;
+}): MetadataFix => ({
+  field: f.field,
+  kind: f.kind,
+  from: f.from,
+  to: f.to,
+  reason: f.reason ?? undefined,
+  changes: (f.changes ?? {}) as Record<string, string | string[]>,
+  fromChips: f.fromChips ?? undefined,
+  toChips: f.toChips ?? undefined,
+});
+
+/**
+ * Replaces a book's underlying EPUB file over GraphQL via the sanctioned
+ * staging seam (`~/lib/staged-upload`, the same pattern step 7 established
+ * for staged covers in `use-update-book-metadata.ts`): file bytes have no
+ * GraphQL transport, so `analyzeReplacement` posts the file to the REST
+ * staging endpoint FIRST and only then calls `bookAnalyzeReplace` with the
+ * resolved `stagedUploadId`.
+ *
+ * **Staged exactly ONCE.** `bookAnalyzeReplace` is explicitly read-only and
+ * does not consume the staged upload (its own doc comment in
+ * `graphql/upload.ts`), so the SAME `stagedUploadId` `analyzeReplacement`
+ * resolves is kept in a ref and reused by `commitReplacement` — it never
+ * re-stages the file. This is why `commitReplacement` no longer takes a
+ * `file` argument at all (the REST-era signature did): the bytes already
+ * made their one trip to the server by the time a commit is possible, since
+ * the modal's Replace button stays disabled until `analyzeReplacement`
+ * resolves a valid analysis (`upload-replace-modal/index.tsx`).
+ *
+ * If `commitReplacement` is ever called with nothing staged (no prior
+ * successful `analyzeReplacement`), it is a no-op that resolves `undefined`
+ * without touching the network — there is no staged id to commit.
+ */
 export const useReplaceBook = (): UseReplaceBook => {
-  const { setBookList, setBookListFetched, setBookListItems } = use(Context);
-  const withTargetUser = useWithTargetUser();
+  const [runAnalyze] = useMutation(BookAnalyzeReplaceDocument);
+  const [runReplace] = useMutation(BookReplaceDocument);
   const [analyzing, setAnalyzing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | undefined>(undefined);
+  const stagedUploadId = useRef<string | undefined>(undefined);
 
   const analyzeReplacement = useCallback(
     async (id: string, file: File): Promise<ReplaceAnalysis | undefined> => {
       if (analyzing) return undefined;
+      setAnalyzing(true);
+      // Picking a new file to analyze supersedes any previous commit
+      // attempt — clear its error so a stale message doesn't linger.
+      setCommitError(undefined);
       try {
-        setAnalyzing(true);
-        // Picking a new file to analyze supersedes any previous commit
-        // attempt — clear its error so a stale message doesn't linger.
-        setCommitError(undefined);
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await apiFetch(
-          withTargetUser(`/api/books/${encodeURIComponent(id)}/replace/analyze`),
-          { method: 'POST', body: fd }
+        const staged = await stageUpload(file, 'epub');
+        stagedUploadId.current = staged;
+
+        const { data } = await runAnalyze({ variables: { id, stagedUploadId: staged } });
+        const result = unwrapResult<BookAnalyzeReplacePayload>(
+          data?.bookAnalyzeReplace,
+          'BookAnalyzeReplacePayload'
         );
-        if (!res.ok) return undefined;
-        return (await res.json()) as ReplaceAnalysis;
+        if (result.status !== 'ok') return undefined;
+
+        return {
+          valid: result.payload.valid,
+          autoFixes: unmaskFragment(MetadataFixFragment, result.payload.autoFixes).map(
+            toMetadataFix
+          ),
+          proposals: unmaskFragment(MetadataFixFragment, result.payload.proposals).map(
+            toMetadataFix
+          ),
+        };
       } catch {
         return undefined;
       } finally {
         setAnalyzing(false);
       }
     },
-    [withTargetUser, analyzing]
+    [analyzing, runAnalyze]
   );
 
   const commitReplacement = useCallback(
-    async (
-      id: string,
-      file: File,
-      acceptedFixKeys: string[]
-    ): Promise<ReplacedBook | undefined> => {
+    async (id: string, acceptedFixKeys: string[]): Promise<ReplacedBook | undefined> => {
       if (committing) return undefined;
+      const staged = stagedUploadId.current;
+      if (staged === undefined) return undefined;
+
+      setCommitting(true);
+      setCommitError(undefined);
       try {
-        setCommitting(true);
-        setCommitError(undefined);
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('acceptedFixKeys', JSON.stringify(acceptedFixKeys));
-        const res = await apiFetch(withTargetUser(`/api/books/${encodeURIComponent(id)}/replace`), {
-          method: 'POST',
-          body: fd,
+        const { data } = await runReplace({
+          variables: { id, stagedUploadId: staged, acceptedFixKeys },
         });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
-          setCommitError(body.error);
+        const result = unwrapResult<BookReplacePayload>(data?.bookReplace, 'BookReplacePayload');
+        if (result.status === 'missing') {
+          setCommitError("Couldn't replace this book");
           return undefined;
         }
-        const updated = (await res.json()) as ReplacedBook;
-        // Delete every `bookList` entry describing the PRE-replace book
-        // (`.id === id`), not just `next[id]` itself — same fix as
-        // `use-regen-chapters.ts`/`use-patch-book-metadata.ts` (see the
-        // former's doc comment for the full mechanism).
-        //
-        // CORRECTION (2026-08-13 final review, I-3, updated after C-2's
-        // replace case was fixed in the same review): this comment used to
-        // claim "`id` here is always the resolved raw id" — false since
-        // `page/book` moved onto GraphQL (step 6): `UploadReplaceModal` is
-        // still given `bookId={book.id}`, but `book.id` is now the Relay
-        // GLOBAL id, not a raw content hash. `bookList` entries' own `.id`
-        // fields are always raw (`useFetchBook`'s doc comment), so `next[key]
-        // ?.id === id` below can now NEVER match — this sweep is a dead
-        // no-op for every replace, not just the grid-originated-alias case
-        // it was written for. That makes the failure mode this comment used
-        // to describe UNCONDITIONAL rather than a narrow edge case: a stale
-        // pre-replace `bookList` entry under a global-id key is never
-        // evicted, so revisiting the book via that original global-id URL
-        // (e.g. browser back) could show stale, pre-replace data with no
-        // loading state or error.
-        //
-        // NOT gated anymore: `page/book`'s post-replace navigation now uses
-        // `updated.globalId` (C-2's fix, same review), so a user CAN reach
-        // this book's original global-id URL again after a real replace —
-        // this is a live, reachable bug, not a latent one. Left un-fixed
-        // here regardless: this review's scope was the navigation, not this
-        // pre-existing cache-alias sweep, and fixing it would mean deciding
-        // what `commitReplacement`'s `id` argument SHOULD be (raw vs global)
-        // for THIS comparison specifically — a real design question, not a
-        // one-line change. Flagged as a follow-up in the final-fix report.
-        setBookList((prev) => {
-          const next = { ...prev };
-          for (const key of Object.keys(next)) {
-            if (next[key]?.id === id) delete next[key];
-          }
-          next[updated.id] = updated;
-          return next;
-        });
-        setBookListFetched(false);
-        setBookListItems(() => []);
-        setCommitError(undefined);
-        return updated;
+        if (result.status === 'error') {
+          setCommitError(result.message);
+          return undefined;
+        }
+
+        return { id: result.payload.book.id };
       } catch {
         return undefined;
       } finally {
         setCommitting(false);
       }
     },
-    [withTargetUser, committing, setBookList, setBookListFetched, setBookListItems]
+    [committing, runReplace]
   );
 
   return useMemo(

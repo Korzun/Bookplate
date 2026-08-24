@@ -1,437 +1,272 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { useCallback, useContext, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MockedResponse } from '@apollo/client/testing';
+import { act, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ValidationReport } from '~/lib/severity';
-import { ApolloTestProvider } from '~/test-utils';
+import type {
+  BookAnalyzeReplaceMutation,
+  BookAnalyzeReplaceMutationVariables,
+  BookReplaceMutation,
+  BookReplaceMutationVariables,
+} from '~/gql/graphql';
+import { BookAnalyzeReplaceDocument, BookReplaceDocument } from '~/graphql/upload';
+import { renderHookWithApollo } from '~/test-utils';
 
-import { Context } from '../context';
-import type { Book, BookList, MetadataFix } from '../type';
-import type { ReplaceAnalysis } from './use-replace-book';
-import { useReplaceBook } from './use-replace-book';
+import type { ReplaceAnalysis, ReplacedBook } from './use-replace-book';
 
-function makeBook(overrides: Partial<Book> & { id: string }): Book {
-  return {
-    title: 'Dune',
-    author: 'Herbert',
-    titleSort: '',
-    authorSort: '',
-    publishDate: '',
-    publisher: '',
-    series: '',
-    seriesIndex: 0,
-    subjects: [],
-    identifiers: [],
-    hasCover: false,
-    size: 0,
-    addedAt: '2024-01-01',
-    chapterCount: 0,
-    pageCount: 0,
-    ...overrides,
+// Same convention `use-update-book-metadata.test.tsx` uses: mock the named
+// export so `mockStage` can assert call counts/args without hitting the real
+// REST staging seam.
+vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));
+
+const { stageUpload } = await import('~/lib/staged-upload');
+const mockStage = vi.mocked(stageUpload);
+
+const { useReplaceBook } = await import('./use-replace-book');
+
+const BOOK_GID = 'Qm9vazox';
+const NEW_BOOK_GID = 'Qm9vazoy';
+const STAGED_ID = 'staged-1';
+
+const file = new File(['bytes'], 'replacement.epub', { type: 'application/epub+zip' });
+
+const fixRow = (
+  overrides: Partial<{ field: string; kind: string; from: string; to: string | null }> = {}
+) => ({
+  __typename: 'MetadataFix' as const,
+  field: overrides.field ?? 'title',
+  kind: overrides.kind ?? 'replace',
+  from: overrides.from ?? 'Old',
+  to: overrides.to ?? 'Dune',
+  reason: null,
+  fromChips: null,
+  toChips: null,
+  changes: null,
+});
+
+const analyzeMock: MockedResponse<BookAnalyzeReplaceMutation, BookAnalyzeReplaceMutationVariables> =
+  {
+    request: {
+      query: BookAnalyzeReplaceDocument,
+      variables: { id: BOOK_GID, stagedUploadId: STAGED_ID },
+    },
+    result: {
+      data: {
+        __typename: 'Mutation',
+        bookAnalyzeReplace: {
+          __typename: 'BookAnalyzeReplacePayload',
+          valid: true,
+          autoFixes: [],
+          proposals: [fixRow()],
+        },
+      },
+    },
   };
-}
 
-function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport {
-  return {
-    valid: true,
-    messages: [],
-    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
-    threshold: 'ERROR',
-    ...overrides,
-  };
-}
-
-function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
-  return {
-    field: 'title',
-    kind: 'trim',
-    from: ' Dune ',
-    to: 'Dune',
-    changes: {},
-    ...overrides,
-  };
-}
-
-function makeAnalysis(overrides: Partial<ReplaceAnalysis> = {}): ReplaceAnalysis {
-  return {
-    ...makeReport(),
-    autoFixes: [],
-    proposals: [],
-    ...overrides,
-  };
-}
-
-function makeFile(name = 'replacement.epub'): File {
-  return new File(['content'], name, { type: 'application/epub+zip' });
-}
-
-type WrapperOptions = {
-  initialBooks?: Book[];
-  setBookListFetched?: (fetched: boolean) => void;
-  setBookListItems?: (
-    updater: (prev: import('../type').DisplayUnit[]) => import('../type').DisplayUnit[]
-  ) => void;
+const replaceMock: MockedResponse<BookReplaceMutation, BookReplaceMutationVariables> = {
+  request: {
+    query: BookReplaceDocument,
+    variables: { id: BOOK_GID, stagedUploadId: STAGED_ID, acceptedFixKeys: ['title:replace:Old'] },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookReplace: {
+        __typename: 'BookReplacePayload',
+        book: { __typename: 'Book', id: NEW_BOOK_GID, title: 'Dune', author: 'Herbert' },
+      },
+    },
+  },
 };
 
-function makeWrapper({
-  initialBooks = [],
-  setBookListFetched = () => {},
-  setBookListItems = () => {},
-}: WrapperOptions = {}) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [bookList, setBookListRaw] = useState<BookList>(
-      Object.fromEntries(initialBooks.map((b) => [b.id, b]))
-    );
-    const setBookList = useCallback(
-      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
-      []
-    );
-    return (
-      <ApolloTestProvider>
-        <Context.Provider
-          value={{
-            bookList,
-            bookListFetched: true,
-            bookListLoading: false,
-            bookListError: undefined,
-            loadingByBookId: {},
-            errorByBookId: {},
-            completeBookIds: new Set(),
-            setBookList,
-            setBookListFetched,
-            setBookListLoading: () => {},
-            setBookListError: () => {},
-            setLoadingForBook: () => {},
-            setErrorForBook: () => {},
-            setBookComplete: () => {},
-            clearCompleteBookIds: () => {},
-            bookListItems: [],
-            setBookListItems,
-            bookListFilter: {},
-            setBookListFilter: () => {},
-          }}
-        >
-          {children}
-        </Context.Provider>
-      </ApolloTestProvider>
-    );
-  };
-}
-
-/**
- * Same Context shape as `makeWrapper`, but takes the initial `BookList` map
- * directly — needed for the alias-key test below, which files the book
- * under a key OTHER than its own `.id` (simulating a book reached via a
- * Relay global id, whose cache entry `useFetchBook` keys by the REQUESTED
- * id rather than `book.id` — see `use-regen-chapters.ts`'s doc comment for
- * the full mechanism, task 8 review round 1/2).
- */
-function makeWrapperWithBookList(bookList: BookList) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const [state, setBookListRaw] = useState<BookList>(bookList);
-    const setBookList = useCallback(
-      (updater: (prev: BookList) => BookList) => setBookListRaw(updater),
-      []
-    );
-    return (
-      <ApolloTestProvider>
-        <Context.Provider
-          value={{
-            bookList: state,
-            bookListFetched: true,
-            bookListLoading: false,
-            bookListError: undefined,
-            loadingByBookId: {},
-            errorByBookId: {},
-            completeBookIds: new Set(['global-1']),
-            setBookList,
-            setBookListFetched: () => {},
-            setBookListLoading: () => {},
-            setBookListError: () => {},
-            setLoadingForBook: () => {},
-            setErrorForBook: () => {},
-            setBookComplete: () => {},
-            clearCompleteBookIds: () => {},
-            bookListItems: [],
-            setBookListItems: () => {},
-            bookListFilter: {},
-            setBookListFilter: () => {},
-          }}
-        >
-          {children}
-        </Context.Provider>
-      </ApolloTestProvider>
-    );
-  };
-}
+const replaceCollisionMock: MockedResponse<BookReplaceMutation, BookReplaceMutationVariables> = {
+  request: {
+    query: BookReplaceDocument,
+    variables: { id: BOOK_GID, stagedUploadId: STAGED_ID, acceptedFixKeys: [] },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookReplace: {
+        __typename: 'BookHashCollisionError',
+        message: 'This book collides with another book already in the library.',
+      },
+    },
+  },
+};
 
 describe('useReplaceBook', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => {
+    mockStage.mockReset();
+  });
 
   describe('analyzeReplacement', () => {
-    it('posts to /api/books/:id/replace/analyze and returns the parsed analysis', async () => {
-      const analysis = makeAnalysis({
-        counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
-        autoFixes: [makeFix({ kind: 'auto' })],
-        proposals: [makeFix({ kind: 'proposal', field: 'author' })],
-      });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(analysis) })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
+    it('stages the file once and analyzes the staged id', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(() => useReplaceBook(), [analyzeMock]);
 
-      let returned: ReplaceAnalysis | undefined;
+      let analysis: ReplaceAnalysis | undefined;
       await act(async () => {
-        returned = await result.current.analyzeReplacement('1', makeFile());
+        analysis = await result.current?.analyzeReplacement(BOOK_GID, file);
       });
 
-      expect(fetch).toHaveBeenCalledWith(
-        `/api/books/${encodeURIComponent('1')}/replace/analyze`,
-        expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
-      );
-      expect(returned).toEqual(analysis);
-      expect(returned?.autoFixes).toEqual(analysis.autoFixes);
-      expect(returned?.proposals).toEqual(analysis.proposals);
+      expect(mockStage).toHaveBeenCalledTimes(1);
+      expect(mockStage).toHaveBeenCalledWith(file, 'epub');
+      expect(analysis?.valid).toBe(true);
+      expect(analysis?.proposals).toHaveLength(1);
+      expect(analysis?.proposals[0]).toMatchObject({
+        field: 'title',
+        kind: 'replace',
+        from: 'Old',
+      });
     });
 
-    it('returns undefined when the response is not ok', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
+    it('returns undefined and does not analyze when staging throws', async () => {
+      mockStage.mockRejectedValue(new Error('Failed to upload the file'));
+      const { result } = renderHookWithApollo(() => useReplaceBook(), []);
 
-      let returned: ReplaceAnalysis | undefined;
+      let analysis: ReplaceAnalysis | undefined;
       await act(async () => {
-        returned = await result.current.analyzeReplacement('1', makeFile());
+        analysis = await result.current?.analyzeReplacement(BOOK_GID, file);
       });
 
-      expect(returned).toBeUndefined();
+      expect(analysis).toBeUndefined();
+    });
+
+    it('does not send a second analyze request while the first is still in flight', async () => {
+      mockStage.mockReturnValue(new Promise(() => {}));
+      const { result } = renderHookWithApollo(() => useReplaceBook(), []);
+
+      act(() => {
+        void result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+      await waitFor(() => expect(result.current?.analyzing).toBe(true));
+
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+
+      expect(mockStage).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('commitReplacement', () => {
-    it('posts to /api/books/:id/replace and returns the updated book', async () => {
-      const updated = makeBook({ id: '1', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
+    it('commits the SAME staged id the analysis used, without re-staging', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceMock,
+      ] as MockedResponse[]);
 
-      let returned: Book | undefined;
       await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile(), []);
+        await result.current?.analyzeReplacement(BOOK_GID, file);
       });
 
-      expect(fetch).toHaveBeenCalledWith(
-        `/api/books/${encodeURIComponent('1')}/replace`,
-        expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
-      );
-      expect(returned).toEqual(updated);
+      let replaced: ReplacedBook | undefined;
+      await act(async () => {
+        replaced = await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+      });
+
+      expect(mockStage).toHaveBeenCalledTimes(1); // not twice
+      expect(replaced?.id).toBe(NEW_BOOK_GID);
     });
 
-    it('appends acceptedFixKeys as a JSON-stringified field on the FormData', async () => {
-      const updated = makeBook({ id: '1', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const appendSpy = vi.spyOn(FormData.prototype, 'append');
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
-
+    it('surfaces a typed replace error and returns undefined', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceCollisionMock,
+      ] as MockedResponse[]);
       await act(async () => {
-        await result.current.commitReplacement('1', makeFile(), ['title', 'author']);
+        await result.current?.analyzeReplacement(BOOK_GID, file);
       });
 
-      expect(appendSpy).toHaveBeenCalledWith(
-        'acceptedFixKeys',
-        JSON.stringify(['title', 'author'])
+      let replaced: ReplacedBook | undefined;
+      await act(async () => {
+        replaced = await result.current?.commitReplacement(BOOK_GID, []);
+      });
+
+      expect(replaced).toBeUndefined();
+      await waitFor(() => expect(result.current?.commitError).toBeDefined());
+      expect(result.current?.commitError).toBe(
+        'This book collides with another book already in the library.'
       );
-      appendSpy.mockRestore();
     });
 
-    it('updates the store with the returned book on success', async () => {
-      const updated = makeBook({ id: '1', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const { result } = renderHook(() => ({ hook: useReplaceBook(), ctx: useContext(Context) }), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
+    it('clears commitError at the start of a new commitReplacement call', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        replaceCollisionMock,
+        analyzeMock,
+        replaceMock,
+      ] as MockedResponse[]);
 
       await act(async () => {
-        await result.current.hook.commitReplacement('1', makeFile(), []);
+        await result.current?.analyzeReplacement(BOOK_GID, file);
       });
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, []);
+      });
+      expect(result.current?.commitError).toBeDefined();
 
-      expect(result.current.ctx.bookList['1'].title).toBe('Replaced');
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+      });
+      expect(result.current?.commitError).toBeUndefined();
     });
 
-    it('removes the old bookList key when the returned id differs', async () => {
-      const updated = makeBook({ id: '2', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const { result } = renderHook(() => ({ hook: useReplaceBook(), ctx: useContext(Context) }), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
+    it('does nothing when no file has been analyzed/staged yet', async () => {
+      const { result } = renderHookWithApollo(() => useReplaceBook(), []);
 
+      let replaced: ReplacedBook | undefined;
       await act(async () => {
-        await result.current.hook.commitReplacement('1', makeFile(), []);
+        replaced = await result.current?.commitReplacement(BOOK_GID, []);
       });
 
-      expect(result.current.ctx.bookList['1']).toBeUndefined();
-      expect(result.current.ctx.bookList['2']).toBeDefined();
-    });
-
-    // Task 8 review round 2: `id` here is always the resolved raw id
-    // (`UploadReplaceModal` is given `bookId={book.id}` by `page/book`), but
-    // a book reached earlier via a Relay global id (the grid) can have its
-    // `bookList` entry filed under THAT global-id key instead —
-    // `useFetchBook` keys by the REQUESTED id, not `book.id`. The pre-fix
-    // `next[id]`-only deletion never touched that alias: it's masked by the
-    // immediate post-replace `navigate(path.book(newId))` (which populates
-    // the NEW id's own entry correctly), but the stale, pre-replace copy
-    // survives under the original global-id key forever — browsing back to
-    // the book's original URL would silently show the pre-replace book.
-    it('clears a stale alias entry (cached under a different key than its own id) after a replace', async () => {
-      const updated = makeBook({ id: 'raw-1', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const preReplace = makeBook({ id: 'raw-1', title: 'Dune' });
-      const { result } = renderHook(
-        () => ({ hook: useReplaceBook(), ctx: useContext(Context) }),
-        // Filed under 'global-1' — a different key than the book's own raw
-        // id ('raw-1') — exactly what a grid-originated (global-id)
-        // navigation produces via `useFetchBook`.
-        { wrapper: makeWrapperWithBookList({ 'global-1': preReplace }) }
-      );
-
-      await act(async () => {
-        await result.current.hook.commitReplacement('raw-1', makeFile(), []);
-      });
-
-      expect(result.current.ctx.bookList['global-1']).toBeUndefined();
-      expect(result.current.ctx.bookList['raw-1']).toBeDefined();
-      expect(result.current.ctx.bookList['raw-1'].title).toBe('Replaced');
-    });
-
-    it('invalidates the cached book list items after a successful commit', async () => {
-      const setBookListFetched = vi.fn();
-      const setBookListItems = vi.fn();
-      const updated = makeBook({ id: '1', title: 'Replaced' });
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(updated) })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({
-          initialBooks: [makeBook({ id: '1' })],
-          setBookListFetched,
-          setBookListItems,
-        }),
-      });
-
-      await act(async () => {
-        await result.current.commitReplacement('1', makeFile(), []);
-      });
-
-      expect(setBookListFetched).toHaveBeenCalledWith(false);
-      expect(setBookListItems).toHaveBeenCalled();
-    });
-
-    it('returns undefined when the response is not ok', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
-
-      let returned: Book | undefined;
-      await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile(), []);
-      });
-
-      expect(returned).toBeUndefined();
-    });
-
-    it('captures the error message from a non-ok response into commitError', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          ok: false,
-          json: () => Promise.resolve({ error: 'Fingerprint collision' }),
-        })
-      );
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
-
-      let returned: Book | undefined;
-      await act(async () => {
-        returned = await result.current.commitReplacement('1', makeFile(), []);
-      });
-
-      expect(returned).toBeUndefined();
-      expect(result.current.commitError).toBe('Fingerprint collision');
-    });
-
-    it('clears commitError at the start of a new commitReplacement call and on success', async () => {
-      const updated = makeBook({ id: '1', title: 'Replaced' });
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: false,
-          json: () => Promise.resolve({ error: 'Fingerprint collision' }),
-        })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(updated) });
-      vi.stubGlobal('fetch', fetchMock);
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
-      });
-
-      await act(async () => {
-        await result.current.commitReplacement('1', makeFile(), []);
-      });
-      expect(result.current.commitError).toBe('Fingerprint collision');
-
-      await act(async () => {
-        await result.current.commitReplacement('1', makeFile(), []);
-      });
-      expect(result.current.commitError).toBeUndefined();
+      expect(replaced).toBeUndefined();
+      expect(mockStage).not.toHaveBeenCalled();
     });
 
     it('does not send a second commit request while the first is still in flight', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(() => useReplaceBook(), [
+        analyzeMock,
+        { ...replaceMock, delay: 1_000_000 },
+      ] as MockedResponse[]);
 
-      const { result } = renderHook(() => useReplaceBook(), {
-        wrapper: makeWrapper({ initialBooks: [makeBook({ id: '1' })] }),
+      await act(async () => {
+        await result.current?.analyzeReplacement(BOOK_GID, file);
       });
 
       act(() => {
-        void result.current.commitReplacement('1', makeFile(), []);
+        void result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
       });
-      await waitFor(() => expect(result.current.committing).toBe(true));
+      await waitFor(() => expect(result.current?.committing).toBe(true));
 
-      await act(() => result.current.commitReplacement('1', makeFile(), []));
+      await act(async () => {
+        await result.current?.commitReplacement(BOOK_GID, ['title:replace:Old']);
+      });
 
-      expect(fetch).toHaveBeenCalledTimes(1);
+      // Only ONE replace mock was ever consumed — a second real attempt would
+      // have thrown ("no more mocked responses") instead of resolving undefined.
+      expect(result.current?.committing).toBe(true);
     });
+  });
+
+  it('makes no /api/books call', async () => {
+    mockStage.mockResolvedValue(STAGED_ID);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const { result } = renderHookWithApollo(() => useReplaceBook(), [analyzeMock]);
+
+    await act(async () => {
+      await result.current?.analyzeReplacement(BOOK_GID, file);
+    });
+
+    const bookRoutes = fetchSpy.mock.calls.filter(([u]) => String(u).includes('/api/books/'));
+    expect(bookRoutes.map(([u]) => String(u))).toEqual([]); // staging is mocked above
+    fetchSpy.mockRestore();
   });
 });

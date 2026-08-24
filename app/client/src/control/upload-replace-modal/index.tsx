@@ -7,22 +7,33 @@ import { useReplaceBook } from '~/provider/book';
 import { fixKey } from '~/provider/upload';
 
 import { ConfirmModal } from '../confirm-modal';
-import { SeverityCounts } from '../severity-counts';
 import { useStyle } from './style';
 
 interface Props {
   isOpen: boolean;
+  /** Already a Relay GLOBAL id (`Book.id`, `Book implements Node`) — the
+   * `BookAnalyzeReplace`/`BookReplace` mutations this modal drives both take
+   * that id verbatim, nothing to convert. */
   bookId: string;
   bookTitle: string;
   onClose: () => void;
-  /**
-   * `newId` is the Relay GLOBAL id for the post-replace book (2026-08-13
-   * final review, C-2 — human ruling, Option 1), not the raw content hash
-   * `commitReplacement`'s response also carries — see `handleConfirm` below.
-   */
+  /** `newId` is `commitReplacement`'s resolved `book.id` — already the Relay
+   * GLOBAL id for the post-replace book, straight off `BookReplacePayload`
+   * (2026-08-13 final review, C-2 — human ruling, Option 1). */
   onReplaced: (newId: string) => void;
 }
 
+/**
+ * NO `SeverityCounts` (task 10, GraphQL migration): the REST-era analysis
+ * response carried `counts`/`threshold`, but `BookAnalyzeReplacePayload`
+ * (`graphql/upload.ts`) does not — it resolves only `valid`, `autoFixes`,
+ * `proposals` (plus an unselected `messages: [EpubValidationMessage!]!`,
+ * deliberately not selected since this modal doesn't render epubcheck
+ * findings either). This is a real, forced behavior change, not an
+ * oversight: the severity breakdown chips this modal used to show next to
+ * "Book is valid"/"Book is not valid" are gone because the schema this
+ * mutation exposes has no equivalent aggregate field to show them from.
+ */
 export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onReplaced }: Props) {
   const styles = useStyle();
   const { analyzeReplacement, commitReplacement, analyzing, committing, commitError } =
@@ -96,14 +107,16 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
   const handleConfirm = useCallback(async () => {
     if (!file) return;
     setCommitFailed(false);
-    const updated = await commitReplacement(bookId, file, accepted.map(fixKey));
+    // No `file` argument here: `analyzeReplacement` already staged the bytes
+    // over the sanctioned staging seam (`~/lib/staged-upload`) and
+    // `commitReplacement` carries that SAME staged id forward internally —
+    // see `use-replace-book.ts`'s doc comment.
+    const updated = await commitReplacement(bookId, accepted.map(fixKey));
     if (updated) {
       reset();
-      // `.globalId`, not `.id` (2026-08-13 final review, C-2 — human ruling,
-      // Option 1, fixed): replacing the file changes the content hash, so
-      // `.id` (raw) is a NEW id `page/book` (GraphQL) can't resolve — its
-      // `Library.book` argument requires a Relay global id.
-      onReplaced(updated.globalId);
+      // `updated.id` is already the Relay GLOBAL id (`BookReplacePayload.book.id`,
+      // `Book implements Node`) — nothing to convert.
+      onReplaced(updated.id);
     } else {
       setCommitFailed(true);
     }
@@ -140,7 +153,6 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
                 <CheckIcon width={15} height={15} className={styles.checkIcon} aria-hidden />
                 Book is valid
               </p>
-              <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
               <FixReview
                 autoFixes={analysis.autoFixes}
                 appliedFixes={accepted}
@@ -160,7 +172,6 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
             <>
               <CardDivider>Validation</CardDivider>
               <p className={styles.invalidLine}>Book is not valid</p>
-              <SeverityCounts counts={analysis.counts} threshold={analysis.threshold} />
             </>
           )}
 

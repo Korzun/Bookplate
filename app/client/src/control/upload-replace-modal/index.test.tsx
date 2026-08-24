@@ -1,22 +1,11 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ValidationReport } from '~/lib/severity';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
 import { fixKey } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 
 import { UploadReplaceModal } from './index';
-
-function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport {
-  return {
-    valid: true,
-    messages: [],
-    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
-    threshold: 'ERROR',
-    ...overrides,
-  };
-}
 
 function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
   return {
@@ -31,7 +20,7 @@ function makeFix(overrides: Partial<MetadataFix> = {}): MetadataFix {
 
 function makeAnalysis(overrides: Partial<ReplaceAnalysis> = {}): ReplaceAnalysis {
   return {
-    ...makeReport(),
+    valid: true,
     autoFixes: [],
     proposals: [],
     ...overrides,
@@ -123,7 +112,6 @@ describe('UploadReplaceModal', () => {
   it('keeps Confirm disabled and shows issues after an invalid analysis, with no FixReview', async () => {
     const analysis = makeAnalysis({
       valid: false,
-      counts: { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
       autoFixes: [makeFix()],
       proposals: [makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' })],
     });
@@ -188,7 +176,7 @@ describe('UploadReplaceModal', () => {
     const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
     const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
     analyzeReplacement.mockResolvedValue(analysis);
-    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
+    commitReplacement.mockResolvedValue({ id: 'gid-b2' });
     const onReplaced = vi.fn();
 
     renderWithProviders(
@@ -218,7 +206,7 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(commitReplacement).toHaveBeenCalledWith('b1', file, [fixKey(proposal)]);
+    expect(commitReplacement).toHaveBeenCalledWith('b1', [fixKey(proposal)]);
     expect(onReplaced).toHaveBeenCalledWith('gid-b2');
   });
 
@@ -226,7 +214,7 @@ describe('UploadReplaceModal', () => {
     const proposal = makeFix({ field: 'author', kind: 'typo', from: 'J. Doe', to: 'John Doe' });
     const analysis = makeAnalysis({ valid: true, autoFixes: [], proposals: [proposal] });
     analyzeReplacement.mockResolvedValue(analysis);
-    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
+    commitReplacement.mockResolvedValue({ id: 'gid-b2' });
 
     renderWithProviders(
       <UploadReplaceModal
@@ -257,7 +245,7 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
+    expect(commitReplacement).toHaveBeenCalledWith('b1', []);
   });
 
   it('keeps Replace disabled while an actionable suggested fix is unresolved, then enables it once resolved', async () => {
@@ -335,7 +323,7 @@ describe('UploadReplaceModal', () => {
   it('leaving a proposal untouched excludes it from acceptedFixKeys on confirm', async () => {
     const report = makeAnalysis({ valid: true });
     analyzeReplacement.mockResolvedValue(report);
-    commitReplacement.mockResolvedValue({ id: 'b2', globalId: 'gid-b2' });
+    commitReplacement.mockResolvedValue({ id: 'gid-b2' });
     const onReplaced = vi.fn();
 
     renderWithProviders(
@@ -361,7 +349,7 @@ describe('UploadReplaceModal', () => {
       await Promise.resolve();
     });
 
-    expect(commitReplacement).toHaveBeenCalledWith('b1', file, []);
+    expect(commitReplacement).toHaveBeenCalledWith('b1', []);
     expect(onReplaced).toHaveBeenCalledWith('gid-b2');
   });
 
