@@ -94,6 +94,31 @@ const replaceCollisionMock: MockedResponse<BookReplaceMutation, BookReplaceMutat
   },
 };
 
+// The `analyzeReplacement` counterpart to `replaceCollisionMock`: a typed
+// union-error member of `BookAnalyzeReplaceResult` rather than the
+// `BookAnalyzeReplacePayload` success arm. Proves the
+// `if (result.status !== 'ok') return undefined;` branch inside
+// `analyzeReplacement` actually resolves `undefined` (and resets
+// `analyzing`) instead of crashing or returning a malformed analysis.
+const analyzeStagedUploadNotFoundMock: MockedResponse<
+  BookAnalyzeReplaceMutation,
+  BookAnalyzeReplaceMutationVariables
+> = {
+  request: {
+    query: BookAnalyzeReplaceDocument,
+    variables: { id: BOOK_GID, stagedUploadId: STAGED_ID },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookAnalyzeReplace: {
+        __typename: 'StagedUploadNotFoundError',
+        message: 'The staged upload could not be found.',
+      },
+    },
+  },
+};
+
 describe('useReplaceBook', () => {
   beforeEach(() => {
     mockStage.mockReset();
@@ -146,6 +171,26 @@ describe('useReplaceBook', () => {
       });
 
       expect(mockStage).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns undefined when the analysis resolves a typed error, and resets analyzing', async () => {
+      mockStage.mockResolvedValue(STAGED_ID);
+      const { result } = renderHookWithApollo(
+        () => useReplaceBook(),
+        [analyzeStagedUploadNotFoundMock]
+      );
+
+      let analysis: ReplaceAnalysis | undefined;
+      await act(async () => {
+        analysis = await result.current?.analyzeReplacement(BOOK_GID, file);
+      });
+
+      expect(analysis).toBeUndefined();
+      // Discriminates against a version that threw or left the flag stuck:
+      // a stuck `analyzing` would leave the Validating… state showing
+      // forever, and a throw would have surfaced as an unhandled rejection
+      // in this same `act` block above.
+      expect(result.current?.analyzing).toBe(false);
     });
   });
 
