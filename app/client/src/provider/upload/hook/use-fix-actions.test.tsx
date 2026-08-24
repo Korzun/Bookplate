@@ -37,9 +37,13 @@ const acceptOneFixMock: ResolveMock = {
   result: { data: { __typename: 'Mutation', bookResolvePendingFix: okPayload() } },
 };
 
-// Declared WITHOUT a `fixes` key at all — `MockedResponse` matches on
-// variables, so this only matches a request that genuinely omits the key,
-// not one that sends `fixes: undefined`.
+// Keyed to the bulk-action variables — no `fixes` at all, matching what
+// `acceptFixes(BOOK_GID)` (no second argument) actually sends. This proves
+// the bulk path resolves against a mock shaped that way; it does NOT prove
+// the hook would fail against a mock expecting `fixes: undefined` instead —
+// `MockedResponse` variable matching treats an absent key and an explicit
+// `undefined` value as equal (see `use-fix-actions.ts`'s own doc comment),
+// so no test here can tell those two forms apart.
 const acceptAllMock: ResolveMock = {
   request: {
     query: BookResolvePendingFixDocument,
@@ -106,29 +110,30 @@ describe('useFixActions', () => {
     );
   });
 
-  // The point of this test: `acceptAllMock` above declares NO `fixes` key.
-  // If the hook passed `fixes: undefined` explicitly instead of omitting
-  // the key, MockLink's variable match would fail and this would reject
-  // with "No more mocked responses" instead of resolving `true`.
-  it('omits `fixes` from the variables entirely for a bulk action', async () => {
+  // Covers the bulk path: calling `acceptFixes` with no `fixes` argument
+  // resolves against `acceptAllMock`, whose variables carry no `fixes` key.
+  // This does NOT prove the hook omits the key rather than sending it as
+  // `undefined` — see `acceptAllMock`'s own comment above for why no test
+  // in this file can draw that distinction.
+  it('resolves the bulk action when no fixes are named', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [acceptAllMock]);
 
     await expect(result.current?.acceptFixes(BOOK_GID)).resolves.toBe(true);
   });
 
-  it('dismisses every proposal when no fixes are named, omitting `fixes`', async () => {
+  it('resolves the dismiss action when no fixes are named', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [dismissAllMock]);
 
     await expect(result.current?.dismissFixes(BOOK_GID)).resolves.toBe(true);
   });
 
-  it('undoes without ever passing `fixes`', async () => {
+  it('sends the UNDO action', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [undoMock]);
 
     await expect(result.current?.undoFixes(BOOK_GID)).resolves.toBe(true);
   });
 
-  it('clears without ever passing `fixes`', async () => {
+  it('sends the CLEAR action', async () => {
     const { result } = renderHookWithApollo(() => useFixActions(), [clearMock]);
 
     await expect(result.current?.clearFixes(BOOK_GID)).resolves.toBe(true);

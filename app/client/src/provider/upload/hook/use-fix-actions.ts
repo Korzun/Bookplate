@@ -40,11 +40,13 @@ export type UseFixActions = {
  * every bulk action** (`acceptFixes`/`dismissFixes` called with no `fixes`
  * argument, and always for `undoFixes`/`clearFixes`, which never take one).
  * "Absent" is what `BookResolvePendingFixInput.fixes` being optional means
- * server-side: every proposal. A `variables: { id, action, fixes: undefined
- * }` object would serialize identically over the wire, but this codebase's
- * own `MockedResponse` matching (and this hook's own test) treats the two
- * differently, so the distinction is made explicit here via the ternary
- * below rather than left to spread/serialization behavior.
+ * server-side: every proposal, so omitting the key is the honest expression
+ * of that intent. This is a CLARITY choice, not a behavioural one: a
+ * `variables: { id, action, fixes: undefined }` object is wire-identical to
+ * omitting the key (`JSON.stringify` drops `undefined`-valued properties the
+ * same way either form would be sent), and no test — this hook's own or
+ * otherwise — can distinguish the two, so nothing here is actually guarding
+ * against the `fixes: undefined` form regressing back in.
  *
  * Each action resolves `true` on success and `false` on any typed error
  * (the mutation's own `BookHashCollisionError`/`BookNotValidatedError`/
