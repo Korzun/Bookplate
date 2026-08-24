@@ -414,9 +414,10 @@ export const BookPage = () => {
             setReplaceModalOpen(false);
             // `newId` is `UploadReplaceModal`'s `onReplaced` — the Relay
             // GLOBAL id for the post-replace book (2026-08-13 final review,
-            // C-2 — human ruling, Option 1, fixed), not the raw content hash
-            // `commitReplacement`'s response also carries. This page's own
-            // `Library.book` read requires a global id, and now gets one.
+            // C-2 — human ruling, Option 1, fixed). `commitReplacement`'s
+            // response is `ReplacedBook = { id: string }`; the raw content
+            // hash it used to also carry was dropped in Task 10. This page's
+            // own `Library.book` read requires a global id, and now gets one.
             navigate(path.book(newId));
           }}
         />

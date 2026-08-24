@@ -31,9 +31,11 @@ export type TransportItem = {
 export type UseUploadTransport = {
   items: TransportItem[];
   addFiles: (files: FileList) => void;
-  /** Removes a row locally. Replaces the local half of the old
-   * `dismissCompleted`; the server half becomes a `CLEAR` mutation
-   * elsewhere. */
+  /** Removes a row locally, by the session-counter `id` above — never a raw
+   * book id, for the same reason `TransportItem.bookGlobalId` is the only
+   * book identifier this module stores (see Global Constraints). Replaces
+   * the local half of the old `dismissCompleted`; the server half becomes a
+   * `CLEAR` mutation elsewhere. */
   dropItem: (id: string) => void;
 };
 

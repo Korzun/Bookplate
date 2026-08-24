@@ -44,10 +44,12 @@ export interface UseReplaceBook {
   commitError: string | undefined;
 }
 
-/** Mirrors `use-upload-queue.ts`'s own `toMetadataFix` — the same
- * `MetadataFixFragment` shape unmasked into the local `MetadataFix` type this
- * provider's consumers (`FixReview`, `SeverityCounts`'s siblings) already
- * expect. Not imported from there since that module doesn't export it. */
+/** Mirrors `provider/upload/hook/use-upload-queue.ts`'s own `toMetadataFix`
+ * (not the old `provider/book/hook/use-upload-queue.ts`, deleted this step)
+ * — the same `MetadataFixFragment` shape unmasked into the local
+ * `MetadataFix` type this provider's consumers (`FixReview`,
+ * `SeverityCounts`'s siblings) already expect. Not imported from there since
+ * that module doesn't export it. */
 const toMetadataFix = (f: {
   field: string;
   kind: string;

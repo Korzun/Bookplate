@@ -24,8 +24,11 @@ export const MetadataFixFragment = graphql(`
  * `proposals`/`appliedFixes` are what the server restores on an `UNDO`, and
  * `originalMetadata` is not exposed at all — the client renders only whether
  * an undo is armed and its kind, for the button label
- * (`fix-review/index.tsx`). Selecting the nested arrays doubles this
- * document's breadth (measured: 60 vs 30) for fields nothing reads.
+ * (`fix-review/index.tsx`). `appliedFixes` itself IS selected despite this —
+ * the auto-fix toast in `page/upload/index.tsx` and `FixReview` both render
+ * it — so this fragment's host query, `LibraryPendingFixesDocument`, ships
+ * at breadth 55 (55.0%) (measured: `npm run test:cost -w app/server`), not
+ * the leaner shape a pre-planning probe without `appliedFixes` once measured.
  *
  * `book` is non-null on this type (`PendingFix.book: Book!`), unlike
  * `Progress.book`.
