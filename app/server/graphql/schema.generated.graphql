@@ -148,6 +148,11 @@ union BookReplaceResult = BookHashCollisionError | BookReplacePayload | EpubVali
 
 input BookResolvePendingFixInput {
   action: PendingFixResolution!
+
+  """
+  Restricts ACCEPT/DISMISS to this named subset of the row's proposals, addressed by their field+kind+from key. Omitting it (the default) means every proposal — the mutation's original all-or-nothing behaviour. Ignored by UNDO and CLEAR, which always act on the whole row. A key that matches no current proposal is silently ignored rather than erroring, since a no-longer-present fix is a benign race (someone else resolved it first).
+  """
+  fixes: [MetadataFixKeyInput!]
   id: ID!
 }
 
@@ -500,6 +505,22 @@ type MetadataFix {
   toChips: [String!]
 }
 
+"""
+Addresses one `MetadataFix` inside a pending fix's proposals. `MetadataFix` has no server id — it is a detected issue, regenerated per import, not a stored entity — so it is addressed by this field+kind+from triple instead: several `subjects-split` fixes on one book can share a field and kind, differing only in which compound subject they split, so `from` is what disambiguates them.
+"""
+input MetadataFixKeyInput {
+  """The `MetadataFix.field` of the proposal this key addresses."""
+  field: String!
+
+  """
+  The `MetadataFix.from` of the proposal this key addresses. Included because several `subjects-split` fixes on one book can share both `field` and `kind`, differing only in which compound subject they split — `field`+`kind` alone would be ambiguous between them.
+  """
+  from: String!
+
+  """The `MetadataFix.kind` of the proposal this key addresses."""
+  kind: String!
+}
+
 type Mutation {
   """
   Analyzes a staged EPUB as a candidate replacement for an existing book: validity, epubcheck findings, and detected metadata fixes. Read-only — the staged upload is not consumed. Resolves to null when the book does not exist for the resolved owner.
@@ -537,7 +558,7 @@ type Mutation {
   bookReplace(input: BookReplaceInput!): BookReplaceResult
 
   """
-  Resolves a book’s pending metadata-fix proposals: ACCEPT applies them (arming an undo), DISMISS clears them (arming an undo), UNDO reverts whichever of those two an armed undo snapshot recorded, or CLEAR deletes the pending-fix row outright. Resolves to null when the book does not exist for the resolved owner.
+  Resolves a book’s pending metadata-fix proposals: ACCEPT applies them (arming an undo), DISMISS clears them (arming an undo), UNDO reverts whichever of those two an armed undo snapshot recorded, or CLEAR deletes the pending-fix row outright. ACCEPT and DISMISS accept an optional `fixes` list to act on a named subset of the row’s proposals instead of all of them; omitting `fixes` means every proposal, which is this mutation’s original behaviour. UNDO and CLEAR ignore `fixes` — both always act on the whole row. Resolves to null when the book does not exist for the resolved owner.
   """
   bookResolvePendingFix(input: BookResolvePendingFixInput!): BookResolvePendingFixResult
 

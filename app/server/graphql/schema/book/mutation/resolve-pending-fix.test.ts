@@ -70,6 +70,16 @@ const ADVISORY_PROPOSAL = {
   changes: {},
 };
 
+// A second, distinct proposal (different field) so subset tests can prove
+// only the named fix is addressed while its sibling is left on offer.
+const AUTHOR_PROPOSAL = {
+  field: 'author',
+  kind: 'replace',
+  from: 'old author',
+  to: 'Old Author',
+  changes: { author: 'Old Author' },
+};
+
 const seedPendingFix = (
   bookId: string,
   state: { proposals?: unknown[]; undo?: unknown },
@@ -226,6 +236,32 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(result.errors).toBeUndefined();
       const data = result.data?.bookResolvePendingFix as { __typename: string };
       expect(data.__typename).toBe('BookResolvePendingFixPayload');
+    });
+
+    it('DISMISS with a fix subset drops only the named fix', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL, AUTHOR_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            action: 'DISMISS',
+            fixes: [{ field: 'title', kind: 'replace', from: 'Old Title' }],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
+      const state = JSON.parse(String((await pendingFixRowFor(BOOK_ID))!.state)) as {
+        proposals: { field: string }[];
+        undo: { proposals: { field: string }[] };
+      };
+      expect(state.proposals.map((f) => f.field)).toEqual(['author']);
+      // The undo snapshot restores the FULL pre-dismiss list, not just the dropped one.
+      expect(state.undo.proposals.map((f) => f.field)).toEqual(['title', 'author']);
     });
   });
 
@@ -613,6 +649,81 @@ describe('Mutation.bookResolvePendingFix', () => {
       expect(data.__typename).toBe('EpubValidationError');
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Still Valid Pre-Edit');
       expect(await pendingFixRowFor(BOOK_ID)).not.toBeNull();
+    });
+
+    it('ACCEPT with a fix subset applies only the named fix and leaves the rest on offer', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL, AUTHOR_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            action: 'ACCEPT',
+            fixes: [{ field: 'title', kind: 'replace', from: 'Old Title' }],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as { book: { id: string } };
+      const newId = rawBookId(data.book.id);
+      expect(await titleOf(harness.aliceOwner.userId, newId)).toBe('New Title');
+
+      const state = JSON.parse(String((await pendingFixRowFor(newId))!.state)) as {
+        proposals: { field: string }[];
+        appliedFixes: { field: string }[];
+      };
+      expect(state.appliedFixes.map((f) => f.field)).toEqual(['title']);
+      expect(state.proposals.map((f) => f.field)).toEqual(['author']);
+    });
+
+    it('a fix key matching nothing is ignored rather than erroring', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: {
+            id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID),
+            action: 'ACCEPT',
+            fixes: [{ field: 'title', kind: 'replace', from: 'Something Else Entirely' }],
+          },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      // Nothing matched, so nothing was actionable, so this is the existing no-op
+      // branch: the EPUB is untouched and the row still offers its proposal.
+      expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
+      const state = JSON.parse(String((await pendingFixRowFor(BOOK_ID))!.state)) as {
+        proposals: unknown[];
+      };
+      expect(state.proposals).toHaveLength(1);
+    });
+
+    it('omitting fixes still resolves every proposal', async () => {
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL, AUTHOR_PROPOSAL] });
+
+      const result = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+      const data = result.data?.bookResolvePendingFix as { book: { id: string } };
+      const newId = rawBookId(data.book.id);
+      const state = JSON.parse(String((await pendingFixRowFor(newId))!.state)) as {
+        proposals: unknown[];
+        appliedFixes: unknown[];
+      };
+      expect(state.appliedFixes).toHaveLength(2);
+      expect(state.proposals).toHaveLength(0);
     });
   });
 

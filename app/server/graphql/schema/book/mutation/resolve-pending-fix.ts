@@ -28,6 +28,7 @@ import {
 // is the precedent for this exact cross-directory import (`BookDeletePayload.
 // library`).
 import { model as library } from '../../library/model';
+import { model as metadataFixKey } from '../../metadata-fix-key';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as resolution } from '../../pending-fix-resolution';
 import { model as bookType } from '../model';
@@ -43,6 +44,20 @@ const input = builder.inputType('BookResolvePendingFixInput', {
   fields: (t) => ({
     id: t.globalID({ required: true, for: bookType }),
     action: t.field({ type: resolution, required: true }),
+    // Omitted means every proposal — the shape this mutation shipped with.
+    // Only ACCEPT and DISMISS read this; UNDO and CLEAR act on the whole row
+    // by definition. See `selectProposals` below for how it is applied.
+    fixes: t.field({
+      type: [metadataFixKey],
+      required: false,
+      description:
+        "Restricts ACCEPT/DISMISS to this named subset of the row's proposals, addressed " +
+        'by their field+kind+from key. Omitting it (the default) means every proposal — ' +
+        "the mutation's original all-or-nothing behaviour. Ignored by UNDO and CLEAR, " +
+        'which always act on the whole row. A key that matches no current proposal is ' +
+        'silently ignored rather than erroring, since a no-longer-present fix is a benign ' +
+        'race (someone else resolved it first).',
+    }),
   }),
 });
 
@@ -156,6 +171,26 @@ function foldProposalsIntoChanges(
   if (subjectsChanged) changes.subjects = subjects;
   return changes;
 }
+
+/** The client's `fixKey` (`field:kind:from`), server-side. */
+const keyOf = (fix: { field: string; kind: string; from: string }): string =>
+  `${fix.field}:${fix.kind}:${fix.from}`;
+
+/**
+ * The proposals an action addresses. `null`/absent `fixes` means all of them,
+ * preserving the mutation's original all-or-nothing contract. Keys that match
+ * nothing are simply absent from the result — a no-longer-present fix is a
+ * benign race (someone else resolved it first), not an error worth failing a
+ * whole mutation over.
+ */
+const selectProposals = (
+  proposals: readonly MetadataFix[],
+  fixes: readonly { field: string; kind: string; from: string }[] | null | undefined
+): MetadataFix[] => {
+  if (fixes === null || fixes === undefined) return [...proposals];
+  const wanted = new Set(fixes.map(keyOf));
+  return proposals.filter((p) => wanted.has(keyOf(p)));
+};
 
 /**
  * Covers the client's upload-queue operations as ONE mutation with an
@@ -332,6 +367,23 @@ function foldProposalsIntoChanges(
  * `NO_MATCH_USER_ID` convention `bookValidate` established — see that file's
  * resolver doc comment for the full malformed-id / wrong-type-id reasoning,
  * which applies here unchanged.
+ *
+ * **`fixes` narrows ACCEPT/DISMISS to a named subset (task-4).** `FixReview`
+ * renders Accept/Reject on each individual fix, not just the row as a whole,
+ * so an all-or-nothing mutation would force the client to keep applying
+ * fixes itself — exactly what this migration step removes. `fixes` is an
+ * optional list of `MetadataFixKeyInput` (`field`+`kind`+`from` — see that
+ * type's own doc comment for why the triple, not an id or an index, is how a
+ * `MetadataFix` is addressed); omitting it means "every proposal", which is
+ * this mutation's original, unchanged, all-or-nothing behaviour — every
+ * pre-existing all-or-nothing test in this file is the regression guard for
+ * that equivalence. `selectProposals` (above) is the one place both ACCEPT
+ * and DISMISS apply it. `UNDO` and `CLEAR` ignore it: both act on the whole
+ * row by definition, `UNDO` because a snapshot restores everything it
+ * captured and `CLEAR` because it deletes the row outright. A key that
+ * matches no current proposal is silently ignored, not an error: the fix it
+ * named is simply no longer there (someone else resolved it first), which is
+ * a benign race, not a caller mistake worth failing the whole mutation over.
  */
 builder.mutationField('bookResolvePendingFix', (t) =>
   t.field({
@@ -341,8 +393,11 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       'Resolves a book’s pending metadata-fix proposals: ACCEPT applies them ' +
       '(arming an undo), DISMISS clears them (arming an undo), UNDO reverts ' +
       'whichever of those two an armed undo snapshot recorded, or CLEAR deletes ' +
-      'the pending-fix row outright. Resolves to null when the book does not ' +
-      'exist for the resolved owner.',
+      'the pending-fix row outright. ACCEPT and DISMISS accept an optional `fixes` ' +
+      'list to act on a named subset of the row’s proposals instead of all of them; ' +
+      'omitting `fixes` means every proposal, which is this mutation’s original ' +
+      'behaviour. UNDO and CLEAR ignore `fixes` — both always act on the whole row. ' +
+      'Resolves to null when the book does not exist for the resolved owner.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: (_parent, args) => {
       const parsed = parseCompoundId(args.input.id.id);
@@ -394,13 +449,15 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       if (args.input.action === 'dismiss') {
         // Client-side-only in REST (`dismissAllProposals`); server-side now.
         // Never touches the EPUB, so no `valid` gate.
-        if (state.proposals.length === 0) {
+        const dismissed = selectProposals(state.proposals, args.input.fixes);
+        if (dismissed.length === 0) {
           return {
             __typename: 'BookResolvePendingFixPayload' as const,
             owner,
             bookId: targetBook.id,
           };
         }
+        const dismissedKeys = new Set(dismissed.map(keyOf));
         await context.stores.book.upsertPendingFix(
           owner,
           targetBook.id,
@@ -409,7 +466,9 @@ builder.mutationField('bookResolvePendingFix', (t) =>
           {
             autoFixes: state.autoFixes,
             appliedFixes: state.appliedFixes,
-            proposals: [],
+            proposals: state.proposals.filter((fix) => !dismissedKeys.has(keyOf(fix))),
+            // Restores the FULL pre-dismiss list, not just the dismissed subset —
+            // undo reverts to what was there before, not what was removed.
             undo: { kind: 'dismiss', proposals: state.proposals, appliedFixes: state.appliedFixes },
           }
         );
@@ -481,8 +540,12 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       // Review I-2: only proposals REST's client would itself apply
       // (`p.to !== null`, `use-upload-queue.ts:421`) — an advisory-only
       // proposal folds to an empty `EpubChanges` and must not trigger a
-      // pointless rewrite.
-      const actionable = state.proposals.filter((fix) => fix.to !== null);
+      // pointless rewrite. `selected` narrows to the `fixes` subset first
+      // (all proposals when `fixes` is omitted); a key matching nothing
+      // simply yields an empty `selected`, which falls into the same
+      // strict no-op branch below as "nothing actionable".
+      const selected = selectProposals(state.proposals, args.input.fixes);
+      const actionable = selected.filter((fix) => fix.to !== null);
 
       if (actionable.length === 0) {
         return {
@@ -514,14 +577,24 @@ builder.mutationField('bookResolvePendingFix', (t) =>
 
       // Review I-1: mirrors what REST's client's `applyAllProposals` +
       // sync effect actually persist — the row survives with the applied
-      // (actionable) fixes removed from `proposals` (advisory-only ones left
-      // behind), appended to `appliedFixes`, and a fresh `undo` snapshot
-      // armed from the PRE-accept state. `undo` being non-null means
-      // `upsertPendingFix`'s own "resolved ⟹ delete" rule never fires here.
+      // (actionable) fixes removed from `proposals` (advisory-only ones, and
+      // any fixes outside the `fixes` subset, left behind), appended to
+      // `appliedFixes`, and a fresh `undo` snapshot armed from the PRE-accept
+      // state. `undo` being non-null means `upsertPendingFix`'s own
+      // "resolved ⟹ delete" rule never fires here.
+      //
+      // The surviving set is "everything not applied"
+      // (`!appliedKeys.has(keyOf(fix))`), not "everything advisory" — with a
+      // subset, an unselected actionable proposal must also survive. This is
+      // behaviour-preserving when `fixes` is omitted: with every proposal
+      // selected, `actionable` is exactly the `to !== null` ones, so the only
+      // survivors are the `to === null` (advisory) ones — identical to the
+      // old `state.proposals.filter(fix => fix.to === null)`.
+      const appliedKeys = new Set(actionable.map(keyOf));
       await context.stores.book.upsertPendingFix(owner, outcome.ok.id, row.fileName, row.fileSize, {
         autoFixes: state.autoFixes,
         appliedFixes: [...state.appliedFixes, ...actionable],
-        proposals: state.proposals.filter((fix) => fix.to === null),
+        proposals: state.proposals.filter((fix) => !appliedKeys.has(keyOf(fix))),
         undo: {
           kind: 'apply',
           proposals: state.proposals,
