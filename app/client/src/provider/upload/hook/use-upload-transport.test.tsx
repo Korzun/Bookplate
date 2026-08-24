@@ -1,0 +1,301 @@
+import type { MockedResponse } from '@apollo/client/testing';
+import { act, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { UploadConfigQuery } from '~/gql/graphql';
+import { UploadConfigDocument } from '~/graphql/upload';
+import { renderHookWithApollo } from '~/test-utils';
+
+import { useUploadTransport } from './use-upload-transport';
+
+// ── XHR mock ─────────────────────────────────────────────────────────────────
+// Reused from ../../book/hook/use-upload-queue.test.tsx — that file is the
+// existing coverage for exactly this machinery, and this stub already models
+// `upload.onprogress`, `onload`, `onerror`, and `status`.
+
+let xhrInstances: XHRMock[];
+
+class XHRMock {
+  upload = { onprogress: null as ((e: ProgressEvent) => void) | null };
+  onload: ((e: Event) => void) | null = null;
+  onerror: (() => void) | null = null;
+  status = 200;
+  responseText = '{}';
+  open = vi.fn();
+  setRequestHeader = vi.fn();
+  send = vi.fn();
+  abort = vi.fn();
+  constructor() {
+    xhrInstances.push(this);
+  }
+}
+
+function makeFileList(...names: string[]): FileList {
+  const files = names.map((name) => new File(['x'.repeat(1000)], name));
+  return files as unknown as FileList;
+}
+
+const configMock = (maxConcurrentUploads: number): MockedResponse<UploadConfigQuery> => ({
+  request: { query: UploadConfigDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      config: { __typename: 'Config', maxConcurrentUploads },
+    },
+  },
+});
+
+const configErrorMock: MockedResponse<UploadConfigQuery> = {
+  request: { query: UploadConfigDocument },
+  error: new Error('network error'),
+};
+
+/** Renders the hook and waits for `UploadConfigDocument` to actually land in
+ * the cache before returning — MockLink resolves after a realistic 20-50ms
+ * delay, so calling `addFiles` before this settles would race the default
+ * fallback of 3 against the mocked cap. */
+async function renderTransport(onUploaded: () => void = () => {}, cap = 2) {
+  const rendered = renderHookWithApollo(() => useUploadTransport(onUploaded), [configMock(cap)]);
+  await waitFor(() => {
+    expect(rendered.client.cache.readQuery({ query: UploadConfigDocument })).not.toBeNull();
+  });
+  return rendered;
+}
+
+beforeEach(() => {
+  xhrInstances = [];
+  vi.stubGlobal('XMLHttpRequest', XHRMock);
+  // ensureFreshToken() falls back to a real fetch('/api/auth/refresh') when no
+  // token is stored; stub it out so tests never hit the network, and so a
+  // stray call to the old '/api/config' REST endpoint is observable.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({}),
+    })
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('useUploadTransport', () => {
+  it('reads the concurrency cap from GraphQL, not GET /api/config', async () => {
+    await renderTransport();
+
+    // The old implementation fetched /api/config on mount. Nothing may.
+    const configCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).includes('/api/config'));
+    expect(configCalls).toEqual([]);
+  });
+
+  it('starts at most maxConcurrentUploads XHRs at once', async () => {
+    const { result } = await renderTransport(() => {}, 2);
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub', 'c.epub', 'd.epub', 'e.epub'));
+    });
+
+    // Five queued, cap of 2: exactly two requests may be in flight. Asserting
+    // exactly 2 (not merely "at most 3") proves the cap came from GraphQL, not
+    // the hard-coded default of 3 — a test that allowed 3 would pass against
+    // the fallback and prove nothing.
+    expect(xhrInstances).toHaveLength(2);
+    expect(result.current!.items.filter((i) => i.status === 'uploading')).toHaveLength(2);
+    expect(result.current!.items.filter((i) => i.status === 'queued')).toHaveLength(3);
+  });
+
+  it('defaults to a cap of 3 while the config query is still loading', async () => {
+    const { result } = renderHookWithApollo(() => useUploadTransport(() => {}), [configMock(2)]);
+
+    // Deliberately NOT awaiting config resolution — addFiles runs while the
+    // query is still in flight (MockLink resolves after a real ~20-50ms delay).
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub', 'c.epub', 'd.epub'));
+    });
+
+    expect(xhrInstances).toHaveLength(3);
+    expect(result.current!.items.filter((i) => i.status === 'uploading')).toHaveLength(3);
+  });
+
+  it('defaults to a cap of 3 when the config query errors', async () => {
+    const { result } = renderHookWithApollo(() => useUploadTransport(() => {}), [configErrorMock]);
+
+    // No cache signal to wait on for an errored query; wait past MockLink's
+    // realistic delay window (max 50ms) so the error has definitely settled.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub', 'c.epub', 'd.epub'));
+    });
+
+    expect(xhrInstances).toHaveLength(3);
+  });
+
+  it('addFiles appends items with queued status', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub'));
+    });
+
+    expect(result.current!.items).toHaveLength(2);
+    expect(result.current!.items[0].fileName).toBe('a.epub');
+    expect(result.current!.items[0].status).toBe('uploading');
+    expect(result.current!.items[1].fileName).toBe('b.epub');
+  });
+
+  it('updates bytesUploaded on progress events', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'));
+    });
+
+    act(() => {
+      xhrInstances[0].upload.onprogress?.({
+        loaded: 500,
+        total: 1000,
+        lengthComputable: true,
+      } as ProgressEvent);
+    });
+
+    expect(result.current!.items[0].bytesUploaded).toBe(500);
+  });
+
+  it('transitions to done, threads globalId into bookGlobalId, drops bookId, and calls onUploaded', async () => {
+    const onUploaded = vi.fn();
+    const { result } = await renderTransport(onUploaded);
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'));
+    });
+
+    // `xhr.open` fires asynchronously, after `ensureFreshToken()` resolves —
+    // wait for it rather than assuming a fixed number of microtask ticks.
+    // Also confirms `useWithTargetUser` is still wired into the multipart POST.
+    await waitFor(() => {
+      expect(xhrInstances[0].open).toHaveBeenCalledWith('POST', '/api/books/upload');
+    });
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [
+        {
+          filename: 'a.epub',
+          bookId: 'raw-content-hash-must-not-appear',
+          globalId: 'GLOBAL-1',
+          applied: [],
+          proposals: [],
+        },
+      ],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    expect(result.current!.items[0].status).toBe('done');
+    expect(result.current!.items[0].bookGlobalId).toBe('GLOBAL-1');
+    expect(result.current!.items[0]).not.toHaveProperty('bookId');
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+  });
+
+  it('transitions to error with message and validation on non-200 response', async () => {
+    const validation = {
+      counts: { FATAL: 1, ERROR: 1, WARNING: 2, INFO: 0, USAGE: 0 },
+      messages: [{ id: 'PKG-003', severity: 'FATAL', message: 'unreadable' }],
+      threshold: 'ERROR',
+    };
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('bad.epub'));
+    });
+
+    xhrInstances[0].status = 400;
+    xhrInstances[0].responseText = JSON.stringify({ error: 'Invalid EPUB', validation });
+    act(() => {
+      xhrInstances[0].onload?.(new Event('load'));
+    });
+
+    expect(result.current!.items[0].status).toBe('error');
+    expect(result.current!.items[0].errorMessage).toBe('Invalid EPUB');
+    expect(result.current!.items[0].validation).toEqual(validation);
+  });
+
+  it('transitions to error without a message on an XHR network error', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'));
+    });
+
+    act(() => {
+      xhrInstances[0].onerror?.();
+    });
+
+    expect(result.current!.items[0].status).toBe('error');
+    expect(result.current!.items[0].errorMessage).toBeUndefined();
+  });
+
+  it('starts the next queued item when a slot frees up', async () => {
+    const { result } = await renderTransport(() => {}, 2);
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub', 'c.epub'));
+    });
+
+    expect(xhrInstances).toHaveLength(2);
+
+    xhrInstances[0].status = 200;
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    expect(xhrInstances).toHaveLength(3);
+    expect(result.current!.items[0].status).toBe('done');
+    expect(result.current!.items[2].status).toBe('uploading');
+  });
+
+  it('dropItem removes only the targeted row', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub', 'b.epub'));
+    });
+
+    const idToKeep = result.current!.items[1].id;
+    const idToDrop = result.current!.items[0].id;
+
+    act(() => {
+      result.current!.dropItem(idToDrop);
+    });
+
+    expect(result.current!.items).toHaveLength(1);
+    expect(result.current!.items[0].id).toBe(idToKeep);
+  });
+
+  it('does not abort in-flight XHRs when dropped — matches the old queue leaving uploads alone on unmount', async () => {
+    const { result } = await renderTransport();
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'));
+    });
+
+    const id = result.current!.items[0].id;
+    act(() => {
+      result.current!.dropItem(id);
+    });
+
+    expect(xhrInstances[0].abort).not.toHaveBeenCalled();
+  });
+});
