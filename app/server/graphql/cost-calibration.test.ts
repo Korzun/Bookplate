@@ -288,8 +288,9 @@ const LEGIT_FIXTURES: readonly LegitAcceptFixture[] = [
   {
     verdict: 'accept',
     class: 'legit-screen',
-    name: 'pending-fixes list (repo-corpus legit screen)',
-    source: '{ viewer { library { pendingFixes { id fileName createdAt book { id title } } } } }',
+    name: 'pending-fixes list, full shipped PendingFixRowFragment shape (repo-corpus legit screen, task-5 upload-and-replace)',
+    source:
+      '{ viewer { library { pendingFixes { id fileName fileSize book { id title author } state { autoFixes { field kind from to reason fromChips toChips changes } appliedFixes { field kind from to reason fromChips toChips changes } proposals { field kind from to reason fromChips toChips changes } undo { kind } } } } } }',
   },
   {
     verdict: 'accept',
