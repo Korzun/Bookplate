@@ -1,32 +1,3 @@
-export type Book = {
-  id: string;
-  title: string;
-  author: string;
-  titleSort: string;
-  authorSort: string;
-  publishDate: string;
-  publisher?: string;
-  series: string;
-  seriesIndex: number;
-  description?: string;
-  subjects: string[];
-  identifiers: Identifier[];
-  hasCover: boolean;
-  size: number;
-  /** ISO timestamp of the source file's last modification; changes when the cover changes. */
-  mtime?: string;
-  addedAt?: string;
-  chapterCount: number;
-  chapterSpineMap?: number[];
-  chapterNames?: string[];
-  pageCount: number;
-  /** Cached device editions across all devices; present on the single-book detail fetch. */
-  deviceEditionCount?: number;
-  valid?: boolean | null;
-};
-
-export type Identifier = { scheme: string; value: string };
-
 export type MetadataFix = {
   field: string;
   kind: string;

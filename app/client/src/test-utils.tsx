@@ -143,7 +143,7 @@ export function renderHookWithApollo<
  * always `skip`ped and the default empty `MockLink` never needs a matching
  * mock — drop `<ApolloTestProvider>` in anywhere above the hook under test.
  * Pass `mocks` when the test DOES need the query to resolve (e.g. an admin
- * scenario exercising `useWithTargetUser`/`useFetchBookList` together).
+ * scenario exercising `useWithTargetUser`/`useDownloadBook` together).
  */
 export function ApolloTestProvider({
   children,
