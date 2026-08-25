@@ -135,7 +135,7 @@ export function renderHookWithApollo<
  * A real `ApolloProvider`, backed by a `MockLink` (empty by default), for
  * hook/component tests that don't use `renderWithApollo`'s own provider
  * stack (they compose their own `wrapper` around
- * `BookProvider`/`AuthProvider`/etc.) but still transitively reach
+ * `AuthProvider`/etc.) but still transitively reach
  * `useWithTargetUser` — an unconditional `useQuery` since task 4's C-1/I-1
  * fix (no more provider-less fallback client; see that hook's own doc
  * comment for why a loud failure here is the point, not a bug to route

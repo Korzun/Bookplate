@@ -3,7 +3,7 @@ import { createContext } from 'react';
 import type { UseUploadQueue } from './hook/use-upload-queue';
 
 /** Lifted upload-queue state, shared across the whole app so it survives
- * navigation. Mounted above the router and below BookProvider. */
+ * navigation. Mounted above the router, in `UploadProvider`. */
 export const UploadContext = createContext<UseUploadQueue>({
   items: [],
   addFiles: () => {},

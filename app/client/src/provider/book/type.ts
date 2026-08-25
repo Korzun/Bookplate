@@ -1,5 +1,3 @@
-export type BookList = Record<string, Book>;
-
 export type Book = {
   id: string;
   title: string;
@@ -29,8 +27,6 @@ export type Book = {
 
 export type Identifier = { scheme: string; value: string };
 
-export type Series = Record<string, BookList>;
-
 export type MetadataFix = {
   field: string;
   kind: string;
@@ -54,12 +50,6 @@ export type UploadFileResult = {
   proposals: MetadataFix[];
 };
 
-export type UploadResult = { uploaded: string[]; results: UploadFileResult[] };
-
-export type DisplayUnit =
-  | { type: 'standalone'; bookId: string }
-  | { type: 'series'; seriesName: string };
-
 export type BookListFilter = {
   query?: string;
   author?: string;
@@ -67,15 +57,4 @@ export type BookListFilter = {
   status?: 'not-started' | 'in-progress' | 'completed';
   subjects?: string[];
   entryType?: 'series' | 'standalone';
-};
-
-export type BookSummary = Omit<
-  Book,
-  'description' | 'identifiers' | 'subjects' | 'addedAt' | 'chapterSpineMap' | 'chapterNames'
->;
-
-export type PagedBookListResponse = {
-  items: DisplayUnit[];
-  books: BookSummary[];
-  nextCursor: string | null;
 };

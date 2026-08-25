@@ -1,7 +1,6 @@
 import { buildProvidersTree } from './provider';
 import { ApolloRoot } from './provider/apollo';
 import { AuthProvider } from './provider/auth';
-import { BookProvider } from './provider/book';
 import { ConfigProvider } from './provider/config';
 import { LibraryTargetProvider } from './provider/library-target';
 import { ThemeProvider } from './provider/theme';
@@ -17,7 +16,6 @@ const ProvidersTree = buildProvidersTree([
   [ThemeProvider],
   [AuthProvider],
   [LibraryTargetProvider],
-  [BookProvider],
   [UploadProvider],
   [ToastProvider],
 ]);
