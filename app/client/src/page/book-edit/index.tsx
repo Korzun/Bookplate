@@ -20,10 +20,19 @@ export const BookEditPage = () => {
   // (`usePendingFixesForBook`, deleted this task — it had exactly one
   // consumer, this page, and this document already loads the whole book).
   // A live row with no proposals left (fully resolved, undo still armed
-  // within the TTL) is not a conflict — only a non-empty `proposals` list
-  // is.
+  // within the TTL) is not a conflict. Neither is one whose every remaining
+  // proposal is ADVISORY (`to === null`, "needs review"): the guard exists
+  // because editing could overwrite a concrete pending suggestion, and an
+  // advisory fix has no suggested value to overwrite. It is also the only
+  // kind `FixReview` resolves by linking HERE — `bookResolvePendingFix`'s
+  // ACCEPT filters to `to !== null` and leaves advisory proposals behind, so
+  // they can never be cleared by accepting. Guarding on them bounced the user
+  // straight back to the screen whose Edit link sent them, with no way out.
+  // Same rule `control/upload-replace-modal` already applies to gate Replace.
   const pendingItem =
-    book?.pendingFix && book.pendingFix.state.proposals.length > 0 ? book.pendingFix : undefined;
+    book?.pendingFix && book.pendingFix.state.proposals.some((p) => p.to !== null)
+      ? book.pendingFix
+      : undefined;
   // `useFixActions` directly, not `useUploadQueue()`: the dismiss action
   // only ever needs this book's own GLOBAL id (`book.id`, always in hand
   // here), never the queue's per-render item id — see this task's report

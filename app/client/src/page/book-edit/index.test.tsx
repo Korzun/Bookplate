@@ -71,6 +71,17 @@ function proposal() {
   };
 }
 
+/** A flag-only ("needs review") proposal: `to === null`, no `changes`. The
+ * server can never apply one — `bookResolvePendingFix`'s ACCEPT filters to
+ * `to !== null` and leaves these behind — so `FixReview` gives them an Edit
+ * link to THIS page instead of Accept/Reject. That makes them the one kind
+ * of proposal the guard must not block on: there is no suggested value for
+ * editing to overwrite, and blocking sends the user back to the only screen
+ * that offered the Edit link. */
+function advisoryProposal() {
+  return { ...proposal(), kind: 'title-is-filename', to: null, changes: {} };
+}
+
 function bookData(overrides: Record<string, unknown> = {}) {
   return {
     __typename: 'Book' as const,
@@ -234,6 +245,25 @@ describe('BookEditPage', () => {
     renderPage([bookEditMock({ pendingFix: pendingFixOf([]) })]);
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
     expect(screen.queryByText('Review fixes')).toBeNull();
+  });
+
+  // REGRESSION: an advisory-only book used to trip the guard, whose "Review
+  // fixes" sends the user back to /upload — the only screen offering the Edit
+  // link that brought them here. An unbreakable loop, because ACCEPT can never
+  // clear a `to: null` proposal.
+  it('shows the form, not the guard, when every remaining proposal is advisory', async () => {
+    renderPage([bookEditMock({ pendingFix: pendingFixOf([advisoryProposal()]) })]);
+    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
+    expect(screen.queryByText('Review fixes')).toBeNull();
+  });
+
+  // The other half: a book with even ONE actionable proposal must still guard,
+  // or this fix would have silently deleted the protection instead of scoping
+  // it. Editing here really could strand a concrete pending suggestion.
+  it('still guards when an actionable proposal remains alongside an advisory one', async () => {
+    renderPage([bookEditMock({ pendingFix: pendingFixOf([advisoryProposal(), proposal()]) })]);
+    expect(await screen.findByText('Review fixes')).toBeInTheDocument();
+    expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 
   it("passes the book straight through to BookEditForm's book prop", async () => {
