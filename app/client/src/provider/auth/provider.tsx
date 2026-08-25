@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { refreshAccessToken } from '../../lib/api-fetch';
+import { consumeLoggedOutMark } from '../../lib/logout';
 import { TOKEN_CHANGED_EVENT, TOKEN_KEY, decodeClaims, getToken, isExpired } from '../../lib/token';
 import { Context, AuthContext } from './context';
 
@@ -52,6 +53,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     if (bootstrapped.current || valid) return;
     bootstrapped.current = true;
+
+    // A logout just happened. Its server-side cookie clear may have failed, in
+    // which case the refresh cookie is still live and this refresh would
+    // silently sign the user back in on the /login page they were just sent to.
+    // One-shot: the next mount refreshes normally.
+    if (consumeLoggedOutMark()) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     void refreshAccessToken().finally(() => {
       if (!cancelled) setLoading(false);

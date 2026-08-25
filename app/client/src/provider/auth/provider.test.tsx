@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { useContext } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { markLoggedOut } from '../../lib/logout';
 import { makeJwt } from '../../lib/test-jwt';
 import { setToken } from '../../lib/token';
 import { Context } from './context';
@@ -192,6 +193,42 @@ describe('AuthProvider', () => {
     );
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
     expect(screen.getByTestId('username')).toHaveTextContent('none');
+  });
+
+  it('skips the bootstrap silent refresh exactly once after a logout', async () => {
+    markLoggedOut();
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    // The mark was armed, so no refresh may be attempted...
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still performs the bootstrap refresh on the NEXT mount', async () => {
+    markLoggedOut();
+    const first = render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(fetchMock).not.toHaveBeenCalled();
+    first.unmount();
+
+    // ...but the suppression is ONE-SHOT. A cold start with a good cookie must
+    // still restore the session, or every logout would permanently break
+    // "keep me logged in across browser restarts".
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 });
 
