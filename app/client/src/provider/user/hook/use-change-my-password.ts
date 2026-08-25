@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import type { UserChangePasswordMutation } from '~/gql/graphql';
 import { UserChangePasswordDocument } from '~/graphql/user';
-import { clearToken } from '~/lib/token';
+import { logout as performLogout } from '~/lib/logout';
 import { unwrapResult } from '~/provider/apollo';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
@@ -30,20 +30,16 @@ export type UseChangeMyPassword =
  * "continue the session" — it logs the caller out and sends them to
  * `/login`, unconditionally.
  *
- * This does NOT reuse `useLogout`: that hook's contract is the wrong shape
- * for what happens after this mutation succeeds. `useLogout` throws and
- * leaves the token in place if its `POST /api/auth/logout` call fails —
- * correct for an explicit "log out" button, where a failed request means the
- * user is still validly logged in and should stay put. Here the server has
- * ALREADY revoked every refresh token for this account before this code
- * runs, so staying logged in on a failed POST is not an option — the
- * session's refresh tokens are already dead, and the alternative is a
- * caller left holding a token that fails confusingly on its next silent
- * refresh. So the POST below is purely best-effort cleanup (it clears the
- * browser's now-meaningless `refresh_token` cookie via the server's
- * `clearRefreshCookie`); its outcome must never gate the two calls that
- * follow it. `clearToken()` + navigating to `/login` happen unconditionally
- * on a successful password change.
+ * This calls the same shared `logout()` helper (`~/lib/logout`) that the
+ * explicit "log out" button's `useLogout` hook delegates to — not the hook
+ * itself, since this is already inside a hook and the two have nothing else
+ * to share. That helper is unconditionally best-effort: it swallows a
+ * failed `POST /api/auth/logout`, then arms the one-shot "skip the next
+ * silent refresh" mark, clears the local token, and navigates to `/login`
+ * regardless. That is exactly right here — the server has ALREADY revoked
+ * every refresh token for this account before this code runs, so staying
+ * logged in on a failed POST was never an option — and it is why this hook
+ * has nothing left to do after the mutation succeeds but call it.
  *
  * **No client-side pre-check for empty fields.** The REST hook this replaces
  * short-circuited on `!currentPassword || !newPassword` with the same
@@ -103,15 +99,10 @@ export const useChangeMyPassword = (): UseChangeMyPassword => {
 
         setOkay(true);
 
-        // Best-effort cookie cleanup — see the doc comment above. Its
-        // success or failure must not affect what follows.
-        try {
-          await fetch('/api/auth/logout', { method: 'POST' });
-        } catch {
-          /* best-effort; local logout proceeds regardless */
-        }
-        clearToken();
-        window.location.href = '/login';
+        // Same best-effort teardown as the logout button, via the one shared
+        // helper — the password has already changed by this point, so the
+        // session must end whether or not the cookie clear succeeds.
+        await performLogout();
 
         return true;
       } catch (err) {

@@ -1,36 +1,27 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { clearToken } from '../../../lib/token';
+import { logout as performLogout } from '../../../lib/logout';
 
-export type UseLogout = [() => Promise<void>, boolean, boolean, string | undefined];
+/**
+ * Narrowed from `[logout, loading, error, errorMessage]`: `logout()` is
+ * best-effort and cannot fail in a way this hook could report, and its only
+ * consumer (`page/user`) already destructured just the first two — the error
+ * members never had a renderer, which is why a failed logout used to be
+ * completely silent.
+ */
+export type UseLogout = [() => Promise<void>, boolean];
+
 export const useLogout = (): UseLogout => {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const logout = useCallback(async () => {
     setLoading(true);
-    setError(false);
-    setErrorMessage(undefined);
     try {
-      const response = await fetch('/api/auth/logout', { method: 'POST' });
-      if (!response.ok) {
-        throw new Error('Logout failed');
-      }
-      clearToken();
-      window.location.href = '/login';
-    } catch (err) {
-      setError(true);
-      if (err instanceof Error) {
-        setErrorMessage(err.message);
-      }
+      await performLogout();
     } finally {
       setLoading(false);
     }
   }, []);
 
-  return useMemo(
-    () => [logout, loading, error, errorMessage],
-    [logout, loading, error, errorMessage]
-  );
+  return useMemo(() => [logout, loading], [logout, loading]);
 };
