@@ -60,7 +60,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // One-shot: the next mount refreshes normally.
     if (consumeLoggedOutMark()) {
       setLoading(false);
-      return;
+      // No in-flight promise on this path, so no `cancelled` flag is needed —
+      // but `bootstrapped.current` must still reset on cleanup like the
+      // refresh path below, or this tab permanently loses its "re-arm silent
+      // refresh on token loss" recovery the next time `valid` flips false
+      // (e.g. an SPA login followed by a later cross-tab logout or expiry).
+      return () => {
+        bootstrapped.current = false;
+      };
     }
 
     let cancelled = false;

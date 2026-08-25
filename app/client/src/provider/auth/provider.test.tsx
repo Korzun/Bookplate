@@ -32,6 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 const futureExp = () => Math.floor(Date.now() / 1000) + 900;
@@ -229,6 +230,47 @@ describe('AuthProvider', () => {
       </AuthProvider>
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('re-arms the bootstrap refresh after a post-logout mount later gains, then loses, its token', async () => {
+    // Reproduces: logout -> reload to /login -> bootstrap skips its refresh
+    // (marker consumed) -> SPA login (setToken, no remount, like
+    // page/login/index.tsx) -> later, in the SAME tab, the token is lost again
+    // (cross-tab clear, failed proactive refresh, expiry). The bootstrap
+    // effect must still be able to re-arm and silently refresh at that point
+    // — it must not have permanently disabled itself just because its very
+    // first run, right after logout, was a skip rather than a real refresh.
+    markLoggedOut();
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    act(() => {
+      setToken(
+        makeJwt({
+          sub: 'u1',
+          username: 'alice',
+          isAdmin: false,
+          mustChangePassword: false,
+          exp: futureExp(),
+        })
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('alice'));
+
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    act(() => {
+      localStorage.removeItem('accessToken');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'accessToken', newValue: null }));
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/refresh', { method: 'POST' })
+    );
   });
 });
 
