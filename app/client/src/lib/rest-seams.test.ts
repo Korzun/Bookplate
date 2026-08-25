@@ -38,10 +38,33 @@ const SRC = path.join(__dirname, '..');
  *
  * No `\s*` between `fetch` and `(`: doc-comment prose like "the REST cover
  * *image* fetch (a binary endpoint...)" also matches a loose version of this
- * pattern (confirmed in `component/book-row/from-entry.tsx`), and no real
- * call site in this tree puts whitespace before the call paren.
+ * pattern (confirmed in `component/book-row/from-entry.tsx`). This isn't just
+ * empirically true today — it's structurally enforced: `npm run lint`'s
+ * `oxfmt --check` normalizes every real call expression to have no space
+ * before the paren, so CI itself keeps the assumption true.
+ *
+ * Known blind spot, accepted deliberately: a call written across a line break
+ * — `fetch\n('/api/nope')` — would evade this regex the same way it evades the
+ * no-space assumption above. No such call exists in this tree and `oxfmt`
+ * would not produce one, but this is a plain-text pattern, not an AST walk,
+ * so a sufficiently contrived call can still slip past it.
  */
 const CALL = /(?<![A-Za-z0-9_$])(?:api)?[Ff]etch\(|new\s+XMLHttpRequest/;
+
+/**
+ * Strip comments before matching, so a doc comment that *talks about* a REST
+ * call — this migration has ten steps of exactly that — doesn't get flagged
+ * as if it *made* one. `/\/\*[\s\S]*?\*\//g` removes block comments,
+ * `/\/\/.*$/gm` removes line comments.
+ *
+ * Deliberate trade-off: this also strips comment-shaped text that happens to
+ * live inside a string literal (e.g. a string containing `"// fetch(x)"`).
+ * That is accepted on purpose — a false NEGATIVE from over-stripping is far
+ * less likely here than the false POSITIVE this function exists to prevent,
+ * and no real call site in this codebase hides its call inside a string.
+ */
+const stripComments = (src: string): string =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 const walk = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -53,7 +76,7 @@ const walk = (dir: string): string[] =>
 
 it('confines REST calls to the sanctioned seams', () => {
   const offenders = walk(SRC)
-    .filter((f) => CALL.test(fs.readFileSync(f, 'utf-8')))
+    .filter((f) => CALL.test(stripComments(fs.readFileSync(f, 'utf-8'))))
     .map((f) => path.relative(SRC, f))
     .filter((rel) => !SANCTIONED.has(rel))
     .sort();
@@ -67,6 +90,9 @@ it('every sanctioned seam still exists and still makes a call', () => {
   for (const rel of SANCTIONED) {
     const full = path.join(SRC, rel);
     expect(fs.existsSync(full), `${rel} is listed but missing`).toBe(true);
-    expect(CALL.test(fs.readFileSync(full, 'utf-8')), `${rel} no longer calls REST`).toBe(true);
+    expect(
+      CALL.test(stripComments(fs.readFileSync(full, 'utf-8'))),
+      `${rel} no longer calls REST`
+    ).toBe(true);
   }
 });
