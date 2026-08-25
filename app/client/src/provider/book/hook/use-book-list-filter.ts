@@ -1,7 +1,6 @@
-import { useCallback, use, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { Context } from '../context';
 import type { BookListFilter } from '../type';
 
 function filterFromSearchParams(params: URLSearchParams): BookListFilter {
@@ -33,34 +32,21 @@ export function filterToSearchParams(filter: BookListFilter): URLSearchParams {
   return params;
 }
 
-function filtersEqual(a: BookListFilter, b: BookListFilter): boolean {
-  return (
-    a.query === b.query &&
-    a.author === b.author &&
-    a.seriesName === b.seriesName &&
-    a.status === b.status &&
-    a.entryType === b.entryType &&
-    JSON.stringify([...(a.subjects ?? [])].sort()) ===
-      JSON.stringify([...(b.subjects ?? [])].sort())
-  );
-}
-
+/**
+ * Pure URL state. The URL is the single source of truth for the library
+ * filter, and always was — this hook previously mirrored the filter into
+ * `BookContext` as well, but returned the URL-derived value regardless, so the
+ * context copy's only reader was its own dedup effect. Removing it left
+ * `BookContext` with no readers at all (step-10 spec §3.1).
+ */
 export const useBookListFilter = (): [BookListFilter, (filter: BookListFilter) => void] => {
-  const { bookListFilter, setBookListFilter } = use(Context);
   const [searchParams, setSearchParams] = useSearchParams();
-
-  useEffect(() => {
-    const urlFilter = filterFromSearchParams(searchParams);
-    if (filtersEqual(urlFilter, bookListFilter)) return;
-    setBookListFilter(urlFilter);
-  }, [searchParams, bookListFilter, setBookListFilter]);
 
   const setFilter = useCallback(
     (newFilter: BookListFilter) => {
-      setBookListFilter(newFilter);
       setSearchParams(filterToSearchParams(newFilter), { replace: true });
     },
-    [setBookListFilter, setSearchParams]
+    [setSearchParams]
   );
 
   return [filterFromSearchParams(searchParams), setFilter];

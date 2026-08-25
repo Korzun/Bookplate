@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +12,6 @@ import { Context } from '../context';
 import { BookProvider } from '../provider';
 import type { Book, BookList } from '../type';
 import { useBookList, type UseBookList } from './use-book-list';
-import { useBookListFilter } from './use-book-list-filter';
 
 function makeBook(overrides: Partial<Book> & { id: string }): Book {
   return {
@@ -177,7 +176,16 @@ describe('useBookList', () => {
     await waitFor(() => expect(result.current.list[2]).toBe(false));
   });
 
-  it('re-fetches with new filter params when bookListFilter changes', async () => {
+  // Was: 're-fetches with new filter params when bookListFilter changes',
+  // driven through `useBookListFilter()`'s setter. `useBookListFilter` no
+  // longer writes into `BookContext` (step 10 / task 3: it's pure URL state
+  // now — the context copy was a write-only cache, with the dedup effect
+  // that wrote it as its only reader). Nothing in production calls
+  // `BookContext`'s `setBookListFilter` any more, so that coupling can't
+  // happen through `useBookListFilter` today. `useBookList` itself is
+  // unchanged and still reacts to the context value if something sets it
+  // directly, which this exercises via `use(Context)` instead.
+  it('re-fetches with new filter params when the context filter is set directly', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ items: [], books: [], nextCursor: null }),
@@ -194,7 +202,7 @@ describe('useBookList', () => {
       </ApolloTestProvider>
     );
 
-    const { result } = renderHook(() => ({ list: useBookList(), filter: useBookListFilter() }), {
+    const { result } = renderHook(() => ({ list: useBookList(), context: use(Context) }), {
       wrapper,
     });
 
@@ -202,7 +210,7 @@ describe('useBookList', () => {
     expect(mockFetch).toHaveBeenLastCalledWith('/api/books?take=20', {});
 
     await act(async () => {
-      result.current.filter[1]({ query: 'test' });
+      result.current.context.setBookListFilter({ query: 'test' });
     });
 
     await waitFor(() =>

@@ -2,13 +2,15 @@ import { ApolloClient, InMemoryCache } from '@apollo/client';
 import { ApolloProvider } from '@apollo/client/react';
 import { MockLink, type MockedResponse } from '@apollo/client/testing';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LibraryFilter } from '~/gql/graphql';
 import { LibraryEntriesDocument } from '~/graphql/library';
 import { cacheConfig } from '~/provider/apollo';
+import type { BookListFilter } from '~/provider/book';
 import { ThemeProvider } from '~/provider/theme';
 import { renderWithApollo } from '~/test-utils';
 
@@ -43,13 +45,44 @@ vi.mock('~/component/library-switcher', () => ({
 // stand-ins: this file is testing LibraryPage's own wiring (empty/error
 // states, the edges -> row dispatch, the sentinel/retry plumbing), not the
 // reshaped row components' own rendering (Task 7 already covers those) or
-// SearchBar's UI (unrelated to this task).
+// SearchBar's real UI (unrelated to this task).
+//
+// The SearchBar stand-in DOES echo the `filter`/`onChange` props it's given
+// — that's what lets the round-trip tests below exercise
+// `useBookListFilter`'s read (the `filter` prop reflects the URL on mount)
+// and write (clicking the button calls `onChange`, which the real hook
+// turns into a URL update) directions without needing the real component's
+// debounce/suggestion machinery.
 vi.mock('~/component', () => ({
   Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SearchBar: () => <div data-testid="search-bar" />,
+  SearchBar: ({
+    filter,
+    onChange,
+  }: {
+    filter: BookListFilter;
+    onChange: (filter: BookListFilter) => void;
+  }) => (
+    <div data-testid="search-bar">
+      <span data-testid="search-bar-query">{filter.query ?? ''}</span>
+      <button type="button" onClick={() => onChange({ ...filter, query: 'dune' })}>
+        set query to dune
+      </button>
+    </div>
+  ),
   SeriesRow: ({ series }: { series: { id: string } }) => <div>SERIES:{series.id}</div>,
   BookRowFromEntry: ({ book }: { book: { id: string } }) => <div>BOOK:{book.id}</div>,
 }));
+
+/** Renders alongside the page, inside the SAME router tree, so a test can
+ * assert on the URL the router actually holds. `MemoryRouter` (used by
+ * `renderWithApollo` -> `renderWithProviders`) never touches
+ * `window.location`, so asserting on `window.location.search` would fail
+ * for reasons unrelated to `useBookListFilter` — this probe reads the
+ * router's own state instead. */
+const LocationProbe = () => {
+  const { search } = useLocation();
+  return <span data-testid="location-search">{search}</span>;
+};
 
 /**
  * Auto-intersects the moment `observe()` is called, so a test that renders a
@@ -163,6 +196,24 @@ async function renderLibraryPage(mocks: MockedResponse[], initialEntries: string
   return renderWithApollo(<LibraryPage />, { mocks, initialEntries });
 }
 
+/** Same as `renderLibraryPage`, plus a `LocationProbe` mounted in the same
+ * router tree, for the two `useBookListFilter` round-trip tests below —
+ * they need to observe the URL the router holds, which `renderLibraryPage`
+ * alone has no way to expose. */
+async function renderLibraryPageWithLocationProbe(
+  mocks: MockedResponse[],
+  initialEntries: string[] = ['/library']
+) {
+  const { LibraryPage } = await import('./index');
+  return renderWithApollo(
+    <>
+      <LibraryPage />
+      <LocationProbe />
+    </>,
+    { mocks, initialEntries }
+  );
+}
+
 describe('LibraryPage', () => {
   it('renders "Select a library" for an admin with no selection', async () => {
     isAdminValue = true;
@@ -221,6 +272,50 @@ describe('LibraryPage', () => {
     await renderLibraryPage([mock], ['/library?status=completed&entryType=series']);
 
     await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
+  });
+
+  // Characterization tests for `useBookListFilter` (step 10 / task 3): the
+  // URL is, and always was, the hook's sole source of truth for the
+  // returned filter value — these two tests must pass BEFORE and AFTER
+  // that hook drops its `BookContext` round-trip, not just after. They were
+  // run against the pre-refactor hook and confirmed passing there first
+  // (see task-3-report.md); a green run here is only meaningful because of
+  // that baseline.
+  it('reads a filter already present in the URL on mount', async () => {
+    const mock = firstPageMock(
+      [],
+      { hasNextPage: false, endCursor: null },
+      {
+        ...emptyFilter,
+        query: 'dune',
+      }
+    );
+
+    await renderLibraryPage([mock], ['/library?q=dune']);
+
+    await waitFor(() => expect(screen.getByTestId('search-bar-query').textContent).toBe('dune'));
+  });
+
+  it('writes a chosen filter to the URL', async () => {
+    const initialMock = firstPageMock([], { hasNextPage: false, endCursor: null });
+    const duneMock = firstPageMock(
+      [],
+      { hasNextPage: false, endCursor: null },
+      {
+        ...emptyFilter,
+        query: 'dune',
+      }
+    );
+
+    await renderLibraryPageWithLocationProbe([initialMock, duneMock]);
+
+    expect(screen.getByTestId('location-search').textContent).toBe('');
+
+    await userEvent.click(screen.getByRole('button', { name: 'set query to dune' }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location-search').textContent).toContain('q=dune')
+    );
   });
 
   it('renders rows from the connection', async () => {
