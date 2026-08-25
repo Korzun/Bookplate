@@ -27,6 +27,21 @@ it('clears the token and redirects even when the server call fails', async () =>
   expect(assign).toHaveBeenCalledWith('/login');
 });
 
+it('POSTs to the server logout endpoint', async () => {
+  const fetchSpy = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal('location', { ...window.location, set href(_v: string) {} });
+
+  await logout();
+
+  // The whole point of the request: it must hit the right URL with the right
+  // method, or the server-side cookie clear silently stops happening while
+  // every other assertion in this file (which only checks local teardown)
+  // keeps passing.
+  expect(fetchSpy).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' });
+});
+
 it('arms the one-shot mark so the next bootstrap refresh is skipped', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
   vi.stubGlobal('location', { ...window.location, set href(_v: string) {} });

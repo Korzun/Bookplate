@@ -43,4 +43,20 @@ describe('useLogout', () => {
     });
     await waitFor(() => expect(result.current[1]).toBe(false));
   });
+
+  // The real `logout()` helper is designed never to throw (it swallows its
+  // own fetch failure internally), so this can't happen with the real
+  // helper — but the hook's `finally { setLoading(false) }` is still live
+  // defensive code, and it's cheap to prove it holds even if that contract
+  // is ever violated.
+  it('still resets loading to false if the helper rejects', async () => {
+    vi.spyOn(logoutModule, 'logout').mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useLogout());
+
+    await act(async () => {
+      await expect(result.current[0]()).rejects.toThrow('boom');
+    });
+
+    expect(result.current[1]).toBe(false);
+  });
 });
