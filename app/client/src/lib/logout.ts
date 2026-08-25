@@ -37,7 +37,16 @@ export async function logout(): Promise<void> {
   } catch {
     // best-effort; the local teardown below runs regardless
   }
-  markLoggedOut();
+  try {
+    markLoggedOut();
+  } catch {
+    // Best-effort too. `sessionStorage` throws a SecurityError under blocked or
+    // partitioned storage, and running first must not make the marker — an
+    // optimisation guarding a failed-POST edge case — able to abort the
+    // teardown that IS the contract. Unguarded, the rejection would also
+    // surface in the password-change path as a FAILED password change that
+    // actually succeeded.
+  }
   clearToken();
   window.location.href = '/login';
 }

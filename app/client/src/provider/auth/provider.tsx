@@ -50,15 +50,34 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // react-hooks rules are satisfied. setLoading only fires in the async
   // .finally, never synchronously in the effect body.
   const bootstrapped = useRef(false);
+  // Latches once the logout marker is consumed and stays latched until a
+  // session exists again. `consumeLoggedOutMark()` is destructive, so it alone
+  // cannot answer "was this mount post-logout?" more than once — and under
+  // <StrictMode> (main.tsx, development) React runs this effect
+  // setup -> cleanup -> setup, so the second setup asks exactly that question
+  // with the sessionStorage key already gone. Without the latch the second
+  // setup falls through and refreshes, i.e. the whole suppression is absent in
+  // dev. Cleared on any `valid === true` run below, which is what keeps this
+  // from becoming a permanent disable: a genuine re-arm is always preceded by
+  // a `valid` transition to true, a StrictMode double-invoke never is.
+  const loggedOutSkip = useRef(false);
   useEffect(() => {
-    if (bootstrapped.current || valid) return;
+    if (valid) {
+      // A session exists again (SPA login, adopted cross-tab token, successful
+      // refresh). Whatever logout armed the latch is spent; the next loss of
+      // this token must be free to refresh normally.
+      loggedOutSkip.current = false;
+      return;
+    }
+    if (bootstrapped.current) return;
     bootstrapped.current = true;
 
     // A logout just happened. Its server-side cookie clear may have failed, in
     // which case the refresh cookie is still live and this refresh would
     // silently sign the user back in on the /login page they were just sent to.
     // One-shot: the next mount refreshes normally.
-    if (consumeLoggedOutMark()) {
+    if (loggedOutSkip.current || consumeLoggedOutMark()) {
+      loggedOutSkip.current = true;
       setLoading(false);
       // No in-flight promise on this path, so no `cancelled` flag is needed —
       // but `bootstrapped.current` must still reset on cleanup like the

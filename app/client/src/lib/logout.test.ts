@@ -4,6 +4,9 @@ import { consumeLoggedOutMark, logout } from './logout';
 import { getToken, setToken } from './token';
 
 beforeEach(() => {
+  // Order matters: one test below stubs `sessionStorage` itself, so unstub
+  // before `sessionStorage.clear()` reaches for it.
+  vi.unstubAllGlobals();
   localStorage.clear();
   sessionStorage.clear();
   vi.restoreAllMocks();
@@ -56,4 +59,35 @@ it('arms the one-shot mark so the next bootstrap refresh is skipped', async () =
 
 it('reports no mark when nothing armed it', () => {
   expect(consumeLoggedOutMark()).toBe(false);
+});
+
+it('still clears the token and redirects when sessionStorage is blocked', async () => {
+  // Blocked/partitioned storage makes `sessionStorage.setItem` throw a
+  // SecurityError. `markLoggedOut()` runs FIRST in `logout()`, so an unguarded
+  // throw there aborts the whole teardown: no `clearToken`, no redirect — and
+  // in the password-change path the rejection surfaces as a FAILED password
+  // change that actually succeeded. The marker is an optimisation; the
+  // teardown is the contract.
+  setToken('t');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal('sessionStorage', {
+    getItem: () => null,
+    removeItem: () => {},
+    clear: () => {},
+    setItem: () => {
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    },
+  });
+  const assign = vi.fn();
+  vi.stubGlobal('location', {
+    ...window.location,
+    set href(v: string) {
+      assign(v);
+    },
+  });
+
+  await expect(logout()).resolves.toBeUndefined();
+
+  expect(getToken()).toBeNull();
+  expect(assign).toHaveBeenCalledWith('/login');
 });

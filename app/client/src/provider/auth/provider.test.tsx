@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { useContext } from 'react';
+import { StrictMode, useContext } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { markLoggedOut } from '../../lib/logout';
@@ -207,6 +207,65 @@ describe('AuthProvider', () => {
     // The mark was armed, so no refresh may be attempted...
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('skips the bootstrap silent refresh under <StrictMode> too (dev double-invoke)', async () => {
+    // `main.tsx` wraps the app in <StrictMode>, so in development React runs
+    // every mount effect setup -> cleanup -> setup. The marker is consumed by
+    // the FIRST setup, so the second must not be able to fall through to a
+    // refresh just because the sessionStorage key is gone by then — otherwise
+    // the one behaviour §5.2 exists to guarantee is absent from every `npm run
+    // dev` session, which is where anyone would go to check it.
+    markLoggedOut();
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </StrictMode>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('re-arms under <StrictMode> as well: the latch is per-logout, not per-mount', async () => {
+    // The other half of the StrictMode contract. Suppressing the dev
+    // double-invoke must not be bought by disabling the re-arm the sibling
+    // test below pins — so run that exact scenario inside <StrictMode> too.
+    markLoggedOut();
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </StrictMode>
+    );
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    act(() => {
+      setToken(
+        makeJwt({
+          sub: 'u1',
+          username: 'alice',
+          isAdmin: false,
+          mustChangePassword: false,
+          exp: futureExp(),
+        })
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('username')).toHaveTextContent('alice'));
+
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    act(() => {
+      localStorage.removeItem('accessToken');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'accessToken', newValue: null }));
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/refresh', { method: 'POST' })
+    );
   });
 
   it('still performs the bootstrap refresh on the NEXT mount', async () => {

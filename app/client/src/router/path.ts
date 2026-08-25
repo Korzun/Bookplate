@@ -12,6 +12,3 @@ export const upload = () => pathInternal.upload();
 export const user = () => pathInternal.user();
 export const userList = () => pathInternal.userList();
 export const login = () => pathInternal.login();
-
-// Server
-export const cover = (bookId: string) => pathInternal.cover(encodeURIComponent(bookId));

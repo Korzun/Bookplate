@@ -4,13 +4,16 @@ import { useStyle } from './style';
 
 interface CoverProps {
   /**
-   * An already-scoped image URL (REST cover route, `?user=`/`v=` and any
-   * width already applied by the caller), or `null` to render a ghost
-   * placeholder. This component no longer builds that URL itself — see
-   * `component/cover-stack`'s doc comment for why: it now has two sources
-   * (a server-built `Book.thumbnailUrl` off GraphQL, and `coverUrl()` +
-   * `withTargetUser()` off REST), and picking between them is the caller's
-   * job, exactly the split `BookRow`/`BookRowFromEntry` already established.
+   * An already-scoped image URL — the REST cover route with `?user=`/`v=` and
+   * any width already applied — or `null` to render a ghost placeholder.
+   *
+   * This component never builds that URL. Since the GraphQL migration it does
+   * not need to: the URL arrives fully formed as `Book.thumbnailUrl`, built
+   * server-side, and the caller's only decision is `hasCover ? thumbnailUrl :
+   * null` (see `component/cover-stack`, the sole production caller). The
+   * client-side builder this prop used to co-exist with, `lib/cover-url.ts`,
+   * was deleted by step 10 — there is no second source left to pick between.
+   * `useAuthorizedSrc` below still turns the URL into an authorized blob.
    */
   src: string | null;
   title?: string;

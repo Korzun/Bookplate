@@ -15,6 +15,3 @@ export const series = (seriesName: string) => `/library/series/${seriesName}`;
 export const upload = () => '/upload';
 export const user = () => '/user';
 export const userList = () => '/users';
-
-// Server
-export const cover = (bookId: string) => `/api/books/${bookId}/cover`;
