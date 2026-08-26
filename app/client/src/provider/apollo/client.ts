@@ -31,10 +31,9 @@ const isSubscription = (operation: Parameters<ApolloLink['request']>[0]): boolea
  * cause.
  *
  * **Why the flag alone does nothing good.** This codebase's `useFragment` is
- * graphql-codegen's, not Apollo's. All 26 call sites (28 counting the two in
- * test files) import it from `~/gql`, and its generated implementation
- * (`src/gql/fragment-masking.ts`) is `return fragmentType as any` — a
- * compile-time identity cast. `dataMasking: true` strips the masked fields out
+ * graphql-codegen's, not Apollo's. All 26 call sites import it from `~/gql`,
+ * and its generated implementation (`src/gql/fragment-masking.ts`) is
+ * `return fragmentType as any` — a compile-time identity cast. `dataMasking: true` strips the masked fields out
  * of the query result, after which the cast faithfully returns the stripped
  * object and every colocated screen renders nothing. The flag removes the data;
  * nothing in this codebase puts it back.
@@ -44,15 +43,29 @@ const isSubscription = (operation: Parameters<ApolloLink['request']>[0]): boolea
  * real hook, a different signature (`{ fragment, from }`), and a
  * `{ data, complete }` return shape, so every consumer's null/loading branch
  * changes — plus `@unmask` on the spreads whose target type the cache can never
- * identify.
+ * identify. Two further calls live in test files
+ * (`component/user-register/index.test.tsx`,
+ * `lib/use-progress-mutations.test.tsx`) and would need converting for the
+ * suite to compile; they are not part of the 26 because they ship nothing.
  *
- * **COUNTING TRAP — audit alias-aware.** `useFragment` is imported under an
- * ALIAS in at least one file (`control/upload-replace-modal/use-replace-book.ts`
- * has `import { useFragment as unmaskFragment } from '~/gql'`), so a grep for
- * the literal `useFragment(` silently undercounts. That grep is exactly how the
- * figures above were first got wrong — it hid two of the five `MetadataFix`
- * sites, i.e. a third of the unmaskable surface. Any future audit must match
- * the aliased name too.
+ * **COUNTING TRAP — two ways to undercount these sites. Both have bitten.**
+ * A naive `grep "useFragment("` misses sites by NAME and by LINE SPAN, and the
+ * counts above were got wrong once by each:
+ *
+ *   1. ALIAS. `control/upload-replace-modal/use-replace-book.ts` has
+ *      `import { useFragment as unmaskFragment } from '~/gql'`, so a grep for
+ *      the literal name skips its two calls — a third of the unmaskable
+ *      surface, in a file whose spreads are `MetadataFix`.
+ *   2. MULTI-LINE. Four calls are formatted with the open paren ending the
+ *      line and the fragment argument on the next one:
+ *      `page/series/index.tsx:132` and
+ *      `provider/upload/hook/use-upload-queue.ts:448,452,456`. A pattern
+ *      expecting the argument on the SAME line drops all four silently —
+ *      three of them `MetadataFix`, i.e. half the unmaskable surface again.
+ *
+ * Match the aliased name AND allow the call to span lines. Two people
+ * undercounted this same figure by these two different mechanisms while
+ * writing this note, which is why both are recorded rather than just the one.
  *
  * **The fail-open hazard — structural, not a bug awaiting a fix.** Apollo's
  * `useFragment` against an object with no `id` returns
