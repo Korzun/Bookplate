@@ -24,6 +24,7 @@ import {
   SeriesNextIndexDocument,
 } from '~/graphql/library';
 import { stageUpload } from '~/lib/staged-upload';
+import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
 import { unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
@@ -129,37 +130,102 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
    * `provider/book` is gone. All three reads root on `node(id: $libraryId)`
    * — the only single root that serves both a non-admin's own library and an
    * admin's selected one — so each is SKIPPED until `useCurrentLibraryId`
-   * resolves, and `seriesLoading` folds that bootstrap round trip in: a
-   * skipped `useQuery` reports `loading: false` on its own, which would show
-   * the series Select as "loaded and empty" for the whole `ViewerBootstrap`
-   * window (a false "no series yet", not a corner case).
+   * resolves.
    *
    * Neither read surfaces an error to the user, matching the hooks they
    * replace: subjects and series names are optional editing *candidates*, so
    * a failure degrades to "no suggestions offered" rather than an error
    * state on a form whose real content loaded fine.
+   *
+   * **Both are LAZY (review round 1, Item 1).** They were eager, which meant
+   * every visit to /book-edit paid for suggestion data most visits never
+   * display. Neither feeds anything the form renders unconditionally — they
+   * feed two subtrees a user can choose not to see, which is exactly spec
+   * §3.4's second brake:
+   *
+   *   - `SeriesNames` (breadth 10, complexity 307) feeds the Select inside
+   *     `{isSeries && (…)}`. For a book with NO series — the common case —
+   *     that card body is closed on mount and the read is pure waste.
+   *   - `LibrarySubjects` (breadth 7) feeds `SubjectChips`' suggestion
+   *     dropdown, which `ChipsInput` only renders once the user has TYPED
+   *     into the field.
+   *
+   * These splits do not change any document's own cost (nothing was extracted
+   * from a document — see this task's report), so the `test:cost` table is
+   * identical before and after. What changes is how many operations a VISIT
+   * pays for, which is what the brake is about.
    */
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
   const libraryVariables = { libraryId: libraryId ?? '' };
   const skipLibraryRead = libraryId === undefined;
 
-  const { data: subjectsData } = useQuery(LibrarySubjectsDocument, {
-    variables: libraryVariables,
-    skip: skipLibraryRead,
-  });
-  const librarySubjects =
-    subjectsData?.node?.__typename === 'Library' ? subjectsData.node.subjects : [];
+  /**
+   * Gated on the LIVE switch state, not on `book.series` — deliberately.
+   * `isSeries` INITIALISES to `!!book.series`, so a book that already has a
+   * series still fetches on mount (its card body is open on first paint and
+   * the Select is immediately usable); a book without one fetches only when
+   * the user flips the switch on.
+   *
+   * No `usePrefetchOnIntent` on the switch: `Switch` (`~/control`) takes an
+   * explicit prop allow-list with no pointer handlers — the same limitation
+   * Task 7 recorded for `Button` in `PageActionsBar` — and wrapping it inside
+   * `Card`'s `headerAction` slot to hang handlers off would change that
+   * slot's layout to buy nothing here. Unlike Task 7's chapter names, which
+   * flashed an EMPTY slider, the Select renders an honest "Loading…" state
+   * (pinned by "keeps the series Select in its loading state…"), and the user
+   * must still click it open — a second interaction beat the fetch lands in.
+   */
+  const [isSeries, setIsSeries] = useState<boolean>(!!book.series);
+  const handleIsSeriesChange = useCallback((newIsSeries: boolean) => {
+    setIsSeries(newIsSeries);
+  }, []);
 
   const { data: seriesData, loading: seriesQueryLoading } = useQuery(SeriesNamesDocument, {
     variables: libraryVariables,
-    skip: skipLibraryRead,
+    skip: skipLibraryRead || !isSeries,
   });
   // Ordered as `Library.series` returns them — the server-computed sort key
   // that strips leading articles ("the", "a", "an") already lives server-side,
   // so this maps without reordering.
   const seriesOptions =
     seriesData?.node?.__typename === 'Library' ? seriesData.node.series.map((x) => x.name) : [];
+  // Folds `useCurrentLibraryId`'s own bootstrap round trip in: a SKIPPED
+  // `useQuery` reports `loading: false` on its own, which would show the
+  // Select as "loaded and empty" for the whole `ViewerBootstrap` window — a
+  // false "no series yet", not a corner case. `!seriesRead` covers the beat
+  // between flipping the switch on and the query being issued, which would
+  // otherwise show the same false empty.
   const seriesLoading = seriesQueryLoading || libraryIdLoading;
+
+  /**
+   * The two halves of the subjects split, the shape `page/book` established:
+   *
+   *   - `usePrefetchOnIntent` warms the cache on hover/focus/touch of the
+   *     subjects field (`intentProps` spread on the wrapper below), which
+   *     for a keyboard or pointer user happens strictly before any typing.
+   *   - the real `useQuery` un-skips on FOCUS, one committed interaction
+   *     later. Apollo dedupes the identical in-flight query, so the second
+   *     usually finds the first already arriving or cached.
+   *
+   * Focus, not typing, is the commit point: `ChipsInput` reveals its dropdown
+   * on the first keystroke, so waiting for the keystroke itself would race
+   * the render that needs the data. Focus always precedes it.
+   */
+  const [subjectsRequested, setSubjectsRequested] = useState(false);
+  const subjectsIntent = usePrefetchOnIntent(LibrarySubjectsDocument, libraryVariables, {
+    skip: skipLibraryRead,
+  });
+  const handleSubjectsFocus = useCallback(() => {
+    subjectsIntent.intentProps.onFocus();
+    setSubjectsRequested(true);
+  }, [subjectsIntent]);
+
+  const { data: subjectsData } = useQuery(LibrarySubjectsDocument, {
+    variables: libraryVariables,
+    skip: skipLibraryRead || !subjectsRequested,
+  });
+  const librarySubjects =
+    subjectsData?.node?.__typename === 'Library' ? subjectsData.node.subjects : [];
 
   const [runUpdate] = useMutation(BookUpdateMetadataDocument);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | undefined>();
@@ -204,11 +270,6 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
   const [publisher, setPublisher] = useState<string | undefined>(book.publisher);
   const handlePublisherChange = useCallback((newPublisher: string | undefined) => {
     setPublisher(newPublisher);
-  }, []);
-
-  const [isSeries, setIsSeries] = useState<boolean>(!!book.series);
-  const handleIsSeriesChange = useCallback((newIsSeries: boolean) => {
-    setIsSeries(newIsSeries);
   }, []);
 
   /**
@@ -559,7 +620,18 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
         </Card>
 
         <Card title="Subjects">
-          <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
+          {/* The intent handlers live on a wrapper rather than on
+              `SubjectChips`, so neither it nor `ChipsInput` (both shared
+              `~/control` components) grows a prop for one call site. React's
+              synthetic `mouseenter`/`focus` both reach an ancestor of the real
+              target, so hovering or tabbing into the field triggers them. */}
+          <div
+            {...subjectsIntent.intentProps}
+            onFocus={handleSubjectsFocus}
+            className={styles.subjects}
+          >
+            <SubjectChips value={subjects} suggestions={librarySubjects} onChange={setSubjects} />
+          </div>
         </Card>
 
         <Card title="Identifiers">

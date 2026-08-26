@@ -104,11 +104,13 @@ export const BookDeleteDocument = graphql(`
  * `validation` is spread through `ValidationFragment` rather than selected
  * inline: `Validation.id` is byte-identical to the owning Book's global id
  * server-side (`encodeGlobalID('Book', [userId, bookId])` — see
- * `BookValidationDocument`'s doc comment above), so this payload normalizes
+ * `BookValidationDocument`'s doc comment, now in `page/book/query.ts`), so
+ * this payload normalizes
  * onto the SAME `Book`/`Validation` cache entities `BookDetailDocument` and
  * `BookValidationDocument` already read. No hand-written `update` function:
- * Apollo's own normalization does the work, asserted in
- * `use-validate-book.test.tsx` rather than reconstructed here.
+ * Apollo's own normalization does the work, asserted in `page/book`'s own
+ * test ("writes the fresh validation onto the book via normalization, with no
+ * manual update") rather than reconstructed here.
  */
 export const BookValidateDocument = graphql(`
   mutation BookValidate($id: ID!) {
@@ -169,8 +171,8 @@ export const BookRegenChaptersDocument = graphql(`
  * branch. `book { id deviceEditionCount }` re-selects the one field REST's
  * `clear editions` response updated, so Apollo's own normalization writes
  * the new `deviceEditionCount` onto the existing `Book` entity with no
- * hand-written `update` function — asserted in
- * `use-clear-book-editions.test.tsx`.
+ * hand-written `update` function — asserted in `page/book`'s own test
+ * ("zeroes deviceEditionCount in the cache with no hand-written update").
  */
 export const BookClearEditionsDocument = graphql(`
   mutation BookClearEditions($id: ID!) {

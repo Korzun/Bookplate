@@ -242,7 +242,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
 
   // The upload lands over XHR, so there is no mutation payload for Apollo to
   // reconcile from — the invalidation has to be explicit. Same field-level
-  // eviction `use-delete-book` performs, and for the same reason: the new
+  // eviction `page/book`'s delete performs, and for the same reason: the new
   // book's position in a sorted, filtered, paginated connection is the
   // server's to decide, so the only correct move is to drop the stored
   // connection and let the next read miss.

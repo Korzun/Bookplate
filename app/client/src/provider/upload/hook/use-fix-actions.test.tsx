@@ -33,7 +33,8 @@ const ENTRIES_VARS: LibraryEntriesQueryVariables = {
   filter: undefined,
 };
 
-// Deliberately UNANNOTATED — see `use-scan-library.test.tsx`'s identical
+// Deliberately UNANNOTATED — see
+// `component/scan-library-setting/use-scan-library.test.tsx`'s identical
 // `seededBook` comment: `LibraryEntriesQuery`'s `Book` node member is
 // masked, so an explicitly typed literal here fails `tsc`'s excess-property
 // check.
@@ -82,7 +83,7 @@ const okPayload = (bookId: string = BOOK_GID) => ({
  * (rather than, say, a grid edge) also reproduces the exact reason
  * `cache.gc()` alone is NOT enough — that field keeps a REFERENCE to the old
  * entity alive, so the orphan is never collected and must be evicted by id.
- * Mirrors `use-update-book-metadata.test.tsx`'s `seedBook`. */
+ * Mirrors `component/book-edit-form/index.test.tsx`'s `seedBook`. */
 const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id: string) =>
   client.writeQuery({
     query: BookEditDocument,
@@ -330,8 +331,8 @@ describe('useFixActions', () => {
   // entity would otherwise linger with stale metadata — and `cache.gc()`
   // cannot collect it while a `Library.book(id:)` field from a prior /book
   // or /book-edit visit still references it. Same behaviour
-  // `use-update-book-metadata.ts` and `use-regen-chapters.ts` already have
-  // on the identical `applyEpubChanges` path.
+  // `component/book-edit-form`'s save and `page/book`'s regen handler
+  // already have on the identical `applyEpubChanges` path.
   it('evicts the old Book entity when ACCEPT rotates the id', async () => {
     const { result, client } = renderHookWithApollo(() => useFixActions(), [acceptRotatingMock]);
     act(() => seedBook(client, BOOK_GID));

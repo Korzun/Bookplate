@@ -419,9 +419,9 @@ describe('UploadPage — Accept all / Reject all', () => {
 
     // `delay: 20` keeps the mutation "in flight" for a beat — long enough to
     // observe the locked state before it resolves — matching this codebase's
-    // established `delay: 20` idiom for exactly this kind of assertion (see
-    // e.g. `use-update-book-metadata.test.tsx`'s "sets saving true during the
-    // request" test). The disabling itself happens synchronously on click
+    // established in-flight-delay idiom for exactly this kind of assertion
+    // (see e.g. `page/book/index.test.tsx`'s "disables Regen chapters while a
+    // regen is still in flight"). The disabling itself happens synchronously on click
     // (React state, not a network round trip), so no manual gate is needed.
     renderWithApollo(
       <UploadProvider>

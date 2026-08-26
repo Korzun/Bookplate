@@ -15,7 +15,7 @@ import { useCurrentLibraryId } from '~/provider/library-target';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
 // the call, so it is named explicitly here, extracted from the generated
-// union rather than hand-duplicated — same shape as `use-update-book-metadata.ts`.
+// union rather than hand-duplicated — same shape as `component/book-edit-form`'s save.
 type BookAnalyzeReplacePayload = Extract<
   NonNullable<BookAnalyzeReplaceMutation['bookAnalyzeReplace']>,
   { __typename: 'BookAnalyzeReplacePayload' }
@@ -66,7 +66,7 @@ const toMetadataFix = (f: {
 /**
  * Replaces a book's underlying EPUB file over GraphQL via the sanctioned
  * staging seam (`~/lib/staged-upload`, the same pattern step 7 established
- * for staged covers in `use-update-book-metadata.ts`): file bytes have no
+ * for staged covers in `component/book-edit-form`'s save): file bytes have no
  * GraphQL transport, so `analyzeReplacement` posts the file to the REST
  * staging endpoint FIRST and only then calls `bookAnalyzeReplace` with the
  * resolved `stagedUploadId`.

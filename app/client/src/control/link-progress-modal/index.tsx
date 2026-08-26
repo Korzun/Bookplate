@@ -133,8 +133,8 @@ const DEBOUNCE_MS = 200;
  *
  *     The fix ADDS a FIELD-level evict alongside the existing entity-level
  *     one — the same TWO-evictions shape `page/book`'s delete already uses for
- *     the identical reason (`use-delete-book.ts`'s doc comment, points 1
- *     and 2: evict the now-gone entity itself, AND evict the owning
+ *     the identical reason (`page/book/index.tsx`'s `handleDeleteConfirm`
+ *     doc comment, points 1 and 2: evict the now-gone entity itself, AND evict the owning
  *     connection field when the entity's removal has a side effect the
  *     connection can't self-heal from). The entity evict here still
  *     matters on its own — it drops the stale `Progress:<progressId>`

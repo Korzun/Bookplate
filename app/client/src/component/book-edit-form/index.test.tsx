@@ -403,11 +403,15 @@ describe('BookEditForm', () => {
   it('stays on the form and shows a cover-specific message when staging the cover fails', async () => {
     mockStage.mockRejectedValue(new Error('No file uploaded'));
     const user = userEvent.setup();
-    // NO save mock: `MockLink` throws on an unmatched operation, so a mutation
-    // fired despite the staging failure would surface loudly rather than pass
-    // silently. That is what makes this test's "never fires" half real.
+    // A WORKING save mock is supplied, and the "never fires" half is asserted
+    // on `counters.save` — the request-time counter — NOT on the absence of a
+    // mock. An unmatched operation is NOT loud: `MockLink` rejects it and
+    // Apollo swallows the rejection into the hook's `error` state, so a
+    // mock-less version of this test would pass whether or not the mutation
+    // fired. (That mistaken belief is what produced two unfalsifiable tests
+    // earlier in this same task — see the report's review round.)
     const { container } = renderWithApollo(<BookEditForm book={book()} />, {
-      mocks: baseMocks(),
+      mocks: [...baseMocks(), saveMock(updatePayload(), { stagedCoverId: 'staged-1' })],
     });
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -417,13 +421,15 @@ describe('BookEditForm', () => {
     const message = await screen.findByText("Couldn't upload the cover image");
     expect(message).toBeInTheDocument();
     expect(screen.queryByText("Couldn't save your changes")).toBeNull();
+    expect(counters.save).toBe(0);
     expect(navigate).not.toHaveBeenCalled();
   });
 
   // Ordering, not mere co-occurrence: the staged id cannot exist before
   // staging, so a mutation carrying `stagedCoverId: 'staged-1'` proves the
-  // sequence. `MockLink` would reject the operation outright if the input
-  // lacked it.
+  // sequence. The `order` array is the load-bearing assertion — an input
+  // missing the staged id would simply fail to match and be swallowed into
+  // Apollo's `error` state, not throw.
   it('stages the cover then saves, passing the staged id into the mutation', async () => {
     const order: string[] = [];
     mockStage.mockImplementation(async () => {
@@ -699,18 +705,114 @@ describe('library reads', () => {
     expect(await screen.findByText('Edit Metadata — Original Title')).toBeInTheDocument();
   });
 
+  // -------------------------------------------------------------------------
+  // The two lazy splits (review round 1, Item 1). Both counters increment
+  // inside `MockLink`'s variable matcher — synchronously, in the same tick the
+  // operation is issued — so a read that leaked back to eager has already
+  // counted before the first `await` resolves and these fail CLOSED.
+  // -------------------------------------------------------------------------
+  const subjectsInput = () => screen.getByPlaceholderText('Add subject…');
+
+  describe('lazy splits', () => {
+    it('does not fetch series names for a book with no series', async () => {
+      renderWithApollo(<BookEditForm book={book({ series: null })} />, { mocks: baseMocks() });
+
+      await screen.findByText('Edit Metadata — Original Title');
+      expect(counters.series).toBe(0);
+    });
+
+    it('fetches series names when the Series switch is turned on', async () => {
+      const user = userEvent.setup();
+      renderWithApollo(<BookEditForm book={book({ series: null })} />, { mocks: baseMocks() });
+
+      await screen.findByText('Edit Metadata — Original Title');
+      await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+
+      // No false-empty flash: the Select reports the in-flight read rather
+      // than rendering as "loaded with no series" for the beat between the
+      // switch flip and the response.
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+
+      await waitFor(() => expect(counters.series).toBe(1));
+      // …and the names actually reach the Select, so this cannot pass on a
+      // request that fires but never lands.
+      await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+      await user.click(screen.getByRole('button', { name: 'Select…' }));
+      expect(await screen.findByRole('option', { name: 'Dune' })).toBeInTheDocument();
+    });
+
+    // The other half, and the one that makes the gate `isSeries` rather than
+    // `book.series`: a book that ALREADY has a series opens its card on first
+    // paint, so the Select must be usable without a second interaction.
+    it('fetches series names on mount for a book that already has a series', async () => {
+      renderWithApollo(
+        <BookEditForm
+          book={book({
+            series: { __typename: 'Series', id: 'U2VyaWVzOjE=', name: 'Dune' },
+            seriesIndex: 1,
+          })}
+        />,
+        { mocks: baseMocks() }
+      );
+
+      await waitFor(() => expect(counters.series).toBe(1));
+    });
+
+    it('does not fetch library subjects until the subjects field is touched', async () => {
+      renderWithApollo(<BookEditForm book={book()} />, { mocks: baseMocks() });
+
+      await screen.findByText('Edit Metadata — Original Title');
+      expect(counters.subjects).toBe(0);
+    });
+
+    // The COMMITTED half of the subjects split — focus un-skips the real
+    // `useQuery` — is pinned by `offers Library.subjects as subject
+    // suggestions` above, which drives focus → type → dropdown and so fails
+    // if the read never lands. A separate "fires on focus" counter test was
+    // written here and DELETED: `counters.subjects` cannot tell the prefetch
+    // apart from the committed read (both issue the same operation), so it
+    // went green under a mutation that killed the `useQuery` outright.
+
+    // Prefetch on intent: hovering the field warms the cache BEFORE the focus
+    // that commits. Asserted with no focus and no typing at all, so it cannot
+    // be satisfied by the real `useQuery` un-skipping.
+    it('prefetches library subjects on hover of the subjects field, before any focus', async () => {
+      const user = userEvent.setup();
+      renderWithApollo(<BookEditForm book={book()} />, { mocks: baseMocks() });
+
+      await screen.findByText('Edit Metadata — Original Title');
+      await user.hover(subjectsInput());
+
+      await waitFor(() => expect(counters.subjects).toBe(1));
+      expect(subjectsInput()).not.toHaveFocus();
+      expect(screen.queryByRole('option')).toBeNull();
+    });
+  });
+
   describe('library id gate', () => {
     // With NO library id there is nothing to root `node(id:)` on. Asserted on
     // the REQUEST-time counters, not on the absence of a mock: an unmatched
     // operation is swallowed into Apollo's `error` state and the form renders
     // regardless, so "no mocks supplied" alone would pass vacuously.
+    //
+    // BOTH reads are explicitly ASKED FOR first — the Series switch flipped
+    // on, the subjects field focused — so their own lazy gates are open and
+    // the library-id gate is the only thing left holding them back. Without
+    // that, this test would pass on the lazy gates alone and could not fail
+    // when `skipLibraryRead` is removed.
     it('issues no read while there is no library id to root on', async () => {
       currentLibraryId = undefined;
+      const user = userEvent.setup();
       renderWithApollo(<BookEditForm book={book()} />, { mocks: baseMocks() });
 
       expect(await screen.findByText('Edit Metadata — Original Title')).toBeInTheDocument();
-      expect(counters.subjects).toBe(0);
+      await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+      act(() => subjectsInput().focus());
+
       expect(counters.series).toBe(0);
+      // Covers the prefetch's own `skip` too — `usePrefetchOnIntent` fires on
+      // that same focus and would otherwise issue the operation itself.
+      expect(counters.subjects).toBe(0);
     });
 
     // A SKIPPED `useQuery` reports `loading: false` on its own. Without
