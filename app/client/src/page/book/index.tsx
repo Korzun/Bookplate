@@ -156,15 +156,24 @@ export const BookPage = () => {
    * skipped hook cannot fetch even if a later refactor stops unmounting the
    * modal, and it is what the "does not fetch until the modal opens" tests
    * pin.
+   *
+   * **Both `error`s are forwarded, not discarded.** Before the split, a
+   * failure to read `lineage` was a failed PAGE load ("Failed to load
+   * book."). Split out and defaulted (`?? []`), the same failure would
+   * instead render `BookLineageModal`'s EMPTY-lineage presentation — the
+   * page asserting "this book has no edit history" when the truth is "we
+   * could not find out". Empty is a meaningful answer there, so the two
+   * must look different; each modal owns that distinction through its own
+   * `error`/`chaptersError` prop.
    */
-  const { data: chaptersData } = useQuery(BookChaptersDocument, {
+  const { data: chaptersData, error: chaptersError } = useQuery(BookChaptersDocument, {
     variables,
     skip: !progressModalOpen || libraryId === undefined,
   });
   const chaptersNode = chaptersData?.node;
   const chapters = chaptersNode?.__typename === 'Library' ? chaptersNode.book : null;
 
-  const { data: lineageData } = useQuery(BookLineageDocument, {
+  const { data: lineageData, error: lineageError } = useQuery(BookLineageDocument, {
     variables,
     skip: !lineageModalOpen || libraryId === undefined,
   });
@@ -456,6 +465,7 @@ export const BookPage = () => {
           // which the hover prefetch usually removes entirely.
           chapterSpineMap={chapters?.chapterSpineMap}
           chapterNames={chapters?.chapterNames ?? []}
+          chaptersError={chaptersError?.message}
           onClose={() => setProgressModalOpen(false)}
         />
       )}
@@ -470,6 +480,7 @@ export const BookPage = () => {
           // oldest-row fallback timestamp.
           lineage={lineageBook?.lineage ?? []}
           addedAt={lineageBook?.addedAt ? new Date(lineageBook.addedAt).getTime() : undefined}
+          error={lineageError?.message}
           onClose={() => setLineageModalOpen(false)}
         />
       )}

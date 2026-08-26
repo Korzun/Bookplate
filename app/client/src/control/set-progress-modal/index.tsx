@@ -34,6 +34,23 @@ type SetProgressModalProps = {
   initialChapter: number;
   chapterSpineMap?: number[];
   chapterNames?: string[];
+  /**
+   * Set when the LAZY `BookChaptersDocument` read failed (`page/book`
+   * forwards `useQuery`'s own `error?.message`). The milder half of the
+   * same gap the lineage modal's `error` prop closes: `chapterNames` and
+   * `chapterSpineMap` both default harmlessly, so a failed read leaves a
+   * permanently unlabeled chapter and an evenly-spaced slider with nothing
+   * saying why.
+   *
+   * Deliberately NOT folded into `hasError` below. `hasError` gates the
+   * auto-close effect (`if (!hasError) onClose()`), so folding a LOAD
+   * failure in would leave the modal stuck open after a perfectly
+   * successful save. It is also genuinely non-blocking: `percentage` is
+   * derived from `chapterCount`, which stays EAGER on `BookDetail`, so
+   * progress saves correctly with no chapter data at all — which is why
+   * the copy says so rather than disabling anything.
+   */
+  chaptersError?: string;
   onClose: () => void;
 };
 
@@ -45,6 +62,7 @@ export function SetProgressModal({
   initialChapter,
   chapterSpineMap = [],
   chapterNames = [],
+  chaptersError,
   onClose,
 }: SetProgressModalProps) {
   const styles = useStyle();
@@ -149,6 +167,11 @@ export function SetProgressModal({
             onDragChange={setIsSliderDragging}
           />
         </div>
+        {chaptersError !== undefined && (
+          <div className={styles.error}>
+            Couldn&rsquo;t load chapter names. Progress can still be saved.
+          </div>
+        )}
         {hasError && (
           <div className={styles.error}>
             {errorText ?? 'Something went wrong. Please try again.'}
