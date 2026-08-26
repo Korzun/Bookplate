@@ -31,27 +31,36 @@ const isSubscription = (operation: Parameters<ApolloLink['request']>[0]): boolea
  * cause.
  *
  * **Why the flag alone does nothing good.** This codebase's `useFragment` is
- * graphql-codegen's, not Apollo's. Every one of the ~24 call sites imports it
- * from `~/gql`, and its generated implementation
+ * graphql-codegen's, not Apollo's. All 26 call sites (28 counting the two in
+ * test files) import it from `~/gql`, and its generated implementation
  * (`src/gql/fragment-masking.ts`) is `return fragmentType as any` — a
  * compile-time identity cast. `dataMasking: true` strips the masked fields out
  * of the query result, after which the cast faithfully returns the stripped
  * object and every colocated screen renders nothing. The flag removes the data;
  * nothing in this codebase puts it back.
  *
- * **What adopting it would actually take.** Converting all ~24 sites to
+ * **What adopting it would actually take.** Converting all 26 sites to
  * Apollo's own `useFragment` (`@apollo/client/react`) — a DIFFERENT function: a
  * real hook, a different signature (`{ fragment, from }`), and a
  * `{ data, complete }` return shape, so every consumer's null/loading branch
  * changes — plus `@unmask` on the spreads whose target type the cache can never
  * identify.
  *
+ * **COUNTING TRAP — audit alias-aware.** `useFragment` is imported under an
+ * ALIAS in at least one file (`control/upload-replace-modal/use-replace-book.ts`
+ * has `import { useFragment as unmaskFragment } from '~/gql'`), so a grep for
+ * the literal `useFragment(` silently undercounts. That grep is exactly how the
+ * figures above were first got wrong — it hid two of the five `MetadataFix`
+ * sites, i.e. a third of the unmaskable surface. Any future audit must match
+ * the aliased name too.
+ *
  * **The fail-open hazard — structural, not a bug awaiting a fix.** Apollo's
  * `useFragment` against an object with no `id` returns
  * `{ data: {}, complete: true }`: empty data, REPORTED COMPLETE, no error and
- * no warning. `MetadataFix` (spread at `provider/upload/hook/use-upload-queue.ts`,
- * 3 sites) and `LinkedDocument` (`control/book-lineage-modal`, 1 site) have no
- * `id` in the SDL — `MetadataFix`'s own schema doc says it is "a detected issue,
+ * no warning. `MetadataFix` (5 spread sites across TWO files:
+ * `provider/upload/hook/use-upload-queue.ts` and
+ * `control/upload-replace-modal/use-replace-book.ts`) and `LinkedDocument`
+ * (`control/book-lineage-modal`, 1 site) have no `id` in the SDL — `MetadataFix`'s own schema doc says it is "a detected issue,
  * regenerated per import, not a stored entity" — so they can NEVER be
  * normalized and this is permanent for them. Note that no test can catch it by
  * mutation: such a test does not stop discriminating a mutation, it stops
