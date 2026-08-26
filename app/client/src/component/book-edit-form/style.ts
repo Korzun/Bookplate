@@ -19,4 +19,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
+  // Purely a hook for the subjects prefetch handlers (`index.tsx`) — it must
+  // generate NO box of its own, or it would become a second block between the
+  // Subjects card body and `SubjectChips` and change that card's spacing.
+  // `display: contents` keeps the DOM node (so React can dispatch
+  // hover/focus to it) without laying it out.
+  subjects: {
+    display: 'contents',
+  },
 }));

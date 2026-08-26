@@ -10,7 +10,7 @@ import { usePendingFixes } from './use-pending-fixes';
 
 const LIBRARY_ID = 'LIB-1';
 
-// Same stub convention `use-book-validation.test.tsx` and
+// Same stub convention `page/book/index.test.tsx` and
 // `use-library-entries.test.tsx` use: `useCurrentLibraryId` is mocked
 // directly rather than exercised through a real `ViewerBootstrapDocument` +
 // `LibraryTargetProvider` stack, keeping these tests focused on

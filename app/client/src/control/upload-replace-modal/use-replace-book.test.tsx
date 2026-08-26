@@ -19,7 +19,7 @@ import { renderHookWithApollo } from '~/test-utils';
 
 import type { ReplacedBook } from './use-replace-book';
 
-// Same convention `use-update-book-metadata.test.tsx` uses: mock the named
+// Same convention `component/book-edit-form/index.test.tsx` uses: mock the named
 // export so `mockStage` can assert call counts/args without hitting the real
 // REST staging seam.
 vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));
@@ -36,7 +36,7 @@ const LIBRARY_ID = 'TGlicmFyeTox';
 
 // `BookReplacePayload` carries only `book` — no `library { id }` the way
 // `BookDeletePayload` does — so the hook resolves the library to evict from
-// `useCurrentLibraryId()`. Same stub `use-update-book-metadata.test.tsx`
+// `useCurrentLibraryId()`. Same stub `component/book-edit-form/index.test.tsx`
 // uses for the identical reason.
 vi.mock('~/provider/library-target', () => ({
   useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
@@ -47,7 +47,7 @@ const ENTRIES_VARS = { libraryId: LIBRARY_ID, first: 20, filter: undefined };
 // Deliberately UNANNOTATED — `LibraryEntriesQuery`'s `Book` node member is
 // masked behind `BookRowFragment`'s `$fragmentRefs`, so an explicitly typed
 // literal fails `tsc`'s excess-property check. Same idiom as
-// `use-update-book-metadata.test.tsx`'s `bookRowNode`.
+// `component/book-edit-form/index.test.tsx`'s `bookRowNode`.
 const bookRowNode = (id: string) => ({
   __typename: 'Book' as const,
   id,
@@ -344,7 +344,7 @@ describe('useReplaceBook', () => {
       expect(readEntries(client)).toBeNull();
     });
 
-    // Same `applyEpubChanges`-style id rotation `use-update-book-metadata.ts`
+    // Same `applyEpubChanges`-style id rotation `component/book-edit-form`'s save
     // and `use-fix-actions.ts` handle: normalization writes a brand-new
     // `Book:<newId>` and cannot know the old entity described the same book,
     // and `cache.gc()` cannot collect the orphan while a `Library.book(id:)`

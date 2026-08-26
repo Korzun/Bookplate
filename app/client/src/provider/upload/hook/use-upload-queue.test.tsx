@@ -140,7 +140,7 @@ const pendingFixesMockFor = (bookGid: string, fixId?: string): PendingFixesMock 
 // `entriesMock`'s `node` field below sidesteps that check entirely — excess
 // properties are only flagged on a literal checked directly against its
 // target type, not on a pre-inferred variable reference. Same idiom
-// `use-delete-book.test.tsx`'s `standaloneBook` uses.
+// `page/book/index.test.tsx`'s `standaloneRow` uses.
 const seededBookNode = {
   __typename: 'Book' as const,
   id: 'SEEDED-BOOK',

@@ -120,8 +120,8 @@ export const useFixActions = (): UseFixActions => {
             // oldGid)` field written by any prior /book or /book-edit visit
             // still REFERENCES the orphan, so it is reachable and never
             // collected. Same branch, same reason, as
-            // `use-update-book-metadata.ts` and `use-regen-chapters.ts` on
-            // this identical `applyEpubChanges` path (review I-2).
+            // `component/book-edit-form`'s save and `page/book`'s regen
+            // handler on this identical `applyEpubChanges` path (review I-2).
             if (result.payload.book.id !== id) {
               cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
             }

@@ -34,7 +34,7 @@ const ENTRIES_VARS: LibraryEntriesQueryVariables = {
 // explicitly typed literal here fails `tsc`'s excess-property check on
 // `id`/`title`/etc. Letting this infer, then passing it through
 // `seedLibraryEntries` below via a variable reference (not a literal),
-// sidesteps that check — same idiom `use-delete-book.test.tsx`'s
+// sidesteps that check — same idiom `page/book/index.test.tsx`'s
 // `standaloneBook` uses.
 const seededBook = {
   __typename: 'Book' as const,
@@ -53,7 +53,7 @@ const seededBook = {
  * status arrives over the SAME kind of timer-scheduled mock response, and
  * whichever timer fires first is not guaranteed. Seeding synchronously
  * before any `await` yields to the event loop sidesteps the race entirely —
- * same idiom as `use-delete-book.test.tsx`'s `seedLibraryEntries`. */
+ * same idiom as `page/book/index.test.tsx`'s `seedLibraryEntries`. */
 const seedLibraryEntries = (client: ReturnType<typeof renderWithApollo>['client']) =>
   client.writeQuery({
     query: LibraryEntriesDocument,

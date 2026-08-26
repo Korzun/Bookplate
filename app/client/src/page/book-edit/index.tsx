@@ -37,17 +37,19 @@ import { useStyle } from './style';
  * are the ones the ROUTE reads and the form never sees: `id` (the guard's
  * dismiss target), `validation` (the edit gate) and `pendingFix` (the guard).
  *
- * **Cost (`npm run test:cost -w app/server`): breadth 46 → 39.** Three
- * changes, measured together:
- *   - `documentId` removed — selected before Task 8, rendered by nothing.
+ * **Cost (`npm run test:cost -w app/server`): breadth 46 (46.0%) → 40
+ * (40.0%), complexity 46 → 40.** MEASURED, not estimated — three changes,
+ * measured together:
+ *   - `documentId` removed — selected before Task 8, rendered by nothing: −1.
  *   - `pendingFix.state.proposals` trimmed from the full 8-field
- *     `MetadataFix` shape to `{ to }` alone. The guard below is the ONLY
+ *     `MetadataFix` shape to `{ to }` alone: −7. The guard below is the ONLY
  *     reader, and all it asks is whether any remaining proposal has a
- *     concrete `to`; the modal it gates takes no data props at all. Worth 7
- *     breadth on every visit to this route.
- *   - `...BookEditFormFragment` costs +1 (codegen injects `__typename` both
- *     into the spread and into the wrapping selection set, and the cost
- *     walker counts both — spec §4.0).
+ *     concrete `to`; the modal it gates takes no data props at all.
+ *   - `...BookEditFormFragment`: **+2**, not the +1 spec §4.0 predicts.
+ *     Codegen injects `__typename` both into the spread and into the
+ *     wrapping selection set and the cost walker counts both; here it lands
+ *     at +2. If you change this document, re-measure rather than deriving
+ *     from §4.0's figure.
  *
  * One consequence of the `proposals` trim, recorded because it is invisible
  * otherwise: this document now writes a PARTIAL `MetadataFix` into the shared

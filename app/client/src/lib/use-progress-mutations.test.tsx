@@ -413,7 +413,7 @@ describe('useSetMyProgress', () => {
     // `edge.node`'s TYPE is masked (fields live behind `$fragmentRefs`, per
     // this codebase's compile-time-only masking) even though nothing strips
     // them at runtime — `useFragment` is the identity-cast unmask, the same
-    // idiom `use-book-validation.test.tsx` uses to read a masked field back.
+    // idiom `page/book/index.test.tsx` uses to read a masked field back.
     const row = useFragment(ProgressRowFragment, edges?.[0]?.node);
     expect(row?.percentage).toBe(0.75);
     expect(row?.currentChapter).toBe(5);
