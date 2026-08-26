@@ -23,12 +23,12 @@ const LIBRARY_ID = 'TGlicmFyeTox';
 let isAdminValue = false;
 vi.mock('~/provider/auth', () => ({ useIsAdmin: () => [isAdminValue] }));
 
-// `useSeriesDetail` roots its query at `node(id: $libraryId)`, learned from
+// `SeriesPage` roots its query at `node(id: $libraryId)`, learned from
 // `useCurrentLibraryId` (`~/provider/library-target`), which itself runs an
 // unconditional `ViewerBootstrap` query — stubbing it directly (rather than
 // adding a bootstrap mock to every `mocks` array below) keeps these tests
 // focused on `SeriesDetailDocument` alone, matching
-// `use-series-detail.test.tsx`'s own convention.
+// `page/library/index.test.tsx`'s own convention.
 vi.mock('~/provider/library-target', () => ({
   useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
 }));
@@ -193,7 +193,18 @@ describe('SeriesPage', () => {
   // query drives BOTH rows, not just the single-book fixture every other
   // test in this file uses (which would pass even if only the first edge
   // were ever wired through).
-  it('renders two book rows from the route-composed query', async () => {
+  //
+  // Order-sensitive (Task 5b review, Item 5), not presence-only:
+  // `page/series/index.tsx` reshapes `series.books.edges` into `edge.node`
+  // TWICE — once for `unmaskedBooks` (the React key source, `:132`), once
+  // for the render itself (`:248`) — and nothing but both reading the SAME
+  // `edges` array in the SAME order keeps `unmaskedBooks[index]` aligned
+  // with the row actually rendered at that index. A future change to only
+  // ONE of those two reshapes (e.g. filtering one but not the other) would
+  // desync them silently: rows would still all be PRESENT, just keyed to
+  // the wrong book past the point of divergence, which a presence-only
+  // assertion cannot see but a DOM-order assertion can.
+  it('renders two book rows, in order, from the route-composed query', async () => {
     const { findByText, getByText } = await renderPage([
       seriesMock({}, [
         { id: 'gid-book-1', title: 'A Wizard of Earthsea', seriesIndex: 1 },
@@ -202,7 +213,44 @@ describe('SeriesPage', () => {
     ]);
 
     await findByText('A Wizard of Earthsea');
-    expect(getByText('The Tombs of Atuan')).toBeInTheDocument();
+    const firstTitle = getByText('A Wizard of Earthsea');
+    const secondTitle = getByText('The Tombs of Atuan');
+    expect(
+      firstTitle.compareDocumentPosition(secondTitle) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  // Task 5b review, Item 2: the deleted `use-series-detail.test.tsx` carried
+  // a CHECKED-IN `@ts-expect-error` proving `series.books` stayed a MASKED
+  // ref, never unmasked centrally — that pin died with the hook. This
+  // restores the same mechanism at the route: reads the query straight out
+  // of the cache the way the app itself does, so the object is real data,
+  // not a fabricated fixture.
+  it('keeps series.books.edges[].node MASKED — the route must not unmask centrally', async () => {
+    const { client, findByText } = await renderPage([seriesMock()]);
+    await findByText('Earthsea');
+
+    const cached = client.cache.readQuery({
+      query: SeriesDetailDocument,
+      variables: { libraryId: LIBRARY_ID, name: 'Earthsea' },
+    });
+    const seriesNode =
+      cached?.node?.__typename === 'Library' ? cached.node.seriesByName : undefined;
+    const book = seriesNode?.books.edges[0]?.node;
+
+    // Masking in this codebase is a TYPE-level contract only —
+    // `gql/fragment-masking.ts`'s generated `useFragment` is a plain
+    // identity cast, and this app's `ApolloClient` never sets Apollo's real
+    // `dataMasking` option — so the object the cache hands back still HAS
+    // `title` at runtime, and the assertion below passes for real. The line
+    // compiles only because `@ts-expect-error` is suppressing a real type
+    // error: if `page/series/index.tsx` ever reshapes `series.books.edges`
+    // into a plain object (defeating colocation — see that file's own doc
+    // comment) and widens the node's declared type to something with a real
+    // `.title`, this starts failing with "Unused '@ts-expect-error'
+    // directive" under `tsc` (`npm run lint`).
+    // @ts-expect-error — `title` isn't readable on a masked ref without `useFragment`.
+    expect(book?.title).toBe('A Wizard of Earthsea');
   });
 
   it("navigates to the author's filtered library view on click", async () => {

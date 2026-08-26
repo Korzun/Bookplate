@@ -24,12 +24,13 @@ interface CoverStackProps {
  * - `SeriesRow` (the library grid) reads `Series.books(first: 3)` off
  *   `SeriesRowFragment` (`component/series-row/index.tsx`) and maps each node directly —
  *   same pattern `BookRowFromEntry` already uses for the grid's book rows.
- * - `page/series` reads `useSeriesDetail`'s `series.books` (masked
- *   `SeriesBookRowFragment` refs, `graphql/series.ts`), unmasks the whole
- *   list in one `useFragment(SeriesBookRowFragment, ...)` call (its own
- *   array overload — see `page/series/index.tsx`'s doc comment for why that
- *   beats unmasking per-item in a `.map()`), and slices the first 3 off the
- *   unmasked result.
+ * - `page/series` reads `SeriesDetailDocument`'s `series.books.edges`
+ *   (masked `SeriesBookRowFragment` refs — that fragment is declared on
+ *   `component/book-row/from-series-book.tsx`, not read through a hook),
+ *   unmasks the whole list in one `useFragment(SeriesBookRowFragment, ...)`
+ *   call at `page/series/index.tsx` (its own array overload — see that
+ *   file's doc comment for why that beats unmasking per-item in a `.map()`),
+ *   and slices the first 3 off the unmasked result.
  *
  * Before this split, this component called `useSeriesBookList` directly —
  * the SAME hook whose whole-list REST fetch was capped at 20 entries with

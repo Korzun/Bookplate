@@ -23,23 +23,35 @@ import { UserProgressRow } from './index';
 // state + the `libraryId`/`progressId` props it passes).
 //
 // Deliberately NOT `importOriginal()` (an earlier version of this mock did):
-// `~/control`'s barrel re-exports `SetProgressModal`
-// (`control/set-progress-modal`), which imports `useSetMyProgress`/
-// `useDeleteProgress` from `~/provider/library` — a chain that reaches
-// `~/provider/library-target` (via `use-library-entries.ts`), which reaches
-// `component/user-row` (via `use-with-target-user.ts`'s `UserRowFragment`
-// import — a pre-existing, KEPT-provider layering choice, out of this
-// task's scope to restructure), which reaches THIS component's own family
-// (`user-row-content` -> `user-progress-row` -> `my-progress-row`) — a
-// genuine circular import back to `~/control` itself. `importOriginal()`
-// forces that whole real subtree to resolve before the mock settles, and
-// Vitest's module cache ends up binding this row's OWN `~/control` import
-// to the REAL (unmocked) module instead — this row's `LinkProgressModal`
-// then renders for real, and "opens the link modal when Link is clicked"
-// fails because the stub text never appears (seen-to-fail: restoring
-// `importOriginal()` reproduces this exact failure). `Button`/`ConfirmModal`
-// are pulled from their own leaf subpaths instead — neither imports
-// `~/provider/library` or anything else that could re-enter this cycle.
+// at the time this was diagnosed, `~/control`'s barrel re-exported
+// `SetProgressModal` (`control/set-progress-modal`), which imported
+// `useSetMyProgress`/`useDeleteProgress` from `~/provider/library` — a
+// chain that reached `~/provider/library-target` (via the since-deleted
+// `use-library-entries.ts`), which reached `component/user-row` (via
+// `use-with-target-user.ts`'s `UserRowFragment` import — a pre-existing,
+// KEPT-provider layering choice, out of this task's scope to restructure),
+// which reached THIS component's own family (`user-row-content` ->
+// `user-progress-row` -> `my-progress-row`) — a genuine circular import
+// back to `~/control` itself. `importOriginal()` forced that whole real
+// subtree to resolve before the mock settled, and Vitest's module cache
+// ended up binding this row's OWN `~/control` import to the REAL
+// (unmocked) module instead — this row's `LinkProgressModal` then rendered
+// for real, and "opens the link modal when Link is clicked" failed because
+// the stub text never appeared (seen-to-fail: restoring `importOriginal()`
+// reproduced this exact failure). `Button`/`ConfirmModal` are pulled from
+// their own leaf subpaths instead — neither imports `~/lib/use-progress-mutations`
+// (`useSetMyProgress`/`useDeleteProgress`'s current home) or anything else
+// that could re-enter this cycle.
+//
+// HISTORICAL NOTE (Task 5b): the `~/provider/library` leg of the chain
+// traced above is gone — `useSetMyProgress`/`useDeleteProgress` now live at
+// `~/lib/use-progress-mutations`, which imports no provider except
+// `~/provider/apollo` — and `use-library-entries.ts` (Task 5) was already
+// gone before that. The cycle as described no longer exists in this exact
+// shape. Whether `importOriginal()` is unsafe here through some OTHER path
+// is unverified — that needs its own seen-to-fail run, out of this task's
+// scope — so the workaround below stays rather than being removed on the
+// strength of this note alone.
 vi.mock('~/control', async () => {
   const { Button } = await import('~/control/button');
   const { ConfirmModal } = await import('~/control/confirm-modal');
@@ -186,8 +198,8 @@ describe('UserProgressRow', () => {
   // Relay GLOBAL `Progress.id` instead (brief-required test: "deletes using
   // the row's Progress id"). Fixture-gap requirement: the entity is seeded
   // into a REAL InMemoryCache via `seedProgressEntity`, and
-  // `useDeleteProgress` is the REAL hook from `~/provider/library` (not
-  // mocked) — so this proves the row wires its unmasked `row.id` into
+  // `useDeleteProgress` is the REAL hook from `~/lib/use-progress-mutations`
+  // (not mocked) — so this proves the row wires its unmasked `row.id` into
   // `deleteProgress`, and that the resulting `progressDelete` mutation's
   // `update` callback actually evicts the entity from the cache. `MockLink`
   // throws on an unmatched operation, so a call carrying the wrong id (e.g.
