@@ -32,10 +32,16 @@ export const LibraryPage = () => {
 
   // `useBookListFilter` recomputes a fresh `BookListFilter` object from URL
   // search params on every render (see that hook's own doc comment) — never
-  // a stable reference. `useLibraryEntries` resets its `fetchMore` error
-  // state on `[libraryId, filter]` by REFERENCE equality, so passing that
-  // straight through (even re-mapped) would fire the reset effect every
-  // render and could clear a legitimate retry state before it's ever shown.
+  // a stable reference. Historically, `useLibraryEntries` reset its
+  // `fetchMore` error state on `[libraryId, filter]` by REFERENCE equality,
+  // so passing that straight through (even re-mapped) fired the reset
+  // effect every render and could clear a legitimate retry state before
+  // it's ever shown. Task 3 moved `useLibraryEntries` onto
+  // `usePaginatedConnection`'s `resetKey`, a stringified PRIMITIVE
+  // (`` `${libraryId}:${JSON.stringify(filter)}` ``) — the underlying
+  // reference-equality hazard this workaround exists for no longer applies
+  // to that specific reset — but the workaround itself stays here
+  // unchanged; removing it is Task 5's, not this file's, to decide.
   // Destructuring to primitives (plus a stringified `subjects`) and gating
   // the `useMemo` on those, rather than on `bookListFilter` itself, is what
   // keeps `libraryFilter`'s identity stable across renders that don't

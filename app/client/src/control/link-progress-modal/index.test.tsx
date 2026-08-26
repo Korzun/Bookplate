@@ -308,4 +308,47 @@ describe('LinkProgressModal', () => {
 
     await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument());
   });
+
+  // Task 3 review round 1, Item 6: no test exercised a first-page query
+  // error at all before this — the empty-message fallback
+  // (`error || 'Failed to load books.'`) was silently dropped in the
+  // `usePaginatedConnection` migration and nothing caught it. This proves
+  // the LIST replaces itself with the error message (the empty-error
+  // state, `books.length === 0`), not the "Load more" retry slot below it
+  // (that one is exercised by the previous test, which keeps rows).
+  it('surfaces a first-page query error as the empty-state message', async () => {
+    renderModal({}, [
+      {
+        request: {
+          query: LinkPickerBooksDocument,
+          variables: { libraryId: LIBRARY_ID, query: undefined },
+        },
+        error: new Error('Network error'),
+      },
+    ]);
+
+    await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument());
+    expect(screen.queryByText('No books match.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem', { name: /dune/i })).not.toBeInTheDocument();
+  });
+
+  // The specific regression this item flagged: `error && books.length === 0`
+  // (truthy-string check) treats an empty-string error identically to NO
+  // error at all and silently falls through to "No books match." instead —
+  // `error !== undefined` (matching `page/library`'s own idiom) is what
+  // this test guards, with the restored `|| 'Failed to load books.'`
+  // fallback covering the empty string itself.
+  it('falls back to a generic message when the query error has no text', async () => {
+    renderModal({}, [
+      {
+        request: {
+          query: LinkPickerBooksDocument,
+          variables: { libraryId: LIBRARY_ID, query: undefined },
+        },
+        error: new Error(''),
+      },
+    ]);
+
+    await waitFor(() => expect(screen.getByText('Failed to load books.')).toBeInTheDocument());
+  });
 });

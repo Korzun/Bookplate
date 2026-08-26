@@ -83,9 +83,9 @@ const LocationProbe = () => {
 
 /**
  * Auto-intersects the moment `observe()` is called, so a test that renders a
- * sentinel (`hasNextPage: true`) drives `fetchNextPage` through the SAME
- * effect the real page uses, without a real IntersectionObserver
- * implementation (unavailable in jsdom).
+ * sentinel (`hasNextPage: true`) drives `loadMore` through the SAME effect
+ * the real page uses, without a real IntersectionObserver implementation
+ * (unavailable in jsdom).
  */
 class AutoIntersectingObserver {
   constructor(private callback: IntersectionObserverCallback) {}
@@ -417,11 +417,17 @@ describe('LibraryPage', () => {
   // still passes all the OTHER tests in this file — they never force a
   // second render after establishing the retry state. `rerender` here
   // forces exactly that: a render with unchanged filter values, but (absent
-  // the memo) a NEW `filter` object reaching `useLibraryEntries`, which
-  // resets its `fetchMore` error state on `[libraryId, filter]` by
-  // REFERENCE equality (`use-library-entries.ts`'s own doc comment) — that
-  // reset would silently clear a legitimate retry state the user hasn't
-  // acted on yet.
+  // the memo) a NEW `filter` object reaching `useLibraryEntries`.
+  //
+  // At the time this test was written, `useLibraryEntries` reset its
+  // `fetchMore` error state on `[libraryId, filter]` by REFERENCE equality,
+  // so a fresh `filter` object on an otherwise-unrelated re-render would
+  // have cleared a legitimate retry state the user hasn't acted on yet.
+  // Task 3 moved that reset onto `usePaginatedConnection`'s `resetKey`, a
+  // stringified PRIMITIVE, which no longer reacts to `filter`'s reference
+  // identity at all — so this test now also stands as a regression guard
+  // against the `useMemo` in `index.tsx` being removed AND a future
+  // resetKey-style hazard being reintroduced, not just the original one.
   //
   // Uses a hand-rolled wrapper (MemoryRouter + ApolloProvider only) instead
   // of `renderLibraryPage`/`renderWithApollo`: RTL's `rerender` re-wraps the

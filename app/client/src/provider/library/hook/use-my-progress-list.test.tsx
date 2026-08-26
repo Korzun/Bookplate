@@ -208,4 +208,26 @@ describe('useMyProgressList', () => {
     expect(result.current?.rows).toEqual([]);
     expect(result.current?.error).toBeUndefined();
   });
+
+  // Task 3 review round 1, Item 1: the hook's own doc comment (`:85-94`)
+  // says `loading` reports `false` while `skip` is explicitly `true`,
+  // REGARDLESS of `useCurrentLibraryId`'s own bootstrap state — unlike the
+  // "reports loading while useCurrentLibraryId itself is still resolving"
+  // test above, which leaves `skip` at its default `false`. Without this
+  // case, `extraLoading: skip ? false : libraryIdLoading` in
+  // `use-my-progress-list.ts` could be simplified to the unconditional
+  // `extraLoading: libraryIdLoading` and the whole suite would stay green —
+  // exactly the "behaviour cited as the reason for a deviation has no
+  // covering test" gap flagged in review.
+  it('reports loading: false while skip is true, even if useCurrentLibraryId is still resolving', () => {
+    currentLibraryIdLoading = true;
+    try {
+      const result = renderProbe([], true);
+
+      expect(result.current?.loading).toBe(false);
+      expect(result.current?.rows).toEqual([]);
+    } finally {
+      currentLibraryIdLoading = false;
+    }
+  });
 });
