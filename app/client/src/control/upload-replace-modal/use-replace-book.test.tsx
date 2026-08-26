@@ -345,7 +345,8 @@ describe('useReplaceBook', () => {
     });
 
     // Same `applyEpubChanges`-style id rotation `component/book-edit-form`'s save
-    // and `use-fix-actions.ts` handle: normalization writes a brand-new
+    // and the upload queue's ACCEPT/UNDO
+    // (`provider/upload/hook/use-upload-queue.ts`) handle: normalization writes a brand-new
     // `Book:<newId>` and cannot know the old entity described the same book,
     // and `cache.gc()` cannot collect the orphan while a `Library.book(id:)`
     // field from a prior /book or /book-edit visit still references it.

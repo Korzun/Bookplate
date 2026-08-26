@@ -41,8 +41,9 @@ const configMock: MockedResponse<UploadConfigQuery> = {
   },
 };
 
-// The row is built by an unannotated factory (matching `use-pending-fixes
-// .test.tsx`'s own convention) rather than written as an inline literal
+// The row is built by an unannotated factory (the same convention
+// `use-upload-queue.test.tsx`'s own `pendingFixRow` follows) rather than
+// written as an inline literal
 // directly under the `MockedResponse<LibraryPendingFixesQuery, …>`-typed
 // value below — assigning a fresh object literal straight into that position
 // hits `Unmasked<>`'s masked-shape check (`PendingFix.id` "doesn't exist" on

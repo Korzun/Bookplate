@@ -308,12 +308,41 @@ export const BookPage = () => {
    * `BookNotValidatedError`); both expose only `message`, so `unwrapResult`
    * maps them uniformly with no per-typename branching.
    *
-   * **Known pre-existing defect, deliberately NOT fixed here** (it predates
-   * this task and lives outside its scope): when the id DOES rotate, this
-   * page does not navigate to the new id, so the route param goes stale and
-   * the page falls through to "Book not found." until the user navigates
-   * somewhere with a live id. The eviction above is correct; the missing
-   * `navigate(path.book(newId))` is the gap.
+   * **Known pre-existing defects, deliberately NOT fixed here** (they predate
+   * this task and live outside its scope). There are THREE, and the first two
+   * are cache-coherence gaps that a "regen only touches chapters" reading
+   * would wrongly dismiss — it does not. `reimportBook`
+   * (`app/server/services/book-store.ts`) re-parses the EPUB and writes back
+   * `title`, `titleSort`, `author`, `authorSort`, `publisher`, `publishDate`,
+   * `description`, `series`, `seriesIndex`, `identifiers`, `subjects`,
+   * `coverData`, `coverMime` and `seriesId` — in BOTH the rotating and the
+   * non-rotating branch — and it also mutates series topology (deleting an
+   * emptied `Series` row, otherwise recomputing its meta). So a regen can
+   * move a book's position in the grid, change what its card renders, and
+   * invalidate a SERIES-typed `Library.entries` edge's `bookCount`.
+   *
+   * 1. **No `Library.entries` eviction, in either branch.** Every other
+   *    `applyEpubChanges`-style path in this codebase evicts that field —
+   *    `component/book-edit-form`'s save, `control/upload-replace-modal`'s
+   *    replace, and the upload queue's ACCEPT/UNDO
+   *    (`provider/upload/hook/use-upload-queue.ts`) — precisely because the
+   *    new position in a sorted, filtered, paginated connection is the
+   *    server's to decide. This handler is the one that does not.
+   *
+   * 2. **The NON-rotating branch evicts nothing at all**, because of the
+   *    `outcome.payload.book.id === targetId` early return below. The server
+   *    has just rewritten every grid-visible field; `BookRegenChaptersDocument`
+   *    selects only `book { id chapterCount chapterNames chapterSpineMap }`,
+   *    so the payload carries none of them, and normalization updates only
+   *    those three. The cached `Book:<id>` keeps a stale title/author/cover
+   *    indefinitely. Nothing dangles here either, so the dangling-reference
+   *    cache miss described on the DELETE handler below does NOT rescue this.
+   *
+   * 3. When the id DOES rotate, this page does not navigate to the new id, so
+   *    the route param goes stale and the page falls through to "Book not
+   *    found." until the user navigates somewhere with a live id. The
+   *    eviction above is correct; the missing `navigate(path.book(newId))` is
+   *    the gap.
    */
   const handleRegenChapters = useCallback(
     async (targetId: string) => {
@@ -358,9 +387,18 @@ export const BookPage = () => {
    * `update` does TWO things, not one:
    *
    *   1. Evicts the deleted `Book` entity (+ `cache.gc()`). That alone
-   *      handles a STANDALONE book's row: `Library.entries`' edges hold
-   *      `Reference`s and `InMemoryCache` silently drops an edge whose `node`
-   *      now points at nothing.
+   *      handles a STANDALONE book's row, though NOT by the mechanism an
+   *      earlier version of this comment claimed. `InMemoryCache` does not
+   *      "silently drop" an edge whose `node` reference has been evicted: the
+   *      read reports `missing: "Dangling reference to missing … object"`
+   *      (`@apollo/client`'s `readFromStore`), and the `canRead` filter that
+   *      prunes dangling refs from a LIST cannot save this one, because
+   *      `LibraryEntriesConnectionEdge` has no `id` and so is stored inline —
+   *      the dangling reference sits one level deeper, at `edge.node`. The
+   *      diff therefore comes back INCOMPLETE, which is a cache miss and
+   *      sends the next `LibraryEntries` read to the network. Right outcome,
+   *      different mechanism — and it is why step 2 below is load-bearing
+   *      rather than belt-and-braces.
    *
    *   2. Evicts the OWNING `Library`'s ENTIRE `entries` field (every filter
    *      variant, no `args`). Required because deleting the LAST book in a
