@@ -12,10 +12,11 @@ vi.mock('react-router', async (orig) => ({
   useNavigate: () => routerMocks.navigate,
 }));
 
-import { SeriesDetailDocument } from '~/graphql/series';
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
+
+import { SeriesDetailDocument } from './index';
 
 const LIBRARY_ID = 'TGlicmFyeTox';
 
@@ -185,6 +186,23 @@ describe('SeriesPage', () => {
     // an `<img>` only when `hasCover` — an exact count would be brittle
     // against either without adding coverage this test cares about.
     await waitFor(() => expect(getAllByRole('img').length).toBeGreaterThan(0));
+  });
+
+  // Task 5b: `SeriesDetailDocument` is now composed HERE, at the route — not
+  // read through a `provider/library` hook. Two books proves the route's own
+  // query drives BOTH rows, not just the single-book fixture every other
+  // test in this file uses (which would pass even if only the first edge
+  // were ever wired through).
+  it('renders two book rows from the route-composed query', async () => {
+    const { findByText, getByText } = await renderPage([
+      seriesMock({}, [
+        { id: 'gid-book-1', title: 'A Wizard of Earthsea', seriesIndex: 1 },
+        { id: 'gid-book-2', title: 'The Tombs of Atuan', seriesIndex: 2 },
+      ]),
+    ]);
+
+    await findByText('A Wizard of Earthsea');
+    expect(getByText('The Tombs of Atuan')).toBeInTheDocument();
   });
 
   it("navigates to the author's filtered library view on click", async () => {

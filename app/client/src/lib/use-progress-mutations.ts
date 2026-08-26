@@ -1,25 +1,18 @@
 /**
- * **Rehoming note for Task 5b (review round 1, Item 2).** After Task 5
- * deleted `use-library-entries.ts`, this is the LAST non-list resident of
- * `provider/library/` besides `use-series-detail.ts` (Task 5b, owned and
- * gets moved/deleted by name). This file was NOT owned by any task's brief,
- * and Task 5b deletes the whole `provider/library/` directory BEFORE Task 7
- * (which owns this file's third caller, `control/set-progress-modal`, via
- * `page/book`).
+ * Rehomed here (Task 5b, review round 1, Item 2) from
+ * `provider/library/hook/use-progress-mutations.ts`: it had no owning task
+ * brief, and `provider/library/` was deleted whole once `use-series-detail.ts`
+ * (Task 5b's own file) was gone. Moved WHOLE, not inlined into its call
+ * sites — unlike `useLinkProgress` (Task 4 dissolved that one, single
+ * caller, into `control/link-progress-modal` directly): `useSetMyProgress`'s
+ * and `useDeleteProgress`'s `update` callbacks are not boilerplate —
+ * `useDeleteProgress`'s in particular does a `cache.extract()`-and-scan to
+ * null dangling `Book.progress` references (see that function's own doc
+ * comment, "Task 7 addition"), pinned by its own seen-to-fail test —
+ * duplicating that across three call sites would be a real drift risk, not
+ * a simplification.
  *
- * Ruling (made during Task 4's review): Task 5b moves this file WHOLE to
- * `src/lib/use-progress-mutations.ts` and updates its three importers —
- * NOT inlined into its call sites, unlike `useLinkProgress` (Task 4
- * dissolved that one, single caller, into `control/link-progress-modal`
- * directly). `useSetMyProgress`'s and `useDeleteProgress`'s `update`
- * callbacks are not boilerplate: `useDeleteProgress`'s in particular does a
- * `cache.extract()`-and-scan to null dangling `Book.progress` references
- * (see that function's own doc comment, "Task 7 addition"), pinned by its
- * own seen-to-fail test — duplicating that across three call sites would
- * be a real drift risk, not a simplification.
- *
- * Current callers (verify this list before moving — it is what makes the
- * move safe, not just "close enough"):
+ * Current callers:
  *   - `component/my-progress-row/index.tsx` — `useDeleteProgress`
  *   - `component/user-progress-row/index.tsx` — `useDeleteProgress`
  *   - `control/set-progress-modal/index.tsx` — `useSetMyProgress` AND

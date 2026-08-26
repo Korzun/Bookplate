@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useDeleteProgress, useSetMyProgress } from '~/provider/library';
+import { useDeleteProgress, useSetMyProgress } from '~/lib/use-progress-mutations';
 
 import { Button } from '../button';
 import { ProportionalChapterSlider } from '../proportional-chapter-slider';
