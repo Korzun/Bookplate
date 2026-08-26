@@ -1,17 +1,62 @@
 import { graphql } from '~/gql';
 
 /**
- * `UserListDocument` itself no longer lives here: it is composed at
- * `page/user-list` from `component/user-row`'s colocated `UserRowFragment`
- * (this task) — imported from there, not duplicated, by every other
- * consumer of the admin user list (`component/device-form`, `page/library`,
- * `page/upload`, `component/library-switcher`, `provider/library-target`'s
- * `useWithTargetUser`). This file keeps only the documents with no single
- * natural component owner — the mutations, and the non-admin
- * `SyncPasswordDocument`/`UserRegenerateSyncPasswordDocument`/
- * `UserChangePasswordDocument` reads/mutations `component/sync-password`,
- * `component/user-change-password`, and `page/password-reset` drive.
+ * A document read by more than one ROUTE (`page/user-list`, `page/library`,
+ * `page/upload`) and by a kept PROVIDER (`provider/library-target`'s
+ * `useWithTargetUser`) lives in a leaf module under `src/graphql/`, not in
+ * whichever route happens to compose it — that is the general rule this
+ * project settled on after `UserListDocument` briefly lived at
+ * `page/user-list` (task 2) and created a real import cycle:
+ * `component/index.ts -> device-form -> page/user-list -> component`, plus
+ * made `provider/library-target` (explicitly kept, not dissolved) depend on
+ * a page module and the whole component barrel it re-exports, a strict
+ * regression from the pre-task-2 shape (`~/graphql/user`, a leaf). Six
+ * readers as of this writing: `page/user-list` (composes `...UserRowFragment`
+ * into it), `page/library`, `page/upload`, `component/library-switcher`,
+ * `component/device-form`, and `provider/library-target`'s
+ * `useWithTargetUser`.
+ *
+ * `...UserRowFragment` below is resolved by NAME against
+ * `component/user-row`'s own `graphql(...)` definition — codegen matches
+ * fragment spreads across files by name (its `documents` glob), not via a JS
+ * import — so colocation survives this document living outside the
+ * fragment-owning component's own directory; only the FIELD SELECTION lives
+ * here, not the fragment declaration.
+ *
+ * `library { id }` rides alongside the spread rather than inside the
+ * fragment itself: `UserRow` never renders it, but `library-switcher` and
+ * `useWithTargetUser` need each user's Library global id alongside their
+ * username, and neither of those is a "row" component that would otherwise
+ * own that field. `Viewer.users` carries a ×50 cost multiplier (see
+ * `UserRowFragment`'s own doc comment, `component/user-row`, for the full
+ * warning) — `library` is a singular field (multiplier 1), so only ITS OWN
+ * children's cost rides the ×50, and `id` alone is the cheapest possible
+ * one. Do not add anything past `library { id }` here either.
+ *
+ * `Viewer.users` is admin-only and nullable. The server's test-pinned
+ * contract (`app/server/graphql/schema/viewer/users.test.ts`) never returns
+ * that `null` on its own: a non-admin denial returns `users: null` TOGETHER
+ * WITH a `FORBIDDEN` GraphQL error, and Apollo's default `errorPolicy:
+ * 'none'` discards `data` entirely whenever an error is present — so a real
+ * denial surfaces as `{ data: undefined, error }`, never a null field on
+ * live data. There is deliberately no "null folds to empty" branch anywhere
+ * this document is read. `skip: !isAdmin` is what stops the request before
+ * the server ever gets to deny it — every non-admin visits `page/library`/
+ * `page/upload` (the app's default landing pages) and `component/
+ * device-form`, all of which read this same document unconditionally.
  */
+export const UserListDocument = graphql(`
+  query UserList {
+    viewer {
+      users {
+        ...UserRowFragment
+        library {
+          id
+        }
+      }
+    }
+  }
+`);
 
 /**
  * `user { … }` mirrors `UserListDocument`'s selection field-for-field

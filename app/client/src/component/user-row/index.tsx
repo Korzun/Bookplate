@@ -14,10 +14,27 @@ import { useStyle } from './style';
 
 /**
  * Colocated: this component declares exactly the fields it renders —
- * `page/user-list` composes it into `UserListDocument`. `progressCount`
- * feeds the "N books synced" subtitle directly off the fragment, so (unlike
- * the deleted `useUser` hook this replaces) there is no separate loading
- * state to straddle: `UserRow` only ever mounts once its own ref exists.
+ * `page/user-list` composes it into `UserListDocument` (`~/graphql/user`,
+ * imported there rather than declared there — this fragment stays
+ * colocated on `UserRow` regardless of which module owns the document;
+ * codegen resolves `...UserRowFragment` by NAME, not by JS import).
+ * `progressCount` feeds the "N books synced" subtitle directly off the
+ * fragment, so (unlike the deleted `useUser` hook this replaces) there is
+ * no separate loading state to straddle: `UserRow` only ever mounts once
+ * its own ref exists.
+ *
+ * **`Viewer.users` carries a ×50 cost multiplier** — every field selected
+ * here rides that multiplier, so this selection is kept deliberately
+ * narrow: `id` (the User global ID every user mutation addresses),
+ * `username` (display + list keying), `progressCount` (this subtitle).
+ * `library { id }` also rides along on `UserListDocument`'s entry, but
+ * lives as a sibling field on the DOCUMENT (`~/graphql/user`), not in this
+ * fragment — `UserRow` never renders it. **Do NOT add a field here**
+ * without checking `test:cost -w app/server` first: `viewer.users →
+ * library.progress` is this project's worst-measured legitimate query
+ * shape at 68.5% of the complexity budget, and this fragment is exactly
+ * where a future field would naturally be added — a single unbounded
+ * child (e.g. anything under `library`) can push that shape over budget.
  */
 export const UserRowFragment = graphql(`
   fragment UserRowFragment on User {

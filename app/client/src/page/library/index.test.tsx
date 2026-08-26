@@ -11,7 +11,7 @@ import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
 import type { LibraryFilter, UserListQuery } from '~/gql/graphql';
 import { LibraryEntriesDocument } from '~/graphql/library';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { cacheConfig } from '~/provider/apollo';
 import type { BookListFilter } from '~/provider/book';
 import { ThemeProvider } from '~/provider/theme';

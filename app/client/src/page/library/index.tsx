@@ -5,8 +5,8 @@ import { Link } from 'react-router';
 import { BookRowFromEntry, Page, SearchBar, SeriesRow } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
 import type { LibraryFilter } from '~/gql/graphql';
+import { UserListDocument } from '~/graphql/user';
 import { SpinnerIcon } from '~/icon';
-import { UserListDocument } from '~/page/user-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useBookListFilter } from '~/provider/book';
 import { useLibraryEntries } from '~/provider/library';
@@ -20,9 +20,10 @@ export const LibraryPage = () => {
   const style = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
-  // `UserListDocument` is imported from `page/user-list`, not duplicated —
-  // this only needs the count (for the "No users registered" empty state),
-  // not any per-user field, so no fragment unmask is needed here.
+  // `UserListDocument` is imported from `~/graphql/user` (a leaf module —
+  // this document has readers across multiple routes/providers, see its own
+  // doc comment) — this only needs the count (for the "No users registered"
+  // empty state), not any per-user field, so no fragment unmask is needed here.
   const { data: userListData, loading: userListLoading } = useQuery(UserListDocument, {
     skip: !isAdmin,
   });

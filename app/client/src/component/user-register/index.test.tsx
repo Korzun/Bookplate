@@ -8,7 +8,7 @@ import { UserRowFragment } from '~/component/user-row';
 import { useFragment } from '~/gql';
 import type { UserRegisterMutation, UserRegisterMutationVariables } from '~/gql/graphql';
 import { UserRegisterDocument } from '~/graphql/user';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRegister } from './index';

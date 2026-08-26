@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
 import type { UserListQuery } from '~/gql/graphql';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { LibraryTargetProvider } from '~/provider/library-target';
 import { renderWithApollo } from '~/test-utils';
 

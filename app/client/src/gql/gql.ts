@@ -63,6 +63,7 @@ type Documents = {
     "\n  query UploadConfig {\n    config {\n      maxConcurrentUploads\n    }\n  }\n": typeof types.UploadConfigDocument,
     "\n  mutation BookAnalyzeReplace($id: ID!, $stagedUploadId: String!) {\n    bookAnalyzeReplace(input: { id: $id, stagedUploadId: $stagedUploadId }) {\n      __typename\n      ... on BookAnalyzeReplacePayload {\n        valid\n        autoFixes {\n          ...MetadataFixFragment\n        }\n        proposals {\n          ...MetadataFixFragment\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on StagedUploadNotFoundError {\n        message\n      }\n    }\n  }\n": typeof types.BookAnalyzeReplaceDocument,
     "\n  mutation BookReplace($id: ID!, $stagedUploadId: String!, $acceptedFixKeys: [String!]!) {\n    bookReplace(\n      input: { id: $id, stagedUploadId: $stagedUploadId, acceptedFixKeys: $acceptedFixKeys }\n    ) {\n      __typename\n      ... on BookReplacePayload {\n        book {\n          id\n          title\n          author\n        }\n      }\n      ... on BookHashCollisionError {\n        message\n      }\n      ... on EpubValidationError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on StagedUploadNotFoundError {\n        message\n      }\n    }\n  }\n": typeof types.BookReplaceDocument,
+    "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n": typeof types.UserListDocument,
     "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n          library {\n            id\n          }\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": typeof types.UserRegisterDocument,
     "\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n": typeof types.UserDeleteDocument,
     "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": typeof types.UserResetPasswordDocument,
@@ -71,7 +72,6 @@ type Documents = {
     "\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n": typeof types.UserChangePasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": typeof types.ViewerBootstrapDocument,
     "\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n": typeof types.DeviceListDocument,
-    "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n": typeof types.UserListDocument,
     "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n": typeof types.UserPageDocument,
 };
 const documents: Documents = {
@@ -124,6 +124,7 @@ const documents: Documents = {
     "\n  query UploadConfig {\n    config {\n      maxConcurrentUploads\n    }\n  }\n": types.UploadConfigDocument,
     "\n  mutation BookAnalyzeReplace($id: ID!, $stagedUploadId: String!) {\n    bookAnalyzeReplace(input: { id: $id, stagedUploadId: $stagedUploadId }) {\n      __typename\n      ... on BookAnalyzeReplacePayload {\n        valid\n        autoFixes {\n          ...MetadataFixFragment\n        }\n        proposals {\n          ...MetadataFixFragment\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on StagedUploadNotFoundError {\n        message\n      }\n    }\n  }\n": types.BookAnalyzeReplaceDocument,
     "\n  mutation BookReplace($id: ID!, $stagedUploadId: String!, $acceptedFixKeys: [String!]!) {\n    bookReplace(\n      input: { id: $id, stagedUploadId: $stagedUploadId, acceptedFixKeys: $acceptedFixKeys }\n    ) {\n      __typename\n      ... on BookReplacePayload {\n        book {\n          id\n          title\n          author\n        }\n      }\n      ... on BookHashCollisionError {\n        message\n      }\n      ... on EpubValidationError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on StagedUploadNotFoundError {\n        message\n      }\n    }\n  }\n": types.BookReplaceDocument,
+    "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n": types.UserListDocument,
     "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n          library {\n            id\n          }\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": types.UserRegisterDocument,
     "\n  mutation UserDelete($input: UserDeleteInput!) {\n    userDelete(input: $input) {\n      __typename\n      ... on UserDeletePayload {\n        deletedId\n      }\n    }\n  }\n": types.UserDeleteDocument,
     "\n  mutation UserResetPassword($input: UserResetPasswordInput!) {\n    userResetPassword(input: $input) {\n      __typename\n      ... on UserResetPasswordPayload {\n        user {\n          id\n        }\n        password\n      }\n    }\n  }\n": types.UserResetPasswordDocument,
@@ -132,7 +133,6 @@ const documents: Documents = {
     "\n  mutation UserChangePassword($input: UserChangePasswordInput!) {\n    userChangePassword(input: $input) {\n      __typename\n      ... on UserChangePasswordPayload {\n        user {\n          id\n        }\n      }\n      ... on InvalidInputError {\n        message\n      }\n      ... on IncorrectPasswordError {\n        message\n      }\n    }\n  }\n": types.UserChangePasswordDocument,
     "\n  query ViewerBootstrap {\n    viewer {\n      username\n      isAdmin\n      mustChangePassword\n      user {\n        id\n      }\n      library {\n        id\n      }\n    }\n  }\n": types.ViewerBootstrapDocument,
     "\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n": types.DeviceListDocument,
-    "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n": types.UserListDocument,
     "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n": types.UserPageDocument,
 };
 
@@ -349,6 +349,10 @@ export function graphql(source: "\n  mutation BookReplace($id: ID!, $stagedUploa
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
+export function graphql(source: "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
 export function graphql(source: "\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n          library {\n            id\n          }\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation UserRegister($input: UserRegisterInput!) {\n    userRegister(input: $input) {\n      __typename\n      ... on UserRegisterPayload {\n        user {\n          id\n          username\n          progressCount\n          library {\n            id\n          }\n        }\n        password\n      }\n      ... on UsernameAlreadyExistsError {\n        message\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
@@ -378,10 +382,6 @@ export function graphql(source: "\n  query ViewerBootstrap {\n    viewer {\n    
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n"): (typeof documents)["\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n"];
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  query UserList {\n    viewer {\n      users {\n        ...UserRowFragment\n        library {\n          id\n        }\n      }\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 
 import { Page, UploadItem, UploadZone } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { useIsAdmin } from '~/provider/auth';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
@@ -23,9 +23,10 @@ export const UploadPage = () => {
 
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
-  // `UserListDocument` is imported from `page/user-list`, not duplicated —
-  // this only needs the count (for the "No users registered" empty state),
-  // not any per-user field, so no fragment unmask is needed here.
+  // `UserListDocument` is imported from `~/graphql/user` (a leaf module —
+  // this document has readers across multiple routes/providers, see its own
+  // doc comment) — this only needs the count (for the "No users registered"
+  // empty state), not any per-user field, so no fragment unmask is needed here.
   const { data: userListData, loading: userListLoading } = useQuery(UserListDocument, {
     skip: !isAdmin,
   });

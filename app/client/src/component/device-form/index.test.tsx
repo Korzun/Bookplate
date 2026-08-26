@@ -22,7 +22,7 @@ import {
   DeviceUpdateDocument,
   DeviceUsersDocument,
 } from '~/graphql/device';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
 import { DeviceForm } from './index';

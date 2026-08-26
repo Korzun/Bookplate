@@ -4,12 +4,13 @@ import { useEffect, useMemo } from 'react';
 import { UserRowFragment } from '~/component/user-row';
 import { Select } from '~/control';
 import { useFragment } from '~/gql';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { useIsAdmin } from '~/provider/auth';
 import { useLibraryTarget } from '~/provider/library-target';
 
 /**
- * `UserListDocument` is imported from `page/user-list`, not duplicated — no
+ * `UserListDocument` is imported from the leaf module `~/graphql/user` (it
+ * has multiple readers — see its own doc comment), not duplicated — no
  * `skip` gate here (unlike `page/library`/`page/upload`'s own reads of the
  * same document): `AdminLibrarySwitcher` is itself only ever mounted for an
  * admin (`LibrarySwitcher` below returns `null` before rendering it), so the
