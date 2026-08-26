@@ -71,7 +71,7 @@ export const PendingFixRowFragment = graphql(`
  *
  * `node(id: $libraryId) { id ... on Library { id ... } }` selects `id` at
  * BOTH levels deliberately, matching `LibraryEntriesDocument`
- * (`src/graphql/library.ts`): `node` resolves to the `Node` INTERFACE, which
+ * (`src/page/library/index.tsx`): `node` resolves to the `Node` INTERFACE, which
  * declares its own `id`, and an inline `... on Library { id }` alone
  * satisfies `Library`'s cache key but not `Node`'s — the interface selection
  * needs its own `id` for Apollo's normalized cache to key the result

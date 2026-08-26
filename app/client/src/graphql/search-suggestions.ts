@@ -8,11 +8,11 @@ import { graphql } from '~/gql';
  * already the book's own content-hash id (server's `suggestion/model.ts` doc
  * comment), which `path.book(value)` navigates with directly, so there is no
  * caller that needs `Suggestion.book` at all. Selecting it — let alone
- * spreading `BookRowFragment` into it — would hang a whole `Book` type off
+ * spreading `BookRowFragment` (`component/book-row/from-entry.tsx`) into it — would hang a whole `Book` type off
  * every item of every group, multiplying this document's cost for a
  * dropdown that shows a label. `node(id:) { id ... on Library { id ... } }`
  * selects `id` at both levels for the same cache-key reason as
- * `LibraryEntriesDocument` (`graphql/library.ts`).
+ * `LibraryEntriesDocument` (`page/library/index.tsx`).
  */
 export const SearchSuggestionsDocument = graphql(`
   query SearchSuggestions($libraryId: ID!, $query: String!, $filter: SearchSuggestionsFilter) {

@@ -64,7 +64,7 @@ export const LineageEntryFragment = graphql(`
  * The richest document this migration has produced: `book` plus its
  * `lineage` list, fanning out from a single `Library.book(id:)` lookup — no
  * list connection above it, so none of these fields amplify the way
- * `LibraryEntries`' ×100 `entries` does (`graphql/library.ts`). Breadth is
+ * `LibraryEntries`' ×100 `entries` does (`page/library/index.tsx`). Breadth is
  * the tight axis here because breadth counts SELECTED FIELDS, not fan-out
  * — an original version of this document that also carried
  * `validation { ...ValidationFragment }` measured breadth 69 (69.0%), one

@@ -9,7 +9,7 @@ import type {
   LibraryEntriesQuery,
 } from '~/gql/graphql';
 import { BookDeleteDocument } from '~/graphql/book';
-import { LibraryEntriesDocument } from '~/graphql/library';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useDeleteBook } from './use-delete-book';

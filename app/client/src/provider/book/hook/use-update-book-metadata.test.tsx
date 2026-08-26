@@ -8,7 +8,7 @@ import type {
   BookUpdateMetadataMutationVariables,
 } from '~/gql/graphql';
 import { BookEditDocument, BookUpdateMetadataDocument } from '~/graphql/book-edit';
-import { LibraryEntriesDocument } from '~/graphql/library';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));

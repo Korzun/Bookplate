@@ -2,7 +2,7 @@ import { graphql } from '~/gql';
 
 /**
  * One row of the series' book list. Deliberately NOT `BookRowFragment`
- * (`graphql/library.ts`): that one selects `thumbnailUrl(width: 88)` for the
+ * (`component/book-row/from-entry.tsx`): that one selects `thumbnailUrl(width: 88)` for the
  * grid and is spread inside the `LibraryEntry` union, where `Series`'s own
  * fields sit beside it. This is a plain `Series.books` edge — no union, no
  * collision — and the series page shows no author per row (`showAuthor={false}`),
@@ -29,7 +29,7 @@ export const SeriesBookRowFragment = graphql(`
  *
  * `books(first: 100)` is a LITERAL page size, priced at 100 rather than the
  * `maxSize` a variable `$first` would price at — identical to
- * `SeriesRowFragment`'s `books(first: 3)` in `graphql/library.ts`. 100 matches
+ * `SeriesRowFragment`'s `books(first: 3)` in `component/series-row/index.tsx`. 100 matches
  * `CONNECTION_LIMITS.seriesBooks.maxSize` and the `MAX_TAKE` the REST hook this
  * replaces used, so a >100-book series truncates exactly as it did before; that
  * is a carried limitation, not a new one.

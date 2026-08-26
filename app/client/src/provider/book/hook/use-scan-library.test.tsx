@@ -2,12 +2,12 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { LibraryEntriesQueryVariables } from '~/gql/graphql';
-import { LibraryEntriesDocument } from '~/graphql/library';
 import {
   LibraryScanDocument,
   LibraryScanStatusDocument,
   ScanProgressDocument,
 } from '~/graphql/scan';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderWithApollo } from '~/test-utils';
 
 import { useScanLibrary } from './use-scan-library';
