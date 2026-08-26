@@ -181,6 +181,10 @@ export function renderHookWithApollo<
  * mock — drop `<ApolloTestProvider>` in anywhere above the hook under test.
  * Pass `mocks` when the test DOES need the query to resolve (e.g. an admin
  * scenario exercising `useWithTargetUser`/`useDownloadBook` together).
+ *
+ * Like `renderWithApollo`'s client, this one deliberately does NOT set
+ * `dataMasking` — see that helper's note above, and `provider/apollo/client.ts`'s
+ * standing note for the reasoning.
  */
 export function ApolloTestProvider({
   children,
