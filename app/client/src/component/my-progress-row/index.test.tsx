@@ -10,24 +10,33 @@ import type {
   ProgressDeleteMutationVariables,
   ProgressRowFragmentFragment,
 } from '~/gql/graphql';
-import {
-  MyProgressListDocument,
-  ProgressDeleteDocument,
-  ProgressRowFragment,
-} from '~/graphql/progress';
+import { ProgressDeleteDocument } from '~/graphql/progress';
 import { renderWithApollo } from '~/test-utils';
 
-import { MyProgressRow } from './index';
+import { MyProgressRow, ProgressRowFragment } from './index';
 
 // `LinkProgressModal`'s own internals (Task 6, GraphQL-backed) have their own
 // dedicated test file (`control/link-progress-modal/index.test.tsx`) —
 // stubbed here so these tests exercise only the OPENER this row owns (the
 // `Button` + `showLinkModal` state + the `libraryId`/`progressId` props it
 // passes) without also satisfying the modal's own data requirements.
-vi.mock('~/control', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/control')>();
+//
+// Deliberately NOT `importOriginal()` (an earlier version of this mock did)
+// — see `component/user-progress-row/index.test.tsx`'s identical mock for
+// the full trace: `~/control`'s barrel re-exports `SetProgressModal`, which
+// reaches `~/provider/library-target` (a KEPT provider, out of scope to
+// restructure), which reaches `component/user-row` -> `user-row-content` ->
+// `user-progress-row` -> back to THIS module, a genuine circular import
+// into `~/control` that leaves this row's own `~/control` import bound to
+// the REAL `LinkProgressModal` instead of the stub. `Button`/`ConfirmModal`
+// are pulled from their own leaf subpaths instead, which do not re-enter
+// the cycle.
+vi.mock('~/control', async () => {
+  const { Button } = await import('~/control/button');
+  const { ConfirmModal } = await import('~/control/confirm-modal');
   return {
-    ...actual,
+    Button,
+    ConfirmModal,
     LinkProgressModal: ({ isOpen }: { isOpen: boolean }) =>
       isOpen ? <div>link-progress-modal</div> : null,
   };
@@ -87,31 +96,34 @@ const progressRow = (
 });
 
 /**
- * Writes the row into a REAL, normalized `InMemoryCache` (via `writeQuery`,
- * not a bare `cache.writeFragment` shortcut) so `Progress:<id>` genuinely
- * exists as an entity before a delete test runs — otherwise `cache.evict`
- * (inside `useDeleteProgress`) would be evicting nothing, and a test
- * asserting the entity is GONE afterward would pass vacuously whether or
- * not the eviction code ran at all. The `libraryId`/`first` used to key this
- * write are arbitrary: `MyProgressRow` itself never reads this query (it is
- * fetch-free), so nothing else in this test needs them to match anything.
+ * Writes the row into a REAL, normalized `InMemoryCache` (via
+ * `writeFragment`, mirroring `control/link-progress-modal/index.test.tsx`'s
+ * own `seedOrphanProgress`) so `Progress:<id>` genuinely exists as an
+ * entity before a delete test runs — otherwise `cache.evict` (inside
+ * `useDeleteProgress`) would be evicting nothing, and a test asserting the
+ * entity is GONE afterward would pass vacuously whether or not the
+ * eviction code ran at all.
+ *
+ * Deliberately NOT `client.writeQuery(MyProgressListDocument, ...)` (an
+ * earlier version of this helper did): importing that document from
+ * `component/my-progress-content` here would pull `~/control` into this
+ * test file's graph a SECOND way (that component imports `Button`), which
+ * — combined with this file's own `vi.mock('~/control', importOriginal)`
+ * below — resolves `control/upload-replace-modal`'s REAL `~/component`
+ * barrel import, which re-exports `MyProgressRow` itself and re-enters this
+ * module before its own `~/control` import has been mock-substituted,
+ * silently binding it to the REAL `LinkProgressModal` (seen-to-fail: this
+ * regression broke "opens the link modal when Link is clicked" below,
+ * which started rendering the real modal's "Link Progress" dialog instead
+ * of the `link-progress-modal` stub). `writeFragment` needs only
+ * `ProgressRowFragment`, already imported from `./index` below — no new
+ * cross-import, no cycle.
  */
 const seedProgressEntity = (client: ApolloClient, row: ProgressRowFragmentFragment) =>
-  client.writeQuery({
-    query: MyProgressListDocument,
-    variables: { libraryId: 'lib-1', first: 50 },
-    data: {
-      __typename: 'Query',
-      node: {
-        __typename: 'Library',
-        id: 'lib-1',
-        progress: {
-          __typename: 'LibraryProgressConnection',
-          edges: [{ __typename: 'LibraryProgressConnectionEdge', cursor: row.id, node: row }],
-          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
-        },
-      },
-    },
+  client.cache.writeFragment({
+    id: client.cache.identify({ __typename: 'Progress', id: row.id }),
+    fragment: ProgressRowFragment,
+    data: row,
   });
 
 const deleteSuccessMock = (

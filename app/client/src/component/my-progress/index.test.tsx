@@ -2,8 +2,9 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { MyProgressListDocument } from '~/component/my-progress-content';
 import type { MyProgressListQuery, ProgressRowFragmentFragment } from '~/gql/graphql';
-import { MyProgressCountDocument, MyProgressListDocument } from '~/graphql/progress';
+import { MyProgressCountDocument } from '~/graphql/progress';
 import { renderWithApollo } from '~/test-utils';
 
 import { MyProgress } from './index';
@@ -72,7 +73,10 @@ const listMock = (
         id: LIBRARY_ID,
         progress: {
           __typename: 'LibraryProgressConnection',
-          edges: edges.map((e) => ({ __typename: 'LibraryProgressConnectionEdge' as const, ...e })),
+          edges: edges.map((e) => ({
+            __typename: 'LibraryProgressConnectionEdge' as const,
+            ...e,
+          })),
           pageInfo: { __typename: 'PageInfo', ...pageInfo },
         },
       },
@@ -117,7 +121,9 @@ describe('MyProgress', () => {
   // but this assertion does not even need to know which string) and the
   // test would fail.
   it('fetches no rows while the card is collapsed', async () => {
-    const { container } = renderWithApollo(<MyProgress />, { mocks: [countMock(2)] });
+    const { container } = renderWithApollo(<MyProgress />, {
+      mocks: [countMock(2)],
+    });
     await waitFor(() => expect(screen.getByText('2 books synced')).toBeInTheDocument());
     expect(container.querySelector('[class*="content"]')).not.toBeInTheDocument();
   });

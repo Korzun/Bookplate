@@ -1,19 +1,15 @@
 import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
 import { gql } from '@apollo/client';
-import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { MyProgressListDocument } from '~/component/my-progress-content';
+import { ProgressRowFragment } from '~/component/my-progress-row';
 import { useFragment } from '~/gql';
 import type {
-  BookLinkDocumentMutation,
-  BookLinkDocumentMutationVariables,
-  LineageType,
   MyProgressCountQuery,
   MyProgressCountQueryVariables,
-  MyProgressListQuery,
-  MyProgressListQueryVariables,
   ProgressDeleteMutation,
   ProgressDeleteMutationVariables,
   ProgressRowFragmentFragment,
@@ -23,21 +19,22 @@ import type {
   ViewerBootstrapQueryVariables,
 } from '~/gql/graphql';
 import {
-  BookLinkDocumentDocument,
   MyProgressCountDocument,
-  MyProgressListDocument,
   ProgressDeleteDocument,
-  ProgressRowFragment,
   ProgressSetDocument,
 } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { renderHookWithApollo } from '~/test-utils';
 
-import { useDeleteProgress, useLinkProgress, useSetMyProgress } from './use-progress-mutations';
+import { useDeleteProgress, useSetMyProgress } from './use-progress-mutations';
 
 const LIBRARY_ID = 'library-1';
 const VIEWER_USER_ID = 'user-1';
-const myProgressListVariables = { libraryId: LIBRARY_ID, first: 50, after: null };
+const myProgressListVariables = {
+  libraryId: LIBRARY_ID,
+  first: 50,
+  after: null,
+};
 
 // The masked query-level node type (`MyProgressListQuery['node'][...]`)
 // hides `ProgressRowFragment`'s fields behind a `$fragmentRefs` marker at
@@ -116,7 +113,11 @@ const seedMyProgressList = (
             __typename: 'LibraryProgressConnectionEdge' as const,
             ...e,
           })),
-          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+          pageInfo: {
+            __typename: 'PageInfo',
+            hasNextPage: false,
+            endCursor: null,
+          },
         },
       },
     },
@@ -388,12 +389,18 @@ describe('useSetMyProgress', () => {
     await waitForViewerBootstrap(client);
     act(() =>
       seedMyProgressList(client, [
-        { cursor: EXISTING_PROGRESS_ID, node: progressRow({ id: EXISTING_PROGRESS_ID }) },
+        {
+          cursor: EXISTING_PROGRESS_ID,
+          node: progressRow({ id: EXISTING_PROGRESS_ID }),
+        },
       ])
     );
 
     await act(async () => {
-      await result.current?.setProgress({ currentChapter: 5, percentage: 0.75 });
+      await result.current?.setProgress({
+        currentChapter: 5,
+        percentage: 0.75,
+      });
     });
 
     expect(result.current?.error).toBeUndefined();
@@ -559,8 +566,14 @@ describe('useDeleteProgress', () => {
     );
     act(() =>
       seedMyProgressList(client, [
-        { cursor: KEEP_ID, node: progressRow({ id: KEEP_ID, document: 'keep-doc' }) },
-        { cursor: DELETE_ID, node: progressRow({ id: DELETE_ID, document: 'delete-doc' }) },
+        {
+          cursor: KEEP_ID,
+          node: progressRow({ id: KEEP_ID, document: 'keep-doc' }),
+        },
+        {
+          cursor: DELETE_ID,
+          node: progressRow({ id: DELETE_ID, document: 'delete-doc' }),
+        },
       ])
     );
 
@@ -670,7 +683,11 @@ describe('useDeleteProgress', () => {
         }
       `,
     });
-    expect(bookRead).toEqual({ __typename: 'Book', id: BOOK_ID, progress: null });
+    expect(bookRead).toEqual({
+      __typename: 'Book',
+      id: BOOK_ID,
+      progress: null,
+    });
   });
 
   it('maps a delete failure to an error message and leaves the row in place', async () => {
@@ -680,7 +697,10 @@ describe('useDeleteProgress', () => {
       () => useDeleteProgress(),
       [
         {
-          request: { query: ProgressDeleteDocument, variables: { id: KEEP_ID } },
+          request: {
+            query: ProgressDeleteDocument,
+            variables: { id: KEEP_ID },
+          },
           result: { data: { __typename: 'Mutation', progressDelete: null } },
         },
       ]
@@ -760,309 +780,5 @@ describe('useDeleteProgress', () => {
     });
 
     expect(result.current?.error).toBeDefined();
-  });
-});
-
-describe('useLinkProgress', () => {
-  const BOOK_GLOBAL_ID = 'book-global-1';
-  const ORPHAN_PROGRESS_ID = 'progress-orphan';
-
-  const linkSuccessData = (
-    lineage: { __typename: 'LinkedDocument'; oldId: string; newId: string; type: LineageType }[]
-  ): BookLinkDocumentMutation => ({
-    __typename: 'Mutation',
-    bookLinkDocument: {
-      __typename: 'BookLinkDocumentPayload',
-      book: { __typename: 'Book', id: BOOK_GLOBAL_ID, lineage },
-    },
-  });
-
-  it('returns initial linking/error state', () => {
-    const { result } = renderHookWithApollo(() => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID), []);
-    expect(typeof result.current?.link).toBe('function');
-    expect(result.current?.linking).toBe(false);
-    expect(result.current?.error).toBeUndefined();
-  });
-
-  it('maps DocumentAlreadyLinkedError to an error message', async () => {
-    const { result } = renderHookWithApollo(
-      () => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID),
-      [
-        {
-          request: {
-            query: BookLinkDocumentDocument,
-            variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
-          },
-          result: {
-            data: {
-              __typename: 'Mutation',
-              bookLinkDocument: {
-                __typename: 'DocumentAlreadyLinkedError',
-                message: 'This document is already linked to another book',
-              },
-            },
-          },
-        },
-      ]
-    );
-
-    const ok = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
-
-    expect(ok).toBe(false);
-    expect(result.current?.error).toBe('This document is already linked to another book');
-  });
-
-  it('does not fire a second mutation while one is in flight', async () => {
-    const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
-      request: {
-        query: BookLinkDocumentDocument,
-        variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
-      },
-      result: { data: linkSuccessData([]) },
-      delay: 20,
-    };
-
-    const { result } = renderHookWithApollo(
-      () => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID),
-      [mock]
-    );
-
-    act(() => {
-      void result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
-    });
-    await waitFor(() => expect(result.current?.linking).toBe(true));
-
-    const secondCallOk = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
-    expect(secondCallOk).toBe(false);
-    expect(result.current?.error).toBeUndefined();
-
-    await waitFor(() => expect(result.current?.linking).toBe(false));
-  });
-
-  // Normalization-suffices claim, pinned directly against the cache (Global
-  // Constraints: a claim like this must be asserted, not just left as an
-  // absence of hand-written `update` code). `book { id lineage { ... } }` is
-  // re-selected in full, so Apollo overwrites the existing `Book:<id>`
-  // entity's `lineage` field on its own.
-  it('normalizes the returned book.lineage onto the Book entity without a hand-written update', async () => {
-    const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
-      request: {
-        query: BookLinkDocumentDocument,
-        variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
-      },
-      result: {
-        data: linkSuccessData([
-          { __typename: 'LinkedDocument', oldId: 'doc-1', newId: BOOK_GLOBAL_ID, type: 'EDIT' },
-        ]),
-      },
-    };
-
-    const { result, client } = renderHookWithApollo(
-      () => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID),
-      [mock]
-    );
-
-    await act(async () => {
-      await result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
-    });
-
-    expect(result.current?.error).toBeUndefined();
-    const extracted = client.cache.extract() as NormalizedCacheObject;
-    const bookEntity = extracted[`Book:${BOOK_GLOBAL_ID}`] as { lineage?: unknown[] } | undefined;
-    expect(bookEntity?.lineage).toEqual([
-      { __typename: 'LinkedDocument', oldId: 'doc-1', newId: BOOK_GLOBAL_ID, type: 'EDIT' },
-    ]);
-  });
-
-  // Fix round 1: the reviewer traced that with no eviction, a linked orphan
-  // row rendered from `MyProgressListDocument` shows exactly what it showed
-  // before the link — the server migrates the orphan `Progress` row inside
-  // `linkDocument`'s own transaction, but the CACHE never hears about it,
-  // since `BookLinkDocumentPayload` carries no `progress` field at all
-  // (schema-verified). `progressId` is threaded in as `link`'s second
-  // argument — the caller already has it, since this is only ever invoked
-  // from a component rendering that exact orphan row — and evicted directly,
-  // the same shape `useDeleteProgress` uses.
-  //
-  // I-3 (final whole-branch review): the entity-level evict alone drops the
-  // stale orphan but does NOT put anything back in its place — the
-  // connection just has one fewer edge (see the "re-fetches Library.progress
-  // ... reappears attached" test below for the actual reattachment claim).
-  // This test now asserts `readQuery` returns `null`, not an empty `edges`
-  // array: the FIELD-level evict added for I-3 wipes the whole cached page
-  // (mirroring `useDeleteBook`'s identical "invalidates the connection so a
-  // subsequent read misses the cache" test, `use-delete-book.test.tsx`),
-  // which is what forces the next read to hit the network at all.
-  it('evicts the stale orphan Progress entity and invalidates Library.progress after a link', async () => {
-    const mock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
-      request: {
-        query: BookLinkDocumentDocument,
-        variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
-      },
-      result: { data: linkSuccessData([]) },
-    };
-
-    const { result, client } = renderHookWithApollo(
-      () => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID),
-      [mock]
-    );
-    act(() =>
-      seedMyProgressList(client, [
-        { cursor: ORPHAN_PROGRESS_ID, node: progressRow({ id: ORPHAN_PROGRESS_ID }) },
-      ])
-    );
-
-    await act(async () => {
-      await result.current?.link('doc-1', ORPHAN_PROGRESS_ID);
-    });
-
-    expect(result.current?.error).toBeUndefined();
-    const extracted = client.cache.extract() as NormalizedCacheObject;
-    expect(Object.keys(extracted)).not.toContain(`Progress:${ORPHAN_PROGRESS_ID}`);
-
-    const cached = client.cache.readQuery({
-      query: MyProgressListDocument,
-      variables: myProgressListVariables,
-    });
-    expect(cached).toBeNull();
-  });
-
-  // I-3 (final whole-branch review): the fix's actual point — not just that
-  // the stale row is GONE, but that it REAPPEARS, correctly attached to its
-  // book, once the invalidated connection refetches. Mounts a REAL, active
-  // `useQuery(MyProgressListDocument)` alongside `useLinkProgress`: the
-  // field-level evict makes the watched query's cached data incomplete,
-  // which (default `cache-first` fetch policy) drives Apollo to refetch
-  // over the network automatically — the same mechanism
-  // `useDeleteProgress`'s own doc comment traces for `page/book`. The
-  // refetch mock returns the row under a DIFFERENT `Progress` id (the
-  // server re-keys it — see this hook's own doc comment) WITH `book`
-  // attached, so a test that only checked "the old id is gone" could not
-  // tell this apart from the row simply staying gone.
-  it('re-fetches Library.progress after a link so the row reappears attached to its book', async () => {
-    const RELINK_BOOK_ID = 'book-relink-target';
-    const RELINKED_PROGRESS_ID = 'progress-relinked';
-
-    const linkMock: MockedResponse<BookLinkDocumentMutation, BookLinkDocumentMutationVariables> = {
-      request: {
-        query: BookLinkDocumentDocument,
-        variables: { id: RELINK_BOOK_ID, documentId: 'doc-1' },
-      },
-      result: { data: linkSuccessData([]) },
-    };
-
-    const initialFetchMock: MockedResponse<MyProgressListQuery, MyProgressListQueryVariables> = {
-      request: { query: MyProgressListDocument, variables: myProgressListVariables },
-      result: {
-        data: {
-          __typename: 'Query',
-          node: {
-            __typename: 'Library',
-            id: LIBRARY_ID,
-            progress: {
-              __typename: 'LibraryProgressConnection',
-              edges: [
-                {
-                  __typename: 'LibraryProgressConnectionEdge',
-                  cursor: ORPHAN_PROGRESS_ID,
-                  node: progressRow({ id: ORPHAN_PROGRESS_ID, document: 'doc-1' }),
-                },
-              ],
-              pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
-            },
-          },
-        },
-      },
-    };
-
-    const refetchMock: MockedResponse<MyProgressListQuery, MyProgressListQueryVariables> = {
-      request: { query: MyProgressListDocument, variables: myProgressListVariables },
-      result: {
-        data: {
-          __typename: 'Query',
-          node: {
-            __typename: 'Library',
-            id: LIBRARY_ID,
-            progress: {
-              __typename: 'LibraryProgressConnection',
-              edges: [
-                {
-                  __typename: 'LibraryProgressConnectionEdge',
-                  cursor: RELINKED_PROGRESS_ID,
-                  node: progressRow({
-                    id: RELINKED_PROGRESS_ID,
-                    document: RELINK_BOOK_ID,
-                    book: {
-                      __typename: 'Book',
-                      id: RELINK_BOOK_ID,
-                      title: 'Dune',
-                      author: 'Frank Herbert',
-                      hasCover: true,
-                      thumbnailUrl: 'thumb.png',
-                    },
-                  }),
-                },
-              ],
-              pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
-            },
-          },
-        },
-      },
-    };
-
-    const useLinkProgressWithActiveList = () => ({
-      list: useQuery(MyProgressListDocument, { variables: myProgressListVariables }),
-      link: useLinkProgress(RELINK_BOOK_ID, LIBRARY_ID),
-    });
-
-    const { result, client } = renderHookWithApollo(useLinkProgressWithActiveList, [
-      initialFetchMock,
-      linkMock,
-      refetchMock,
-    ] as MockedResponse[]);
-
-    await waitFor(() => expect(result.current?.list.data).toBeDefined());
-
-    await act(async () => {
-      await result.current?.link.link('doc-1', ORPHAN_PROGRESS_ID);
-    });
-
-    await waitFor(() => {
-      const cached = client.cache.readQuery({
-        query: MyProgressListDocument,
-        variables: myProgressListVariables,
-      });
-      const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
-      expect(edges).toHaveLength(1);
-    });
-
-    const cached = client.cache.readQuery({
-      query: MyProgressListDocument,
-      variables: myProgressListVariables,
-    });
-    const edges = cached?.node?.__typename === 'Library' ? cached.node.progress.edges : undefined;
-    expect(edges?.[0]?.node.id).toBe(RELINKED_PROGRESS_ID);
-    const row = useFragment(ProgressRowFragment, edges?.[0]?.node);
-    expect(row?.book?.id).toBe(RELINK_BOOK_ID);
-  });
-
-  it('sets error and returns false when the mutation throws', async () => {
-    const { result } = renderHookWithApollo(
-      () => useLinkProgress(BOOK_GLOBAL_ID, LIBRARY_ID),
-      [
-        {
-          request: {
-            query: BookLinkDocumentDocument,
-            variables: { id: BOOK_GLOBAL_ID, documentId: 'doc-1' },
-          },
-          error: new Error('Network error'),
-        },
-      ]
-    );
-
-    const ok = await act(() => result.current!.link('doc-1', ORPHAN_PROGRESS_ID));
-
-    expect(ok).toBe(false);
-    expect(result.current?.error).toBe('Network error');
   });
 });

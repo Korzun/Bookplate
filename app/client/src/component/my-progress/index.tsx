@@ -15,12 +15,15 @@ import { useStyle } from './style';
  * whether the card is expanded, which this is strictly less work than.
  *
  * Row fetching itself is NOT wired through here: `MyProgressContent`, this
- * component's child, calls `useMyProgressList` on its own — and `Card`
- * (`isCollapsible`/`defaultCollapsed` below) does not render its children
- * into the tree at all while collapsed (`component/card/index.tsx`'s
- * `visibleChildren`), so `MyProgressContent` is never even mounted, and
- * never fetches a row, until the card is actually expanded. See
- * `use-my-progress-list.ts`'s doc comment for the full mechanism.
+ * component's child, owns `MyProgressListDocument` and reads it on its own
+ * — and `Card` (`isCollapsible`/`defaultCollapsed` below) does not render
+ * its children into the tree at all while collapsed
+ * (`component/card/index.tsx`'s `visibleChildren`), so `MyProgressContent`
+ * is never even mounted, and never fetches a row, until the card is
+ * actually expanded. `skip={false}` below is always correct at this one
+ * call site — see `MyProgressContent`'s own doc comment for the full
+ * mechanism and for why `skip` is still an explicit, required prop despite
+ * never varying here.
  *
  * `viewer.user` is NULLABLE and is `null` for the config-based admin, which
  * has no `User` row (`graphql/progress.ts`'s doc comment). This mirrors what
@@ -49,7 +52,7 @@ export const MyProgress = () => {
       }
     >
       <div className={styles.content}>
-        <MyProgressContent />
+        <MyProgressContent skip={false} />
       </div>
     </Card>
   );

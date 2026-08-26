@@ -3,16 +3,21 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { MyProgressListQuery, ProgressRowFragmentFragment } from '~/gql/graphql';
-import { MyProgressListDocument } from '~/graphql/progress';
 import { renderWithApollo } from '~/test-utils';
 
-import { MyProgressContent } from './index';
+import { MyProgressContent, MyProgressListDocument } from './index';
 
 const LIBRARY_ID = 'LIB-1';
 const PAGE_SIZE = 50;
 
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
+
 vi.mock('~/provider/library-target', () => ({
-  useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+  useCurrentLibraryId: () => ({
+    libraryId: currentLibraryId,
+    loading: currentLibraryIdLoading,
+  }),
 }));
 
 const progressRow = (id: string, title: string): ProgressRowFragmentFragment => ({
@@ -43,7 +48,10 @@ const connection = (
     id: LIBRARY_ID,
     progress: {
       __typename: 'LibraryProgressConnection',
-      edges: edges.map((e) => ({ __typename: 'LibraryProgressConnectionEdge' as const, ...e })),
+      edges: edges.map((e) => ({
+        __typename: 'LibraryProgressConnectionEdge' as const,
+        ...e,
+      })),
       pageInfo: { __typename: 'PageInfo', ...pageInfo },
     },
   },
@@ -74,7 +82,7 @@ const fetchMoreMock = (
 
 describe('MyProgressContent', () => {
   it('shows a loading message while the first page is in flight', () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: false,
@@ -86,7 +94,7 @@ describe('MyProgressContent', () => {
   });
 
   it('renders a row per progress entry once loaded', async () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [
         firstPageMock(
           [
@@ -103,7 +111,7 @@ describe('MyProgressContent', () => {
   });
 
   it('shows the empty message when there is no synced progress', async () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [firstPageMock([], { hasNextPage: false, endCursor: null })],
     });
 
@@ -111,7 +119,7 @@ describe('MyProgressContent', () => {
   });
 
   it('shows an error message when the first page fails to load', async () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [
         {
           request: {
@@ -131,7 +139,7 @@ describe('MyProgressContent', () => {
   // if `loadMore` accidentally refired that query, `MockLink` would throw
   // "No more mocked responses" for it rather than silently double-loading.
   it('grows the list via Load more without refetching page one', async () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: true,
@@ -156,7 +164,7 @@ describe('MyProgressContent', () => {
   });
 
   it('does not render a Load more affordance when there is no next page', async () => {
-    renderWithApollo(<MyProgressContent />, {
+    renderWithApollo(<MyProgressContent skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: false,
@@ -167,5 +175,67 @@ describe('MyProgressContent', () => {
 
     await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  // The behaviours below used to be pinned by the now-deleted
+  // `use-my-progress-list.test.tsx` (Task 4 dissolved that hook into this
+  // component). `skip` stays an explicit, required prop specifically so
+  // these can gate the query directly, without depending on `Card`'s
+  // mount/unmount timing (`component/my-progress`) as an implicit contract.
+
+  it('does not query when there is no library id', () => {
+    currentLibraryId = undefined;
+    try {
+      // No mocks at all: if the component fired MyProgressList anyway,
+      // MockLink would throw "No more mocked responses" and fail this test
+      // loudly rather than let it pass vacuously.
+      renderWithApollo(<MyProgressContent skip={false} />, { mocks: [] });
+
+      expect(screen.getByText('No progress synced')).toBeInTheDocument();
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+    }
+  });
+
+  it('shows the loading message while useCurrentLibraryId itself is still resolving, even though the query is skipped', () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = true;
+    try {
+      renderWithApollo(<MyProgressContent skip={false} />, { mocks: [] });
+
+      expect(screen.getByText('Loading...')).toBeInTheDocument();
+    } finally {
+      currentLibraryId = LIBRARY_ID;
+      currentLibraryIdLoading = false;
+    }
+  });
+
+  it('fetches nothing while skip is true, even with a valid library id', () => {
+    // No mocks at all: if the component fired MyProgressList anyway,
+    // MockLink would throw "No more mocked responses" and fail this test
+    // loudly.
+    renderWithApollo(<MyProgressContent skip />, { mocks: [] });
+
+    expect(screen.getByText('No progress synced')).toBeInTheDocument();
+  });
+
+  // Load-bearing: without the `skip ? false : libraryIdLoading` gate in
+  // `MyProgressContent`, this would show "Loading..." forever instead of
+  // "No progress synced" — there is nothing mounted to show a loading state
+  // for while `skip` is explicitly `true`, regardless of
+  // `useCurrentLibraryId`'s own bootstrap state. Without this case,
+  // `extraLoading: skip ? false : libraryIdLoading` could be simplified to
+  // the unconditional `extraLoading: libraryIdLoading` and the suite would
+  // stay green.
+  it('reports no loading state while skip is true, even if useCurrentLibraryId is still resolving', () => {
+    currentLibraryIdLoading = true;
+    try {
+      renderWithApollo(<MyProgressContent skip />, { mocks: [] });
+
+      expect(screen.getByText('No progress synced')).toBeInTheDocument();
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    } finally {
+      currentLibraryIdLoading = false;
+    }
   });
 });
