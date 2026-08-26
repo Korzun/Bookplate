@@ -6,9 +6,12 @@ import { graphql } from '~/gql';
  * documents to seed or read the Apollo cache:
  *
  * - `control/book-lineage-modal/index.test.tsx` (`BookLineageDocument`)
- * - `provider/book/hook/use-regen-chapters.test.tsx`
- * - `provider/book/hook/use-validate-book.test.tsx`
- * - `provider/book/hook/use-clear-book-editions.test.tsx` (`BookDetailDocument`)
+ * - `page/book/index.test.tsx` itself (`BookDetailDocument`,
+ *   `BookValidationDocument`)
+ *
+ * (The three `provider/book/hook/*.test.tsx` files that used to seed through
+ * `BookDetailDocument` were dissolved into `page/book/index.test.tsx` when
+ * Task 8 inlined their mutations at this call site.)
  *
  * Those tests exist to prove that a mutation's payload normalizes onto the
  * SAME `Book:<id>` entity the route actually reads. Seeding through a
@@ -206,6 +209,54 @@ export const BookLineageDocument = graphql(`
           addedAt
           lineage {
             ...LineageEntryFragment
+          }
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * The lazy half of the 2026-08-13 split (see `BookDetailDocument`'s doc
+ * comment above): fired only when the validation
+ * modal opens, not on page load. `BookDetail` deliberately keeps its own
+ * cheap `validation { id valid }` for `editingBlocked`, evaluated eagerly
+ * on load — this document carries everything else `ValidationFragment`
+ * selects (`threshold`, `validatedAt`, `counts`, `messages`).
+ *
+ * `Validation.id` is byte-identical to the owning Book's global id
+ * (server-side `encodeGlobalID('Book', [userId, bookId])`), so this
+ * document's result normalizes onto the SAME `Book` cache entity
+ * `BookDetail` already created — Apollo merges the eager `{ id valid }` and
+ * this lazy payload onto one object rather than the two competing. That is
+ * also why `bookValidate`'s mutation payload lands here for free: same key,
+ * same shape, no manual cache write needed.
+ *
+ * `...ValidationFragment` is resolved by NAME against `~/graphql/book.ts`,
+ * where the fragment stays: it has two spread sites in two modules (here and
+ * `BookValidateDocument`), which makes it a shared leaf — the same
+ * disposition `LineageEntryFragment` records.
+ *
+ * Re-measured for task 12b, which added `segments { text subject }` to
+ * `ValidationFragment`'s `messages` selection (restoring subject
+ * monospacing — `message-segment/model.ts`): `segments` is a nested list
+ * INSIDE `messages(first: 100)`, so unlike a scalar addition it costs more
+ * breadth AND fans complexity out ×100 with the connection.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 37 (37.0%),
+ * complexity 1621 (4.9%) of budget — up from 33 (33.0%) / 1221 (3.7%)
+ * pre-`segments`, still comfortably under the 70% gate on both axes.
+ */
+export const BookValidationDocument = graphql(`
+  query BookValidation($libraryId: ID!, $bookId: ID!) {
+    node(id: $libraryId) {
+      id
+      ... on Library {
+        id
+        book(id: $bookId) {
+          id
+          validation {
+            ...ValidationFragment
           }
         }
       }

@@ -14,7 +14,10 @@ let applyFailed: ((failed: boolean) => void) | undefined;
 // Only useScanLibrary is consumed by the component; return the hook's tuple
 // shape, with just enough internal state to simulate the terminal status
 // arriving asynchronously over the subscription, the way the real hook does.
-vi.mock('~/provider/book', () => ({
+// The hook's OWN behaviour (attach path, completion eviction, error folding)
+// is pinned by `use-scan-library.test.tsx` next door against real mocks; this
+// file pins only the component's toast bookkeeping on top of it.
+vi.mock('./use-scan-library', () => ({
   useScanLibrary: (): ScanTuple => {
     const [result, setResult] = useState<ScanResult>(undefined);
     const [failed, setFailed] = useState(false);

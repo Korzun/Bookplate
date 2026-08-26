@@ -8,11 +8,10 @@ import {
   BookReplaceDocument,
   MetadataFixFragment,
 } from '~/graphql/upload';
+import type { MetadataFix, ReplaceAnalysis } from '~/lib/book-types';
 import { stageUpload } from '~/lib/staged-upload';
 import { unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
-
-import { MetadataFix } from '../type';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
 // the call, so it is named explicitly here, extracted from the generated
@@ -25,12 +24,6 @@ type BookReplacePayload = Extract<
   NonNullable<BookReplaceMutation['bookReplace']>,
   { __typename: 'BookReplacePayload' }
 >;
-
-export interface ReplaceAnalysis {
-  valid: boolean;
-  autoFixes: MetadataFix[];
-  proposals: MetadataFix[];
-}
 
 /** The bare minimum `bookReplace` resolves — just enough for a caller to
  * navigate to the post-replace book. `BookReplacePayload.book` also carries
@@ -46,11 +39,10 @@ export interface UseReplaceBook {
 }
 
 /** Mirrors `provider/upload/hook/use-upload-queue.ts`'s own `toMetadataFix`
- * (not the old `provider/book/hook/use-upload-queue.ts`, deleted this step)
- * — the same `MetadataFixFragment` shape unmasked into the local
- * `MetadataFix` type this provider's consumers (`FixReview`,
- * `SeverityCounts`'s siblings) already expect. Not imported from there since
- * that module doesn't export it. */
+ * — the same `MetadataFixFragment` shape unmasked into the plain
+ * `MetadataFix` type (`~/lib/book-types`) this modal's children (`FixReview`)
+ * already expect. Not imported from there since that module doesn't export
+ * it. */
 const toMetadataFix = (f: {
   field: string;
   kind: string;
@@ -109,7 +101,7 @@ const toMetadataFix = (f: {
  *      until a hard reload. The library id comes from
  *      `useCurrentLibraryId()`, not the payload — unlike `BookDeletePayload`,
  *      this payload has no `library { id }`. Same "not free" cost
- *      `useDeleteBook` and `useUpdateBookMetadata` document: it discards
+ *      `page/book`'s delete and `component/book-edit-form`'s save document: it discards
  *      every page `fetchMore` had accumulated.
  *   2. Evicts the OLD `Book:<id>` entity when the payload reports a
  *      different id. Normalization writes the payload into a brand-new
@@ -117,10 +109,21 @@ const toMetadataFix = (f: {
  *      `cache.gc()` alone will not collect the orphan while a
  *      `Library.book(id: oldId)` field from a prior /book or /book-edit
  *      visit still references it. Identical branch and rationale to
- *      `use-update-book-metadata.ts` and `use-regen-chapters.ts`.
+ *      `component/book-edit-form`'s save and `page/book`'s regen handler.
  *
  * A failed commit (typed error member, no payload) evicts nothing — the book
  * was not replaced, so the cached grid is still correct.
+ *
+ * **Placement (Task 8).** Moved here from `provider/book/hook/` when that
+ * barrel dissolved. `./index.tsx` — `UploadReplaceModal` — is its ONLY
+ * consumer, so this is the call site. It is a sibling module rather than an
+ * inlined `useMutation` pair in the component body because the two mutations
+ * are not independent: `analyzeReplacement` stages the bytes ONCE and hands
+ * the resulting `stagedUploadId` to `commitReplacement` through a ref that
+ * has to outlive both calls. Keeping that handshake in one named unit is
+ * also what lets `use-replace-book.test.tsx` pin the "staged exactly once"
+ * contract and both cache evictions directly, instead of inferring them
+ * through the modal's file-picker UI.
  */
 export const useReplaceBook = (): UseReplaceBook => {
   const [runAnalyze] = useMutation(BookAnalyzeReplaceDocument);

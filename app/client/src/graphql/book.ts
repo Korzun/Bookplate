@@ -75,56 +75,13 @@ export const LineageEntryFragment = graphql(`
 `);
 
 /**
- * The lazy half of the 2026-08-13 split (see `BookDetailDocument`'s doc
- * comment, now in `page/book/query.ts`): fired only when the validation
- * modal opens, not on page load. `BookDetail` deliberately keeps its own
- * cheap `validation { id valid }` for `editingBlocked`, evaluated eagerly
- * on load — this document carries everything else `ValidationFragment`
- * selects (`threshold`, `validatedAt`, `counts`, `messages`).
- *
- * `Validation.id` is byte-identical to the owning Book's global id
- * (server-side `encodeGlobalID('Book', [userId, bookId])`), so this
- * document's result normalizes onto the SAME `Book` cache entity
- * `BookDetail` already created — Apollo merges the eager `{ id valid }` and
- * this lazy payload onto one object rather than the two competing. That is
- * also why `bookValidate`'s mutation payload will land here for free later:
- * same key, same shape, no manual cache write needed.
- *
- * Re-measured for task 12b, which added `segments { text subject }` to
- * `ValidationFragment`'s `messages` selection (restoring subject
- * monospacing — `message-segment/model.ts`): `segments` is a nested list
- * INSIDE `messages(first: 100)`, so unlike a scalar addition it costs more
- * breadth AND fans complexity out ×100 with the connection.
- *
- * Measured (`npm run test:cost -w app/server`): breadth 37 (37.0%),
- * complexity 1621 (4.9%) of budget — up from 33 (33.0%) / 1221 (3.7%)
- * pre-`segments`, still comfortably under the 70% gate on both axes.
- */
-export const BookValidationDocument = graphql(`
-  query BookValidation($libraryId: ID!, $bookId: ID!) {
-    node(id: $libraryId) {
-      id
-      ... on Library {
-        id
-        book(id: $bookId) {
-          id
-          validation {
-            ...ValidationFragment
-          }
-        }
-      }
-    }
-  }
-`);
-
-/**
  * `BookDeleteResult` is a single-member union today (schema-verified,
  * `app/server/graphql/schema/book/mutation/delete.ts`) — no error branch is
  * added here, matching the "no speculative error members" rule (spec 1's
  * traced-union-drop precedent). `deletedId` is the ONLY field
- * `useDeleteBook`'s cache update needs to `cache.identify` and evict the
+ * `page/book`'s delete `update` needs to `cache.identify` and evict the
  * `Book` entity; `library { id }` is what lets it ALSO evict the owning
- * `Library`'s `entries` connection field (see that hook's doc comment for
+ * `Library`'s `entries` connection field (see that handler's doc comment for
  * why eviction of the `Book` entity alone is not enough).
  */
 export const BookDeleteDocument = graphql(`
@@ -173,7 +130,7 @@ export const BookValidateDocument = graphql(`
  * `BookRegenChaptersResult` genuinely has two error members today
  * (schema-verified, `app/server/graphql/schema/book/mutation/
  * regen-chapters.ts`): `BookHashCollisionError` and `BookNotValidatedError`,
- * both mapped to `useRegenChapters`'s `errorMessage`. `book { id
+ * both toasted by `page/book`'s regen handler. `book { id
  * chapterCount chapterNames chapterSpineMap }` re-selects every field the
  * REST `regen-chapters` response updated — normalization alone would
  * refresh those on the EXISTING `Book` entity, but `reimportBook` can also

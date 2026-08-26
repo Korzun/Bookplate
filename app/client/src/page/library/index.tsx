@@ -8,9 +8,9 @@ import { graphql } from '~/gql';
 import type { LibraryEntriesQuery } from '~/gql/graphql';
 import { UserListDocument } from '~/graphql/user';
 import { SpinnerIcon } from '~/icon';
+import { useBookListFilter } from '~/lib/use-book-list-filter';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { useIsAdmin } from '~/provider/auth';
-import { useBookListFilter } from '~/provider/book';
 import { useCurrentLibraryId, useLibraryTarget } from '~/provider/library-target';
 import { path } from '~/router';
 

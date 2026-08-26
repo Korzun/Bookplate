@@ -1,4 +1,4 @@
-import { useQuery } from '@apollo/client/react';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
@@ -12,28 +12,39 @@ import {
   type PageActionItem,
 } from '~/control';
 import { useFragment } from '~/gql';
-import type { ValidationFragmentFragment } from '~/gql/graphql';
-import { ValidationFragment } from '~/graphql/book';
+import type {
+  BookClearEditionsMutation,
+  BookDeleteMutation,
+  BookRegenChaptersMutation,
+  BookValidateMutation,
+  ValidationFragmentFragment,
+} from '~/gql/graphql';
+import {
+  BookClearEditionsDocument,
+  BookDeleteDocument,
+  BookRegenChaptersDocument,
+  BookValidateDocument,
+  ValidationFragment,
+} from '~/graphql/book';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
+import { useDownloadBook } from '~/lib/use-download-book';
 import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
+import { unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
-import {
-  useBookValidation,
-  useClearBookEditions,
-  useDeleteBook,
-  useDownloadBook,
-  useRegenChapters,
-  useValidateBook,
-} from '~/provider/book';
 import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { formatSize, hashString } from '~/utils';
 
 import { buildBookActions } from './actions';
-import { BookChaptersDocument, BookDetailDocument, BookLineageDocument } from './query';
+import {
+  BookChaptersDocument,
+  BookDetailDocument,
+  BookLineageDocument,
+  BookValidationDocument,
+} from './query';
 import { useStyle } from './style';
 
 /**
@@ -47,6 +58,27 @@ import { useStyle } from './style';
  * same `Object.fromEntries(...) as Record<Severity, number>` idiom the
  * server's own `validation-store.ts` uses for the identical shape.
  */
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so each is named explicitly here, extracted from the generated
+// union rather than hand-duplicated — the same shape every inlined mutation
+// in this project uses.
+type BookRegenChaptersPayload = Extract<
+  NonNullable<BookRegenChaptersMutation['bookRegenChapters']>,
+  { __typename: 'BookRegenChaptersPayload' }
+>;
+type BookDeletePayload = Extract<
+  NonNullable<BookDeleteMutation['bookDelete']>,
+  { __typename: 'BookDeletePayload' }
+>;
+type BookClearEditionsPayload = Extract<
+  NonNullable<BookClearEditionsMutation['bookClearEditions']>,
+  { __typename: 'BookClearEditionsPayload' }
+>;
+type BookValidatePayload = Extract<
+  NonNullable<BookValidateMutation['bookValidate']>,
+  { __typename: 'BookValidatePayload' }
+>;
+
 function toValidationCounts(
   counts: ValidationFragmentFragment['counts']
 ): Record<Severity, number> {
@@ -125,7 +157,44 @@ export const BookPage = () => {
   const loading = bookLoading || libraryIdLoading;
   const error = bookError?.message;
 
-  const { validation: lazyValidation, load: loadValidation } = useBookValidation(book?.id ?? '');
+  /**
+   * The THIRD lazy read on this route, and the oldest: the validation modal's
+   * payload (`threshold`, `validatedAt`, `counts`, `messages`) is expensive
+   * enough that folding it into `BookDetail` pushed that document to 69% of
+   * the breadth budget. `BookDetailDocument` keeps the cheap
+   * `validation { id valid }` for `editingBlocked`; this fetches the rest,
+   * and only when the modal is actually opened.
+   *
+   * `useLazyQuery`, not `useQuery`: this must issue NO operation on mount —
+   * that is the whole point of the split, and what this route's "issues no
+   * BookValidation operation until the modal is opened" test pins.
+   *
+   * `variables` — the SAME object the eager read uses, i.e. keyed on the
+   * ROUTE PARAM, not on `book.id` from the settled query. That is what makes
+   * this document root identically and merge onto the same `Book`/
+   * `Validation` cache entities rather than competing with them, and it is
+   * what keeps the read moving with the book across an id rotation.
+   *
+   * They ARE the same entity: `Validation.id` is byte-identical to the owning
+   * Book's global id server-side (`graphql/book.ts`), so the eager
+   * `{ id valid }` and this fuller payload land on one `Validation:<id>`
+   * object — and so does `bookValidate`'s mutation response below.
+   *
+   * `execute` is passed its `variables` EXPLICITLY on every call: Apollo's
+   * `useLazyQuery` execute function resets to EMPTY variables when called
+   * with none ("If `variables` is not given, reset back to empty
+   * variables"), so the hook-level default is not enough.
+   */
+  // Only `data` is read. The hook this replaces also exposed `loading` and
+  // `error`; `page/book` destructured neither, and there is nowhere sensible
+  // to show them — `loadValidation()` is a CACHE HIT off the mutation that
+  // just wrote the payload, so it has no transport of its own to fail.
+  const [executeValidationRead, { data: validationData }] = useLazyQuery(BookValidationDocument);
+  const validationNode = validationData?.node;
+  const lazyValidation =
+    validationNode?.__typename === 'Library'
+      ? (validationNode.book?.validation ?? undefined)
+      : undefined;
   // `useFragment` is an identity cast (Global Constraints — masking is
   // compile-time only here), but called unconditionally before either early
   // return below anyway, the same discipline `page/series` follows for its
@@ -198,30 +267,190 @@ export const BookPage = () => {
     skip: libraryId === undefined,
   });
 
-  const [regenChapters, regenLoading] = useRegenChapters();
-  const [deleteBook, deleting] = useDeleteBook();
+  /**
+   * The four book mutations this page triggers, inlined at their call site
+   * now that `provider/book` is gone (spec §3.2). Each keeps its own
+   * in-flight flag: the flag drives a modal's or an action's `loading` state
+   * AND guards re-entrancy, exactly as the tuple-shaped hooks did.
+   *
+   * **Failures are TOASTED, not swallowed.** The deleted hooks each carried
+   * an `error`/`errorMessage` pair that `page/book` destructured away — so a
+   * failed regen or delete was silently invisible, while its two siblings
+   * (clear-editions, download) already toasted. Rather than inline dead
+   * state, every failure now surfaces through the toast this page already
+   * uses. That is a deliberate, small addition; the alternative was to drop
+   * the error mapping the hook tests pinned.
+   */
+  const [runRegen] = useMutation(BookRegenChaptersDocument);
+  const [runDelete] = useMutation(BookDeleteDocument);
+  const [runClearEditions] = useMutation(BookClearEditionsDocument);
+  const [runValidate] = useMutation(BookValidateDocument);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [clearingEditions, setClearingEditions] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [clearBookEditions, clearingEditions] = useClearBookEditions();
   const [clearEditionsModalOpen, setClearEditionsModalOpen] = useState(false);
   const [downloadBook] = useDownloadBook();
-  const [validateBook, validating] = useValidateBook();
   const showToast = useToast();
 
+  /**
+   * `update` evicts the STALE `Book:<id>` entity ONLY when the payload's
+   * `book.id` differs from the requested one. `reimportBook` re-parses the
+   * EPUB and recomputes its content-hash fingerprint, which is also the raw
+   * local half of the Book's global id, so a regen can genuinely MINT A NEW
+   * ID. When it does, normalization writes a brand new `Book:<new-id>` and
+   * has no way to know the old entity described the same book. When the id is
+   * unchanged, normalization alone updates the three re-selected chapter
+   * fields and this branch does nothing.
+   *
+   * `BookRegenChaptersResult` has two error members (`BookHashCollisionError`,
+   * `BookNotValidatedError`); both expose only `message`, so `unwrapResult`
+   * maps them uniformly with no per-typename branching.
+   *
+   * **Known pre-existing defect, deliberately NOT fixed here** (it predates
+   * this task and lives outside its scope): when the id DOES rotate, this
+   * page does not navigate to the new id, so the route param goes stale and
+   * the page falls through to "Book not found." until the user navigates
+   * somewhere with a live id. The eviction above is correct; the missing
+   * `navigate(path.book(newId))` is the gap.
+   */
+  const handleRegenChapters = useCallback(
+    async (targetId: string) => {
+      if (regenLoading) return;
+      setRegenLoading(true);
+      try {
+        const { data: regenData } = await runRegen({
+          variables: { id: targetId },
+          update: (cache, { data: mutationData }) => {
+            const outcome = unwrapResult<BookRegenChaptersPayload>(
+              mutationData?.bookRegenChapters,
+              'BookRegenChaptersPayload'
+            );
+            if (outcome.status !== 'ok') return;
+            if (outcome.payload.book.id === targetId) return;
+
+            cache.evict({ id: cache.identify({ __typename: 'Book', id: targetId }) });
+            cache.gc();
+          },
+        });
+        const result = unwrapResult<BookRegenChaptersPayload>(
+          regenData?.bookRegenChapters,
+          'BookRegenChaptersPayload'
+        );
+        if (result.status === 'missing') {
+          showToast('Failed to regenerate chapters', 'error');
+          return;
+        }
+        if (result.status === 'error') {
+          showToast(result.message, 'error');
+        }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to regenerate chapters', 'error');
+      } finally {
+        setRegenLoading(false);
+      }
+    },
+    [runRegen, regenLoading, showToast]
+  );
+
+  /**
+   * `update` does TWO things, not one:
+   *
+   *   1. Evicts the deleted `Book` entity (+ `cache.gc()`). That alone
+   *      handles a STANDALONE book's row: `Library.entries`' edges hold
+   *      `Reference`s and `InMemoryCache` silently drops an edge whose `node`
+   *      now points at nothing.
+   *
+   *   2. Evicts the OWNING `Library`'s ENTIRE `entries` field (every filter
+   *      variant, no `args`). Required because deleting the LAST book in a
+   *      series makes the SERVER also delete the `Series` row, while
+   *      `BookDeletePayload` carries no `deletedSeriesId` — the client has no
+   *      id to evict a `Series` entity with, and the SERIES-typed edge that
+   *      references the deleted book still lingers with a now-wrong
+   *      `bookCount`. Evicting the field makes the next `LibraryEntries` read
+   *      a genuine cache miss. `cache.identify` needs the Library's own
+   *      global id, which is why the document selects `library { id }`
+   *      alongside `deletedId`.
+   *
+   *      **Not free**: `entries` is `relayStylePagination(['filter'])`, so
+   *      this discards every page `fetchMore` had accumulated — a user deep
+   *      in the grid restarts at page 1 on the next read.
+   */
   const handleDeleteConfirm = useCallback(async () => {
     setDeleteModalOpen(false);
-    await deleteBook(book?.id ?? '');
-    navigate(path.home());
-  }, [deleteBook, book, navigate]);
+    const targetId = book?.id ?? '';
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const { data: deleteData } = await runDelete({
+        variables: { id: targetId },
+        update: (cache, { data: mutationData }) => {
+          const outcome = unwrapResult<BookDeletePayload>(
+            mutationData?.bookDelete,
+            'BookDeletePayload'
+          );
+          if (outcome.status !== 'ok') return;
 
+          cache.evict({
+            id: cache.identify({ __typename: 'Book', id: outcome.payload.deletedId }),
+          });
+          cache.evict({
+            id: cache.identify({ __typename: 'Library', id: outcome.payload.library.id }),
+            fieldName: 'entries',
+          });
+          cache.gc();
+        },
+      });
+      const result = unwrapResult<BookDeletePayload>(deleteData?.bookDelete, 'BookDeletePayload');
+      if (result.status === 'missing') showToast('Failed to delete book', 'error');
+      else if (result.status === 'error') showToast(result.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete book', 'error');
+    } finally {
+      setDeleting(false);
+    }
+    // Navigation is unconditional, exactly as before this task: the book is
+    // gone from this page's point of view either way, and a failed delete now
+    // says so through the toast above rather than silently.
+    navigate(path.home());
+  }, [runDelete, deleting, book, navigate, showToast]);
+
+  /**
+   * No hand-written `update`: `BookClearEditionsPayload` re-selects
+   * `book { id deviceEditionCount }`, and Apollo's normalization writes the
+   * new count onto the existing `Book` entity. `BookClearEditionsResult` is a
+   * single-member union today — no error branch — but `unwrapResult` still
+   * distinguishes `missing` (the field resolved null) from a typed error, and
+   * both are toasted.
+   */
   const handleClearEditionsConfirm = useCallback(async () => {
     setClearEditionsModalOpen(false);
-    const cleared = await clearBookEditions(book?.id ?? '');
-    if (cleared === undefined) {
-      showToast('Failed to clear device editions', 'error');
-      return;
+    const targetId = book?.id ?? '';
+    if (clearingEditions) return;
+    setClearingEditions(true);
+    try {
+      const { data: clearData } = await runClearEditions({ variables: { id: targetId } });
+      const result = unwrapResult<BookClearEditionsPayload>(
+        clearData?.bookClearEditions,
+        'BookClearEditionsPayload'
+      );
+      if (result.status === 'missing') {
+        showToast('Failed to clear device editions', 'error');
+        return;
+      }
+      if (result.status === 'error') {
+        showToast(result.message, 'error');
+        return;
+      }
+      const cleared = result.payload.clearedCount;
+      showToast(`Cleared ${cleared} device edition${cleared === 1 ? '' : 's'}`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to clear device editions', 'error');
+    } finally {
+      setClearingEditions(false);
     }
-    showToast(`Cleared ${cleared} device edition${cleared === 1 ? '' : 's'}`, 'success');
-  }, [clearBookEditions, book, showToast]);
+  }, [runClearEditions, clearingEditions, book, showToast]);
 
   const handleDownload = useCallback(async () => {
     const ok = await downloadBook(book?.id ?? '');
@@ -237,27 +466,49 @@ export const BookPage = () => {
    * pass/fail difference (an empty "No validation issues found" state vs a
    * real message list).
    *
-   * `loadValidation()` — NOT reading `result` directly — is the single path
-   * that populates `ValidationDetailModal`'s data, the same lazy
-   * `useBookValidation` read a future "open validation report" entry point
-   * (not wired yet — there is only this one trigger today) would also use.
+   * `executeValidationRead()` — NOT reading the mutation payload directly —
+   * is the single path that populates `ValidationDetailModal`'s data, the
+   * same lazy read a future "open validation report" entry point (not wired
+   * yet — there is only this one trigger today) would also use.
    * `Validation.id` is byte-identical to the owning Book's global id
    * (`graphql/book.ts`), so `bookValidate`'s payload has already normalized
    * onto the exact `Validation` entity `BookValidationDocument` reads —
-   * `loadValidation()` here is a CACHE HIT with no network round trip, only
-   * a fresh reactive read of what the mutation just wrote. Asserted directly
-   * in this file's test ("opens the validation modal ... with no
-   * BookValidationDocument mock in the list").
+   * this is a CACHE HIT with no network round trip, only a fresh reactive
+   * read of what the mutation just wrote. Asserted directly in this file's
+   * test ("opens the validation modal ... with no BookValidationDocument
+   * mock in the list").
+   *
+   * `bookValidate` needs no hand-written `update` for the same reason: its
+   * payload carries `validation` as a TOP-LEVEL field, keyed by an id that
+   * IS the Book's, so every reader of `Book.validation` sees it immediately.
    */
   const handleValidate = useCallback(async () => {
-    const result = await validateBook(book?.id ?? '');
-    if (!result) {
+    const targetId = book?.id ?? '';
+    if (validating) return;
+    setValidating(true);
+    try {
+      const { data: validateData } = await runValidate({ variables: { id: targetId } });
+      const result = unwrapResult<BookValidatePayload>(
+        validateData?.bookValidate,
+        'BookValidatePayload'
+      );
+      if (result.status !== 'ok') {
+        showToast('Validation failed', 'error');
+        return;
+      }
+      // Rebuilt here rather than closing over the render-scoped `variables`
+      // literal, which is a fresh object every render: same VALUES, stable
+      // dependencies.
+      void executeValidationRead({
+        variables: { libraryId: libraryId ?? '', bookId: id ?? '' },
+      });
+      setValidationModalOpen(true);
+    } catch {
       showToast('Validation failed', 'error');
-      return;
+    } finally {
+      setValidating(false);
     }
-    loadValidation();
-    setValidationModalOpen(true);
-  }, [validateBook, book, showToast, loadValidation]);
+  }, [runValidate, validating, book, showToast, executeValidationRead, libraryId, id]);
 
   const handleEditMetadata = useCallback(
     () => navigate(path.bookEdit(book?.id ?? '')),
@@ -378,7 +629,7 @@ export const BookPage = () => {
       onEditMetadata: handleEditMetadata,
       onShowLineage: () => setLineageModalOpen(true),
       onShowLineageIntent: lineageIntent.intentProps,
-      onRegenChapters: () => void regenChapters(book.id),
+      onRegenChapters: () => void handleRegenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
       onValidate: () => void handleValidate(),
       onUploadReplace: () => setReplaceModalOpen(true),

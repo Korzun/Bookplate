@@ -1,5 +1,5 @@
 import type { LibraryEntryStatus, LibraryEntryType, LibraryFilter } from '~/gql/graphql';
-import type { BookListFilter } from '~/provider/book';
+import type { BookListFilter } from '~/lib/book-types';
 
 const STATUS_MAP: Record<NonNullable<BookListFilter['status']>, LibraryEntryStatus> = {
   'not-started': 'NOT_STARTED',

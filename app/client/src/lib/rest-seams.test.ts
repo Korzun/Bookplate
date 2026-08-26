@@ -17,7 +17,7 @@ const SANCTIONED = new Set([
   'lib/use-authorized-src.ts', // blob fetch of cover/thumbnail/download URLs
   'page/login/index.tsx', // POST /api/login — pre-auth
   'provider/config/provider.tsx', // GET /api/public-config — pre-auth; Query.config is authenticated
-  'provider/book/hook/use-download-book.ts', // file download — binary
+  'lib/use-download-book.ts', // file download — binary
   'provider/upload/hook/use-upload-transport.ts', // POST /api/books/upload — XMLHttpRequest, for upload progress
 ]);
 

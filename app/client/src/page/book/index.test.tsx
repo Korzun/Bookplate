@@ -26,12 +26,12 @@ vi.mock('~/control', async (orig) => {
   return { ...actual, UploadReplaceModal: replaceModalSpy };
 });
 
-// `page/book`'s own read and `useBookValidation` both root through
+// `page/book`'s own read and its lazy validation read both root through
 // `useCurrentLibraryId` (an unconditional `ViewerBootstrap` query) — stubbed
 // directly, the same convention `page/series/index.test.tsx` uses, to keep
 // these tests focused on `BookDetailDocument`/`BookValidateDocument`.
 // `useWithTargetUser` is ALSO stubbed here (not left to the real provider):
-// `useDownloadBook` (unmigrated REST hook, still a page consumer) calls it.
+// `useDownloadBook` (`~/lib`, a permanent REST seam) calls it.
 //
 // MUTABLE, not the static `() => ({ libraryId: LIBRARY_ID, loading: false })`
 // form (review round 1, Item 1): a static stub makes `page/book`'s own
@@ -50,19 +50,32 @@ vi.mock('~/provider/library-target', () => ({
     Object.assign((url: string) => url, { ready: true, username: undefined }),
 }));
 
+import type { NormalizedCacheObject } from '@apollo/client';
+
 import { makeFragmentData } from '~/gql';
 import type {
   BookChaptersQuery,
   BookLineageQuery,
   LineageEntryFragmentFragment,
 } from '~/gql/graphql';
-import { BookValidateDocument, LineageEntryFragment } from '~/graphql/book';
+import {
+  BookClearEditionsDocument,
+  BookDeleteDocument,
+  BookRegenChaptersDocument,
+  BookValidateDocument,
+  LineageEntryFragment,
+} from '~/graphql/book';
 import { ProgressDeleteDocument, ProgressSetDocument } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { apiFetch } from '~/lib/api-fetch';
 import { renderWithApollo } from '~/test-utils';
 
-import { BookChaptersDocument, BookDetailDocument, BookLineageDocument } from './query';
+import {
+  BookChaptersDocument,
+  BookDetailDocument,
+  BookLineageDocument,
+  BookValidationDocument,
+} from './query';
 
 const mockApiFetch = vi.mocked(apiFetch);
 
@@ -92,6 +105,7 @@ beforeEach(() => {
   chapterCounter.requests = 0;
   lineageCounter.requests = 0;
   bookDetailCounter.requests = 0;
+  validationReadCounter.requests = 0;
   currentLibraryId = LIBRARY_ID;
   currentLibraryIdLoading = false;
   URL.createObjectURL = vi.fn(() => 'blob:test-cover');
@@ -446,6 +460,208 @@ async function selectMenuItem(name: RegExp) {
   await userEvent.click(await screen.findByRole('menuitem', { name }));
 }
 
+/**
+ * Cache seeding + mocks for the four book mutations this page owns since
+ * Task 8 inlined them here (`use-delete-book`, `use-regen-chapters`,
+ * `use-clear-book-editions`, `use-validate-book` all dissolved into
+ * `./index.tsx`). The `update` functions they carry are the reason these
+ * assertions read the CACHE rather than a call count.
+ */
+type PageClient = Awaited<ReturnType<typeof renderPage>>['client'];
+
+const ENTRIES_VARS = { libraryId: LIBRARY_ID, first: 20, filter: undefined };
+
+/**
+ * `LibraryEntriesDocument` is loaded DYNAMICALLY, not with a top-level
+ * `import … from '~/page/library'`. This file carries a
+ * `vi.mock('~/control', importOriginal)`, and `~/page/library` pulls the
+ * `~/component` barrel into the same ~70-cycle import graph the standing
+ * note in `src/test-utils.tsx` documents — a static import here made
+ * `UploadReplaceModal` resolve to `undefined` and silently broke an
+ * unrelated, previously green test ("passes the book GLOBAL id to the
+ * replace modal"). Deferring the import until after the page has already
+ * rendered keeps the real document (which is what gives these cache
+ * assertions their teeth) without re-entering the cycle during module init.
+ */
+const libraryEntriesDocument = async () => (await import('~/page/library')).LibraryEntriesDocument;
+
+// Deliberately UNANNOTATED: `LibraryEntriesQuery`'s `node` member is masked,
+// so a literal under an explicit annotation would fail the excess-property
+// check. Passing it through as a non-literal sidesteps that.
+const standaloneRow = (id: string) => ({
+  __typename: 'Book' as const,
+  id,
+  title: 'A Wizard of Earthsea',
+  author: 'Le Guin',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+});
+
+// The server deletes a series when its LAST book goes with it, but
+// `BookDeletePayload` carries no `deletedSeriesId` — the client has nothing
+// to evict the `Series` entity with. This row shape is what forces the
+// `update` to invalidate the WHOLE `entries` field rather than only the
+// deleted `Book`.
+const soloSeriesRow = () => ({
+  __typename: 'Series' as const,
+  id: 'series-1',
+  name: 'Solo Series',
+  author: 'A',
+  bookCount: 1,
+  progressPercentage: 0,
+  books: {
+    __typename: 'BookConnection' as const,
+    edges: [
+      {
+        __typename: 'BookEdge' as const,
+        node: {
+          __typename: 'Book' as const,
+          id: BOOK_ID,
+          title: 'Only Book',
+          hasCover: false,
+          mtime: '',
+          thumbnailUrl: '',
+        },
+      },
+    ],
+  },
+});
+
+const seedLibraryEntries = async (client: PageClient, nodes: ReturnType<typeof standaloneRow>[]) =>
+  client.writeQuery({
+    query: await libraryEntriesDocument(),
+    variables: ENTRIES_VARS,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: nodes.map((node, i) => ({
+            __typename: 'LibraryEntriesConnectionEdge' as const,
+            cursor: `c${i}`,
+            node,
+          })),
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
+
+const readEntries = async (client: PageClient) =>
+  client.cache.readQuery({ query: await libraryEntriesDocument(), variables: ENTRIES_VARS });
+
+const deleteSuccessMock = (): MockedResponse => ({
+  request: { query: BookDeleteDocument, variables: { id: BOOK_ID } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      bookDelete: {
+        __typename: 'BookDeletePayload' as const,
+        deletedId: BOOK_ID,
+        library: { __typename: 'Library' as const, id: LIBRARY_ID },
+      },
+    },
+  },
+});
+
+const NEW_BOOK_ID = 'Qm9vazoy'; // Book:2 — the id a regen can rotate INTO
+
+const regenMock = (responseId: string, extra: Partial<MockedResponse> = {}): MockedResponse => ({
+  request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      bookRegenChapters: {
+        __typename: 'BookRegenChaptersPayload' as const,
+        book: {
+          __typename: 'Book' as const,
+          id: responseId,
+          chapterCount: 5,
+          chapterNames: ['One', 'Two'],
+          chapterSpineMap: [0, 10],
+        },
+      },
+    },
+  },
+  ...extra,
+});
+
+const regenErrorMemberMock = (typename: string, message: string): MockedResponse => ({
+  request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      bookRegenChapters: { __typename: typename, message },
+    },
+  },
+});
+
+const clearEditionsMock = (
+  clearedCount: number,
+  deviceEditionCount = 0,
+  extra: Partial<MockedResponse> = {}
+): MockedResponse => ({
+  request: { query: BookClearEditionsDocument, variables: { id: BOOK_ID } },
+  result: {
+    data: {
+      __typename: 'Mutation' as const,
+      bookClearEditions: {
+        __typename: 'BookClearEditionsPayload' as const,
+        clearedCount,
+        book: { __typename: 'Book' as const, id: BOOK_ID, deviceEditionCount },
+      },
+    },
+  },
+  ...extra,
+});
+
+/** Counts every `BookValidation` operation at REQUEST time (see the lazy-split
+ * note above for why the variable matcher, not `result`, is the counter). */
+const validationReadCounter = { requests: 0 };
+const validationReadMock = (): MockedResponse => ({
+  request: {
+    query: BookValidationDocument,
+    variables: function bookValidationVariables(vars) {
+      validationReadCounter.requests += 1;
+      return vars.libraryId === LIBRARY_ID && vars.bookId === BOOK_ID;
+    },
+  },
+  maxUsageCount: Infinity,
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      node: {
+        __typename: 'Library' as const,
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book' as const,
+          id: BOOK_ID,
+          validation: {
+            __typename: 'Validation' as const,
+            id: BOOK_ID,
+            valid: true,
+            threshold: 'ERROR' as const,
+            validatedAt: '2026-08-13T00:00:00.000Z',
+            counts: [],
+            messages: { __typename: 'ValidationMessagesConnection' as const, edges: [] },
+          },
+        },
+      },
+    },
+  },
+});
+
+async function openBookAnd(mocks: MockedResponse[], item: RegExp) {
+  const rendered = await renderPage(mocks);
+  await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+  await selectMenuItem(item);
+  return rendered;
+}
+
 describe('BookPage', () => {
   it('shows a loading state while the book is still resolving', async () => {
     await renderPage([]);
@@ -550,7 +766,7 @@ describe('BookPage', () => {
       await selectMenuItem(/^validate$/i);
 
       // The modal takes `Record<Severity, number>`; the fragment gives a
-      // list — this is a cache-hit read through `useBookValidation`, proved
+      // list — this is a cache-hit read through `BookValidationDocument`, proved
       // below by there being no `BookValidationDocument` mock at all: an
       // empty `MockLink` throws on any unmatched operation, so reaching this
       // assertion IS the proof no round trip occurred.
@@ -1082,6 +1298,336 @@ describe('BookPage', () => {
       expect(screen.getByRole('heading', { name: 'A Wizard of Earthsea' })).toBeInTheDocument();
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
       expect(screen.getByText('Not started')).toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The four mutations this page owns since Task 8. Every behaviour below was
+  // pinned by a deleted `provider/book/hook/*.test.tsx`; each is now driven
+  // through the real header action that triggers it.
+  // -------------------------------------------------------------------------
+
+  describe('delete', () => {
+    const confirmDelete = async () =>
+      userEvent.click(await screen.findByRole('button', { name: 'Delete', hidden: true }));
+
+    it('evicts the deleted book from the cache', async () => {
+      const { client } = await openBookAnd([bookMock(), deleteSuccessMock()], /^delete$/i);
+      expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`]).toBeDefined();
+
+      await confirmDelete();
+
+      await waitFor(() =>
+        expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+          `Book:${BOOK_ID}`
+        )
+      );
+    });
+
+    // A standalone book's own edge would self-heal from `Book` eviction alone,
+    // so asserting `null` — not "the other row survives" — is what pins the
+    // UNCONDITIONAL field eviction the payload gives no way to scope.
+    it('invalidates the LibraryEntries connection so a subsequent read misses the cache (standalone book)', async () => {
+      const { client } = await openBookAnd([bookMock(), deleteSuccessMock()], /^delete$/i);
+      await seedLibraryEntries(client, [standaloneRow(BOOK_ID), standaloneRow('Qm9vazoz')]);
+      expect(await readEntries(client)).not.toBeNull();
+
+      await confirmDelete();
+
+      await waitFor(async () => expect(await readEntries(client)).toBeNull());
+    });
+
+    it("removes an emptied series' row from a subsequent LibraryEntries cache read", async () => {
+      const { client } = await openBookAnd([bookMock(), deleteSuccessMock()], /^delete$/i);
+      await seedLibraryEntries(client, [
+        soloSeriesRow() as unknown as ReturnType<typeof standaloneRow>,
+      ]);
+      expect(await readEntries(client)).not.toBeNull();
+
+      await confirmDelete();
+
+      // The stale `Series` row cannot "disappear" from a cache the client
+      // never re-fetches: this asserts the connection was INVALIDATED, so the
+      // next read is forced to the network.
+      await waitFor(async () => expect(await readEntries(client)).toBeNull());
+    });
+
+    it('toasts the transport error message when the mutation throws', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookDeleteDocument, variables: { id: BOOK_ID } },
+            error: new Error('Network error'),
+          },
+        ],
+        /^delete$/i
+      );
+
+      await confirmDelete();
+
+      expect(await screen.findByText('Network error')).toBeInTheDocument();
+    });
+
+    it('toasts a generic failure when the mutation resolves missing', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookDeleteDocument, variables: { id: BOOK_ID } },
+            result: { data: { __typename: 'Mutation' as const, bookDelete: null } },
+          },
+        ],
+        /^delete$/i
+      );
+
+      await confirmDelete();
+
+      expect(await screen.findByText('Failed to delete book')).toBeInTheDocument();
+    });
+  });
+
+  describe('regen chapters', () => {
+    it('updates chapter fields on the same Book entity via normalization when the id is unchanged', async () => {
+      const { client } = await openBookAnd([bookMock(), regenMock(BOOK_ID)], /^regen chapters$/i);
+
+      await waitFor(() => {
+        const entity = (client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`] as {
+          chapterCount: number;
+        };
+        expect(entity.chapterCount).toBe(5);
+      });
+    });
+
+    // `reimportBook` recomputes the content hash, which is the raw local half
+    // of the Book's global id — so a regen can MINT A NEW ID. Normalization
+    // alone would write `Book:<new-id>` and leave the pre-regen entity, with
+    // its stale chapter data, in the cache forever.
+    it('evicts the old Book entity when the payload reports a different id (hash changed)', async () => {
+      const { client } = await openBookAnd(
+        [bookMock(), regenMock(NEW_BOOK_ID)],
+        /^regen chapters$/i
+      );
+      expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`]).toBeDefined();
+
+      await waitFor(() => {
+        const extracted = client.cache.extract() as NormalizedCacheObject;
+        expect(Object.keys(extracted)).not.toContain(`Book:${BOOK_ID}`);
+        expect((extracted[`Book:${NEW_BOOK_ID}`] as { chapterCount: number }).chapterCount).toBe(5);
+      });
+    });
+
+    it('toasts a BookHashCollisionError message', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          regenErrorMemberMock(
+            'BookHashCollisionError',
+            'This book collides with another book already in the library.'
+          ),
+        ],
+        /^regen chapters$/i
+      );
+
+      expect(
+        await screen.findByText('This book collides with another book already in the library.')
+      ).toBeInTheDocument();
+    });
+
+    it('toasts a BookNotValidatedError message', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          regenErrorMemberMock(
+            'BookNotValidatedError',
+            'This book must pass validation before it can be edited.'
+          ),
+        ],
+        /^regen chapters$/i
+      );
+
+      expect(
+        await screen.findByText('This book must pass validation before it can be edited.')
+      ).toBeInTheDocument();
+    });
+
+    it('toasts a generic failure when the mutation resolves missing', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+            result: { data: { __typename: 'Mutation' as const, bookRegenChapters: null } },
+          },
+        ],
+        /^regen chapters$/i
+      );
+
+      expect(await screen.findByText('Failed to regenerate chapters')).toBeInTheDocument();
+    });
+
+    it('toasts the transport error message when the mutation throws', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
+            error: new Error('Network error'),
+          },
+        ],
+        /^regen chapters$/i
+      );
+
+      expect(await screen.findByText('Network error')).toBeInTheDocument();
+    });
+
+    // The in-flight flag, pinned through the action it actually drives. The
+    // mock NEVER resolves within the test, so the assertion needs no tuned
+    // wait: if `regenLoading` were dropped, the item would be enabled the
+    // instant the menu re-opens and this fails immediately.
+    it('disables Regen chapters while a regen is still in flight', async () => {
+      await openBookAnd([bookMock(), regenMock(BOOK_ID, { delay: 100_000 })], /^regen chapters$/i);
+
+      const [trigger] = screen.getAllByRole('button', { name: 'More actions' });
+      await userEvent.click(trigger);
+      const item = await screen.findByRole('menuitem', { name: /^regen chapters$/i });
+      // `ActionMenuList` renders a native `<button disabled>` for a disabled
+      // item, so this is the DOM property, not an ARIA attribute.
+      expect(item).toBeDisabled();
+    });
+  });
+
+  describe('clear device editions', () => {
+    const confirmClear = async () =>
+      userEvent.click(await screen.findByRole('button', { name: 'Clear editions', hidden: true }));
+
+    // No hand-written `update` exists for this mutation: the payload
+    // re-selects `book { id deviceEditionCount }` and Apollo's normalization
+    // writes the new count onto the existing entity. This is the proof,
+    // asserted against the CACHE — the fixture seeds `deviceEditionCount: 2`.
+    it('zeroes deviceEditionCount in the cache with no hand-written update', async () => {
+      const { client } = await openBookAnd(
+        [bookMock(), clearEditionsMock(2, 0)],
+        /^clear device editions/i
+      );
+      expect(
+        (
+          (client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`] as {
+            deviceEditionCount: number;
+          }
+        ).deviceEditionCount
+      ).toBe(2);
+
+      await confirmClear();
+
+      await waitFor(() =>
+        expect(
+          (
+            (client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`] as {
+              deviceEditionCount: number;
+            }
+          ).deviceEditionCount
+        ).toBe(0)
+      );
+    });
+
+    it('toasts the cleared count on success', async () => {
+      await openBookAnd([bookMock(), clearEditionsMock(3, 0)], /^clear device editions/i);
+      await confirmClear();
+
+      expect(await screen.findByText('Cleared 3 device editions')).toBeInTheDocument();
+    });
+
+    it('toasts a generic failure when the mutation resolves missing', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookClearEditionsDocument, variables: { id: BOOK_ID } },
+            result: { data: { __typename: 'Mutation' as const, bookClearEditions: null } },
+          },
+        ],
+        /^clear device editions/i
+      );
+      await confirmClear();
+
+      expect(await screen.findByText('Failed to clear device editions')).toBeInTheDocument();
+    });
+
+    it('toasts the transport error message when the mutation throws', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookClearEditionsDocument, variables: { id: BOOK_ID } },
+            error: new Error('Network error'),
+          },
+        ],
+        /^clear device editions/i
+      );
+      await confirmClear();
+
+      expect(await screen.findByText('Network error')).toBeInTheDocument();
+    });
+  });
+
+  describe('the lazy validation read', () => {
+    // The whole reason the 2026-08-13 split exists. Counted at REQUEST time
+    // (see the lazy-split note above), so an eagerly-issued read increments
+    // before the page's first `await` resolves and this fails CLOSED.
+    it('issues no BookValidation operation until Validate is used', async () => {
+      await renderPage([bookMock(), validationReadMock()]);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      expect(validationReadCounter.requests).toBe(0);
+    });
+
+    // `bookValidate`'s payload carries `validation` as a TOP-LEVEL field, not
+    // nested under `book`. It only lands on the Book's own cached
+    // `validation` because `Validation.id` IS the owning Book's global id, so
+    // every read of `Book.validation` resolves to the same entity. No
+    // hand-written `update` exists; this is the proof normalization does it.
+    it('writes the fresh validation onto the book via normalization, with no manual update', async () => {
+      // The eager fixture seeds `validation.valid: true`; the mutation below
+      // resolves `valid: false`, so a stale read is visibly distinguishable
+      // from a fresh one.
+      const { client } = await openBookAnd([bookMock(), validateMutationMock()], /^validate$/i);
+
+      await waitFor(() => {
+        const cached = client.cache.readQuery({
+          query: BookDetailDocument,
+          variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID },
+        });
+        const validation =
+          cached?.node?.__typename === 'Library' ? cached.node.book?.validation : undefined;
+        expect(validation?.valid).toBe(false);
+      });
+    });
+
+    it('toasts a failure when the validate mutation throws', async () => {
+      await openBookAnd(
+        [
+          bookMock(),
+          {
+            request: { query: BookValidateDocument, variables: { id: BOOK_ID } },
+            error: new Error('Network error'),
+          },
+        ],
+        /^validate$/i
+      );
+
+      expect(await screen.findByText('Validation failed')).toBeInTheDocument();
+      expect(screen.queryByText(/no validation issues found/i)).not.toBeInTheDocument();
+    });
+
+    // Same never-resolving mock as the regen case, for the same reason.
+    it('disables Validate while a validation is still in flight', async () => {
+      await openBookAnd([bookMock(), { ...validateMutationMock(), delay: 100_000 }], /^validate$/i);
+
+      const [trigger] = screen.getAllByRole('button', { name: 'More actions' });
+      await userEvent.click(trigger);
+      const item = await screen.findByRole('menuitem', { name: /^validate$/i });
+      expect(item).toBeDisabled();
     });
   });
 });

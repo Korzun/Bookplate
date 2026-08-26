@@ -7,7 +7,7 @@ import type {
   SuggestionType,
 } from '~/gql/graphql';
 import { SearchSuggestionsDocument } from '~/graphql/search-suggestions';
-import type { BookListFilter } from '~/provider/book';
+import type { BookListFilter } from '~/lib/book-types';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 export type Suggestion = {

@@ -22,6 +22,18 @@ export type UseScanLibrary =
 /**
  * Starts a library scan and reports its live progress.
  *
+ * **Placement (Task 8).** This lived in `provider/book/hook/` until that
+ * barrel was dissolved. It is not a bare `useMutation` wrapper that inlines
+ * cleanly into its caller: it composes `libraryScan` with `useScanProgress`'s
+ * query+subscription pair AND owns a completion effect that evicts
+ * `Library.entries`. It has exactly ONE consumer — `./index.tsx`, rendered by
+ * `component/scan-library-setting` on `page/user` — so it now sits in that
+ * component's own directory. That is the colocation the project asks for (no
+ * cross-cutting barrel, code next to its only call site) while keeping the
+ * hook-level tests that pin the attach path, the completion eviction and the
+ * error folding, which a component-level rewrite would have had to
+ * re-derive.
+ *
  * Replaces a 2-second polling loop against the REST scan-status endpoint. The
  * mount-time "attach to a running scan" effect is gone too — it is now
  * structural rather than something this hook arranges: `useScanProgress` always

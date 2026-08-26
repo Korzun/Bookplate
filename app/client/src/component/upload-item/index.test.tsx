@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { MetadataFix } from '~/provider/book';
+import type { MetadataFix } from '~/lib/book-types';
 import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 

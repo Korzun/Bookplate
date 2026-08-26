@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { Button } from '~/control';
-import { useScanLibrary } from '~/provider/book';
 import { useToast } from '~/provider/toast';
 
 import { Card } from '../card';
+import { useScanLibrary } from './use-scan-library';
 
 export const ScanLibrarySetting = () => {
   const [scanLibrary, scanResult, scanning, failed] = useScanLibrary();

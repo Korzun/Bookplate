@@ -4,12 +4,12 @@ import { CardDivider } from '~/component/card-divider';
 import { FixReview } from '~/component/fix-review';
 import { UploadZone } from '~/component/upload-zone';
 import { CheckIcon } from '~/icon';
-import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
-import { useReplaceBook } from '~/provider/book';
+import type { MetadataFix, ReplaceAnalysis } from '~/lib/book-types';
 import { fixKey } from '~/provider/upload';
 
 import { ConfirmModal } from '../confirm-modal';
 import { useStyle } from './style';
+import { useReplaceBook } from './use-replace-book';
 
 interface Props {
   isOpen: boolean;
@@ -112,7 +112,7 @@ export function UploadReplaceModal({ isOpen, bookId, bookTitle, onClose, onRepla
     // No `file` argument here: `analyzeReplacement` already staged the bytes
     // over the sanctioned staging seam (`~/lib/staged-upload`) and
     // `commitReplacement` carries that SAME staged id forward internally —
-    // see `use-replace-book.ts`'s doc comment.
+    // see `./use-replace-book.ts`'s doc comment.
     const updated = await commitReplacement(bookId, accepted.map(fixKey));
     if (updated) {
       reset();
