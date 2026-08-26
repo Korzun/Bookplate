@@ -691,18 +691,55 @@ describe('library reads', () => {
   // A failed read degrades to "no suggestions offered" rather than an error
   // state: subjects and series are optional editing candidates, not the
   // screen's content.
-  it('renders the form normally when the series read fails', async () => {
+  //
+  // **The switch click is load-bearing, not scene-setting.** `SeriesNames` is
+  // lazy (see the splits below), so with the default `series: null` fixture
+  // this test used to leave the read `skip`ped shut — the errored mock was
+  // never requested, and the only assertion (the heading) renders
+  // unconditionally, so it passed identically with NO mocks at all. Opening
+  // the gate first is what makes the failure this test is named for actually
+  // happen. `counters.series` pins that: if the read is not issued, the
+  // degradation being asserted below describes nothing.
+  it('degrades to no series suggestions when the series read fails, without erroring the form', async () => {
+    const user = userEvent.setup();
     renderWithApollo(<BookEditForm book={book()} />, {
       mocks: [
         subjectsMock(),
         {
-          request: { query: SeriesNamesDocument, variables: { libraryId: LIBRARY_ID } },
+          request: {
+            query: SeriesNamesDocument,
+            variables: function seriesNamesErrorVariables(vars) {
+              counters.series += 1;
+              return vars.libraryId === LIBRARY_ID;
+            },
+          },
           error: new Error('series read failed'),
         },
       ],
     });
 
-    expect(await screen.findByText('Edit Metadata — Original Title')).toBeInTheDocument();
+    await screen.findByText('Edit Metadata — Original Title');
+    await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    await waitFor(() => expect(counters.series).toBe(1));
+
+    // Degraded, not broken: the Select settles OUT of its loading state and
+    // still opens — it simply has nothing to offer, so `Select` renders its
+    // own "No results" empty option. Three distinct states are being told
+    // apart here: still loading, healthy with real names, and degraded-empty.
+    // `lists series names in the order the server returned them` reaches this
+    // exact point with three real options, which is what makes the empty
+    // presentation a discriminator rather than a tautology.
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    await user.click(screen.getByRole('button', { name: 'Select…' }));
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent('No results');
+
+    // …and the failure is never reported to the user: the form's own content
+    // loaded fine, so a failed SUGGESTION read must not become an error state.
+    expect(screen.queryByText(/series read failed/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
