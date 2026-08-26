@@ -48,8 +48,9 @@ export type UsePendingFixes = {
  * **`loading` also folds in `useCurrentLibraryId`'s own loading.** A SKIPPED
  * `useQuery` reports `loading: false`, so without this fold an admin whose
  * target is still resolving would render "no pending fixes" for a frame
- * instead of a loading state. Same correction `useLibraryEntries` carries
- * (`provider/library/hook/use-library-entries.ts`'s doc comment).
+ * instead of a loading state. Same correction `page/library`'s `LibraryPage`
+ * carries (`page/library/index.tsx`'s own `LibraryEntriesDocument`/
+ * `extraLoading` doc comment).
  */
 export const usePendingFixes = (): UsePendingFixes => {
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();

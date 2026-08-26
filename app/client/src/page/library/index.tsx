@@ -37,6 +37,12 @@ import { toLibraryFilter } from './to-library-filter';
  * (this page's grid grows via this document's own `fetchMore`, not the REST
  * list, so nothing keeps that list current past entry 20; see
  * `component/cover-stack`'s doc comment for the regression this replaces).
+ * Measured BEFORE `books(first: 3)` was added: breadth 36 (36.0%),
+ * complexity 2907 (8.8%) — the jump to the numbers below (+11 breadth,
+ * +3100 complexity) is three books' worth of
+ * `id`/`title`/`hasCover`/`mtime`/`thumbnailUrl`, scaled by `entries`' own
+ * ×100, confirming the ×3-not-×100 nesting claim above rather than just
+ * asserting it.
  *
  * `node(id: $libraryId) { id ... on Library { id ... } }` selects `id` at
  * BOTH levels deliberately: `node` resolves to the `Node` INTERFACE, which

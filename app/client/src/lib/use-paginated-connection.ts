@@ -81,10 +81,11 @@ export type UsePaginatedConnectionOptions<
  *
  * That formula deliberately has NO `skip ? false : ...` gate, unlike a
  * first draft of this helper: `skip` here is often the COMBINED skip fed to
- * `useQuery` (e.g. `useLibraryEntries` skips whenever `libraryId` is still
- * `undefined`, including during `useCurrentLibraryId`'s own bootstrap round
- * trip) — gating the `networkStatus` check on that same `skip` would zero
- * out `extraLoading` for exactly the window it exists to cover, and
+ * `useQuery` (e.g. `page/library`'s `LibraryPage` skips whenever `libraryId`
+ * is still `undefined`, including during `useCurrentLibraryId`'s own
+ * bootstrap round trip) — gating the `networkStatus` check on that same
+ * `skip` would zero out `extraLoading` for exactly the window it exists to
+ * cover, and
  * silently reintroduce the "cold load renders a false empty state" bug this
  * helper's callers depend on staying fixed. Apollo itself already reports a
  * skipped query's `networkStatus` as neither `loading` nor `setVariables`,
