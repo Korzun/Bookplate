@@ -3,38 +3,21 @@ import { graphql } from '~/gql';
 /**
  * Devices hang off the `Viewer` singleton, which is already `keyFields: []` in
  * `cacheConfig` — that is what makes `cache.modify` able to address the list
- * when a later task appends to it.
+ * for the mutations below.
  *
- * Fields selected inline rather than through a named fragment: fragment
- * masking is ON, and an inline selection needs no `useFragment` to read.
- *
- * NOTE the cost shape before adding anything here: `Viewer.devices` carries a
- * ×100 multiplier. `Device.enabledUsers` adds ×50 ON TOP, so a field selected
- * under both is priced ×5000. This document deliberately does NOT select
- * `enabledUsers` — the device-form task fetches those separately.
+ * `DeviceListDocument` itself no longer lives here: it is composed at
+ * `page/device-list` from `component/device-row`'s colocated
+ * `DeviceRowFragment` (task 1). This file keeps only the documents with no
+ * single natural component owner — the mutations, and the admin-only
+ * `DeviceUsersDocument` read `component/device-form` drives.
  */
-export const DeviceListDocument = graphql(`
-  query DeviceList {
-    viewer {
-      devices {
-        id
-        name
-        slug
-        coverWidth
-        coverHeight
-        coverFit
-        bwCover
-        simplify
-      }
-    }
-  }
-`);
 
 /**
- * `device { … }` mirrors `DeviceListDocument`'s selection so a created device
- * normalizes with every field the list read expects — a partial selection
- * here would leave the appended reference resolving `null`/missing fields
- * the next time `DeviceList` reads it.
+ * `device { … }` mirrors `DeviceRowFragment`'s selection
+ * (`component/device-row`) so a created device normalizes with every field
+ * that fragment expects — a partial selection here would leave the appended
+ * reference resolving `null`/missing fields the next time `DeviceList` reads
+ * it.
  *
  * Both `DeviceSlugConflictError` and `InvalidInputError` are real, reachable
  * outcomes (a duplicate name/slug; a rejected cover size), so both are
@@ -69,7 +52,7 @@ export const DeviceCreateDocument = graphql(`
 /**
  * Returns the `Device` outright rather than an id: normalization over the
  * existing `Device:<id>` entity is what refreshes every cached read, so this
- * mutation needs no `update` function of its own (see `use-update-device.ts`).
+ * mutation needs no `update` function of its own (see `component/device-form`).
  */
 export const DeviceUpdateDocument = graphql(`
   mutation DeviceUpdate($input: DeviceUpdateInput!) {
@@ -117,18 +100,17 @@ export const DeviceDeleteDocument = graphql(`
 `);
 
 /**
- * There is no `Query.device` — `useDeviceUsers` reads every device's `id`
- * plus its enabled users and picks the matching one out of the list.
+ * There is no `Query.device` — `component/device-form` reads every device's
+ * `id` plus its enabled users and picks the matching one out of the list.
  *
- * `Viewer.devices` carries a ×100 cost multiplier (see `DeviceListDocument`'s
- * own note above); `Device.enabledUsers` adds ×50 ON TOP, so any field
- * selected under BOTH is priced ×5000. `id` is selected here — and NOTHING
- * else, in particular not `username` — for exactly that reason; usernames
- * are resolved against the already-cached `UserListDocument`
- * (`graphql/user.ts`) in `useDeviceUsers` instead. Measured (`test:cost -w
- * app/server`): breadth 9.0%, complexity 31.2% of budget — comfortably under
- * the 70% headroom despite the ×5000 shape, because only `id` travels
- * through it.
+ * `Viewer.devices` carries a ×100 cost multiplier; `Device.enabledUsers`
+ * adds ×50 ON TOP, so any field selected under BOTH is priced ×5000. `id` is
+ * selected here — and NOTHING else, in particular not `username` — for
+ * exactly that reason; usernames are resolved against the already-cached
+ * `UserListDocument` (`graphql/user.ts`) in `device-form` instead. Measured
+ * (`test:cost -w app/server`): breadth 9.0%, complexity 31.2% of budget —
+ * comfortably under the 70% headroom despite the ×5000 shape, because only
+ * `id` travels through it.
  */
 export const DeviceUsersDocument = graphql(`
   query DeviceUsers {
@@ -148,13 +130,11 @@ export const DeviceUsersDocument = graphql(`
  * } }` — that normalizes over the existing `Device:<id>` entity, refreshing
  * `DeviceUsersDocument`'s cached read of the same device for free, so
  * neither this mutation nor `DeviceDisableUserDocument` below needs an
- * `update` function (verified in `use-enable-device-user.test.tsx` with none
- * supplied).
+ * `update` function.
  *
  * `userId` is a `User` global ID, not a username, per the schema's rule for
- * every user-associated mutation — the enabling hook resolves the username
- * it's given against the already-cached `UserListDocument` before calling
- * this.
+ * every user-associated mutation — `device-form` resolves the username it's
+ * given against the already-cached `UserListDocument` before calling this.
  *
  * Measured (`test:cost -w app/server`): breadth 12.0%, complexity 0.3% of
  * budget — a mutation's own selection carries none of `Viewer.devices`'s

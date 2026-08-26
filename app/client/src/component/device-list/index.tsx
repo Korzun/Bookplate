@@ -1,91 +1,40 @@
-import { Fragment, useCallback, useState } from 'react';
-
-import { Card, MetadataList } from '~/component';
-import { DeviceForm } from '~/component/device-form';
-import { Button, ConfirmModal } from '~/control';
-import { AlertOctagonIcon } from '~/icon';
-import { useDeleteDevice, useDeviceList } from '~/provider/device';
-import type { Device } from '~/provider/device';
+import { DeviceRow, DeviceRowFragment } from '~/component/device-row';
+import { useFragment, type FragmentType } from '~/gql';
 
 import { useStyle } from './style';
 
-const formatCoverSize = (device: Device) =>
-  device.coverWidth !== null && device.coverHeight !== null
-    ? `${device.coverWidth}×${device.coverHeight}`
-    : 'Auto';
+interface DeviceListProps {
+  devices: FragmentType<typeof DeviceRowFragment>[];
+  loading: boolean;
+  error?: string;
+}
 
-const formatCoverFit = (fit: Device['coverFit']) => fit.charAt(0).toUpperCase() + fit.slice(1);
-
-type DeviceRowProps = { device: Device };
-const DeviceRow = ({ device }: DeviceRowProps) => {
+/**
+ * Fetch-free: `page/device-list` composes `DeviceListDocument` from
+ * `DeviceRowFragment` and passes the result straight through. `useFragment`
+ * is called once, unconditionally, at the top of this body — with an ARRAY
+ * of refs, one of the masking helper's supported overloads — purely to read
+ * `id`/`name` for sorting and row keys; the ORIGINAL (still masked) refs are
+ * what get handed to each `DeviceRow`, unchanged, since `useFragment` is a
+ * type-only unmask (no runtime transform) and `DeviceRow` does its own
+ * unconditional unmask of the exact same ref.
+ *
+ * The server already returns `orderBy: { name: 'asc' }`, but a future
+ * `cache.modify` append (`DeviceForm`'s create path) is not guaranteed to
+ * land in name order, so this still sorts where the list is rendered rather
+ * than relying on that ordering guarantee.
+ */
+export const DeviceList = ({ devices: deviceRefs, loading, error }: DeviceListProps) => {
   const styles = useStyle();
-  const [deleteDevice, deleting] = useDeleteDevice();
+  const unmaskedDevices = useFragment(DeviceRowFragment, deviceRefs);
 
-  const [editing, setEditing] = useState<boolean>(false);
-  const handleEdit = useCallback(() => setEditing(true), []);
-  const handleEditDone = useCallback(() => setEditing(false), []);
-
-  const [showDeleteDeviceModal, setShowDeleteDeviceModal] = useState<boolean>(false);
-  const handleDeleteDevice = useCallback(() => {
-    setShowDeleteDeviceModal(true);
-  }, []);
-  const handleDeleteDeviceCancel = useCallback(() => {
-    setShowDeleteDeviceModal(false);
-  }, []);
-  const handleDeleteDeviceConfirm = useCallback(() => {
-    setShowDeleteDeviceModal(false);
-    deleteDevice(device.id);
-  }, [deleteDevice, device.id]);
-
-  if (editing) {
-    return <DeviceForm device={device} onDone={handleEditDone} />;
-  }
-
-  return (
-    <Fragment>
-      <Card
-        title={device.name}
-        headerAction={
-          <div className={styles.rowActions}>
-            <Button type="link" onClick={handleEdit}>
-              Edit
-            </Button>
-            <Button type="link" danger onClick={handleDeleteDevice} loading={deleting}>
-              Delete
-            </Button>
-          </div>
-        }
-      >
-        <MetadataList
-          metadata={[
-            { title: 'Slug', value: device.slug },
-            { title: 'Cover size', value: formatCoverSize(device) },
-            { title: 'Cover fit', value: formatCoverFit(device.coverFit) },
-            { title: 'Grayscale Cover', value: device.bwCover ? 'Yes' : 'No' },
-            { title: 'Simplify', value: device.simplify ? 'Yes' : 'No' },
-          ]}
-        />
-      </Card>
-      <ConfirmModal
-        isOpen={showDeleteDeviceModal}
-        onCancel={handleDeleteDeviceCancel}
-        onConfirm={handleDeleteDeviceConfirm}
-        icon={AlertOctagonIcon}
-        danger
-        title="Delete device permanently?"
-        confirmText="Delete"
-      >
-        This action will delete <span className={styles.deviceName}>{device.name}</span>, and any
-        per-device book editions generated for it, and{' '}
-        <span className={styles.undone}>can not be undone</span>.
-      </ConfirmModal>
-    </Fragment>
-  );
-};
-
-export const DeviceList = () => {
-  const styles = useStyle();
-  const [deviceList, loading, hasError, errorMessage] = useDeviceList();
+  const sortedRows = deviceRefs
+    .map((ref, index) => ({
+      ref,
+      id: unmaskedDevices[index].id,
+      name: unmaskedDevices[index].name,
+    }))
+    .sort((rowA, rowB) => rowA.name.localeCompare(rowB.name));
 
   if (loading) return <p className={styles.loading}>Loading…</p>;
 
@@ -93,18 +42,18 @@ export const DeviceList = () => {
   // failed read also returns, so without this a GraphQL error renders
   // identically to "you really have no devices" instead of saying what
   // happened.
-  if (hasError) {
-    return <p className={styles.loading}>{errorMessage ?? 'Failed to load devices'}</p>;
+  if (error !== undefined) {
+    return <p className={styles.loading}>{error}</p>;
   }
 
-  if (deviceList.length === 0) {
+  if (sortedRows.length === 0) {
     return <p className={styles.loading}>No devices yet</p>;
   }
 
   return (
     <div className={styles.root}>
-      {deviceList.map((device) => (
-        <DeviceRow key={device.id} device={device} />
+      {sortedRows.map((row) => (
+        <DeviceRow key={row.id} device={row.ref} />
       ))}
     </div>
   );

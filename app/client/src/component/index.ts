@@ -12,6 +12,7 @@ export { Cover } from './cover';
 export { CoverStack } from './cover-stack';
 export { DeviceForm } from './device-form';
 export { DeviceList } from './device-list';
+export { DeviceRow } from './device-row';
 export { FixReview } from './fix-review';
 export { SearchBar } from './search-bar';
 export { Nav } from './nav';
