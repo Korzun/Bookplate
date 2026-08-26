@@ -5,9 +5,10 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
 import type { UserListQuery } from '~/gql/graphql';
+import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
-import { UserListDocument, UserListPage } from './index';
+import { UserListPage } from './index';
 
 // UserRow renders a ConfirmModal (for delete), which calls the native
 // <dialog> showModal/close methods jsdom does not implement.

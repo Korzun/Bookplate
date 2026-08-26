@@ -11,7 +11,7 @@ import type {
   UserRowFragmentFragment,
 } from '~/gql/graphql';
 import { UserDeleteDocument } from '~/graphql/user';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRow, UserRowFragment } from './index';

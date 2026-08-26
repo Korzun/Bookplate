@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import { UserRowFragment } from '~/component/user-row';
 import { useFragment } from '~/gql';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { useIsAdmin } from '~/provider/auth';
 
 import { useLibraryTarget } from './use-library-target';
@@ -55,9 +55,9 @@ export type WithTargetUser = {
  * client-side global ID handling).
  *
  * `skip: !isAdmin` mirrors `UserListDocument`'s own admin guard (`Viewer.
- * users` is admin-gated; see `page/user-list`'s doc comment for why an
- * unguarded query would fire a `FORBIDDEN` request on every non-admin
- * visit).
+ * users` is admin-gated; see that document's own doc comment (`~/graphql/
+ * user`) for why an unguarded query would fire a `FORBIDDEN` request on
+ * every non-admin visit).
  *
  * This hook requires an `ApolloProvider` ancestor unconditionally (a bare
  * `useQuery` call, no fallback client) — every real app tree has one

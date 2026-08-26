@@ -21,7 +21,7 @@ import {
   DeviceUpdateDocument,
   DeviceUsersDocument,
 } from '~/graphql/device';
-import { UserListDocument } from '~/page/user-list';
+import { UserListDocument } from '~/graphql/user';
 import { unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useToast } from '~/provider/toast';
@@ -131,8 +131,8 @@ type DeviceFormProps = {
  * `useDisableDeviceUser` are inlined directly here rather than kept as
  * `provider/device` hooks — this form is their only caller, matching
  * `control/unlink-book-lineage-button`'s precedent for a single-consumer
- * mutation. The admin user list (`UserListDocument`, imported from
- * `page/user-list` rather than duplicated) is read the SAME way: no
+ * mutation. The admin user list (`UserListDocument`, imported from the leaf
+ * module `~/graphql/user` rather than duplicated) is read the SAME way: no
  * dedicated `provider/user` hook survives this task, so this component
  * queries the document directly and unmasks `component/user-row`'s
  * colocated `UserRowFragment` itself — this form is not a "row" for that
@@ -150,7 +150,7 @@ type DeviceFormProps = {
  * does have enabled users while usernames are still being resolved. Same
  * reasoning for `UserListDocument`'s own `skip: !isAdmin` — it is admin-only
  * and nullable for the identical reason `DeviceUsersDocument` is; see
- * `page/user-list`'s doc comment.
+ * `UserListDocument`'s own doc comment (`~/graphql/user`).
  */
 export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const styles = useStyle();
