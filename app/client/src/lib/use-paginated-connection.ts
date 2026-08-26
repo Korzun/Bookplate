@@ -24,7 +24,11 @@ type Connection<TEdge> = {
   pageInfo: { hasNextPage: boolean; endCursor?: string | null };
 };
 
-export type UsePaginatedConnectionOptions<TData, TVariables extends OperationVariables, TEdge> = {
+export type UsePaginatedConnectionOptions<
+  TData,
+  TVariables extends OperationVariables & { after?: string | null },
+  TEdge,
+> = {
   document: TypedDocumentNode<TData, TVariables>;
   variables: TVariables;
   skip?: boolean;
@@ -54,14 +58,20 @@ export type UsePaginatedConnectionOptions<TData, TVariables extends OperationVar
  *
  * Three constraints drove this shape; get any one wrong and it ships a bug:
  *
- * **(1) `notifyOnNetworkStatusChange: true` is REQUIRED, and it poisons
- * `loading`.** Without it, `networkStatus` never updates during `fetchMore`
- * at all, so `loadingMore` cannot be derived from it. WITH it, Apollo's own
- * `loading` becomes `true` during `fetchMore` too — not just on initial
- * load — so `loading` below is derived from `networkStatus`
- * (`NetworkStatus.loading` / `NetworkStatus.setVariables`), NEVER from the
- * raw `loading` this hook discards. Passing raw `loading` through would
- * flash the screen's empty/loading state on every "load more" click.
+ * **(1) `notifyOnNetworkStatusChange: true` is pinned explicitly, and it
+ * poisons `loading`.** Apollo v4 already DEFAULTS this option to `true` —
+ * every one of this helper's four predecessors relied on that default
+ * implicitly and never set it, which is exactly why `page/library` and
+ * `LinkProgressModal` were already flashing their loading state on every
+ * "load more" click before this task (`LinkProgressModal` even swapped its
+ * whole book list for "Loading books…" mid-pagination). It is set
+ * explicitly here anyway, to pin the behaviour this helper depends on
+ * against a future default change rather than inherit it silently. The
+ * poisoning: with it on, Apollo's own `loading` is `true` during `fetchMore`
+ * too — not just on initial load — so `loading` below is derived from
+ * `networkStatus` (`NetworkStatus.loading` / `NetworkStatus.setVariables`)
+ * instead, NEVER from the raw `loading` this hook discards. Passing raw
+ * `loading` through is what caused the pre-existing flash described above.
  *
  * That formula deliberately has NO `skip ? false : ...` gate, unlike a
  * first draft of this helper: `skip` here is often the COMBINED skip fed to
@@ -102,7 +112,10 @@ export type UsePaginatedConnectionOptions<TData, TVariables extends OperationVar
  * of documenting it.
  *
  * The returned object also carries `data: TData | undefined` — the RAW
- * query data, beyond the `PaginatedConnection<TEdge>` contract above. Three
+ * query data, beyond the `PaginatedConnection<TEdge>` contract above (that
+ * exported type itself stays exactly the 6-field public shape; `data` only
+ * ever appears on THIS function's own inferred return type, not on anything
+ * a caller can declare a variable's type as without also getting it). Three
  * of this helper's four call sites need nothing else, but
  * `useUserProgressList` also exposes `libraryId` off `data.user.library.id`,
  * a SIBLING field on the same query root next to the `progress` connection
@@ -111,8 +124,22 @@ export type UsePaginatedConnectionOptions<TData, TVariables extends OperationVar
  * pull it back out without this helper growing a bespoke "and also return
  * this other field" parameter, and without a second `useQuery` call for the
  * same document/variables.
+ *
+ * `data` is deliberately a SINGLE-CALLER exception, not a general escape
+ * hatch: it exists because exactly one of the four current call sites needs
+ * exactly one sibling field. If a SECOND caller ever needs a sibling field
+ * off the query root, that is the signal to replace `data` with something
+ * more structured — e.g. an optional `selectExtra` alongside `select`, or
+ * having `select` itself return `{ connection, extra }` — not to keep
+ * reaching into raw `data` from more call sites. Widening what a shared
+ * helper exposes "just in case" is exactly the kind of drift this task
+ * exists to remove, not add back.
  */
-export const usePaginatedConnection = <TData, TVariables extends OperationVariables, TEdge>({
+export const usePaginatedConnection = <
+  TData,
+  TVariables extends OperationVariables & { after?: string | null },
+  TEdge,
+>({
   document,
   variables,
   skip = false,
@@ -128,7 +155,8 @@ export const usePaginatedConnection = <TData, TVariables extends OperationVariab
   const { data, error, fetchMore, networkStatus } = useQuery(document, {
     variables,
     skip,
-    // REQUIRED — see constraint (1) above.
+    // v4 defaults this to `true`; pinned explicitly here because `loading`'s
+    // derivation below depends on it — see constraint (1) above.
     notifyOnNetworkStatusChange: true,
   });
 
@@ -154,15 +182,18 @@ export const usePaginatedConnection = <TData, TVariables extends OperationVariab
     if (skip || !hasNextPage || loadingMore) return;
     void (async () => {
       try {
-        // `TVariables` is abstract here — every real document this helper
-        // pages through has an `after: String` variable (that is the whole
-        // point of a Relay-style connection), but TS can't prove that for a
-        // generic `TVariables extends OperationVariables`, and `fetchMore`'s
-        // own `variables?: Partial<NoInfer<TFetchVars>>` type blocks
-        // inferring a narrower `TFetchVars` from this call site (`NoInfer`
-        // pins it back to `TVariables`). The cast is the documented
-        // contract, not a loophole.
-        await fetchMore({ variables: { after: endCursor } as unknown as Partial<TVariables> });
+        // `TVariables` is constrained to carry `after?: string | null` (see
+        // this file's generic parameters) — checked, not just commented, so
+        // a document that paginates by `offset`/`page` instead of a cursor
+        // can't be plugged into this helper: `loadMore` would otherwise send
+        // an undeclared `after` variable, graphql-js would silently ignore
+        // it, and `fetchMore` would refetch page 1 forever — a silent no-op
+        // "infinite scroll" with no error anywhere. The cast is still needed
+        // because `fetchMore`'s own `variables?: Partial<NoInfer<TFetchVars>>`
+        // blocks inferring a narrower `TFetchVars` from this call site
+        // (`NoInfer` pins it back to `TVariables`), not because the shape is
+        // unproven.
+        await fetchMore({ variables: { after: endCursor } as Partial<TVariables> });
         setFetchMoreError(undefined);
       } catch (err) {
         // fetchMore rejections are NOT threaded into useQuery's `error` —

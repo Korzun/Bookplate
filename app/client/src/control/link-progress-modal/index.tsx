@@ -169,8 +169,8 @@ export function LinkProgressModal({
           <ul className={styles.bookList}>
             {loading ? (
               <li className={styles.emptyMessage}>Loading books…</li>
-            ) : error && books.length === 0 ? (
-              <li className={styles.emptyMessage}>{error}</li>
+            ) : error !== undefined && books.length === 0 ? (
+              <li className={styles.emptyMessage}>{error || 'Failed to load books.'}</li>
             ) : books.length === 0 ? (
               <li className={styles.emptyMessage}>No books match.</li>
             ) : (
@@ -198,7 +198,7 @@ export function LinkProgressModal({
               Load more
             </Button>
           )}
-          {error && books.length > 0 && <div className={styles.error}>{error}</div>}
+          {error !== undefined && books.length > 0 && <div className={styles.error}>{error}</div>}
           {linkError && <div className={styles.error}>{linkError}</div>}
         </div>
         <div className={styles.footer}>
