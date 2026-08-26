@@ -83,9 +83,15 @@ describe('DeviceListPage', () => {
     // rendered (but hidden) confirm-delete modal's body text.
     expect((await screen.findAllByText('Kobo Clara')).length).toBeGreaterThanOrEqual(1);
     // The enum map must survive colocation: raw `CONTAIN` would fail here.
-    // "Contain" also appears a second time as the always-present create
-    // form's default Cover Fit selection, so this asserts on the count.
-    await waitFor(() => expect(screen.getAllByText('Contain').length).toBeGreaterThanOrEqual(1));
+    // This is the ONE real regression guard for this task's headline hazard
+    // at the composed-query level (device-row/index.test.tsx covers it in
+    // isolation too). "Contain" ALSO appears as the always-present create
+    // form's default Cover Fit selection, which is why this asserts >= 2,
+    // not >= 1 (task-1 review round, Finding 4): a bare >= 1 would still
+    // pass off the create form's own "Contain" alone even if `DeviceRow`
+    // rendered the raw, un-mapped `CONTAIN` — >= 2 requires BOTH the create
+    // form's default AND the row's own formatted value to be present.
+    await waitFor(() => expect(screen.getAllByText('Contain').length).toBeGreaterThanOrEqual(2));
     expect(screen.getByText('300×400')).toBeInTheDocument();
   });
 });

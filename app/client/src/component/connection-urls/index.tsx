@@ -63,11 +63,19 @@ interface ConnectionUrlsProps {
  * own fragment and passes the result straight through. `useFragment` is
  * called once, unconditionally, at the top of this body — with an ARRAY of
  * refs, one of the masking helper's supported overloads.
+ *
+ * Sorted name-ascending here, the same `sortDeviceList` behaviour
+ * `component/device-list` keeps (Finding 2, task-1 review round) — this is
+ * equally "where the list is rendered", and `Viewer.devices` is the SAME
+ * cached field `DeviceForm`'s create path appends to via `cache.modify`
+ * (`device-form/index.tsx`), which is not guaranteed to land in name order.
  */
 export const ConnectionUrls = ({ devices: deviceRefs }: ConnectionUrlsProps) => {
   const styles = useStyle();
   const base = window.location.origin;
-  const devices = useFragment(ConnectionUrlsFragment, deviceRefs);
+  const devices = [...useFragment(ConnectionUrlsFragment, deviceRefs)].sort((deviceA, deviceB) =>
+    deviceA.name.localeCompare(deviceB.name)
+  );
 
   // The base library catalog plus one per-device catalog. Regular users need the
   // device URLs to point their e-readers at the right per-device edition. The base

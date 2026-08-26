@@ -71,6 +71,31 @@ describe('ConnectionUrls', () => {
     expect(screen.getByText('Kobo')).toBeInTheDocument();
   });
 
+  // Finding 2 (task-1 review round): `sortDeviceList`'s name-ascending
+  // behaviour was dropped when `ConnectionUrls` moved off `useDeviceList()`.
+  // `DeviceForm`'s create path (`cache.modify`) appends to the SAME
+  // `Viewer.devices` field this component reads, tail-first — so an
+  // unsorted render would show a newly created device out of order.
+  it('renders device URLs sorted by device name, regardless of array order', () => {
+    const devices = [
+      makeFragmentData(
+        device({ id: 'd1', name: 'Zebra reader', slug: 'zebra' }),
+        ConnectionUrlsFragment
+      ),
+      makeFragmentData(
+        device({ id: 'd2', name: 'Alpha reader', slug: 'alpha' }),
+        ConnectionUrlsFragment
+      ),
+    ];
+    renderWithProviders(<ConnectionUrls devices={devices} />);
+
+    const alphaUrl = screen.getByText(`${origin}/opds/device/alpha`);
+    const zebraUrl = screen.getByText(`${origin}/opds/device/zebra`);
+    expect(
+      alphaUrl.compareDocumentPosition(zebraUrl) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('copies the sync URL when its Copy button is clicked', async () => {
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
