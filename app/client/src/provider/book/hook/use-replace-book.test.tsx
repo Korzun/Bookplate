@@ -10,8 +10,8 @@ import type {
   BookReplaceMutationVariables,
 } from '~/gql/graphql';
 import { BookEditDocument } from '~/graphql/book-edit';
-import { LibraryEntriesDocument } from '~/graphql/library';
 import { BookAnalyzeReplaceDocument, BookReplaceDocument } from '~/graphql/upload';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 import type { ReplaceAnalysis, ReplacedBook } from './use-replace-book';

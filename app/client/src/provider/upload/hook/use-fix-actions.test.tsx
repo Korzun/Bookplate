@@ -9,8 +9,8 @@ import type {
   LibraryEntriesQueryVariables,
 } from '~/gql/graphql';
 import { BookEditDocument } from '~/graphql/book-edit';
-import { LibraryEntriesDocument } from '~/graphql/library';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useFixActions } from './use-fix-actions';

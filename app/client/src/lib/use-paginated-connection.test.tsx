@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import type { LibraryEntriesQuery } from '~/gql/graphql';
-import { LibraryEntriesDocument } from '~/graphql/library';
+import { LibraryEntriesDocument } from '~/page/library';
 import { cacheConfig } from '~/provider/apollo';
 import { renderHookWithApollo } from '~/test-utils';
 
@@ -21,14 +21,16 @@ import { usePaginatedConnection } from './use-paginated-connection';
  * no new document for codegen/cost-budget tooling to pick up.
  *
  * Mocks below are deliberately UNANNOTATED object literals, matching every
- * other `LibraryEntriesDocument` mock in this codebase
- * (`use-library-entries.test.tsx`'s own `bookEdge`/`firstPageMock`) rather
- * than `MockedResponse<LibraryEntriesQuery>` — see `test-utils.tsx`'s
- * `renderWithApollo` doc comment for why: an explicit annotation here would
- * enforce fragment MASKING on the `Book` node's fields (they'd need to be
- * wrapped in `$fragmentRefs` instead of the plain fields asserted on
- * below), which is exactly what `LibraryEntryEdge`'s own doc comment says
- * this connection deliberately does NOT unmask.
+ * other pre-existing `LibraryEntriesDocument` fixture in this codebase
+ * (`page/library`'s own `bookEdge`/`firstPageMock`, prior to that route
+ * test moving onto explicit `MockedResponse<LibraryEntriesQuery>`
+ * annotations — task 5) rather than `MockedResponse<LibraryEntriesQuery>`
+ * — see `test-utils.tsx`'s `renderWithApollo` doc comment for why: an
+ * explicit annotation here would enforce fragment MASKING on the `Book`
+ * node's fields (they'd need to be wrapped in `$fragmentRefs` instead of
+ * the plain fields asserted on below), which is exactly what
+ * `page/library/index.tsx`'s `LibraryEntryEdge` doc comment says this
+ * connection deliberately does NOT unmask.
  */
 const LIBRARY_ID = 'LIB-1';
 const PAGE_SIZE = 20;
@@ -122,8 +124,8 @@ const renderProbe = (mocks: MockedResponse[], resetKey = 'k1') =>
 
 /**
  * Wraps the helper with local `resetKey` state so a single render can
- * change it later, exactly like `useLibraryEntries.test.tsx`'s own
- * `useProbe` changes `filter`.
+ * change it later, exactly like `page/library`'s own filter-changing probe
+ * pattern.
  */
 const useResetKeyProbe = (initialResetKey: string) => {
   const [resetKey, setResetKey] = useState(initialResetKey);

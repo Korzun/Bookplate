@@ -7,15 +7,24 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BookRowFragment } from '~/component/book-row/from-entry';
+import { SeriesRowFragment } from '~/component/series-row';
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
-import type { LibraryFilter, UserListQuery } from '~/gql/graphql';
-import { LibraryEntriesDocument } from '~/graphql/library';
+import type {
+  BookRowFragmentFragment,
+  LibraryEntriesQuery,
+  LibraryFilter,
+  SeriesRowFragmentFragment,
+  UserListQuery,
+} from '~/gql/graphql';
 import { UserListDocument } from '~/graphql/user';
 import { cacheConfig } from '~/provider/apollo';
 import type { BookListFilter } from '~/provider/book';
 import { ThemeProvider } from '~/provider/theme';
 import { renderWithApollo } from '~/test-utils';
+
+import { LibraryEntriesDocument, LibraryPage } from './index';
 
 const LIBRARY_ID = 'LIB-1';
 const PAGE_SIZE = 20;
@@ -41,8 +50,12 @@ vi.mock('~/component/library-switcher', () => ({
 // Page/SearchBar/SeriesRow/BookRowFromEntry are replaced with minimal
 // stand-ins: this file is testing LibraryPage's own wiring (empty/error
 // states, the edges -> row dispatch, the sentinel/retry plumbing), not the
-// reshaped row components' own rendering (Task 7 already covers those) or
-// SearchBar's real UI (unrelated to this task).
+// reshaped row components' own rendering (their own `*.test.tsx` files
+// cover those) or SearchBar's real UI (unrelated to this task). This is a
+// `vi.mock` against the `~/component` BARREL — not a landmine per
+// `test-utils.tsx`'s standing note, since it uses a plain factory (no
+// `importOriginal`) and doesn't cross into the upload-replace-modal/
+// fix-review/book-edit cycle that note warns about.
 //
 // The SearchBar stand-in DOES echo the `filter`/`onChange` props it's given
 // — that's what lets the round-trip tests below exercise
@@ -112,32 +125,61 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const bookEdge = (cursor: string, overrides: Record<string, unknown> = {}) => ({
+/**
+ * Masked node factories: `LibraryEntriesDocument`'s union entry keeps
+ * `BookRowFragment`/`SeriesRowFragment` MASKED (`LibraryEntryEdge`'s own
+ * doc comment in `./index.tsx`), so every mock below is built through
+ * `makeFragmentData` and typed `MockedResponse<LibraryEntriesQuery>`,
+ * exactly like `page/device-list`'s `kindleRow` — not the unannotated bare
+ * literals this file used before task 5. `__typename` appears both inside
+ * `makeFragmentData`'s argument (the fragment's own selection) and spread
+ * outside it (the query's sibling `__typename`, auto-injected by codegen's
+ * `addTypenameSelectionDocumentTransform`) for the same reason
+ * `page/device-list/index.test.tsx`'s `kindleRow` does.
+ */
+const bookEdge = (cursor: string, overrides: Partial<BookRowFragmentFragment> = {}) => ({
   __typename: 'LibraryEntriesConnectionEdge' as const,
   cursor,
   node: {
     __typename: 'Book' as const,
-    id: `BOOK-${cursor}`,
-    title: 'Dune',
-    author: 'Frank Herbert',
-    seriesIndex: 0,
-    hasCover: true,
-    thumbnailUrl: '/thumb.jpg',
-    progress: null,
-    ...overrides,
+    ...makeFragmentData(
+      {
+        __typename: 'Book' as const,
+        id: `BOOK-${cursor}`,
+        title: 'Dune',
+        author: 'Frank Herbert',
+        seriesIndex: 0,
+        hasCover: true,
+        thumbnailUrl: '/thumb.jpg',
+        progress: null,
+        ...overrides,
+      },
+      BookRowFragment
+    ),
   },
 });
 
-const seriesEdge = (cursor: string, overrides: Record<string, unknown> = {}) => ({
+const seriesEdge = (cursor: string, overrides: Partial<SeriesRowFragmentFragment> = {}) => ({
   __typename: 'LibraryEntriesConnectionEdge' as const,
   cursor,
   node: {
     __typename: 'Series' as const,
-    id: `SERIES-${cursor}`,
-    name: 'Dune Chronicles',
-    author: 'Frank Herbert',
-    bookCount: 6,
-    ...overrides,
+    ...makeFragmentData(
+      {
+        __typename: 'Series' as const,
+        id: `SERIES-${cursor}`,
+        name: 'Dune Chronicles',
+        author: 'Frank Herbert',
+        bookCount: 6,
+        progressPercentage: null,
+        books: {
+          __typename: 'SeriesBooksConnection' as const,
+          edges: [],
+        },
+        ...overrides,
+      },
+      SeriesRowFragment
+    ),
   },
 });
 
@@ -170,15 +212,18 @@ const firstPageMock = (
   edges: (ReturnType<typeof bookEdge> | ReturnType<typeof seriesEdge>)[],
   pageInfo: { hasNextPage: boolean; endCursor: string | null },
   filter: LibraryFilter = emptyFilter
-) => ({
+): MockedResponse<LibraryEntriesQuery> => ({
   request: {
     query: LibraryEntriesDocument,
     variables: { libraryId: LIBRARY_ID, first: PAGE_SIZE, filter },
   },
-  result: { data: { __typename: 'Query' as const, ...connection(edges, pageInfo) } },
+  result: { data: { __typename: 'Query', ...connection(edges, pageInfo) } },
 });
 
-const fetchMoreErrorMock = (after: string, filter: LibraryFilter = emptyFilter) => ({
+const fetchMoreErrorMock = (
+  after: string,
+  filter: LibraryFilter = emptyFilter
+): MockedResponse<LibraryEntriesQuery> => ({
   request: {
     query: LibraryEntriesDocument,
     variables: { libraryId: LIBRARY_ID, first: PAGE_SIZE, after, filter },
@@ -214,8 +259,7 @@ const userListMock = (usernames: string[]): MockedResponse<UserListQuery> => ({
   },
 });
 
-async function renderLibraryPage(mocks: MockedResponse[], initialEntries: string[] = ['/library']) {
-  const { LibraryPage } = await import('./index');
+function renderLibraryPage(mocks: MockedResponse[], initialEntries: string[] = ['/library']) {
   return renderWithApollo(<LibraryPage />, { mocks, initialEntries });
 }
 
@@ -223,11 +267,10 @@ async function renderLibraryPage(mocks: MockedResponse[], initialEntries: string
  * router tree, for the two `useBookListFilter` round-trip tests below —
  * they need to observe the URL the router holds, which `renderLibraryPage`
  * alone has no way to expose. */
-async function renderLibraryPageWithLocationProbe(
+function renderLibraryPageWithLocationProbe(
   mocks: MockedResponse[],
   initialEntries: string[] = ['/library']
 ) {
-  const { LibraryPage } = await import('./index');
   return renderWithApollo(
     <>
       <LibraryPage />
@@ -243,7 +286,14 @@ describe('LibraryPage', () => {
     currentLibraryId = undefined;
     targetLibraryId = undefined;
 
-    await renderLibraryPage([userListMock(['alice'])]);
+    // No `LibraryEntriesDocument` mock queued: `libraryId` is `undefined`,
+    // so the entries query must stay `skip`ped. If `skip` regressed, `useQuery`
+    // would ask `MockLink` for a request it never got a mock for, and the
+    // rejection (async, so it wouldn't fail this test synchronously) would
+    // still leave `edges` empty and surface nothing — the "Select a library"
+    // assertion below only holds because the admin-with-no-selection branch
+    // renders BEFORE ever consulting `edges`/`loading`/`error` at all.
+    renderLibraryPage([userListMock(['alice'])]);
 
     await waitFor(() => expect(screen.getByText('Select a library')).toBeTruthy());
     expect(screen.queryByText('No users registered')).toBeNull();
@@ -254,13 +304,13 @@ describe('LibraryPage', () => {
     currentLibraryId = undefined;
     targetLibraryId = undefined;
 
-    await renderLibraryPage([userListMock([])]);
+    renderLibraryPage([userListMock([])]);
 
     await waitFor(() => expect(screen.getByText('No users registered')).toBeTruthy());
   });
 
   it('renders "Failed to load library" when the first page errors with no rows', async () => {
-    const mock: MockedResponse = {
+    const mock: MockedResponse<LibraryEntriesQuery> = {
       request: {
         query: LibraryEntriesDocument,
         variables: { libraryId: LIBRARY_ID, first: PAGE_SIZE, filter: emptyFilter },
@@ -268,7 +318,7 @@ describe('LibraryPage', () => {
       error: new Error('network down'),
     };
 
-    await renderLibraryPage([mock]);
+    renderLibraryPage([mock]);
 
     await waitFor(() => expect(screen.getByText('Failed to load library')).toBeTruthy());
     expect(screen.getByText('network down')).toBeTruthy();
@@ -289,7 +339,7 @@ describe('LibraryPage', () => {
       }
     );
 
-    await renderLibraryPage([mock], ['/library?status=completed&entryType=series']);
+    renderLibraryPage([mock], ['/library?status=completed&entryType=series']);
 
     await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
   });
@@ -311,7 +361,7 @@ describe('LibraryPage', () => {
       }
     );
 
-    await renderLibraryPage([mock], ['/library?q=dune']);
+    renderLibraryPage([mock], ['/library?q=dune']);
 
     await waitFor(() => expect(screen.getByTestId('search-bar-query').textContent).toBe('dune'));
   });
@@ -327,7 +377,7 @@ describe('LibraryPage', () => {
       }
     );
 
-    await renderLibraryPageWithLocationProbe([initialMock, duneMock]);
+    renderLibraryPageWithLocationProbe([initialMock, duneMock]);
 
     expect(screen.getByTestId('location-search').textContent).toBe('');
 
@@ -344,7 +394,7 @@ describe('LibraryPage', () => {
       endCursor: null,
     });
 
-    await renderLibraryPage([mock]);
+    renderLibraryPage([mock]);
 
     await waitFor(() => expect(screen.getByText('SERIES:SERIES-c1')).toBeTruthy());
     expect(screen.getByText('BOOK:BOOK-c2')).toBeTruthy();
@@ -353,7 +403,7 @@ describe('LibraryPage', () => {
   it('renders the empty-library state when there are no rows and no error', async () => {
     const mock = firstPageMock([], { hasNextPage: false, endCursor: null });
 
-    await renderLibraryPage([mock]);
+    renderLibraryPage([mock]);
 
     await waitFor(() => expect(screen.getByText('Your library is empty')).toBeTruthy());
   });
@@ -367,7 +417,7 @@ describe('LibraryPage', () => {
     targetLibraryId = 'LIB-1';
     const mock = firstPageMock([], { hasNextPage: false, endCursor: null });
 
-    await renderLibraryPage([mock]);
+    renderLibraryPage([mock]);
 
     await waitFor(() => expect(screen.getByText('This library is empty')).toBeTruthy());
     expect(screen.queryByText('Your library is empty')).toBeNull();
@@ -376,20 +426,42 @@ describe('LibraryPage', () => {
   // Review round 1 (blocked merge): `useCurrentLibraryId` learns its
   // `libraryId` from a NETWORK query (`ViewerBootstrap`) — `libraryId` is
   // `undefined` for the whole round trip on a cold load, and a SKIPPED
-  // `useLibraryEntries` query reports `loading: false` on its own. Without
-  // folding `useCurrentLibraryId`'s own `loading` in (fixed in
-  // `use-library-entries.ts`), this state — no library id yet, bootstrap
-  // still in flight — is indistinguishable from "the library really has no
-  // books", and the page renders the wrong message for the ENTIRE bootstrap
-  // round trip on every cold load.
+  // entries query reports `loading: false` on its own. Without folding
+  // `useCurrentLibraryId`'s own `loading` in (`extraLoading` in
+  // `./index.tsx`), this state — no library id yet, bootstrap still in
+  // flight — is indistinguishable from "the library really has no books",
+  // and the page renders the wrong message for the ENTIRE bootstrap round
+  // trip on every cold load.
   it('shows the loading spinner, not "library is empty", while the library id is still resolving', async () => {
     currentLibraryId = undefined;
     currentLibraryIdLoading = true;
 
-    await renderLibraryPage([]);
+    renderLibraryPage([]);
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeTruthy();
     expect(screen.queryByText('Your library is empty')).toBeNull();
+  });
+
+  // Was `useLibraryEntries.test.tsx`'s own "does not query when there is no
+  // library id" (that hook is deleted, task 5) — ported here since it's now
+  // this page's own responsibility to pass `skip: libraryId === undefined`
+  // through to `usePaginatedConnection`. No `LibraryEntriesDocument` mock is
+  // queued at all: if `skip` regressed, `MockLink` would have nothing to
+  // serve the request, which this hook's `useQuery` surfaces as an `error`
+  // — `edges` would stay empty either way, but the ASSERTED text below
+  // would still be "Your library is empty" only by the skip path, not by an
+  // errored one (a broken `skip` and an `error !== undefined` state render
+  // DIFFERENT text — "Failed to load library" — so this still catches the
+  // regression, just via the wrong-message assertion below rather than a
+  // thrown "no matching mock").
+  it('does not query the entries connection when there is no library id', async () => {
+    currentLibraryId = undefined;
+    currentLibraryIdLoading = false;
+
+    renderLibraryPage([]);
+
+    await waitFor(() => expect(screen.getByText('Your library is empty')).toBeTruthy());
+    expect(screen.queryByText('Failed to load library')).toBeNull();
   });
 
   it('keeps rows and offers Retry when the next page fails', async () => {
@@ -398,7 +470,7 @@ describe('LibraryPage', () => {
       fetchMoreErrorMock('c1'),
     ];
 
-    await renderLibraryPage(mocks);
+    renderLibraryPage(mocks);
 
     await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
     await waitFor(() => expect(screen.getByText('Failed to load more books')).toBeTruthy());
@@ -408,26 +480,57 @@ describe('LibraryPage', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
-  // Review round 1 (minor, unprotected): `useBookListFilter()` returns a
-  // FRESH `BookListFilter` object every render (by design — see that
-  // hook's own doc comment), so `libraryFilter`'s `useMemo` in `index.tsx`
-  // is what keeps the mapped `LibraryFilter` reference stable across
-  // renders that don't change the filter's values. Bypassing that memo
-  // (e.g. calling `toLibraryFilter(bookListFilter)` inline on every render)
-  // still passes all the OTHER tests in this file — they never force a
-  // second render after establishing the retry state. `rerender` here
-  // forces exactly that: a render with unchanged filter values, but (absent
-  // the memo) a NEW `filter` object reaching `useLibraryEntries`.
+  // Was `useLibraryEntries.test.tsx`'s own "starts a fresh list when the
+  // filter changes" (that hook is deleted, task 5): `Library.entries`
+  // carries `relayStylePagination(['filter'])` in `cacheConfig`
+  // (`provider/apollo/cache.ts`), keyed on `filter` — a filter change must
+  // start a FRESH list in the cache rather than appending to the old one.
+  // Reusing `renderWithApollo`'s `renderLibraryPageWithLocationProbe` alone
+  // ("writes a chosen filter to the URL" above) only proves the SECOND
+  // query's variables matched a queued mock; it never asserts the rendered
+  // rows actually swapped over. This test does, with non-empty edges on
+  // both sides of the change.
+  it('starts a fresh list when the filter changes', async () => {
+    const initialMock = firstPageMock([bookEdge('c1')], { hasNextPage: false, endCursor: null });
+    const duneMock = firstPageMock(
+      [bookEdge('c2')],
+      { hasNextPage: false, endCursor: null },
+      { ...emptyFilter, query: 'dune' }
+    );
+
+    renderLibraryPage([initialMock, duneMock]);
+
+    await waitFor(() => expect(screen.getByText('BOOK:BOOK-c1')).toBeTruthy());
+
+    await userEvent.click(screen.getByRole('button', { name: 'set query to dune' }));
+
+    await waitFor(() => expect(screen.getByText('BOOK:BOOK-c2')).toBeTruthy());
+    expect(screen.queryByText('BOOK:BOOK-c1')).toBeNull();
+  });
+
+  // Review round 1 (minor, unprotected), REPURPOSED for task 5: originally
+  // guarded `index.tsx`'s own `JSON.stringify(subjects)` + `useMemo` dance,
+  // which existed solely to give the old `useLibraryEntries` hook a
+  // reference-stable `filter` for its (then reference-compared) reset
+  // effect. Task 3 replaced that reset with `usePaginatedConnection`'s
+  // stringified PRIMITIVE `resetKey`, and task 5 removed the `useMemo`
+  // dance itself — `libraryFilter` is now recomputed via a plain
+  // `toLibraryFilter(bookListFilter)` call on every render, no memo at all,
+  // so a FRESH filter object reaches `usePaginatedConnection` on every
+  // single render, not just a forced/bypassed one.
   //
-  // At the time this test was written, `useLibraryEntries` reset its
-  // `fetchMore` error state on `[libraryId, filter]` by REFERENCE equality,
-  // so a fresh `filter` object on an otherwise-unrelated re-render would
-  // have cleared a legitimate retry state the user hasn't acted on yet.
-  // Task 3 moved that reset onto `usePaginatedConnection`'s `resetKey`, a
-  // stringified PRIMITIVE, which no longer reacts to `filter`'s reference
-  // identity at all — so this test now also stands as a regression guard
-  // against the `useMemo` in `index.tsx` being removed AND a future
-  // resetKey-style hazard being reintroduced, not just the original one.
+  // That makes this test's premise the REAL, unconditional code path now,
+  // not a hand-rolled bypass of a memo that no longer exists: `rerender`
+  // below re-renders `LibraryPage` with unchanged filter VALUES, which
+  // (with no memo anywhere) still constructs a brand-new `libraryFilter`
+  // object. The assertions verify that doesn't clear the retry state —
+  // i.e., that `./index.tsx`'s own `resetKey` construction
+  // (`` `${libraryId}:${JSON.stringify(libraryFilter)}` ``) stays a
+  // VALUE-keyed primitive rather than accidentally keying off
+  // `libraryFilter`'s object identity. Seen-to-fail: temporarily appended
+  // `${Math.random()}` to that `resetKey` template (forcing a new value —
+  // not just a new reference — on every render); this test failed,
+  // `getByText('Failed to load more books')` no longer found; reverted.
   //
   // Uses a hand-rolled wrapper (MemoryRouter + ApolloProvider only) instead
   // of `renderLibraryPage`/`renderWithApollo`: RTL's `rerender` re-wraps the
@@ -440,7 +543,6 @@ describe('LibraryPage', () => {
   // client's Apollo/router providers actually behave in the real app (they
   // don't remount on every LibraryPage render either).
   it('keeps the fetchMore retry state across an unrelated re-render', async () => {
-    const { LibraryPage } = await import('./index');
     const mocks = [
       firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
       fetchMoreErrorMock('c1'),

@@ -22,7 +22,7 @@ interface CoverStackProps {
  * already scoped, no `coverUrl()`/`withTargetUser()` involved):
  *
  * - `SeriesRow` (the library grid) reads `Series.books(first: 3)` off
- *   `SeriesRowFragment` (`graphql/library.ts`) and maps each node directly —
+ *   `SeriesRowFragment` (`component/series-row/index.tsx`) and maps each node directly —
  *   same pattern `BookRowFromEntry` already uses for the grid's book rows.
  * - `page/series` reads `useSeriesDetail`'s `series.books` (masked
  *   `SeriesBookRowFragment` refs, `graphql/series.ts`), unmasks the whole

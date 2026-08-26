@@ -14,6 +14,36 @@ import {
 import { ThemeProvider } from './provider/theme/provider';
 import { ToastProvider } from './provider/toast';
 
+/**
+ * STANDING NOTE — the circular-import landmine (Ruling M).
+ *
+ * This codebase's import graph has roughly 70 circular-import cycles, many
+ * pre-existing, centred on `control/upload-replace-modal →
+ * component/fix-review → router → page/book-edit → component/index.ts`.
+ * Two migration tasks in a row lost time to the SAME failure before this
+ * note existed, so it lives here — the file every test author already
+ * reads — instead of being rediscovered per task.
+ *
+ * **The landmine:** a `vi.mock('~/control', async (importOriginal) => ...)`
+ * (or any `importOriginal()` call against a BARREL that sits inside that
+ * cycle, e.g. `~/component`) poisons the module and breaks tests in a way
+ * that looks completely unrelated to whatever change actually triggered it.
+ *
+ * **The symptom:** a component renders as `undefined` ("Element type is
+ * invalid: expected a string ... but got: undefined"), or a mocked
+ * module's real exports go missing, in a test that was previously green
+ * and that you did not touch.
+ *
+ * **The fix:** do not call `importOriginal()` against a barrel that sits in
+ * that cycle. Import the REAL components you need from their SUBPATHS
+ * (e.g. `~/control/button`, `~/control/confirm-modal` — not `~/control`
+ * itself) and stub only the component you are actually asserting on.
+ *
+ * **Diagnosing it:** plain `madge --circular` silently fails to resolve
+ * this project's `~/` alias and reports a false single cycle. Run it with
+ * `--ts-config tsconfig.json` to see the real ~70.
+ */
+
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   user?: { username: string; isAdmin: boolean; mustChangePassword?: boolean };
   initialEntries?: string[];

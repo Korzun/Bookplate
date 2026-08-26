@@ -13,12 +13,11 @@ vi.mock('react-router', async (importOriginal) => {
 
 import { makeFragmentData } from '~/gql';
 import type { SeriesRowFragmentFragment } from '~/gql/graphql';
-import { SeriesRowFragment } from '~/graphql/library';
 import { apiFetch } from '~/lib/api-fetch';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
-import { SeriesRow } from './index';
+import { SeriesRow, SeriesRowFragment } from './index';
 
 const mockApiFetch = vi.mocked(apiFetch);
 

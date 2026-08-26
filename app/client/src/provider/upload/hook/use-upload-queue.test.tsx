@@ -12,13 +12,13 @@ import type {
   UploadConfigQuery,
   ViewerBootstrapQuery,
 } from '~/gql/graphql';
-import { LibraryEntriesDocument } from '~/graphql/library';
 import {
   BookResolvePendingFixDocument,
   LibraryPendingFixesDocument,
   UploadConfigDocument,
 } from '~/graphql/upload';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { fixKey, fixKeyOf, useUploadQueueEngine } from './use-upload-queue';
