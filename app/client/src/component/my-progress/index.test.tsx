@@ -99,14 +99,14 @@ describe('MyProgress', () => {
   // Observable as an ASYNC GraphQL error (`throwError(...)`,
   // `mockLink.js`), not a synchronous throw that aborts the test — so if
   // `MyProgressContent` were wrongly mounted while collapsed, it would not
-  // crash this test. It would instead see `useMyProgressList`'s `error` set
-  // and `rows.length === 0`, and render "Error loading progress"
-  // (`my-progress-content/index.tsx`'s error branch) rather than "No
-  // progress synced" (the empty branch) — so asserting only the LATTER's
-  // absence, as an earlier version of this test did, passed whether the bug
-  // existed or not: neither string is ever reachable from an empty
-  // `mocks: [countMock(2)]` array regardless of whether `MyProgressContent`
-  // mounted.
+  // crash this test. It would instead see its own `usePaginatedConnection`
+  // read of `MyProgressListDocument` set `error` and `rows.length === 0`,
+  // and render "Error loading progress" (`my-progress-content/index.tsx`'s
+  // error branch) rather than "No progress synced" (the empty branch) — so
+  // asserting only the LATTER's absence, as an earlier version of this
+  // test did, passed whether the bug existed or not: neither string is
+  // ever reachable from an empty `mocks: [countMock(2)]` array regardless
+  // of whether `MyProgressContent` mounted.
   //
   // What's actually load-bearing: `Card` does not render its children into
   // the tree AT ALL while collapsed (`visibleChildren = isCollapsible ?
@@ -153,8 +153,8 @@ describe('MyProgress', () => {
   // Brief-required: `Viewer.user` is null for the config-based admin, which
   // has no `User` row (same reason `Viewer.library` is null for it, per
   // `graphql/progress.ts`'s doc comment) — mirrors what the REST screen
-  // already did here (see this task's report for the trace): REST's
-  // `useMyProgressList` returned an ERROR ("User not logged in") whenever
+  // already did here (see this task's report for the trace): the REST-era
+  // progress hook returned an ERROR ("User not logged in") whenever
   // `username` was `undefined`, which it always is for the admin, and
   // `MyProgress`'s old render only destructured the first (data) tuple
   // element, so `progressList` stayed `undefined` and `subTitle` fell

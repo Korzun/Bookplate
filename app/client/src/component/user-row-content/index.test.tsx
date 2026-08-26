@@ -12,13 +12,37 @@ const PAGE_SIZE = 50;
 
 // `LinkProgressModal` is stubbed here exactly like `user-progress-row/index.test.tsx`
 // does, so these tests never have to satisfy its own (unrelated) data
-// requirements.
-vi.mock('~/control', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/control')>();
+// requirements. The stub renders its own `libraryId` prop (review Item 1):
+// `UserRowContent`'s `libraryId` is the one field it reaches PAST `select`
+// into the raw `usePaginatedConnection` `data` escape hatch for (a sibling
+// field, `user.library.id`, not part of the `progress` connection `select`
+// sees) — unlike every other field this component threads through, it is
+// not a passthrough of something `usePaginatedConnection` already computed,
+// so nothing else here would notice if it silently broke.
+//
+// Deliberately NOT `importOriginal()` (an earlier version of this mock did,
+// and it happened to be harmless only because no test here ever actually
+// OPENED the link modal) — see `component/user-progress-row/index.test.tsx`'s
+// identical mock for the full circular-import trace:
+// `importOriginal()`'s real resolution of `~/control` reaches back into
+// this component's own family (`user-row` -> `user-row-content` itself)
+// through `~/provider/library-target` (a KEPT provider, out of scope to
+// restructure), silently re-binding this row's own `~/control` import to
+// the REAL `LinkProgressModal` instead of the stub the moment a test
+// actually opens it (seen-to-fail: the Item-1 test below crashed with
+// "element.showModal is not a function" — this file has no
+// `HTMLDialogElement.prototype.showModal` stub, unlike files that render
+// the real dialog on purpose — when this mock still called
+// `importOriginal()`). `Button`/`ConfirmModal` are pulled from their own
+// leaf subpaths instead, neither of which re-enters the cycle.
+vi.mock('~/control', async () => {
+  const { Button } = await import('~/control/button');
+  const { ConfirmModal } = await import('~/control/confirm-modal');
   return {
-    ...actual,
-    LinkProgressModal: ({ isOpen }: { isOpen: boolean }) =>
-      isOpen ? <div>link-progress-modal</div> : null,
+    Button,
+    ConfirmModal,
+    LinkProgressModal: ({ isOpen, libraryId }: { isOpen: boolean; libraryId?: string }) =>
+      isOpen ? <div>{`link-progress-modal:${libraryId}`}</div> : null,
   };
 });
 
@@ -84,6 +108,14 @@ const fetchMoreMock = (
     variables: { userId: USER_ID, first: PAGE_SIZE, after },
   },
   result: { data: connection(edges, pageInfo) },
+});
+
+const fetchMoreErrorMock = (after: string) => ({
+  request: {
+    query: UserProgressListDocument,
+    variables: { userId: USER_ID, first: PAGE_SIZE, after },
+  },
+  error: new Error('fetch more failed'),
 });
 
 describe('UserRowContent', () => {
@@ -171,6 +203,34 @@ describe('UserRowContent', () => {
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
   });
 
+  // Review round 1, Item 4: the deleted `use-user-progress-list.test.tsx`
+  // ("keeps existing rows when loadMore fails, and offers a retry via
+  // error") was the only thing pinning this COMPOSITION at this site — see
+  // `my-progress-content/index.test.tsx`'s identical test for the full
+  // rationale.
+  it('keeps existing rows and offers a retry when loadMore fails', async () => {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
+      mocks: [
+        firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
+          hasNextPage: true,
+          endCursor: 'c1',
+        }),
+        fetchMoreErrorMock('c1'),
+      ],
+    });
+
+    await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed to load more progress')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Dune')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument();
+  });
+
   it('does not render a Load more affordance when there is no next page', async () => {
     renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
@@ -216,5 +276,62 @@ describe('UserRowContent', () => {
     renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip />, { mocks: [] });
 
     expect(screen.getByText('No progress synced')).toBeInTheDocument();
+  });
+
+  // Review round 1, Item 1: `libraryId` is the one field `UserRowContent`
+  // reaches past `usePaginatedConnection`'s `select` into raw `data` for —
+  // `user.library.id`, a SIBLING of the `progress` connection `select`
+  // itself only ever sees. Every other prop `UserProgressRow` receives is a
+  // passthrough already exercised elsewhere; this one is not, so it needs
+  // its own assertion. `LIBRARY_ID` here is a literal distinct from
+  // anything else in this file (not `'lib-1'`, the `connection()` helper's
+  // default) so a wrong value (e.g. `user.id` instead of `user.library.id`)
+  // would show up as a mismatch, not a coincidental pass.
+  it("threads the target user's library id from the query into UserProgressRow's LinkProgressModal", async () => {
+    const DISTINCT_LIBRARY_ID = 'lib-distinct-99';
+    const orphanRow: ProgressRowFragmentFragment = { ...progressRow('p1', 'Dune'), book: null };
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
+      mocks: [
+        {
+          request: {
+            query: UserProgressListDocument,
+            variables: { userId: USER_ID, first: PAGE_SIZE },
+          },
+          result: {
+            data: {
+              __typename: 'Query',
+              user: {
+                __typename: 'User',
+                id: USER_ID,
+                library: {
+                  __typename: 'Library',
+                  id: DISTINCT_LIBRARY_ID,
+                  progress: {
+                    __typename: 'LibraryProgressConnection',
+                    edges: [
+                      {
+                        __typename: 'LibraryProgressConnectionEdge',
+                        cursor: 'c1',
+                        node: orphanRow,
+                      },
+                    ],
+                    pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+                  },
+                },
+              },
+            } satisfies UserProgressListQuery,
+          },
+        },
+      ],
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^link$/i })).toBeInTheDocument()
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /^link$/i }));
+
+    expect(screen.getByText(`link-progress-modal:${DISTINCT_LIBRARY_ID}`)).toBeInTheDocument();
   });
 });

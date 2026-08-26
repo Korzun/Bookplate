@@ -37,11 +37,11 @@ export type UsePaginatedConnectionOptions<
   /**
    * Folded into `loading`, ADDITIVELY — e.g. `useCurrentLibraryId`'s own
    * bootstrap round trip. A caller that needs this term to NOT apply while
-   * its own `skip` is `true` (`useMyProgressList`'s "collapsed card" case —
-   * see that hook's doc comment) computes that itself before passing
-   * `extraLoading` in; this helper only ORs whatever it is given. See this
-   * function's own doc comment, point (1), for why the fold can't happen
-   * inside a `skip`-gated branch here.
+   * its own `skip` is `true` (`MyProgressContent`'s "collapsed card" case —
+   * see that component's own doc comment) computes that itself before
+   * passing `extraLoading` in; this helper only ORs whatever it is given.
+   * See this function's own doc comment, point (1), for why the fold can't
+   * happen inside a `skip`-gated branch here.
    */
   extraLoading?: boolean;
   /** PRIMITIVE list identity. A change clears a stale `fetchMore` error. */
@@ -51,10 +51,16 @@ export type UsePaginatedConnectionOptions<
 
 /**
  * One state machine for every hand-rolled "Relay connection + fetchMore"
- * hook this codebase had (`useLibraryEntries`, `useMyProgressList`,
- * `useUserProgressList`, and `LinkProgressModal`'s inline version) —
- * replacing four near-identical copies of the same `useState`/`useEffect`/
- * `useCallback` dance with one.
+ * hook/component this codebase had — replacing four near-identical copies
+ * of the same `useState`/`useEffect`/`useCallback` dance with one. The
+ * four ORIGINAL predecessors (Task 3): `useLibraryEntries`, the viewer's
+ * own progress list (`useMyProgressList`, since dissolved into
+ * `component/my-progress-content`, Task 4), the admin's per-user progress
+ * list (`useUserProgressList`, since dissolved into
+ * `component/user-row-content`, Task 4), and `LinkProgressModal`'s own
+ * inline version. Current call sites: `use-library-entries.ts`,
+ * `component/my-progress-content`, `component/user-row-content`,
+ * `control/link-progress-modal`.
  *
  * Three constraints drove this shape; get any one wrong and it ships a bug:
  *
@@ -117,13 +123,13 @@ export type UsePaginatedConnectionOptions<
  * ever appears on THIS function's own inferred return type, not on anything
  * a caller can declare a variable's type as without also getting it). Three
  * of this helper's four call sites need nothing else, but
- * `useUserProgressList` also exposes `libraryId` off `data.user.library.id`,
- * a SIBLING field on the same query root next to the `progress` connection
- * itself (not a second fetch) — `select` alone (which only ever sees the
- * connection shape) cannot reach it. Exposing `data` lets that one caller
- * pull it back out without this helper growing a bespoke "and also return
- * this other field" parameter, and without a second `useQuery` call for the
- * same document/variables.
+ * `component/user-row-content`'s `UserRowContent` also exposes `libraryId`
+ * off `data.user.library.id`, a SIBLING field on the same query root next
+ * to the `progress` connection itself (not a second fetch) — `select`
+ * alone (which only ever sees the connection shape) cannot reach it.
+ * Exposing `data` lets that one caller pull it back out without this
+ * helper growing a bespoke "and also return this other field" parameter,
+ * and without a second `useQuery` call for the same document/variables.
  *
  * `data` is deliberately a SINGLE-CALLER exception, not a general escape
  * hatch: it exists because exactly one of the four current call sites needs

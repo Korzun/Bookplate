@@ -447,10 +447,11 @@ describe('useSetMyProgress', () => {
   });
 
   // The typed-union error branch: `ProgressSetResult` is a two-member union
-  // (`ProgressSetPayload | InvalidInputError`), and `useLinkProgress` already
-  // covers its own typed-error branch (`DocumentAlreadyLinkedError`) — this
-  // closes the same gap here so the ladder's `result.status === 'error'`
-  // path isn't only exercised via a thrown exception.
+  // (`ProgressSetPayload | InvalidInputError`), and
+  // `control/link-progress-modal`'s own tests already cover a typed-error
+  // branch for its mutation (`DocumentAlreadyLinkedError`) — this closes
+  // the same gap here so the ladder's `result.status === 'error'` path
+  // isn't only exercised via a thrown exception.
   it('maps InvalidInputError to an error message', async () => {
     const { result, client } = renderHookWithApollo(() => useSetMyProgress('doc-1'), [
       viewerBootstrapMock(VIEWER_USER_ID),
