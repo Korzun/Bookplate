@@ -1,14 +1,15 @@
+import { useQuery } from '@apollo/client/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Page, UploadItem, UploadZone } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
+import { UserListDocument } from '~/page/user-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useLibraryTarget } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
 import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { useUploadQueue } from '~/provider/upload';
-import { useUserList } from '~/provider/user';
 import { path } from '~/router';
 
 import { buildUploadActions } from './actions';
@@ -22,7 +23,13 @@ export const UploadPage = () => {
 
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
-  const [userList, userListLoading] = useUserList();
+  // `UserListDocument` is imported from `page/user-list`, not duplicated —
+  // this only needs the count (for the "No users registered" empty state),
+  // not any per-user field, so no fragment unmask is needed here.
+  const { data: userListData, loading: userListLoading } = useQuery(UserListDocument, {
+    skip: !isAdmin,
+  });
+  const userList = userListData?.viewer.users ?? [];
 
   const {
     items,

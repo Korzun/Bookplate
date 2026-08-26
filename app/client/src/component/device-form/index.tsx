@@ -3,8 +3,10 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useActionState, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { Card, CardDivider } from '~/component';
+import { UserRowFragment } from '~/component/user-row';
 import { Button, ChipsInput, NumberInput, Select, Switch, TextInput } from '~/control';
 import type { SelectOption } from '~/control';
+import { useFragment } from '~/gql';
 import type {
   CoverFit,
   DeviceCreateMutation,
@@ -19,10 +21,10 @@ import {
   DeviceUpdateDocument,
   DeviceUsersDocument,
 } from '~/graphql/device';
+import { UserListDocument } from '~/page/user-list';
 import { unwrapResult } from '~/provider/apollo';
 import { useIsAdmin } from '~/provider/auth';
 import { useToast } from '~/provider/toast';
-import { useUserList } from '~/provider/user';
 import { isNumeric } from '~/utils';
 
 import { coverFitToGraphQL } from '../device-row/cover-fit';
@@ -129,17 +131,26 @@ type DeviceFormProps = {
  * `useDisableDeviceUser` are inlined directly here rather than kept as
  * `provider/device` hooks — this form is their only caller, matching
  * `control/unlink-book-lineage-button`'s precedent for a single-consumer
- * mutation.
+ * mutation. The admin user list (`UserListDocument`, imported from
+ * `page/user-list` rather than duplicated) is read the SAME way: no
+ * dedicated `provider/user` hook survives this task, so this component
+ * queries the document directly and unmasks `component/user-row`'s
+ * colocated `UserRowFragment` itself — this form is not a "row" for that
+ * fragment, but it needs the exact same `id`/`username` pair every row does,
+ * to resolve chip labels against `User` global ids.
  *
  * `useDeviceUsers`'s two pinned behaviours survive the move verbatim:
  * `skip: !isAdmin` stops the `DeviceUsers` request before the server can
  * deny it (`Device.enabledUsers` is admin-only, and Apollo's default
  * `errorPolicy: 'none'` would otherwise discard `data` entirely on that
  * denial — there is deliberately no "null folds to empty" branch here), and
- * `loadingUsers` below reflects BOTH the `DeviceUsers` query and the
- * `UserList` read `useUserList()` performs — folding only the former would
- * report an authoritative-looking empty list for a device that does have
- * enabled users while usernames are still being resolved.
+ * `loadingUsers` below reflects BOTH the `DeviceUsers` query and this
+ * component's OWN `UserList` read (`allUsersLoading`) — folding only the
+ * former would report an authoritative-looking empty list for a device that
+ * does have enabled users while usernames are still being resolved. Same
+ * reasoning for `UserListDocument`'s own `skip: !isAdmin` — it is admin-only
+ * and nullable for the identical reason `DeviceUsersDocument` is; see
+ * `page/user-list`'s doc comment.
  */
 export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const styles = useStyle();
@@ -160,7 +171,14 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   const lastErrorRef = useRef<boolean>(false);
 
   const [isAdmin] = useIsAdmin();
-  const [allUsers, allUsersLoading] = useUserList();
+  const { data: userListData, loading: allUsersLoading } = useQuery(UserListDocument, {
+    skip: !isAdmin,
+  });
+  const unmaskedAllUsers = useFragment(UserRowFragment, userListData?.viewer.users ?? []);
+  const allUsers = useMemo(
+    () => unmaskedAllUsers.map((u) => ({ id: u.id, username: u.username })),
+    [unmaskedAllUsers]
+  );
   const userOptions = allUsers.map((u) => u.username);
 
   // Non-admins can still open the edit form (Edit isn't gated), and
@@ -229,8 +247,9 @@ export const DeviceForm = ({ device, onDone }: DeviceFormProps) => {
   }, []);
 
   // `deviceEnableUser`/`deviceDisableUser` take a `User` global id, not a
-  // username — resolved against the already-cached `useUserList()` rather
-  // than a lookup query of its own. Both return `device { id enabledUsers {
+  // username — resolved against this component's own `UserListDocument`
+  // read (`allUsers`, above) rather than a lookup query of its own. Both
+  // return `device { id enabledUsers {
   // id } }`, which normalizes over the existing `Device:<id>` entity, so
   // neither needs an `update` function: the next `DeviceUsers` cache read
   // picks up the change for free.
