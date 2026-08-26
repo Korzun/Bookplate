@@ -98,24 +98,55 @@ describe('usePrefetchOnIntent', () => {
     expect(querySpy).toHaveBeenCalledTimes(1);
   });
 
+  // A whole-file run already fails if the rejection escapes unhandled
+  // (vitest reports it as a run-level "Unhandled Rejection" — the same
+  // mechanism `device-row/index.test.tsx`, `link-progress-modal
+  // /index.test.tsx`, and `use-replace-book.test.tsx` all lean on), but
+  // that alone gives a FALSE PASS to a `-t`-filtered run of just this test:
+  // the rejection is detected asynchronously, after this test has already
+  // reported green, so a filtered run never observes it. Every one of the
+  // three precedents above carries its own independent, in-test assertion
+  // that fails on the same regression by itself (e.g. `findByText('Network
+  // error')` timing out) — this test needs the equivalent. A
+  // process-level `unhandledRejection` listener, scoped to this test and
+  // removed in `finally`, is that independent assertion here: if the
+  // hook's `.catch()` regresses, `seenRejections` is non-empty and the
+  // `toEqual([])` below fails on its own, with no dependency on vitest's
+  // own run-level detection.
   it('swallows a prefetch failure without an unhandled rejection', async () => {
-    const { result, client } = renderHookWithApollo(
-      () => usePrefetchOnIntent(LibrarySubjectsDocument, { libraryId: LIBRARY_ID }),
-      [subjectsErrorMock(LIBRARY_ID)]
-    );
+    const seenRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      seenRejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
 
-    result.current?.intentProps.onMouseEnter();
+    try {
+      const { result, client } = renderHookWithApollo(
+        () => usePrefetchOnIntent(LibrarySubjectsDocument, { libraryId: LIBRARY_ID }),
+        [subjectsErrorMock(LIBRARY_ID)]
+      );
 
-    // No `try`/`catch` here on purpose: if the hook ever let the rejection
-    // escape unhandled, vitest fails this test via an unhandled rejection
-    // rather than a thrown assertion. Waiting a beat gives the rejected
-    // `client.query` promise a chance to actually settle before the test
-    // ends.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+      result.current?.intentProps.onMouseEnter();
 
-    // The failure never reaches the cache — nothing else to assert beyond
-    // "this didn't blow up".
-    expect(client.cache.extract()).toEqual({});
+      // Waiting a beat gives the rejected `client.query` promise a chance to
+      // actually settle, and gives Node a chance to fire `unhandledRejection`
+      // for it if nothing caught it, before this test asserts and ends. 100ms
+      // is not a stylistic round number — with the `.catch()` removed as a
+      // deliberate probe, Node's `unhandledRejection` fires well after this
+      // promise settles (routed through several of Apollo's own internal
+      // microtask hops); empirically, 20ms was NOT enough for this listener
+      // to observe it (a false pass), 100ms reliably was (checked across
+      // repeated runs), so 100ms is the margin, not a guess.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(seenRejections).toEqual([]);
+      // The failure never reaches the cache either — a second, independent
+      // signal that it was actually caught and discarded, not just
+      // unobserved.
+      expect(client.cache.extract()).toEqual({});
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 
   it('does nothing when skip is true', async () => {
