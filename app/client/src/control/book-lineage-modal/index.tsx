@@ -35,6 +35,19 @@ type Props = {
   bookTitle: string;
   addedAt?: number;
   lineage: FragmentType<typeof LineageEntryFragment>[];
+  /**
+   * Set when the LAZY `BookLineageDocument` read failed (`page/book`
+   * forwards `useQuery`'s own `error?.message`). Load-bearing, not
+   * decoration: with `lineage` defaulting to `[]` on failure, this modal
+   * would otherwise render its EMPTY-LINEAGE presentation — a single
+   * current row and nothing else — which asserts the positive fact "this
+   * book has no edit history" when the truth is "we could not find out".
+   * Empty is a meaningful answer here, so the failure must look different
+   * from it. The string itself is not rendered (the copy below is fixed,
+   * matching `page/book`'s own "Failed to load book."); its PRESENCE is
+   * what switches the body.
+   */
+  error?: string;
   onClose: () => void;
 };
 
@@ -126,8 +139,12 @@ function buildLineageRows(
  * convention `useBookDetail`'s doc comment on `lineage` describes for its
  * future callers.
  *
- * No loading/error states either: those belonged to the REST-era fetch this
- * component no longer performs.
+ * No loading state: that belonged to the REST-era fetch this component no
+ * longer performs. It DOES take an `error` prop, though — see that prop's
+ * own doc comment. The lazy split (2026-08-26) moved `lineage` onto its own
+ * document, which turned a failed read from a visibly failed PAGE load into
+ * a silently plausible empty list; this prop is what keeps the two
+ * distinguishable.
  */
 export const BookLineageModal = ({
   isOpen,
@@ -136,6 +153,7 @@ export const BookLineageModal = ({
   bookTitle,
   addedAt,
   lineage,
+  error,
   onClose,
 }: Props) => {
   const styles = useStyle();
@@ -151,18 +169,28 @@ export const BookLineageModal = ({
   };
 
   const lineageRowList = buildLineageRows(entries, bookId, documentId, bookTitle, addedAt);
-  const body = (
-    <ul className={styles.list}>
-      {lineageRowList.map((lineageRow, index) => (
-        <BookLineageRow
-          key={lineageRow.documentId}
-          isCurrent={index === 0}
-          isInitial={index === lineageRowList.length - 1}
-          {...lineageRow}
-        />
-      ))}
-    </ul>
-  );
+  // Checked BEFORE the list, never OR-ed into it — see the `error` prop's
+  // own doc comment: an empty list and a failed read are different answers,
+  // and rendering the empty presentation for a failure states a fact that
+  // may be false.
+  const body =
+    error !== undefined ? (
+      <p className={styles.error}>
+        Couldn&rsquo;t load this book&rsquo;s lineage. This is not the same as having none &mdash;
+        close and reopen to try again.
+      </p>
+    ) : (
+      <ul className={styles.list}>
+        {lineageRowList.map((lineageRow, index) => (
+          <BookLineageRow
+            key={lineageRow.documentId}
+            isCurrent={index === 0}
+            isInitial={index === lineageRowList.length - 1}
+            {...lineageRow}
+          />
+        ))}
+      </ul>
+    );
 
   return (
     <dialog ref={modalRef} className={styles.root} onClick={handleClickBackground}>

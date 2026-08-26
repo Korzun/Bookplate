@@ -1,6 +1,30 @@
 import { graphql } from '~/gql';
 
 /**
+ * **This module is deliberately a CROSS-LAYER FIXTURE SOURCE for tests, not
+ * a route-private one.** Four test files outside `page/book` import these
+ * documents to seed or read the Apollo cache:
+ *
+ * - `control/book-lineage-modal/index.test.tsx` (`BookLineageDocument`)
+ * - `provider/book/hook/use-regen-chapters.test.tsx`
+ * - `provider/book/hook/use-validate-book.test.tsx`
+ * - `provider/book/hook/use-clear-book-editions.test.tsx` (`BookDetailDocument`)
+ *
+ * Those tests exist to prove that a mutation's payload normalizes onto the
+ * SAME `Book:<id>` entity the route actually reads. Seeding through a
+ * hand-rolled stand-in document would make them pass whether or not that is
+ * true, so using the REAL document is what gives them their teeth — and it
+ * is why `~/control`'s own test importing a page module here is a
+ * deliberate exception to the layering argument that keeps the RUNTIME
+ * modules pointing the other way (page → control, never control → page).
+ *
+ * So: do not treat this file as route-private and inline it into
+ * `./index.tsx` on a later refactor. Moving or renaming a document here
+ * breaks four cache tests in three other directories, and the compiler will
+ * say so.
+ */
+
+/**
  * The book-detail route's own read, composed HERE rather than in
  * `~/graphql/book.ts`: `page/book` is its only consumer (the REST-era
  * `useBookDetail` indirection this replaced had exactly one call site), and

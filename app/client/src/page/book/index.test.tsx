@@ -26,14 +26,26 @@ vi.mock('~/control', async (orig) => {
   return { ...actual, UploadReplaceModal: replaceModalSpy };
 });
 
-// `useBookDetail`/`useBookValidation` both root through `useCurrentLibraryId`
-// (an unconditional `ViewerBootstrap` query) — stubbed directly, the same
-// convention `use-book-detail.test.tsx`/`page/series/index.test.tsx` use, to
-// keep these tests focused on `BookDetailDocument`/`BookValidateDocument`.
+// `page/book`'s own read and `useBookValidation` both root through
+// `useCurrentLibraryId` (an unconditional `ViewerBootstrap` query) — stubbed
+// directly, the same convention `page/series/index.test.tsx` uses, to keep
+// these tests focused on `BookDetailDocument`/`BookValidateDocument`.
 // `useWithTargetUser` is ALSO stubbed here (not left to the real provider):
 // `useDownloadBook` (unmigrated REST hook, still a page consumer) calls it.
+//
+// MUTABLE, not the static `() => ({ libraryId: LIBRARY_ID, loading: false })`
+// form (review round 1, Item 1): a static stub makes `page/book`'s own
+// `skip: libraryId === undefined` and its `loading: bookLoading ||
+// libraryIdLoading` fold UNREACHABLE from this file, so both could be
+// deleted with every test still green. The deleted `use-book-detail.test.tsx`
+// was the only thing exercising them; this mirrors
+// `page/library/index.test.tsx`'s own mutable stub, which exists for the
+// same reason. `beforeEach` restores both to the resolved values.
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
+
 vi.mock('~/provider/library-target', () => ({
-  useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+  useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
   useWithTargetUser: () =>
     Object.assign((url: string) => url, { ready: true, username: undefined }),
 }));
@@ -79,6 +91,9 @@ beforeEach(() => {
   replaceModalSpy.mockClear();
   chapterCounter.requests = 0;
   lineageCounter.requests = 0;
+  bookDetailCounter.requests = 0;
+  currentLibraryId = LIBRARY_ID;
+  currentLibraryIdLoading = false;
   URL.createObjectURL = vi.fn(() => 'blob:test-cover');
   URL.revokeObjectURL = vi.fn();
   // Progress reads/writes are GraphQL now (Apollo mocks, not `apiFetch`) —
@@ -115,8 +130,23 @@ const rawLineageEntry = (
   ...overrides,
 });
 
+/**
+ * Counts EVERY `BookDetail` operation, whatever variables it carries, then
+ * reports whether those variables match. Count-first is deliberate: the
+ * "issues no operation until the library id resolves" test needs to catch a
+ * removed `skip` gate, and a query fired with `libraryId: ''` would slip
+ * past a matcher that counted only on a successful match.
+ */
+const bookDetailCounter = { requests: 0 };
+
 const bookMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
-  request: { query: BookDetailDocument, variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID } },
+  request: {
+    query: BookDetailDocument,
+    variables: function bookDetailVariables(vars) {
+      bookDetailCounter.requests += 1;
+      return vars.libraryId === LIBRARY_ID && vars.bookId === BOOK_ID;
+    },
+  },
   result: {
     data: {
       __typename: 'Query' as const,
@@ -185,9 +215,8 @@ const chaptersMock = (
   request: {
     query: BookChaptersDocument,
     variables: function bookChaptersVariables(vars) {
-      if (vars.libraryId !== LIBRARY_ID || vars.bookId !== BOOK_ID) return false;
       chapterCounter.requests += 1;
-      return true;
+      return vars.libraryId === LIBRARY_ID && vars.bookId === BOOK_ID;
     },
   },
   maxUsageCount: Infinity,
@@ -215,9 +244,8 @@ const lineageMock = (
   request: {
     query: BookLineageDocument,
     variables: function bookLineageVariables(vars) {
-      if (vars.libraryId !== LIBRARY_ID || vars.bookId !== BOOK_ID) return false;
       lineageCounter.requests += 1;
-      return true;
+      return vars.libraryId === LIBRARY_ID && vars.bookId === BOOK_ID;
     },
   },
   maxUsageCount: Infinity,
@@ -243,6 +271,23 @@ const lineageMock = (
       },
     },
   },
+});
+
+/**
+ * A failed LAZY read. Before the split (review round 1, Item 2) a failure to
+ * read `lineage` was a failed PAGE load; split out and defaulted (`?? []`),
+ * the same failure would render the modal's EMPTY-lineage presentation
+ * instead — the page stating "no edit history" when the truth is "we could
+ * not find out". These two mocks are what pin the distinction.
+ */
+const lineageErrorMock = (): MockedResponse<BookLineageQuery> => ({
+  request: { query: BookLineageDocument, variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID } },
+  error: new Error('lineage read failed'),
+});
+
+const chaptersErrorMock = (): MockedResponse<BookChaptersQuery> => ({
+  request: { query: BookChaptersDocument, variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID } },
+  error: new Error('chapters read failed'),
 });
 
 const VIEWER_USER_ID = 'VXNlcjox'; // User:1
@@ -589,7 +634,7 @@ describe('BookPage', () => {
 
   describe('lineage', () => {
     it('renders real lineage history, not an empty list', async () => {
-      await renderPage([
+      const { client } = await renderPage([
         bookMock(),
         lineageMock([rawLineageEntry({ oldId: 'doc-old-hash', newId: 'doc-current-hash' })]),
       ]);
@@ -600,6 +645,24 @@ describe('BookPage', () => {
       // A real entry from `Book.lineage`, not the empty-list shim task 10 left.
       expect(await screen.findByText('doc-current-hash')).toBeInTheDocument();
       expect(screen.getByText('doc-old-hash')).toBeInTheDocument();
+
+      // `lineage` stays MASKED on the way out of the query — carried over
+      // from the deleted `use-book-detail.test.tsx`, which held the only
+      // checked-in assertion of this (review round 1, Item 5). Masking is
+      // COMPILE-time only, so it is proved at the type level rather than by
+      // asserting a missing runtime property: `@ts-expect-error` is itself
+      // an error if the expression type-checks, so `tsc --noEmit` (part of
+      // `npm run lint`) fails the moment `lineage` stops being masked.
+      const cached = client.cache.readQuery({
+        query: BookLineageDocument,
+        variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID },
+      });
+      const refs = cached?.node?.__typename === 'Library' ? cached.node.book?.lineage : undefined;
+      // Positive control: without this the `@ts-expect-error` below could sit
+      // on an expression that is `undefined` for an unrelated reason.
+      expect(refs).toHaveLength(1);
+      // @ts-expect-error — `timestamp` is masked behind LineageEntryFragment
+      void refs?.[0]?.timestamp;
     });
 
     it("shows the book's RAW documentId as the current row when lineage is empty, never the GLOBAL id", async () => {
@@ -690,8 +753,120 @@ describe('BookPage', () => {
 
       await waitFor(() => expect(chapterCounter.requests).toBe(1));
       // Intent alone did it — the modal was never opened, so this cannot be
-      // the modal's own `useQuery` firing under another name.
+      // the modal's own `useQuery` firing under another name. ('Set
+      // Progress' with a capital P is the modal HEADER; the menu item this
+      // test hovers is 'Set progress'.)
       expect(screen.queryByText('Set Progress')).not.toBeInTheDocument();
+    });
+
+    /**
+     * The lineage half of the same wiring (review round 1, Item 3). Its
+     * absence was invisible before: "does not fetch lineage until the
+     * lineage modal opens" uses `selectMenuItem`, which goes through
+     * `userEvent.click` — and click dispatches `mouseenter` FIRST, so the
+     * count reaches 1 through either path and deleting
+     * `onShowLineageIntent` left every test green.
+     *
+     * `userEvent.hover` with no click is what separates them.
+     */
+    it('prefetches lineage on hover of the Book lineage action', async () => {
+      await renderPage([bookMock(), lineageMock([rawLineageEntry()])]);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      const [trigger] = screen.getAllByRole('button', { name: 'More actions' });
+      await userEvent.click(trigger);
+      const bookLineage = await screen.findByRole('menuitem', { name: /^book lineage$/i });
+      expect(lineageCounter.requests).toBe(0);
+
+      await userEvent.hover(bookLineage);
+
+      await waitFor(() => expect(lineageCounter.requests).toBe(1));
+      // Matched on the modal's INTRO copy, not its 'Book lineage' header —
+      // the menu item this test hovered carries that same text.
+      expect(screen.queryByText(/Editing or re-importing a book changes its ID/i)).toBeNull();
+    });
+  });
+
+  /**
+   * Review round 1, Item 2. The split moved `lineage`/`chapterNames` behind
+   * their own documents and defaulted them (`?? []`) at the call site, which
+   * turns a FAILED read into a plausible-looking answer rather than a
+   * visible failure. These pin the two apart.
+   */
+  describe('a failed lazy read is not reported as an empty one', () => {
+    it('shows a lineage failure distinctly from an empty lineage', async () => {
+      await renderPage([bookMock(), lineageErrorMock()]);
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await selectMenuItem(/^book lineage$/i);
+
+      expect(await screen.findByText(/not the same as having none/i)).toBeInTheDocument();
+      // The EMPTY-lineage presentation is a single current row rendering the
+      // book's own `documentId` (pinned by the test above it). Its absence
+      // here is the actual finding: a failed read no longer claims the book
+      // has no edit history.
+      expect(screen.queryByText(DOCUMENT_ID)).not.toBeInTheDocument();
+    });
+
+    it('flags a chapters failure without blocking the save', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock(), chaptersErrorMock()], {
+        user: { username: 'le', isAdmin: false },
+      });
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      await selectMenuItem(/^set progress$/i);
+
+      const header = await screen.findByText('Set Progress');
+      const modal = within(header.closest('dialog') as HTMLElement);
+      expect(await screen.findByText(/progress can still be saved/i)).toBeInTheDocument();
+      // Non-blocking by design: `percentage` derives from `chapterCount`,
+      // which stays EAGER on `BookDetail`, so a failed chapters read must
+      // not disable Save. `Button` renders `aria-disabled`, not the native
+      // attribute (see this file's own note on `edit metadata`).
+      expect(modal.getByRole('button', { name: /save/i, hidden: true })).not.toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
+    });
+  });
+
+  /**
+   * Review round 1, Item 1. `useCurrentLibraryId` learns its `libraryId`
+   * from a NETWORK query (`ViewerBootstrap`), so it is `undefined` for the
+   * whole round trip on a cold load — and an admin with no library selected
+   * holds it `undefined` indefinitely. Both of `page/book`'s responses to
+   * that (`skip`, and folding `libraryIdLoading` into `loading`) were
+   * unreachable from this file until the stub above was made mutable; the
+   * deleted `use-book-detail.test.tsx` had been carrying them.
+   */
+  describe('library id gate', () => {
+    it('issues no operation while there is no library id to root on', async () => {
+      // Bootstrap DONE, still no library — an admin who has selected none.
+      // Isolates the `skip` gate from the `loading` fold below.
+      currentLibraryId = undefined;
+      currentLibraryIdLoading = false;
+
+      await renderPage([bookMock()]);
+
+      expect(await screen.findByText('Book not found.')).toBeInTheDocument();
+      // Counted at REQUEST time and count-FIRST, so a removed `skip` is
+      // caught even though it would fire with `libraryId: ''` — variables
+      // that match no mock.
+      expect(bookDetailCounter.requests).toBe(0);
+    });
+
+    it('shows the loading state, not "Book not found.", while the library id is still resolving', async () => {
+      currentLibraryId = undefined;
+      currentLibraryIdLoading = true;
+
+      await renderPage([bookMock()]);
+
+      // A SKIPPED `useQuery` reports `loading: false` on its own, so without
+      // the fold this renders "Book not found." for the whole bootstrap
+      // round trip on every cold load.
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.queryByText('Book not found.')).toBeNull();
+      expect(screen.queryByText('Failed to load book.')).toBeNull();
     });
   });
 

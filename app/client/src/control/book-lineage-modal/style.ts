@@ -22,6 +22,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     overflowY: 'auto',
     maxHeight: '60vh',
   },
+  error: {
+    margin: 0,
+    padding: `0 ${theme.space.xxl} ${theme.space.xxl}`,
+    lineHeight: 1.5,
+    color: theme.color.danger.default,
+  },
   list: {
     listStyle: 'none',
     margin: 0,
