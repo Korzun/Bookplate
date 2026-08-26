@@ -117,7 +117,7 @@ const DEBOUNCE_MS = 200;
  *   - The re-keyed ORPHAN PROGRESS ENTRY's replacement was originally a
  *     single-entity `cache.evict` alone (`cache.evict({ id: cache.identify({
  *     __typename: 'Progress', id: progressId }) })` + `cache.gc()`),
- *     mirroring `useDeleteProgress`'s (`provider/library`) evict-the-entity
+ *     mirroring `useDeleteProgress`'s (`lib/use-progress-mutations`) evict-the-entity
  *     -and-let-the-connection-self-heal shape. **That undersold what the
  *     server actually did** (I-3, final whole-branch review): `Progress.id`
  *     is derived from the compound key `[userId, document]`

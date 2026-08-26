@@ -181,8 +181,8 @@ describe('MyProgressRow', () => {
 
   // Fixture-gap requirement: the entity is seeded into a REAL InMemoryCache
   // via `seedProgressEntity`, and `useDeleteProgress` is the REAL hook from
-  // `~/provider/library` (not mocked) — so this proves the row wires its
-  // unmasked `row.id` (the Relay GLOBAL id) into `deleteProgress`, and that
+  // `~/lib/use-progress-mutations` (not mocked) — so this proves the row
+  // wires its unmasked `row.id` (the Relay GLOBAL id) into `deleteProgress`, and that
   // the resulting `progressDelete` mutation's `update` callback actually
   // evicts the entity from the cache. `MockLink` throws on an unmatched
   // operation, so a call carrying the wrong id (e.g. the raw `document`
