@@ -12,4 +12,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   undone: {
     color: theme.color.danger.default,
   },
+  error: {
+    color: theme.color.danger.default,
+    fontSize: theme.fontSize.sm,
+    margin: `${theme.space.sm} 0 0`,
+  },
 }));

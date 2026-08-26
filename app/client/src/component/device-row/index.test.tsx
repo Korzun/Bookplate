@@ -82,6 +82,26 @@ const deleteSuccessMock = (
   },
 });
 
+const deleteNetworkErrorMock = (
+  deviceId: string
+): MockedResponse<DeviceDeleteMutation, DeviceDeleteMutationVariables> => ({
+  request: { query: DeviceDeleteDocument, variables: { input: { deviceId } } },
+  error: new Error('Network error'),
+});
+
+const deleteInvalidInputMock = (
+  deviceId: string,
+  message: string
+): MockedResponse<DeviceDeleteMutation, DeviceDeleteMutationVariables> => ({
+  request: { query: DeviceDeleteDocument, variables: { input: { deviceId } } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      deviceDelete: { __typename: 'InvalidInputError', message },
+    },
+  },
+});
+
 const clickConfirmDelete = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole('button', { name: /^delete$/i }));
   const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
@@ -146,7 +166,7 @@ describe('DeviceRow', () => {
   it('sends DeviceDelete with the device id and evicts it from the cache when confirmed', async () => {
     const user = userEvent.setup();
     const row = device({ id: 'd1' });
-    const { client } = renderWithApollo(
+    const { client, container } = renderWithApollo(
       <DeviceRow device={makeFragmentData(row, DeviceRowFragment)} />,
       { mocks: [deleteSuccessMock('d1')] }
     );
@@ -158,5 +178,58 @@ describe('DeviceRow', () => {
       const extracted = client.cache.extract() as NormalizedCacheObject;
       expect(Object.keys(extracted)).not.toContain('Device:d1');
     });
+    // Success closes the modal — `ConfirmModal` always renders its content
+    // (it toggles the native `<dialog>`'s `open` attribute via
+    // showModal()/close(), not conditional rendering), so the `open`
+    // attribute — not text presence — is what "closed" means here. The
+    // failure tests below assert this stays present.
+    await waitFor(() =>
+      expect(container.querySelector('dialog')?.hasAttribute('open')).toBe(false)
+    );
+  });
+
+  // Finding 1 (task-1 review round): `handleDeleteDeviceConfirm` had no
+  // `catch`, and `onConfirm={() => void handleDeleteDeviceConfirm()}`
+  // attaches no rejection handler — a thrown network error surfaced only as
+  // an unhandled promise rejection. This test is the regression guard: it
+  // fails (via an unhandled rejection) if the `catch` regresses.
+  it('surfaces a network error inline and keeps the modal open, without an unhandled rejection', async () => {
+    const user = userEvent.setup();
+    const row = device({ id: 'd1' });
+    const { client, container } = renderWithApollo(
+      <DeviceRow device={makeFragmentData(row, DeviceRowFragment)} />,
+      { mocks: [deleteNetworkErrorMock('d1')] }
+    );
+    seedDeviceEntity(client, row);
+
+    await clickConfirmDelete(user);
+
+    expect(await screen.findByText('Network error')).toBeInTheDocument();
+    // Still open (the `open` attribute, not text presence — see the success
+    // test's own note on why `ConfirmModal` always renders its content).
+    expect(container.querySelector('dialog')?.hasAttribute('open')).toBe(true);
+    // Optimistic hide is rolled back once Apollo discards the optimistic
+    // layer on the thrown error.
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).toContain('Device:d1');
+  });
+
+  // Mirrors `control/unlink-book-lineage-button`'s precedent: a typed error
+  // member (not a thrown error) also surfaces its own message inline rather
+  // than being silently swallowed — the pre-existing gap this finding also
+  // named.
+  it('surfaces a typed InvalidInputError inline and keeps the modal open', async () => {
+    const user = userEvent.setup();
+    const row = device({ id: 'd1' });
+    const { client, container } = renderWithApollo(
+      <DeviceRow device={makeFragmentData(row, DeviceRowFragment)} />,
+      { mocks: [deleteInvalidInputMock('d1', 'Device not found')] }
+    );
+    seedDeviceEntity(client, row);
+
+    await clickConfirmDelete(user);
+
+    expect(await screen.findByText('Device not found')).toBeInTheDocument();
+    expect(container.querySelector('dialog')?.hasAttribute('open')).toBe(true);
   });
 });

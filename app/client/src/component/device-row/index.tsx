@@ -68,6 +68,7 @@ export const DeviceRow = ({ device }: DeviceRowProps) => {
   const unmasked = useFragment(DeviceRowFragment, device);
   const [runDelete] = useMutation(DeviceDeleteDocument);
   const [deleting, setDeleting] = useState<boolean>(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | undefined>();
 
   const [editing, setEditing] = useState<boolean>(false);
   const handleEdit = useCallback(() => setEditing(true), []);
@@ -75,17 +76,27 @@ export const DeviceRow = ({ device }: DeviceRowProps) => {
 
   const [showDeleteDeviceModal, setShowDeleteDeviceModal] = useState<boolean>(false);
   const handleDeleteDevice = useCallback(() => {
+    setDeleteErrorMessage(undefined);
     setShowDeleteDeviceModal(true);
   }, []);
   const handleDeleteDeviceCancel = useCallback(() => {
     setShowDeleteDeviceModal(false);
   }, []);
+  // Mirrors `control/unlink-book-lineage-button`'s shape: the modal stays
+  // OPEN and shows the server's own message inline on failure, closing only
+  // after a genuine `DeviceDeletePayload` success — rather than closing
+  // unconditionally on confirm-click the way the REST-era row did. The
+  // `catch` here is the fix this component was missing: `void
+  // handleDeleteDeviceConfirm()` at the `onConfirm` call site attaches no
+  // rejection handler of its own, so a thrown network error (or a GraphQL
+  // error under Apollo's default `errorPolicy: 'none'`) would otherwise
+  // surface only as an unhandled promise rejection.
   const handleDeleteDeviceConfirm = useCallback(async () => {
-    setShowDeleteDeviceModal(false);
     const deviceId = unmasked.id;
     setDeleting(true);
+    setDeleteErrorMessage(undefined);
     try {
-      await runDelete({
+      const { data } = await runDelete({
         variables: { input: { deviceId } },
         optimisticResponse: {
           __typename: 'Mutation',
@@ -113,6 +124,20 @@ export const DeviceRow = ({ device }: DeviceRowProps) => {
           });
         },
       });
+
+      const result = unwrapResult<DeviceDeletePayload>(data?.deviceDelete, 'DeviceDeletePayload');
+      if (result.status === 'missing') {
+        setDeleteErrorMessage('Failed to delete device');
+        return;
+      }
+      if (result.status === 'error') {
+        setDeleteErrorMessage(result.message);
+        return;
+      }
+
+      setShowDeleteDeviceModal(false);
+    } catch (err) {
+      setDeleteErrorMessage(err instanceof Error ? err.message : 'Failed to delete device');
     } finally {
       setDeleting(false);
     }
@@ -163,6 +188,7 @@ export const DeviceRow = ({ device }: DeviceRowProps) => {
         This action will delete <span className={styles.deviceName}>{unmasked.name}</span>, and any
         per-device book editions generated for it, and{' '}
         <span className={styles.undone}>can not be undone</span>.
+        {deleteErrorMessage && <p className={styles.error}>{deleteErrorMessage}</p>}
       </ConfirmModal>
     </Fragment>
   );

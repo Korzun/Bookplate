@@ -11,6 +11,7 @@ import type {
   DeviceEnableUserMutationVariables,
   DeviceUpdateMutationVariables,
   DeviceUsersQuery,
+  UserListQuery,
 } from '~/gql/graphql';
 import {
   DeviceCreateDocument,
@@ -19,6 +20,7 @@ import {
   DeviceUpdateDocument,
   DeviceUsersDocument,
 } from '~/graphql/device';
+import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
 import { DeviceForm } from './index';
@@ -166,26 +168,54 @@ const disableSuccessMock = (
   },
 });
 
-// useCreateDevice/useUpdateDevice/useDeviceUsers/useEnableDeviceUser/
-// useDisableDeviceUser are all inlined directly in `DeviceForm` now (no
-// `provider/device` barrel to mock), so every scenario below is driven
-// through real GraphQL mocks. `useUserList` remains a `provider/user` hook
-// (task 2 dissolves that provider), so it is still mocked directly.
+// `vi.mock` factories are hoisted ABOVE this file's own top-level `const`/
+// `let` statements, so a plain closure variable referenced inside the
+// factory below would hit a TDZ `ReferenceError` the moment any OTHER
+// file's import chain (e.g. `control/reset-password-button` importing
+// `~/provider/user`) resolves before this file's own body has run.
+// `vi.hoisted` is Vitest's sanctioned escape hatch: its callback runs
+// before the mock factory, so the returned, mutable object is safe to
+// close over from inside it.
+//
+// `impl` backs every test's `useUserList()` return value (default: the
+// fixed two-user array, reset in `afterEach`); `real` is the ACTUAL hook
+// (captured once, inside the factory), swapped into `impl` by exactly one
+// test — the DeviceUsers-before-UserList race — that needs `useUserList`'s
+// own `loading` slot to genuinely respond to a delayed `UserListDocument`
+// mock rather than a fixed, non-reactive return value. Mirrors the deleted
+// `use-device-users.test.tsx`'s own two-mode setup (a fixed `userListMock`
+// for most cases, a delayed real one for the race case).
+const useUserListState = vi.hoisted(() => {
+  const state: {
+    impl: () => ReturnType<typeof import('~/provider/user').useUserList>;
+    real: () => ReturnType<typeof import('~/provider/user').useUserList>;
+  } = {
+    impl: () => [[], false, false, undefined],
+    real: () => [[], false, false, undefined],
+  };
+  return state;
+});
+
 vi.mock('~/provider/user', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/provider/user')>();
+  useUserListState.real = actual.useUserList;
   return {
     ...actual,
-    useUserList: () => [
-      [
-        { id: 'u-alice', username: 'alice', progressCount: 0, library: { id: 'lib-alice' } },
-        { id: 'u-bob', username: 'bob', progressCount: 0, library: { id: 'lib-bob' } },
-      ],
-      false,
-      false,
-      undefined,
-    ],
+    useUserList: () => useUserListState.impl(),
   };
 });
+
+const fixedUsers: ReturnType<typeof import('~/provider/user').useUserList>[0] = [
+  { id: 'u-alice', username: 'alice', progressCount: 0, library: { id: 'lib-alice' } },
+  { id: 'u-bob', username: 'bob', progressCount: 0, library: { id: 'lib-bob' } },
+];
+const defaultUseUserListImpl = (): ReturnType<typeof import('~/provider/user').useUserList> => [
+  fixedUsers,
+  false,
+  false,
+  undefined,
+];
+useUserListState.impl = defaultUseUserListImpl;
 
 type RenderFormOptions = Parameters<typeof renderWithApollo>[1];
 
@@ -195,9 +225,29 @@ function renderForm(device?: typeof kindle, onDone?: () => void, options?: Rende
   return { ...rendered, nameInput };
 }
 
+const userListMock = (): MockedResponse<UserListQuery> => ({
+  request: { query: UserListDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        users: fixedUsers.map((u) => ({
+          __typename: 'User' as const,
+          id: u.id,
+          username: u.username,
+          progressCount: u.progressCount,
+          library: { __typename: 'Library' as const, id: u.library.id },
+        })),
+      },
+    },
+  },
+});
+
 describe('DeviceForm', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    useUserListState.impl = defaultUseUserListImpl;
   });
 
   it('caps the committed name at 50 characters', async () => {
@@ -408,9 +458,36 @@ describe('DeviceForm', () => {
   });
 
   describe('Users field', () => {
-    it('is not rendered for a non-admin', () => {
+    // Finding 3 (task-1 review round): restores the deleted
+    // `use-device-users.test.tsx`'s `skip: !isAdmin` case. A synchronous
+    // `queryByText('Users')` check alone can't tell "skip fired" from "skip
+    // regressed but nothing renders it anyway" — the Users field is ALSO
+    // gated on `isAdmin` for rendering, independent of the query. `MockLink`
+    // warns via `console.warn` on an unmatched operation (verified against
+    // its own source — no mock for `DeviceUsersDocument` is supplied here),
+    // so spying on it is what actually observes whether the query fired.
+    it('is not rendered for a non-admin, and does not issue the DeviceUsers query (skip)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       renderForm(kindle, () => {}, { user: { username: 'user', isAdmin: false } });
       expect(screen.queryByText('Users')).not.toBeInTheDocument();
+
+      // Let any microtask a wrongly-unskipped query would schedule run.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('DeviceUsers'));
+      warnSpy.mockRestore();
+    });
+
+    // The other half of `skip: !isAdmin || device === undefined`: an admin
+    // on the CREATE form (no device yet) must not fire DeviceUsers either —
+    // there is no device id to fetch enabled users for.
+    it('does not issue the DeviceUsers query when creating (no device yet), even for an admin', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      renderForm(undefined, undefined, { user: { username: 'admin', isAdmin: true } });
+      expect(screen.getByLabelText('Users')).toBeInTheDocument();
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('DeviceUsers'));
+      warnSpy.mockRestore();
     });
 
     it('creating a device with users selected enables them for the newly created device', async () => {
@@ -534,6 +611,86 @@ describe('DeviceForm', () => {
       expect(usersInput).toBeDisabled();
       await user.type(usersInput, 'alice');
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    // Restores the deleted `use-device-users.test.tsx`'s cross-device-leakage
+    // case: `DeviceUsersDocument` reads EVERY device's enabled users in one
+    // response (there is no `Query.device`), so `device-form` must pick out
+    // only the row matching `device.id` — d2's 'bob' must never leak into
+    // d1's read.
+    it("resolves the matching device's enabled usernames only — another device's users in the same read do not leak in", async () => {
+      renderForm(kindle, () => {}, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [
+          deviceUsersMock([
+            { id: 'd1', enabledUserIds: ['u-alice'] },
+            { id: 'd2', enabledUserIds: ['u-bob'] },
+          ]),
+        ],
+      });
+
+      await waitFor(() => expect(screen.getByLabelText('Remove alice')).toBeInTheDocument());
+      expect(screen.queryByLabelText('Remove bob')).not.toBeInTheDocument();
+    });
+
+    // Restores the deleted `use-device-users.test.tsx`'s error case,
+    // reinterpreted at `DeviceForm`'s own rendered output (the inlined logic
+    // exposes no separate error slot the way the old hook's 4th tuple
+    // element did): a `DeviceUsers` GraphQL error must resolve to the same
+    // deliberately-empty `EMPTY_USERS` state as "no enabled users", NOT a
+    // permanently loading (stuck-disabled) field.
+    it('treats a DeviceUsers query error as an empty list, not a stuck-loading field', async () => {
+      renderForm(kindle, () => {}, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [
+          {
+            request: { query: DeviceUsersDocument },
+            error: new Error('device users query failed'),
+          },
+        ],
+      });
+
+      await waitFor(() =>
+        expect(screen.queryByPlaceholderText('Loading…')).not.toBeInTheDocument()
+      );
+      expect(screen.getByPlaceholderText('Add users…')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Remove /)).not.toBeInTheDocument();
+    });
+
+    // Restores the deleted `use-device-users.test.tsx`'s race case — the
+    // OTHER pinned behaviour this task's dispatch named explicitly:
+    // `loadingUsers` must fold BOTH `DeviceUsers` AND `UserList`'s own
+    // loading state. `useUserListImpl` is swapped to the REAL hook for this
+    // test only (reset in `afterEach`) so `allUsersLoading` genuinely
+    // responds to a delayed `UserListDocument` mock, exactly mirroring the
+    // deleted test's unequal-delay technique (DeviceUsers 0ms, UserList
+    // 300ms). Without folding `allUsersLoading` in, the field would go
+    // enabled with zero chips the instant DeviceUsers alone resolves — an
+    // authoritative-looking "no enabled users" for a device that in fact has
+    // one — and, per this task's dispatch, an admin touching the field in
+    // that window would lock in the stale empty selection and Save would
+    // REVOKE every user's access.
+    it('keeps the Users field inert — not an authoritative empty list — if DeviceUsers resolves before UserList', async () => {
+      useUserListState.impl = useUserListState.real;
+
+      renderForm(kindle, () => {}, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [
+          { ...deviceUsersMock([{ id: 'd1', enabledUserIds: ['u-alice'] }]), delay: 0 },
+          { ...userListMock(), delay: 300 },
+        ],
+      });
+
+      // DeviceUsers has landed, but UserList (the real hook, still in
+      // flight) hasn't — the field must still read as loading, not settle
+      // on an empty selection.
+      await waitFor(() => expect(screen.getByPlaceholderText('Loading…')).toBeInTheDocument());
+      expect(screen.getByPlaceholderText('Loading…')).toBeDisabled();
+
+      // Once BOTH resolve, the real 'alice' chip appears.
+      await waitFor(() => expect(screen.getByLabelText('Remove alice')).toBeInTheDocument(), {
+        timeout: 2000,
+      });
     });
   });
 });
