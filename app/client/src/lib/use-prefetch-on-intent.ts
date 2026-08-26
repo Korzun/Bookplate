@@ -35,19 +35,36 @@ export type UsePrefetchOnIntentResult = {
  * panel already loaded the same variables costs nothing further — Apollo
  * answers from the cache without a network round trip.
  *
- * **"Fresh" is defined as "already fired for this exact variables identity,
- * ever, for the lifetime of this hook instance."** No timer, no expiry: once
- * a `(document, variables)` pair has been prefetched, this hook does not
- * re-issue it again on a later hover, no matter how much later. Two things
- * make that the right amount of simple rather than a shortcut: (1) the
- * whole point of this guard is to stop a mouse SWEEP — many `onMouseEnter`/
- * `onFocus` events over a handful of milliseconds — from becoming a request
- * per pixel, not to model cache staleness (Apollo's own cache policies,
- * refetches, and invalidation already own that once the panel's real
- * `useQuery` is mounted); (2) a variables CHANGE (a different book id, a
- * different filter) always clears the guard immediately, since it is keyed
- * on the variables themselves — a genuinely new prefetch target is never
- * blocked by an old one's guard.
+ * **"Fresh" is defined as "already fired for the CURRENTLY-HELD variables
+ * value, since the last time that value changed."** No timer, no expiry:
+ * while `variables` stays equal (by value) to what it was on the last fire,
+ * this hook does not re-issue the query on a later hover. That guarantee is
+ * scoped to the currently-held value, not to every value this hook instance
+ * has ever seen — the guard below (`firedForKey`) stores only the single
+ * MOST RECENT key, not a set of every key ever fired, so a hook instance
+ * whose `variables` move A → B → A without unmounting DOES re-fire for A
+ * the second time it is held. That is deliberate, not a gap: a `Set`/`Map`
+ * would grow unbounded per hook instance to buy a guarantee nothing here
+ * needs, and `fetchPolicy: 'cache-first'` already bounds a stale-guard
+ * repeat to a likely cache hit rather than a real network round trip. Two
+ * things make the CURRENT-value guarantee the right amount of simple rather
+ * than a shortcut: (1) the whole point of this guard is to stop a mouse
+ * SWEEP — many `onMouseEnter`/`onFocus` events over a handful of
+ * milliseconds, all for the SAME held value — from becoming a request per
+ * pixel, not to model cache staleness across value changes (Apollo's own
+ * cache policies, refetches, and invalidation already own that once the
+ * panel's real `useQuery` is mounted); (2) a variables CHANGE (a different
+ * book id, a different filter) always clears the guard immediately, since
+ * it is keyed on the variables themselves — a genuinely new prefetch target
+ * is never blocked by an old one's guard.
+ *
+ * The guard key is `JSON.stringify(variables)`, which is KEY-ORDER
+ * SENSITIVE: two variables objects that are semantically equal but built
+ * with different property insertion order hash to different keys and cause
+ * one spurious extra `client.query` call. Low-impact for a single call site
+ * with a fixed object shape, and still bounded by `cache-first` above, but
+ * worth knowing — this is a shared primitive Task 7 onward calls from
+ * multiple call sites.
  *
  * Failures are swallowed deliberately: this call has no UI of its own to
  * report an error through, and the panel's own `useQuery` (mounted on the
@@ -69,7 +86,9 @@ export function usePrefetchOnIntent<TData, TVariables extends OperationVariables
 
   // Keyed on the variables' VALUE, not their reference — most call sites
   // pass a fresh object literal per render, so a reference-identity guard
-  // would never actually block anything.
+  // would never actually block anything. Holds only the SINGLE MOST RECENT
+  // key, not a set of every key ever fired — see this hook's own doc
+  // comment above for what that does and doesn't guarantee.
   const firedForKey = useRef<string | undefined>(undefined);
 
   const prefetch = useCallback(() => {
