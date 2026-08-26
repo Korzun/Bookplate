@@ -1,68 +1,71 @@
-import { screen, waitFor } from '@testing-library/react';
+import type { NormalizedCacheObject } from '@apollo/client';
+import type { MockedResponse } from '@apollo/client/testing';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { BookEditBook } from '~/provider/book';
+import { makeFragmentData } from '~/gql';
+import type {
+  BookEditFormFragmentFragment,
+  BookUpdateMetadataMutation,
+  BookUpdateMetadataMutationVariables,
+  LibrarySubjectsQuery,
+  SeriesNamesQuery,
+  SeriesNextIndexQuery,
+} from '~/gql/graphql';
+import { BookUpdateMetadataDocument } from '~/graphql/book-edit';
+import {
+  LibrarySubjectsDocument,
+  SeriesNamesDocument,
+  SeriesNextIndexDocument,
+} from '~/graphql/library';
+import { BookEditDocument } from '~/page/book-edit';
+import { LibraryEntriesDocument } from '~/page/library';
 import { path } from '~/router';
-import { renderWithProviders } from '~/test-utils';
+import { renderWithApollo } from '~/test-utils';
 
-import { BookEditForm } from './index';
+import { BookEditForm, BookEditFormFragment } from './index';
 
-// Shared, test-controlled state for the mocked hooks/navigation.
-const mocks = vi.hoisted(() => ({
-  navigate: vi.fn(),
-  nextResult: { mode: 'ok' as 'ok' | 'fail-cover' | 'fail-save' },
-  fetchSeriesNextIndex: vi.fn((name: string) => Promise.resolve(name === 'Dune' ? 4 : 1)),
-  updateBookMetadata: vi.fn(),
-}));
+const LIBRARY_ID = 'TGlicmFyeTox';
+const BOOK_ID = 'Qm9vazox';
+const NEW_BOOK_ID = 'Qm9vazoy';
 
+const navigate = vi.fn();
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
-  return { ...actual, useNavigate: () => mocks.navigate };
+  return { ...actual, useNavigate: () => navigate };
 });
 
-// A stateful fake of `useUpdateBookMetadata`: calling the update fn flips its
-// internal error state exactly like the real hook (a 3-tuple — see the
-// hook's own doc comment on why it isn't a 4-tuple like its four siblings),
-// so the component's error-handling (toast + navigation guard) runs against
-// a real state transition rather than a frozen tuple. `mocks.updateBookMetadata`
-// records every call's arguments so tests can assert on the exact patch sent.
-vi.mock('~/provider/book', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/provider/book')>();
-  const { useState, useCallback } = await import('react');
+// `let`, not `const`: the "library id gate" tests below vary both to exercise
+// the window before `useCurrentLibraryId` has resolved, mirroring the
+// convention `page/book/index.test.tsx` uses for the same stub.
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
+vi.mock('~/provider/library-target', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/provider/library-target')>();
   return {
     ...actual,
-    useLibrarySubjects: () => [[], false, undefined],
-    useSeriesNames: () => [['Dune'], false, undefined],
-    useFetchSeriesNextIndex: () => mocks.fetchSeriesNextIndex,
-    useUpdateBookMetadata: () => {
-      const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
-      const update = useCallback(async (bookId: string, patch: unknown) => {
-        mocks.updateBookMetadata(bookId, patch);
-        if (mocks.nextResult.mode === 'fail-cover') {
-          setErrorMessage("Couldn't upload the cover image");
-          return undefined;
-        }
-        if (mocks.nextResult.mode === 'fail-save') {
-          setErrorMessage("Couldn't save your changes");
-          return undefined;
-        }
-        setErrorMessage(undefined);
-        // Deliberately DIFFERENT literal values (same convention the
-        // Cancel-navigation test below uses) so a test asserting on
-        // `path.book(...)` can't pass by coincidence if Save regresses to
-        // navigating with `documentId` (the RAW hash) instead of the
-        // payload's global `id`.
-        return { id: 'new-global-id', documentId: 'new-document-id' };
-      }, []);
-      return [update, false, errorMessage];
-    },
+    useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
   };
 });
 
-const book: BookEditBook = {
-  id: 'book-1',
-  documentId: 'raw-hash-book-1',
+vi.mock('~/lib/staged-upload', () => ({ stageUpload: vi.fn() }));
+const { stageUpload } = await import('~/lib/staged-upload');
+const mockStage = vi.mocked(stageUpload);
+
+const cover = new File(['bytes'], 'cover.jpg', { type: 'image/jpeg' });
+
+/**
+ * The form's own `book` prop shape. Declared as the CONCRETE fragment type
+ * and wrapped with `makeFragmentData` at each call site — plain assignment to
+ * `FragmentType<typeof BookEditFormFragment>` fails TypeScript's weak-type
+ * check (the same reason `component/my-progress-row/index.test.tsx` documents).
+ */
+const bookFields = (
+  overrides: Partial<BookEditFormFragmentFragment> = {}
+): BookEditFormFragmentFragment => ({
+  __typename: 'Book',
+  id: BOOK_ID,
   title: 'Original Title',
   author: 'Original Author',
   titleSort: '',
@@ -74,137 +77,660 @@ const book: BookEditBook = {
   description: '',
   subjects: [],
   identifiers: [],
-  validation: { id: 'book-1', valid: true },
-  pendingFix: null,
-};
-
-afterEach(() => {
-  mocks.navigate.mockClear();
-  mocks.nextResult.mode = 'ok';
-  mocks.fetchSeriesNextIndex.mockClear();
-  mocks.updateBookMetadata.mockClear();
+  ...overrides,
 });
 
+const book = (overrides: Partial<BookEditFormFragmentFragment> = {}) =>
+  makeFragmentData(bookFields(overrides), BookEditFormFragment);
+
+// ---------------------------------------------------------------------------
+// Mocks for the three reads the form now issues itself.
+// ---------------------------------------------------------------------------
+
+/**
+ * Request counters, incremented inside `MockLink`'s VARIABLE-MATCHER form of
+ * `request.variables` — a function `MockLink.request()` calls SYNCHRONOUSLY,
+ * before any delivery timer. Counted FIRST and matched second on purpose: a
+ * read fired with the WRONG variables (which is exactly what a removed `skip`
+ * produces — `libraryId: ''`) still increments, so "issues no read" fails
+ * CLOSED instead of being silently unmatched. Counting from `result`-as-a-
+ * function would count on DELIVERY, at `MockLink`'s random 20-50ms delay,
+ * which is how an earlier task shipped an unfalsifiable version of this.
+ */
+const counters = { subjects: 0, series: 0, save: 0 };
+
+const subjectsMock = (subjects: string[] = []): MockedResponse<LibrarySubjectsQuery> => ({
+  request: {
+    query: LibrarySubjectsDocument,
+    variables: function librarySubjectsVariables(vars) {
+      counters.subjects += 1;
+      return vars.libraryId === LIBRARY_ID;
+    },
+  },
+  result: {
+    data: { __typename: 'Query', node: { __typename: 'Library', id: LIBRARY_ID, subjects } },
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+});
+
+const seriesNamesMock = (names: string[] = ['Dune']): MockedResponse<SeriesNamesQuery> => ({
+  request: {
+    query: SeriesNamesDocument,
+    variables: function seriesNamesVariables(vars) {
+      counters.series += 1;
+      return vars.libraryId === LIBRARY_ID;
+    },
+  },
+  result: {
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        series: names.map((name, i) => ({
+          __typename: 'Series' as const,
+          id: `U2VyaWVzOj${i}`,
+          name,
+        })),
+      },
+    },
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+});
+
+/** `delivered` flips when `MockLink` actually DELIVERS the response — used by
+ * the in-flight test below to wait on the response landing instead of on a
+ * tuned timeout. `requests` counts at request time (see `counters`). */
+const nextIndex = { requests: 0, delivered: 0 };
+
+const nextIndexMock = (
+  name: string,
+  seriesNextIndex: number,
+  delay?: number
+): MockedResponse<SeriesNextIndexQuery> => ({
+  request: {
+    query: SeriesNextIndexDocument,
+    variables: function seriesNextIndexVariables(vars) {
+      nextIndex.requests += 1;
+      return vars.libraryId === LIBRARY_ID && vars.name === name;
+    },
+  },
+  result: () => {
+    nextIndex.delivered += 1;
+    return {
+      data: {
+        __typename: 'Query' as const,
+        node: { __typename: 'Library' as const, id: LIBRARY_ID, seriesNextIndex },
+      },
+    };
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  ...(delay === undefined ? {} : { delay }),
+});
+
+/** The `Book` shape `BookUpdateMetadataPayload.book` re-selects. */
+const updatePayload = (
+  overrides: Partial<{ id: string; title: string }> = {}
+): BookUpdateMetadataMutation => ({
+  __typename: 'Mutation',
+  bookUpdateMetadata: {
+    __typename: 'BookUpdateMetadataPayload',
+    book: {
+      __typename: 'Book',
+      id: overrides.id ?? BOOK_ID,
+      documentId: 'a'.repeat(32),
+      title: overrides.title ?? 'Dune',
+      titleSort: 'Dune',
+      author: 'Herbert',
+      authorSort: 'Herbert, Frank',
+      description: '',
+      publisher: '',
+      publishDate: '',
+      seriesIndex: 0,
+      subjects: [],
+      series: null,
+      identifiers: [],
+    },
+  },
+});
+
+/**
+ * The save the form sends when NOTHING was edited: every diffable field
+ * resolves to `undefined` and is dropped by the GraphQL serializer, so the
+ * input is `{ id }` alone. Used by the tests that only care about what the
+ * mutation does afterwards.
+ */
+const saveMock = (
+  data: BookUpdateMetadataMutation,
+  extraInput: Record<string, unknown> = {},
+  delay?: number
+): MockedResponse<BookUpdateMetadataMutation, BookUpdateMetadataMutationVariables> => ({
+  request: {
+    query: BookUpdateMetadataDocument,
+    variables: function bookUpdateMetadataVariables(vars) {
+      counters.save += 1;
+      return JSON.stringify(vars) === JSON.stringify({ input: { id: BOOK_ID, ...extraInput } });
+    },
+  },
+  result: { data },
+  // The matcher is the counter, and `MockLink` removes an exhausted mock from
+  // its list — so a mock capped at one use would stop counting exactly when a
+  // regression fired its SECOND request. Kept alive so the count is real.
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  ...(delay === undefined ? {} : { delay }),
+});
+
+const baseMocks = () => [subjectsMock(), seriesNamesMock()];
+
+// ---------------------------------------------------------------------------
+// Cache seeding, carried over from the deleted `use-update-book-metadata`
+// test so the eviction assertions still prove something: without a
+// pre-existing entity, `not.toContain('Book:<id>')` would pass whether or not
+// the `update` function ever ran.
+// ---------------------------------------------------------------------------
+
+type Client = ReturnType<typeof renderWithApollo>['client'];
+
+const seedBook = (client: Client, id: string) =>
+  client.writeQuery({
+    query: BookEditDocument,
+    variables: { libraryId: LIBRARY_ID, bookId: id },
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        book: {
+          ...bookFields({ id, title: 'Dune' }),
+          validation: null,
+          pendingFix: null,
+        },
+      },
+    },
+  });
+
+const libraryEntriesVariables = { libraryId: LIBRARY_ID, first: 20, filter: undefined };
+
+// Deliberately UNANNOTATED: the masked `node` field expects a
+// `$fragmentRefs`-wrapped shape, so a literal under an explicit annotation
+// would fail TypeScript's excess-property check.
+const bookRowNode = (id: string) => ({
+  __typename: 'Book' as const,
+  id,
+  title: 'Dune',
+  author: 'Herbert',
+  seriesIndex: 0,
+  hasCover: false,
+  thumbnailUrl: '',
+  progress: null,
+});
+
+const seedLibraryEntries = (client: Client, id: string) =>
+  client.writeQuery({
+    query: LibraryEntriesDocument,
+    variables: libraryEntriesVariables,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [
+            {
+              __typename: 'LibraryEntriesConnectionEdge' as const,
+              cursor: 'c1',
+              node: bookRowNode(id),
+            },
+          ],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
+
+const readEntries = (client: Client) =>
+  client.cache.readQuery({
+    query: LibraryEntriesDocument,
+    variables: libraryEntriesVariables,
+  });
+
+beforeEach(() => {
+  counters.subjects = 0;
+  counters.series = 0;
+  counters.save = 0;
+  nextIndex.requests = 0;
+  nextIndex.delivered = 0;
+  currentLibraryId = LIBRARY_ID;
+  currentLibraryIdLoading = false;
+  mockStage.mockReset().mockResolvedValue('staged-1');
+});
+
+afterEach(() => {
+  navigate.mockClear();
+});
+
+const save = async (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole('button', { name: 'Save' }));
+
 describe('BookEditForm', () => {
-  // `book.id` IS the Relay global id (`graphql/book-edit.ts`'s
-  // `BookEditDocument`), so Save's post-write navigation uses the mutation
-  // PAYLOAD's `id` directly — no separate `.globalId` field exists anymore
-  // in the GraphQL shape (that was REST-only). The mock above returns
-  // visibly different `id`/`documentId` literals so this can't pass by
-  // coincidence.
+  // `book.id` IS the Relay global id, so Save's post-write navigation uses the
+  // mutation PAYLOAD's `id` directly. The payload below carries a visibly
+  // different `id` from its `documentId` (the raw hash) so this cannot pass by
+  // coincidence if Save ever regresses to navigating with `documentId`.
   it('navigates to the book using the mutation payload id, not its documentId', async () => {
-    mocks.nextResult.mode = 'ok';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={book} />);
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID }))],
+    });
 
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await save(user);
 
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith(path.book('new-global-id')));
-    expect(mocks.navigate).not.toHaveBeenCalledWith(path.book('new-document-id'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(NEW_BOOK_ID)));
+    expect(navigate).not.toHaveBeenCalledWith(path.book('a'.repeat(32)));
   });
 
   it('stays on the form and shows a save-specific message when the mutation errors', async () => {
-    mocks.nextResult.mode = 'fail-save';
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={book} />);
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        ...baseMocks(),
+        saveMock({
+          __typename: 'Mutation',
+          bookUpdateMetadata: {
+            __typename: 'BookHashCollisionError',
+            message: 'This book collides with another book already in the library.',
+          },
+        }),
+      ],
+    });
 
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(screen.getByText("Couldn't save your changes")).toBeInTheDocument());
-    expect(mocks.navigate).not.toHaveBeenCalled();
-  });
-
-  it('stays on the form and shows a cover-specific message when staging the cover fails', async () => {
-    mocks.nextResult.mode = 'fail-cover';
-    const { container } = renderWithProviders(<BookEditForm book={book} />);
-    const user = userEvent.setup();
-
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['x'], 'cover.jpg', { type: 'image/jpeg' });
-    await user.upload(fileInput, file);
-
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await save(user);
 
     await waitFor(() =>
-      expect(screen.getByText("Couldn't upload the cover image")).toBeInTheDocument()
+      expect(
+        screen.getByText('This book collides with another book already in the library.')
+      ).toBeInTheDocument()
     );
-    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('stages the cover then saves, navigating with the payload id', async () => {
-    mocks.nextResult.mode = 'ok';
-    const { container } = renderWithProviders(<BookEditForm book={book} />);
+  it('reports a generic save failure when the mutation resolves missing', async () => {
     const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock({ __typename: 'Mutation', bookUpdateMetadata: null })],
+    });
+
+    await save(user);
+
+    await waitFor(() => expect(screen.getByText("Couldn't save your changes")).toBeInTheDocument());
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('reports a typed staged-cover expiry with the server message', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        ...baseMocks(),
+        saveMock(
+          {
+            __typename: 'Mutation',
+            bookUpdateMetadata: {
+              __typename: 'StagedUploadNotFoundError',
+              message: 'The staged cover upload has expired. Please try again.',
+            },
+          },
+          { stagedCoverId: 'staged-1' }
+        ),
+      ],
+    });
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['x'], 'cover.jpg', { type: 'image/jpeg' });
-    await user.upload(fileInput, file);
+    await user.upload(fileInput, cover);
+    await save(user);
 
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith(path.book('new-global-id')));
-    expect(mocks.updateBookMetadata).toHaveBeenCalledWith(
-      'book-1',
-      expect.objectContaining({ cover: file })
+    await waitFor(() =>
+      expect(
+        screen.getByText('The staged cover upload has expired. Please try again.')
+      ).toBeInTheDocument()
     );
+    expect(navigate).not.toHaveBeenCalled();
   });
 
-  // `book.id` — the GraphQL book's own id field, already a Relay GLOBAL id
-  // (`graphql/book-edit.ts`) — is what Cancel navigates with now that the
-  // form's prop IS the GraphQL book; the old `bookGlobalId` prop (a second
-  // path to the same value) is gone.
+  // The whole point of splitting Save into two phases is that the user can
+  // tell WHICH one broke: the message must name the cover and must not read
+  // as a generic save failure.
+  it('stays on the form and shows a cover-specific message when staging the cover fails', async () => {
+    mockStage.mockRejectedValue(new Error('No file uploaded'));
+    const user = userEvent.setup();
+    // NO save mock: `MockLink` throws on an unmatched operation, so a mutation
+    // fired despite the staging failure would surface loudly rather than pass
+    // silently. That is what makes this test's "never fires" half real.
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: baseMocks(),
+    });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, cover);
+    await save(user);
+
+    const message = await screen.findByText("Couldn't upload the cover image");
+    expect(message).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't save your changes")).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  // Ordering, not mere co-occurrence: the staged id cannot exist before
+  // staging, so a mutation carrying `stagedCoverId: 'staged-1'` proves the
+  // sequence. `MockLink` would reject the operation outright if the input
+  // lacked it.
+  it('stages the cover then saves, passing the staged id into the mutation', async () => {
+    const order: string[] = [];
+    mockStage.mockImplementation(async () => {
+      order.push('stage');
+      return 'staged-1';
+    });
+    const user = userEvent.setup();
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        ...baseMocks(),
+        {
+          request: {
+            query: BookUpdateMetadataDocument,
+            variables: { input: { id: BOOK_ID, stagedCoverId: 'staged-1' } },
+          },
+          result: () => {
+            order.push('mutate');
+            return { data: updatePayload({ id: NEW_BOOK_ID }) };
+          },
+        } satisfies MockedResponse<BookUpdateMetadataMutation, BookUpdateMetadataMutationVariables>,
+      ],
+    });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, cover);
+    await save(user);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(NEW_BOOK_ID)));
+    expect(mockStage).toHaveBeenCalledWith(cover, 'cover');
+    expect(order).toEqual(['stage', 'mutate']);
+  });
+
+  it('does not stage when the patch carries no cover', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload())],
+    });
+
+    await save(user);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(mockStage).not.toHaveBeenCalled();
+  });
+
   it('cancels back to the book using the global id', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={book} />);
+    renderWithApollo(<BookEditForm book={book()} />, { mocks: baseMocks() });
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith(path.book('book-1'));
+    expect(navigate).toHaveBeenCalledWith(path.book(BOOK_ID));
   });
 
-  // The partial-patch semantic: only a field that actually changed should
-  // ride in the mutation's input. Changing ONLY the title must leave every
-  // other diffable field `undefined` in the sent patch — asserted per-field
-  // rather than via `toEqual` so a future field addition doesn't silently
-  // widen this test's meaning.
+  // The partial-patch semantic: only a field that actually changed rides in
+  // the mutation's input. Asserted by MATCHING on the exact input — `MockLink`
+  // rejects any other shape — so an over-wide patch fails loudly rather than
+  // being waved through by an `objectContaining`.
   it('sends only the fields that actually changed', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithProviders(<BookEditForm book={book} />);
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        ...baseMocks(),
+        saveMock(updatePayload({ title: 'New Title' }), { title: 'New Title' }),
+      ],
+    });
 
     const titleInput = container.querySelector('input[name="title"]') as HTMLInputElement;
     await user.clear(titleInput);
     await user.type(titleInput, 'New Title');
 
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await save(user);
 
-    await waitFor(() => expect(mocks.updateBookMetadata).toHaveBeenCalled());
-    const [, sentPatch] = mocks.updateBookMetadata.mock.calls[0] as [
-      string,
-      Record<string, unknown>,
-    ];
-
-    expect(sentPatch.title).toBe('New Title');
-    expect(sentPatch.author).toBeUndefined();
-    expect(sentPatch.titleSort).toBeUndefined();
-    expect(sentPatch.authorSort).toBeUndefined();
-    expect(sentPatch.publisher).toBeUndefined();
-    expect(sentPatch.publishDate).toBeUndefined();
-    expect(sentPatch.series).toBeUndefined();
-    expect(sentPatch.seriesIndex).toBeUndefined();
-    expect(sentPatch.description).toBeUndefined();
-    expect(sentPatch.subjects).toBeUndefined();
-    expect(sentPatch.identifiers).toBeUndefined();
-    expect(sentPatch.cover).toBeUndefined();
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(BOOK_ID)));
   });
 
-  // The cards are spaced by Page's flex column gap. If the wrapping <form> ever
-  // generates a box it swallows them into a single flex item and every gap
-  // between the cards disappears, so it has to stay `display: contents`.
+  // The cards are spaced by Page's flex column gap. If the wrapping <form>
+  // ever generates a box it swallows them into a single flex item and every
+  // gap between the cards disappears, so it has to stay `display: contents`.
   it('keeps the form boxless so the cards stay spaced by the page', () => {
-    const { container } = renderWithProviders(<BookEditForm book={book} />);
+    const { container } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: baseMocks(),
+    });
     const form = container.querySelector('form') as HTMLElement;
     expect(form.querySelectorAll(':scope > *').length).toBeGreaterThan(1);
     expect(getComputedStyle(form).display).toBe('contents');
+  });
+
+  it('renders the fields it unmasks off its own fragment', () => {
+    const { container } = renderWithApollo(
+      <BookEditForm
+        book={book({ title: 'A Wizard of Earthsea', titleSort: 'Wizard of Earthsea, A' })}
+      />,
+      { mocks: baseMocks() }
+    );
+
+    expect(screen.getByText('Edit Metadata — A Wizard of Earthsea')).toBeInTheDocument();
+    const titleSort = container.querySelector('input[name="titleSort"]') as HTMLInputElement;
+    expect(titleSort.value).toBe('Wizard of Earthsea, A');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cache coherence — transplanted verbatim in intent from the deleted
+// `provider/book/hook/use-update-book-metadata.test.tsx`, now driven through
+// the form's own Save button because the mutation lives at this call site.
+// ---------------------------------------------------------------------------
+describe('cache coherence after a save', () => {
+  it('evicts the old Book entity when the payload reports a different id', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID, title: 'New' }))],
+    });
+    seedBook(client, BOOK_ID);
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`]).toBeDefined();
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).not.toContain(`Book:${BOOK_ID}`);
+    expect((extracted[`Book:${NEW_BOOK_ID}`] as { title: string }).title).toBe('New');
+  });
+
+  it('does not evict when the id is unchanged', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: BOOK_ID, title: 'New' }))],
+    });
+    seedBook(client, BOOK_ID);
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    const extracted = client.cache.extract() as NormalizedCacheObject;
+    expect(Object.keys(extracted)).toContain(`Book:${BOOK_ID}`);
+    expect((extracted[`Book:${BOOK_ID}`] as { title: string }).title).toBe('New');
+  });
+
+  // I-1 (whole-branch review): a successful save used to leave the grid's
+  // `Library.entries` connection untouched, so the edited book's stale row —
+  // or, on an id rotation, an outright DANGLING edge — lived on until a hard
+  // reload. Asserted against the cache (`readQuery` returns `null`, i.e. the
+  // next read is forced to the network), not a call count.
+  it('invalidates the LibraryEntries connection so a subsequent read misses the cache (id rotates)', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID, title: 'New' }))],
+    });
+    seedLibraryEntries(client, BOOK_ID);
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readEntries(client)).toBeNull();
+  });
+
+  // The UNCONDITIONAL half: a title/author/series edit moves a row's sort
+  // position or series grouping even when the id holds, so the eviction must
+  // not be gated on `payload.book.id !== bookId`.
+  it('invalidates the LibraryEntries connection even when the id is unchanged', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: BOOK_ID, title: 'New' }))],
+    });
+    seedLibraryEntries(client, BOOK_ID);
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readEntries(client)).toBeNull();
+  });
+
+  it('does not touch the LibraryEntries connection on a failed save', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        ...baseMocks(),
+        saveMock({
+          __typename: 'Mutation',
+          bookUpdateMetadata: {
+            __typename: 'BookHashCollisionError',
+            message: 'This book collides with another book already in the library.',
+          },
+        }),
+      ],
+    });
+    seedLibraryEntries(client, BOOK_ID);
+
+    await save(user);
+    await waitFor(() =>
+      expect(
+        screen.getByText('This book collides with another book already in the library.')
+      ).toBeInTheDocument()
+    );
+
+    expect(readEntries(client)).not.toBeNull();
+  });
+
+  // What actually prevents a double-save at this call site is the Save
+  // button being a genuinely disabled native `<button>` while the action is
+  // pending (`Button` renders `disabled={disabled || busy}` in submit mode,
+  // and `busy` folds in `useActionState`'s `isPending`). Asserted on the
+  // REQUEST counter, not on `navigate` call counts: a second save that fired
+  // and then failed would ALSO leave `navigate` at 1, so a call-count
+  // assertion could not tell the two apart. Goes red the moment
+  // `loading: isPending` is dropped from the Save action.
+  it('does not send a second request while the first is still in flight', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID }), {}, 40)],
+    });
+
+    const button = screen.getByRole('button', { name: /Sav/ });
+    await user.click(button);
+    await user.click(button);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(NEW_BOOK_ID)));
+    expect(counters.save).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The form's own reads, previously `useLibrarySubjects` / `useSeriesNames` /
+// `useFetchSeriesNextIndex`.
+// ---------------------------------------------------------------------------
+describe('library reads', () => {
+  it('offers Library.subjects as subject suggestions', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [subjectsMock(['Fantasy', 'Science Fiction']), seriesNamesMock()],
+    });
+
+    // `ChipsInput` only reveals its dropdown once the user has typed, and it
+    // filters on the typed text — so this asserts the suggestion list really
+    // came from `Library.subjects` rather than from anything the form already
+    // held (`book.subjects` is empty here).
+    await user.type(screen.getByPlaceholderText('Add subject…'), 'Sci');
+    expect(await screen.findByRole('option', { name: 'Science Fiction' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Fantasy' })).toBeNull();
+  });
+
+  // Order matters: `Library.series` is already sorted server-side (leading
+  // articles stripped), and this form must not reorder it. Asserted
+  // positionally, not by presence + length, so a reversed list fails.
+  it('lists series names in the order the server returned them', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [subjectsMock(), seriesNamesMock(['Earthsea', 'Amber', 'Dune'])],
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    await user.click(screen.getByRole('button', { name: 'Select…' }));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Earthsea', 'Amber', 'Dune']);
+  });
+
+  // A failed read degrades to "no suggestions offered" rather than an error
+  // state: subjects and series are optional editing candidates, not the
+  // screen's content.
+  it('renders the form normally when the series read fails', async () => {
+    renderWithApollo(<BookEditForm book={book()} />, {
+      mocks: [
+        subjectsMock(),
+        {
+          request: { query: SeriesNamesDocument, variables: { libraryId: LIBRARY_ID } },
+          error: new Error('series read failed'),
+        },
+      ],
+    });
+
+    expect(await screen.findByText('Edit Metadata — Original Title')).toBeInTheDocument();
+  });
+
+  describe('library id gate', () => {
+    // With NO library id there is nothing to root `node(id:)` on. Asserted on
+    // the REQUEST-time counters, not on the absence of a mock: an unmatched
+    // operation is swallowed into Apollo's `error` state and the form renders
+    // regardless, so "no mocks supplied" alone would pass vacuously.
+    it('issues no read while there is no library id to root on', async () => {
+      currentLibraryId = undefined;
+      renderWithApollo(<BookEditForm book={book()} />, { mocks: baseMocks() });
+
+      expect(await screen.findByText('Edit Metadata — Original Title')).toBeInTheDocument();
+      expect(counters.subjects).toBe(0);
+      expect(counters.series).toBe(0);
+    });
+
+    // A SKIPPED `useQuery` reports `loading: false` on its own. Without
+    // folding `useCurrentLibraryId`'s own bootstrap loading in, the series
+    // Select would render as "loaded and empty" for the whole ViewerBootstrap
+    // window — a false "no series yet".
+    it('keeps the series Select in its loading state while the library id resolves', async () => {
+      currentLibraryId = undefined;
+      currentLibraryIdLoading = true;
+      const user = userEvent.setup();
+      renderWithApollo(<BookEditForm book={book()} />, { mocks: [] });
+
+      await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+      // `Select` renders the literal text "Loading…" in place of its
+      // placeholder while `loading` is set, and refuses to open. Without the
+      // `|| libraryIdLoading` fold this would read "Select…" with an empty
+      // option list — a false "no series yet" for the whole bootstrap window.
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.queryByText('Select…')).toBeNull();
+    });
   });
 });
 
@@ -213,6 +739,9 @@ describe('series order auto-fill', () => {
 
   async function openSeriesAndPick(user: ReturnType<typeof userEvent.setup>, name: string) {
     await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    // `Select` refuses to open while `loading`, so wait for `SeriesNames` to
+    // land first. (`Loading…` is the trigger's own copy for that state.)
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
     await user.click(screen.getByRole('button', { name: 'Select…' }));
     await user.type(screen.getByRole('textbox', { name: 'Search' }), name);
     await user.keyboard('{Enter}');
@@ -220,49 +749,93 @@ describe('series order auto-fill', () => {
 
   it('fills empty Order with the fetched next index for an existing series', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={{ ...book, series: null, seriesIndex: 0 }} />);
+    renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
+      mocks: [...baseMocks(), nextIndexMock('Dune', 4)],
+    });
     await openSeriesAndPick(user, 'Dune');
     await waitFor(() => expect(seriesInput().value).toBe('4'));
-    expect(mocks.fetchSeriesNextIndex).toHaveBeenCalledWith('Dune');
   });
 
   it('fills Order with 1 for a brand-new series', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={{ ...book, series: null, seriesIndex: 0 }} />);
+    renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
+      mocks: [...baseMocks(), nextIndexMock('Brand New', 1)],
+    });
     await openSeriesAndPick(user, 'Brand New');
     await waitFor(() => expect(seriesInput().value).toBe('1'));
   });
 
+  // Leaves Order empty on failure rather than surfacing an error.
+  it('leaves Order untouched when the next-index query errors', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
+      mocks: [
+        ...baseMocks(),
+        {
+          request: {
+            query: SeriesNextIndexDocument,
+            variables: function seriesNextIndexErrorVariables(vars) {
+              nextIndex.requests += 1;
+              return vars.libraryId === LIBRARY_ID && vars.name === 'Dune';
+            },
+          },
+          error: new Error('next index unavailable'),
+        },
+      ],
+    });
+    await openSeriesAndPick(user, 'Dune');
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Search' })).toBeNull());
+    // The fetch WAS issued — otherwise this would pass for the wrong reason
+    // (an unchanged Order because nothing ever asked).
+    expect(nextIndex.requests).toBe(1);
+    // `0` is `NumberInput`'s own rendering of the untouched `seriesIndex: 0`
+    // this book carries — i.e. unchanged. A resolved fetch would have written
+    // the fetched index here instead.
+    expect(seriesInput().value).toBe('0');
+  });
+
+  // A WORKING `nextIndexMock` is supplied deliberately: the assertion is that
+  // the fetch is never ISSUED (`nextIndex.requests`, counted synchronously
+  // inside `MockLink.request()`), not merely that nothing came back. With no
+  // mock at all, a fetch that fired would be rejected and swallowed by the
+  // caller's own `.catch`, leaving the Order at '2' either way — the test
+  // would pass whether or not the guard existed.
   it('does not overwrite an Order the user already entered', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={{ ...book, series: null, seriesIndex: 0 }} />);
+    renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
+      mocks: [...baseMocks(), nextIndexMock('Dune', 4)],
+    });
     await user.click(screen.getByRole('switch', { name: 'isSeries' }));
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
     await user.type(seriesInput(), '2');
     await user.click(screen.getByRole('button', { name: 'Select…' }));
     await user.type(screen.getByRole('textbox', { name: 'Search' }), 'Dune');
     await user.keyboard('{Enter}');
-    expect(mocks.fetchSeriesNextIndex).not.toHaveBeenCalled();
+    expect(nextIndex.requests).toBe(0);
     expect(seriesInput().value).toBe('2');
   });
 
   it('does not overwrite an Order typed while the next-index fetch is still in flight', async () => {
-    let resolveNext: (value: number) => void = () => {};
-    mocks.fetchSeriesNextIndex.mockImplementationOnce(
-      () =>
-        new Promise<number>((res) => {
-          resolveNext = res;
-        })
-    );
-
     const user = userEvent.setup();
-    renderWithProviders(<BookEditForm book={{ ...book, series: null, seriesIndex: 0 }} />);
+    renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
+      mocks: [...baseMocks(), nextIndexMock('Dune', 4, 60)],
+    });
     await openSeriesAndPick(user, 'Dune');
 
     // The fetch is still pending here; type an Order before it resolves.
     await user.type(seriesInput(), '2');
+    expect(nextIndex.delivered).toBe(0);
 
-    resolveNext(4);
-    await waitFor(() => expect(mocks.fetchSeriesNextIndex).toHaveBeenCalledWith('Dune'));
+    // Wait on the RESPONSE actually landing, not on a tuned timeout: without
+    // this the assertion below could run before the fetch resolved and pass
+    // for the wrong reason. `nextIndex.delivered` flips inside the mock's own
+    // `result` function, i.e. at delivery.
+    await waitFor(() => expect(nextIndex.delivered).toBe(1));
+    // One more microtask/macrotask turn so the `.then` that would clobber the
+    // value has definitely run.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(seriesInput().value).toBe('2');
   });
 });

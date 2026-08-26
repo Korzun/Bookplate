@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useWithTargetUser } from '~/provider/library-target';
 
-import { apiFetch } from '../../../lib/api-fetch';
+import { apiFetch } from './api-fetch';
 
 export type UseDownloadBook = [(id: string) => Promise<boolean>, boolean];
 
@@ -22,6 +22,17 @@ function filenameFromDisposition(header: string | null): string {
   return 'book.epub';
 }
 
+/**
+ * Downloads a book's EPUB bytes over the sanctioned REST seam.
+ *
+ * Lives in `~/lib`, not with its caller (`page/book`), for the same reason
+ * `lib/staged-upload.ts` and `lib/use-authorized-src.ts` do: it is one of the
+ * eight entries in `lib/rest-seams.test.ts`' allow-list, and that list is
+ * read as the register of where this client is still allowed to speak REST.
+ * A binary download has no GraphQL transport, so this seam is permanent
+ * rather than un-migrated — it moved here when `provider/book/` dissolved
+ * (Task 8) precisely so it stops looking like a leftover of that directory.
+ */
 export const useDownloadBook = (): UseDownloadBook => {
   const withTargetUser = useWithTargetUser();
   const [loading, setLoading] = useState(false);

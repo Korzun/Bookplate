@@ -5,12 +5,9 @@ import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vite
 const navigate = vi.fn();
 
 // `useParams().id` is the Relay GLOBAL id `page/book` links here with
-// (`path.bookEdit(book.id)`). Deliberately a different literal shape from
-// `DOCUMENT_ID` below (a raw content hash) so a test asserting on one can
-// never pass by coincidentally matching the other.
+// (`path.bookEdit(book.id)`).
 const GLOBAL_ID = 'Qm9vazox';
 const LIBRARY_ID = 'TGlicmFyeTox';
-const DOCUMENT_ID = 'a'.repeat(32);
 
 vi.mock('react-router', async (orig) => ({
   ...(await orig<typeof import('react-router')>()),
@@ -18,15 +15,18 @@ vi.mock('react-router', async (orig) => ({
   useNavigate: () => navigate,
 }));
 
-// `useBookEdit` roots through `useCurrentLibraryId` — stubbed the same way
+// The route roots through `useCurrentLibraryId` — stubbed the same way
 // `page/book`'s own test stubs it, so these tests stay focused on
 // `BookEditDocument`/`BookResolvePendingFixDocument` rather than also
-// exercising the bootstrap query.
+// exercising the bootstrap query. `let`, not `const`: the "library id gate"
+// tests below vary both.
+let currentLibraryId: string | undefined = LIBRARY_ID;
+let currentLibraryIdLoading = false;
 vi.mock('~/provider/library-target', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/provider/library-target')>();
   return {
     ...actual,
-    useCurrentLibraryId: () => ({ libraryId: LIBRARY_ID, loading: false }),
+    useCurrentLibraryId: () => ({ libraryId: currentLibraryId, loading: currentLibraryIdLoading }),
   };
 });
 
@@ -39,10 +39,10 @@ vi.mock('~/component', () => ({
   },
 }));
 
-import { BookEditDocument } from '~/graphql/book-edit';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
 import { renderWithApollo } from '~/test-utils';
 
+import { BookEditDocument } from './index';
 import { BookEditPage } from './index';
 
 /** A `pendingFix` selection (`BookEditDocument`'s own inline field, Task
@@ -57,18 +57,11 @@ function pendingFixOf(proposals: unknown[] = [proposal()]) {
   };
 }
 
+/** `BookEditDocument` selects `proposals { to }` and nothing else — `to` is
+ * the only field the guard below reads, and `UploadFixGuardModal` takes no
+ * data props at all. A proposal with a concrete `to` is an ACTIONABLE one. */
 function proposal() {
-  return {
-    __typename: 'MetadataFix' as const,
-    field: 'title',
-    kind: 'x',
-    from: 'a',
-    to: 'b',
-    reason: null,
-    fromChips: null,
-    toChips: null,
-    changes: null,
-  };
+  return { __typename: 'MetadataFix' as const, to: 'b' };
 }
 
 /** A flag-only ("needs review") proposal: `to === null`, no `changes`. The
@@ -79,14 +72,13 @@ function proposal() {
  * editing to overwrite, and blocking sends the user back to the only screen
  * that offered the Edit link. */
 function advisoryProposal() {
-  return { ...proposal(), kind: 'title-is-filename', to: null, changes: {} };
+  return { ...proposal(), to: null };
 }
 
 function bookData(overrides: Record<string, unknown> = {}) {
   return {
     __typename: 'Book' as const,
     id: GLOBAL_ID,
-    documentId: DOCUMENT_ID,
     title: 'X',
     titleSort: '',
     author: '',
@@ -172,6 +164,8 @@ beforeAll(() => {
 beforeEach(() => {
   navigate.mockClear();
   mockBookEditForm.mockClear();
+  currentLibraryId = LIBRARY_ID;
+  currentLibraryIdLoading = false;
 });
 
 afterEach(() => {
@@ -266,14 +260,77 @@ describe('BookEditPage', () => {
     expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 
+  // The form's own fields ride in through `...BookEditFormFragment`, which
+  // this route spreads but never reads itself, so the assertion checks a
+  // FRAGMENT field (`titleSort`) rather than only the route's own `id` —
+  // otherwise a document that dropped the spread entirely would still pass.
   it("passes the book straight through to BookEditForm's book prop", async () => {
-    renderPage();
+    renderPage([
+      bookEditMock({
+        titleSort: 'Wizard of Earthsea, A',
+        identifiers: [{ __typename: 'Identifier' as const, scheme: 'ISBN', value: '978' }],
+        series: { __typename: 'Series' as const, id: 'U2VyaWVzOjE=', name: 'Earthsea' },
+      }),
+    ]);
     await waitFor(() => expect(mockBookEditForm).toHaveBeenCalled());
     expect(mockBookEditForm).toHaveBeenCalledWith(
       expect.objectContaining({
-        book: expect.objectContaining({ id: GLOBAL_ID, documentId: DOCUMENT_ID }),
+        book: expect.objectContaining({
+          id: GLOBAL_ID,
+          titleSort: 'Wizard of Earthsea, A',
+          series: expect.objectContaining({ name: 'Earthsea' }),
+          identifiers: [expect.objectContaining({ scheme: 'ISBN' })],
+        }),
       })
     );
+  });
+
+  // A book with no series is not an error — the form renders with the series
+  // switch off.
+  it('renders the form for a book with no series', async () => {
+    renderPage([bookEditMock({ series: null })]);
+    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
+  });
+
+  describe('library id gate', () => {
+    // No mocks at all: a query issued despite the `skip` would hit MockLink's
+    // "No more mocked responses" and fail loudly rather than pass vacuously.
+    // Counted first (below) so a query fired with the WRONG variables — which
+    // is exactly what a removed `skip` produces, `libraryId: ''` — is caught
+    // too, not silently unmatched.
+    it('issues no operation while there is no library id to root on', async () => {
+      currentLibraryId = undefined;
+      let requests = 0;
+      renderWithApollo(<BookEditPage />, {
+        mocks: [
+          {
+            request: {
+              query: BookEditDocument,
+              variables: () => {
+                requests += 1;
+                return true;
+              },
+            },
+            result: { data: { __typename: 'Query' as const, node: null } },
+          } as unknown as MockedResponse,
+        ],
+      });
+
+      expect(requests).toBe(0);
+      expect(screen.queryByText('Loading…')).toBeNull();
+    });
+
+    // A SKIPPED `useQuery` reports `loading: false` on its own, so without
+    // folding `useCurrentLibraryId`'s own bootstrap loading in, a cold load
+    // would flash "Book not found." for the whole ViewerBootstrap window.
+    it('shows the loading state, not "Book not found.", while the library id is still resolving', () => {
+      currentLibraryId = undefined;
+      currentLibraryIdLoading = true;
+      renderWithApollo(<BookEditPage />, { mocks: [] });
+
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.queryByText('Book not found.')).toBeNull();
+    });
   });
 
   // Proves `onDismissAndEdit` resolves through `useFixActions` (this book's

@@ -4,8 +4,8 @@ import { use, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFragment } from '~/gql';
 import type { UndoKind } from '~/gql/graphql';
 import { MetadataFixFragment } from '~/graphql/upload';
+import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
-import type { MetadataFix } from '~/provider/book';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';

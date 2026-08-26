@@ -1,7 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
+import type { MetadataFix, ReplaceAnalysis } from '~/lib/book-types';
 import { fixKey } from '~/provider/upload';
 import { renderWithProviders } from '~/test-utils';
 
@@ -33,8 +33,10 @@ let analyzing = false;
 let committing = false;
 let commitError: string | undefined = undefined;
 
-vi.mock('~/provider/book', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('~/provider/book')>()),
+// The hook's own behaviour (staged-exactly-once, both cache evictions, the
+// error branches) is pinned next door by `use-replace-book.test.tsx` against
+// real mocks; this file pins the modal's UI state machine on top of it.
+vi.mock('./use-replace-book', () => ({
   useReplaceBook: () => ({
     analyzeReplacement,
     commitReplacement,

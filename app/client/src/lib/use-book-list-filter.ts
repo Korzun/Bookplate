@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 
-import type { BookListFilter } from '../type';
+import type { BookListFilter } from './book-types';
 
 function filterFromSearchParams(params: URLSearchParams): BookListFilter {
   const filter: BookListFilter = {};

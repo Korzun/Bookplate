@@ -295,13 +295,13 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
  * (`progressDelete` resolves `null`) report the failure instead.
  *
  * The observable removal itself becomes `cache.evict` + `cache.gc()` on the
- * deleted `Progress` entity, mirroring `useDeleteBook`'s point 1: evicting
+ * deleted `Progress` entity, mirroring `page/book`'s delete point 1: evicting
  * an entity that a `relayStylePagination` connection holds by `Reference`
  * makes `InMemoryCache` silently drop the now-dangling edge the next time
  * that connection is read (confirmed empirically for `Library.entries` in
- * `useDeleteBook`'s own tests; this hook's "removes the row from the cached
+ * `page/book`'s own delete tests; this hook's "removes the row from the cached
  * connection after a delete" test confirms the same holds for
- * `Library.progress`). Unlike `useDeleteBook`, there is no second,
+ * `Library.progress`). Unlike that delete, there is no second,
  * field-level eviction here — deleting a `Progress` row has no
  * `Library.entries`-style side effect elsewhere in the graph (no analogue of
  * "deleting the last book in a series also deletes the series").

@@ -7,7 +7,7 @@ import type {
   BookResolvePendingFixMutationVariables,
 } from '~/gql/graphql';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
-import type { MetadataFix } from '~/provider/book';
+import type { MetadataFix } from '~/lib/book-types';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
 

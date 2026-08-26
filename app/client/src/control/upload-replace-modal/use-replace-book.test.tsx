@@ -3,18 +3,21 @@ import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BookEditFormFragment } from '~/component/book-edit-form';
+import { makeFragmentData } from '~/gql';
 import type {
   BookAnalyzeReplaceMutation,
   BookAnalyzeReplaceMutationVariables,
   BookReplaceMutation,
   BookReplaceMutationVariables,
 } from '~/gql/graphql';
-import { BookEditDocument } from '~/graphql/book-edit';
 import { BookAnalyzeReplaceDocument, BookReplaceDocument } from '~/graphql/upload';
+import type { ReplaceAnalysis } from '~/lib/book-types';
+import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
-import type { ReplaceAnalysis, ReplacedBook } from './use-replace-book';
+import type { ReplacedBook } from './use-replace-book';
 
 // Same convention `use-update-book-metadata.test.tsx` uses: mock the named
 // export so `mockStage` can assert call counts/args without hitting the real
@@ -100,20 +103,28 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
         book: {
           __typename: 'Book',
           id,
-          documentId: 'a'.repeat(32),
-          title: 'Old Title',
-          titleSort: 'Old Title',
-          author: 'Old Author',
-          authorSort: 'Author, Old',
-          description: '',
-          publisher: '',
-          publishDate: '',
-          seriesIndex: 0,
-          subjects: [],
-          series: null,
-          identifiers: [],
           validation: null,
           pendingFix: null,
+          // The form's own fields ride in through the colocated fragment, the
+          // sanctioned cast from a concrete shape to the masked one.
+          ...makeFragmentData(
+            {
+              __typename: 'Book',
+              id,
+              title: 'Old Title',
+              titleSort: 'Old Title',
+              author: 'Old Author',
+              authorSort: 'Author, Old',
+              description: '',
+              publisher: '',
+              publishDate: '',
+              seriesIndex: 0,
+              subjects: [],
+              series: null,
+              identifiers: [],
+            },
+            BookEditFormFragment
+          ),
         },
       },
     },

@@ -19,8 +19,8 @@ import type {
   UserListQuery,
 } from '~/gql/graphql';
 import { UserListDocument } from '~/graphql/user';
+import type { BookListFilter } from '~/lib/book-types';
 import { cacheConfig } from '~/provider/apollo';
-import type { BookListFilter } from '~/provider/book';
 import { ThemeProvider } from '~/provider/theme';
 import { renderWithApollo } from '~/test-utils';
 

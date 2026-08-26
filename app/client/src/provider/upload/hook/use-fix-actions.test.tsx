@@ -3,13 +3,15 @@ import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { BookEditFormFragment } from '~/component/book-edit-form';
+import { makeFragmentData } from '~/gql';
 import type {
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
   LibraryEntriesQueryVariables,
 } from '~/gql/graphql';
-import { BookEditDocument } from '~/graphql/book-edit';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
+import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
 import { renderHookWithApollo } from '~/test-utils';
 
@@ -93,20 +95,28 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
         book: {
           __typename: 'Book',
           id,
-          documentId: 'a'.repeat(32),
-          title: 'Dune',
-          titleSort: 'Dune',
-          author: 'Herbert',
-          authorSort: 'Herbert, Frank',
-          description: '',
-          publisher: '',
-          publishDate: '',
-          seriesIndex: 0,
-          subjects: [],
-          series: null,
-          identifiers: [],
           validation: null,
           pendingFix: null,
+          // The form's own fields ride in through the colocated fragment, the
+          // sanctioned cast from a concrete shape to the masked one.
+          ...makeFragmentData(
+            {
+              __typename: 'Book',
+              id,
+              title: 'Dune',
+              titleSort: 'Dune',
+              author: 'Herbert',
+              authorSort: 'Herbert, Frank',
+              description: '',
+              publisher: '',
+              publishDate: '',
+              seriesIndex: 0,
+              subjects: [],
+              series: null,
+              identifiers: [],
+            },
+            BookEditFormFragment
+          ),
         },
       },
     },

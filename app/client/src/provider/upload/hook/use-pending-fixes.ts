@@ -37,7 +37,7 @@ export type UsePendingFixes = {
 /**
  * The read half of the pending-fix queue: every `PendingFix` row for the
  * current library, rooted at `node(id: $libraryId)` exactly like
- * `useLibraryEntries`/`useBookValidation` — the Library global id
+ * `useLibraryEntries`/`page/book`'s lazy validation read — the Library global id
  * `useCurrentLibraryId()` hands out serves admins and non-admins alike (see
  * that hook's own doc comment; `useLibraryTarget()` must never be reached
  * for directly here).

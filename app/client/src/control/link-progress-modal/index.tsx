@@ -132,7 +132,7 @@ const DEBOUNCE_MS = 200;
  *     unrelated full reload happened to refetch it.
  *
  *     The fix ADDS a FIELD-level evict alongside the existing entity-level
- *     one — the same TWO-evictions shape `useDeleteBook` already uses for
+ *     one — the same TWO-evictions shape `page/book`'s delete already uses for
  *     the identical reason (`use-delete-book.ts`'s doc comment, points 1
  *     and 2: evict the now-gone entity itself, AND evict the owning
  *     connection field when the entity's removal has a side effect the

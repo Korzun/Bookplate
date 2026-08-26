@@ -3,8 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { UploadConfigDocument } from '~/graphql/upload';
 import { ensureFreshToken } from '~/lib/api-fetch';
+import type { MetadataFix, UploadFileResult } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
-import type { MetadataFix, UploadFileResult } from '~/provider/book/type';
 import { useWithTargetUser } from '~/provider/library-target';
 
 export type TransportStatus = 'queued' | 'uploading' | 'done' | 'error';

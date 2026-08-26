@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 
 import { Button } from '~/control';
 import { SearchIcon, XIcon } from '~/icon';
-import type { BookListFilter } from '~/provider/book';
+import type { BookListFilter } from '~/lib/book-types';
 import { path } from '~/router';
 
 import { useStyle } from './style';
