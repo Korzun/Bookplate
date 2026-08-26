@@ -44,6 +44,41 @@ import { ToastProvider } from './provider/toast';
  * `--ts-config tsconfig.json` to see the real ~70.
  */
 
+/**
+ * STANDING NOTE — MockLink does NOT throw on an unmatched request.
+ *
+ * A belief repeated in roughly two dozen comments across this suite is that
+ * queuing no mock (or exhausting one) makes `MockLink` throw, so a test
+ * "fails loudly rather than passing vacuously". MEASURED against
+ * `node_modules/@apollo/client/testing/core/mocking/mockLink.js` (the
+ * `request()` method): on no match it `console.warn`s and returns
+ * `throwError(...).pipe(observeOn(asapScheduler))` — an observable that
+ * errors ASYNCHRONOUSLY. Nothing in `setup.ts` promotes that warning to a
+ * failure.
+ *
+ * What that means per shape of test:
+ *
+ * - **A synchronous assertion after a QUERY fires** observes nothing. The
+ *   test passes whether or not the request went out. Several tests in this
+ *   suite were written believing otherwise; they still bite, but through
+ *   their own assertions (a loading state that should not be there), not
+ *   through MockLink. Do not rely on "no mock queued" as a pin.
+ * - **An awaited MUTATION promise** does see it: `useMutation`'s returned
+ *   promise rejects with that async error, so an unhit mock surfaces as a
+ *   rejection or as the component's own error state.
+ * - **To pin "this operation must NOT fire"**, count requests instead, via
+ *   MockLink's VARIABLE-MATCHER form — `request: { query, variables: fn }`,
+ *   the `variables` FIELD as a function, incrementing BEFORE returning the
+ *   match result. `MockLink.request()` calls it synchronously from its
+ *   `mocks.findIndex(...)`, in the same tick the operation is issued, so the
+ *   assertion fails CLOSED. Worked examples: `page/library/index.test.tsx`,
+ *   `page/user-list/index.test.tsx`, `page/book/index.test.tsx`. The mock
+ *   MUST still be queued — `getMockedResponses()` keys by query, so with an
+ *   empty `mocks` array the matcher is never consulted and the counter reads
+ *   0 for a query that did fire. A TOP-LEVEL `variableMatcher` key is a
+ *   different, older API that current MockLink ignores silently.
+ */
+
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   user?: { username: string; isAdmin: boolean; mustChangePassword?: boolean };
   initialEntries?: string[];

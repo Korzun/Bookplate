@@ -95,7 +95,8 @@ const toMetadataFix = (f: {
  *      title/author decide the row's sort position and series grouping, and
  *      the rotated id makes the existing edge dangle — neither is something
  *      `BookReplacePayload` can express (it carries `book` alone). `entries`
- *      is `relayStylePagination(['filter'])` and `useLibraryEntries` is a
+ *      is `relayStylePagination(['filter'])` and `page/library`'s entries
+ *      read (the deleted `useLibraryEntries`, until Task 5) is a
  *      plain cache-first `useQuery` with nothing refetching it on
  *      navigation, so without this the grid showed the PRE-replace title
  *      until a hard reload. The library id comes from

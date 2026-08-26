@@ -118,6 +118,7 @@ beforeEach(() => {
   currentLibraryIdLoading = false;
   targetLibraryId = undefined;
   isAdminValue = false;
+  userListRequests.count = 0;
   vi.stubGlobal('IntersectionObserver', AutoIntersectingObserver);
 });
 
@@ -233,9 +234,34 @@ const fetchMoreErrorMock = (
 
 /** `page/library` only reads `UserListDocument`'s length (for the "No users
  * registered" empty state), so a bare username is enough here — no other
- * field matters to this route's own wiring. */
+ * field matters to this route's own wiring.
+ *
+ * `request.variables` is MockLink's VARIABLE-MATCHER form (a function, not
+ * an object): `MockLink.request()` calls it SYNCHRONOUSLY from its
+ * `mocks.findIndex(...)`
+ * (`@apollo/client/testing/core/mocking/mockLink.js`), in the same tick the
+ * operation is issued — so `userListRequests` counts at REQUEST time, before
+ * any delivery delay. `UserListDocument` takes no variables, so the matcher
+ * always returns `true`; the counting is the entire point (see
+ * `page/book/index.test.tsx`'s longer note on why a `result` function, which
+ * runs on DELIVERY after a random 20-50ms delay, cannot pin a "does not
+ * fire" assertion). This is the `variables` FIELD inside `request` — a
+ * TOP-LEVEL `variableMatcher` key is silently ignored by current MockLink
+ * and yields a fail-open test.
+ *
+ * `maxUsageCount: Infinity` so a regression firing the query twice is
+ * counted twice rather than masked by a "No more mocked responses" error. */
+const userListRequests = { count: 0 };
+
 const userListMock = (usernames: string[]): MockedResponse<UserListQuery> => ({
-  request: { query: UserListDocument },
+  request: {
+    query: UserListDocument,
+    variables: function userListVariables() {
+      userListRequests.count += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
   result: {
     data: {
       __typename: 'Query',
@@ -307,6 +333,52 @@ describe('LibraryPage', () => {
     renderLibraryPage([userListMock([])]);
 
     await waitFor(() => expect(screen.getByText('No users registered')).toBeTruthy());
+  });
+
+  // `skip: !isAdmin` on this route's `UserListDocument` read is the one that
+  // matters most: `page/library` is a NON-ADMIN's default landing page.
+  // Drop the gate and every non-admin visit fires `UserList`, the server
+  // answers `users: null` + `FORBIDDEN` (`Viewer.users` is admin-gated), and
+  // `errorPolicy: 'none'` discards the whole result — a silent, per-visit
+  // rejected request.
+  //
+  // The pin is `userListRequests`, counted at REQUEST time. It cannot be a
+  // bare "no mock queued" assertion: `MockLink` does NOT throw on an
+  // unmatched request — verified against
+  // `@apollo/client/testing/core/mocking/mockLink.js`, which `console.warn`s
+  // and returns an observable that errors ASYNCHRONOUSLY
+  // (`observeOn(asapScheduler)`), which a synchronous assertion never
+  // observes and which nothing in `setup.ts` promotes to a failure. And no
+  // rendered text discriminates the gate either: `userList` is only read for
+  // the admin-only "No users registered" branch, so a non-admin's page looks
+  // identical whether the query fired or not.
+  //
+  // Seen-to-fail: `skip: !isAdmin` → `skip: false` in `./index.tsx` makes
+  // `userListRequests.count` 1 and this test red.
+  it('does not issue the UserList query for a non-admin viewer', async () => {
+    isAdminValue = false;
+
+    renderLibraryPage([
+      userListMock(['alice']),
+      firstPageMock([], { hasNextPage: false, endCursor: null }),
+    ]);
+
+    await waitFor(() => expect(screen.getByText('Your library is empty')).toBeTruthy());
+    expect(userListRequests.count).toBe(0);
+  });
+
+  // The other side of the same gate, so the counter above is known to be
+  // wired to a query that CAN fire: an admin's visit must issue it exactly
+  // once.
+  it('issues the UserList query once for an admin viewer', async () => {
+    isAdminValue = true;
+    currentLibraryId = undefined;
+    targetLibraryId = undefined;
+
+    renderLibraryPage([userListMock(['alice'])]);
+
+    await waitFor(() => expect(screen.getByText('Select a library')).toBeTruthy());
+    expect(userListRequests.count).toBe(1);
   });
 
   it('renders "Failed to load library" when the first page errors with no rows', async () => {

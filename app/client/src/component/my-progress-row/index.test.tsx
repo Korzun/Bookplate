@@ -251,8 +251,10 @@ describe('MyProgressRow', () => {
   });
 
   // Inapplicable (was "prefers titleSort over title for a resolved book"):
-  // `ProgressRowFragment` (`graphql/progress.ts`, committed, out of scope
-  // for this task) selects `book { id title author hasCover thumbnailUrl }`
+  // `ProgressRowFragment` — colocated on THIS component (`./index.tsx`), not
+  // on `graphql/progress.ts` as this note used to say; see that module's own
+  // doc comment, which points here — selects
+  // `book { id title author hasCover thumbnailUrl }`
   // — no `titleSort`. There is no sort-title field on this row's data to
   // prefer over `title` any more.
   it('renders the book title for a resolved book', () => {
@@ -312,7 +314,9 @@ describe('MyProgressRow', () => {
   // Inapplicable (was "does not show a Link button while the book is
   // loading"): fetch-free rows have no per-row loading state at all —
   // `book` arrives already resolved (or genuinely `null`) as part of the
-  // parent connection page (`use-my-progress-list.ts`), so there is no
+  // parent connection page (`component/my-progress-content`'s
+  // `MyProgressListDocument`; the deleted `use-my-progress-list.ts` until
+  // Task 4), so there is no
   // intermediate "still resolving" state for the button to be gated against.
 
   // Restored (fix round 1): was judged inapplicable alongside the button

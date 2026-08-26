@@ -209,8 +209,10 @@ export const UserRegenerateSyncPasswordDocument = graphql(`
  *
  * `user { id }` is selected for the same "well-formed reference" reason as
  * `UserResetPasswordDocument` above — the hook never reads it, a successful
- * call logs the caller out immediately (see `use-change-my-password.ts`), so
- * there is nothing left to normalize into. An object-typed payload field
+ * call logs the caller out immediately (see `page/password-reset/index.tsx`
+ * and `component/user-change-password`, which inlined the deleted
+ * `use-change-my-password.ts` hook), so there is nothing left to normalize
+ * into. An object-typed payload field
  * cannot carry an empty selection set regardless.
  *
  * Only `message` is selected for `InvalidInputError`, not `issues` — the same

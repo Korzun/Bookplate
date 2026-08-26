@@ -57,8 +57,10 @@ const seriesEdge = (id: string): PickerEdge => ({
  * ... }` literal never includes an `after` key on the initial fetch, and an
  * explicit `after: undefined` key is a DISTINCT shape from an omitted key as
  * far as `MockLink`'s `@wry/equality` matching is concerned (same rule
- * `use-search-suggestions.ts`'s and `use-library-entries.test.tsx`'s own
- * mocks already follow). `query` stays always-present (even `undefined`) to
+ * `use-search-suggestions.test.ts`'s and `page/library/index.test.tsx`'s own
+ * mocks already follow — the latter cited as `use-library-entries.test.tsx`
+ * until the end-of-project sweep deleted that file's name along with the
+ * hook). `query` stays always-present (even `undefined`) to
  * match the component's `query: debouncedFilter || undefined`, which always
  * includes the key.
  */

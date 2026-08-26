@@ -58,7 +58,9 @@ export type UsePaginatedConnectionOptions<
  * `component/my-progress-content`, Task 4), the admin's per-user progress
  * list (`useUserProgressList`, since dissolved into
  * `component/user-row-content`, Task 4), and `LinkProgressModal`'s own
- * inline version. Current call sites: `use-library-entries.ts`,
+ * inline version. Current call sites (re-verified for accuracy at the end
+ * of this project — `use-library-entries.ts` was named here after Task 5
+ * had already deleted it): `page/library/index.tsx`,
  * `component/my-progress-content`, `component/user-row-content`,
  * `control/link-progress-modal`.
  *
@@ -112,11 +114,13 @@ export type UsePaginatedConnectionOptions<
  * `useEffect(..., [libraryId, filter])` reset every hand-rolled predecessor
  * used: a caller passing a fresh `filter` object literal every render fired
  * that effect every render, and could clear a legitimate retry state before
- * the screen ever showed it (`use-library-entries.ts`'s own former doc
- * comment warned about exactly this, and `page/library` still works around
- * it with a `JSON.stringify` + `useMemo` dance — Task 5 owns removing that
- * workaround, not this task). A primitive key removes the footgun instead
- * of documenting it.
+ * the screen ever showed it (the deleted `use-library-entries.ts`'s own doc
+ * comment warned about exactly this, and `page/library` used to work around
+ * it with a `JSON.stringify` + `useMemo` dance). Task 5 REMOVED that
+ * workaround: `page/library/index.tsx` now recomputes `libraryFilter` with a
+ * plain `toLibraryFilter(bookListFilter)` call on every render, no memo at
+ * all, and hands this helper a stringified primitive `resetKey`. A primitive
+ * key removes the footgun instead of documenting it.
  *
  * The returned object also carries `data: TData | undefined` — the RAW
  * query data, beyond the `PaginatedConnection<TEdge>` contract above (that

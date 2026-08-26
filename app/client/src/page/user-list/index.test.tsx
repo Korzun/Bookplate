@@ -1,6 +1,6 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
@@ -40,8 +40,37 @@ const aliceRow = {
   library: { __typename: 'Library' as const, id: 'LIB-1' },
 };
 
+/**
+ * Counts every `UserList` request `MockLink` is asked to match, at REQUEST
+ * time. `request.variables` as a FUNCTION is MockLink's variable-matcher
+ * form: it is called SYNCHRONOUSLY from `MockLink.request()`'s
+ * `mocks.findIndex(...)` (`@apollo/client/testing/core/mocking/mockLink.js`),
+ * in the same tick the operation is issued and before any delivery delay.
+ * That is what lets the "issues no request" case below fail CLOSED — see
+ * `page/book/index.test.tsx`'s longer note on why a `result` function (which
+ * runs on DELIVERY, after a random 20-50ms `realisticDelay`) cannot do this
+ * job. Note this is the `variables` FIELD inside `request`; a TOP-LEVEL
+ * `variableMatcher` key is a different (older) API that current MockLink
+ * ignores silently, yielding a fail-open test.
+ *
+ * `maxUsageCount: Infinity` so a regression that fires the query twice is
+ * counted twice rather than masked by a "No more mocked responses" error.
+ */
+const userListRequests = { count: 0 };
+
+beforeEach(() => {
+  userListRequests.count = 0;
+});
+
 const userListMock = (): MockedResponse<UserListQuery> => ({
-  request: { query: UserListDocument },
+  request: {
+    query: UserListDocument,
+    variables: function userListVariables() {
+      userListRequests.count += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
   result: {
     data: {
       __typename: 'Query',
@@ -62,14 +91,29 @@ describe('UserListPage', () => {
   });
 
   // `skip: !isAdmin` must stop the `UserList` query before the server ever
-  // gets to deny it — `mocks: []` proves that: `MockLink` throws on an
-  // unmatched request, so this only passes if no request is ever sent.
+  // gets to deny it: `Viewer.users` is admin-gated, so an unguarded read
+  // answers `users: null` + `FORBIDDEN`, and `errorPolicy: 'none'` then
+  // discards the whole result.
+  //
+  // The pin is the REQUEST COUNTER, not `mocks: []`. `MockLink` does NOT
+  // throw on an unmatched request — verified against
+  // `@apollo/client/testing/core/mocking/mockLink.js`, which `console.warn`s
+  // and returns an observable that errors ASYNCHRONOUSLY
+  // (`observeOn(asapScheduler)`); a synchronous test never observes that,
+  // and nothing in `setup.ts` promotes the warning to a failure. The
+  // `getByText('Register a user')` assertion is fail-open for a second,
+  // independent reason: `UserListPage` renders `<UserRegister />`
+  // UNCONDITIONALLY, so that text is present whether or not the query fired.
+  //
+  // Seen-to-fail: deleting `skip: !isAdmin` from `./index.tsx` makes
+  // `userListRequests.count` 1 and this test red.
   it('issues no request for a non-admin viewer', () => {
     renderWithApollo(<UserListPage />, {
-      mocks: [],
+      mocks: [userListMock()],
       user: { username: 'a', isAdmin: false },
     });
 
+    expect(userListRequests.count).toBe(0);
     expect(screen.getByText('Register a user')).toBeInTheDocument();
   });
 });

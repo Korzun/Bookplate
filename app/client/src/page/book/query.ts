@@ -2,16 +2,22 @@ import { graphql } from '~/gql';
 
 /**
  * **This module is deliberately a CROSS-LAYER FIXTURE SOURCE for tests, not
- * a route-private one.** Four test files outside `page/book` import these
- * documents to seed or read the Apollo cache:
+ * a route-private one.** Re-counted at the end of this project (the earlier
+ * version of this note said "four test files outside `page/book`" and then
+ * listed two, one of which is `page/book/index.test.tsx` — inside
+ * `page/book`). The real figure is ONE importer outside this route:
  *
  * - `control/book-lineage-modal/index.test.tsx` (`BookLineageDocument`)
- * - `page/book/index.test.tsx` itself (`BookDetailDocument`,
- *   `BookValidationDocument`)
  *
- * (The three `provider/book/hook/*.test.tsx` files that used to seed through
- * `BookDetailDocument` were dissolved into `page/book/index.test.tsx` when
- * Task 8 inlined their mutations at this call site.)
+ * (`page/book/index.test.tsx` imports these too, but through a relative
+ * `./query` — that is a route-private import and not what this note is
+ * about. The three `provider/book/hook/*.test.tsx` files that used to seed
+ * through `BookDetailDocument` were dissolved into
+ * `page/book/index.test.tsx` when Task 8 inlined their mutations at this
+ * call site.)
+ *
+ * The count dropping to one does NOT retire the warning below — it is a
+ * standing constraint on the module, not a headcount.
  *
  * Those tests exist to prove that a mutation's payload normalizes onto the
  * SAME `Book:<id>` entity the route actually reads. Seeding through a

@@ -1,7 +1,7 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
@@ -51,9 +51,16 @@ const kindleDeviceGraphQL = {
 };
 
 /** Records the exact variables a mutation was sent with, while still
- * matching (and thus resolving) the request — MockLink throws on an
- * unmatched request, so a test's assertion never silently passes against a
- * mock that was never hit. */
+ * matching (and thus resolving) the request.
+ *
+ * The safety property is NOT that MockLink throws on an unmatched request —
+ * it does not (measured; see `test-utils.tsx`'s standing note: it warns and
+ * returns an asynchronously-erroring observable). For the MUTATIONS captured
+ * here that async error is still observed, because `useMutation`'s returned
+ * promise rejects with it and this form renders its own error state from
+ * that — so a capture that never fired shows up as an unexpected error
+ * rather than a silent pass. A purely synchronous QUERY assertion gets no
+ * such protection; count requests for those instead. */
 const captureVariables = <TVariables,>() => {
   const capture: { current?: TVariables } = {};
   const matcher = (vars: TVariables) => {
@@ -191,8 +198,32 @@ function renderForm(device?: typeof kindle, onDone?: () => void, options?: Rende
   return { ...rendered, nameInput };
 }
 
+/**
+ * `request.variables` is MockLink's VARIABLE-MATCHER form (a function, not an
+ * object): `MockLink.request()` calls it SYNCHRONOUSLY from its own
+ * `mocks.findIndex(...)`
+ * (`@apollo/client/testing/core/mocking/mockLink.js`), in the same tick the
+ * operation is issued. `UserListDocument` takes no variables, so it always
+ * matches — the COUNT is the point, and it is what pins this form's
+ * `skip: !isAdmin` on `UserListDocument` (see the non-admin case below).
+ * Counting at request time rather than on delivery makes that assertion fail
+ * CLOSED, with no tuned wait to race MockLink's random 20-50ms delay.
+ */
+const userListRequests = { count: 0 };
+
+beforeEach(() => {
+  userListRequests.count = 0;
+});
+
 const userListMock = (users: typeof fixedUsers = fixedUsers): MockedResponse<UserListQuery> => ({
-  request: { query: UserListDocument },
+  request: {
+    query: UserListDocument,
+    variables: function userListVariables() {
+      userListRequests.count += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
   result: {
     data: {
       __typename: 'Query',
@@ -435,12 +466,23 @@ describe('DeviceForm', () => {
     // so spying on it is what actually observes whether the query fired.
     it('is not rendered for a non-admin, and does not issue the DeviceUsers query (skip)', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      renderForm(kindle, () => {}, { user: { username: 'user', isAdmin: false } });
+      renderForm(kindle, () => {}, {
+        user: { username: 'user', isAdmin: false },
+        mocks: [userListMock()],
+      });
       expect(screen.queryByText('Users')).not.toBeInTheDocument();
 
       // Let any microtask a wrongly-unskipped query would schedule run.
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('DeviceUsers'));
+      // The SECOND admin-gated query on this form (`UserListDocument`, for
+      // the user options) has its own `skip: !isAdmin`, and nothing rendered
+      // discriminates it — the Users field is hidden for a non-admin either
+      // way. It is pinned by the request counter rather than by `warnSpy`
+      // because a mock IS queued for it here, so an unskipped read would
+      // match and never warn. Seen-to-fail: `skip: !isAdmin` -> `skip: false`
+      // on this form's `useQuery(UserListDocument, ...)` makes this 1.
+      expect(userListRequests.count).toBe(0);
       warnSpy.mockRestore();
     });
 

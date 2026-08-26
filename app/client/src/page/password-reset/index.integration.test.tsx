@@ -7,22 +7,35 @@ import { renderWithApollo } from '~/test-utils';
 
 import { PasswordResetPage } from './index';
 
-// Deliberately does NOT mock `~/provider/user` the way index.test.tsx does —
-// that file replaces the module wholesale, so it never actually exercises
-// `useChangeMyPassword` or Apollo at all. This file renders the REAL page
-// over the REAL hook, with ONLY the `UserChangePassword` mutation mock in
-// scope.
+// Corrected in the end-of-project doc sweep; the previous version of this
+// header was wrong twice over and worth recording, because both errors are
+// the kind that make a test look stronger than it is.
 //
-// The forced-reset page is where `ProtectedRoute` sends every
-// `mustChangePassword` viewer, and it is the one path in the app that must
-// render and submit with no prior GraphQL query of any kind: every `Query`
-// field is gated on `authenticated`, which is false for a forced-reset
-// viewer (see `use-change-my-password.ts`'s doc comment and
-// `use-change-my-password.test.tsx:200-218`). `MockLink` throws on any
-// unmatched request (see `device-form/index.test.tsx`'s `captureVariables`
-// comment for the same property), so if the page or the hook ever grows a
-// `useQuery` dependency, this test fails the moment that query fires with no
-// mock to satisfy it — a regression the mocked-hook test cannot catch.
+// 1. It said this file "deliberately does NOT mock `~/provider/user` the way
+//    index.test.tsx does". `~/provider/user` no longer exists (Task 2
+//    dissolved it) and `index.test.tsx` never mocked it: that file already
+//    renders the REAL page over the REAL hook with a `UserChangePassword`
+//    mock, exactly as this one does. The two files are near-duplicates
+//    today. This one is kept for its no-other-mocks-in-scope framing below,
+//    not because the other is a stubbed weaker cousin.
+//
+// 2. It claimed `MockLink` "throws on any unmatched request", so a
+//    newly-grown `useQuery` dependency would fail this test the moment it
+//    fired unmocked. MEASURED false — see `test-utils.tsx`'s standing note:
+//    MockLink `console.warn`s and errors ASYNCHRONOUSLY, and nothing
+//    promotes that to a failure. A new `useQuery` on this page would NOT
+//    redden this file on its own. What this file does still prove is the
+//    positive path: the page renders and completes a password change with
+//    only the mutation mock in scope.
+//
+// The framing that survives: the forced-reset page is where `ProtectedRoute`
+// sends every `mustChangePassword` viewer, and it is the one path in the app
+// that must render and submit with no prior GraphQL query of any kind —
+// every `Query` field is gated on `authenticated`, which is false for a
+// forced-reset viewer. (That claim used to cite `use-change-my-password.ts`
+// and its test; Task 2 dissolved `provider/user` and inlined the mutation —
+// the reasoning now lives on `./index.tsx`'s own doc comment and on
+// `graphql/user.ts`'s `UserChangePasswordDocument`.)
 describe('PasswordResetPage (real Apollo hook, no query mocks in scope)', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'location', {

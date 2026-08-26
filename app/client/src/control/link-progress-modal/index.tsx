@@ -52,7 +52,8 @@ const DEBOUNCE_MS = 200;
  * Replaces the REST version's `useUserBookList` (fetch-the-whole-library,
  * filter client-side as you type) with `LinkPickerBooksDocument`, filtered
  * SERVER-SIDE via `LibraryFilter.query` — the same mechanism the library
- * grid's search uses (`useLibraryEntries`). That is a real interaction
+ * grid's search uses (`page/library/index.tsx`'s `LibraryEntriesDocument`;
+ * the deleted `useLibraryEntries` hook until Task 5). That is a real interaction
  * change (a round trip per query instead of an instant local filter), so
  * the typed input is debounced (`DEBOUNCE_MS`) before it becomes a query
  * variable — mirroring `useSearchSuggestions`'s identical shape: `filter`
@@ -171,12 +172,13 @@ const DEBOUNCE_MS = 200;
  *   never comes back. Restored.
  *
  * Fetching is `usePaginatedConnection` (`~/lib/use-paginated-connection`),
- * the same helper `useLibraryEntries`/`MyProgressContent`/`UserRowContent`
+ * the same helper `page/library`/`MyProgressContent`/`UserRowContent`
  * are built on — this modal was the fourth hand-rolled copy of that exact
  * state machine, now the fourth call site instead. `resetKey` is
  * `${libraryId}:${debouncedFilter}` — this list's own identity, the same
- * shape as `useLibraryEntries`'s `${libraryId}:${JSON.stringify(filter)}`
- * (see that hook's doc comment): a change to either clears a stale
+ * shape as `page/library/index.tsx`'s
+ * `${libraryId}:${JSON.stringify(libraryFilter)}` (see that file's own
+ * comment; this named the deleted `useLibraryEntries` hook until Task 5): a change to either clears a stale
  * `loadMore` error rather than letting it linger over an unrelated list.
  * `error`/`books.length` follow the same split every other list in this app
  * does: a first-page failure replaces the list with an error row (`books`

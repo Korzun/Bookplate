@@ -245,9 +245,20 @@ describe('MyProgressContent', () => {
   it('does not query when there is no library id', () => {
     currentLibraryId = undefined;
     try {
-      // No mocks at all: if the component fired MyProgressList anyway,
-      // MockLink would throw "No more mocked responses" and fail this test
-      // loudly rather than let it pass vacuously.
+      // No mocks are queued — but MockLink is NOT what makes this bite, and
+      // an unmatched request would not fail this test. Verified against
+      // `@apollo/client/testing/core/mocking/mockLink.js`: an unmatched
+      // request is `console.warn`ed and returned as an observable that
+      // errors ASYNCHRONOUSLY (`observeOn(asapScheduler)`) — never thrown —
+      // and nothing in `setup.ts` promotes that warning to a failure.
+      //
+      // What bites is the SYNCHRONOUS assertion below: an unskipped query
+      // puts the component in its loading state on the very first paint, so
+      // `getByText('No progress synced')` throws
+      // `TestingLibraryElementError` before any of that async machinery runs.
+      // Seen-to-fail: forcing `skip: false` in `./index.tsx`'s
+      // `usePaginatedConnection` call turns this red with exactly that
+      // error.
       renderWithApollo(<MyProgressContent skip={false} />, { mocks: [] });
 
       expect(screen.getByText('No progress synced')).toBeInTheDocument();
@@ -270,9 +281,11 @@ describe('MyProgressContent', () => {
   });
 
   it('fetches nothing while skip is true, even with a valid library id', () => {
-    // No mocks at all: if the component fired MyProgressList anyway,
-    // MockLink would throw "No more mocked responses" and fail this test
-    // loudly.
+    // Same mechanism as "does not query when there is no library id" above:
+    // the empty `mocks` array is not what fails this test (MockLink warns
+    // asynchronously, it does not throw). The synchronous
+    // `getByText('No progress synced')` below is — an unskipped query would
+    // paint the loading state instead.
     renderWithApollo(<MyProgressContent skip />, { mocks: [] });
 
     expect(screen.getByText('No progress synced')).toBeInTheDocument();

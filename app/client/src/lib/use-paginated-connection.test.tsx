@@ -271,7 +271,8 @@ describe('usePaginatedConnection', () => {
 
   // Task 3 review round 1, Item 7: the `loadingMore` RE-ENTRANCY guard —
   // NEW in this task (none of the four hand-rolls this helper replaced had
-  // one at all on `use-library-entries`, and `page/library`'s own
+  // one at all — including the since-deleted `use-library-entries.ts` — and
+  // `page/library`'s own
   // `IntersectionObserver` effect depends on it: `loadMore`'s identity
   // changes when `loadingMore` flips, so a second intersection firing
   // before the first page resolves must be a no-op, not a second request).

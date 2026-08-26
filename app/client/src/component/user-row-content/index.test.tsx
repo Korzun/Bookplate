@@ -270,9 +270,16 @@ describe('UserRowContent', () => {
   // directly, without depending on `Card`'s mount/unmount timing
   // (`component/user-row`) as an implicit contract.
   it('fetches nothing while skip is true, even with a valid user id', () => {
-    // No mocks at all: if the component fired UserProgressList anyway,
-    // MockLink would throw "No more mocked responses" and fail this test
-    // loudly.
+    // The empty `mocks` array is NOT what makes this bite: MockLink does not
+    // throw on an unmatched request. Verified against
+    // `@apollo/client/testing/core/mocking/mockLink.js` — it `console.warn`s
+    // and returns an observable that errors ASYNCHRONOUSLY
+    // (`observeOn(asapScheduler)`), and nothing in `setup.ts` promotes that
+    // warning to a failure. The SYNCHRONOUS assertion below is the pin: an
+    // unskipped query paints the loading state on the first render, so
+    // `getByText('No progress synced')` throws `TestingLibraryElementError`.
+    // Seen-to-fail: forcing `skip: false` in `./index.tsx`'s
+    // `usePaginatedConnection` call turns this red with exactly that error.
     renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip />, { mocks: [] });
 
     expect(screen.getByText('No progress synced')).toBeInTheDocument();

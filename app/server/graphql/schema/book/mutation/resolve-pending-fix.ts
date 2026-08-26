@@ -223,8 +223,7 @@ const selectProposals = (
  *
  * **ACCEPT is NOT a literal REST mirror — flagged, per the task's escalation
  * instruction — but IS designed to be behaviourally EQUIVALENT to what REST's
- * client actually persists**, traced end to end
- * (`app/client/src/provider/book/hook/use-upload-queue.ts:356-447`) after a
+ * client actually persists**, traced end to end after a
  * review round (task-4-review.md, findings I-1/I-2) found the first version
  * diverged from it in two ways. No REST route atomically "accepts" a pending
  * fix: `PUT /api/books/:id/pending-fixes` only ever WRITES whatever state the
@@ -237,6 +236,17 @@ const selectProposals = (
  * ACTIONABLE proposal in one atomic write via `applyEpubChanges` — the same
  * underlying operation `bookUpdateMetadata` uses — then persist the same
  * post-accept `PendingFix` state the client's flow would have left behind.
+ * (The trace above was taken against
+ * `app/client/src/provider/book/hook/use-upload-queue.ts` — the client's
+ * REST upload engine, which is DELETED. It is a historical citation: that
+ * file was correct when this comment was written and existed up to
+ * `7bfd9ec7`, which merged the queue onto GraphQL and removed it. The live
+ * queue is `app/client/src/provider/upload/hook/use-upload-queue.ts`, and
+ * it no longer performs the two-step PATCH-then-PUT flow described above —
+ * it calls THIS mutation. Read the old path at `7bfd9ec7^` if you need to
+ * re-check the equivalence claim; do not look for that behaviour in the
+ * live file.)
+ *
  * This is a genuine, honest design choice, not a REST citation; see the task
  * report for the full alternative designs considered.
  *

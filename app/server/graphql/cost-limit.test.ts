@@ -319,12 +319,19 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
 
   // Round-3, M-9 (correcting a prior version of this test, which mislabeled
   // itself "the REAL admin device-list screen" using only `id name slug` —
-  // it never fetches `enabledUsers` at all): `component/device-list/index.tsx`
-  // fetches exactly the 8 fields `provider/device/type.ts`'s `Device` type
-  // declares, and NOTHING under `enabledUsers` — that's a SEPARATE,
-  // per-device REST read (`GET /api/devices/:id/users`,
-  // `component/device-form`'s `useDeviceUsers`), fetched one device at a
-  // time when an admin edits it, not as part of the list screen.
+  // it never fetches `enabledUsers` at all): `page/device-list/index.tsx`
+  // spreads `DeviceRowFragment` (`component/device-row/index.tsx`), exactly
+  // the 8 fields below, and NOTHING under `enabledUsers`. Enabled users are
+  // a SEPARATE read — today `DeviceUsersDocument` (`graphql/device.ts`,
+  // `viewer { devices { id enabledUsers { id } } }`, `id` only), issued by
+  // `component/device-form` when an admin edits ONE device; before the
+  // client's GraphQL migration, the REST `GET /api/devices/:id/users`. Not
+  // part of the list screen either way.
+  //
+  // (Doc sweep: this note cited `provider/device/type.ts` for the 8-field
+  // list and a `useDeviceUsers` hook; the client migration deleted both.
+  // The 8 fields and the enabled-users read are named above at their live
+  // homes.)
   it('the REAL device-list screen (8 real Device fields, no enabledUsers) is cheap — this is what ships today', () => {
     const { breadth, complexity } = costOf(
       '{ viewer { devices { id name slug coverWidth coverHeight coverFit bwCover simplify } } }'
