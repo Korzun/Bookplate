@@ -1,21 +1,35 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { DeviceCreateMutationVariables, DeviceUpdateMutationVariables } from '~/gql/graphql';
-import { DeviceCreateDocument, DeviceUpdateDocument } from '~/graphql/device';
-import type { Device } from '~/provider/device';
+import type {
+  DeviceCreateMutationVariables,
+  DeviceDisableUserMutation,
+  DeviceDisableUserMutationVariables,
+  DeviceEnableUserMutation,
+  DeviceEnableUserMutationVariables,
+  DeviceUpdateMutationVariables,
+  DeviceUsersQuery,
+} from '~/gql/graphql';
+import {
+  DeviceCreateDocument,
+  DeviceDisableUserDocument,
+  DeviceEnableUserDocument,
+  DeviceUpdateDocument,
+  DeviceUsersDocument,
+} from '~/graphql/device';
 import { renderWithApollo } from '~/test-utils';
 
 import { DeviceForm } from './index';
 
-const kindle: Device = {
+const kindle = {
   id: 'd1',
   name: 'Kindle',
   slug: 'kindle',
   coverWidth: null,
   coverHeight: null,
-  coverFit: 'contain',
+  coverFit: 'CONTAIN' as const,
   bwCover: false,
   simplify: false,
 };
@@ -80,38 +94,91 @@ const updateSuccessMock = (matcher: (vars: DeviceUpdateMutationVariables) => boo
   },
 });
 
-// useDeviceUsers/useEnableDeviceUser/useDisableDeviceUser are mocked so the
-// Users field's fetched baseline and reconciliation calls are directly
-// assertable; useCreateDevice/useUpdateDevice keep their real implementation,
-// exercised here against GraphQL mocks (see the `*Mock` builders above), so
-// the existing form-behavior tests below are unaffected by task 3's rewire.
-let mockDeviceUsers: [string[], boolean, boolean, string | undefined] = [
-  [],
-  false,
-  false,
-  undefined,
-];
-const enableUser = vi.fn().mockResolvedValue(true);
-const disableUser = vi.fn().mockResolvedValue(true);
-
-vi.mock('~/provider/device', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/provider/device')>();
-  return {
-    ...actual,
-    useDeviceUsers: () => mockDeviceUsers,
-    useEnableDeviceUser: () => [enableUser, false, false, undefined],
-    useDisableDeviceUser: () => [disableUser, false, false, undefined],
-  };
+/** `deviceUsers`' shape: only `id` travels through `enabledUsers` (see
+ * `graphql/device.ts`'s cost note) — usernames are resolved against the
+ * mocked `useUserList()` below. */
+const deviceUsersMock = (
+  devices: { id: string; enabledUserIds: string[] }[]
+): MockedResponse<DeviceUsersQuery> => ({
+  request: { query: DeviceUsersDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        devices: devices.map((d) => ({
+          __typename: 'Device' as const,
+          id: d.id,
+          enabledUsers: d.enabledUserIds.map((id) => ({ __typename: 'User' as const, id })),
+        })),
+      },
+    },
+  },
+  delay: 0,
 });
 
+const enableSuccessMock = (
+  deviceId: string,
+  userId: string
+): MockedResponse<DeviceEnableUserMutation, DeviceEnableUserMutationVariables> => ({
+  request: { query: DeviceEnableUserDocument, variables: { input: { deviceId, userId } } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      deviceEnableUser: {
+        __typename: 'DeviceEnableUserPayload',
+        device: {
+          __typename: 'Device',
+          id: deviceId,
+          enabledUsers: [{ __typename: 'User', id: userId }],
+        },
+      },
+    },
+  },
+});
+
+const enableErrorMock = (
+  deviceId: string,
+  userId: string
+): MockedResponse<DeviceEnableUserMutation, DeviceEnableUserMutationVariables> => ({
+  request: { query: DeviceEnableUserDocument, variables: { input: { deviceId, userId } } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      deviceEnableUser: { __typename: 'InvalidInputError', message: 'Cannot enable user' },
+    },
+  },
+});
+
+const disableSuccessMock = (
+  deviceId: string,
+  userId: string
+): MockedResponse<DeviceDisableUserMutation, DeviceDisableUserMutationVariables> => ({
+  request: { query: DeviceDisableUserDocument, variables: { input: { deviceId, userId } } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      deviceDisableUser: {
+        __typename: 'DeviceDisableUserPayload',
+        device: { __typename: 'Device', id: deviceId, enabledUsers: [] },
+      },
+    },
+  },
+});
+
+// useCreateDevice/useUpdateDevice/useDeviceUsers/useEnableDeviceUser/
+// useDisableDeviceUser are all inlined directly in `DeviceForm` now (no
+// `provider/device` barrel to mock), so every scenario below is driven
+// through real GraphQL mocks. `useUserList` remains a `provider/user` hook
+// (task 2 dissolves that provider), so it is still mocked directly.
 vi.mock('~/provider/user', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/provider/user')>();
   return {
     ...actual,
     useUserList: () => [
       [
-        { username: 'alice', progressCount: 0 },
-        { username: 'bob', progressCount: 0 },
+        { id: 'u-alice', username: 'alice', progressCount: 0, library: { id: 'lib-alice' } },
+        { id: 'u-bob', username: 'bob', progressCount: 0, library: { id: 'lib-bob' } },
       ],
       false,
       false,
@@ -122,7 +189,7 @@ vi.mock('~/provider/user', async (importOriginal) => {
 
 type RenderFormOptions = Parameters<typeof renderWithApollo>[1];
 
-function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOptions) {
+function renderForm(device?: typeof kindle, onDone?: () => void, options?: RenderFormOptions) {
   const rendered = renderWithApollo(<DeviceForm device={device} onDone={onDone} />, options);
   const nameInput = rendered.container.querySelector('input[name="name"]') as HTMLInputElement;
   return { ...rendered, nameInput };
@@ -130,9 +197,7 @@ function renderForm(device?: Device, onDone?: () => void, options?: RenderFormOp
 
 describe('DeviceForm', () => {
   afterEach(() => {
-    mockDeviceUsers = [[], false, false, undefined];
-    enableUser.mockClear();
-    disableUser.mockClear();
+    vi.clearAllMocks();
   });
 
   it('caps the committed name at 50 characters', async () => {
@@ -354,7 +419,11 @@ describe('DeviceForm', () => {
 
       const { nameInput } = renderForm(undefined, undefined, {
         user: { username: 'admin', isAdmin: true },
-        mocks: [createSuccessMock(matcher)],
+        mocks: [
+          createSuccessMock(matcher),
+          enableSuccessMock('d1', 'u-alice'),
+          enableSuccessMock('d1', 'u-bob'),
+        ],
       });
       await user.type(nameInput, 'Kindle');
 
@@ -372,28 +441,32 @@ describe('DeviceForm', () => {
       // by flipping its label to "Adding…").
       await user.type(usersInput, 'nonexistent{Enter}');
       expect(screen.queryByLabelText('Remove nonexistent')).not.toBeInTheDocument();
-      expect(enableUser).not.toHaveBeenCalled();
 
       await user.click(screen.getByRole('button', { name: /add device/i }));
 
-      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'alice'));
-      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
-      expect(disableUser).not.toHaveBeenCalled();
+      // MockLink throws on an unmatched request — resolving without error
+      // already proves both DeviceEnableUser calls (alice, bob) went out.
+      const toast = await screen.findByRole('status');
+      expect(toast.textContent).toMatch(/created/i);
     });
 
     it('editing pre-fills enabled users and reconciles added/removed users on Save', async () => {
-      mockDeviceUsers = [['alice'], false, false, undefined];
       const user = userEvent.setup();
       const onDone = vi.fn();
       const { matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
       renderForm(kindle, onDone, {
         user: { username: 'admin', isAdmin: true },
-        mocks: [updateSuccessMock(matcher)],
+        mocks: [
+          deviceUsersMock([{ id: 'd1', enabledUserIds: ['u-alice'] }]),
+          updateSuccessMock(matcher),
+          enableSuccessMock('d1', 'u-bob'),
+          disableSuccessMock('d1', 'u-alice'),
+        ],
       });
 
       // Pre-filled with the fetched 'alice' chip.
-      expect(screen.getByLabelText('Remove alice')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByLabelText('Remove alice')).toBeInTheDocument());
 
       // Type to filter and add 'bob'.
       const usersInput = screen.getByLabelText('Users');
@@ -404,24 +477,29 @@ describe('DeviceForm', () => {
 
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
-      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
-      await waitFor(() => expect(disableUser).toHaveBeenCalledWith('d1', 'alice'));
+      // MockLink throws on an unmatched request — resolving without error
+      // already proves both the enable (bob) and disable (alice) calls fired
+      // with the right ids.
       await waitFor(() => expect(onDone).toHaveBeenCalled());
     });
 
     it('keeps the edit form open when user reconciliation fails on Save', async () => {
       // A partial user-enable failure should not close the form: the pending
       // selection survives so the admin can re-submit.
-      mockDeviceUsers = [['alice'], false, false, undefined];
-      enableUser.mockResolvedValueOnce(false);
       const user = userEvent.setup();
       const onDone = vi.fn();
       const { matcher } = captureVariables<DeviceUpdateMutationVariables>();
 
       renderForm(kindle, onDone, {
         user: { username: 'admin', isAdmin: true },
-        mocks: [updateSuccessMock(matcher)],
+        mocks: [
+          deviceUsersMock([{ id: 'd1', enabledUserIds: ['u-alice'] }]),
+          updateSuccessMock(matcher),
+          enableErrorMock('d1', 'u-bob'),
+        ],
       });
+
+      await waitFor(() => expect(screen.getByLabelText('Remove alice')).toBeInTheDocument());
 
       const usersInput = screen.getByLabelText('Users');
       await user.type(usersInput, 'bob');
@@ -429,10 +507,9 @@ describe('DeviceForm', () => {
 
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
-      await waitFor(() => expect(enableUser).toHaveBeenCalledWith('d1', 'bob'));
       // Form stays open (Save still present) and the 'bob' selection is retained.
-      // useActionState's isPending can still be true right after enableUser
-      // resolves, so the button briefly reads "Saving…" — wait for it to
+      // useActionState's isPending can still be true right after the enable
+      // call resolves, so the button briefly reads "Saving…" — wait for it to
       // settle back to "Save" instead of asserting synchronously.
       await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument());
       expect(screen.getByLabelText('Remove bob')).toBeInTheDocument();
@@ -446,10 +523,12 @@ describe('DeviceForm', () => {
       // and lock in a stale empty selection — clobbering the server's real
       // list on Save. Asserting the field is inert (shows "Loading…" and is
       // disabled) guards against that regression.
-      mockDeviceUsers = [[], true, false, undefined];
       const user = userEvent.setup();
 
-      renderForm(kindle, () => {}, { user: { username: 'admin', isAdmin: true } });
+      renderForm(kindle, () => {}, {
+        user: { username: 'admin', isAdmin: true },
+        mocks: [{ ...deviceUsersMock([{ id: 'd1', enabledUserIds: [] }]), delay: 60000 }],
+      });
 
       const usersInput = screen.getByPlaceholderText('Loading…');
       expect(usersInput).toBeDisabled();

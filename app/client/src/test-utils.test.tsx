@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react';
 import { waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { DeviceListDocument } from '~/graphql/device';
+import { DeviceListDocument } from '~/page/device-list';
 
 import { renderHookWithApollo, renderWithApollo } from './test-utils';
 

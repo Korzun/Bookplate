@@ -1,14 +1,15 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
-  root: {
+  rowActions: {
     display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'center',
     gap: theme.space.md,
   },
-  loading: {
-    color: theme.color.text.muted,
-    textAlign: 'center',
-    padding: theme.space.xxxxxl,
+  deviceName: {
+    fontWeight: theme.fontWeight.semibold,
+  },
+  undone: {
+    color: theme.color.danger.default,
   },
 }));

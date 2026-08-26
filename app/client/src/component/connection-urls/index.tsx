@@ -2,10 +2,25 @@ import { Fragment, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button } from '~/control';
+import { graphql, useFragment, type FragmentType } from '~/gql';
 import { CheckIcon } from '~/icon';
-import { useDeviceList } from '~/provider/device';
 
 import { useStyle } from './style';
+
+/**
+ * Colocated: exactly the `Device` fields this component renders. Composed,
+ * along with the rest of `page/user`'s content, into `UserPageDocument` —
+ * the ONE document that route sends (Ruling C / task 1's brief: a future
+ * task extends that same document rather than adding a second one, since
+ * two documents on one route means two requests per screen).
+ */
+export const ConnectionUrlsFragment = graphql(`
+  fragment ConnectionUrlsFragment on Device {
+    id
+    name
+    slug
+  }
+`);
 
 interface UrlRowProps {
   url: string;
@@ -39,10 +54,20 @@ const UrlRow = ({ url, label }: UrlRowProps) => {
   );
 };
 
-export const ConnectionUrls = () => {
+interface ConnectionUrlsProps {
+  devices: FragmentType<typeof ConnectionUrlsFragment>[];
+}
+
+/**
+ * Fetch-free: `page/user` composes `UserPageDocument` from this component's
+ * own fragment and passes the result straight through. `useFragment` is
+ * called once, unconditionally, at the top of this body — with an ARRAY of
+ * refs, one of the masking helper's supported overloads.
+ */
+export const ConnectionUrls = ({ devices: deviceRefs }: ConnectionUrlsProps) => {
   const styles = useStyle();
   const base = window.location.origin;
-  const [devices] = useDeviceList();
+  const devices = useFragment(ConnectionUrlsFragment, deviceRefs);
 
   // The base library catalog plus one per-device catalog. Regular users need the
   // device URLs to point their e-readers at the right per-device edition. The base
