@@ -1,4 +1,4 @@
-import { type PageActionItem } from '~/control';
+import { type PageActionIntentProps, type PageActionItem } from '~/control';
 
 export interface BookActionState {
   chapterCount: number;
@@ -10,8 +10,20 @@ export interface BookActionState {
 
 export interface BookActionHandlers {
   onSetProgress: () => void;
+  /**
+   * Hover/focus/touch on the "Set progress" item, ahead of the click that
+   * mounts `SetProgressModal` — `page/book` wires this to
+   * `usePrefetchOnIntent(BookChaptersDocument, …)` so the route's own lazy
+   * `useQuery` for that modal usually finds its data already in flight or
+   * cached. Optional so `buildBookActions` stays callable without an
+   * Apollo client in reach; a caller that omits it simply gets no prefetch,
+   * never a broken action.
+   */
+  onSetProgressIntent?: PageActionIntentProps;
   onEditMetadata: () => void;
   onShowLineage: () => void;
+  /** Same contract as `onSetProgressIntent`, for `BookLineageDocument`. */
+  onShowLineageIntent?: PageActionIntentProps;
   onRegenChapters: () => void;
   onClearEditions: () => void;
   onValidate: () => void;
@@ -39,6 +51,7 @@ export function buildBookActions(
     actions.push({
       label: 'Set progress',
       onClick: handlers.onSetProgress,
+      intentProps: handlers.onSetProgressIntent,
     });
   }
 
@@ -80,6 +93,7 @@ export function buildBookActions(
   actions.push({
     label: 'Book lineage',
     onClick: handlers.onShowLineage,
+    intentProps: handlers.onShowLineageIntent,
     separatorBefore: true,
   });
   actions.push({

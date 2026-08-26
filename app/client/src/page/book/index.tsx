@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
@@ -16,9 +17,9 @@ import { ValidationFragment } from '~/graphql/book';
 import { AlertOctagonIcon, DeviceIcon } from '~/icon';
 import type { Severity, ValidationMessage } from '~/lib/severity';
 import { useAuthorizedSrc } from '~/lib/use-authorized-src';
+import { usePrefetchOnIntent } from '~/lib/use-prefetch-on-intent';
 import { useIsAdmin } from '~/provider/auth';
 import {
-  useBookDetail,
   useBookValidation,
   useClearBookEditions,
   useDeleteBook,
@@ -26,11 +27,13 @@ import {
   useRegenChapters,
   useValidateBook,
 } from '~/provider/book';
+import { useCurrentLibraryId } from '~/provider/library-target';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 import { formatSize, hashString } from '~/utils';
 
 import { buildBookActions } from './actions';
+import { BookChaptersDocument, BookDetailDocument, BookLineageDocument } from './query';
 import { useStyle } from './style';
 
 /**
@@ -89,7 +92,39 @@ export const BookPage = () => {
   const navigate = useNavigate();
   const [isAdmin] = useIsAdmin();
 
-  const { book, loading, error } = useBookDetail(id!);
+  /**
+   * The route composes its own reads (`./query.ts`) rather than going
+   * through a provider hook — `useBookDetail` had exactly one caller, this
+   * file, and the indirection bought nothing but a second place to keep the
+   * `book` shape in sync.
+   *
+   * `node(id: $libraryId)` is the only single root that serves both a
+   * non-admin's own library and an admin's selected one, so the query is
+   * skipped outright until `useCurrentLibraryId` resolves, and `loading`
+   * folds that bootstrap round trip in — a skipped `useQuery` reports
+   * `loading: false` on its own, which would flash a false "Book not found."
+   * for the whole `ViewerBootstrap` window.
+   *
+   * **`$bookId` is the ROUTE PARAM**, deliberately, for all three documents
+   * below. A book's global id rotates: `applyEpubChanges` (accept / replace
+   * / undo) and `bookRegenChapters` re-import the file and mint a new one.
+   * Every such path navigates to the new id (`onReplaced(newId)` below), so
+   * keying on the param means the variables move WITH the book instead of
+   * going stale — a lazy query left on a stale `bookId` would silently
+   * fetch a different book's chapters, with no error to notice.
+   */
+  const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
+  const variables = { libraryId: libraryId ?? '', bookId: id ?? '' };
+  const {
+    data,
+    loading: bookLoading,
+    error: bookError,
+  } = useQuery(BookDetailDocument, { variables, skip: libraryId === undefined });
+  const detailNode = data?.node;
+  const book = detailNode?.__typename === 'Library' ? (detailNode.book ?? undefined) : undefined;
+  const loading = bookLoading || libraryIdLoading;
+  const error = bookError?.message;
+
   const { validation: lazyValidation, load: loadValidation } = useBookValidation(book?.id ?? '');
   // `useFragment` is an identity cast (Global Constraints — masking is
   // compile-time only here), but called unconditionally before either early
@@ -101,6 +136,58 @@ export const BookPage = () => {
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
   const [replaceModalOpen, setReplaceModalOpen] = useState(false);
   const [validationModalOpen, setValidationModalOpen] = useState(false);
+
+  /**
+   * The two LAZY splits. Each is gated on the SAME boolean that mounts its
+   * modal below, so nothing is fetched for a modal a visitor never opens —
+   * which is the entire point of the split (`./query.ts` for the per-field
+   * disposition and the cache-identity contract).
+   *
+   * Composed HERE rather than inside the modals themselves: those are
+   * `~/control` components, the shared layer, and a book-scoped query in
+   * there would both invert the dependency direction and hand two
+   * presentational modals a `useCurrentLibraryId` dependency. The route
+   * already owns when they mount, so it can own the gate too — spec 3.1's
+   * normal "the route composes the query" rule. (`MyProgressContent` is the
+   * documented exception, and only because `Card` mounts it outside its
+   * route's control.)
+   *
+   * `skip` is belt-and-braces with the `{open && …}` render gates: a
+   * skipped hook cannot fetch even if a later refactor stops unmounting the
+   * modal, and it is what the "does not fetch until the modal opens" tests
+   * pin.
+   */
+  const { data: chaptersData } = useQuery(BookChaptersDocument, {
+    variables,
+    skip: !progressModalOpen || libraryId === undefined,
+  });
+  const chaptersNode = chaptersData?.node;
+  const chapters = chaptersNode?.__typename === 'Library' ? chaptersNode.book : null;
+
+  const { data: lineageData } = useQuery(BookLineageDocument, {
+    variables,
+    skip: !lineageModalOpen || libraryId === undefined,
+  });
+  const lineageNode = lineageData?.node;
+  const lineageBook = lineageNode?.__typename === 'Library' ? lineageNode.book : null;
+
+  /**
+   * The other half of the split: fire each lazy query on hover/focus/touch
+   * of its own action, ahead of the click that opens the modal. Apollo
+   * dedupes the identical in-flight query, so the `useQuery` above usually
+   * finds the data already arriving or cached by the time it mounts.
+   *
+   * `variables` is a fresh object literal per render, so `intentProps`'
+   * identity churns every render — correctness is unaffected (the
+   * freshness guard lives in a ref, keyed on the variables' VALUE), but do
+   * not hang a `React.memo` off its identity.
+   */
+  const chaptersIntent = usePrefetchOnIntent(BookChaptersDocument, variables, {
+    skip: libraryId === undefined,
+  });
+  const lineageIntent = usePrefetchOnIntent(BookLineageDocument, variables, {
+    skip: libraryId === undefined,
+  });
 
   const [regenChapters, regenLoading] = useRegenChapters();
   const [deleteBook, deleting] = useDeleteBook();
@@ -278,8 +365,10 @@ export const BookPage = () => {
     },
     {
       onSetProgress: () => setProgressModalOpen(true),
+      onSetProgressIntent: chaptersIntent.intentProps,
       onEditMetadata: handleEditMetadata,
       onShowLineage: () => setLineageModalOpen(true),
+      onShowLineageIntent: lineageIntent.intentProps,
       onRegenChapters: () => void regenChapters(book.id),
       onClearEditions: () => setClearEditionsModalOpen(true),
       onValidate: () => void handleValidate(),
@@ -362,8 +451,11 @@ export const BookPage = () => {
           progressId={book.progress?.id}
           chapterCount={book.chapterCount}
           initialChapter={book.progress?.currentChapter ?? 0}
-          chapterSpineMap={book.chapterSpineMap}
-          chapterNames={book.chapterNames ?? []}
+          // From `BookChaptersDocument`, not the eager read — both default
+          // harmlessly (`[]`) for the beat before the lazy query lands,
+          // which the hover prefetch usually removes entirely.
+          chapterSpineMap={chapters?.chapterSpineMap}
+          chapterNames={chapters?.chapterNames ?? []}
           onClose={() => setProgressModalOpen(false)}
         />
       )}
@@ -373,8 +465,11 @@ export const BookPage = () => {
           bookId={book.id}
           documentId={book.documentId}
           bookTitle={book.title}
-          lineage={book.lineage}
-          addedAt={book.addedAt ? new Date(book.addedAt).getTime() : undefined}
+          // Both from `BookLineageDocument` — `addedAt` travels with
+          // `lineage` because it is only ever read as that list's
+          // oldest-row fallback timestamp.
+          lineage={lineageBook?.lineage ?? []}
+          addedAt={lineageBook?.addedAt ? new Date(lineageBook.addedAt).getTime() : undefined}
           onClose={() => setLineageModalOpen(false)}
         />
       )}

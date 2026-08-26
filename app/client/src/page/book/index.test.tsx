@@ -39,12 +39,18 @@ vi.mock('~/provider/library-target', () => ({
 }));
 
 import { makeFragmentData } from '~/gql';
-import type { LineageEntryFragmentFragment } from '~/gql/graphql';
-import { BookDetailDocument, BookValidateDocument, LineageEntryFragment } from '~/graphql/book';
+import type {
+  BookChaptersQuery,
+  BookLineageQuery,
+  LineageEntryFragmentFragment,
+} from '~/gql/graphql';
+import { BookValidateDocument, LineageEntryFragment } from '~/graphql/book';
 import { ProgressDeleteDocument, ProgressSetDocument } from '~/graphql/progress';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { apiFetch } from '~/lib/api-fetch';
 import { renderWithApollo } from '~/test-utils';
+
+import { BookChaptersDocument, BookDetailDocument, BookLineageDocument } from './query';
 
 const mockApiFetch = vi.mocked(apiFetch);
 
@@ -71,6 +77,8 @@ beforeAll(() => {
 beforeEach(() => {
   routerMocks.navigate.mockClear();
   replaceModalSpy.mockClear();
+  chapterCounter.requests = 0;
+  lineageCounter.requests = 0;
   URL.createObjectURL = vi.fn(() => 'blob:test-cover');
   URL.revokeObjectURL = vi.fn();
   // Progress reads/writes are GraphQL now (Apollo mocks, not `apiFetch`) —
@@ -124,13 +132,10 @@ const bookMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
           description: 'A boy learns magic.',
           publisher: 'Harper',
           publishDate: '1968-01-01',
-          addedAt: '2026-01-01T00:00:00.000Z',
           mtime: '2026-01-01T00:00:00.000Z',
           size: 1_000_000,
           pageCount: 200,
           chapterCount: 12,
-          chapterNames: ['One'],
-          chapterSpineMap: [0],
           subjects: ['Fantasy'],
           seriesIndex: 1,
           hasCover: true,
@@ -144,10 +149,123 @@ const bookMock = (overrides: Record<string, unknown> = {}): MockedResponse => ({
             currentChapter: 3,
           },
           validation: validationFixture,
-          lineage: [],
-          pendingFix: null,
           ...overrides,
         },
+      },
+    },
+  },
+});
+
+/**
+ * The two LAZY split documents (2026-08-26). Each factory counts its own
+ * requests through `MockLink`'s VARIABLE-MATCHER form of `request.variables`
+ * — a function `MockLink.request()` calls SYNCHRONOUSLY, in the same tick
+ * the operation is issued (`mockLink.js`, the `mocks.findIndex` matcher).
+ *
+ * That synchronous point is the whole reason the matcher is used instead of
+ * the far more obvious `result: () => { count++; … }`. A `result` function
+ * runs on DELIVERY, and `MockLink`'s default delay is `realisticDelay()` —
+ * a RANDOM 20-50ms. A "does NOT fire" assertion counted at delivery
+ * therefore passes or fails on timing luck: it was seen to let an
+ * eager-by-mistake `BookChapters` through in one test while catching it in
+ * its neighbour. Counted at REQUEST time, an eagerly-issued query has
+ * already incremented before the page's first `await` resolves, so
+ * `expect(requests).toBe(0)` fails CLOSED with no tuned wait anywhere —
+ * Task 6's lesson applied directly.
+ *
+ * `maxUsageCount: Infinity`: several tests below deliberately fire the same
+ * lazy query more than once (prefetch on hover, then the real `useQuery` on
+ * open). Under the default of 1, the SECOND would fail as "No more mocked
+ * responses" and mask the assertion the test is actually making.
+ */
+const chapterCounter = { requests: 0 };
+const chaptersMock = (
+  chapterNames: string[] | null = ['Shadows', 'The Bright Fire', 'The School for Wizards']
+): MockedResponse<BookChaptersQuery> => ({
+  request: {
+    query: BookChaptersDocument,
+    variables: function bookChaptersVariables(vars) {
+      if (vars.libraryId !== LIBRARY_ID || vars.bookId !== BOOK_ID) return false;
+      chapterCounter.requests += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      node: {
+        __typename: 'Library' as const,
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book' as const,
+          id: BOOK_ID,
+          chapterNames,
+          chapterSpineMap: [0],
+        },
+      },
+    },
+  },
+});
+
+const lineageCounter = { requests: 0 };
+const lineageMock = (
+  lineage: LineageEntryFragmentFragment[] = []
+): MockedResponse<BookLineageQuery> => ({
+  request: {
+    query: BookLineageDocument,
+    variables: function bookLineageVariables(vars) {
+      if (vars.libraryId !== LIBRARY_ID || vars.bookId !== BOOK_ID) return false;
+      lineageCounter.requests += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
+  result: {
+    data: {
+      __typename: 'Query' as const,
+      node: {
+        __typename: 'Library' as const,
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book' as const,
+          id: BOOK_ID,
+          addedAt: '2026-01-01T00:00:00.000Z',
+          // `__typename` alongside the masked ref, not inside it:
+          // `makeFragmentData` returns only the `$fragmentRefs` marker, and a
+          // MockLink result missing `__typename` silently fails to normalize
+          // (see `src/test-utils.tsx`).
+          lineage: lineage.map((entry) => ({
+            __typename: 'LinkedDocument' as const,
+            ...makeFragmentData(entry, LineageEntryFragment),
+          })),
+        },
+      },
+    },
+  },
+});
+
+const VIEWER_USER_ID = 'VXNlcjox'; // User:1
+
+// `useSetMyProgress` reads the viewer's `User.id` off an unconditional
+// `ViewerBootstrapDocument` query fired the moment `SetProgressModal`
+// mounts (i.e. as soon as the modal opens, whether or not it's ever
+// saved) — every test that OPENS that modal needs this mock, same as
+// `use-progress-mutations.test.tsx`'s own `viewerBootstrapMock`. Module
+// scope, not inside `describe('set progress')`: the lazy-split tests below
+// open the same modal for a different reason.
+const viewerBootstrapMock = (): MockedResponse => ({
+  request: { query: ViewerBootstrapDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        username: 'le',
+        isAdmin: false,
+        mustChangePassword: false,
+        user: { __typename: 'User', id: VIEWER_USER_ID },
+        library: { __typename: 'Library', id: LIBRARY_ID },
       },
     },
   },
@@ -472,14 +590,8 @@ describe('BookPage', () => {
   describe('lineage', () => {
     it('renders real lineage history, not an empty list', async () => {
       await renderPage([
-        bookMock({
-          lineage: [
-            makeFragmentData(
-              rawLineageEntry({ oldId: 'doc-old-hash', newId: 'doc-current-hash' }),
-              LineageEntryFragment
-            ),
-          ],
-        }),
+        bookMock(),
+        lineageMock([rawLineageEntry({ oldId: 'doc-old-hash', newId: 'doc-current-hash' })]),
       ]);
 
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
@@ -491,7 +603,7 @@ describe('BookPage', () => {
     });
 
     it("shows the book's RAW documentId as the current row when lineage is empty, never the GLOBAL id", async () => {
-      await renderPage([bookMock({ lineage: [] })]);
+      await renderPage([bookMock(), lineageMock([])]);
 
       await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
       await selectMenuItem(/^book lineage$/i);
@@ -501,6 +613,85 @@ describe('BookPage', () => {
       // never `book.id` (the Relay global id `bookUnlinkDocument` needs).
       expect(await screen.findByText(DOCUMENT_ID)).toBeInTheDocument();
       expect(screen.queryByText(BOOK_ID)).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The lazy splits (2026-08-26) — this project's headline deliverable, and
+   * the reason the whole task exists. Colocation alone is cost-neutral; the
+   * saving comes from `BookDetail` no longer carrying fields that only a
+   * modal reads, and these tests are what stop a split from silently
+   * regressing back to eager.
+   *
+   * The "does NOT fire" halves are load-bearing, not decoration: without
+   * them a split that accidentally stayed eager passes every other test in
+   * this file. See `chaptersMock`'s own comment for why the request COUNTER
+   * (incremented by `MockLink` at match time) is the assertion that fails
+   * closed here, rather than a cache read or a wait-and-see.
+   */
+  describe('lazy splits', () => {
+    it('does not fetch chapters until the progress modal opens', async () => {
+      // The chapters mock IS supplied — so this is not "nothing fetched
+      // because nothing could". If `chapterNames`/`chapterSpineMap` were
+      // still selected eagerly (or the split's `skip` gate were wrong),
+      // `BookChapters` would match this mock during mount and the counter
+      // would be 1 by the time the heading renders.
+      await renderPage([bookMock(), chaptersMock()]);
+
+      // The page renders in FULL off `BookDetail` alone — header actions,
+      // metadata, subjects — with no chapters round trip behind it.
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(screen.getByText('12')).toBeInTheDocument(); // the chapterCount metadata row
+      expect(screen.getByRole('button', { name: /edit metadata/i })).toBeInTheDocument();
+      expect(chapterCounter.requests).toBe(0);
+    });
+
+    it('fetches chapters when the progress modal opens', async () => {
+      await renderPage([bookMock(), viewerBootstrapMock(), chaptersMock()], {
+        user: { username: 'le', isAdmin: false },
+      });
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(chapterCounter.requests).toBe(0);
+
+      await selectMenuItem(/^set progress$/i);
+
+      await waitFor(() => expect(chapterCounter.requests).toBe(1));
+      // Not just "a request happened" — the fetched names actually reach the
+      // modal. The fixture's `progress.currentChapter: 3` is the modal's
+      // `initialChapter`, so it renders `chapterNames[2]`; a modal still
+      // reading a (now absent) eager `book.chapterNames` would render the
+      // empty-string fallback instead.
+      expect(await screen.findByText('The School for Wizards')).toBeInTheDocument();
+    });
+
+    it('does not fetch lineage until the lineage modal opens', async () => {
+      await renderPage([bookMock(), lineageMock([rawLineageEntry()])]);
+
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+      expect(lineageCounter.requests).toBe(0);
+
+      await selectMenuItem(/^book lineage$/i);
+
+      await waitFor(() => expect(lineageCounter.requests).toBe(1));
+      expect(await screen.findByText('doc-current-hash')).toBeInTheDocument();
+    });
+
+    it('prefetches chapters on hover of the Set progress action', async () => {
+      await renderPage([bookMock(), chaptersMock()]);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+
+      const [trigger] = screen.getAllByRole('button', { name: 'More actions' });
+      await userEvent.click(trigger);
+      const setProgress = await screen.findByRole('menuitem', { name: /^set progress$/i });
+      expect(chapterCounter.requests).toBe(0);
+
+      await userEvent.hover(setProgress);
+
+      await waitFor(() => expect(chapterCounter.requests).toBe(1));
+      // Intent alone did it — the modal was never opened, so this cannot be
+      // the modal's own `useQuery` firing under another name.
+      expect(screen.queryByText('Set Progress')).not.toBeInTheDocument();
     });
   });
 
@@ -517,29 +708,6 @@ describe('BookPage', () => {
   // specific this time.
   describe('set progress', () => {
     const PROGRESS_ID = 'UHJvZ3Jlc3M6MQ=='; // Progress:1 — matches bookMock()'s default.
-    const VIEWER_USER_ID = 'VXNlcjox'; // User:1
-
-    // `useSetMyProgress` reads the viewer's `User.id` off an unconditional
-    // `ViewerBootstrapDocument` query fired the moment `SetProgressModal`
-    // mounts (i.e. as soon as the modal opens, whether or not it's ever
-    // saved) — every test below that opens the modal needs this mock, same
-    // as `use-progress-mutations.test.tsx`'s own `viewerBootstrapMock`.
-    const viewerBootstrapMock = (): MockedResponse => ({
-      request: { query: ViewerBootstrapDocument },
-      result: {
-        data: {
-          __typename: 'Query',
-          viewer: {
-            __typename: 'Viewer',
-            username: 'le',
-            isAdmin: false,
-            mustChangePassword: false,
-            user: { __typename: 'User', id: VIEWER_USER_ID },
-            library: { __typename: 'Library', id: LIBRARY_ID },
-          },
-        },
-      },
-    });
 
     // `progressSet`'s response re-selects the full `ProgressRowFragment` —
     // see `use-progress-mutations.ts`'s own doc comment for why that's what
@@ -656,6 +824,7 @@ describe('BookPage', () => {
         [
           bookMock(),
           viewerBootstrapMock(),
+          chaptersMock(),
           progressSetMock({ currentChapter: 3, percentage: 0.25 }),
         ],
         { user: { username: 'le', isAdmin: false } }
@@ -687,7 +856,7 @@ describe('BookPage', () => {
       // more mocked responses" instead. The assertions below (the
       // progressbar unchanged, the heading still present) are the actual
       // check that nothing broke as a side effect.
-      await renderPage([bookMock(), viewerBootstrapMock()], {
+      await renderPage([bookMock(), viewerBootstrapMock(), chaptersMock()], {
         user: { username: 'le', isAdmin: false },
       });
 
@@ -710,7 +879,7 @@ describe('BookPage', () => {
     // is that proof — the same "closes on a clean delete = used a
     // resolvable id" shape the pre-migration REST version of this test used.
     it('issues progressDelete against the Progress global id, never documentId or the Book global id', async () => {
-      await renderPage([bookMock(), viewerBootstrapMock(), progressDeleteMock()], {
+      await renderPage([bookMock(), viewerBootstrapMock(), chaptersMock(), progressDeleteMock()], {
         user: { username: 'le', isAdmin: false },
       });
 

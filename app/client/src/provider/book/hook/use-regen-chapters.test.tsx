@@ -4,7 +4,8 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { BookRegenChaptersMutation, BookRegenChaptersMutationVariables } from '~/gql/graphql';
-import { BookDetailDocument, BookRegenChaptersDocument } from '~/graphql/book';
+import { BookRegenChaptersDocument } from '~/graphql/book';
+import { BookDetailDocument } from '~/page/book/query';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useRegenChapters } from './use-regen-chapters';
@@ -14,7 +15,7 @@ const BOOK_ID = 'book-1';
 const NEW_BOOK_ID = 'book-1-new-hash';
 
 // Seeds a full pre-regen `Book:<id>` entity (via the same document
-// `useBookDetail` reads) so the eviction test below actually proves
+// `page/book` reads) so the eviction test below actually proves
 // something: without a pre-existing entity, `cache.extract()` would never
 // contain `Book:<old-id>` in the first place, and "not.toContain" would
 // pass whether or not `update` ever ran.
@@ -36,13 +37,10 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
           description: '',
           publisher: '',
           publishDate: '',
-          addedAt: '2026-01-01T00:00:00.000Z',
           mtime: '2026-01-01T00:00:00.000Z',
           size: 0,
           pageCount: 0,
           chapterCount: 0,
-          chapterNames: null,
-          chapterSpineMap: [],
           subjects: [],
           seriesIndex: 0,
           hasCover: false,
@@ -51,8 +49,6 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
           series: null,
           progress: null,
           validation: null,
-          lineage: [],
-          pendingFix: null,
         },
       },
     },
