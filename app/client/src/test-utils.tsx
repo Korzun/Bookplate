@@ -91,6 +91,13 @@ interface RenderWithApolloOptions extends RenderWithProvidersOptions {
  * The transport links (auth/refresh, SSE) are deliberately NOT in this chain;
  * they have dedicated tests rather than riding along in every screen test.
  *
+ * It also mirrors production in what it does NOT set: `dataMasking` is absent
+ * here because it is absent in `provider/apollo/client.ts` — see that file's
+ * standing note for why the flag stays off. Keep the two in step. A test client
+ * whose masking semantics differ from the app's would have the entire suite
+ * pass under semantics we do not ship, which is worse than no coverage: it
+ * looks like proof.
+ *
  * Type your mocks as `MockedResponse<YourQueryType>` — an EXPLICIT annotation
  * on the mock itself (or its factory's return type), not just passing a bare
  * object literal into `mocks` below. `MockedResponse<TData>` only constrains
