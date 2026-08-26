@@ -1,71 +1,20 @@
 import { graphql } from '~/gql';
 
 /**
- * One progress row. `book` is NULLABLE by design — a device syncs progress for
- * documents that are not in this library, and those rows still render with the
- * raw `document` hash and no book link.
+ * `ProgressRowFragment` is colocated on `component/my-progress-row`, not
+ * declared here — `component/user-progress-row` re-points its import at that
+ * same component (codegen resolves `...ProgressRowFragment` by NAME across
+ * its `documents` glob, not via a JS import, so this split doesn't affect
+ * either document below).
  *
- * `id` is `Progress`'s computed global id — the cache key AND `progressDelete`'s
- * argument. It is deliberately NOT resolvable through `node(id:)`; `Progress` is
- * not a `Node`. `document` is the RAW content hash and is what `progressSet`
- * takes.
+ * `MyProgressListDocument` and `UserProgressListDocument` are likewise NOT
+ * here: both root a subtree that is conditionally MOUNTED (`Card`'s
+ * `isCollapsible`/`defaultCollapsed` never renders its children at all while
+ * collapsed), so each lives on the component that owns that subtree instead
+ * of a route — `MyProgressListDocument` on `component/my-progress-content`,
+ * `UserProgressListDocument` on `component/user-row-content`. See either
+ * component's own doc comment for the full reasoning (project ruling J).
  */
-export const ProgressRowFragment = graphql(`
-  fragment ProgressRowFragment on Progress {
-    id
-    document
-    percentage
-    currentChapter
-    device
-    timestamp
-    book {
-      id
-      title
-      author
-      hasCover
-      thumbnailUrl(width: 88)
-    }
-  }
-`);
-
-/**
- * The viewer's own progress. Forward-only — `Library.progress` rejects
- * `last`/`before`. Callers should pass `first: 50`, matching
- * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the server's cap is 100.
- *
- * `$first` is a VARIABLE in this document (not a literal), so
- * `Library.progress` is PRICED at its `maxSize` (100) regardless of what a
- * caller actually passes (`cost-limit.ts`'s `multiplierFor` prices a
- * variable-valued `first`/`last` at the field's max, not its default) — the
- * measured numbers below already reflect that worst case, not the 50 a
- * well-behaved caller sends.
- *
- * Measured (`npm run test:cost -w app/server`): breadth 32 (32.0%), complexity
- * 2507 (7.6%) of budget.
- */
-export const MyProgressListDocument = graphql(`
-  query MyProgressList($libraryId: ID!, $first: Int!, $after: String) {
-    node(id: $libraryId) {
-      id
-      ... on Library {
-        id
-        progress(first: $first, after: $after) {
-          edges {
-            cursor
-            node {
-              id
-              ...ProgressRowFragment
-            }
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
-      }
-    }
-  }
-`);
 
 /**
  * The collapsed card's subtitle, with NO rows fetched.
@@ -84,42 +33,6 @@ export const MyProgressCountDocument = graphql(`
       user {
         id
         progressCount
-      }
-    }
-  }
-`);
-
-/**
- * An admin viewing ANOTHER user's progress. Roots at `Query.user(id:)`, not
- * `node(id: $libraryId)` — the target is a different user's library, and
- * `UserRow` already holds their `userId`. `Query.user(id:)` is admin-only, which
- * is correct here: this row renders only for admins.
- *
- * Same `$first`-is-a-variable pricing as `MyProgressListDocument` above: the
- * `progress` connection prices at `maxSize` (100), not the 50 passed.
- *
- * Measured (`npm run test:cost -w app/server`): breadth 33 (33.0%), complexity
- * 2508 (7.6%) of budget.
- */
-export const UserProgressListDocument = graphql(`
-  query UserProgressList($userId: ID!, $first: Int!, $after: String) {
-    user(id: $userId) {
-      id
-      library {
-        id
-        progress(first: $first, after: $after) {
-          edges {
-            cursor
-            node {
-              id
-              ...ProgressRowFragment
-            }
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
       }
     }
   }

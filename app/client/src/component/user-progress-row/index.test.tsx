@@ -4,17 +4,14 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { ProgressRowFragment } from '~/component/my-progress-row';
 import { makeFragmentData } from '~/gql';
 import type {
   ProgressDeleteMutation,
   ProgressDeleteMutationVariables,
   ProgressRowFragmentFragment,
 } from '~/gql/graphql';
-import {
-  ProgressDeleteDocument,
-  ProgressRowFragment,
-  UserProgressListDocument,
-} from '~/graphql/progress';
+import { ProgressDeleteDocument } from '~/graphql/progress';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserProgressRow } from './index';
@@ -24,10 +21,31 @@ import { UserProgressRow } from './index';
 // stubbed here exactly like `MyProgressRow`'s own test file does, so these
 // tests exercise only the OPENER this row owns (the `Button` + `showLinkModal`
 // state + the `libraryId`/`progressId` props it passes).
-vi.mock('~/control', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/control')>();
+//
+// Deliberately NOT `importOriginal()` (an earlier version of this mock did):
+// `~/control`'s barrel re-exports `SetProgressModal`
+// (`control/set-progress-modal`), which imports `useSetMyProgress`/
+// `useDeleteProgress` from `~/provider/library` — a chain that reaches
+// `~/provider/library-target` (via `use-library-entries.ts`), which reaches
+// `component/user-row` (via `use-with-target-user.ts`'s `UserRowFragment`
+// import — a pre-existing, KEPT-provider layering choice, out of this
+// task's scope to restructure), which reaches THIS component's own family
+// (`user-row-content` -> `user-progress-row` -> `my-progress-row`) — a
+// genuine circular import back to `~/control` itself. `importOriginal()`
+// forces that whole real subtree to resolve before the mock settles, and
+// Vitest's module cache ends up binding this row's OWN `~/control` import
+// to the REAL (unmocked) module instead — this row's `LinkProgressModal`
+// then renders for real, and "opens the link modal when Link is clicked"
+// fails because the stub text never appears (seen-to-fail: restoring
+// `importOriginal()` reproduces this exact failure). `Button`/`ConfirmModal`
+// are pulled from their own leaf subpaths instead — neither imports
+// `~/provider/library` or anything else that could re-enter this cycle.
+vi.mock('~/control', async () => {
+  const { Button } = await import('~/control/button');
+  const { ConfirmModal } = await import('~/control/confirm-modal');
   return {
-    ...actual,
+    Button,
+    ConfirmModal,
     LinkProgressModal: ({ isOpen }: { isOpen: boolean }) =>
       isOpen ? <div>link-progress-modal</div> : null,
   };
@@ -81,36 +99,29 @@ const progressRow = (
 });
 
 /**
- * Writes the row into a REAL, normalized `InMemoryCache` (via `writeQuery`,
- * not a bare `cache.writeFragment` shortcut) so `Progress:<id>` genuinely
- * exists as an entity before a delete test runs — the same fixture-gap fix
- * `my-progress-row/index.test.tsx`'s `seedProgressEntity` makes, rooted at
- * `UserProgressListDocument` instead of `MyProgressListDocument` since
- * that's the query whose shape this admin screen's connection actually has.
- * `userId`/`first` used to key this write are arbitrary — `UserProgressRow`
- * itself never reads this query (it is fetch-free), so nothing else in this
- * test needs them to match anything.
+ * Writes the row into a REAL, normalized `InMemoryCache` (via
+ * `writeFragment`, mirroring `control/link-progress-modal/index.test.tsx`'s
+ * own `seedOrphanProgress`) so `Progress:<id>` genuinely exists as an
+ * entity before a delete test runs — the same fixture-gap fix
+ * `my-progress-row/index.test.tsx`'s `seedProgressEntity` makes.
+ *
+ * Deliberately NOT `client.writeQuery(UserProgressListDocument, ...)` (an
+ * earlier version of this helper did, and `my-progress-row`'s own
+ * `seedProgressEntity` doc comment explains the mechanism in full): that
+ * document is declared on `component/user-row-content`, which imports
+ * `Button` from `~/control` — pulling `~/control` into this test file's
+ * graph a SECOND way that, combined with this file's own
+ * `vi.mock('~/control', importOriginal)` below, silently re-binds this row
+ * to the REAL `LinkProgressModal` instead of the stub via a circular
+ * `~/component` barrel re-entry. `writeFragment` needs only
+ * `ProgressRowFragment` (imported from `~/component/my-progress-row`
+ * above), which does not trigger the same cycle on its own.
  */
 const seedProgressEntity = (client: ApolloClient, row: ProgressRowFragmentFragment) =>
-  client.writeQuery({
-    query: UserProgressListDocument,
-    variables: { userId: 'user-1', first: 50 },
-    data: {
-      __typename: 'Query',
-      user: {
-        __typename: 'User',
-        id: 'user-1',
-        library: {
-          __typename: 'Library',
-          id: 'lib-1',
-          progress: {
-            __typename: 'LibraryProgressConnection',
-            edges: [{ __typename: 'LibraryProgressConnectionEdge', cursor: row.id, node: row }],
-            pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
-          },
-        },
-      },
-    },
+  client.cache.writeFragment({
+    id: client.cache.identify({ __typename: 'Progress', id: row.id }),
+    fragment: ProgressRowFragment,
+    data: row,
   });
 
 const deleteSuccessMock = (

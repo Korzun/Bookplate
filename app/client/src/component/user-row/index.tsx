@@ -1,7 +1,7 @@
 import { useMutation } from '@apollo/client/react';
 import { Fragment, useCallback, useState } from 'react';
 
-import { Card } from '~/component';
+import { Card } from '~/component/card';
 import { Button, ConfirmModal, ResetPasswordButton } from '~/control';
 import { graphql, useFragment, type FragmentType } from '~/gql';
 import type { UserDeleteMutation } from '~/gql/graphql';
@@ -101,7 +101,10 @@ export const UserRow = ({ user }: UserRowProps) => {
           if (result.status !== 'ok') return;
 
           cache.evict({
-            id: cache.identify({ __typename: 'User', id: result.payload.deletedId }),
+            id: cache.identify({
+              __typename: 'User',
+              id: result.payload.deletedId,
+            }),
           });
         },
       });
@@ -141,7 +144,7 @@ export const UserRow = ({ user }: UserRowProps) => {
         }
       >
         <div className={styles.content}>
-          <UserRowContent userId={unmasked.id} username={unmasked.username} />
+          <UserRowContent userId={unmasked.id} username={unmasked.username} skip={false} />
         </div>
       </Card>
       <ConfirmModal

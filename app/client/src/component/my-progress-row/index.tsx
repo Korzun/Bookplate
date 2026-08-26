@@ -2,8 +2,7 @@ import cx from 'classnames';
 import { Fragment, useCallback, useState } from 'react';
 
 import { Button, ConfirmModal, LinkProgressModal } from '~/control';
-import { type FragmentType, useFragment } from '~/gql';
-import { ProgressRowFragment } from '~/graphql/progress';
+import { type FragmentType, graphql, useFragment } from '~/gql';
 import { AlertOctagonIcon } from '~/icon';
 import { useDeleteProgress } from '~/provider/library';
 import { useToast } from '~/provider/toast';
@@ -12,13 +11,50 @@ import { relativeTime } from '~/utils';
 import { ProgressIndicator } from '../progress-indicator';
 import { useStyle } from './style';
 
+/**
+ * Colocated: this is the one field selection every progress row (this one
+ * AND `component/user-progress-row`, which re-points its own import at this
+ * SAME export) renders. Previously declared in `graphql/progress.ts`; moved
+ * here to match `DeviceRowFragment`/`UserRowFragment`'s placement — codegen
+ * resolves `...ProgressRowFragment` by NAME across its `documents` glob, so
+ * `MyProgressListDocument`/`UserProgressListDocument` (each on the component
+ * that owns its own conditionally-mounted subtree — see either's own doc
+ * comment) keep spreading it with no import needed.
+ *
+ * `book` is NULLABLE by design — a device syncs progress for documents that
+ * are not in this library, and those rows still render with the raw
+ * `document` hash and no book link.
+ *
+ * `id` is `Progress`'s computed global id — the cache key AND
+ * `progressDelete`'s argument. It is deliberately NOT resolvable through
+ * `node(id:)`; `Progress` is not a `Node`. `document` is the RAW content
+ * hash and is what `progressSet` takes.
+ */
+export const ProgressRowFragment = graphql(`
+  fragment ProgressRowFragment on Progress {
+    id
+    document
+    percentage
+    currentChapter
+    device
+    timestamp
+    book {
+      id
+      title
+      author
+      hasCover
+      thumbnailUrl(width: 88)
+    }
+  }
+`);
+
 interface MyProgressRowProps {
   progress: FragmentType<typeof ProgressRowFragment>;
   /**
-   * The viewer's own Library global id, off `MyProgressContent`'s
-   * `useMyProgressList()` — the SAME id that list itself is rooted on, not a
-   * second `useCurrentLibraryId()` call per row. Threaded straight into
-   * `LinkProgressModal`'s picker (`LinkPickerBooksDocument`'s
+   * The viewer's own Library global id, off `MyProgressContent`'s own
+   * `useCurrentLibraryId()` call — the SAME id that list itself is rooted
+   * on, not a second `useCurrentLibraryId()` call per row. Threaded
+   * straight into `LinkProgressModal`'s picker (`LinkPickerBooksDocument`'s
    * `node(id: $libraryId)`).
    */
   libraryId: string | undefined;
@@ -26,11 +62,11 @@ interface MyProgressRowProps {
 
 /**
  * Fetch-free: renders entirely off the fragment ref its parent
- * (`MyProgressContent`) already fetched as part of `MyProgressList` — no
- * `useBook` (the old REST per-row book lookup) and no `useMyProgress` (the
- * old REST per-row progress lookup). `useFragment` is called exactly once,
- * unconditionally, in this component's own body — see
- * `use-my-progress-list.ts`'s doc comment for why the hook returns a masked
+ * (`MyProgressContent`) already fetched as part of `MyProgressListDocument`
+ * — no `useBook` (the old REST per-row book lookup) and no `useMyProgress`
+ * (the old REST per-row progress lookup). `useFragment` is called exactly
+ * once, unconditionally, in this component's own body — see
+ * `MyProgressContent`'s doc comment for why that component returns a masked
  * ref instead of unmasking centrally.
  *
  * `book` is NULLABLE — a device syncs progress for documents not in this
@@ -40,9 +76,9 @@ interface MyProgressRowProps {
  * (review of an earlier task) corrected a version of this component that
  * dropped the button entirely.
  *
- * `LinkProgressModal` is now GraphQL-backed (Task 6): the modal takes
+ * `LinkProgressModal` is GraphQL-backed (Task 6): the modal takes
  * `libraryId` (this row's own `libraryId` prop, off `MyProgressContent`'s
- * `useMyProgressList()`) and `progressId={row.id}` instead of the old REST
+ * `useCurrentLibraryId()`) and `progressId={row.id}` instead of the old REST
  * modal's `username` — see the modal's own doc comment for why. `useUsername`
  * is gone from this component for the same reason: it existed only to feed
  * the old modal's `username` prop.

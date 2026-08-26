@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { CardDivider, FixReview, UploadZone } from '~/component';
+import { CardDivider } from '~/component/card-divider';
+import { FixReview } from '~/component/fix-review';
+import { UploadZone } from '~/component/upload-zone';
 import { CheckIcon } from '~/icon';
 import type { MetadataFix, ReplaceAnalysis } from '~/provider/book';
 import { useReplaceBook } from '~/provider/book';

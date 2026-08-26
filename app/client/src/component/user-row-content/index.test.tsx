@@ -3,17 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProgressRowFragmentFragment, UserProgressListQuery } from '~/gql/graphql';
-import { UserProgressListDocument } from '~/graphql/progress';
 import { renderWithApollo } from '~/test-utils';
 
-import { UserRowContent } from './index';
+import { UserProgressListDocument, UserRowContent } from './index';
 
 const USER_ID = 'USER-1';
 const PAGE_SIZE = 50;
 
-// `LinkProgressModal` is untouched by this task (still REST-backed) — stubbed
-// exactly like `user-progress-row/index.test.tsx` does, so these tests never
-// have to satisfy its own (unrelated) data requirements.
+// `LinkProgressModal` is stubbed here exactly like `user-progress-row/index.test.tsx`
+// does, so these tests never have to satisfy its own (unrelated) data
+// requirements.
 vi.mock('~/control', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/control')>();
   return {
@@ -54,7 +53,10 @@ const connection = (
       id: 'lib-1',
       progress: {
         __typename: 'LibraryProgressConnection',
-        edges: edges.map((e) => ({ __typename: 'LibraryProgressConnectionEdge' as const, ...e })),
+        edges: edges.map((e) => ({
+          __typename: 'LibraryProgressConnectionEdge' as const,
+          ...e,
+        })),
         pageInfo: { __typename: 'PageInfo', ...pageInfo },
       },
     },
@@ -86,7 +88,7 @@ const fetchMoreMock = (
 
 describe('UserRowContent', () => {
   it('shows a loading message while the first page is in flight', () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: false,
@@ -98,7 +100,7 @@ describe('UserRowContent', () => {
   });
 
   it('renders a row per progress entry once loaded', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         firstPageMock(
           [
@@ -115,7 +117,7 @@ describe('UserRowContent', () => {
   });
 
   it('shows the empty message when there is no synced progress', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [firstPageMock([], { hasNextPage: false, endCursor: null })],
     });
 
@@ -123,7 +125,7 @@ describe('UserRowContent', () => {
   });
 
   it('shows an error message when the first page fails to load', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         {
           request: {
@@ -145,7 +147,7 @@ describe('UserRowContent', () => {
   // if `loadMore` accidentally refired that query, `MockLink` would throw
   // "No more mocked responses" for it rather than silently double-loading.
   it('grows the list via Load more without refetching page one', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: true,
@@ -170,7 +172,7 @@ describe('UserRowContent', () => {
   });
 
   it('does not render a Load more affordance when there is no next page', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: false,
@@ -184,13 +186,13 @@ describe('UserRowContent', () => {
   });
 
   // Proves `UserRowContent` passes the ADMIN-HELD `userId` prop straight
-  // through to `useUserProgressList` — not a `username`-derived id — by
-  // using a deliberately different literal (`USER_ID` here, distinct from
+  // through to the query — not a `username`-derived id — by using a
+  // deliberately different literal (`USER_ID` here, distinct from
   // `username="alice"`'s own value) as the ONLY variables `MockLink` will
   // match. If the component tried to resolve/send anything else, this mock
   // would go unmatched and `MockLink` would throw.
   it('roots the query on the userId prop, not the username', async () => {
-    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" />, {
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
       mocks: [
         firstPageMock([{ cursor: 'c1', node: progressRow('p1', 'Dune') }], {
           hasNextPage: false,
@@ -200,5 +202,19 @@ describe('UserRowContent', () => {
     });
 
     await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
+  });
+
+  // Was previously pinned by the now-deleted `use-user-progress-list.test.tsx`
+  // (Task 4 dissolved that hook into this component). `skip` stays an
+  // explicit, required prop specifically so this can gate the query
+  // directly, without depending on `Card`'s mount/unmount timing
+  // (`component/user-row`) as an implicit contract.
+  it('fetches nothing while skip is true, even with a valid user id', () => {
+    // No mocks at all: if the component fired UserProgressList anyway,
+    // MockLink would throw "No more mocked responses" and fail this test
+    // loudly.
+    renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip />, { mocks: [] });
+
+    expect(screen.getByText('No progress synced')).toBeInTheDocument();
   });
 });
