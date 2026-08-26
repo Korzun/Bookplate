@@ -12,7 +12,7 @@ import { LibraryPendingFixesDocument, UploadConfigDocument } from '~/graphql/upl
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { renderWithApollo } from '~/test-utils';
 
-import { useUploadQueue } from './hook';
+import { useUploadQueue } from './hook/use-upload-queue';
 import { UploadProvider } from './provider';
 
 const LIBRARY_ID = 'TGlicmFyeTox';

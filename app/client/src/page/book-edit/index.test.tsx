@@ -46,7 +46,7 @@ import { BookEditDocument } from './index';
 import { BookEditPage } from './index';
 
 /** A `pendingFix` selection (`BookEditDocument`'s own inline field, Task
- * 11 — no `usePendingFixesForBook`/`LibraryPendingFixesDocument` lookup
+ * 11 — no separate `LibraryPendingFixesDocument` lookup
  * anymore: the guard now reads straight off the book this page already
  * loads). `proposals` non-empty is what makes it a real conflict. */
 function pendingFixOf(proposals: unknown[] = [proposal()]) {
@@ -333,8 +333,9 @@ describe('BookEditPage', () => {
     });
   });
 
-  // Proves `onDismissAndEdit` resolves through `useFixActions` (this book's
-  // own GLOBAL id) rather than a queue-item id, and that the guard clears
+  // Proves `onDismissAndEdit` resolves through this page's OWN
+  // `BookResolvePendingFixDocument` mutation, keyed on this book's GLOBAL id
+  // rather than a queue-item id, and that the guard clears
   // via ordinary cache normalization once the mutation's `library
   // { pendingFixes }` response updates the shared `PendingFix:<id>` entity —
   // no `UploadProvider`/upload queue involved at all.

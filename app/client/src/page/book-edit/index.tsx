@@ -1,11 +1,11 @@
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { useNavigate, useParams } from 'react-router';
 
 import { BookEditForm, Page } from '~/component';
 import { UploadFixGuardModal } from '~/component/upload-fix-guard-modal';
 import { graphql } from '~/gql';
+import { BookResolvePendingFixDocument } from '~/graphql/upload';
 import { useCurrentLibraryId } from '~/provider/library-target';
-import { useFixActions } from '~/provider/upload';
 import { path } from '~/router';
 
 import { useStyle } from './style';
@@ -138,14 +138,31 @@ export const BookEditPage = () => {
     book?.pendingFix && book.pendingFix.state.proposals.some((p) => p.to !== null)
       ? book.pendingFix
       : undefined;
-  // `useFixActions` directly, not `useUploadQueue()`: the dismiss action
-  // only ever needs this book's own GLOBAL id (`book.id`, always in hand
-  // here), never the queue's per-render item id — see this task's report
-  // for the id-mismatch a queue-routed dismiss would have risked for a
-  // book whose upload is still a live transport item in this tab. This is
-  // also what drops the page's dependency on `UploadProvider` entirely, not
-  // merely for conflict detection.
-  const { dismissFixes } = useFixActions();
+  // The mutation is called DIRECTLY here, not through `useUploadQueue()`:
+  // the dismiss action only ever needs this book's own GLOBAL id (`book.id`,
+  // always in hand here), never the queue's per-render item id — which for a
+  // book whose upload is still a live transport item in this tab would be a
+  // different string entirely. That is what keeps this page independent of
+  // `UploadProvider` altogether, not merely for conflict detection.
+  //
+  // NO `update` function, deliberately: a bulk DISMISS touches only the
+  // pending-fix row, and the payload's own `library { pendingFixes }`
+  // selection reconciles it through ordinary normalization — the guard modal
+  // above and the row list share one `PendingFix:<id>` entity. Only ACCEPT
+  // and UNDO rewrite the EPUB and so need `Library.entries` evicted; the
+  // upload queue's engine owns that branch, and this page can never reach it.
+  //
+  // `BookResolvePendingFixDocument` lives in `~/graphql/upload.ts`, a leaf
+  // module rather than this route file, because the kept `UploadProvider`
+  // reads it too.
+  const [resolvePendingFix] = useMutation(BookResolvePendingFixDocument);
+  // Errors are swallowed on purpose, and the catch is what does it: the
+  // caller below is a fire-and-forget click handler with nowhere to render a
+  // message, and an uncaught rejection out of `void` would surface as an
+  // unhandled promise rejection instead. The guard modal simply stays up if
+  // the dismiss fails, which is the safe outcome.
+  const dismissPendingFixes = (bookGlobalId: string) =>
+    resolvePendingFix({ variables: { id: bookGlobalId, action: 'DISMISS' } }).catch(() => {});
 
   if (loading) {
     return (
@@ -190,7 +207,7 @@ export const BookEditPage = () => {
         <UploadFixGuardModal
           isOpen
           onReview={() => navigate(path.upload())}
-          onDismissAndEdit={() => void dismissFixes(book.id)}
+          onDismissAndEdit={() => void dismissPendingFixes(book.id)}
           onCancel={() => navigate(path.library())}
         />
       ) : (

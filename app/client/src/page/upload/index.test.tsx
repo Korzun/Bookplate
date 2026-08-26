@@ -398,7 +398,7 @@ describe('UploadPage — Accept all / Reject all', () => {
       await Promise.resolve();
     });
 
-    // `usePendingFixes` never got a resolved library id in this harness (no
+    // The pending-fix read never got a resolved library id in this harness (no
     // `ViewerBootstrapDocument` mock), so the mutation's own cache write is
     // never observed by an active query — the proposal stays visible exactly
     // once, same as before the click. `acceptCalls` below is the real proof
@@ -481,7 +481,7 @@ describe('UploadPage — Accept all / Reject all', () => {
 
     // Once the mutation resolves, the bulk apply completes and the guard
     // lifts — the card's own Accept/Reject re-enable. (This harness has no
-    // resolved library id, so `usePendingFixes` never actively watches the
+    // resolved library id, so the pending-fix read never actively watches the
     // mutation's cache write; the proposal itself staying listed — rather
     // than disappearing — is a harness artifact, not what this test is
     // about. `dismissFix`/`applyFix` mock-driven end-to-end resolution is
