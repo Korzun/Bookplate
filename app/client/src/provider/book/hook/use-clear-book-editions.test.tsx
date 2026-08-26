@@ -4,7 +4,8 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { BookClearEditionsMutation, BookClearEditionsMutationVariables } from '~/gql/graphql';
-import { BookClearEditionsDocument, BookDetailDocument } from '~/graphql/book';
+import { BookClearEditionsDocument } from '~/graphql/book';
+import { BookDetailDocument } from '~/page/book/query';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useClearBookEditions } from './use-clear-book-editions';
@@ -30,7 +31,7 @@ const clearEditionsMock = (
 });
 
 // Seeds a full pre-clear `Book:<id>` entity (via the same document
-// `useBookDetail` reads) at a non-zero `deviceEditionCount`, so the
+// `page/book` reads) at a non-zero `deviceEditionCount`, so the
 // zeroed-count assertion actually proves an update happened rather than
 // vacuously reading a freshly-created field.
 const seedBook = (
@@ -54,13 +55,10 @@ const seedBook = (
           description: '',
           publisher: '',
           publishDate: '',
-          addedAt: '2026-01-01T00:00:00.000Z',
           mtime: '2026-01-01T00:00:00.000Z',
           size: 0,
           pageCount: 0,
           chapterCount: 0,
-          chapterNames: null,
-          chapterSpineMap: [],
           subjects: [],
           seriesIndex: 0,
           hasCover: false,
@@ -69,8 +67,6 @@ const seedBook = (
           series: null,
           progress: null,
           validation: null,
-          lineage: [],
-          pendingFix: null,
         },
       },
     },

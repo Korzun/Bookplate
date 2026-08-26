@@ -27,5 +27,5 @@ export { ValidationDetailModal } from './validation-detail-modal';
 
 export type { ColumnDescriptor, FieldRow } from './field-list';
 export type { FooterAction } from './page-footer-actions';
-export type { PageActionItem } from './page-actions-menu';
+export type { PageActionIntentProps, PageActionItem } from './page-actions-menu';
 export type { SelectOption, SelectProps } from './select';

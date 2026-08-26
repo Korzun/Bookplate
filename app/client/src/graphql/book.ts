@@ -50,6 +50,20 @@ export const ValidationFragment = graphql(`
  * `bookUnlinkDocument`'s `documentId`, which is itself a `String!` document id,
  * not an `ID!` — so this is a display/document id, not a book identifier, and it
  * does not violate "the client never holds a raw book id".
+ *
+ * **Why this fragment is NOT colocated into `control/book-lineage-modal`**,
+ * the component that actually renders it (2026-08-26, the lazy-split task).
+ * It has TWO spread sites in two different modules — `BookLineageDocument`
+ * (`page/book/query.ts`, the route's lazy read) and
+ * `BookUnlinkDocumentDocument` below, whose payload re-selects the whole
+ * list so the cache refreshes without a refetch — which makes it a SHARED
+ * leaf, and shared GraphQL leaves live here. The placement is also forced:
+ * every file under `~/graphql/` imports nothing but `~/gql`, and moving
+ * this fragment into the modal would make THIS file import that component
+ * and close a real import cycle back through the modal's own subtree
+ * (`book-lineage-modal → book-lineage-row → book-lineage-merge-row →
+ * unlink-book-lineage-button → ~/graphql/book.ts`) — precisely the hazard
+ * `src/test-utils.tsx`'s standing note documents.
  */
 export const LineageEntryFragment = graphql(`
   fragment LineageEntryFragment on LinkedDocument {
@@ -61,96 +75,12 @@ export const LineageEntryFragment = graphql(`
 `);
 
 /**
- * The richest document this migration has produced: `book` plus its
- * `lineage` list, fanning out from a single `Library.book(id:)` lookup — no
- * list connection above it, so none of these fields amplify the way
- * `LibraryEntries`' ×100 `entries` does (`page/library/index.tsx`). Breadth is
- * the tight axis here because breadth counts SELECTED FIELDS, not fan-out
- * — an original version of this document that also carried
- * `validation { ...ValidationFragment }` measured breadth 69 (69.0%), one
- * point off the 70% gate.
- *
- * 2026-08-13, human ruling (task-4 review): that margin was too thin for
- * later migration steps to extend safely, so `validation`'s expensive
- * payload (`threshold`, `validatedAt`, `counts`, `messages`) was split out
- * into `BookValidationDocument` below, fired lazily when the validation
- * modal opens. This document keeps only `validation { id valid }` —
- * load-bearing, not a leftover: `editingBlocked` gates the "Edit metadata"
- * action on `validation?.valid !== true` and is evaluated on page LOAD, not
- * on modal open, so it cannot wait for the lazy query.
- *
- * NOTE for future trims: a page-size cut (e.g. `messages(first: 20)`) only
- * moves COMPLEXITY, which was already a harmless 4.2% here — breadth is 1
- * per selection in the expanded tree, UNWEIGHTED by any connection
- * multiplier (`cost-limit.ts:598-666`). If breadth ever gets tight again on
- * a document like this one, cut FIELDS (or split them out, as here), not
- * page sizes.
- *
- * Measured (`test:cost -w app/server`): breadth 50 (50.0%), complexity 164
- * (0.5%) of budget — comfortably under the 70% gate on both axes after the
- * split (was 69/69.0% breadth, 1371/4.2% complexity with `validation`
- * inline). Breadth 50 includes task 10b's `documentId` scalar (49 -> 50,
- * one point per the field's own doc comment) — a display-only raw
- * content-hash the book-lineage modal needs for its top row.
- */
-export const BookDetailDocument = graphql(`
-  query BookDetail($libraryId: ID!, $bookId: ID!) {
-    node(id: $libraryId) {
-      id
-      ... on Library {
-        id
-        book(id: $bookId) {
-          id
-          documentId
-          title
-          author
-          description
-          publisher
-          publishDate
-          addedAt
-          mtime
-          size
-          pageCount
-          chapterCount
-          chapterNames
-          chapterSpineMap
-          subjects
-          seriesIndex
-          hasCover
-          coverUrl
-          deviceEditionCount
-          series {
-            id
-            name
-          }
-          progress {
-            id
-            percentage
-            currentChapter
-          }
-          validation {
-            id
-            valid
-          }
-          lineage {
-            ...LineageEntryFragment
-          }
-          pendingFix {
-            id
-          }
-        }
-      }
-    }
-  }
-`);
-
-/**
  * The lazy half of the 2026-08-13 split (see `BookDetailDocument`'s doc
- * comment): fired only when the validation modal opens, not on page load.
- * `BookDetail` deliberately keeps its own cheap `validation { id valid }`
- * for `editingBlocked`, evaluated eagerly on load — this document carries
- * everything else `ValidationFragment` selects (`threshold`, `validatedAt`,
- * `counts`, `messages`).
+ * comment, now in `page/book/query.ts`): fired only when the validation
+ * modal opens, not on page load. `BookDetail` deliberately keeps its own
+ * cheap `validation { id valid }` for `editingBlocked`, evaluated eagerly
+ * on load — this document carries everything else `ValidationFragment`
+ * selects (`threshold`, `validatedAt`, `counts`, `messages`).
  *
  * `Validation.id` is byte-identical to the owning Book's global id
  * (server-side `encodeGlobalID('Book', [userId, bookId])`), so this
@@ -315,13 +245,15 @@ export const BookClearEditionsDocument = graphql(`
  * lineage list, so Apollo's own normalization overwrites the whole array on
  * the existing `Book:<id>` entity — the removed entry is simply absent from
  * the new array on the next read. No hand-written `update` function, and no
- * client-side refetch: `BookLineageModal` (task 10) takes `lineage` as a
- * prop rather than fetching it itself, so once a LIVE consumer (`
- * useBookDetail`, wired in a later task) watches `Book.lineage` through
- * `BookDetailDocument`, this mutation's normalization alone is what makes
- * the unlinked row disappear — asserted directly against the cache/DOM in
- * `book-lineage-modal/index.test.tsx`, per Global Constraints' instruction
- * not to reconstruct what normalization already does.
+ * client-side refetch: `BookLineageModal` takes `lineage` as a prop rather
+ * than fetching it itself, and its LIVE consumer — `page/book`'s
+ * `BookLineageDocument` (`page/book/query.ts`), which roots identically to
+ * this payload's `book { id … }` and therefore shares the SAME `Book:<id>`
+ * entity — watches `Book.lineage` through the cache, so this mutation's
+ * normalization alone is what makes the unlinked row disappear. Asserted
+ * directly against the cache/DOM in `book-lineage-modal/index.test.tsx`,
+ * per Global Constraints' instruction not to reconstruct what
+ * normalization already does.
  */
 export const BookUnlinkDocumentDocument = graphql(`
   mutation BookUnlinkDocument($id: ID!, $documentId: String!) {

@@ -5,11 +5,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { makeFragmentData, type FragmentType } from '~/gql';
 import type { LineageEntryFragmentFragment } from '~/gql/graphql';
-import {
-  BookDetailDocument,
-  BookUnlinkDocumentDocument,
-  LineageEntryFragment,
-} from '~/graphql/book';
+import { BookUnlinkDocumentDocument, LineageEntryFragment } from '~/graphql/book';
+import { BookLineageDocument } from '~/page/book/query';
 import { renderWithApollo } from '~/test-utils';
 
 import { BookLineageModal } from './index';
@@ -251,11 +248,13 @@ describe('BookLineageModal', () => {
    * (`graphql/book.ts`), so Apollo's own normalization overwrites the array
    * on the `Book` entity — the modal itself never calls `refetch` (it has
    * none; it doesn't fetch at all). Proved here with a harness that reads
-   * `Book.lineage` through a LIVE `useQuery(BookDetailDocument, {
+   * `Book.lineage` through a LIVE `useQuery(BookLineageDocument, {
    * fetchPolicy: 'cache-only' })` (seeded directly via `client.cache.
    * writeQuery`, not a network mock) and re-renders the modal with whatever
-   * that query returns — exactly the shape a future `useBookDetail` consumer
-   * will have. `mocks` carries exactly ONE entry, for the mutation alone —
+   * that query returns — `BookLineageDocument` being the real, LAZY read
+   * `page/book` fires when this modal opens (`page/book/query.ts`), and
+   * rooted so it normalizes onto the same `Book:<id>` entity the mutation
+   * payload writes. `mocks` carries exactly ONE entry, for the mutation alone —
    * NOT because a stray refetch would otherwise starve `MockLink` (the
    * harness's `cache-only` policy never touches the link regardless, and the
    * modal has no fetch machinery left to attempt one either way), but
@@ -267,7 +266,7 @@ describe('BookLineageModal', () => {
    */
   it('removes an unlinked merge row without a refetch', async () => {
     function Harness() {
-      const { data } = useQuery(BookDetailDocument, {
+      const { data } = useQuery(BookLineageDocument, {
         variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID },
         fetchPolicy: 'cache-only',
       });
@@ -277,7 +276,7 @@ describe('BookLineageModal', () => {
         <BookLineageModal
           isOpen
           bookId={BOOK_ID}
-          documentId={book?.documentId ?? DOCUMENT_ID}
+          documentId={DOCUMENT_ID}
           bookTitle="A Wizard of Earthsea"
           lineage={book?.lineage ?? []}
           onClose={noop}
@@ -307,7 +306,7 @@ describe('BookLineageModal', () => {
 
     act(() => {
       client.cache.writeQuery({
-        query: BookDetailDocument,
+        query: BookLineageDocument,
         variables: { libraryId: LIBRARY_ID, bookId: BOOK_ID },
         data: {
           __typename: 'Query',
@@ -317,29 +316,13 @@ describe('BookLineageModal', () => {
             book: {
               __typename: 'Book',
               id: BOOK_ID,
-              documentId: 'a'.repeat(32),
-              title: 'A Wizard of Earthsea',
-              author: 'Le Guin',
-              description: '',
-              publisher: '',
-              publishDate: '',
               addedAt: '2026-01-01T00:00:00.000Z',
-              mtime: '2026-01-01T00:00:00.000Z',
-              size: 0,
-              pageCount: 0,
-              chapterCount: 0,
-              chapterNames: null,
-              chapterSpineMap: [],
-              subjects: [],
-              seriesIndex: 0,
-              hasCover: false,
-              coverUrl: '',
-              deviceEditionCount: 0,
-              series: null,
-              progress: null,
-              validation: null,
-              lineage: [rawEntry(mergeEntry)],
-              pendingFix: null,
+              lineage: [
+                {
+                  __typename: 'LinkedDocument' as const,
+                  ...makeFragmentData(rawEntry(mergeEntry), LineageEntryFragment),
+                },
+              ],
             },
           },
         },

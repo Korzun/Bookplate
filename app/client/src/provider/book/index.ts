@@ -1,5 +1,4 @@
 export {
-  useBookDetail,
   useBookEdit,
   useBookListFilter,
   useBookValidation,
@@ -19,8 +18,6 @@ export type { BookListFilter, MetadataFix } from './type';
 export type {
   FetchSeriesNextIndex,
   ReplaceAnalysis,
-  BookDetail,
-  UseBookDetail,
   BookEditBook,
   UseBookEdit,
   UseBookValidation,

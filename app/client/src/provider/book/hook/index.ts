@@ -1,5 +1,3 @@
-export { useBookDetail } from './use-book-detail';
-export type { BookDetail, UseBookDetail } from './use-book-detail';
 export { useBookEdit } from './use-book-edit';
 export type { BookEditBook, UseBookEdit } from './use-book-edit';
 export { useBookListFilter } from './use-book-list-filter';

@@ -3,7 +3,8 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { BookValidateMutation, BookValidateMutationVariables } from '~/gql/graphql';
-import { BookDetailDocument, BookValidateDocument } from '~/graphql/book';
+import { BookValidateDocument } from '~/graphql/book';
+import { BookDetailDocument } from '~/page/book/query';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { useValidateBook } from './use-validate-book';
@@ -40,8 +41,8 @@ const validateSuccessMock = (
   },
 });
 
-// Same shallow `Book.validation { id valid }` shape `use-book-detail.test.tsx`
-// seeds with — `useValidateBook` relies on `Validation.id` being
+// Same shallow `Book.validation { id valid }` shape `page/book`'s own
+// `BookDetailDocument` selects — `useValidateBook` relies on `Validation.id` being
 // byte-identical to the owning Book's global id (`graphql/book.ts`'s doc
 // comment) so the mutation's fuller payload merges onto the SAME
 // `Validation:<id>` entity this establishes, rather than writing a second,
@@ -67,13 +68,10 @@ const seedBookDetail = (
           description: '',
           publisher: '',
           publishDate: '',
-          addedAt: '2026-01-01T00:00:00.000Z',
           mtime: '2026-01-01T00:00:00.000Z',
           size: 0,
           pageCount: 0,
           chapterCount: 0,
-          chapterNames: null,
-          chapterSpineMap: [],
           subjects: [],
           seriesIndex: 0,
           hasCover: false,
@@ -82,8 +80,6 @@ const seedBookDetail = (
           series: null,
           progress: null,
           validation: { __typename: 'Validation', id: BOOK_ID, valid },
-          lineage: [],
-          pendingFix: null,
         },
       },
     },
