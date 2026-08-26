@@ -4,7 +4,7 @@ import { Fragment, useCallback, useState } from 'react';
 import { Button, ConfirmModal, LinkProgressModal } from '~/control';
 import { type FragmentType, graphql, useFragment } from '~/gql';
 import { AlertOctagonIcon } from '~/icon';
-import { useDeleteProgress } from '~/provider/library';
+import { useDeleteProgress } from '~/lib/use-progress-mutations';
 import { useToast } from '~/provider/toast';
 import { relativeTime } from '~/utils';
 
