@@ -136,8 +136,9 @@ function buildLineageRows(
  * `addedAt` all arrive as props (`page/book`, task 11, has all five).
  * `lineage` stays MASKED at the type level until `useFragment` unmasks it
  * here, this component's own single, unconditional call — the same
- * convention `useBookDetail`'s doc comment on `lineage` describes for its
- * future callers.
+ * convention `page/book/query.ts`'s doc comment on `lineage` describes for
+ * its callers (that reasoning lived on the deleted `useBookDetail` hook
+ * until Task 8).
  *
  * No loading state: that belonged to the REST-era fetch this component no
  * longer performs. It DOES take an `error` prop, though — see that prop's

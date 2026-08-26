@@ -59,9 +59,11 @@ const deviceListMock = (): MockedResponse<DeviceListQuery> => ({
   },
 });
 
-// The always-present create `<DeviceForm />` calls `useUserList()`
-// unconditionally (gated only by `isAdmin`, not by create/edit mode), which
-// fires this query for the admin viewer this test renders as.
+// The always-present create `<DeviceForm />` reads `UserListDocument`
+// directly — `useQuery(UserListDocument, { skip: !isAdmin })`, gated only by
+// `isAdmin`, not by create/edit mode — which fires this query for the admin
+// viewer this test renders as. (Said `useUserList()` until the
+// end-of-project sweep; Task 2 deleted that hook with `provider/user`.)
 const userListMock = (): MockedResponse<UserListQuery> => ({
   request: { query: UserListDocument },
   result: {

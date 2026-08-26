@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
+  UserListQuery,
 } from '~/gql/graphql';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
@@ -489,5 +491,80 @@ describe('UploadPage — Accept all / Reject all', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^accept$/i })).not.toHaveAttribute('aria-disabled')
     );
+  });
+});
+
+// ── The `UserListDocument` admin gate ────────────────────────────────────────
+//
+// `UploadPage` reads `UserListDocument` behind `skip: !isAdmin`, and only
+// ever uses its LENGTH (the admin-only "No users registered" empty state).
+// Nothing a non-admin sees changes if that gate regresses — the request just
+// goes out, the server answers `users: null` + `FORBIDDEN` (`Viewer.users` is
+// admin-gated), and `errorPolicy: 'none'` discards the whole result. So the
+// gate is pinned by a REQUEST COUNTER rather than by rendered output.
+//
+// `request.variables` as a FUNCTION is MockLink's variable-matcher form: it
+// runs SYNCHRONOUSLY inside `MockLink.request()`'s `mocks.findIndex(...)`
+// (`@apollo/client/testing/core/mocking/mockLink.js`), in the same tick the
+// operation is issued, so the count is already non-zero before the first
+// `await` below and the assertion fails CLOSED. Counting on delivery (a
+// `result` function) would instead race MockLink's random 20-50ms
+// `realisticDelay`. A "queue no mock and let MockLink complain" test would
+// not work at all here: MockLink does not throw on an unmatched request, it
+// `console.warn`s and returns an asynchronously-erroring observable.
+const userListRequests = { count: 0 };
+
+const countingUserListMock = (): MockedResponse<UserListQuery> => ({
+  request: {
+    query: UserListDocument,
+    variables: function userListVariables() {
+      userListRequests.count += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
+  result: {
+    data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } },
+  },
+});
+
+describe('UploadPage — UserList admin gate', () => {
+  beforeEach(() => {
+    userListRequests.count = 0;
+  });
+
+  // Seen-to-fail: `skip: !isAdmin` -> `skip: false` in `./index.tsx` makes
+  // this 1.
+  it('does not issue the UserList query for a non-admin viewer', async () => {
+    // The mock IS queued (and the viewer defaults to non-admin). Queuing it
+    // is load-bearing: `MockLink.getMockedResponses()` keys by query, so with
+    // an empty `mocks` array the matcher function would never be consulted
+    // and the counter would read 0 even for a query that DID fire — a
+    // fail-open test.
+    renderWithApollo(
+      <UploadProvider>
+        <UploadPage />
+      </UploadProvider>,
+      { mocks: [countingUserListMock()] }
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(userListRequests.count).toBe(0);
+  });
+
+  // The other side of the same gate, so the counter above is known to be
+  // wired to a query that CAN fire.
+  it('issues the UserList query once for an admin viewer', async () => {
+    renderWithApollo(
+      <UploadProvider>
+        <UploadPage />
+      </UploadProvider>,
+      { mocks: [countingUserListMock()], user: { username: 'admin', isAdmin: true } }
+    );
+
+    await waitFor(() => expect(userListRequests.count).toBe(1));
   });
 });

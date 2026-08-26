@@ -1,6 +1,6 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
@@ -33,8 +33,30 @@ const user = (overrides: { id?: string; username?: string; libraryId?: string })
   library: { __typename: 'Library' as const, id: overrides.libraryId ?? 'LIB-ALICE' },
 });
 
+/**
+ * `request.variables` is MockLink's VARIABLE-MATCHER form (a function, not an
+ * object): `MockLink.request()` calls it SYNCHRONOUSLY from its own
+ * `mocks.findIndex(...)`
+ * (`@apollo/client/testing/core/mocking/mockLink.js`), in the same tick the
+ * operation is issued. `UserListDocument` takes no variables, so the matcher
+ * always returns `true` — the COUNT is the point: it is what pins
+ * `skip: !isAdmin` on this hook's own query (see the non-admin case below).
+ * Counting on DELIVERY instead (a `result` function) would race MockLink's
+ * random 20-50ms `realisticDelay`; counting at request time fails CLOSED.
+ * Note this is the `variables` FIELD inside `request` — a top-level
+ * `variableMatcher` key is silently ignored by current MockLink.
+ */
+const userListRequests = { count: 0 };
+
 const userListMock = (users: ReturnType<typeof user>[]): MockedResponse<UserListQuery> => ({
-  request: { query: UserListDocument },
+  request: {
+    query: UserListDocument,
+    variables: function userListVariables() {
+      userListRequests.count += 1;
+      return true;
+    },
+  },
+  maxUsageCount: Infinity,
   result: {
     data: {
       __typename: 'Query',
@@ -47,8 +69,10 @@ const userListMock = (users: ReturnType<typeof user>[]): MockedResponse<UserList
  * Renders `useWithTargetUser` inside a real `LibraryTargetProvider`
  * (`useLibraryTarget` reads `localStorage` through it) plus `renderWithApollo`
  * for `UserListDocument`. `isAdmin` drives `renderWithApollo`'s own
- * `AuthContext` value, same as `use-user-list.test.tsx`'s `renderUserList` —
- * no JWT/`AuthProvider` needed since `useIsAdmin` only reads that context.
+ * `AuthContext` value — no JWT/`AuthProvider` needed since `useIsAdmin` only
+ * reads that context. (This cited `use-user-list.test.tsx`'s `renderUserList`
+ * as the matching example; Task 2 deleted that file along with
+ * `provider/user`. `page/user-list/index.test.tsx` is the live equivalent.)
  *
  * Reads readiness straight off the returned function's own `.ready` property
  * (C-1's fix) rather than a separate duplicate `useQuery` probe — a second,
@@ -72,6 +96,10 @@ const renderWithTargetUser = (isAdmin: boolean, mocks: ReturnType<typeof userLis
 };
 
 describe('useWithTargetUser', () => {
+  beforeEach(() => {
+    userListRequests.count = 0;
+  });
+
   afterEach(() => {
     localStorage.clear();
   });
@@ -98,6 +126,15 @@ describe('useWithTargetUser', () => {
     // without something `act`-aware (`waitFor`) driving it (round-2 review).
     await waitFor(() => expect(result.current?.ready).toBe(true));
     expect(result.current?.('/api/books')).toBe('/api/books');
+    // The URL assertion above pins the CALLBACK's own `!isAdmin` guard; this
+    // one pins the QUERY's `skip: !isAdmin` independently. They are separate
+    // regressions — deleting only the `skip` still leaks a `FORBIDDEN`
+    // request per non-admin, with every URL still coming back unchanged
+    // because the callback guard catches it. Counted at REQUEST time (see
+    // `userListRequests` above), so it fails closed with no tuned wait.
+    // Seen-to-fail: `skip: !isAdmin` -> `skip: false` in
+    // `use-with-target-user.ts` makes this 1.
+    expect(userListRequests.count).toBe(0);
   });
 
   it('returns URLs unchanged for an admin with no library selected', async () => {

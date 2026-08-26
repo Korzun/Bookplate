@@ -51,13 +51,48 @@ import { useStyle } from './style';
  *     at +2. If you change this document, re-measure rather than deriving
  *     from §4.0's figure.
  *
- * One consequence of the `proposals` trim, recorded because it is invisible
- * otherwise: this document now writes a PARTIAL `MetadataFix` into the shared
- * `PendingFix:<id>` cache entity. `page/upload`'s `LibraryPendingFixes` reads
- * the full shape off its own `Library.pendingFixes` field, which this
- * document never writes, so no read is served a half-populated proposal — at
- * worst a later read misses the cache and goes to the network, which is what
- * it would have done anyway.
+ * **A partial `PendingFixState` write — a real, out-of-scope defect.**
+ * Recorded here because `docs/` and `.superpowers/` are both gitignored, so
+ * this comment is the only record that survives a merge. The earlier version
+ * of this note got both of its claims wrong; both corrections below are
+ * MEASURED, not reasoned.
+ *
+ * What happens: this document writes `pendingFix { id state { proposals {
+ * to } } }` into the shared `PendingFix:<id>` cache entity.
+ * `PendingFixState` declares four fields (`appliedFixes`, `autoFixes`,
+ * `proposals`, `undo` — `schema.generated.graphql`), has NO `id`, and has no
+ * `keyFields` entry in `provider/apollo/cache.ts`, so it is NOT a normalized
+ * entity: it is an inline object the cache replaces WHOLESALE. Writing it
+ * from here therefore destroys whatever fuller `state` was already cached.
+ *
+ *   - It does NOT originate with the `proposals` trim above. Verified
+ *     against `183dfb36`, where this document still selected the full
+ *     8-field `MetadataFix` shape: `state` was ALREADY missing
+ *     `appliedFixes`/`autoFixes`/`undo` there. The trim narrowed an
+ *     already-partial write; it did not create one.
+ *
+ *   - The cost is NOT "at worst a later read misses the cache and goes to
+ *     the network, which is what it would have done anyway". It converts a
+ *     cache HIT into a network read that would otherwise never have
+ *     happened. `LibraryPendingFixesDocument` (`~/graphql/upload`) is
+ *     watched APP-WIDE — `component/nav/index.tsx` (the badge) and
+ *     `provider/upload/hook/use-upload-queue.ts` each hold a live
+ *     `useQuery` on it — so its watcher is active for the whole time
+ *     `/book-edit` is open, not dormant. Measured directly against
+ *     `InMemoryCache(cacheConfig)`: seed `LibraryPendingFixes` for a
+ *     library with one `PendingFix`, and `cache.diff()` reports `complete:
+ *     true`; write THIS document over it and the same diff reports
+ *     `complete: false`, missing `state.autoFixes`, `state.appliedFixes`
+ *     and every `proposals` field except `to`. An incomplete diff on a
+ *     watched query is a refetch — of a breadth-55 (55.0%) /
+ *     complexity-4807 (14.6%) operation, the client's second most
+ *     expensive — once per book-edit visit to a book that has a pending
+ *     fix.
+ *
+ * Deliberately NOT fixed on this branch (pre-existing behaviour, out of the
+ * realignment's scope). The fix, when taken, is to make this write complete:
+ * select the whole `state` shape here, or spread the `PendingFixRowFragment`
+ * the queue already owns rather than a narrower ad-hoc selection.
  */
 export const BookEditDocument = graphql(`
   query BookEdit($libraryId: ID!, $bookId: ID!) {

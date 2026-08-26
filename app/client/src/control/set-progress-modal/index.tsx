@@ -11,7 +11,8 @@ type SetProgressModalProps = {
   isOpen: boolean;
   /**
    * RAW content hash — `progressSet`'s `document` input (`Progress.document`
-   * — see `graphql/progress.ts`'s `ProgressRowFragment` doc comment).
+   * — see `component/my-progress-row`'s `ProgressRowFragment`, which is
+   * colocated there rather than in `graphql/progress.ts`).
    * `useSetMyProgress` writes against this exact string; NEVER pass a Relay
    * global id here (2026-08-13 final review, C-1/I-1) — `page/book`'s
    * `Book.id` — the server resolves `document` as a raw content hash, not a

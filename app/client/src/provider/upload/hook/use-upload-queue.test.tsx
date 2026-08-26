@@ -36,9 +36,11 @@ const BOOK_GID = 'Qm9vazox';
  * `resolve-pending-fix.ts`'s `upsertPendingFix(owner, outcome.ok.id, …)` and
  * `resolve-pending-fix.test.ts`'s "the row lives under the new id". */
 const ROTATED_BOOK_GID = 'Qm9vazoy';
-// Matches `use-library-entries.ts`'s `PAGE_SIZE` default and its
+// Matches `page/library/index.tsx`'s own `PAGE_SIZE` constant (20) and its
 // `filter: undefined` when no filter is applied — the exact variables the
-// live grid reads `Library.entries` with.
+// live grid reads `Library.entries` with. (Named `use-library-entries.ts`
+// here until the end-of-project sweep; Task 5 deleted that hook and moved
+// the constant onto the page.)
 const ENTRIES_VARS: LibraryEntriesQueryVariables = {
   libraryId: LIBRARY_ID,
   first: 20,

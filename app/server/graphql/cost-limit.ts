@@ -256,17 +256,28 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * own re-examination for the new value and its reasoning.
  *
  * The `Viewer.devices`/`Device.enabledUsers` compounding shape this task
- * exists to fix — round-3, M-9, correcting an overstated claim in an
- * earlier version of this comment: `devices { … enabledUsers { … } }` is
- * NOT a query the client ships today. `app/client/src/page/device-list/`
- * (`component/device-list/index.tsx`) fetches exactly the 8 fields
- * `app/client/src/provider/device/type.ts`'s `Device` type declares (`id
- * name slug coverWidth coverHeight coverFit bwCover simplify`) — it never
- * requests `enabledUsers` at all. `GET /api/devices/:id/users`
- * (`routes/devices.ts:178`) is fetched separately, per-device, by
- * `component/device-form`'s `useDeviceUsers` when an admin edits ONE
- * device. `devices { … enabledUsers { … } }` is a PLAUSIBLE GraphQL
- * consolidation of those two real REST reads, not a shipped query — real
+ * exists to fix — round-3, M-9, and re-checked against the shipped client
+ * at the end of the GraphQL client realignment, which changed the answer.
+ *
+ * The list screen still does NOT select `enabledUsers`:
+ * `app/client/src/page/device-list/index.tsx` spreads
+ * `DeviceRowFragment` (`app/client/src/component/device-row/index.tsx`),
+ * exactly the 8 fields `id name slug coverWidth coverHeight coverFit
+ * bwCover simplify`. (An earlier version of this comment cited
+ * `app/client/src/provider/device/type.ts` for that field list; the client
+ * migration deleted that module, and the fragment above is now where those
+ * 8 fields are declared.)
+ *
+ * What HAS changed: the compounding shape is no longer hypothetical. The
+ * client now ships `DeviceUsersDocument`
+ * (`app/client/src/graphql/device.ts`) — literally `viewer { devices { id
+ * enabledUsers { id } } }` — driven by
+ * `app/client/src/component/device-form/index.tsx` when an admin edits ONE
+ * device, replacing the old per-device `GET /api/devices/:id/users`
+ * (`routes/devices.ts:178`). It is affordable only because `id` and
+ * NOTHING else travels through the ×5000 position: measured at breadth
+ * 9.0% / complexity 31.2% of budget. That is the limit doing its job, and
+ * it is why the numbers below still matter — the shape is now real. Real
  * cardinality on a self-hosted instance is still roughly 2-6 devices ×
  * 1-5 users each (a household's e-readers, non-admin branch), and
  * `Viewer.devices` × `Device.enabledUsers` at the PRE-round-2 flat 100×100

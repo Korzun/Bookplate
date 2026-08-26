@@ -317,8 +317,9 @@ export const useSetMyProgress = (documentId: string): UseSetMyProgress => {
  * as a plain OBJECT field (`{ id percentage currentChapter }`), which Apollo
  * still normalizes as a `Reference` to the `Progress` entity (any object with
  * an `id` is). Evicting that entity, as above, leaves the reference dangling
- * — the owning `Book` becomes cache-INCOMPLETE, and `useBookDetail`'s
- * cache-first `useQuery` reacts to an incomplete read by refetching over the
+ * — the owning `Book` becomes cache-INCOMPLETE, and `page/book`'s own
+ * cache-first `useQuery(BookDetailDocument)` (the deleted `useBookDetail`
+ * hook, until Task 8) reacts to an incomplete read by refetching over the
  * network, which in `page/book/index.test.tsx`'s own coverage flips the whole
  * page to "Failed to load book." (no guaranteed mock for that refetch; in
  * production, a pointless real round trip at best).

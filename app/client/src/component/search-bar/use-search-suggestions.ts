@@ -85,7 +85,8 @@ function matchInfo(
  * Skips the query while `libraryId` is `undefined` (no library resolved
  * yet) or the debounce hasn't settled (`debouncedQuery === ''`). `loading`
  * folds in `useCurrentLibraryId`'s own `loading` for the same reason
- * `useLibraryEntries` does: a skipped `useQuery` reports `loading: false`,
+ * `page/library`'s entries read does (via `usePaginatedConnection`'s
+ * `extraLoading`; that fold lived on the deleted `useLibraryEntries`): a skipped `useQuery` reports `loading: false`,
  * so without this a caller could read "no suggestions" during the
  * `ViewerBootstrap` round trip rather than "still resolving which library
  * this is". This does NOT apply to the empty-query quick-pick branch below

@@ -72,12 +72,13 @@ const PAGE_SIZE = 50;
 type LibraryNode = Extract<NonNullable<MyProgressListQuery['node']>, { __typename: 'Library' }>;
 
 /**
- * Deliberately still MASKED here, mirroring `use-library-entries.ts`'s
- * `LibraryEntryEdge`: `node` carries a `FragmentType` ref for
+ * Deliberately still MASKED here, mirroring `page/library/index.tsx`'s
+ * `LibraryEntryEdge` (that type moved onto the page when Task 5 deleted
+ * `use-library-entries.ts`): `node` carries a `FragmentType` ref for
  * `ProgressRowFragment`, not the unwrapped fields. Unlike that hook's
  * `edges`, this one is HOMOGENEOUS (every node is a `Progress`, never a
  * union of types), so returning unmasked data here would not itself trip
- * the `react-hooks/rules-of-hooks` hazard that forced `LibraryEntryEdge` to
+ * the `react-hooks/rules-of-hooks` hazard that forces `LibraryEntryEdge` to
  * stay masked. The masked shape is kept anyway, for the same reason every
  * other fetch-free row this migration has built keeps it: `MyProgressRow`
  * calls `useFragment` exactly once, unconditionally, in its own render
@@ -119,11 +120,11 @@ interface MyProgressContentProps {
  *
  * Skips the query outright when `libraryId` is `undefined` too — an admin
  * with no library selected has nothing to root `node(id:)` on — same as
- * `useLibraryEntries`. The `skip` passed to `usePaginatedConnection` below
+ * `page/library`. The `skip` passed to `usePaginatedConnection` below
  * is therefore the COMBINED condition (`skip || libraryId === undefined`).
  *
  * **`loading` also covers `useCurrentLibraryId`'s own bootstrap round
- * trip**, same fix as `useLibraryEntries` — UNLESS `skip` is explicitly
+ * trip**, same fix as `page/library` — UNLESS `skip` is explicitly
  * `true`, in which case there is nothing mounted to show a loading state
  * for, so `loading` reports `false` regardless of `useCurrentLibraryId`'s
  * own state. That "regardless" is why `extraLoading` below is computed as
@@ -133,7 +134,7 @@ interface MyProgressContentProps {
  * own combined `skip`), so this component pre-zeroes it for its own
  * explicit-`skip` case.
  *
- * **Error-surfacing policy** — identical split to `useLibraryEntries`, both
+ * **Error-surfacing policy** — identical split to `page/library`, both
  * implemented by `usePaginatedConnection` (see that helper's own doc
  * comment for the full policy): a first-page failure is `useQuery`'s own
  * `error`, with `rows` empty (the empty-error state). A `fetchMore` failure

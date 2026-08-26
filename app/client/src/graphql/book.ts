@@ -4,8 +4,11 @@ import { graphql } from '~/gql';
  * `Book.validation` is nullable — null means "never validated", which is what
  * REST's tri-state `valid?: boolean | null` expressed as `undefined`. The page's
  * `editingBlocked` therefore reads `validation?.valid !== true`, preserving
- * REST's `book.valid !== true` for all three states. VERIFY this mapping against
- * the resolver before relying on it (Task 7, Step 1).
+ * REST's `book.valid !== true` for all three states. (This carried a stale
+ * "VERIFY this mapping against the resolver … (Task 7, Step 1)" instruction
+ * from the PREDECESSOR project, whose task numbering does not match this
+ * one's — "Task 7" here names a different, already-shipped task. The
+ * mapping was verified and shipped; nothing is outstanding.)
  *
  * `counts` is Task 2's new field; `messages(first: 100)` is a literal page size
  * matching `CONNECTION_LIMITS.validationMessages.maxSize`. The modal has always
