@@ -96,7 +96,8 @@ describe('usePendingFixes', () => {
   // A SKIPPED `useQuery` reports `loading: false`, so without folding
   // `useCurrentLibraryId`'s own loading in, an admin whose target is still
   // resolving would render "no pending fixes" for a frame. Same correction
-  // `useLibraryEntries` carries (`use-library-entries.ts`'s doc comment).
+  // `page/library`'s `LibraryPage` carries (`page/library/index.tsx`'s own
+  // `LibraryEntriesDocument`/`extraLoading` doc comment).
   it('reports loading while useCurrentLibraryId itself is still resolving, even though the query is skipped', () => {
     currentLibraryId = undefined;
     currentLibraryIdLoading = true;

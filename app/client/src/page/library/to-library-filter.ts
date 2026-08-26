@@ -15,7 +15,8 @@ const ENTRY_TYPE_MAP: Record<NonNullable<BookListFilter['entryType']>, LibraryEn
 /**
  * Maps the URL-state `BookListFilter` (`useBookListFilter`, unchanged by
  * this task — it is URL state, not server state) onto the GraphQL
- * `LibraryFilter` input `useLibraryEntries` sends over the wire.
+ * `LibraryFilter` input `./index.tsx`'s `LibraryPage` sends over the wire
+ * (via `usePaginatedConnection`'s `variables.filter`).
  *
  * `query`/`author`/`seriesName`/`subjects` pass through unchanged — same
  * shape on both sides. `status`/`entryType` don't: the client filter spells

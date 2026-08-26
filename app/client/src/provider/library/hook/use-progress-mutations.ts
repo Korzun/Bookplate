@@ -1,11 +1,11 @@
 /**
- * **Rehoming note for Task 5b (review round 1, Item 2).** After Task 4,
- * this is the LAST non-list resident of `provider/library/` — the other
- * two files there (`use-library-entries.ts`, Task 5;
- * `use-series-detail.ts`, Task 5b) are both owned and get moved/deleted by
- * name. This file was NOT owned by any task's brief, and Task 5b deletes
- * the whole `provider/library/` directory BEFORE Task 7 (which owns this
- * file's third caller, `control/set-progress-modal`, via `page/book`).
+ * **Rehoming note for Task 5b (review round 1, Item 2).** After Task 5
+ * deleted `use-library-entries.ts`, this is the LAST non-list resident of
+ * `provider/library/` besides `use-series-detail.ts` (Task 5b, owned and
+ * gets moved/deleted by name). This file was NOT owned by any task's brief,
+ * and Task 5b deletes the whole `provider/library/` directory BEFORE Task 7
+ * (which owns this file's third caller, `control/set-progress-modal`, via
+ * `page/book`).
  *
  * Ruling (made during Task 4's review): Task 5b moves this file WHOLE to
  * `src/lib/use-progress-mutations.ts` and updates its three importers —

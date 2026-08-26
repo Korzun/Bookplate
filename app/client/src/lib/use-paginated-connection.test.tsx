@@ -183,6 +183,13 @@ describe('usePaginatedConnection', () => {
     await waitFor(() => expect(result.current?.loadingMore).toBe(false));
     expect(result.current?.loading).toBe(false);
     expect(result.current?.edges).toHaveLength(2);
+    // ORDER, not just count: `toHaveLength(2)` alone passes even if page 2
+    // landed ABOVE page 1 (e.g. a `select`/cache typePolicy change that
+    // prepends instead of appends). This was the only place in the client
+    // asserting append order until review round 1 flagged its absence —
+    // `page/library`'s own "renders rows from the connection" test asserts
+    // presence/union-discrimination, not order.
+    expect(result.current?.edges.map((e) => e.cursor)).toEqual(['c1', 'c2']);
   });
 
   // Constraints (b)/(c): a fetchMore rejection is not threaded into

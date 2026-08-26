@@ -388,16 +388,26 @@ describe('LibraryPage', () => {
     );
   });
 
-  it('renders rows from the connection', async () => {
-    const mock = firstPageMock([seriesEdge('c1'), bookEdge('c2')], {
-      hasNextPage: false,
-      endCursor: null,
-    });
+  it('renders rows from the connection, preserving edge order', async () => {
+    const mock = firstPageMock(
+      [seriesEdge('c1'), bookEdge('c2'), bookEdge('c3'), seriesEdge('c4')],
+      { hasNextPage: false, endCursor: null }
+    );
 
     renderLibraryPage([mock]);
 
     await waitFor(() => expect(screen.getByText('SERIES:SERIES-c1')).toBeTruthy());
-    expect(screen.getByText('BOOK:BOOK-c2')).toBeTruthy();
+    // ORDER, not just presence: `getByText` calls alone (the pre-review-round-1
+    // shape of this test) pass even if the grid re-sorted or reversed its
+    // edges — the deleted `use-library-entries.test.tsx` was the only place
+    // in the client asserting this, via its own "preserves Book/Series
+    // discrimination and edge order across an interleaved page" case.
+    expect(screen.getAllByText(/^(BOOK|SERIES):/).map((node) => node.textContent)).toEqual([
+      'SERIES:SERIES-c1',
+      'BOOK:BOOK-c2',
+      'BOOK:BOOK-c3',
+      'SERIES:SERIES-c4',
+    ]);
   });
 
   it('renders the empty-library state when there are no rows and no error', async () => {
@@ -529,8 +539,16 @@ describe('LibraryPage', () => {
   // VALUE-keyed primitive rather than accidentally keying off
   // `libraryFilter`'s object identity. Seen-to-fail: temporarily appended
   // `${Math.random()}` to that `resetKey` template (forcing a new value —
-  // not just a new reference — on every render); this test failed,
-  // `getByText('Failed to load more books')` no longer found; reverted.
+  // not just a new reference — on every render). This test failed
+  // deterministically (3/3 runs): the banner clears before this test's own
+  // assertion ever runs, so `getByText('Failed to load more books')` throws
+  // `TestingLibraryElementError`, which is what marks the `it` FAILED.
+  // Vitest ALSO reports a separate, asynchronous "Maximum update depth
+  // exceeded" unhandled error every run — a stale `IntersectionObserver`
+  // effect keeps re-firing `loadMore` after the ever-changing `resetKey`
+  // keeps clearing/re-triggering state post-assertion; that second error is
+  // real but incidental to THIS test's pass/fail, which is driven by the
+  // missing banner text above. Reverted.
   //
   // Uses a hand-rolled wrapper (MemoryRouter + ApolloProvider only) instead
   // of `renderLibraryPage`/`renderWithApollo`: RTL's `rerender` re-wraps the
