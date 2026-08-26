@@ -1,8 +1,8 @@
-import { useQuery } from '@apollo/client/react';
 import cx from 'classnames';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { LinkPickerBooksDocument } from '~/graphql/progress';
+import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { useLinkProgress } from '~/provider/library';
 
 import { Button } from '../button';
@@ -77,6 +77,20 @@ const DEBOUNCE_MS = 200;
  * from the list instead of reappearing attached to its book; without
  * `progressId`, the link succeeds server-side but the stale orphan entity
  * lingers.
+ *
+ * Fetching is `usePaginatedConnection` (`~/lib/use-paginated-connection`),
+ * the same helper `useLibraryEntries`/`useMyProgressList`/`useUserProgressList`
+ * are built on — this modal was the fourth hand-rolled copy of that exact
+ * state machine, now the fourth call site instead. `resetKey` is
+ * `${libraryId}:${debouncedFilter}` — this list's own identity, the same
+ * shape as `useLibraryEntries`'s `${libraryId}:${JSON.stringify(filter)}`
+ * (see that hook's doc comment): a change to either clears a stale
+ * `loadMore` error rather than letting it linger over an unrelated list.
+ * `error`/`books.length` follow the same split every other list in this app
+ * does: a first-page failure replaces the list with an error row (`books`
+ * empty), a `loadMore` failure keeps the rows and surfaces the error below
+ * instead (`books` non-empty) — `page/library`'s own JSX follows the
+ * identical pattern.
  */
 export function LinkProgressModal({
   isOpen,
@@ -90,59 +104,30 @@ export function LinkProgressModal({
   const [filter, setFilter] = useState('');
   const [debouncedFilter, setDebouncedFilter] = useState('');
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFilter(filter.trim()), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [filter]);
 
-  const {
-    data,
-    loading,
-    error: queryError,
-    fetchMore,
-  } = useQuery(LinkPickerBooksDocument, {
+  const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
+    document: LinkPickerBooksDocument,
     variables: { libraryId, query: debouncedFilter || undefined },
     skip: !isOpen,
+    select: (data) => (data?.node?.__typename === 'Library' ? data.node.entries : undefined),
+    resetKey: `${libraryId}:${debouncedFilter}`,
+    loadMoreErrorMessage: 'Failed to load more books',
   });
 
-  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
   const books = useMemo(
     () =>
-      (library?.entries.edges ?? [])
+      edges
         .map((edge) => edge.node)
         .filter(
           (node): node is Extract<typeof node, { __typename: 'Book' }> => node.__typename === 'Book'
         ),
-    [library]
+    [edges]
   );
-  const hasNextPage = library?.entries.pageInfo.hasNextPage ?? false;
-  const endCursor = library?.entries.pageInfo.endCursor ?? undefined;
-  const [loadMoreError, setLoadMoreError] = useState<string | undefined>(undefined);
-
-  // A bare `.finally()` re-propagates a rejection, and `void` does not catch
-  // it — a failed "Load more" here was an unhandled promise rejection AND a
-  // silent no-op (the button's `loading` state cleared, but nothing told the
-  // user it failed). Both `MyProgressContent`'s and `UserRowContent`'s list
-  // hooks (`use-my-progress-list.ts`, `use-user-progress-list.ts`) already
-  // catch and surface an identical `fetchMore` failure; this mirrors that
-  // shape instead of leaving this modal the one unguarded promise on the
-  // branch.
-  const handleLoadMore = useCallback(() => {
-    if (!hasNextPage || loadingMore) return;
-    setLoadingMore(true);
-    setLoadMoreError(undefined);
-    void (async () => {
-      try {
-        await fetchMore({ variables: { after: endCursor } });
-      } catch (err) {
-        setLoadMoreError(err instanceof Error ? err.message : 'Failed to load more books');
-      } finally {
-        setLoadingMore(false);
-      }
-    })();
-  }, [fetchMore, hasNextPage, endCursor, loadingMore]);
 
   const { link, linking, error: linkError } = useLinkProgress(selectedBookId ?? '', libraryId);
 
@@ -184,10 +169,8 @@ export function LinkProgressModal({
           <ul className={styles.bookList}>
             {loading ? (
               <li className={styles.emptyMessage}>Loading books…</li>
-            ) : queryError ? (
-              <li className={styles.emptyMessage}>
-                {queryError.message || 'Failed to load books.'}
-              </li>
+            ) : error && books.length === 0 ? (
+              <li className={styles.emptyMessage}>{error}</li>
             ) : books.length === 0 ? (
               <li className={styles.emptyMessage}>No books match.</li>
             ) : (
@@ -211,11 +194,11 @@ export function LinkProgressModal({
             )}
           </ul>
           {hasNextPage && (
-            <Button type="link" onClick={handleLoadMore} loading={loadingMore}>
+            <Button type="link" onClick={loadMore} loading={loadingMore}>
               Load more
             </Button>
           )}
-          {loadMoreError && <div className={styles.error}>{loadMoreError}</div>}
+          {error && books.length > 0 && <div className={styles.error}>{error}</div>}
           {linkError && <div className={styles.error}>{linkError}</div>}
         </div>
         <div className={styles.footer}>

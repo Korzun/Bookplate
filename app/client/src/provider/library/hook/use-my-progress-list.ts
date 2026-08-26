@@ -1,8 +1,6 @@
-import { useQuery } from '@apollo/client/react';
-import { useCallback, useEffect, useState } from 'react';
-
 import type { MyProgressListQuery } from '~/gql/graphql';
 import { MyProgressListDocument } from '~/graphql/progress';
+import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
@@ -80,62 +78,44 @@ export type UseMyProgressList = {
  *
  * Skips the query outright when `libraryId` is `undefined` too — an admin
  * with no library selected has nothing to root `node(id:)` on — same as
- * `useLibraryEntries`.
+ * `useLibraryEntries`. The `skip` passed to `usePaginatedConnection` below
+ * is therefore the COMBINED condition (`skip || libraryId === undefined`).
  *
  * **`loading` also covers `useCurrentLibraryId`'s own bootstrap round
  * trip**, same fix as `useLibraryEntries` (see that hook's doc comment) —
  * UNLESS `skip` is explicitly `true`, in which case there is nothing
  * mounted to show a loading state for, so `loading` reports `false`
- * regardless of `useCurrentLibraryId`'s own state.
+ * regardless of `useCurrentLibraryId`'s own state. That "regardless" is why
+ * `extraLoading` below is computed as `skip ? false : libraryIdLoading`
+ * rather than passed straight through: `usePaginatedConnection` simply ORs
+ * whatever `extraLoading` it is given (see that helper's own doc comment
+ * for why it can't gate the fold on its own combined `skip`), so THIS hook
+ * pre-zeroes it for its own explicit-`skip` case.
  *
- * **Error-surfacing policy** — identical split to `useLibraryEntries`: a
- * first-page failure is `useQuery`'s own `error`, with `rows` empty (the
- * empty-error state). A `fetchMore` failure is caught locally and surfaced
- * through the same `error` field, with `rows` left untouched (existing rows
- * survive, offer a retry).
+ * **Error-surfacing policy** — identical split to `useLibraryEntries`,
+ * both now implemented by `usePaginatedConnection` (see that helper's doc
+ * comment for the full policy): a first-page failure is `useQuery`'s own
+ * `error`, with `rows` empty (the empty-error state). A `fetchMore` failure
+ * is caught locally and surfaced through the same `error` field, with
+ * `rows` left untouched (existing rows survive, offer a retry).
  */
 export const useMyProgressList = ({ skip }: { skip: boolean }): UseMyProgressList => {
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
-  const [fetchMoreError, setFetchMoreError] = useState<string | undefined>(undefined);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const { data, loading, error, fetchMore } = useQuery(MyProgressListDocument, {
+  const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
+    document: MyProgressListDocument,
     variables: { libraryId: libraryId ?? '', first: PAGE_SIZE },
     skip: skip || libraryId === undefined,
+    select: (data) => (data?.node?.__typename === 'Library' ? data.node.progress : undefined),
+    extraLoading: skip ? false : libraryIdLoading,
+    resetKey: `${libraryId}:${skip}`,
+    loadMoreErrorMessage: 'Failed to load more progress',
   });
 
-  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
-  const edges = library?.progress.edges ?? [];
-  const rows = edges.map((edge) => edge.node);
-  const hasNextPage = library?.progress.pageInfo.hasNextPage ?? false;
-  const endCursor = library?.progress.pageInfo.endCursor ?? undefined;
-
-  // A stale fetchMore failure belongs to the request that produced it —
-  // clear it once `libraryId`/`skip` move on, same reasoning as
-  // `useLibraryEntries`'s identical effect.
-  useEffect(() => {
-    setFetchMoreError(undefined);
-  }, [libraryId, skip]);
-
-  const loadMore = useCallback(() => {
-    if (libraryId === undefined || !hasNextPage || loadingMore) return;
-    setLoadingMore(true);
-    void (async () => {
-      try {
-        await fetchMore({ variables: { after: endCursor } });
-        setFetchMoreError(undefined);
-      } catch (err) {
-        setFetchMoreError(err instanceof Error ? err.message : 'Failed to load more progress');
-      } finally {
-        setLoadingMore(false);
-      }
-    })();
-  }, [fetchMore, libraryId, hasNextPage, endCursor, loadingMore]);
-
   return {
-    rows,
-    loading: skip ? false : loading || libraryIdLoading,
-    error: error?.message ?? fetchMoreError,
+    rows: edges.map((edge) => edge.node),
+    loading,
+    error,
     hasNextPage,
     loadMore,
     loadingMore,
