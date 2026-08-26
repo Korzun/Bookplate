@@ -101,7 +101,13 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
   // Rolling concurrency: start uploads whenever a slot is free
   useEffect(() => {
     const inFlight = startedRef.current.size;
-    const slots = maxConcurrent - inFlight;
+    // Defence in depth, ported from main's `0c4130be`: a limit below one makes
+    // `slots` <= 0, which takes the bail-out below and strands every item at
+    // 'queued' for the rest of the session. `?? 3` above only guards
+    // null/undefined, so a server reporting 0 would otherwise freeze the queue
+    // outright. Never let the effective limit drop below one.
+    const limit = Number.isFinite(maxConcurrent) && maxConcurrent >= 1 ? maxConcurrent : 1;
+    const slots = limit - inFlight;
     if (slots <= 0) return;
 
     const toStart = items
@@ -182,16 +188,35 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
         );
       };
 
+      // Everything up to `send` happens OUTSIDE the XHR's own event handlers, so
+      // a throw here (a rejected token refresh, a rejected open/send) would
+      // otherwise strand the item: no onload/onerror can fire for a request that
+      // was never sent, leaving its slot held in `startedRef` forever and
+      // shrinking the queue's capacity for the rest of the session. Fail the item
+      // explicitly and give the slot back. Ported from main's `0c4130be`.
       void (async () => {
-        if (!item.file) return; // TS-only guard: toStart is filtered to items with a file
-        const token = await ensureFreshToken();
-        // The XHR may have been aborted (unmount) while we awaited the refresh.
-        if (xhrMapRef.current.get(item.id) !== xhr) return;
-        xhr.open('POST', withTargetUserRef.current('/api/books/upload'));
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        const formData = new FormData();
-        formData.append('files', item.file);
-        xhr.send(formData);
+        try {
+          if (!item.file) throw new Error('missing file'); // TS-only guard: toStart is filtered
+          const token = await ensureFreshToken();
+          // The XHR may have been aborted (unmount) while we awaited the refresh.
+          if (xhrMapRef.current.get(item.id) !== xhr) return;
+          xhr.open('POST', withTargetUserRef.current('/api/books/upload'));
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          const formData = new FormData();
+          formData.append('files', item.file);
+          xhr.send(formData);
+        } catch {
+          if (xhrMapRef.current.get(item.id) !== xhr) return;
+          startedRef.current.delete(item.id);
+          xhrMapRef.current.delete(item.id);
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? { ...i, status: 'error' as const, errorMessage: "Couldn't start upload" }
+                : i
+            )
+          );
+        }
       })();
     }
   }, [items, maxConcurrent]);

@@ -139,6 +139,53 @@ describe('useUploadTransport', () => {
     expect(xhrInstances).toHaveLength(3);
   });
 
+  // Ported from main's `0c4130be` ("don't let a bad /api/config response freeze
+  // the upload queue"), which landed on the REST engine this transport
+  // replaced. The 401-body half of that fix is moot here — `maxConcurrentUploads`
+  // is a non-null `Int!`, so a bad response surfaces as a GraphQL error and
+  // `data` stays undefined rather than yielding a poisoned number (covered by
+  // the "defaults to a cap of 3 when the config query errors" test above).
+  // What survives the architecture change is the FLOOR: any limit below one
+  // strands every item at 'queued' for the session, because `slots` computes
+  // <= 0 and the effect's bail-out returns before starting anything.
+  it.each([
+    ['a zero limit', 0],
+    ['a negative limit', -1],
+  ])('still starts uploads when the server reports %s', async (_label, cap) => {
+    const { result } = await renderTransport(() => {}, cap);
+
+    act(() => result.current!.addFiles(makeFileList('a.epub')));
+
+    await waitFor(() => expect(result.current!.items[0]!.status).toBe('uploading'));
+    expect(xhrInstances).toHaveLength(1);
+  });
+
+  // The other half of main's fix, and the half that is fully
+  // architecture-independent. `ensureFreshToken()` runs OUTSIDE the XHR, so if
+  // it throws, neither `onload` nor `onerror` can fire for a request that was
+  // never sent: the item hangs at 'uploading' and its slot stays held in
+  // `startedRef` forever, permanently shrinking the queue until nothing starts.
+  it('releases the concurrency slot when the pre-send token refresh throws', async () => {
+    // `ensureFreshToken` -> `refreshAccessToken` -> `withRefreshLock`, which has
+    // only a `finally`, no catch — so a rejecting lock is what actually
+    // propagates out. A rejected `fetch` does NOT: `performRefresh` catches it
+    // internally and returns false. Same trigger main's own test used.
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: { request: () => Promise.reject(new Error('lock unavailable')) },
+    });
+
+    const { result } = await renderTransport();
+
+    act(() => result.current!.addFiles(makeFileList('a.epub', 'b.epub', 'c.epub')));
+
+    // The failed item must land in `error`, not hang at `uploading`...
+    await waitFor(() => expect(result.current!.items[0]!.status).toBe('error'));
+    // ...and its slot must come back: with a cap of 2, a third XHR can only be
+    // constructed if the first genuinely released. A held slot caps this at 2.
+    await waitFor(() => expect(xhrInstances.length).toBeGreaterThan(2));
+  });
+
   it('addFiles appends items with queued status', async () => {
     const { result } = await renderTransport();
 
