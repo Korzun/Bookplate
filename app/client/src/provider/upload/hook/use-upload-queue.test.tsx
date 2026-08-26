@@ -1,7 +1,10 @@
+import type { NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BookEditFormFragment } from '~/component/book-edit-form';
+import { makeFragmentData } from '~/gql';
 import type {
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
@@ -18,7 +21,9 @@ import {
   UploadConfigDocument,
 } from '~/graphql/upload';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
+import { useCurrentLibraryId } from '~/provider/library-target';
 import { renderHookWithApollo } from '~/test-utils';
 
 import { fixKey, fixKeyOf, useUploadQueueEngine } from './use-upload-queue';
@@ -248,6 +253,202 @@ const rotatingAcceptMock: ResolveMock = {
     },
   },
 };
+
+/** The UNDO of an apply-snapshot rotates the id for the same reason an
+ * ACCEPT does — it re-imports the reverted EPUB through `applyEpubChanges`. */
+const rotatingUndoMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'UNDO' },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookResolvePendingFix: {
+        __typename: 'BookResolvePendingFixPayload',
+        book: {
+          __typename: 'Book',
+          id: ROTATED_BOOK_GID,
+          title: 'Dune',
+          author: 'Frank Herbert',
+        },
+        library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [] },
+      },
+    },
+  },
+};
+
+/** A TYPED error member: no payload at all, so `update` has nothing to read
+ * a `library` id off. It must no-op rather than throw. */
+const acceptCollisionMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'ACCEPT' },
+  },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookResolvePendingFix: {
+        __typename: 'BookHashCollisionError',
+        message: 'a book with that content already exists',
+      },
+    },
+  },
+};
+
+const acceptNetworkErrorMock: ResolveMock = {
+  request: {
+    query: BookResolvePendingFixDocument,
+    variables: { id: BOOK_GID, action: 'ACCEPT' },
+  },
+  error: new Error('network down'),
+};
+
+/** An ADMIN viewer with no library target selected, so `useCurrentLibraryId`
+ * resolves `undefined` and the pending-fix read must SKIP. */
+const adminViewerBootstrapMock: MockedResponse<ViewerBootstrapQuery> = {
+  request: { query: ViewerBootstrapDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        username: 'admin',
+        isAdmin: true,
+        mustChangePassword: false,
+        user: null,
+        library: null,
+      },
+    },
+  },
+};
+
+/**
+ * A `LibraryPendingFixes` mock that COUNTS every request MockLink routes to
+ * it, through the VARIABLE MATCHER rather than a `result` function.
+ *
+ * The distinction is Ruling Q and it is load-bearing for the skip test below:
+ * a `result`-as-function counter increments on DELIVERY, after MockLink's
+ * delay, so an eager read can leak past a `waitFor` purely on timing. The
+ * matcher runs SYNCHRONOUSLY inside `MockLink.request()`, before any timer
+ * (`@apollo/client/testing/core/mocking/mockLink.js`, the
+ * `typeof variables === 'function'` branch of its `mocks.findIndex`).
+ *
+ * **In Apollo Client v4 the matcher is `request.variables` given a FUNCTION**
+ * — there is no top-level `variableMatcher` key. A `variableMatcher` property
+ * is silently ignored: the mock then matches on `request.variables` being
+ * absent, the callback never runs, and a counter hung off it stays at zero no
+ * matter what fires. That is a FAIL-OPEN test, and it is how this helper was
+ * first written here; it was caught by proving the counter could not reach a
+ * non-zero value even when the read DID fire.
+ *
+ * The increment happens BEFORE the `return` on purpose: a read that fires
+ * with the WRONG variables (e.g. `libraryId: ''`) must still be counted, or
+ * the assertion would pass on a mismatch.
+ */
+const countingPendingFixesMock = (counter: { n: number }): PendingFixesMock => ({
+  request: {
+    query: LibraryPendingFixesDocument,
+    variables: (variables) => {
+      counter.n += 1;
+      return variables.libraryId === LIBRARY_ID;
+    },
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: {
+    data: {
+      __typename: 'Query',
+      node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [] },
+    },
+  },
+});
+
+/** `LibraryPendingFixes` returning an arbitrary row list — the multi-row form
+ * `pendingFixesMockFor` (single row) does not cover. */
+const pendingFixesMockRows = (rows: ReturnType<typeof pendingFixRow>[]): PendingFixesMock => ({
+  request: { query: LibraryPendingFixesDocument, variables: { libraryId: LIBRARY_ID } },
+  result: {
+    data: {
+      __typename: 'Query',
+      node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: rows },
+    },
+  },
+});
+
+// ── Cache seeding ────────────────────────────────────────────────────────────
+
+type TestClient = ReturnType<typeof renderHookWithApollo>['client'];
+
+const seedLibraryEntries = (client: TestClient) =>
+  client.writeQuery({
+    query: LibraryEntriesDocument,
+    variables: ENTRIES_VARS,
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        entries: {
+          __typename: 'LibraryEntriesConnection',
+          edges: [
+            { __typename: 'LibraryEntriesConnectionEdge', cursor: 'c1', node: seededBookNode },
+          ],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
+
+const readEntries = (client: TestClient) =>
+  client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS });
+
+/** Seeds a pre-accept `Book:<id>` entity through the same document
+ * `page/book-edit` reads, so the eviction assertions below prove something:
+ * without a pre-existing entity `not.toContain` would pass whether or not the
+ * engine's `update` ever ran. Seeding it through `Library.book(id:)` (rather
+ * than, say, a grid edge or the pending-fix row's own `book`) also reproduces
+ * the exact reason `cache.gc()` alone is NOT enough — that field keeps a
+ * REFERENCE to the old entity alive, so the orphan is never collected and
+ * must be evicted by id. Mirrors `component/book-edit-form/index.test.tsx`'s
+ * `seedBook`. */
+const seedBook = (client: TestClient, id: string) =>
+  client.writeQuery({
+    query: BookEditDocument,
+    variables: { libraryId: LIBRARY_ID, bookId: id },
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        book: {
+          __typename: 'Book',
+          id,
+          validation: null,
+          pendingFix: null,
+          // The form's own fields ride in through the colocated fragment, the
+          // sanctioned cast from a concrete shape to the masked one.
+          ...makeFragmentData(
+            {
+              __typename: 'Book',
+              id,
+              title: 'Dune',
+              titleSort: 'Dune',
+              author: 'Herbert',
+              authorSort: 'Herbert, Frank',
+              description: '',
+              publisher: '',
+              publishDate: '',
+              seriesIndex: 0,
+              subjects: [],
+              series: null,
+              identifiers: [],
+            },
+            BookEditFormFragment
+          ),
+        },
+      },
+    },
+  });
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
@@ -669,6 +870,274 @@ describe('useUploadQueueEngine', () => {
         client.cache.readQuery({ query: LibraryEntriesDocument, variables: ENTRIES_VARS })
       ).toBeNull()
     );
+  });
+
+  // ── The pending-fix READ, inlined here from the dissolved `usePendingFixes`
+  //    (Task 9). Everything below used to live in `use-pending-fixes.test.tsx`
+  //    or `use-fix-actions.test.tsx`.
+
+  it('does NOT read the pending fixes while no library id is resolved', async () => {
+    // An admin with no target selected must not fire a query with
+    // `libraryId: ''`. Counted through a `variableMatcher` (Ruling Q), which
+    // runs synchronously inside `MockLink.request()` — a `result`-as-function
+    // counter would only see DELIVERY, after MockLink's random 20–50ms delay,
+    // and an eager read could slip past the settle below on timing alone.
+    const counter = { n: 0 };
+    // `useCurrentLibraryId` rides along in the probe purely to give this test
+    // a REAL settle point. `items` is `[]` from the very first render, so
+    // waiting on it would prove nothing about whether the bootstrap had
+    // resolved yet; waiting on `loading === false` proves the admin's
+    // "no target selected" answer has actually landed and the engine has had
+    // its chance to fire.
+    const { result } = renderHookWithApollo(
+      () => ({ queue: useUploadQueueEngine(), target: useCurrentLibraryId() }),
+      [adminViewerBootstrapMock, countingPendingFixesMock(counter), configMock] as MockedResponse[]
+    );
+
+    await waitFor(() => expect(result.current!.target.loading).toBe(false));
+    expect(result.current!.target.libraryId).toBeUndefined();
+
+    expect(counter.n).toBe(0);
+    expect(result.current!.queue.items).toEqual([]);
+  });
+
+  it('re-reads the pending fixes after an upload completes, so a new row appears with no reload', async () => {
+    // Two mocks for the same request: MockLink serves them in order, so the
+    // SECOND is what the post-upload refetch receives.
+    //
+    // The FIRST returns a row for an unrelated book, and the wait below is on
+    // that row landing. That is not decoration: `refetch()` on an
+    // ObservableQuery whose FIRST fetch is still in flight joins that request
+    // instead of issuing a new one, so a `waitFor(items).toHaveLength(0)`
+    // settle — vacuously true from the first render — would let the upload
+    // complete mid-flight and the refetch would never reach the link. This
+    // test was written that way first and failed for exactly that reason.
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor('OTHER-BOOK', 'FIX-OTHER'),
+      configMock,
+      pendingFixesMockRows([
+        pendingFixRow('OTHER-BOOK', 'FIX-OTHER'),
+        pendingFixRow(BOOK_GID, 'FIX-NEW'),
+      ]),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    // The live item joins the row the REFETCH brought back. Without the
+    // refetch it would still carry the upload response's own (empty)
+    // proposals, so this assertion is what the refetch buys.
+    await waitFor(() => expect(result.current!.items).toHaveLength(2));
+    await waitFor(() =>
+      expect(
+        result.current!.items.find((i) => i.bookGlobalId === BOOK_GID)!.proposals
+      ).toHaveLength(1)
+    );
+    expect(result.current!.items.find((i) => i.bookGlobalId === BOOK_GID)!.fileName).toBe(
+      'dune.epub'
+    );
+  });
+
+  // ── The fix-action CACHE COHERENCE half, inlined here from the dissolved
+  //    `useFixActions` (Task 9). ACCEPT/UNDO rewrite the EPUB and change the
+  //    fields the grid sorts and filters on, so both move a book's position in
+  //    `Library.entries` — a move the mutation payload cannot express.
+  //    DISMISS/CLEAR prove the OTHER half: they touch only the pending-fix
+  //    row, already reconciled by the payload's own `library { pendingFixes }`
+  //    selection, so they must NOT evict anything.
+
+  it('evicts the LibraryEntries connection on ACCEPT', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      resolveMock('ACCEPT', undefined, []),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+    expect(readEntries(client)).not.toBeNull();
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect(readEntries(client)).toBeNull();
+  });
+
+  it('evicts the LibraryEntries connection on UNDO', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      resolveMock('UNDO', undefined, []),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+    expect(readEntries(client)).not.toBeNull();
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.undo(itemId)).resolves.toBe(true);
+    });
+
+    expect(readEntries(client)).toBeNull();
+  });
+
+  it('leaves the LibraryEntries connection alone on DISMISS', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      resolveMock('DISMISS', undefined, []),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.dismissAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect(readEntries(client)).not.toBeNull();
+  });
+
+  it('leaves the LibraryEntries connection alone on CLEAR', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      resolveMock('CLEAR', undefined, []),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      result.current!.dismissCompleted(itemId);
+      await Promise.resolve();
+    });
+    // The CLEAR is fire-and-forget inside `dismissCompleted`; wait for the
+    // row to actually go before asserting the connection survived it.
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    expect(readEntries(client)).not.toBeNull();
+  });
+
+  it('does not evict on a failed ACCEPT (typed error, no payload)', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      acceptCollisionMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedLibraryEntries(client));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(false);
+    });
+
+    expect(readEntries(client)).not.toBeNull();
+  });
+
+  it('reports a network failure as false', async () => {
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      acceptNetworkErrorMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(false);
+    });
+  });
+
+  // The book id ROTATES whenever the EPUB is rewritten. Normalization writes
+  // the payload into a BRAND-NEW `Book:<newId>` entity and cannot know the old
+  // one described the same book, so the pre-accept entity would otherwise
+  // linger with stale metadata — and `cache.gc()` cannot collect it while a
+  // `Library.book(id:)` field from a prior /book-edit visit still references
+  // it, which is exactly what `seedBook` reproduces.
+  it('evicts the old Book entity when ACCEPT rotates the id', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      rotatingAcceptMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedBook(client, BOOK_GID));
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+      `Book:${BOOK_GID}`
+    );
+  });
+
+  it('evicts the old Book entity when UNDO rotates the id', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      rotatingUndoMock,
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedBook(client, BOOK_GID));
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.undo(itemId)).resolves.toBe(true);
+    });
+
+    expect(Object.keys(client.cache.extract() as NormalizedCacheObject)).not.toContain(
+      `Book:${BOOK_GID}`
+    );
+  });
+
+  // The other half of the branch: a no-op ACCEPT (nothing actionable) returns
+  // the SAME book id, and the entity must survive — evicting it would throw
+  // away metadata nothing has replaced.
+  it('keeps the Book entity when ACCEPT does not rotate the id', async () => {
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      pendingFixesMockFor(BOOK_GID),
+      configMock,
+      resolveMock('ACCEPT', undefined, []),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(1));
+    act(() => seedBook(client, BOOK_GID));
+
+    const itemId = result.current!.items[0]!.id;
+    await act(async () => {
+      await expect(result.current!.applyAllProposals(itemId)).resolves.toBe(true);
+    });
+
+    expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
   });
 });
 

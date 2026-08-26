@@ -1,20 +1,78 @@
-import { useApolloClient } from '@apollo/client/react';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
 import { use, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useFragment } from '~/gql';
-import type { UndoKind } from '~/gql/graphql';
-import { MetadataFixFragment } from '~/graphql/upload';
+import type {
+  BookResolvePendingFixMutation,
+  PendingFixResolution,
+  PendingFixRowFragmentFragment,
+  UndoKind,
+} from '~/gql/graphql';
+import {
+  BookResolvePendingFixDocument,
+  LibraryPendingFixesDocument,
+  MetadataFixFragment,
+  PendingFixRowFragment,
+} from '~/graphql/upload';
 import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
+import { unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
-import type { FixKey, FixOutcome } from './use-fix-actions';
-import { useFixActions } from './use-fix-actions';
-import type { PendingFixRow } from './use-pending-fixes';
-import { usePendingFixes } from './use-pending-fixes';
 import type { TransportItem } from './use-upload-transport';
 import { useUploadTransport } from './use-upload-transport';
+
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated — same shape as
+// `control/unlink-book-lineage-button/index.tsx`.
+type BookResolvePendingFixPayload = Extract<
+  NonNullable<BookResolvePendingFixMutation['bookResolvePendingFix']>,
+  { __typename: 'BookResolvePendingFixPayload' }
+>;
+
+/**
+ * The pending-fix query's own row type, UNMASKED — not `FragmentType<typeof
+ * PendingFixRowFragment>`: the merge below reads `.book.id` and `.state` off
+ * these directly.
+ *
+ * `PendingFixRowFragmentFragment` is the fragment's own resolved type, and
+ * exactly what `useFragment(PendingFixRowFragment, …)` returns. Deriving it
+ * off `LibraryPendingFixesQuery['node']` instead would land on the still-
+ * MASKED row (`{ __typename: 'PendingFix' } & { ' $fragmentRefs'?: … }`),
+ * which exposes neither `.book` nor `.state`. `state`'s three nested
+ * `MetadataFix` arrays stay masked one level further in; unmasking those is
+ * this hook's own job, further down.
+ *
+ * Masking in this codebase is compile-time only (`useFragment` is an
+ * identity cast, `gql/fragment-masking.ts`), so naming this concrete row
+ * type is honest rather than a workaround.
+ */
+type PendingFixRow = PendingFixRowFragmentFragment;
+
+/** The field/kind/from triple `BookResolvePendingFixInput.fixes` takes — the
+ * wire shape, as an object, not the joined string `fixKey` produces for
+ * local dedup. */
+export type FixKey = { field: string; kind: string; from: string };
+
+/**
+ * What every fix resolution below resolves internally.
+ *
+ * `ok` is `true` on success, `false` on any typed error or network failure.
+ *
+ * `bookGlobalId` is the book id the SERVER reports back, which is NOT
+ * necessarily the one that was passed in: a successful `ACCEPT` (and the
+ * `UNDO` of an apply-snapshot) re-imports the rewritten EPUB through
+ * `applyEpubChanges`, minting a new content-hash id and re-keying the
+ * `PendingFix` row under it. `runRotating` below follows it — the merge join
+ * in `items` is keyed on exactly this string. Present only when `ok` is
+ * `true` (a typed error carries no payload to read it from).
+ *
+ * This type stays INTERNAL: `UseUploadQueue`'s public contract is still
+ * boolean, so `page/upload` never sees a `FixOutcome`.
+ */
+type FixOutcome = { ok: boolean; bookGlobalId?: string };
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error';
 
@@ -138,7 +196,7 @@ const seededRow = (r: ResolvedRow): UploadItem => ({
  * whenever one exists; the transport's own `autoFixes`/`proposals` (read off
  * the upload response) are only the fallback for a book with no row yet —
  * e.g. the instant after upload completes but before the server's
- * `PendingFix` row has round-tripped back through `usePendingFixes`.
+ * `PendingFix` row has round-tripped back through the query above.
  *
  * `everSeen` distinguishes that transient "no row YET" gap from a row this
  * live item was matched against earlier in the session and is no longer
@@ -204,10 +262,24 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
 };
 
 /**
- * The merged upload queue: joins the live transport (Task 6,
- * `useUploadTransport`) with the server's pending-fix rows (Task 7,
- * `usePendingFixes`/`useFixActions`) on `bookGlobalId`, and maps the public
- * fix-actions onto `useFixActions`'s four resolutions.
+ * The merged upload queue: joins the live transport (`useUploadTransport`,
+ * still its own hook — it owns the XHR queue) with the server's pending-fix
+ * rows on `bookGlobalId`, and maps the public fix-actions onto
+ * `bookResolvePendingFix`'s four resolutions.
+ *
+ * **Both halves of the pending-fix conversation are INLINE here**, in the one
+ * hook that needs them together. The read (`LibraryPendingFixesDocument`) and
+ * the write (`BookResolvePendingFixDocument`) used to sit in two indirection
+ * hooks, `usePendingFixes` and `useFixActions`, each with exactly this call
+ * site plus one other; both were dissolved. Their public surfaces carried
+ * `loading`/`error` fields that NO consumer ever read, which is what made
+ * them safe to drop rather than re-thread.
+ *
+ * The documents themselves deliberately stay in `~/graphql/upload.ts`, a leaf
+ * module, NOT in a route file: `UploadProvider` is a KEPT provider mounted
+ * above the router, so its reads have no single owning route, and both
+ * documents have a second reader outside this file (`component/nav`'s badge
+ * for the query, `page/book-edit`'s guard modal for the mutation).
  *
  * A queue item comes from one of two places, or both:
  * - a LIVE transport item (this session's upload, has progress)
@@ -221,8 +293,8 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
  * old REST engine's `setItems((prev) => [...seeded, ...prev])`.
  *
  * `MetadataFixFragment`'s three nested arrays (`autoFixes`/`appliedFixes`/
- * `proposals`) stay masked one level deeper than `usePendingFixes` itself
- * unmasks (that hook's own doc comment) — unmasking them is this hook's job.
+ * `proposals`) stay masked one level deeper than the row unmask above (see
+ * `PendingFixRow`'s own comment) — unmasking them is this hook's job too.
  * The three `useFragment` calls below run ONCE EACH, flattened across every
  * row, at this hook's own top level: `useFragment` is a compile-time-only
  * identity cast (no real hook behaviour), but `react-hooks/rules-of-hooks`
@@ -233,12 +305,126 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
  * than hand-rolling a second cast.
  */
 export const useUploadQueueEngine = (): UseUploadQueue => {
-  const { rows, refetch } = usePendingFixes();
-  const { acceptFixes, dismissFixes, undoFixes, clearFixes } = useFixActions();
   const client = useApolloClient();
-  // Also read to key `seenBookIdsRef`'s reset below — `usePendingFixes`
-  // already resolves the same id internally via this same hook.
+  // Rooted at `node(id: $libraryId)` below, and also read to key
+  // `seenBookIdsRef`'s reset further down. The Library global id
+  // `useCurrentLibraryId()` hands out serves admins (viewing another user's
+  // library) and non-admins alike — see that hook's own doc comment;
+  // `useLibraryTarget()` must never be reached for directly here.
   const { libraryId } = useCurrentLibraryId();
+
+  // Every `PendingFix` row for the current library. SKIPPED outright when
+  // `libraryId` is `undefined` — an admin with no library selected has
+  // nothing to root `node(id:)` on, and firing with `libraryId: ''` would be
+  // a guaranteed-empty round trip on this project's second most expensive
+  // operation.
+  //
+  // `loading`/`error` are deliberately NOT read: this hook renders no
+  // loading state of its own (the queue is empty until rows arrive, which is
+  // what the screen should show either way), and a failed pending-fix read
+  // must not blank the live transport half of the queue.
+  const { data, refetch } = useQuery(LibraryPendingFixesDocument, {
+    variables: { libraryId: libraryId ?? '' },
+    skip: libraryId === undefined,
+  });
+  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
+  const rows = useFragment(PendingFixRowFragment, library?.pendingFixes ?? []);
+
+  // ── The write half: all four resolutions through one mutation ────────────
+  //
+  // `ACCEPT`/`DISMISS`/`UNDO`/`CLEAR` map one-to-one onto the server's own
+  // `PendingFixResolution` enum.
+  //
+  // **Mostly no manual cache writes.** The mutation selects `library { id
+  // pendingFixes { ... } }`, so Apollo reconciles the row list read above
+  // from the payload by itself, purely through normalization. The exceptions
+  // are both confined to ACCEPT and UNDO, the two actions that rewrite the
+  // EPUB — see `run`'s own `update` for each.
+  const [resolve] = useMutation(BookResolvePendingFixDocument);
+
+  /**
+   * **`fixes` is OMITTED from the variables, not passed as `undefined`, for
+   * every bulk action** (`acceptFixes`/`dismissFixes` called with no `fixes`
+   * argument, and always for `undoFixes`/`clearFixes`, which never take one).
+   * "Absent" is what `BookResolvePendingFixInput.fixes` being optional means
+   * server-side: every proposal, so omitting the key is the honest expression
+   * of that intent. This is a CLARITY choice, not a behavioural one: a
+   * `variables: { id, action, fixes: undefined }` object is wire-identical to
+   * omitting the key (`JSON.stringify` drops `undefined`-valued properties
+   * the same way either form would be sent), and no test can distinguish the
+   * two, so nothing here guards against the `fixes: undefined` form
+   * regressing back in.
+   */
+  const run = useCallback(
+    async (id: string, action: PendingFixResolution, fixes?: FixKey[]): Promise<FixOutcome> => {
+      try {
+        const { data: resolveData } = await resolve({
+          // `fixes` is OMITTED, not passed as undefined, for bulk actions —
+          // see this callback's own doc comment.
+          variables: fixes === undefined ? { id, action } : { id, action, fixes },
+          update: (cache, { data: mutationData }) => {
+            // ACCEPT applies metadata; UNDO reverts it. Both change the
+            // fields the grid sorts and filters on, so both move the book's
+            // position in the connection — a move the payload cannot
+            // express. DISMISS and CLEAR only touch the pending-fix row,
+            // which the payload's own `library { pendingFixes }` selection
+            // already reconciles, so they evict nothing.
+            if (action !== 'ACCEPT' && action !== 'UNDO') return;
+            const outcome = unwrapResult<BookResolvePendingFixPayload>(
+              mutationData?.bookResolvePendingFix,
+              'BookResolvePendingFixPayload'
+            );
+            if (outcome.status !== 'ok') return;
+            cache.evict({
+              id: cache.identify({ __typename: 'Library', id: outcome.payload.library.id }),
+              fieldName: 'entries',
+            });
+            // The book id ROTATES whenever the EPUB is rewritten, and
+            // normalization writes the payload into a BRAND-NEW
+            // `Book:<newId>` entity — it cannot know the old one described
+            // the same book. Left alone, `Book:<oldId>` lingers with
+            // pre-accept metadata (and a `pendingFix` holding pre-accept
+            // proposals, which `page/book-edit`'s guard modal reads).
+            // `cache.gc()` below does NOT save us: a `Library.book(id:
+            // oldGid)` field written by any prior /book or /book-edit visit
+            // still REFERENCES the orphan, so it is reachable and never
+            // collected. Same branch, same reason, as
+            // `component/book-edit-form`'s save and
+            // `control/upload-replace-modal`'s replace on this identical
+            // `applyEpubChanges` path.
+            if (outcome.payload.book.id !== id) {
+              cache.evict({ id: cache.identify({ __typename: 'Book', id }) });
+            }
+            cache.gc();
+          },
+        });
+        const outcome = unwrapResult<BookResolvePendingFixPayload>(
+          resolveData?.bookResolvePendingFix,
+          'BookResolvePendingFixPayload'
+        );
+        return outcome.status === 'ok'
+          ? { ok: true, bookGlobalId: outcome.payload.book.id }
+          : { ok: false };
+      } catch {
+        // A network failure resolves `false` like a typed error does — the
+        // public `UseUploadQueue` contract is a bare boolean, and
+        // `page/upload` turns it into a toast.
+        return { ok: false };
+      }
+    },
+    [resolve]
+  );
+
+  const acceptFixes = useCallback(
+    (bookGlobalId: string, fixes?: FixKey[]) => run(bookGlobalId, 'ACCEPT', fixes),
+    [run]
+  );
+  const dismissFixes = useCallback(
+    (bookGlobalId: string, fixes?: FixKey[]) => run(bookGlobalId, 'DISMISS', fixes),
+    [run]
+  );
+  const undoFixes = useCallback((bookGlobalId: string) => run(bookGlobalId, 'UNDO'), [run]);
+  const clearFixes = useCallback((bookGlobalId: string) => run(bookGlobalId, 'CLEAR'), [run]);
 
   // The upload lands over XHR, so there is no mutation payload for Apollo to
   // reconcile from — the invalidation has to be explicit. Same field-level
@@ -254,7 +440,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       });
       client.cache.gc();
     }
-    refetch(); // the new book may have arrived with proposals
+    void refetch(); // the new book may have arrived with proposals
   }, [client, libraryId, refetch]);
   const transport = useUploadTransport(onUploaded);
   const { remapBookGlobalId } = transport;
@@ -298,7 +484,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // this file claimed before review C-1.
   //
   // Reset on a `libraryId` change: `UploadProvider` mounts once, unkeyed, at
-  // the app root, while `usePendingFixes` is scoped per-library — an admin
+  // the app root, while the pending-fix read is scoped per-library — an admin
   // switching library targets would otherwise leave this set growing
   // unboundedly for the tab's whole lifetime across every library visited.
   // Book global ids encode their owning library, so a stale entry from a
