@@ -878,10 +878,14 @@ describe('useUploadQueueEngine', () => {
 
   it('does NOT read the pending fixes while no library id is resolved', async () => {
     // An admin with no target selected must not fire a query with
-    // `libraryId: ''`. Counted through a `variableMatcher` (Ruling Q), which
-    // runs synchronously inside `MockLink.request()` — a `result`-as-function
-    // counter would only see DELIVERY, after MockLink's random 20–50ms delay,
-    // and an eager read could slip past the settle below on timing alone.
+    // `libraryId: ''`. Counted through the VARIABLE MATCHER — which in Apollo
+    // Client v4 is `request.variables` given a FUNCTION, never a
+    // `variableMatcher` key; see `countingPendingFixesMock`'s doc comment
+    // above for what the wrong spelling silently does. The matcher runs
+    // synchronously inside `MockLink.request()`, whereas a
+    // `result`-as-function counter would only see DELIVERY, after MockLink's
+    // delay, so an eager read could slip past the settle below on timing
+    // alone.
     const counter = { n: 0 };
     // `useCurrentLibraryId` rides along in the probe purely to give this test
     // a REAL settle point. `items` is `[]` from the very first render, so
@@ -1011,11 +1015,50 @@ describe('useUploadQueueEngine', () => {
   });
 
   it('leaves the LibraryEntries connection alone on CLEAR', async () => {
+    // This test needs its OWN guard that the CLEAR actually reached the link,
+    // and cannot borrow the `.resolves.toBe(true)` its four siblings use.
+    // `dismissCompleted` is `transport.dropItem(itemId); if (gid) void
+    // clearFixes(gid);` — it returns `void` and swallows the mutation, and the
+    // only observable settle, `items` emptying, is satisfied by `dropItem`
+    // ALONE. So if the CLEAR mock ever stopped matching, MockLink would reject
+    // with "No more mocked responses", `run`'s `catch` would swallow it, and
+    // this test would still go green while proving nothing whatsoever about
+    // CLEAR's `update`. That is fail-open, and the count-first matcher below
+    // is what closes it.
+    //
+    // Counted through the VARIABLE MATCHER — `request.variables` given a
+    // FUNCTION, per `countingPendingFixesMock`'s doc comment above for why
+    // that spelling and not a `variableMatcher` key. The increment happens
+    // BEFORE the `return` so a CLEAR sent with the wrong variables still
+    // counts as "the mutation was attempted but did not match".
+    const clears = { matched: 0, attempted: 0 };
+    const countingClearMock: ResolveMock = {
+      request: {
+        query: BookResolvePendingFixDocument,
+        variables: (variables) => {
+          clears.attempted += 1;
+          const ok = variables.id === BOOK_GID && variables.action === 'CLEAR';
+          if (ok) clears.matched += 1;
+          return ok;
+        },
+      },
+      result: {
+        data: {
+          __typename: 'Mutation',
+          bookResolvePendingFix: {
+            __typename: 'BookResolvePendingFixPayload',
+            book: { __typename: 'Book', id: BOOK_GID, title: 'Dune', author: 'Frank Herbert' },
+            library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [] },
+          },
+        },
+      },
+    };
+
     const { result, client } = renderEngine([
       viewerBootstrapMock,
       pendingFixesMockFor(BOOK_GID),
       configMock,
-      resolveMock('CLEAR', undefined, []),
+      countingClearMock,
     ]);
 
     await waitFor(() => expect(result.current!.items).toHaveLength(1));
@@ -1029,6 +1072,11 @@ describe('useUploadQueueEngine', () => {
     // The CLEAR is fire-and-forget inside `dismissCompleted`; wait for the
     // row to actually go before asserting the connection survived it.
     await waitFor(() => expect(result.current!.items).toHaveLength(0));
+    // …and wait for the mutation itself, which `items` emptying does NOT
+    // imply. `update` runs when the response lands, so asserting the
+    // connection before this point could pass on nothing having happened yet.
+    await waitFor(() => expect(clears.matched).toBe(1));
+    expect(clears.attempted).toBe(1);
 
     expect(readEntries(client)).not.toBeNull();
   });
