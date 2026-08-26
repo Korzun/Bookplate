@@ -1,8 +1,6 @@
-import { useQuery } from '@apollo/client/react';
-import { useCallback, useEffect, useState } from 'react';
-
 import type { UserProgressListQuery } from '~/gql/graphql';
 import { UserProgressListDocument } from '~/graphql/progress';
+import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 
 /**
  * Same rationale as `use-my-progress-list.ts`'s own `PAGE_SIZE` doc comment:
@@ -22,8 +20,8 @@ type UserLibrary = NonNullable<UserProgressListQuery['user']>['library'];
  * context, matching every other fetch-free row this migration has built.
  *
  * `id` stays visible WITHOUT unmasking, same as `MyProgressRowRef` — a
- * sibling selection on `node` alongside the fragment spread, not a field
- * the fragment itself pulls in.
+ * sibling selection on `node` alongside the fragment spread, not part of
+ * the fragment itself.
  */
 export type UserProgressRowRef = UserLibrary['progress']['edges'][number]['node'];
 
@@ -45,6 +43,12 @@ export type UseUserProgressList = {
    * selection, which is a single global choice unrelated to any one row on
    * the Users page (see `control/link-progress-modal`'s own doc comment for
    * the full reasoning).
+   *
+   * Pulled off `usePaginatedConnection`'s raw `data` — that helper's own
+   * `select` only ever sees the `progress` CONNECTION shape, so it cannot
+   * reach a sibling field like `library.id` next to it. `data` is exposed
+   * on the helper's return specifically for cases like this one (see that
+   * helper's doc comment).
    */
   libraryId: string | undefined;
 };
@@ -64,9 +68,10 @@ export type UseUserProgressList = {
  *
  * Unlike `useMyProgressList`, `userId` is supplied directly by the caller —
  * there is no internal id-resolution step (no `useCurrentLibraryId`
- * equivalent to bootstrap), so `loading` needs no extra term folded in: it
- * is `useQuery`'s own `loading`, which Apollo itself already reports as
- * `false` while `skip` is `true`.
+ * equivalent to bootstrap), so `loading` needs no extra term folded in:
+ * `usePaginatedConnection` is called with no `extraLoading`, so `loading`
+ * is derived purely from `networkStatus`, which Apollo itself already
+ * reports as not-loading while `skip` is `true`.
  *
  * `skip` stays a required, explicit parameter, matching
  * `useMyProgressList`'s convention — `UserRowContent`'s one call site is
@@ -76,59 +81,34 @@ export type UseUserProgressList = {
  * still exists as its own parameter so this hook's tests can gate the query
  * directly.
  *
- * **Error-surfacing policy** — identical split to `useMyProgressList`: a
- * first-page failure is `useQuery`'s own `error`, with `rows` empty (the
- * empty-error state). A `fetchMore` failure is caught locally and surfaced
- * through the same `error` field, with `rows` left untouched (existing rows
- * survive, offer a retry).
+ * **Error-surfacing policy** — identical split to `useMyProgressList`, both
+ * now implemented by `usePaginatedConnection` (see that helper's doc
+ * comment for the full policy): a first-page failure is `useQuery`'s own
+ * `error`, with `rows` empty (the empty-error state). A `fetchMore` failure
+ * is caught locally and surfaced through the same `error` field, with
+ * `rows` left untouched (existing rows survive, offer a retry).
  */
 export const useUserProgressList = (
   userId: string,
   { skip }: { skip: boolean }
 ): UseUserProgressList => {
-  const [fetchMoreError, setFetchMoreError] = useState<string | undefined>(undefined);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const { data, loading, error, fetchMore } = useQuery(UserProgressListDocument, {
-    variables: { userId, first: PAGE_SIZE },
-    skip,
-  });
-
-  const library = data?.user?.library;
-  const edges = library?.progress.edges ?? [];
-  const rows = edges.map((edge) => edge.node);
-  const hasNextPage = library?.progress.pageInfo.hasNextPage ?? false;
-  const endCursor = library?.progress.pageInfo.endCursor ?? undefined;
-
-  // A stale fetchMore failure belongs to the request that produced it —
-  // clear it once `userId`/`skip` move on, same reasoning as
-  // `useMyProgressList`'s identical effect.
-  useEffect(() => {
-    setFetchMoreError(undefined);
-  }, [userId, skip]);
-
-  const loadMore = useCallback(() => {
-    if (!hasNextPage || loadingMore) return;
-    setLoadingMore(true);
-    void (async () => {
-      try {
-        await fetchMore({ variables: { after: endCursor } });
-        setFetchMoreError(undefined);
-      } catch (err) {
-        setFetchMoreError(err instanceof Error ? err.message : 'Failed to load more progress');
-      } finally {
-        setLoadingMore(false);
-      }
-    })();
-  }, [fetchMore, hasNextPage, endCursor, loadingMore]);
+  const { data, edges, loading, loadingMore, error, hasNextPage, loadMore } =
+    usePaginatedConnection({
+      document: UserProgressListDocument,
+      variables: { userId, first: PAGE_SIZE },
+      skip,
+      select: (d) => d?.user?.library?.progress,
+      resetKey: `${userId}:${skip}`,
+      loadMoreErrorMessage: 'Failed to load more progress',
+    });
 
   return {
-    rows,
+    rows: edges.map((edge) => edge.node),
     loading,
-    error: error?.message ?? fetchMoreError,
+    error,
     hasNextPage,
     loadMore,
     loadingMore,
-    libraryId: library?.id,
+    libraryId: data?.user?.library?.id,
   };
 };

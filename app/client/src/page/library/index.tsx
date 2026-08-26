@@ -55,7 +55,7 @@ export const LibraryPage = () => {
     [query, author, seriesName, status, entryType, subjectsKey]
   );
 
-  const { edges, loading, error, hasNextPage, fetchNextPage } = useLibraryEntries(libraryFilter);
+  const { edges, loading, error, hasNextPage, loadMore } = useLibraryEntries(libraryFilter);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,14 +65,14 @@ export const LibraryPage = () => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          void fetchNextPage();
+          loadMore();
         }
       },
       { rootMargin: '200px' }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchNextPage, error, loading, hasNextPage]);
+  }, [loadMore, error, loading, hasNextPage]);
 
   if (isAdmin && !targetLibraryId) {
     const noUsers = !userListLoading && userList.length === 0;
@@ -160,11 +160,7 @@ export const LibraryPage = () => {
             <div className={style.pageError}>
               Failed to load more books
               <br />
-              <button
-                type="button"
-                className={style.retryButton}
-                onClick={() => void fetchNextPage()}
-              >
+              <button type="button" className={style.retryButton} onClick={loadMore}>
                 Retry
               </button>
             </div>

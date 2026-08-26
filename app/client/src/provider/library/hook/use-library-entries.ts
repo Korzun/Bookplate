@@ -1,8 +1,6 @@
-import { useQuery } from '@apollo/client/react';
-import { useCallback, useEffect, useState } from 'react';
-
 import type { LibraryEntriesQuery, LibraryFilter } from '~/gql/graphql';
 import { LibraryEntriesDocument } from '~/graphql/library';
+import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 /**
@@ -47,10 +45,12 @@ export type LibraryEntryEdge = LibraryNode['entries']['edges'][number];
 export type UseLibraryEntries = {
   edges: LibraryEntryEdge[];
   loading: boolean;
+  /** `NetworkStatus.fetchMore` — a "load more" request is in flight. */
+  loadingMore: boolean;
   /** Apollo's `error?.message` — see this file's doc comment for what it covers. */
   error: string | undefined;
   hasNextPage: boolean;
-  fetchNextPage: () => Promise<void>;
+  loadMore: () => void;
 };
 
 /**
@@ -60,13 +60,13 @@ export type UseLibraryEntries = {
  * `Library.entries` already carries `relayStylePagination(['filter'])` in
  * `cacheConfig` (`provider/apollo/cache.ts`) — keyed on `filter`, so a
  * filter change starts a fresh list in the cache rather than appending to
- * the old one, and `fetchMore` below appends within the SAME filter. This
- * hook adds no second pagination policy; it only decides when to call
- * `fetchMore` and how to report the result of doing so. `edges` is Apollo's
- * own array, passed through unchanged — no reordering, filtering, or
- * per-edge transform happens here (see `LibraryEntryEdge`'s doc comment for
- * why: that used to exist, in the form of a masked→unmasked zip, and was
- * deliberately removed).
+ * the old one, and `usePaginatedConnection`'s `fetchMore` below appends
+ * within the SAME filter. This hook adds no second pagination policy; it
+ * only decides when to call `loadMore` and how to report the result of
+ * doing so. `edges` is Apollo's own array, passed through unchanged — no
+ * reordering, filtering, or per-edge transform happens here (see
+ * `LibraryEntryEdge`'s doc comment for why: that used to exist, in the form
+ * of a masked→unmasked zip, and was deliberately removed).
  *
  * Skips the query outright when `libraryId` is `undefined` — an admin with
  * no library selected has nothing to root `node(id:)` on, and querying
@@ -78,17 +78,19 @@ export type UseLibraryEntries = {
  * ENTIRE `ViewerBootstrap` round trip — even for an admin with a stored
  * selection, since `useCurrentLibraryId` only trusts that selection once it
  * has learned `isAdmin` from that same query. Without folding
- * `useCurrentLibraryId`'s own `loading` in here, a consumer keying its
- * empty-state spinner off this hook's `loading` alone sees `edges: [],
- * loading: false` for that whole window and renders "library is empty"
- * instead — a false empty state on every cold load, not a corner case.
- * `edges`/`hasNextPage` are unaffected: they only ever reflect the
- * `LibraryEntries` query's own (skipped-safe) defaults.
+ * `useCurrentLibraryId`'s own `loading` in here (`extraLoading` below),
+ * a consumer keying its empty-state spinner off this hook's `loading` alone
+ * sees `edges: [], loading: false` for that whole window and renders
+ * "library is empty" instead — a false empty state on every cold load, not
+ * a corner case. `edges`/`hasNextPage` are unaffected: they only ever
+ * reflect the `LibraryEntries` query's own (skipped-safe) defaults.
  *
  * **Error-surfacing policy** (spec §14.6 flagged that no such pattern
- * existed for screens and asked the next plan to decide one; this hook is
- * that decision, and every later screen hook should follow it): `error` is
- * a single `string | undefined`, always Apollo's own `error?.message`.
+ * existed for screens and asked the next plan to decide one; this hook was
+ * that decision, now centralised in `usePaginatedConnection` — see that
+ * helper's own doc comment for the full policy and every later screen hook
+ * follows it too): `error` is a single `string | undefined`, always
+ * Apollo's own `error?.message`.
  *
  * A FIRST-PAGE failure is `useQuery`'s own `error` — at that point there is
  * no cached data yet, so `edges` is empty and this is the screen's
@@ -98,61 +100,42 @@ export type UseLibraryEntries = {
  * rejection into `useQuery`'s `error` at all — `fetchMore` runs with
  * `fetchPolicy: 'no-cache'` and only reaches the cache (and thus this
  * hook's `data`/`edges`) on success, so a failed page leaves the cached
- * `edges` completely untouched. This hook catches that rejection itself and
- * surfaces it through the SAME `error` field via local state, rather than
- * adding a second error slot — but because `edges` is untouched, a consumer
- * distinguishes the two cases exactly as `page/library` already does today
- * (`edges.length === 0` vs `> 0`, this hook's OWN `edges` — not
- * `bookListItems`, a leftover REST-era field `page/library` no longer keys
- * on at all since it moved onto this hook): empty `edges` + `error` is the
- * empty-error state, non-empty `edges` + `error` is "keep the rows, show a
- * retry affordance". That distinction is the caller's job, not this hook's
- * — `useLibraryEntries` only guarantees `edges` survives a fetchMore
- * failure untouched and `error` reports it either way.
+ * `edges` completely untouched. `usePaginatedConnection` catches that
+ * rejection itself and surfaces it through the SAME `error` field via local
+ * state, rather than adding a second error slot — but because `edges` is
+ * untouched, a consumer distinguishes the two cases exactly as
+ * `page/library` already does today (`edges.length === 0` vs `> 0`, this
+ * hook's OWN `edges` — not `bookListItems`, a leftover REST-era field
+ * `page/library` no longer keys on at all since it moved onto this hook):
+ * empty `edges` + `error` is the empty-error state, non-empty `edges` +
+ * `error` is "keep the rows, show a retry affordance". That distinction is
+ * the caller's job, not this hook's — `useLibraryEntries` only guarantees
+ * `edges` survives a fetchMore failure untouched and `error` reports it
+ * either way.
+ *
+ * `resetKey` is `` `${libraryId}:${JSON.stringify(filter)}` `` — a
+ * PRIMITIVE, unlike the reference-compared `useEffect` this hook used to
+ * roll by hand. That former effect depended on `filter` REFERENCE
+ * stability to behave: a caller passing a freshly-literal `filter` object
+ * on every render (rather than one held in state) fired it every render,
+ * which could clear a legitimate retry state before the screen ever got to
+ * show it. `page/library` still works around exactly that with its own
+ * `JSON.stringify` + `useMemo` dance (Task 5 owns removing that workaround,
+ * not this hook) — the stringified `resetKey` here removes the underlying
+ * footgun instead of relying on every caller to dodge it.
  */
 export const useLibraryEntries = (filter: LibraryFilter | undefined): UseLibraryEntries => {
   const { libraryId, loading: libraryIdLoading } = useCurrentLibraryId();
-  const [fetchMoreError, setFetchMoreError] = useState<string | undefined>(undefined);
 
-  const { data, loading, error, fetchMore } = useQuery(LibraryEntriesDocument, {
+  const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
+    document: LibraryEntriesDocument,
     variables: { libraryId: libraryId ?? '', first: PAGE_SIZE, filter },
     skip: libraryId === undefined,
+    select: (data) => (data?.node?.__typename === 'Library' ? data.node.entries : undefined),
+    extraLoading: libraryIdLoading,
+    resetKey: `${libraryId}:${JSON.stringify(filter)}`,
+    loadMoreErrorMessage: 'Failed to load more entries',
   });
 
-  const library = data?.node?.__typename === 'Library' ? data.node : undefined;
-  const edges = library?.entries.edges ?? [];
-  const hasNextPage = library?.entries.pageInfo.hasNextPage ?? false;
-  const endCursor = library?.entries.pageInfo.endCursor ?? undefined;
-
-  // A stale fetchMore failure belongs to the request that produced it: once
-  // the target library or filter moves on to a different list, clear it
-  // rather than let it linger over rows it never actually failed to load.
-  //
-  // This depends on `libraryId`/`filter` REFERENCE stability to behave: a
-  // caller that passes a freshly-literal `filter` object on every render
-  // (rather than one held in state, as `useProbe` does in this hook's own
-  // test) makes this effect fire every render, which can clear a legitimate
-  // retry state before the screen ever gets to show it. Pass a stable
-  // `filter` reference.
-  useEffect(() => {
-    setFetchMoreError(undefined);
-  }, [libraryId, filter]);
-
-  const fetchNextPage = useCallback(async () => {
-    if (libraryId === undefined || !hasNextPage) return;
-    try {
-      await fetchMore({ variables: { after: endCursor } });
-      setFetchMoreError(undefined);
-    } catch (err) {
-      setFetchMoreError(err instanceof Error ? err.message : 'Failed to load more entries');
-    }
-  }, [fetchMore, libraryId, hasNextPage, endCursor]);
-
-  return {
-    edges,
-    loading: loading || libraryIdLoading,
-    error: error?.message ?? fetchMoreError,
-    hasNextPage,
-    fetchNextPage,
-  };
+  return { edges, loading, loadingMore, error, hasNextPage, loadMore };
 };

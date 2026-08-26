@@ -133,7 +133,7 @@ describe('useLibraryEntries', () => {
     expect(result.current?.hasNextPage).toBe(false);
   });
 
-  it('appends the next page on fetchNextPage without dropping the first', async () => {
+  it('appends the next page on loadMore without dropping the first', async () => {
     const result = renderProbe([
       firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
       fetchMoreMock('c1', [bookEdge('c2')], { hasNextPage: false, endCursor: 'c2' }),
@@ -143,17 +143,16 @@ describe('useLibraryEntries', () => {
     expect(result.current?.edges).toHaveLength(1);
     expect(result.current?.hasNextPage).toBe(true);
 
-    await act(async () => {
-      await result.current?.fetchNextPage();
-    });
+    act(() => result.current?.loadMore());
 
     await waitFor(() => expect(result.current?.edges).toHaveLength(2));
     expect(result.current?.edges.map((e) => e.cursor)).toEqual(['c1', 'c2']);
     expect(result.current?.hasNextPage).toBe(false);
     expect(result.current?.error).toBeUndefined();
+    expect(result.current?.loadingMore).toBe(false);
   });
 
-  it('keeps existing edges when fetchNextPage fails', async () => {
+  it('keeps existing edges when loadMore fails, and offers a retry via error', async () => {
     const result = renderProbe([
       firstPageMock([bookEdge('c1')], { hasNextPage: true, endCursor: 'c1' }),
       fetchMoreErrorMock('c1'),
@@ -162,14 +161,13 @@ describe('useLibraryEntries', () => {
     await waitFor(() => expect(result.current?.loading).toBe(false));
     expect(result.current?.edges).toHaveLength(1);
 
-    await act(async () => {
-      await result.current?.fetchNextPage();
-    });
+    act(() => result.current?.loadMore());
 
     await waitFor(() => expect(result.current?.error).toBe('fetch more failed'));
     expect(result.current?.edges).toHaveLength(1);
     expect(result.current?.edges[0]?.cursor).toBe('c1');
     expect(result.current?.hasNextPage).toBe(true);
+    expect(result.current?.loadingMore).toBe(false);
   });
 
   it('does not query when there is no library id', () => {
