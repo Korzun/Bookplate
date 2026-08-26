@@ -194,8 +194,10 @@ const linkAlreadyLinkedMock = (
 /**
  * Seeds the orphan `Progress` entity directly into a REAL `InMemoryCache`
  * (mirrors `use-progress-mutations.test.tsx`'s own eviction test), so a link
- * test can prove `useLinkProgress`'s eviction actually fires through this
- * modal, not merely that the mutation itself resolves.
+ * test can prove `handleConfirm`'s eviction actually fires through this
+ * modal (Task 4 inlined the deleted `useLinkProgress`'s `update` callback
+ * directly into this file's own `useMutation(BookLinkDocumentDocument)`
+ * call), not merely that the mutation itself resolves.
  */
 const seedOrphanProgress = (client: ApolloClient) => {
   client.cache.writeFragment({
@@ -293,9 +295,10 @@ describe('LinkProgressModal', () => {
   });
 
   // Brief-required: links via bookLinkDocument AND proves the stale orphan
-  // Progress entity is evicted from the cache — `useLinkProgress` is the
-  // REAL hook here (not mocked), so this exercises its actual `update`
-  // callback through the modal's own confirm flow.
+  // Progress entity is evicted from the cache — `handleConfirm`'s
+  // `useMutation` call is the REAL implementation here (not mocked), so
+  // this exercises its actual `update` callback through the modal's own
+  // confirm flow.
   it('links the selected book to the document via bookLinkDocument', async () => {
     const onClose = vi.fn();
     const { client } = renderModal({ onClose }, [

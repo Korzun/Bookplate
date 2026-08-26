@@ -1,3 +1,30 @@
+/**
+ * **Rehoming note for Task 5b (review round 1, Item 2).** After Task 4,
+ * this is the LAST non-list resident of `provider/library/` — the other
+ * two files there (`use-library-entries.ts`, Task 5;
+ * `use-series-detail.ts`, Task 5b) are both owned and get moved/deleted by
+ * name. This file was NOT owned by any task's brief, and Task 5b deletes
+ * the whole `provider/library/` directory BEFORE Task 7 (which owns this
+ * file's third caller, `control/set-progress-modal`, via `page/book`).
+ *
+ * Ruling (made during Task 4's review): Task 5b moves this file WHOLE to
+ * `src/lib/use-progress-mutations.ts` and updates its three importers —
+ * NOT inlined into its call sites, unlike `useLinkProgress` (Task 4
+ * dissolved that one, single caller, into `control/link-progress-modal`
+ * directly). `useSetMyProgress`'s and `useDeleteProgress`'s `update`
+ * callbacks are not boilerplate: `useDeleteProgress`'s in particular does a
+ * `cache.extract()`-and-scan to null dangling `Book.progress` references
+ * (see that function's own doc comment, "Task 7 addition"), pinned by its
+ * own seen-to-fail test — duplicating that across three call sites would
+ * be a real drift risk, not a simplification.
+ *
+ * Current callers (verify this list before moving — it is what makes the
+ * move safe, not just "close enough"):
+ *   - `component/my-progress-row/index.tsx` — `useDeleteProgress`
+ *   - `component/user-progress-row/index.tsx` — `useDeleteProgress`
+ *   - `control/set-progress-modal/index.tsx` — `useSetMyProgress` AND
+ *     `useDeleteProgress`
+ */
 import type { Reference } from '@apollo/client';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState } from 'react';

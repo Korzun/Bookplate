@@ -345,13 +345,14 @@ describe('UserProgressRow', () => {
   // Inapplicable ("does not show Link button while book is loading"):
   // fetch-free rows have no per-row loading state at all — `book` arrives
   // already resolved (or genuinely `null`) as part of the parent
-  // connection page (`use-user-progress-list.ts`), so there is no
-  // intermediate "still resolving" state for the button to be gated
-  // against. Same reasoning as `MyProgressRow`'s identical omission.
+  // connection page (`component/user-row-content`'s own
+  // `usePaginatedConnection` read), so there is no intermediate "still
+  // resolving" state for the button to be gated against. Same reasoning as
+  // `MyProgressRow`'s identical omission.
 
   // Inapplicable ("does not show Link button for non-admin"): this
   // component is fetch-free and renders NOTHING (no rows at all, let alone
-  // an unresolved one) unless `useUserProgressList`'s `Query.user(id:)`
+  // an unresolved one) unless `UserRowContent`'s `UserProgressListDocument`
   // query actually succeeded — and that query is admin-only server-side
   // (schema-verified, `graphql/progress.ts`'s doc comment on
   // `UserProgressListDocument`), refusing even a non-admin's OWN id. A
