@@ -13,4 +13,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   undone: {
     fontWeight: theme.fontWeight.extrabold,
   },
+  error: {
+    color: theme.color.danger.default,
+    fontSize: theme.fontSize.sm,
+    margin: `${theme.space.sm} 0 0`,
+  },
 }));

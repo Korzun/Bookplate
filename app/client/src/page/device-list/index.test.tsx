@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DeviceRowFragment } from '~/component/device-row';
 import { makeFragmentData } from '~/gql';
 import type { DeviceListQuery, UserListQuery } from '~/gql/graphql';
-import { UserListDocument } from '~/graphql/user';
+import { UserListDocument } from '~/page/user-list';
 import { renderWithApollo } from '~/test-utils';
 
 import { DeviceListDocument, DeviceListPage } from './index';

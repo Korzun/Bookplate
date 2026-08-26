@@ -1,7 +1,11 @@
+import type { MockedResponse } from '@apollo/client/testing';
 import { waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { UserListDocument } from '~/graphql/user';
+import { UserRowFragment } from '~/component/user-row';
+import { makeFragmentData } from '~/gql';
+import type { UserListQuery } from '~/gql/graphql';
+import { UserListDocument } from '~/page/user-list';
 import { renderWithApollo } from '~/test-utils';
 
 import { LibraryTargetProvider } from '../provider';
@@ -9,21 +13,32 @@ import { useWithTargetUser } from './use-with-target-user';
 
 const STORAGE_KEY = 'library-target-id';
 
-const user = (overrides: Record<string, unknown>) => ({
+/**
+ * `UserListDocument` spreads `...UserRowFragment` — a raw field literal
+ * fails TypeScript's excess-property check against the resulting masked
+ * type, so `makeFragmentData` is the sanctioned cast back to it (see
+ * `page/device-list/index.test.tsx`'s identical note).
+ */
+const user = (overrides: { id?: string; username?: string; libraryId?: string }) => ({
   __typename: 'User' as const,
-  id: 'u1',
-  username: 'alice',
-  progressCount: 0,
-  library: { __typename: 'Library' as const, id: 'LIB-ALICE' },
-  ...overrides,
+  ...makeFragmentData(
+    {
+      __typename: 'User' as const,
+      id: overrides.id ?? 'u1',
+      username: overrides.username ?? 'alice',
+      progressCount: 0,
+    },
+    UserRowFragment
+  ),
+  library: { __typename: 'Library' as const, id: overrides.libraryId ?? 'LIB-ALICE' },
 });
 
-const userListMock = (users: ReturnType<typeof user>[]) => ({
+const userListMock = (users: ReturnType<typeof user>[]): MockedResponse<UserListQuery> => ({
   request: { query: UserListDocument },
   result: {
     data: {
-      __typename: 'Query' as const,
-      viewer: { __typename: 'Viewer' as const, users },
+      __typename: 'Query',
+      viewer: { __typename: 'Viewer', users },
     },
   },
 });
@@ -69,9 +84,7 @@ describe('useWithTargetUser', () => {
   it('returns URLs unchanged for non-admin users, even when the stored selection matches a real library', async () => {
     localStorage.setItem(STORAGE_KEY, 'LIB-ALICE');
     const result = renderWithTargetUser(false, [
-      userListMock([
-        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
-      ]),
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
     ]);
     // `ready` is `true` immediately here (`skip: !isAdmin` never lets the
     // query fire for a non-admin), so this resolves on the first poll — but
@@ -97,9 +110,7 @@ describe('useWithTargetUser', () => {
   it('is not ready until UserListDocument resolves, for an admin with a stored selection', () => {
     localStorage.setItem(STORAGE_KEY, 'LIB-ALICE');
     const result = renderWithTargetUser(true, [
-      userListMock([
-        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
-      ]),
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
     ]);
 
     // Synchronous assertion, deliberately not behind `waitFor`: on the very
@@ -122,9 +133,7 @@ describe('useWithTargetUser', () => {
   it('returns a new function reference when ready flips, even though targetUsername stays undefined (no match)', async () => {
     localStorage.setItem(STORAGE_KEY, 'LIB-GHOST');
     const result = renderWithTargetUser(true, [
-      userListMock([
-        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
-      ]),
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
     ]);
 
     const before = result.current;
@@ -141,8 +150,8 @@ describe('useWithTargetUser', () => {
     localStorage.setItem(STORAGE_KEY, 'LIB-ALICE');
     const result = renderWithTargetUser(true, [
       userListMock([
-        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
-        user({ id: 'u2', username: 'bob', library: { __typename: 'Library', id: 'LIB-BOB' } }),
+        user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' }),
+        user({ id: 'u2', username: 'bob', libraryId: 'LIB-BOB' }),
       ]),
     ]);
 
@@ -156,9 +165,7 @@ describe('useWithTargetUser', () => {
   it('returns URLs unchanged when the stored selection matches no user in the list', async () => {
     localStorage.setItem(STORAGE_KEY, 'LIB-GHOST');
     const result = renderWithTargetUser(true, [
-      userListMock([
-        user({ id: 'u1', username: 'alice', library: { __typename: 'Library', id: 'LIB-ALICE' } }),
-      ]),
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
     ]);
 
     await waitFor(() => expect(result.current?.ready).toBe(true));

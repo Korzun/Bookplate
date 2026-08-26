@@ -1,17 +1,46 @@
+import { useMutation } from '@apollo/client/react';
 import { useActionState, useCallback, useState } from 'react';
 
 import { Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
+import type { UserChangePasswordMutation } from '~/gql/graphql';
+import { UserChangePasswordDocument } from '~/graphql/user';
 import { BooksIcon } from '~/icon';
+import { logout as performLogout } from '~/lib/logout';
+import { unwrapResult } from '~/provider/apollo';
 import { useLibraryName } from '~/provider/config';
 import { useToast } from '~/provider/toast';
-import { useChangeMyPassword } from '~/provider/user';
 
 import { useStyle } from './style';
 
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated.
+type UserChangePasswordPayload = Extract<
+  NonNullable<UserChangePasswordMutation['userChangePassword']>,
+  { __typename: 'UserChangePasswordPayload' }
+>;
+
+/**
+ * `useChangeMyPassword` is inlined directly here rather than kept as a
+ * `provider/user` hook — this page and `component/user-change-password` are
+ * its only two callers, each inlining its own call. This is the page
+ * `ProtectedRoute` sends every `mustChangePassword` viewer to, and it must
+ * render and submit with no prior GraphQL query of any kind: every `Query`
+ * field is gated on `authenticated`, which is false for a forced-reset
+ * viewer — this component intentionally has no `useQuery` of its own.
+ *
+ * **The silent-logout contract.** `userChangePassword` revokes every one of
+ * the caller's refresh tokens as its own side effect, and a GraphQL context
+ * has no `Response` to reissue auth cookies on even if it wanted to — so a
+ * successful call here must never "continue the session": it logs the
+ * caller out and sends them to `/login`, unconditionally, via the same
+ * shared best-effort `logout()` helper (`~/lib/logout`) the explicit "log
+ * out" button's hook delegates to.
+ */
 export const PasswordResetPage = () => {
   const styles = useStyle();
-  const [changeMyPassword] = useChangeMyPassword();
+  const [runChangePassword, { loading: isPending }] = useMutation(UserChangePasswordDocument);
   const showToast = useToast();
   const libraryName = useLibraryName();
   const [currentPassword, setCurrentPassword] = useState<string>('');
@@ -19,16 +48,37 @@ export const PasswordResetPage = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  const [, submitAction, isPending] = useActionState(async () => {
-    const changed = await changeMyPassword(currentPassword, newPassword);
-    if (changed) {
+  const [, submitAction] = useActionState(async () => {
+    try {
+      const { data } = await runChangePassword({
+        variables: { input: { currentPassword, newPassword } },
+      });
+
+      const result = unwrapResult<UserChangePasswordPayload>(
+        data?.userChangePassword,
+        'UserChangePasswordPayload'
+      );
+      if (result.status === 'missing') {
+        showToast('Password change failed', 'error');
+        return null;
+      }
+      if (result.status === 'error') {
+        showToast(result.message, 'error');
+        return null;
+      }
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setIsPasswordValid(false);
       showToast('Password changed', 'success');
-    } else {
-      showToast('Password change failed', 'error');
+
+      // Same best-effort teardown as the logout button, via the one shared
+      // helper — the password has already changed by this point, so the
+      // session must end whether or not the cookie clear succeeds.
+      await performLogout();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Password change failed', 'error');
     }
     return null;
   }, null);

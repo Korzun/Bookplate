@@ -1,28 +1,86 @@
+import type { Reference } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
 import { Fragment, useActionState, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, PasswordResultModal, TextInput } from '~/control';
+import type { UserRegisterMutation } from '~/gql/graphql';
+import { UserRegisterDocument } from '~/graphql/user';
+import { unwrapResult } from '~/provider/apollo';
 import { useToast } from '~/provider/toast';
-import { useRegisterUser } from '~/provider/user';
 
 import { useStyle } from './style';
 
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly here, extracted from the generated
+// union rather than hand-duplicated.
+type UserRegisterPayload = Extract<
+  UserRegisterMutation['userRegister'],
+  { __typename: 'UserRegisterPayload' }
+>;
+
+/**
+ * `useRegisterUser` is inlined directly here rather than kept as a
+ * `provider/user` hook — this form is its only caller, mirroring
+ * `component/device-row`'s own inlined `DeviceDeleteDocument` call.
+ *
+ * `userRegister` returns the created `User`, but a returned entity does not
+ * insert itself into any list: `Viewer.users` is read separately
+ * (`page/user-list`'s `UserListDocument`), so `update` appends into it via
+ * `cache.modify` on the `Viewer` singleton (`keyFields: []` in `cacheConfig`
+ * is what makes `cache.identify({ __typename: 'Viewer' })` resolve to an
+ * addressable id) — the same shape `DeviceForm`'s create path uses for
+ * `Viewer.devices`.
+ */
 export const UserRegister = () => {
   const styles = useStyle();
-  const [registerUser] = useRegisterUser();
+  const [runRegister] = useMutation(UserRegisterDocument);
   const showToast = useToast();
   const [username, setUsername] = useState<string>('');
   const [isUsernameValid, setIsUsernameValid] = useState<boolean>(false);
   const [result, setResult] = useState<{ username: string; password: string } | null>(null);
 
   const [, submitAction, isPending] = useActionState(async () => {
-    const newPassword = await registerUser(username);
-    if (newPassword === null) {
-      showToast('Registration failed', 'error');
-    } else {
-      setResult({ username, password: newPassword });
+    try {
+      const { data } = await runRegister({
+        variables: { input: { username } },
+        update: (cache, { data: mutationData }) => {
+          const created = unwrapResult<UserRegisterPayload>(
+            mutationData?.userRegister,
+            'UserRegisterPayload'
+          );
+          if (created.status !== 'ok') return;
+
+          cache.modify({
+            id: cache.identify({ __typename: 'Viewer' }),
+            fields: {
+              users: (existing: readonly Reference[] = [], { toReference }) => {
+                const ref = toReference(created.payload.user);
+                return ref ? [...existing, ref] : existing;
+              },
+            },
+          });
+        },
+      });
+
+      const registerResult = unwrapResult<UserRegisterPayload>(
+        data?.userRegister,
+        'UserRegisterPayload'
+      );
+      if (registerResult.status === 'missing') {
+        showToast('Registration failed', 'error');
+        return null;
+      }
+      if (registerResult.status === 'error') {
+        showToast(registerResult.message, 'error');
+        return null;
+      }
+
+      setResult({ username, password: registerResult.payload.password });
       setUsername('');
       setIsUsernameValid(false);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Registration failed', 'error');
     }
     return null;
   }, null);

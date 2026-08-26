@@ -1,7 +1,9 @@
 import { useQuery } from '@apollo/client/react';
 import { useMemo } from 'react';
 
-import { UserListDocument } from '~/graphql/user';
+import { UserRowFragment } from '~/component/user-row';
+import { useFragment } from '~/gql';
+import { UserListDocument } from '~/page/user-list';
 import { useIsAdmin } from '~/provider/auth';
 
 import { useLibraryTarget } from './use-library-target';
@@ -52,9 +54,10 @@ export type WithTargetUser = {
  * server-only encoding concern here (this project's `atob`/`btoa` ban on
  * client-side global ID handling).
  *
- * `skip: !isAdmin` mirrors `useUserList`'s own admin guard (`Viewer.users` is
- * admin-gated; see that hook's doc comment for why an unguarded query would
- * fire a `FORBIDDEN` request on every non-admin visit).
+ * `skip: !isAdmin` mirrors `UserListDocument`'s own admin guard (`Viewer.
+ * users` is admin-gated; see `page/user-list`'s doc comment for why an
+ * unguarded query would fire a `FORBIDDEN` request on every non-admin
+ * visit).
  *
  * This hook requires an `ApolloProvider` ancestor unconditionally (a bare
  * `useQuery` call, no fallback client) — every real app tree has one
@@ -68,9 +71,10 @@ export const useWithTargetUser = (): WithTargetUser => {
   const [targetLibraryId] = useLibraryTarget();
   const { data, loading } = useQuery(UserListDocument, { skip: !isAdmin });
 
-  const targetUsername = data?.viewer.users?.find(
-    (user) => user.library.id === targetLibraryId
-  )?.username;
+  const userRefs = data?.viewer.users ?? [];
+  const unmaskedUsers = useFragment(UserRowFragment, userRefs);
+  const matchIndex = userRefs.findIndex((ref) => ref.library.id === targetLibraryId);
+  const targetUsername = matchIndex === -1 ? undefined : unmaskedUsers[matchIndex].username;
   const ready = !loading;
 
   // A fresh function object every time `isAdmin`/`targetUsername`/`ready`

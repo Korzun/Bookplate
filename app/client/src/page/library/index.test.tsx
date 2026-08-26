@@ -7,8 +7,11 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { LibraryFilter } from '~/gql/graphql';
+import { UserRowFragment } from '~/component/user-row';
+import { makeFragmentData } from '~/gql';
+import type { LibraryFilter, UserListQuery } from '~/gql/graphql';
 import { LibraryEntriesDocument } from '~/graphql/library';
+import { UserListDocument } from '~/page/user-list';
 import { cacheConfig } from '~/provider/apollo';
 import type { BookListFilter } from '~/provider/book';
 import { ThemeProvider } from '~/provider/theme';
@@ -21,15 +24,9 @@ let currentLibraryId: string | undefined = LIBRARY_ID;
 let currentLibraryIdLoading = false;
 let targetLibraryId: string | undefined = undefined;
 let isAdminValue = false;
-let userListValue: { username: string }[] = [];
-let userListLoadingValue = false;
 
 vi.mock('~/provider/auth', () => ({
   useIsAdmin: () => [isAdminValue],
-}));
-
-vi.mock('~/provider/user', () => ({
-  useUserList: () => [userListValue, userListLoadingValue, false, undefined],
 }));
 
 vi.mock('~/provider/library-target', () => ({
@@ -108,8 +105,6 @@ beforeEach(() => {
   currentLibraryIdLoading = false;
   targetLibraryId = undefined;
   isAdminValue = false;
-  userListValue = [];
-  userListLoadingValue = false;
   vi.stubGlobal('IntersectionObserver', AutoIntersectingObserver);
 });
 
@@ -191,6 +186,34 @@ const fetchMoreErrorMock = (after: string, filter: LibraryFilter = emptyFilter) 
   error: new Error('fetch more failed'),
 });
 
+/** `page/library` only reads `UserListDocument`'s length (for the "No users
+ * registered" empty state), so a bare username is enough here — no other
+ * field matters to this route's own wiring. */
+const userListMock = (usernames: string[]): MockedResponse<UserListQuery> => ({
+  request: { query: UserListDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        users: usernames.map((username, index) => ({
+          __typename: 'User' as const,
+          ...makeFragmentData(
+            {
+              __typename: 'User' as const,
+              id: `u${index}`,
+              username,
+              progressCount: 0,
+            },
+            UserRowFragment
+          ),
+          library: { __typename: 'Library' as const, id: `lib-${index}` },
+        })),
+      },
+    },
+  },
+});
+
 async function renderLibraryPage(mocks: MockedResponse[], initialEntries: string[] = ['/library']) {
   const { LibraryPage } = await import('./index');
   return renderWithApollo(<LibraryPage />, { mocks, initialEntries });
@@ -219,11 +242,10 @@ describe('LibraryPage', () => {
     isAdminValue = true;
     currentLibraryId = undefined;
     targetLibraryId = undefined;
-    userListValue = [{ username: 'alice' }];
 
-    await renderLibraryPage([]);
+    await renderLibraryPage([userListMock(['alice'])]);
 
-    expect(screen.getByText('Select a library')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Select a library')).toBeTruthy());
     expect(screen.queryByText('No users registered')).toBeNull();
   });
 
@@ -231,12 +253,10 @@ describe('LibraryPage', () => {
     isAdminValue = true;
     currentLibraryId = undefined;
     targetLibraryId = undefined;
-    userListValue = [];
-    userListLoadingValue = false;
 
-    await renderLibraryPage([]);
+    await renderLibraryPage([userListMock([])]);
 
-    expect(screen.getByText('No users registered')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('No users registered')).toBeTruthy());
   });
 
   it('renders "Failed to load library" when the first page errors with no rows', async () => {

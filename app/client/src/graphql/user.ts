@@ -1,40 +1,26 @@
 import { graphql } from '~/gql';
 
 /**
- * `Viewer.users` carries a ×50 cost multiplier, so this selection is kept
- * deliberately narrow: `id` (the User global ID every user mutation
- * addresses), `username` (display + list keying), `progressCount` (the "N
- * books synced" subtitle), and now `library { id }` (task 4 — the Library
- * global ID `useWithTargetUser` matches the stored `library-target` selection
- * against, to recover the username without decoding the ID client-side). Do
- * NOT add anything past `library { id }` — `viewer.users → library.progress`
- * is this project's worst-measured legitimate query shape at 68.5% of the
- * complexity budget, and `library` is a singular field (multiplier 1), so
- * only ITS OWN children's cost rides the ×50; `id` alone is the cheapest
- * possible one.
+ * `UserListDocument` itself no longer lives here: it is composed at
+ * `page/user-list` from `component/user-row`'s colocated `UserRowFragment`
+ * (this task) — imported from there, not duplicated, by every other
+ * consumer of the admin user list (`component/device-form`, `page/library`,
+ * `page/upload`, `component/library-switcher`, `provider/library-target`'s
+ * `useWithTargetUser`). This file keeps only the documents with no single
+ * natural component owner — the mutations, and the non-admin
+ * `SyncPasswordDocument`/`UserRegenerateSyncPasswordDocument`/
+ * `UserChangePasswordDocument` reads/mutations `component/sync-password`,
+ * `component/user-change-password`, and `page/password-reset` drive.
  */
-export const UserListDocument = graphql(`
-  query UserList {
-    viewer {
-      users {
-        id
-        username
-        progressCount
-        library {
-          id
-        }
-      }
-    }
-  }
-`);
 
 /**
  * `user { … }` mirrors `UserListDocument`'s selection field-for-field
- * (task 4 added `library { id }` to that list read, so it is mirrored here
- * too) so the appended reference normalizes with every field that list read
- * expects — a partial selection here would leave `viewer.users`'s new entry
- * resolving `null`/missing fields the next time `UserList` reads it (same
- * reasoning as `DeviceCreateDocument`'s doc comment).
+ * (`id`/`username`/`progressCount`/`library { id }`, spread via
+ * `UserRowFragment` plus the sibling `library { id }` field there) so the
+ * appended reference normalizes with every field that list read expects — a
+ * partial selection here would leave `viewer.users`'s new entry resolving
+ * `null`/missing fields the next time `UserList` reads it (same reasoning as
+ * `DeviceCreateDocument`'s doc comment).
  *
  * `UsernameAlreadyExistsError` and `InvalidInputError` are both real,
  * reachable outcomes (a duplicate/reserved name; a rejected charset or

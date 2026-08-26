@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client/react';
 import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 
@@ -5,11 +6,11 @@ import { BookRowFromEntry, Page, SearchBar, SeriesRow } from '~/component';
 import { LibrarySwitcher } from '~/component/library-switcher';
 import type { LibraryFilter } from '~/gql/graphql';
 import { SpinnerIcon } from '~/icon';
+import { UserListDocument } from '~/page/user-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useBookListFilter } from '~/provider/book';
 import { useLibraryEntries } from '~/provider/library';
 import { useLibraryTarget } from '~/provider/library-target';
-import { useUserList } from '~/provider/user';
 import { path } from '~/router';
 
 import { useStyle } from './style';
@@ -19,7 +20,13 @@ export const LibraryPage = () => {
   const style = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
-  const [userList, userListLoading] = useUserList();
+  // `UserListDocument` is imported from `page/user-list`, not duplicated —
+  // this only needs the count (for the "No users registered" empty state),
+  // not any per-user field, so no fragment unmask is needed here.
+  const { data: userListData, loading: userListLoading } = useQuery(UserListDocument, {
+    skip: !isAdmin,
+  });
+  const userList = userListData?.viewer.users ?? [];
   const [bookListFilter, setBookListFilter] = useBookListFilter();
 
   // `useBookListFilter` recomputes a fresh `BookListFilter` object from URL
