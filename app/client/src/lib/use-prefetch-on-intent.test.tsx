@@ -35,11 +35,6 @@ const subjectsMock = (
   },
 });
 
-const subjectsErrorMock = (libraryId: string): MockedResponse<LibrarySubjectsQuery> => ({
-  request: { query: LibrarySubjectsDocument, variables: { libraryId } },
-  error: new Error('boom'),
-});
-
 describe('usePrefetchOnIntent', () => {
   it('fires the query on hover, before any click', async () => {
     const { result, client } = renderHookWithApollo(
@@ -98,55 +93,66 @@ describe('usePrefetchOnIntent', () => {
     expect(querySpy).toHaveBeenCalledTimes(1);
   });
 
-  // A whole-file run already fails if the rejection escapes unhandled
-  // (vitest reports it as a run-level "Unhandled Rejection" — the same
-  // mechanism `device-row/index.test.tsx`, `link-progress-modal
-  // /index.test.tsx`, and `use-replace-book.test.tsx` all lean on), but
-  // that alone gives a FALSE PASS to a `-t`-filtered run of just this test:
-  // the rejection is detected asynchronously, after this test has already
-  // reported green, so a filtered run never observes it. Every one of the
-  // three precedents above carries its own independent, in-test assertion
-  // that fails on the same regression by itself (e.g. `findByText('Network
-  // error')` timing out) — this test needs the equivalent. A
-  // process-level `unhandledRejection` listener, scoped to this test and
-  // removed in `finally`, is that independent assertion here: if the
-  // hook's `.catch()` regresses, `seenRejections` is non-empty and the
-  // `toEqual([])` below fails on its own, with no dependency on vitest's
-  // own run-level detection.
-  it('swallows a prefetch failure without an unhandled rejection', async () => {
-    const seenRejections: unknown[] = [];
-    const onUnhandledRejection = (reason: unknown) => {
-      seenRejections.push(reason);
+  // Round 1 of this test tried a WALL-CLOCK race: a scoped
+  // `process.on('unhandledRejection', ...)` listener, given a fixed delay to
+  // observe whether Node ever fired the event. That discriminated correctly
+  // on this machine at the tuned delay, but it FAILS OPEN: for the correct
+  // implementation `.catch()` is attached synchronously so the event never
+  // fires regardless of delay (no false-red risk) — but for the BROKEN
+  // implementation, the event fires after a real, environment-dependent
+  // delay. A delay too short for THAT reason (a slower/more loaded CI
+  // runner, not merely "we didn't tune the constant high enough") lets
+  // `seenRejections` stay empty and the assertion PASS on a real regression.
+  // That is the unsafe failure direction — the opposite of Task 3's
+  // precedent, whose timing-dependent test fails CLOSED (a missed window
+  // times out to red, a spurious-red CI nuisance at worst).
+  //
+  // This version asserts the actual invariant directly instead of racing
+  // Node's async detector: the hook's own doc comment already claims
+  // `.catch()` is attached SYNCHRONOUSLY, in the same call stack as
+  // `client.query()` itself. That is a same-tick property, provable without
+  // any timer — `client.query` is mocked to return a promise this test
+  // controls, spied on its OWN `.catch` method; firing the intent event and
+  // then immediately (same synchronous stack, no `await`) asserting the spy
+  // was called proves the handler was registered before this function even
+  // returns, let alone before any microtask/timer could run. If `.catch()`
+  // ever regresses to a bare `void client.query(...)`, `catchSpy` is never
+  // invoked and this assertion fails deterministically, every time, on every
+  // machine — not "usually", not "if the delay was long enough".
+  it('swallows a prefetch failure without an unhandled rejection', () => {
+    const client = new ApolloClient({
+      link: new MockLink([]),
+      cache: new InMemoryCache(cacheConfig),
+    });
+
+    // Stands in for a real network failure. Spying on ITS OWN `.catch`
+    // (not `Promise.prototype.catch`, which would also catch every other
+    // promise in this test/render) keeps the assertion scoped to exactly
+    // the one promise the hook is handed.
+    const rejected = Promise.reject(new Error('boom'));
+    const catchSpy = vi.spyOn(rejected, 'catch');
+    const querySpy = vi.spyOn(client, 'query').mockReturnValue(rejected as never);
+
+    const result: { current: ReturnType<typeof usePrefetchOnIntent> | undefined } = {
+      current: undefined,
     };
-    process.on('unhandledRejection', onUnhandledRejection);
-
-    try {
-      const { result, client } = renderHookWithApollo(
-        () => usePrefetchOnIntent(LibrarySubjectsDocument, { libraryId: LIBRARY_ID }),
-        [subjectsErrorMock(LIBRARY_ID)]
-      );
-
-      result.current?.intentProps.onMouseEnter();
-
-      // Waiting a beat gives the rejected `client.query` promise a chance to
-      // actually settle, and gives Node a chance to fire `unhandledRejection`
-      // for it if nothing caught it, before this test asserts and ends. 100ms
-      // is not a stylistic round number — with the `.catch()` removed as a
-      // deliberate probe, Node's `unhandledRejection` fires well after this
-      // promise settles (routed through several of Apollo's own internal
-      // microtask hops); empirically, 20ms was NOT enough for this listener
-      // to observe it (a false pass), 100ms reliably was (checked across
-      // repeated runs), so 100ms is the margin, not a guess.
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(seenRejections).toEqual([]);
-      // The failure never reaches the cache either — a second, independent
-      // signal that it was actually caught and discarded, not just
-      // unobserved.
-      expect(client.cache.extract()).toEqual({});
-    } finally {
-      process.off('unhandledRejection', onUnhandledRejection);
+    function Probe() {
+      result.current = usePrefetchOnIntent(LibrarySubjectsDocument, { libraryId: LIBRARY_ID });
+      return null;
     }
+    render(
+      <ApolloProvider client={client}>
+        <Probe />
+      </ApolloProvider>
+    );
+
+    result.current?.intentProps.onMouseEnter();
+
+    expect(querySpy).toHaveBeenCalledTimes(1);
+    // Deterministic — see this test's own leading comment. No `await`, no
+    // timer: `.catch()` is either already attached by the time this line
+    // runs, or the implementation is broken.
+    expect(catchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when skip is true', async () => {
