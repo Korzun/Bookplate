@@ -103,12 +103,12 @@ function bookEditMock(bookOverrides: Record<string, unknown> | null = {}) {
   };
 }
 
-/** The dismiss mutation's own response: `library.pendingFixes` is what the
- * ACTUAL document selects (`graphql/upload.ts`'s doc comment) — it does not
- * re-select `book.pendingFix` directly, so this proves the guard clears
- * through ordinary cache normalization (the resolved row shares the same
- * `PendingFix:<id>` entity `Book.pendingFix` points at), not a hand-written
- * `update`. */
+/** The dismiss mutation's own response, in the shape the ACTUAL document
+ * selects (`graphql/upload.ts`): `library { pendingFixes }` for the row list,
+ * and `book { hasActionablePendingFix }` — now `false`, the fix having just
+ * been dismissed — for the guard. Both land on entities this page already
+ * reads, which is what proves the guard clears through ordinary cache
+ * normalization rather than a hand-written `update`. */
 function dismissMock(): MockedResponse {
   return {
     request: {
