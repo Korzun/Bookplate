@@ -165,17 +165,58 @@ builder.node(model, {
      * like a book that doesn't exist. A malformed local id (decode failure)
      * resolves null for the same "nothing to look up" reasoning
      * `bookValidate`'s doc comment gives.
+     *
+     * SUPERSEDED IDS resolve to the row that supersedes them, via
+     * `bookStore.resolveBookId`. A book's local id is its content hash, so
+     * re-importing an edited EPUB mints a new one — `reimportBook`, and
+     * every `applyEpubChanges` path (accept / undo / replace / regen) —
+     * leaving the old id naming nothing. Without this, a bookmark, the back
+     * button, a shared link or a second tab left on a pre-rotation id all
+     * rendered "Book not found." for a book that plainly still exists, and a
+     * RELOAD could not clear it: the same URL hits the same dead id. The
+     * mapping already existed (`book_id_history`, written inside the same
+     * transaction as the rename, and read here through the same
+     * `resolveBookId` KOReader sync uses in `routes/kosync.ts`); this field
+     * simply stopped ignoring it.
+     *
+     * A FALLBACK, not a prefix — the direct `findUnique` runs first and
+     * returns on a hit, so a LIVE id costs exactly what it did before and
+     * only an id that resolves to nothing pays for the lookup. That ordering
+     * is safe rather than merely cheap: a hit under `[owner.userId, localId]`
+     * is by construction the live row for that id, since the store refuses a
+     * content-hash collision (`BookHashCollisionError`) instead of letting
+     * two of a user's books share one id, so no live row can be sitting
+     * under an id that history also maps somewhere else. On the miss path,
+     * `resolveBookId` is two indexed lookups that return early —
+     * `book_id_history` on its `@@id([userId, oldId])` primary key, then
+     * `device_editions` on `@@index([userId, editionId])` — and it returns
+     * its INPUT when neither matches, which the `currentId === parsed[1]`
+     * check turns back into the null this field already answered with.
+     *
+     * The behaviour change is deliberate and is the point: a consumer
+     * passing a superseded id now gets the current book instead of null. It
+     * is scoped by `owner.userId`, the parent Library's own owner — never
+     * the viewer's — so an admin traversal reads the target user's history
+     * and no history row is ever reachable across a tenant boundary, the
+     * same discipline the owner-mismatch guard above enforces.
      */
     book: t.prismaField({
       type: book,
       nullable: true,
       args: { id: t.arg.globalID({ required: true, for: book }) },
-      resolve: (query, owner, args, context) => {
+      resolve: async (query, owner, args, context) => {
         const parsed = parseCompoundId(args.id.id);
         if (parsed === null || parsed[0] !== owner.userId) return null;
-        return context.prisma.book.findUnique({
+        const live = await context.prisma.book.findUnique({
           ...query,
           where: { userId_id: { userId: owner.userId, id: parsed[1] } },
+        });
+        if (live !== null) return live;
+        const currentId = await context.stores.book.resolveBookId(owner.userId, parsed[1]);
+        if (currentId === parsed[1]) return null;
+        return context.prisma.book.findUnique({
+          ...query,
+          where: { userId_id: { userId: owner.userId, id: currentId } },
         });
       },
     }),

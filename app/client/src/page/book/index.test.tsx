@@ -569,6 +569,9 @@ const deleteSuccessMock = (): MockedResponse => ({
 });
 
 const NEW_BOOK_ID = 'Qm9vazoy'; // Book:2 — the id a regen can rotate INTO
+// Book:3 — an UNRELATED grid row, so a `Library.entries` assertion cannot be
+// satisfied by the subject book's own edge going dangling.
+const OTHER_BOOK_ID = 'Qm9vazoz';
 
 const regenMock = (responseId: string, extra: Partial<MockedResponse> = {}): MockedResponse => ({
   request: { query: BookRegenChaptersDocument, variables: { id: BOOK_ID } },
@@ -660,6 +663,23 @@ async function openBookAnd(mocks: MockedResponse[], item: RegExp) {
   await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
   await selectMenuItem(item);
   return rendered;
+}
+
+/**
+ * `openBookAnd` with a seeded `LibraryEntries` connection, seeded BEFORE the
+ * menu item is clicked. Ordering matters: the regen mutation fires on the
+ * click itself (unlike delete, which stops at a confirm modal), so seeding
+ * afterwards races the `update` function and could re-write the very field
+ * the assertion expects to find evicted. Returns the client rather than the
+ * whole render result — the entries read is all these tests want.
+ */
+async function openSeededBookAnd(mocks: MockedResponse[], item: RegExp) {
+  const { client } = await renderPage(mocks);
+  await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
+  await seedLibraryEntries(client, [standaloneRow(OTHER_BOOK_ID)]);
+  expect(await readEntries(client)).not.toBeNull();
+  await selectMenuItem(item);
+  return client;
 }
 
 describe('BookPage', () => {
@@ -1388,17 +1408,6 @@ describe('BookPage', () => {
   });
 
   describe('regen chapters', () => {
-    it('updates chapter fields on the same Book entity via normalization when the id is unchanged', async () => {
-      const { client } = await openBookAnd([bookMock(), regenMock(BOOK_ID)], /^regen chapters$/i);
-
-      await waitFor(() => {
-        const entity = (client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`] as {
-          chapterCount: number;
-        };
-        expect(entity.chapterCount).toBe(5);
-      });
-    });
-
     // `reimportBook` recomputes the content hash, which is the raw local half
     // of the Book's global id — so a regen can MINT A NEW ID. Normalization
     // alone would write `Book:<new-id>` and leave the pre-regen entity, with
@@ -1415,6 +1424,121 @@ describe('BookPage', () => {
         expect(Object.keys(extracted)).not.toContain(`Book:${BOOK_ID}`);
         expect((extracted[`Book:${NEW_BOOK_ID}`] as { chapterCount: number }).chapterCount).toBe(5);
       });
+    });
+
+    /**
+     * DEFECT A3 — the NON-rotating branch. This is the case the handler used
+     * to skip outright, via an `outcome.payload.book.id === targetId` early
+     * return, and it is the COMMON one: a regen usually re-parses a file
+     * whose content hash is unchanged. `reimportBook` still rewrites every
+     * grid-visible column on that path, and `BookRegenChaptersDocument`
+     * selects none of them, so the cached entity kept a stale title/cover
+     * indefinitely with nothing dangling to force a refetch.
+     *
+     * Asserted through the REFETCH the eviction causes rather than through
+     * `cache.extract()`: the detail read repopulates `Book:<id>` almost
+     * immediately, so an extract-based assertion would race its own fix. The
+     * refetch IS the user-visible repair, and `bookDetailCounter` counts at
+     * request time (see the lazy-split note above), so this fails closed.
+     */
+    it('evicts the Book entity and refetches the detail read when the id is UNCHANGED', async () => {
+      await openBookAnd(
+        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(BOOK_ID)],
+        /^regen chapters$/i
+      );
+      expect(bookDetailCounter.requests).toBe(1);
+
+      await waitFor(() => expect(bookDetailCounter.requests).toBe(2));
+    });
+
+    /**
+     * DEFECT A2 — `Library.entries` was never evicted, in EITHER branch,
+     * making this the only `applyEpubChanges`-style path in the client that
+     * left the grid stale. The three siblings that do evict it pin the same
+     * behaviour: `component/book-edit-form`'s save,
+     * `control/upload-replace-modal`'s replace, and the upload queue's
+     * ACCEPT/UNDO. Asserted against the cache — `readQuery` returning `null`
+     * IS "the next read misses and goes to the network" — not a call count.
+     *
+     * The seeded row is a DIFFERENT book (`OTHER_BOOK_ID`), deliberately.
+     * Seeding the regenerated book's own row would make this pass on the
+     * `Book` eviction alone — its edge would dangle and the read would come
+     * back incomplete whether or not `entries` was ever touched — so the
+     * assertion would not discriminate the defect it is named for. With an
+     * unrelated row, only an `entries` FIELD eviction can null this read.
+     */
+    it('invalidates the LibraryEntries connection after a regen that rotates the id', async () => {
+      const client = await openSeededBookAnd(
+        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(NEW_BOOK_ID)],
+        /^regen chapters$/i
+      );
+
+      await waitFor(async () => expect(await readEntries(client)).toBeNull());
+    });
+
+    // The UNCONDITIONAL half, and the one that fails on the pre-fix handler:
+    // the early return meant a non-rotating regen evicted nothing at all,
+    // even though the server had just rewritten `title`, `author`, `series`
+    // and the cover — every field the grid actually renders.
+    it('invalidates the LibraryEntries connection when the id is UNCHANGED', async () => {
+      const client = await openSeededBookAnd(
+        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(BOOK_ID)],
+        /^regen chapters$/i
+      );
+
+      await waitFor(async () => expect(await readEntries(client)).toBeNull());
+    });
+
+    // The negative control that keeps the two above honest: an eviction
+    // hoisted ABOVE the `status !== 'ok'` guard would satisfy both of them
+    // and still be wrong.
+    it('does not touch the LibraryEntries connection when the regen fails', async () => {
+      const client = await openSeededBookAnd(
+        [
+          bookMock(),
+          regenErrorMemberMock(
+            'BookHashCollisionError',
+            'This book collides with another book already in the library.'
+          ),
+        ],
+        /^regen chapters$/i
+      );
+
+      expect(
+        await screen.findByText('This book collides with another book already in the library.')
+      ).toBeInTheDocument();
+      expect(await readEntries(client)).not.toBeNull();
+    });
+
+    /**
+     * DEFECT A1, client half. When the id rotates, nothing navigated: the
+     * route param still held the OLD id, `Library.book(id:)` resolved null,
+     * and the page fell through to "Book not found." — which a reload could
+     * not clear, because the same URL hits the same dead id. Mirrors the
+     * `onReplaced(newId)` precedent this page already has for the replace
+     * flow. (The server half — `Library.book(id:)` resolving a superseded id
+     * through the lineage table — is pinned in
+     * `app/server/graphql/schema/book/model.test.ts`.)
+     */
+    it('navigates to the new id when the regen rotates it', async () => {
+      await openBookAnd(
+        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(NEW_BOOK_ID)],
+        /^regen chapters$/i
+      );
+
+      await waitFor(() =>
+        expect(routerMocks.navigate).toHaveBeenCalledWith(`/library/book/${NEW_BOOK_ID}`)
+      );
+    });
+
+    it('does not navigate when the regen leaves the id unchanged', async () => {
+      await openBookAnd(
+        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(BOOK_ID)],
+        /^regen chapters$/i
+      );
+
+      await waitFor(() => expect(bookDetailCounter.requests).toBe(2));
+      expect(routerMocks.navigate).not.toHaveBeenCalled();
     });
 
     it('toasts a BookHashCollisionError message', async () => {
