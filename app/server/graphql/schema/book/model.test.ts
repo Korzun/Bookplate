@@ -186,6 +186,93 @@ describe('Book', () => {
   });
 });
 
+/**
+ * A book's id is its content hash, so re-importing an edited EPUB MINTS A NEW
+ * ONE and the old id names nothing — `reimportBook` writes the old → new
+ * mapping into `book_id_history` as it goes (`services/book-store.ts`). Until
+ * this resolver consulted that table, every superseded id was a dead end that
+ * a reload could not clear: a bookmark, the back button, a shared link or a
+ * second tab all rendered "Book not found." for a book that plainly still
+ * exists. `bookStore.resolveBookId` already did this mapping for KOReader
+ * sync (`routes/kosync.ts`); these pin it for the GraphQL read.
+ *
+ * The lookup is a FALLBACK, not a prefix: the direct `findUnique` runs first
+ * and short-circuits, so a live id costs exactly what it always did and only
+ * an id that resolves to nothing pays for the history lookup.
+ */
+describe('Library.book(id:) — superseded ids', () => {
+  const OLD_ID = 'b'.repeat(32);
+
+  it('resolves a superseded id to the row that supersedes it', async () => {
+    await harness.prisma.bookIdHistory.create({
+      data: { userId: harness.aliceOwner.userId, oldId: OLD_ID, currentId: BOOK_ID },
+    });
+
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, OLD_ID)}") { id title } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const book = (result.data as { viewer: { library: { book: { id: string; title: string } } } })
+      .viewer.library.book;
+    expect(book.title).toBe('Dune');
+    // The CURRENT id comes back, not the superseded one that was asked for —
+    // so a client that keys its cache on the response settles on the live id
+    // rather than re-pinning the dead one.
+    expect(book.id).toBe(bookGlobalId(harness.aliceOwner.userId, BOOK_ID));
+  });
+
+  // The unchanged half: `resolveBookId` returns its INPUT when there is no
+  // mapping, so an id that never existed must still resolve null rather than
+  // falling through to some other row.
+  it('still resolves null for an id with no history entry', async () => {
+    const result = await harness.execute(
+      bookQuery(bookGlobalId(harness.aliceOwner.userId, OLD_ID)),
+      {
+        viewer: harness.aliceViewer,
+      }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { book: unknown } } }).viewer.library.book ?? null
+    ).toBeNull();
+  });
+
+  // The tenant boundary on the NEW lookup. `book_id_history` is keyed
+  // `[userId, oldId]`, and this passes the owning Library's `userId` — not
+  // the viewer's, and not an unscoped `oldId` match. Bob holds the only
+  // mapping for `OLD_ID`; alice asking under her own gid must not reach it.
+  it("does not resolve through another user's history entry", async () => {
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.bobOwner.userId,
+        id: BOOK_ID,
+        title: "Bob's Copy",
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    await harness.prisma.bookIdHistory.create({
+      data: { userId: harness.bobOwner.userId, oldId: OLD_ID, currentId: BOOK_ID },
+    });
+
+    const result = await harness.execute(
+      bookQuery(bookGlobalId(harness.aliceOwner.userId, OLD_ID)),
+      {
+        viewer: harness.aliceViewer,
+      }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { book: unknown } } }).viewer.library.book ?? null
+    ).toBeNull();
+  });
+});
+
 describe('Book URL fields', () => {
   // Self-read: no `?user=` param — an admin-shaped URL leaking onto a
   // self-read would be dead weight at best, and REST 403s a non-admin

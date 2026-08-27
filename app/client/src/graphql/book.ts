@@ -137,14 +137,18 @@ export const BookValidateDocument = graphql(`
  * regen-chapters.ts`): `BookHashCollisionError` and `BookNotValidatedError`,
  * both toasted by `page/book`'s regen handler. `book { id
  * chapterCount chapterNames chapterSpineMap }` re-selects every field the
- * REST `regen-chapters` response updated — normalization alone would
- * refresh those on the EXISTING `Book` entity, but `reimportBook` can also
- * change the book's global id (its raw content hash is recomputed from the
- * re-parsed file), in which case the payload's `book.id` differs from the
- * requested `$id` and normalization writes a NEW entity instead of updating
- * the old one — the hand-written `update` function evicts the stale
- * `Book:<old-id>` entity in that case. See that hook's doc comment for the
- * seen-to-fail evidence.
+ * REST `regen-chapters` response updated.
+ *
+ * Normalization alone is NOT enough here, and deliberately so: `reimportBook`
+ * re-parses the EPUB and rewrites every grid-visible column — title, author,
+ * series, cover, the lot — in BOTH the rotating and the non-rotating branch,
+ * and this payload carries none of them. Widening it to carry them would put
+ * that breadth on every regen. Instead the payload stays narrow and
+ * `page/book`'s hand-written `update` evicts `Library.entries` AND the
+ * `Book:<requested-id>` entity unconditionally on success, letting the open
+ * page's own `BookDetail` read supply the truth. See that handler's doc
+ * comment for the full reasoning, including why the non-rotating branch is
+ * the one that used to leak a stale title indefinitely.
  */
 export const BookRegenChaptersDocument = graphql(`
   mutation BookRegenChapters($id: ID!) {

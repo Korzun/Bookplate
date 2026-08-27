@@ -295,54 +295,71 @@ export const BookPage = () => {
   const showToast = useToast();
 
   /**
-   * `update` evicts the STALE `Book:<id>` entity ONLY when the payload's
-   * `book.id` differs from the requested one. `reimportBook` re-parses the
-   * EPUB and recomputes its content-hash fingerprint, which is also the raw
-   * local half of the Book's global id, so a regen can genuinely MINT A NEW
-   * ID. When it does, normalization writes a brand new `Book:<new-id>` and
-   * has no way to know the old entity described the same book. When the id is
-   * unchanged, normalization alone updates the three re-selected chapter
-   * fields and this branch does nothing.
+   * A regen is an `applyEpubChanges`-shaped write, and its `update` treats it
+   * as one. `reimportBook` (`app/server/services/book-store.ts`) RE-PARSES the
+   * EPUB and writes back `title`, `titleSort`, `author`, `authorSort`,
+   * `publisher`, `publishDate`, `description`, `series`, `seriesIndex`,
+   * `identifiers`, `subjects`, `coverData`, `coverMime` and `seriesId` — in
+   * BOTH the rotating and the non-rotating branch — and it also mutates
+   * series topology (deleting an emptied `Series` row, otherwise recomputing
+   * its meta). A "regen only touches chapters" reading of this mutation is
+   * wrong, and the three gaps below all followed from it. All three are now
+   * closed; the reasoning is kept because it is what makes the code look
+   * over-broad when it is not.
+   *
+   * `BookRegenChaptersDocument` selects only `book { id chapterCount
+   * chapterNames chapterSpineMap }`, so the payload carries NONE of those
+   * rewritten fields. Hence two evictions, both UNCONDITIONAL on success:
+   *
+   *   1. **`Library.entries`** (every filter variant, no `args`), because
+   *      the new position in a sorted, filtered, paginated connection is the
+   *      server's to decide, and a SERIES-typed edge's `bookCount` can be
+   *      wrong if the book left its series. This matches the three sibling
+   *      id-rotating paths exactly — `component/book-edit-form`'s save,
+   *      `control/upload-replace-modal`'s replace, and the upload queue's
+   *      ACCEPT/UNDO (`provider/upload/hook/use-upload-queue.ts`). Regen was
+   *      the only one that did not. **Not free**: `entries` is
+   *      `relayStylePagination(['filter'])`, so this discards every page
+   *      `fetchMore` accumulated — the same cost the DELETE handler's comment
+   *      below records, accepted for the same reason.
+   *
+   *   2. **The `Book:<targetId>` entity itself**, which covers both branches
+   *      with one statement. When the id ROTATES, `targetId` names the
+   *      superseded entity — normalization has already written a brand-new
+   *      `Book:<newId>` from the payload and cannot know the old one
+   *      described the same book, so the stale entity has to go by name
+   *      (`cache.gc()` will not take it: a `Library.book(id: oldGid)` field
+   *      from any prior visit still REFERENCES it). When the id does NOT
+   *      rotate — the COMMON case, since a regen usually re-parses a file
+   *      whose hash is unchanged — `targetId` names the entity the server
+   *      has just rewritten every grid-visible field of, and normalization
+   *      refreshed only the three chapter fields on it. Nothing dangles
+   *      there, so no incomplete-diff refetch rescues it and the stale
+   *      title/author/cover would live in the cache indefinitely.
+   *
+   * Evicting on the non-rotating branch rather than WIDENING the payload to
+   * carry the rewritten fields is a deliberate trade. Widening costs breadth
+   * on every regen; evicting costs one refetch of a book the user is looking
+   * at right now, which is immediate, complete, and keeps the mutation
+   * narrow. The open page's own `BookDetail` read is what repairs it — the
+   * `Library.book` reference goes dangling, the diff comes back incomplete,
+   * and Apollo refetches.
+   *
+   * **The navigate is not an alternative to the server fix, and neither is
+   * redundant.** On a rotation the route param still holds the OLD id; left
+   * alone the page falls through to "Book not found." and a RELOAD does not
+   * help, because the same URL hits the same dead id. This mirrors the
+   * `onReplaced(newId)` precedent already in this file. The deeper half is
+   * server-side: `Library.book(id:)` now resolves a superseded id through
+   * `bookStore.resolveBookId` (`app/server/graphql/schema/library/model.ts`),
+   * which makes EVERY stale book id recoverable — bookmarks, the back
+   * button, a shared link, a second tab — not just this handler's path. This
+   * navigate still earns its place: it keeps the URL from silently lying
+   * about which id the user is on.
    *
    * `BookRegenChaptersResult` has two error members (`BookHashCollisionError`,
    * `BookNotValidatedError`); both expose only `message`, so `unwrapResult`
    * maps them uniformly with no per-typename branching.
-   *
-   * **Known pre-existing defects, deliberately NOT fixed here** (they predate
-   * this task and live outside its scope). There are THREE, and the first two
-   * are cache-coherence gaps that a "regen only touches chapters" reading
-   * would wrongly dismiss — it does not. `reimportBook`
-   * (`app/server/services/book-store.ts`) re-parses the EPUB and writes back
-   * `title`, `titleSort`, `author`, `authorSort`, `publisher`, `publishDate`,
-   * `description`, `series`, `seriesIndex`, `identifiers`, `subjects`,
-   * `coverData`, `coverMime` and `seriesId` — in BOTH the rotating and the
-   * non-rotating branch — and it also mutates series topology (deleting an
-   * emptied `Series` row, otherwise recomputing its meta). So a regen can
-   * move a book's position in the grid, change what its card renders, and
-   * invalidate a SERIES-typed `Library.entries` edge's `bookCount`.
-   *
-   * 1. **No `Library.entries` eviction, in either branch.** Every other
-   *    `applyEpubChanges`-style path in this codebase evicts that field —
-   *    `component/book-edit-form`'s save, `control/upload-replace-modal`'s
-   *    replace, and the upload queue's ACCEPT/UNDO
-   *    (`provider/upload/hook/use-upload-queue.ts`) — precisely because the
-   *    new position in a sorted, filtered, paginated connection is the
-   *    server's to decide. This handler is the one that does not.
-   *
-   * 2. **The NON-rotating branch evicts nothing at all**, because of the
-   *    `outcome.payload.book.id === targetId` early return below. The server
-   *    has just rewritten every grid-visible field; `BookRegenChaptersDocument`
-   *    selects only `book { id chapterCount chapterNames chapterSpineMap }`,
-   *    so the payload carries none of them, and normalization updates only
-   *    those three. The cached `Book:<id>` keeps a stale title/author/cover
-   *    indefinitely. Nothing dangles here either, so the dangling-reference
-   *    cache miss described on the DELETE handler below does NOT rescue this.
-   *
-   * 3. When the id DOES rotate, this page does not navigate to the new id, so
-   *    the route param goes stale and the page falls through to "Book not
-   *    found." until the user navigates somewhere with a live id. The
-   *    eviction above is correct; the missing `navigate(path.book(newId))` is
-   *    the gap.
    */
   const handleRegenChapters = useCallback(
     async (targetId: string) => {
@@ -357,8 +374,13 @@ export const BookPage = () => {
               'BookRegenChaptersPayload'
             );
             if (outcome.status !== 'ok') return;
-            if (outcome.payload.book.id === targetId) return;
 
+            if (libraryId !== undefined) {
+              cache.evict({
+                id: cache.identify({ __typename: 'Library', id: libraryId }),
+                fieldName: 'entries',
+              });
+            }
             cache.evict({ id: cache.identify({ __typename: 'Book', id: targetId }) });
             cache.gc();
           },
@@ -373,6 +395,10 @@ export const BookPage = () => {
         }
         if (result.status === 'error') {
           showToast(result.message, 'error');
+          return;
+        }
+        if (result.payload.book.id !== targetId) {
+          navigate(path.book(result.payload.book.id));
         }
       } catch (err) {
         showToast(err instanceof Error ? err.message : 'Failed to regenerate chapters', 'error');
@@ -380,7 +406,7 @@ export const BookPage = () => {
         setRegenLoading(false);
       }
     },
-    [runRegen, regenLoading, showToast]
+    [runRegen, regenLoading, showToast, libraryId, navigate]
   );
 
   /**
