@@ -104,7 +104,7 @@ const seedBook = (client: ReturnType<typeof renderHookWithApollo>['client'], id:
           __typename: 'Book',
           id,
           validation: null,
-          pendingFix: null,
+          hasActionablePendingFix: false,
           // The form's own fields ride in through the colocated fragment, the
           // sanctioned cast from a concrete shape to the masked one.
           ...makeFragmentData(

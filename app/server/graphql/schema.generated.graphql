@@ -26,6 +26,7 @@ type Book implements Node {
   REST URL to download this book's EPUB file. Same `?user=`/`v=` suffix as `coverUrl` — see its description.
   """
   downloadUrl: String!
+  hasActionablePendingFix: Boolean!
   hasCover: Boolean!
   id: ID!
   identifiers: [Identifier!]!

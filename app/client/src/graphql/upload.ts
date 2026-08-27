@@ -106,10 +106,22 @@ export const LibraryPendingFixesDocument = graphql(`
  * the EPUB and mints a NEW content-hash id; callers need the new id to keep
  * pointing at the right book.
  *
- * Measured (`npm run test:cost -w app/server`): breadth 67 (67.0%), complexity
- * 4819 (14.6%) of budget — close to the 70% breadth gate, driven by
- * `PendingFixRowFragment`'s three `MetadataFix` arrays appearing twice (once
- * directly, once inside `library { pendingFixes }`).
+ * `book { hasActionablePendingFix }` is selected so a DISMISS reconciles
+ * `page/book-edit`'s conflict guard through ordinary normalization, the same
+ * way `library { pendingFixes }` reconciles the row list. That guard reads a
+ * BOOLEAN off the `Book` entity now (see `page/book-edit`'s own doc comment
+ * for the cache defect that motivated it), and this mutation is the only
+ * thing that can change the answer while that page is open — without this
+ * field the flag would stay `true` on the cached `Book` and the modal would
+ * never come down.
+ *
+ * Measured (`npm run test:cost -w app/server`): breadth 68 (68.0%),
+ * complexity 4820 (14.6%) of budget — one MORE than before that field, and
+ * still the closest operation in the client to the 70% breadth gate. The
+ * bulk is not this field: it is `PendingFixRowFragment`'s three `MetadataFix`
+ * arrays appearing twice (once directly, once inside
+ * `library { pendingFixes }`). Anything further added here should come with
+ * a plan for that duplication rather than spending the last two points.
  */
 export const BookResolvePendingFixDocument = graphql(`
   mutation BookResolvePendingFix(
@@ -124,6 +136,7 @@ export const BookResolvePendingFixDocument = graphql(`
           id
           title
           author
+          hasActionablePendingFix
         }
         library {
           id

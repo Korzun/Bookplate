@@ -1,3 +1,4 @@
+import { InMemoryCache } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
@@ -39,40 +40,30 @@ vi.mock('~/component', () => ({
   },
 }));
 
-import { BookResolvePendingFixDocument } from '~/graphql/upload';
+import { LibraryPendingFixesDocument, BookResolvePendingFixDocument } from '~/graphql/upload';
+import { cacheConfig } from '~/provider/apollo';
 import { renderWithApollo } from '~/test-utils';
 
 import { BookEditDocument } from './index';
 import { BookEditPage } from './index';
 
-/** A `pendingFix` selection (`BookEditDocument`'s own inline field, Task
- * 11 — no separate `LibraryPendingFixesDocument` lookup
- * anymore: the guard now reads straight off the book this page already
- * loads). `proposals` non-empty is what makes it a real conflict. */
-function pendingFixOf(proposals: unknown[] = [proposal()]) {
-  return {
-    __typename: 'PendingFix' as const,
-    id: `FIX-${GLOBAL_ID}`,
-    state: { __typename: 'PendingFixState' as const, proposals },
-  };
-}
-
-/** `BookEditDocument` selects `proposals { to }` and nothing else — `to` is
- * the only field the guard below reads, and `UploadFixGuardModal` takes no
- * data props at all. A proposal with a concrete `to` is an ACTIONABLE one. */
-function proposal() {
-  return { __typename: 'MetadataFix' as const, to: 'b' };
-}
-
-/** A flag-only ("needs review") proposal: `to === null`, no `changes`. The
- * server can never apply one — `bookResolvePendingFix`'s ACCEPT filters to
- * `to !== null` and leaves these behind — so `FixReview` gives them an Edit
- * link to THIS page instead of Accept/Reject. That makes them the one kind
- * of proposal the guard must not block on: there is no suggested value for
- * editing to overwrite, and blocking sends the user back to the only screen
- * that offered the Edit link. */
-function advisoryProposal() {
-  return { ...proposal(), to: null };
+/**
+ * The book fields that make this page show the GUARD rather than the form,
+ * in ONE place: every test that wants a guarded book goes through here, so
+ * the selection backing the guard can change without rewriting each of them.
+ *
+ * What "actionable" MEANS — a LIVE fix with at least one proposal carrying a
+ * concrete `to`, advisory `to: null` ones never counting — is the SERVER's
+ * rule now (`Book.hasActionablePendingFix`), and it is pinned under opposite
+ * mutations in `app/server/graphql/schema/pending-fix/model.test.ts`. It
+ * used to be pinned here, which required this page to SELECT the proposals —
+ * the very selection that partially overwrote the shared `PendingFix` entity
+ * and cost a spurious `LibraryPendingFixes` refetch per visit (see the
+ * cache-coherence suite at the bottom of this file). What is left for this
+ * file to prove is the routing: flag true → guard, flag false → form.
+ */
+function guardedBookFields() {
+  return { hasActionablePendingFix: true };
 }
 
 function bookData(overrides: Record<string, unknown> = {}) {
@@ -91,7 +82,7 @@ function bookData(overrides: Record<string, unknown> = {}) {
     series: null,
     identifiers: [],
     validation: { __typename: 'Validation' as const, id: GLOBAL_ID, valid: true },
-    pendingFix: null,
+    hasActionablePendingFix: false,
     ...overrides,
   };
 }
@@ -129,7 +120,13 @@ function dismissMock(): MockedResponse {
         __typename: 'Mutation' as const,
         bookResolvePendingFix: {
           __typename: 'BookResolvePendingFixPayload' as const,
-          book: { __typename: 'Book' as const, id: GLOBAL_ID, title: 'X', author: '' },
+          book: {
+            __typename: 'Book' as const,
+            id: GLOBAL_ID,
+            title: 'X',
+            author: '',
+            hasActionablePendingFix: false,
+          },
           library: {
             __typename: 'Library' as const,
             id: LIBRARY_ID,
@@ -221,43 +218,21 @@ describe('BookEditPage', () => {
     expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 
-  it('shows the guard modal (not the form) when fixes are pending', async () => {
-    renderPage([bookEditMock({ pendingFix: pendingFixOf() })]);
+  it('shows the guard modal (not the form) when the book has an actionable pending fix', async () => {
+    renderPage([bookEditMock(guardedBookFields())]);
     expect(await screen.findByText('Review fixes')).toBeInTheDocument();
     expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 
-  it('shows the form when no fixes are pending', async () => {
+  // The opposite mutation of the test above, and the one that keeps it from
+  // passing vacuously: `hasActionablePendingFix: false` covers a book with no
+  // fix at all, one whose proposals are all advisory, one with no proposals
+  // left, and a TTL-expired row — the server decides which, and pins each of
+  // those four separately.
+  it('shows the form when the book has no actionable pending fix', async () => {
     renderPage();
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
-  });
-
-  // A live `PendingFix` row can carry `proposals: []` (fully resolved,
-  // `undo` still armed within `isLivePendingFix`'s TTL) — that is not a
-  // conflict, only a NON-EMPTY proposals list is.
-  it('shows the form, not the guard, when the pending fix has no proposals left', async () => {
-    renderPage([bookEditMock({ pendingFix: pendingFixOf([]) })]);
-    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
     expect(screen.queryByText('Review fixes')).toBeNull();
-  });
-
-  // REGRESSION: an advisory-only book used to trip the guard, whose "Review
-  // fixes" sends the user back to /upload — the only screen offering the Edit
-  // link that brought them here. An unbreakable loop, because ACCEPT can never
-  // clear a `to: null` proposal.
-  it('shows the form, not the guard, when every remaining proposal is advisory', async () => {
-    renderPage([bookEditMock({ pendingFix: pendingFixOf([advisoryProposal()]) })]);
-    expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
-    expect(screen.queryByText('Review fixes')).toBeNull();
-  });
-
-  // The other half: a book with even ONE actionable proposal must still guard,
-  // or this fix would have silently deleted the protection instead of scoping
-  // it. Editing here really could strand a concrete pending suggestion.
-  it('still guards when an actionable proposal remains alongside an advisory one', async () => {
-    renderPage([bookEditMock({ pendingFix: pendingFixOf([advisoryProposal(), proposal()]) })]);
-    expect(await screen.findByText('Review fixes')).toBeInTheDocument();
-    expect(screen.queryByText('EDIT FORM')).toBeNull();
   });
 
   // The form's own fields ride in through `...BookEditFormFragment`, which
@@ -335,12 +310,19 @@ describe('BookEditPage', () => {
 
   // Proves `onDismissAndEdit` resolves through this page's OWN
   // `BookResolvePendingFixDocument` mutation, keyed on this book's GLOBAL id
-  // rather than a queue-item id, and that the guard clears
-  // via ordinary cache normalization once the mutation's `library
-  // { pendingFixes }` response updates the shared `PendingFix:<id>` entity —
-  // no `UploadProvider`/upload queue involved at all.
+  // rather than a queue-item id, and that the guard clears through ordinary
+  // cache normalization — no hand-written `update`, no
+  // `UploadProvider`/upload queue involved at all.
+  //
+  // The mechanism moved with the guard: it used to be the mutation's
+  // `library { pendingFixes }` response re-writing the shared
+  // `PendingFix:<id>` entity the guard read through. It is now that
+  // response's `book { hasActionablePendingFix }` landing on the same
+  // `Book:<id>` entity this page reads. DROP that one field from
+  // `BookResolvePendingFixDocument` and this test fails — which is exactly
+  // what it is for, since nothing else would notice.
   it('dismisses the pending fix and reveals the edit form, with no UploadProvider mounted', async () => {
-    renderPage([bookEditMock({ pendingFix: pendingFixOf() }), dismissMock()]);
+    renderPage([bookEditMock(guardedBookFields()), dismissMock()]);
 
     const dismissButton = await screen.findByText('Dismiss fixes & edit');
     await act(async () => {
@@ -349,5 +331,127 @@ describe('BookEditPage', () => {
 
     expect(await screen.findByText('EDIT FORM')).toBeInTheDocument();
     expect(screen.queryByText('Review fixes')).toBeNull();
+  });
+});
+
+/**
+ * The measured regression this page's `pendingFix` selection used to cause.
+ *
+ * `LibraryPendingFixes` is watched APP-WIDE — `component/nav` (the badge) and
+ * `provider/upload/hook/use-upload-queue.ts` each hold a live `useQuery` on
+ * it — so its watcher is active for the whole time `/book-edit` is open, not
+ * dormant. `PendingFixState` has no `id` and no `keyFields` entry in
+ * `provider/apollo/cache.ts`, so it is NOT a normalized entity: the cache
+ * replaces it WHOLESALE. A `BookEditDocument` that wrote a narrow `state`
+ * into the shared `PendingFix:<id>` entity therefore destroyed the fuller
+ * one already cached, turned that watcher's diff INCOMPLETE, and cost a
+ * spurious refetch of a breadth-55 / complexity-4807 operation — the
+ * client's second most expensive — once per book-edit visit to a book with a
+ * pending fix.
+ *
+ * Asserted against a real normalized `InMemoryCache(cacheConfig)` and
+ * `cache.diff()`, not a render: the refetch is the CONSEQUENCE, and an
+ * incomplete diff on a watched query is what causes it. This test fails on
+ * any selection that writes a partial `PendingFixState` from here.
+ */
+describe('cache coherence with the app-wide LibraryPendingFixes watcher', () => {
+  const metadataFix = (to: string | null) => ({
+    __typename: 'MetadataFix' as const,
+    field: 'title',
+    kind: 'k',
+    from: 'a',
+    to,
+    reason: null,
+    fromChips: null,
+    toChips: null,
+    changes: null,
+  });
+
+  // The FULL `PendingFixRowFragment` shape, which is what the app-wide
+  // watcher actually holds — including the three sibling fields
+  // (`autoFixes`, `appliedFixes`, `undo`) and the seven `MetadataFix` fields
+  // beyond `to` that a narrowed write would drop.
+  const pendingFixesData = {
+    __typename: 'Query' as const,
+    node: {
+      __typename: 'Library' as const,
+      id: LIBRARY_ID,
+      pendingFixes: [
+        {
+          __typename: 'PendingFix' as const,
+          id: `FIX-${GLOBAL_ID}`,
+          fileName: 'a.epub',
+          fileSize: 1,
+          book: { __typename: 'Book' as const, id: GLOBAL_ID, title: 'X', author: '' },
+          state: {
+            __typename: 'PendingFixState' as const,
+            autoFixes: [metadataFix('auto')],
+            appliedFixes: [metadataFix('applied')],
+            proposals: [metadataFix('b')],
+            undo: { __typename: 'UndoSnapshot' as const, kind: 'ACCEPT' as const },
+          },
+        },
+      ],
+    },
+  };
+
+  const pendingFixesVariables = { libraryId: LIBRARY_ID };
+
+  const seedPendingFixes = (cache: InMemoryCache) =>
+    cache.writeQuery({
+      query: LibraryPendingFixesDocument,
+      variables: pendingFixesVariables,
+      // The document spreads `PendingFixRowFragment`, so its generated type
+      // expects `$fragmentRefs`-wrapped members; the cache is written with
+      // the real, unmasked shape a server response carries.
+      data: pendingFixesData as never,
+    });
+
+  const pendingFixesDiff = (cache: InMemoryCache) =>
+    cache.diff({
+      query: LibraryPendingFixesDocument,
+      variables: pendingFixesVariables,
+      optimistic: false,
+      returnPartialData: true,
+    });
+
+  it('leaves a cached LibraryPendingFixes read complete after this page writes its own document', () => {
+    const cache = new InMemoryCache(cacheConfig);
+    seedPendingFixes(cache);
+    expect(pendingFixesDiff(cache).complete).toBe(true);
+
+    cache.writeQuery({
+      query: BookEditDocument,
+      variables: { libraryId: LIBRARY_ID, bookId: GLOBAL_ID },
+      data: {
+        __typename: 'Query' as const,
+        node: { __typename: 'Library' as const, id: LIBRARY_ID, book: bookData() },
+      } as never,
+    });
+
+    expect(pendingFixesDiff(cache).complete).toBe(true);
+  });
+
+  // The other half: a book that HAS a live actionable fix is the case the
+  // defect was measured on, so the write must stay harmless there too — not
+  // merely on the `pendingFix: null` book above.
+  it('leaves it complete for a book that has an actionable pending fix', () => {
+    const cache = new InMemoryCache(cacheConfig);
+    seedPendingFixes(cache);
+
+    cache.writeQuery({
+      query: BookEditDocument,
+      variables: { libraryId: LIBRARY_ID, bookId: GLOBAL_ID },
+      data: {
+        __typename: 'Query' as const,
+        node: {
+          __typename: 'Library' as const,
+          id: LIBRARY_ID,
+          book: bookData(guardedBookFields()),
+        },
+      } as never,
+    });
+
+    expect(pendingFixesDiff(cache).complete).toBe(true);
   });
 });
