@@ -17,7 +17,7 @@ import { model as book } from '../book/model';
 import { builder } from '../builder';
 import { model as libraryEntry, type LibraryEntryRow } from '../library-entry/model';
 import { isOwnerOrAdmin, parseCompoundId } from '../node-scope';
-import { CONNECTION_LIMITS, rejectBackwardPagination, rejectOversizePage } from '../pagination';
+import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress` — see book/model.ts's note on the
 // same import for why an entity index must not be pulled in from a model file.
@@ -42,6 +42,53 @@ import { searchSuggestionsFilter } from './search-suggestions-filter';
 
 /** One connection edge — annotated explicitly so both branches of the `flatMap` in `entries` below (`Book` rows, `Series` rows) unify on the union `LibraryEntryRow` rather than TypeScript inferring two incompatible edge-array types. */
 type Edge = { cursor: string; node: LibraryEntryRow };
+
+/**
+ * `entries` and `progress` are declared below with a plain `t.field` over these
+ * two refs, NOT with `t.connection` — the one reason being that `t.connection`
+ * injects all four of Relay's `first`/`after`/`last`/`before` args and offers
+ * no way to withhold any of them. Both fields wrap a forward-only store cursor
+ * (`BookStore.listBooksPage`, `UserStore.getUserProgressPage`: one cursor plus a
+ * `take`, no keyset to walk backward from), so advertising `last`/`before` and
+ * then throwing on them made the SDL promise a capability the resolver refused.
+ * Declaring the connection type here and the field by hand states the
+ * forward-only shape in the schema itself, where a client generating from the
+ * SDL can see it.
+ *
+ * Verified against `@pothos/plugin-relay@4.7.1` before choosing this route, so
+ * a future reader doesn't re-litigate it:
+ *  - `RelayPluginOptions`'s `beforeArgOptions`/`lastArgOptions` (etc.) are typed
+ *    `Omit<InputObjectFieldOptions, 'required' | 'type'>` — they customize an
+ *    argument, they cannot omit one. They are also builder-wide, so deprecating
+ *    `last` through them would mislabel `Series.books`/`Validation.messages`,
+ *    where backward pagination genuinely works.
+ *  - `args` passed to `t.connection` cannot subtract either:
+ *    `field-builder.ts`'s `connection` spreads `...this.arg.connectionArgs()`
+ *    AFTER `...fieldOptions.args`, so the defaults always win — which is why
+ *    `entries`' `filter` arg could only ever be additive.
+ *  - `connectionArgs()` (`input-field-builder.ts`) returns all four
+ *    unconditionally.
+ *
+ * This is not fighting the plugin: `t.connection` itself calls
+ * `builder.connectionObject` for exactly this type. The `name` on each call is
+ * explicit, and the edge name is passed too, to reproduce byte-for-byte what
+ * `t.connection` derived (`${parentType}${Capitalize(fieldName)}Connection` and
+ * that name + `Edge` — `connectionObject`'s OWN edge default is the different
+ * `…EntriesEdge`, so omitting it would silently rename the type).
+ *
+ * Both resolvers already hand-build the whole `{ edges, pageInfo }` shape rather
+ * than leaning on Pothos's connection helpers, so nothing about their bodies
+ * changes.
+ */
+const entriesConnection = builder.connectionObject(
+  { type: libraryEntry, name: 'LibraryEntriesConnection' },
+  { name: 'LibraryEntriesConnectionEdge' }
+);
+
+const progressConnection = builder.connectionObject(
+  { type: progress, name: 'LibraryProgressConnection' },
+  { name: 'LibraryProgressConnectionEdge' }
+);
 
 /**
  * A Library is backed by an Owner, and only two resolvers can mint one:
@@ -133,16 +180,22 @@ builder.node(model, {
       },
     }),
 
-    entries: t.connection({
-      type: libraryEntry,
+    entries: t.field({
+      type: entriesConnection,
       description:
-        'Forward pagination only: `last`/`before` are rejected with ' +
-        'BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.',
+        'Forward pagination only: this connection offers `first`/`after` and no ' +
+        '`last`/`before` — the underlying cursor is forward-only.',
+      // Only `first`/`after` — `last`/`before` are deliberately absent; see the
+      // `entriesConnection` doc comment above for why the field is declared
+      // this way rather than with `t.connection`. `required: false` is spelled
+      // out because the builder sets `defaultInputFieldRequiredness: true`;
+      // `connectionArgs()` sets the same flag on every arg it mints.
       args: {
+        first: t.arg.int({ required: false }),
+        after: t.arg.string({ required: false }),
         filter: t.arg({ type: libraryFilter, required: false }),
       },
       resolve: async (owner, args, context) => {
-        rejectBackwardPagination('Library.entries', args);
         // Reject before the clamp below ever runs — see `CONNECTION_LIMITS`'s
         // doc comment (pagination.ts) for where `100`/`20` come from.
         rejectOversizePage('Library.entries', args, CONNECTION_LIMITS.libraryEntries.maxSize);
@@ -326,13 +379,17 @@ builder.node(model, {
      * `Library.entries`, which asks `listBooksPage` for the page and then reads
      * the `Book`/`Series` rows itself.
      */
-    progress: t.connection({
-      type: progress,
+    progress: t.field({
+      type: progressConnection,
       description:
-        'Forward pagination only: `last`/`before` are rejected with ' +
-        'BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.',
+        'Forward pagination only: this connection offers `first`/`after` and no ' +
+        '`last`/`before` — the underlying cursor is forward-only.',
+      // Forward args only, hand-declared — same reasoning as `entries` above.
+      args: {
+        first: t.arg.int({ required: false }),
+        after: t.arg.string({ required: false }),
+      },
       resolve: async (owner, args, context) => {
-        rejectBackwardPagination('Library.progress', args);
         // Reject before `clampProgressTake` ever silently clamps — its bounds
         // (50 default / 100 max) are restated in `CONNECTION_LIMITS.libraryProgress`
         // (pagination.ts) rather than imported from it, since this number's

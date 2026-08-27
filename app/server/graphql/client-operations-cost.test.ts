@@ -10,9 +10,12 @@ import { accepts, costOf } from './cost-test-support';
  * actually ships.
  *
  * `accepts()` runs schema validity plus the REAL `costLimitRule` through
- * `validate()`, exactly as a live request does. That is what catches
- * PAGE_SIZE_EXCEEDED and BACKWARD_PAGINATION_UNSUPPORTED, which a bare
- * `costOf()` measurement would not.
+ * `validate()`, exactly as a live request does — which a bare `costOf()`
+ * measurement would not. Schema validity is what catches a `last`/`before` on
+ * `Library.entries`/`Library.progress`, which no longer declare either
+ * argument (see the `entriesConnection` doc comment in
+ * `schema/library/model.ts`); it used to be a resolver-level
+ * BACKWARD_PAGINATION_UNSUPPORTED that only a real request would surface.
  *
  * NOTE on page sizes: a variable-valued `first`/`last` is priced at that
  * field's `maxSize`, not its default (cost-limit.ts, `multiplierFor`). Prefer

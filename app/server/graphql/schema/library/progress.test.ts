@@ -142,27 +142,56 @@ describe('Library.progress', () => {
     expect(page.pageInfo.hasNextPage).toBe(true);
   });
 
-  it('rejects backward pagination loudly rather than returning the leading page', async () => {
+  // `UserStore.getUserProgressPage` is a forward-only keyset, so this field
+  // does not OFFER `last`/`before` — declared with a plain `t.field` over an
+  // explicit `connectionObject` rather than `t.connection`, which would
+  // inject all four Relay args unconditionally (see `library/model.ts`).
+  // Backward pagination is now refused by GraphQL's unknown-argument
+  // validation, before the resolver runs, instead of by the resolver-level
+  // `BACKWARD_PAGINATION_UNSUPPORTED` this used to throw while the SDL still
+  // advertised the argument. See `entries.test.ts`'s equivalent case for why
+  // this asserts the message rather than `extensions.code`.
+  it('does not offer `last` — it is rejected as an unknown argument', async () => {
     const result = await harness.execute(
       '{ viewer { library { progress(last: 2) { edges { node { document } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
-    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.message).toBe(
+      'Unknown argument "last" on field "Library.progress".'
+    );
+    expect(result.data).toBeUndefined();
   });
 
-  // Precedence probe (review I-2 fix): `rejectOversizePage` now also checks
-  // `last`, but `rejectBackwardPagination` runs first in this resolver and
-  // rejects ANY `last` at all — so an oversize `last` must still surface as
-  // BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED.
-  it('rejects an oversize `last` as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED', async () => {
+  // Ordering probe, inherited from the `rejectOversizePage` precedence test
+  // this replaces: validation runs before execution, so an oversize `last`
+  // never reaches the resolver's size guard and must surface as the
+  // unknown-argument error, not PAGE_SIZE_EXCEEDED.
+  it('rejects an oversize `last` as an unknown argument, not PAGE_SIZE_EXCEEDED', async () => {
     const result = await harness.execute(
       '{ viewer { library { progress(last: 999999999) { edges { node { document } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+    expect(result.errors?.[0]?.message).toBe(
+      'Unknown argument "last" on field "Library.progress".'
+    );
+    expect(result.errors?.[0]?.extensions?.code).toBeUndefined();
+  });
+
+  it('does not offer `before` — it is rejected as an unknown argument', async () => {
+    const result = await harness.execute(
+      '{ viewer { library { progress(before: "some-opaque-cursor") { edges { node { document } } } } } }',
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors?.[0]?.message).toBe(
+      'Unknown argument "before" on field "Library.progress".'
+    );
+    expect(result.data).toBeUndefined();
   });
 
   /**

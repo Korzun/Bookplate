@@ -394,16 +394,16 @@ type Library implements Node {
   book(id: ID!): Book
 
   """
-  Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
+  Forward pagination only: this connection offers `first`/`after` and no `last`/`before` — the underlying cursor is forward-only.
   """
-  entries(after: String, before: String, filter: LibraryFilter, first: Int, last: Int): LibraryEntriesConnection!
+  entries(after: String, filter: LibraryFilter, first: Int): LibraryEntriesConnection!
   id: ID!
   pendingFixes: [PendingFix!]!
 
   """
-  Forward pagination only: `last`/`before` are rejected with BACKWARD_PAGINATION_UNSUPPORTED — the underlying cursor is forward-only.
+  Forward pagination only: this connection offers `first`/`after` and no `last`/`before` — the underlying cursor is forward-only.
   """
-  progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
+  progress(after: String, first: Int): LibraryProgressConnection!
   scanStatus: ScanStatus
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!

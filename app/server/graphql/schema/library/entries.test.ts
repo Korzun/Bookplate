@@ -155,45 +155,61 @@ describe('Library.entries', () => {
     expect((bobResult.data as EntriesData).viewer.library.entries.edges).toEqual([]);
   });
 
-  // `t.connection` always adds `last`/`before` to the SDL even though
-  // `BookStore.listBooksPage` has no backward keyset to walk. Silently
-  // ignoring them would mean a client asking for the trailing page instead
-  // gets the leading page with no error — worse than not offering backward
-  // pagination at all — so both must be rejected loudly with a coded error.
-  it('rejects `last` instead of silently returning the leading page', async () => {
+  // `BookStore.listBooksPage` has no backward keyset to walk, so this field
+  // does not OFFER `last`/`before` — it is declared with a plain `t.field`
+  // over an explicit `connectionObject` rather than `t.connection`, which
+  // would inject all four Relay args unconditionally (see `library/model.ts`).
+  // The rejection is therefore GraphQL's own unknown-argument validation,
+  // before any resolver runs — not the resolver-level
+  // `BACKWARD_PAGINATION_UNSUPPORTED` this used to throw while the SDL still
+  // advertised an argument it refused.
+  //
+  // Asserted on the validation message, not `extensions.code`: this harness
+  // calls graphql-js's `graphql()` directly, and graphql-js leaves a
+  // validation error's `extensions` empty (`{}`). The
+  // `GRAPHQL_VALIDATION_FAILED` code a client actually sees is stamped by
+  // graphql-yoga at the HTTP transport, which `content-negotiation.test.ts`
+  // pins separately. `data` being `undefined` (not `null`) is the second
+  // half of the proof: the query never executed at all.
+  it('does not offer `last` — it is rejected as an unknown argument', async () => {
     const result = await harness.execute(
       '{ viewer { library { entries(last: 5) { edges { node { __typename } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+    expect(result.errors?.[0]?.message).toBe('Unknown argument "last" on field "Library.entries".');
+    expect(result.data).toBeUndefined();
   });
 
-  // Precedence probe (review I-2 fix): `rejectOversizePage` now also checks
-  // `last`, but `rejectBackwardPagination` runs first in this resolver and
-  // rejects ANY `last` at all — so even an oversize `last` must still
-  // surface as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED. The
-  // more specific "you can't paginate backward here" error must not be
-  // shadowed by a size error.
-  it('rejects an oversize `last` as BACKWARD_PAGINATION_UNSUPPORTED, not PAGE_SIZE_EXCEEDED', async () => {
+  // Ordering probe, inherited from the `rejectOversizePage` precedence test
+  // this replaces: `rejectOversizePage` still checks `last` (for
+  // `Series.books`/`Validation.messages`, which do support it), so an
+  // oversize `last` here must still surface as the unknown-argument
+  // validation error and never as PAGE_SIZE_EXCEEDED. Validation runs before
+  // execution, so the resolver's size guard is never reached.
+  it('rejects an oversize `last` as an unknown argument, not PAGE_SIZE_EXCEEDED', async () => {
     const result = await harness.execute(
       '{ viewer { library { entries(last: 999999999) { edges { node { __typename } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+    expect(result.errors?.[0]?.message).toBe('Unknown argument "last" on field "Library.entries".');
+    expect(result.errors?.[0]?.extensions?.code).toBeUndefined();
   });
 
-  it('rejects `before` instead of silently returning the leading page', async () => {
+  it('does not offer `before` — it is rejected as an unknown argument', async () => {
     const result = await harness.execute(
       '{ viewer { library { entries(before: "some-opaque-cursor") { edges { node { __typename } } } } } }',
       { viewer: harness.aliceViewer }
     );
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors?.[0]?.extensions?.code).toBe('BACKWARD_PAGINATION_UNSUPPORTED');
+    expect(result.errors?.[0]?.message).toBe(
+      'Unknown argument "before" on field "Library.entries".'
+    );
+    expect(result.data).toBeUndefined();
   });
 
   // Query-cost-control task 1: `first` above `CONNECTION_LIMITS.libraryEntries
