@@ -15,11 +15,14 @@ import introspection from '~/gql/possible-types';
  * a scalar `id` without implementing Node.
  *
  * NOTE on pagination: `Library.entries` and `Library.progress` are FORWARD-ONLY
- * server-side — they reject `last`/`before` with BACKWARD_PAGINATION_UNSUPPORTED.
+ * server-side — the schema no longer offers `last`/`before` on either field at
+ * all (they wrap a forward-only store cursor; the two arguments were removed
+ * from the SDL rather than left advertised and refused at runtime).
  * `Series.books` and `Validation.messages` do support backward paging.
  * `relayStylePagination` handles both directions, so this config does not
  * enforce the asymmetry; the client simply never pages backward. Do not add
- * backward paging to `entries`/`progress` — it throws at runtime.
+ * backward paging to `entries`/`progress` — those arguments do not exist, so a
+ * query using them fails schema validation.
  */
 export const cacheConfig: InMemoryCacheConfig = {
   possibleTypes: introspection.possibleTypes,

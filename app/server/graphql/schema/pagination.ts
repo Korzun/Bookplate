@@ -1,43 +1,9 @@
 import { GraphQLError } from 'graphql';
 
 /**
- * `t.connection` always adds `last`/`before` to the SDL (they are baked into
- * Pothos's `DefaultConnectionArguments`), but every paginated read in this
- * schema delegates to a store method with a single forward keyset cursor —
- * `BookStore.listBooksPage` and `UserStore.getUserProgressPage` both take one
- * cursor plus a `take` and have no keyset to walk backward from. Bolting one
- * on would mean changing stores this migration has kept untouched.
- *
- * Silently ignoring `last`/`before` would mean a client asking for the
- * trailing page instead gets the *leading* page with no error, which is worse
- * than not offering backward pagination at all — so both are rejected loudly,
- * in the same `extensions.code` + `extensions.http.status` shape `builder.ts`'s
- * `unauthorizedError` uses, so a client branches on `code` rather than parsing
- * English.
- *
- * Shared rather than copied: `Library.entries` was the only connection when
- * this rule was written, `Library.progress` is the second, and two copies of a
- * pagination guard that can silently diverge is the pattern this plan has
- * repeatedly extracted rather than duplicated.
- */
-export const rejectBackwardPagination = (
-  fieldName: string,
-  args: { last?: number | null; before?: string | null }
-): void => {
-  // Each condition is checked independently: `last` alone and `before` alone
-  // must both be rejected, which an `&&` between them would not do.
-  if (args.last == null && args.before == null) return;
-  throw new GraphQLError(
-    `${fieldName} only supports forward pagination — use \`first\`/\`after\`, not \`last\`/\`before\`.`,
-    { extensions: { code: 'BACKWARD_PAGINATION_UNSUPPORTED', http: { status: 400 } } }
-  );
-};
-
-/**
  * Shared by `rejectOversizePage` and `rejectOversizeIdBatch` — one
  * `extensions` shape for both, rather than two literal copies of the same
- * object (the same "shared, never copied" reasoning `rejectBackwardPagination`
- * above already documents for its own error).
+ * object that could silently diverge.
  */
 const pageSizeExceededError = (message: string): GraphQLError =>
   new GraphQLError(message, { extensions: { code: 'PAGE_SIZE_EXCEEDED', http: { status: 400 } } });
@@ -53,15 +19,18 @@ const pageSizeExceededError = (message: string): GraphQLError =>
  * clamp with no error — exactly the failure mode this ruling exists to
  * prevent, and it applied to `first` only before this fix.
  *
- * Precedence where a field ALSO calls `rejectBackwardPagination`
- * (`Library.entries`/`Library.progress`, both forward-only): that call runs
- * first in every resolver here, so any `last`/`before` at all is already
- * rejected as `BACKWARD_PAGINATION_UNSUPPORTED` before this function ever
- * sees `args.last` — an oversize-`last` error can never fire for those two
- * fields, deliberately: "you can't paginate backward here" is the more
- * specific, more useful error, and this function must not shadow it with a
- * size error instead. For `Series.books`/`Validation.messages`, which have
- * no such call, this is the only guard `last` ever reaches.
+ * `args.last` is nevertheless always `undefined` for
+ * `Library.entries`/`Library.progress`: those two fields no longer DECLARE
+ * `last`/`before` at all (they are hand-declared with `t.field` over an
+ * explicit `connectionObject` — see `library/model.ts`), so GraphQL's own
+ * validation rejects the argument as unknown, with `GRAPHQL_VALIDATION_FAILED`,
+ * before any resolver runs. That replaced an earlier
+ * `rejectBackwardPagination` guard which threw `BACKWARD_PAGINATION_UNSUPPORTED`
+ * from inside the resolver — the schema now states forward-only rather than
+ * advertising `last`/`before` and refusing them. The `last` branch below is
+ * therefore reached only by `Series.books`/`Validation.messages`, where
+ * backward pagination genuinely works and this is the only guard `last` ever
+ * meets.
  */
 export const rejectOversizePage = (
   fieldName: string,

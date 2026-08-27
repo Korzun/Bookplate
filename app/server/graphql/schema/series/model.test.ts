@@ -509,9 +509,10 @@ describe('Series.books connection', () => {
 
   // `last`/`before` genuinely work here — `t.relatedConnection` paginates a
   // real Prisma relation and supports backward pagination natively, unlike
-  // `Library.entries`/`Library.progress` (see `rejectBackwardPagination`'s
-  // doc comment in `pagination.ts`). This must not merely be "accepted
-  // without error" — it must return the actual trailing page.
+  // `Library.entries`/`Library.progress`, whose SDL does not offer the two
+  // arguments at all (see the `entriesConnection` doc comment in
+  // `library/model.ts`). This must not merely be "accepted without error" —
+  // it must return the actual trailing page.
   it('supports `last` alone, returning the trailing page in ascending order', async () => {
     const page = await readBooks({ last: 2 });
 
@@ -572,9 +573,9 @@ describe('Series.books connection', () => {
     });
 
     // Review I-2: `last` genuinely works on this connection (unlike
-    // `Library.entries`/`Library.progress`, which reject it outright via
-    // `rejectBackwardPagination`), so an oversize `last` must be rejected
-    // too, not silently clamped by the native `maxSize`.
+    // `Library.entries`/`Library.progress`, which do not declare the argument
+    // at all), so an oversize `last` must be rejected too, not silently
+    // clamped by the native `maxSize`.
     it('rejects `last` one above the max page size (100)', async () => {
       const result = await harness.execute(PAGE, {
         viewer: harness.aliceViewer,
