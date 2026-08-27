@@ -224,6 +224,47 @@ export const model = builder.prismaNode('Book', {
     }),
 
     /**
+     * Whether this book has a LIVE pending fix carrying at least one
+     * ACTIONABLE proposal — one with a concrete `to`. That is the single
+     * question `page/book-edit`'s conflict guard asks, and it is answered
+     * here rather than by shipping the proposal list to the client.
+     *
+     * The reason is a client cache defect, not a preference.
+     * `PendingFixState` has no `id` and no `keyFields` entry in the client's
+     * `provider/apollo/cache.ts`, so it is NOT normalized — the cache
+     * replaces it WHOLESALE. A page selecting a NARROW `state` therefore
+     * destroyed the fuller one already cached under the shared
+     * `PendingFix:<id>` entity, which turned the app-wide
+     * `LibraryPendingFixes` watcher's diff incomplete and cost a spurious
+     * refetch of the client's second most expensive operation on every
+     * book-edit visit to a book with a pending fix. A boolean writes nothing
+     * into that entity, so the defect cannot recur from a caller of this
+     * field however narrow its selection.
+     *
+     * ADVISORY proposals (`to: null`, "needs review") do NOT count, and that
+     * asymmetry is load-bearing: `bookResolvePendingFix`'s ACCEPT filters to
+     * `to !== null` and leaves them behind, so they can never be cleared by
+     * accepting, and `FixReview` resolves them by linking to the edit page —
+     * the very screen a guard on them would bounce the user away from.
+     *
+     * Gated by the same `isLivePendingFix` predicate as `pendingFix` above
+     * and `Library.pendingFixes`, so a third reading of the same row cannot
+     * drift from the other two. Resolved through the same
+     * `context.loadPendingFix` batching loader for the same reason: `Book`
+     * is reachable from a list, and a plain `findUnique` would be N queries
+     * for a page of N books.
+     */
+    hasActionablePendingFix: t.boolean({
+      resolve: async (book, _args, context) => {
+        const row = await context.loadPendingFix(book.userId, book.id);
+        if (!row) return false;
+        const state = parsePendingFixState(row.state);
+        if (!isLivePendingFix(state, row.updatedAt, Date.now())) return false;
+        return state.proposals.some((proposal) => proposal.to !== null);
+      },
+    }),
+
+    /**
      * Book -> Progress is not a Prisma relation (`Progress` has no FK to
      * `Book`; it is keyed by KOReader `document` hash, which is *normally* a
      * book's own id). It is looked up by `document = book.id` directly, without

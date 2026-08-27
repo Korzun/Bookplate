@@ -68,7 +68,13 @@ function acceptAllMock(
           __typename: 'Mutation',
           bookResolvePendingFix: {
             __typename: 'BookResolvePendingFixPayload',
-            book: { __typename: 'Book', id: bookGlobalId, title: 'X', author: 'Y' },
+            book: {
+              __typename: 'Book',
+              id: bookGlobalId,
+              title: 'X',
+              author: 'Y',
+              hasActionablePendingFix: false,
+            },
             library: { __typename: 'Library', id: 'LIB-1', pendingFixes: [] },
           },
         },

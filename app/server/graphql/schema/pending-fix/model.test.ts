@@ -454,3 +454,123 @@ describe('PendingFix', () => {
     expect(result.errors!.length).toBeGreaterThan(0);
   }, 2000);
 });
+
+/**
+ * `Book.hasActionablePendingFix` — the guard `page/book-edit` renders its
+ * conflict modal from, answered by the server rather than by shipping the
+ * proposal list to the client and asking it there.
+ *
+ * The rule it encodes is not "has a pending fix": it is "has a LIVE pending
+ * fix with at least one ACTIONABLE proposal". A proposal is actionable when
+ * it carries a concrete `to`. An advisory one (`to: null`, "needs review")
+ * has no suggested value for an edit to overwrite, and `bookResolvePendingFix`'s
+ * ACCEPT filters to `to !== null` and leaves it behind — so it can never be
+ * cleared by accepting, and guarding on it bounced the user straight back to
+ * the screen whose Edit link sent them, with no way out.
+ *
+ * These tests own that discrimination. It used to live in the client, which
+ * could only assert it because the client SELECTED the proposals — the very
+ * selection that partially overwrote the shared `PendingFix` entity and cost
+ * a spurious `LibraryPendingFixes` refetch per visit. The behaviour is
+ * unchanged and still pinned by opposite mutations; it is pinned at the
+ * layer that now owns the rule.
+ */
+describe('Book.hasActionablePendingFix', () => {
+  const ADVISORY_BOOK_ID = '4'.repeat(32);
+  const NO_FIX_BOOK_ID = '5'.repeat(32);
+  const MIXED_BOOK_ID = '6'.repeat(32);
+
+  const ADVISORY = { field: 'subjects', kind: 'review', from: 'x', to: null, changes: {} };
+
+  const seedBook = (id: string) =>
+    harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id,
+        title: `Book ${id}`,
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+
+  const seedFix = (bookId: string, proposals: unknown[]) =>
+    harness.prisma.pendingFix.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        bookId,
+        fileName: 'f.epub',
+        fileSize: 1,
+        state: JSON.stringify({ proposals }),
+        updatedAt: 1_700_000_000_000,
+      },
+    });
+
+  const read = async (id: string): Promise<boolean> => {
+    const result = await harness.execute(
+      `{ viewer { library { book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { hasActionablePendingFix } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    return (result.data as { viewer: { library: { book: { hasActionablePendingFix: boolean } } } })
+      .viewer.library.book.hasActionablePendingFix;
+  };
+
+  it('is true for a live fix carrying a proposal with a concrete `to`', async () => {
+    expect(await read(BOOK_ID)).toBe(true);
+  });
+
+  it('is false for a book with no pending-fix row at all', async () => {
+    await seedBook(NO_FIX_BOOK_ID);
+    expect(await read(NO_FIX_BOOK_ID)).toBe(false);
+  });
+
+  it('is false when every remaining proposal is advisory (`to: null`)', async () => {
+    await seedBook(ADVISORY_BOOK_ID);
+    await seedFix(ADVISORY_BOOK_ID, [ADVISORY]);
+    expect(await read(ADVISORY_BOOK_ID)).toBe(false);
+  });
+
+  it('is true when one actionable proposal remains alongside an advisory one', async () => {
+    await seedBook(MIXED_BOOK_ID);
+    await seedFix(MIXED_BOOK_ID, [ADVISORY, PROPOSAL]);
+    expect(await read(MIXED_BOOK_ID)).toBe(true);
+  });
+
+  // Same `isLivePendingFix` gate `Book.pendingFix` applies, so the two
+  // readings cannot drift apart the way the list and the relation once did:
+  // a TTL-expired undo-only row is not a conflict.
+  it('is false for a TTL-expired undo-only row', async () => {
+    expect(await read(EXPIRED_BOOK_ID)).toBe(false);
+  });
+
+  // Reached from `Book`, which is reachable from a list — so it goes through
+  // the same request-scoped batching loader `Book.pendingFix` uses. A plain
+  // `findUnique` here would be N queries for a page of N books.
+  it('batches across a page of books into a single query', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const id = i.toString().padStart(32, '7');
+      ids.push(id);
+      await seedBook(id);
+      await seedFix(id, [PROPOSAL]);
+    }
+
+    const findUniqueSpy = vi.spyOn(harness.prisma.pendingFix, 'findUnique');
+    const findManySpy = vi.spyOn(harness.prisma.pendingFix, 'findMany');
+
+    const fields = ids
+      .map(
+        (id, i) =>
+          `b${i}: book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { hasActionablePendingFix }`
+      )
+      .join(' ');
+    const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(findUniqueSpy).not.toHaveBeenCalled();
+    expect(findManySpy).toHaveBeenCalledTimes(1);
+  });
+});

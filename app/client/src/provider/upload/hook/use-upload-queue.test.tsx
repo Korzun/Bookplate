@@ -208,7 +208,13 @@ const resolveMock = (
       __typename: 'Mutation',
       bookResolvePendingFix: {
         __typename: 'BookResolvePendingFixPayload',
-        book: { __typename: 'Book', id: BOOK_GID, title: 'Dune', author: 'Frank Herbert' },
+        book: {
+          __typename: 'Book',
+          id: BOOK_GID,
+          title: 'Dune',
+          author: 'Frank Herbert',
+          hasActionablePendingFix: false,
+        },
         library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: afterRows },
       },
     },
@@ -249,6 +255,7 @@ const rotatingAcceptMock: ResolveMock = {
           id: ROTATED_BOOK_GID,
           title: 'Dune',
           author: 'Frank Herbert',
+          hasActionablePendingFix: false,
         },
         library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [rowAfterAccept] },
       },
@@ -273,6 +280,7 @@ const rotatingUndoMock: ResolveMock = {
           id: ROTATED_BOOK_GID,
           title: 'Dune',
           author: 'Frank Herbert',
+          hasActionablePendingFix: false,
         },
         library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [] },
       },
@@ -426,7 +434,7 @@ const seedBook = (client: TestClient, id: string) =>
           __typename: 'Book',
           id,
           validation: null,
-          pendingFix: null,
+          hasActionablePendingFix: false,
           // The form's own fields ride in through the colocated fragment, the
           // sanctioned cast from a concrete shape to the masked one.
           ...makeFragmentData(
@@ -1049,7 +1057,13 @@ describe('useUploadQueueEngine', () => {
           __typename: 'Mutation',
           bookResolvePendingFix: {
             __typename: 'BookResolvePendingFixPayload',
-            book: { __typename: 'Book', id: BOOK_GID, title: 'Dune', author: 'Frank Herbert' },
+            book: {
+              __typename: 'Book',
+              id: BOOK_GID,
+              title: 'Dune',
+              author: 'Frank Herbert',
+              hasActionablePendingFix: false,
+            },
             library: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: [] },
           },
         },

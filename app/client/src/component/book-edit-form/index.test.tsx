@@ -243,7 +243,7 @@ const seedBook = (client: Client, id: string) =>
         book: {
           ...bookFields({ id, title: 'Dune' }),
           validation: null,
-          pendingFix: null,
+          hasActionablePendingFix: false,
         },
       },
     },
