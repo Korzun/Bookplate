@@ -25,7 +25,6 @@ import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
 import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookStore } from '../services/book-store';
-import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
 import { verifyAccessToken } from '../services/jwt';
 import {
@@ -296,7 +295,6 @@ async function gqlExecute(
   const stores: Stores = {
     book: bookStore,
     user: userStore,
-    device: new DeviceStore(prisma),
     edition: new EditionStore(path.join(os.tmpdir(), 'ui-test-round-trip-editions'), prisma),
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,

@@ -120,11 +120,14 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      *   - a viewer with no userId (defensive; only the config-based admin has a
      *     null userId, and that case is already handled above) sees none.
      * Deliberately reads `context.prisma.device` directly rather than through
-     * `context.stores.device.list()`/`listForUser()` — reads go through Prisma
-     * directly in this schema (see the plan's "Layer boundaries" note), and it is
-     * the only way to get `t.prismaField`'s `query` select-merging plus the
-     * `createdAt`/`updatedAt` columns, which `DeviceStore`'s `Device` DTO
-     * (`app/server/types.ts`) does not carry.
+     * `services/device.ts` — reads go through Prisma directly in this schema
+     * (see the plan's "Layer boundaries" note), and it is the only way to get
+     * `t.prismaField`'s `query` select-merging plus the `createdAt`/
+     * `updatedAt` columns, which the app-level `Device` DTO
+     * (`app/server/types.ts`) does not carry. (`list`/`listForUser`, the
+     * store methods this once bypassed, were themselves dead code — no
+     * production caller ever reached them — and were deleted outright when
+     * `DeviceStore` was dissolved.)
      */
     devices: t.prismaField({
       type: [device],

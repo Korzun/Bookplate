@@ -68,11 +68,11 @@ const result = builder.unionType('DeviceDisableUserResult', {
  * REST's two 404s ("Device not found", "User not found") collapse into a
  * single `null` result — see `deviceEnableUser`'s identical note.
  *
- * `DeviceStore.disableUser` (`prisma.deviceUser.deleteMany`, `device-store.ts:
- * 108-110`) is idempotent — disabling an already-disabled (or never-enabled)
- * pair deletes zero rows and reports no error, matching REST's `DELETE`
- * (idempotent by HTTP convention). Not wrapped in `toResult`: a
- * `deleteMany` cannot raise any of the seven known store errors.
+ * The `prisma.deviceUser.deleteMany` call below is idempotent — disabling an
+ * already-disabled (or never-enabled) pair deletes zero rows and reports no
+ * error, matching REST's `DELETE` (idempotent by HTTP convention). Not
+ * wrapped in `toResult`: a `deleteMany` cannot raise any of the seven known
+ * store errors.
  *
  * `editionStore.purgeForDeviceAndUser` runs after every call (REST does the
  * same unconditionally, not just when a row was actually deleted) and is
@@ -92,13 +92,17 @@ builder.mutationField('deviceDisableUser', (t) =>
       const parsed = inputSchema.safeParse({ deviceId: args.input.deviceId });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      const device = await context.stores.device.getById(parsed.data.deviceId);
+      const device = await context.prisma.device.findUnique({
+        where: { id: parsed.data.deviceId },
+      });
       if (device === null) return null;
 
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      await context.stores.device.disableUser(device.id, owner.userId);
+      await context.prisma.deviceUser.deleteMany({
+        where: { deviceId: device.id, userId: owner.userId },
+      });
 
       await purgeEditionsQuietly(
         'deviceDisableUser',

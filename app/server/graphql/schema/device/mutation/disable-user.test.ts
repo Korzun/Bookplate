@@ -1,6 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { logger } from '../../../../logger';
+import { isEnabled } from '../../../../services/device';
 import { createHarness, type Harness } from '../../../test-util';
 
 // A bare `vi.mock('../../../../logger')` auto-mock hands back a FRESH mocked
@@ -30,7 +31,9 @@ beforeEach(async () => {
   await harness.prisma.device.create({
     data: { id: 'dev-1', name: 'Kobo Clara', slug: 'kobo-clara' },
   });
-  await harness.stores.device.enableUser('dev-1', harness.bobOwner.userId);
+  await harness.prisma.deviceUser.create({
+    data: { deviceId: 'dev-1', userId: harness.bobOwner.userId },
+  });
 });
 
 afterEach(async () => {
@@ -61,11 +64,13 @@ describe('Mutation.deviceDisableUser', () => {
       __typename: 'DeviceDisableUserPayload',
       user: { username: 'bob' },
     });
-    expect(await harness.stores.device.isEnabled('dev-1', harness.bobOwner.userId)).toBe(false);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.bobOwner.userId)).toBe(false);
   });
 
   it('is idempotent: disabling an already-disabled pair succeeds with no error', async () => {
-    await harness.stores.device.disableUser('dev-1', harness.bobOwner.userId);
+    await harness.prisma.deviceUser.deleteMany({
+      where: { deviceId: 'dev-1', userId: harness.bobOwner.userId },
+    });
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
@@ -166,7 +171,7 @@ describe('Mutation.deviceDisableUser', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data?.deviceDisableUser).toBeNull();
     // bob's enablement is untouched by the failed lookup.
-    expect(await harness.stores.device.isEnabled('dev-1', harness.bobOwner.userId)).toBe(true);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.bobOwner.userId)).toBe(true);
   });
 
   it('returns InvalidInputError for a blank deviceId', async () => {
@@ -189,7 +194,7 @@ describe('Mutation.deviceDisableUser', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.device.isEnabled('dev-1', harness.bobOwner.userId)).toBe(true);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.bobOwner.userId)).toBe(true);
   });
 
   /**
@@ -203,7 +208,9 @@ describe('Mutation.deviceDisableUser', () => {
    * enablement, `expected undefined to be 'FORBIDDEN'`), then reverted.
    */
   it('refuses a non-admin caller attempting to disable themselves', async () => {
-    await harness.stores.device.enableUser('dev-1', harness.aliceOwner.userId);
+    await harness.prisma.deviceUser.create({
+      data: { deviceId: 'dev-1', userId: harness.aliceOwner.userId },
+    });
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -211,6 +218,6 @@ describe('Mutation.deviceDisableUser', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.device.isEnabled('dev-1', harness.aliceOwner.userId)).toBe(true);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.aliceOwner.userId)).toBe(true);
   });
 });

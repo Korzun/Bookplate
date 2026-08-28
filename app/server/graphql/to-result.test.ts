@@ -5,7 +5,7 @@ import {
   DocumentIsBookError,
   SelfLinkError,
 } from '../services/book-store';
-import { DeviceSlugConflictError } from '../services/device-store';
+import { DeviceSlugConflictError } from '../services/device';
 import { EpubValidationError } from '../services/epub-validator';
 import {
   assertUnreachableStoreError,

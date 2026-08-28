@@ -85,18 +85,18 @@ const result = builder.unionType('DeviceEnableUserResult', {
  *
  * `userId` resolves through `context.loadOwner`, not a raw id compare: this
  * both confirms the row exists (REST's `getUserIdByUsername` 404 check) and
- * yields the canonical id `DeviceStore.enableUser` needs — `args.input.
- * userId.id` is already that same id post-relay-decode, but routing it
- * through `loadOwner` keeps the "no such user" 404 path honest rather than
- * assuming any id-shaped string names a real row.
+ * yields the canonical id the `prisma.deviceUser.upsert` call below needs —
+ * `args.input.userId.id` is already that same id post-relay-decode, but
+ * routing it through `loadOwner` keeps the "no such user" 404 path honest
+ * rather than assuming any id-shaped string names a real row.
  *
- * `DeviceStore.enableUser` (`prisma.deviceUser.upsert`, `device-store.ts:
- * 101-107`) is an upsert keyed on the `(deviceId, userId)` compound primary
- * key — enabling an already-enabled pair is a no-op, not an error, matching
- * REST's `PUT` (idempotent by HTTP convention, and the store itself never
- * distinguishes "already enabled" from "newly enabled"). Not wrapped in
- * `toResult`: an upsert on a compound primary key cannot raise a unique-slug
- * conflict or any of the other six known store errors.
+ * The `prisma.deviceUser.upsert` call below is an upsert keyed on the
+ * `(deviceId, userId)` compound primary key — enabling an already-enabled
+ * pair is a no-op, not an error, matching REST's `PUT` (idempotent by HTTP
+ * convention, and the upsert itself never distinguishes "already enabled"
+ * from "newly enabled"). Not wrapped in `toResult`: an upsert on a compound
+ * primary key cannot raise a unique-slug conflict or any of the other six
+ * known store errors.
  *
  * No `editionStore` purge here: REST's `PUT` route doesn't call one either —
  * granting access creates no stale cache to invalidate (only losing access,
@@ -115,13 +115,19 @@ builder.mutationField('deviceEnableUser', (t) =>
       const parsed = inputSchema.safeParse({ deviceId: args.input.deviceId });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      const device = await context.stores.device.getById(parsed.data.deviceId);
+      const device = await context.prisma.device.findUnique({
+        where: { id: parsed.data.deviceId },
+      });
       if (device === null) return null;
 
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      await context.stores.device.enableUser(device.id, owner.userId);
+      await context.prisma.deviceUser.upsert({
+        where: { deviceId_userId: { deviceId: device.id, userId: owner.userId } },
+        create: { deviceId: device.id, userId: owner.userId },
+        update: {},
+      });
 
       return {
         __typename: 'DeviceEnableUserPayload' as const,

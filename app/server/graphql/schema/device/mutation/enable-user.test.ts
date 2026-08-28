@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { isEnabled } from '../../../../services/device';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -41,11 +42,13 @@ describe('Mutation.deviceEnableUser', () => {
       __typename: 'DeviceEnableUserPayload',
       user: { username: 'bob' },
     });
-    expect(await harness.stores.device.isEnabled('dev-1', harness.bobOwner.userId)).toBe(true);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.bobOwner.userId)).toBe(true);
   });
 
   it('is idempotent: enabling an already-enabled pair succeeds and changes nothing else', async () => {
-    await harness.stores.device.enableUser('dev-1', harness.bobOwner.userId);
+    await harness.prisma.deviceUser.create({
+      data: { deviceId: 'dev-1', userId: harness.bobOwner.userId },
+    });
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
@@ -107,7 +110,7 @@ describe('Mutation.deviceEnableUser', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.device.isEnabled('dev-1', harness.bobOwner.userId)).toBe(false);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.bobOwner.userId)).toBe(false);
   });
 
   /**
@@ -130,6 +133,6 @@ describe('Mutation.deviceEnableUser', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.device.isEnabled('dev-1', harness.aliceOwner.userId)).toBe(false);
+    expect(await isEnabled(harness.prisma, 'dev-1', harness.aliceOwner.userId)).toBe(false);
   });
 });

@@ -9,7 +9,6 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
-import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
@@ -100,7 +99,6 @@ export const createHarness = async (): Promise<Harness> => {
   const stores: Stores = {
     book,
     user,
-    device: new DeviceStore(prisma),
     edition,
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
