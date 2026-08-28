@@ -118,12 +118,3 @@ export function passwordChangeGate(secret: Buffer) {
     next();
   };
 }
-
-/** Admin-only gate — must run after jwtAuth. Returns 403 for non-admins. */
-export function adminAuth(req: Request, res: Response, next: NextFunction): void {
-  if (!req.user?.isAdmin) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-  next();
-}
