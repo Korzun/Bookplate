@@ -5,16 +5,12 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../logger';
 import { kosyncAuth } from '../middleware/auth';
 import { BookStore } from '../services/book-store';
-import { UserStore } from '../services/user-store';
+import { getProgress, saveProgress } from '../services/progress';
 import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('KOSync');
 
-export function createKosyncRouter(
-  userStore: UserStore,
-  bookStore: BookStore,
-  prisma: PrismaClient
-): Router {
+export function createKosyncRouter(bookStore: BookStore, prisma: PrismaClient): Router {
   const router = Router();
 
   // Auth check: GET /sync/users/auth
@@ -39,7 +35,7 @@ export function createKosyncRouter(
         return;
       }
       const currentId = await bookStore.resolveBookId(req.kosyncUserId!, document);
-      const saved = await userStore.saveProgress(req.kosyncUserId!, {
+      const saved = await saveProgress(prisma, req.kosyncUserId!, {
         document: currentId,
         progress,
         percentage,
@@ -60,7 +56,7 @@ export function createKosyncRouter(
     kosyncAuth(prisma),
     asyncHandler(async (req: Request, res: Response) => {
       const currentId = await bookStore.resolveBookId(req.kosyncUserId!, req.params.document);
-      const p = await userStore.getProgress(req.kosyncUserId!, currentId);
+      const p = await getProgress(prisma, req.kosyncUserId!, currentId);
       if (!p) {
         log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);
         res.status(404).json({ message: 'Not found' });

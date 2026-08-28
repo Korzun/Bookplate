@@ -1,5 +1,6 @@
 import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 
+import { clearProgress } from '../../../../services/progress';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library/model';
@@ -172,7 +173,7 @@ builder.mutationField('progressDelete', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const cleared = await context.stores.user.clearProgress(userId, document);
+      const cleared = await clearProgress(context.prisma, userId, document);
       if (!cleared) return null;
 
       return {

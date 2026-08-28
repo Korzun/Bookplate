@@ -1,3 +1,4 @@
+import { getUserProgressPage } from '../../../services/progress';
 import type { BookListFilters, Owner } from '../../../types';
 import {
   clampProgressTake,
@@ -446,7 +447,7 @@ builder.node(model, {
         // before this line runs — kept as harmless defense-in-depth.
         const take = clampProgressTake(args.first);
 
-        const page = await context.stores.user.getUserProgressPage(owner.userId, cursor, take);
+        const page = await getUserProgressPage(context.prisma, owner.userId, cursor, take);
         const documents = page.items.map((item) => item.document);
 
         const rows =
