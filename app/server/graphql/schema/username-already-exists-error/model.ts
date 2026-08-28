@@ -16,8 +16,8 @@ import { model as userError } from '../user-error';
  *    `admin`/5 chars, under `MIN_USERNAME_LENGTH`/6) gets this, not
  *    `InvalidInputError`; `user/mutation/register.ts` reproduces that exact
  *    ordering;
- *  - `UserStore.createUser` returns `false` on a genuine `P2002` unique-
- *    constraint collision (`services/user-store.ts:84-89`) — a race, not a
+ *  - `createUser` returns `false` on a genuine `P2002` unique-
+ *    constraint collision (`services/user.ts:15-39`) — a race, not a
  *    validation failure, so it is not folded into `InvalidInputError` either
  *    (that type is reserved for the resolver's own zod parse — see that
  *    type's doc comment).

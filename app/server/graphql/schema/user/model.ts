@@ -37,13 +37,16 @@ export const model = builder.prismaNode('User', {
     // (`app/client/src/component/user-row/index.tsx`), and the second half of
     // what REST's `GET /api/users` used to return, before Phase 0 removed it.
     //
-    // `UserStore.listUsers()` produces it as `_count.progresses` on a
-    // `prisma.user.findMany`. `t.relationCount` compiles to that exact same
-    // `_count` select, merged into whichever query already fetched this row,
-    // rather than a per-user `progress.count()` — so `Viewer.users` stays one
-    // query however many users exist. Deliberately NOT resolved from
-    // `listUsers()`'s `{ username, progressCount }` DTO: that DTO carries no
-    // `id`, so it cannot back a `User` node (no global ID, no `library`, no
+    // `UserStore.listUsers()` used to produce it as `_count.progresses` on a
+    // `prisma.user.findMany`, before this phase dissolved `UserStore` and
+    // inlined that lookup at its one call site (`viewer/model.ts`'s `users`
+    // field, now a direct `context.prisma.user.findMany`).
+    // `t.relationCount` compiles to that exact same `_count` select, merged
+    // into whichever query already fetched this row, rather than a per-user
+    // `progress.count()` — so `Viewer.users` stays one query however many
+    // users exist. Deliberately NOT resolved from `listUsers()`'s old
+    // `{ username, progressCount }` DTO: that DTO carried no `id`, so it
+    // could not back a `User` node (no global ID, no `library`, no
     // `mustChangePassword`). Same count, same source column, kept on the
     // Prisma row this type is pinned to.
     progressCount: t.relationCount('progresses'),

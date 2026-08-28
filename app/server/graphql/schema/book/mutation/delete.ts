@@ -84,8 +84,8 @@ const result = builder.unionType('BookDeleteResult', {
  * `P2025` catch converts a races-with-itself double-delete into a no-op, not
  * an error). Wrapping it would make the `err` branch unreachable and
  * undischargeable except by throwing or mislabelling — exactly what
- * `progressDelete`'s doc comment already explains for `UserStore.
- * clearProgress`; see `to-result.ts` for the rule this follows.
+ * `progressDelete`'s doc comment already explains for `clearProgress`; see
+ * `to-result.ts` for the rule this follows.
  *
  * REST 404s (book not found, or found but not owned — `resolveOwner` already
  * excludes the latter) are modelled as `null`, the same "no such row"

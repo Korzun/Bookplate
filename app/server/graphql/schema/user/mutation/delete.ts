@@ -103,8 +103,8 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * divergence `bookDelete`'s doc comment records for "admin without a
  * target".
  *
- * `UserStore.deleteUser` is NOT wrapped in `toResult`: traced end to end
- * (`services/user-store.ts:366-387`), its own `P2025` catch already converts
+ * `deleteUser` is NOT wrapped in `toResult`: traced end to end
+ * (`services/user.ts:48-71`), its own `P2025` catch already converts
  * a races-with-itself double-delete into `false`, and its edition-cache
  * purge failure is caught and logged, never rethrown — nothing left in its
  * body can throw one of the seven known store errors. Same reasoning as

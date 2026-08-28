@@ -49,7 +49,7 @@ type Edge = { cursor: string; node: LibraryEntryRow };
  * two refs, NOT with `t.connection` — the one reason being that `t.connection`
  * injects all four of Relay's `first`/`after`/`last`/`before` args and offers
  * no way to withhold any of them. Both fields wrap a forward-only store cursor
- * (`BookStore.listBooksPage`, `UserStore.getUserProgressPage`: one cursor plus a
+ * (`BookStore.listBooksPage`, `getUserProgressPage`: one cursor plus a
  * `take`, no keyset to walk backward from), so advertising `last`/`before` and
  * then throwing on them made the SDL promise a capability the resolver refused.
  * Declaring the connection type here and the field by hand states the
@@ -391,7 +391,7 @@ builder.node(model, {
      * WHY PAGINATED: REST already was. `GET /api/my/progress` (`routes/ui.ts`,
      * that endpoint since removed) and `GET /api/users/:username/progress`
      * (`routes/users.ts`, removed in Phase 0 along with the rest of that
-     * router) both went through `UserStore.getUserProgressPage` with a keyset
+     * router) both went through `getUserProgressPage` with a keyset
      * cursor and a take clamped to 1..100 — this field reuses that exact page
      * shape. A progress list grows with every book a user opens on any device
      * and is never pruned, so it is genuinely unbounded — an unpaginated
@@ -404,8 +404,8 @@ builder.node(model, {
      * messages" from connections because they are small and unpaginated *today* —
      * progress is in neither category. `Library.entries` is the existing
      * connection precedent and this follows its shape exactly: delegate the
-     * keyset to the store, pass the store's own `nextCursor` through untouched as
-     * `endCursor`, and reject backward pagination loudly.
+     * keyset to `getUserProgressPage`, pass its own `nextCursor` through
+     * untouched as `endCursor`, and reject backward pagination loudly.
      *
      * CURSOR PARITY IS BY CONSTRUCTION, not by two formulas agreeing:
      * `decodeProgressCursor` is the very function REST's handlers call, and
@@ -414,11 +414,11 @@ builder.node(model, {
      * `encodeProgressCursor`, which lives beside the decoder it must round-trip
      * with.
      *
-     * TWO QUERIES, DELIBERATELY: the store returns its `Progress` DTO
-     * (`device_id`, no `userId`), while this field's `Progress` type is a
+     * TWO QUERIES, DELIBERATELY: `getUserProgressPage` returns its `Progress`
+     * DTO (`device_id`, no `userId`), while this field's `Progress` type is a
      * `prismaObject` pinned to the real row — and `currentChapter` needs the
-     * `userId` the DTO drops. So the store decides the window and the cursor, and
-     * a second query fetches the rows it named. Same division of labour as
+     * `userId` the DTO drops. So `getUserProgressPage` decides the window and
+     * the cursor, and a second query fetches the rows it named. Same division of labour as
      * `Library.entries`, which asks `listBooksPage` for the page and then reads
      * the `Book`/`Series` rows itself.
      */
@@ -458,9 +458,10 @@ builder.node(model, {
             : [];
         const byDocument = new Map(rows.map((row) => [row.document, row]));
 
-        // `page.items` is already in the store's `timestamp desc, document asc`
-        // order; this only re-associates rows with it, skipping any row that
-        // vanished between the two reads rather than resolving `undefined`.
+        // `page.items` is already in `getUserProgressPage`'s `timestamp desc,
+        // document asc` order; this only re-associates rows with it, skipping
+        // any row that vanished between the two reads rather than resolving
+        // `undefined`.
         const edges = page.items.flatMap((item) => {
           const row = byDocument.get(item.document);
           return row
@@ -484,7 +485,7 @@ builder.node(model, {
             // what "there is content before this page" means here.
             hasPreviousPage: cursor !== null,
             startCursor: edges[0]?.cursor ?? null,
-            // The store's own cursor, forwarded rather than recomputed.
+            // `getUserProgressPage`'s own cursor, forwarded rather than recomputed.
             endCursor: page.nextCursor,
           },
         };

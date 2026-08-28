@@ -24,7 +24,7 @@ const seedProgress = async (userId: string, document: string, timestamp: number)
 
 beforeEach(async () => {
   harness = await createHarness();
-  // Descending timestamps, so the store's `timestamp desc` order is p3, p2, p1.
+  // Descending timestamps, so `getUserProgressPage`'s `timestamp desc` order is p3, p2, p1.
   await seedProgress(harness.aliceOwner.userId, '1'.repeat(32), 1_700_000_001);
   await seedProgress(harness.aliceOwner.userId, '2'.repeat(32), 1_700_000_002);
   await seedProgress(harness.aliceOwner.userId, '3'.repeat(32), 1_700_000_003);
@@ -102,8 +102,9 @@ describe('Library.progress', () => {
     const all = await readPage({ first: 10 });
 
     // Resuming after the FIRST edge must yield exactly the entries following
-    // it — the per-edge cursors are minted here rather than by the store, so
-    // this is the only thing proving they encode the same keyset.
+    // it — the per-edge cursors are minted here rather than by
+    // `getUserProgressPage`, so this is the only thing proving they encode
+    // the same keyset.
     const after = await readPage({ first: 10, after: all.edges[0].cursor });
 
     expect(after.edges.map((e) => e.node.document)).toEqual(['2'.repeat(32), '1'.repeat(32)]);
@@ -146,7 +147,7 @@ describe('Library.progress', () => {
     expect(page.pageInfo.hasNextPage).toBe(true);
   });
 
-  // `UserStore.getUserProgressPage` is a forward-only keyset, so this field
+  // `getUserProgressPage` is a forward-only keyset, so this field
   // does not OFFER `last`/`before` — declared with a plain `t.field` over an
   // explicit `connectionObject` rather than `t.connection`, which would
   // inject all four Relay args unconditionally (see `library/model.ts`).

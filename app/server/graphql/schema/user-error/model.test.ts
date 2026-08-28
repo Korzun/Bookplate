@@ -90,8 +90,8 @@ describe('UserError', () => {
     // `UsernameAlreadyExistsError` and `IncorrectPasswordError` are a
     // thirteenth and fourteenth member, added by task 6 for `userRegister`'s
     // two 409 branches (reserved name / genuine duplicate — REST checks
-    // both itself, `UserStore.createUser` returns `false` rather than
-    // throwing) and `userChangePassword`'s 401 (`UserStore.validateUser`
+    // both itself, `createUser` returns `false` rather than
+    // throwing) and `userChangePassword`'s 401 (`validateUser`
     // also returns `false`, never throws) — same "resolver-produced, not
     // store-thrown" shape as the four members above. See
     // `username-already-exists-error/model.ts` and
