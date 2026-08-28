@@ -1,3 +1,4 @@
+import { getSyncPassword } from '../../../../services/password';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -26,7 +27,7 @@ const MUTATION = `
 
 describe('Mutation.userRegenerateSyncPassword', () => {
   it("regenerates the viewer's own sync password to a new value and persists it", async () => {
-    const before = await harness.stores.user.getSyncPassword('alice');
+    const before = await getSyncPassword(harness.prisma, 'alice');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -38,11 +39,11 @@ describe('Mutation.userRegenerateSyncPassword', () => {
     const payload = result.data?.userRegenerateSyncPassword as { syncPassword: string };
     const after = payload.syncPassword;
     expect(after).not.toBe(before);
-    expect(await harness.stores.user.getSyncPassword('alice')).toBe(after);
+    expect(await getSyncPassword(harness.prisma, 'alice')).toBe(after);
   });
 
   it("refuses one user regenerating another user's sync password, target unchanged", async () => {
-    const before = await harness.stores.user.getSyncPassword('alice');
+    const before = await getSyncPassword(harness.prisma, 'alice');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.bobViewer,
@@ -50,7 +51,7 @@ describe('Mutation.userRegenerateSyncPassword', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.user.getSyncPassword('alice')).toBe(before);
+    expect(await getSyncPassword(harness.prisma, 'alice')).toBe(before);
   });
 
   /**

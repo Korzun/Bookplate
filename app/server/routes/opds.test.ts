@@ -118,7 +118,7 @@ beforeEach(async () => {
   const bobId = await userStore.getUserIdByUsername('bob');
   bob = { userId: bobId!, username: 'bob' };
   app = express();
-  app.use('/opds', createOpdsRouter(bookStore, userStore, [60, 170]));
+  app.use('/opds', createOpdsRouter(bookStore, prisma, [60, 170]));
 });
 
 afterEach(async () => {
@@ -300,10 +300,9 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       '/opds',
       createOpdsRouter(
         bookStore,
-        userStore,
+        prisma,
         [60, 170],
         'Bookplate',
-        prisma,
         deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
@@ -341,10 +340,9 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       '/opds',
       createOpdsRouter(
         bookStore,
-        userStore,
+        prisma,
         [60, 170],
         'Bookplate',
-        prisma,
         deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
@@ -525,10 +523,9 @@ describe('OPDS feed thumbnail link', () => {
       '/opds',
       createOpdsRouter(
         bookStore,
-        userStore,
+        prisma,
         [60, 170],
         'Bookplate',
-        prisma,
         deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
@@ -901,10 +898,9 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
       '/opds',
       createOpdsRouter(
         bookStore,
-        userStore,
+        prisma,
         [60, 170],
         'Bookplate',
-        prisma,
         deviceEditionsRoot,
         ValidationThreshold.ERROR
       )

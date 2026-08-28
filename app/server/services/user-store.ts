@@ -1,59 +1,18 @@
-import * as crypto from 'crypto';
-
 import { PrismaClient, Prisma } from '@prisma/client';
-import argon2 from 'argon2';
 
 import { logger } from '../logger';
 import { Owner, Progress, ProgressPageCursor } from '../types';
 import { generateUserId } from '../utils/id';
 import { purgeForUser } from './edition';
-import { WORDLIST } from './wordlist';
+import { generateSyncPassword } from './password';
 
 const log = logger('UserStore');
-
-const LOGIN_PASSWORD_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-const LOGIN_PASSWORD_LENGTH = 16;
 
 export class UserStore {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly editionsRoot: string
   ) {}
-
-  static generateSyncPassword(): string {
-    let attempts = 0;
-    while (attempts < 200) {
-      const w1 = WORDLIST[crypto.randomInt(WORDLIST.length)];
-      const w2 = WORDLIST[crypto.randomInt(WORDLIST.length)];
-      if ((w1 + ' ' + w2).length <= 15) return `${w1} ${w2}`;
-      attempts++;
-    }
-    return 'blue oak'; // all wordlist words are ≤7 chars so this is unreachable in practice
-  }
-
-  static hashSyncPassword(syncPassword: string): string {
-    return crypto.createHash('md5').update(syncPassword).digest('hex');
-  }
-
-  static async hashLoginPassword(password: string): Promise<string> {
-    return argon2.hash(password);
-  }
-
-  static async verifyLoginPassword(password: string, hash: string): Promise<boolean> {
-    try {
-      return await argon2.verify(hash, password);
-    } catch {
-      return false;
-    }
-  }
-
-  static generateLoginPassword(): string {
-    let password = '';
-    for (let i = 0; i < LOGIN_PASSWORD_LENGTH; i++) {
-      password += LOGIN_PASSWORD_CHARSET[crypto.randomInt(LOGIN_PASSWORD_CHARSET.length)];
-    }
-    return password;
-  }
 
   async createUser(
     username: string,
@@ -67,7 +26,7 @@ export class UserStore {
           id: generateUserId(),
           username,
           passwordHash,
-          syncPassword: syncPassword ?? UserStore.generateSyncPassword(),
+          syncPassword: syncPassword ?? generateSyncPassword(),
           mustChangePassword: mustChangePassword ?? false,
         },
       });
@@ -80,96 +39,12 @@ export class UserStore {
     }
   }
 
-  async authenticate(username: string, key: string): Promise<string | false> {
-    const row = await this.prisma.user.findUnique({
-      where: { username },
-      select: { id: true, syncPassword: true },
-    });
-    if (row === null || row.syncPassword === null) return false;
-    if (UserStore.hashSyncPassword(row.syncPassword) !== key) return false;
-    return row.id;
-  }
-
-  async validateUser(username: string, password: string): Promise<string | false> {
-    const row = await this.prisma.user.findUnique({
-      where: { username },
-      select: { id: true, passwordHash: true },
-    });
-    if (!row?.passwordHash) return false;
-    const valid = await UserStore.verifyLoginPassword(password, row.passwordHash);
-    return valid ? row.id : false;
-  }
-
-  async userHasPassword(username: string): Promise<boolean> {
-    const row = await this.prisma.user.findUnique({
-      where: { username },
-      select: { passwordHash: true },
-    });
-    return !!row?.passwordHash;
-  }
-
-  async changePassword(username: string, passwordHash: string): Promise<boolean> {
-    try {
-      await this.prisma.user.update({
-        where: { username },
-        data: { passwordHash, mustChangePassword: false },
-      });
-      return true;
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return false;
-      }
-      throw e;
-    }
-  }
-
-  async resetPassword(username: string): Promise<string | null> {
-    const password = UserStore.generateLoginPassword();
-    const passwordHash = await UserStore.hashLoginPassword(password);
-    try {
-      await this.prisma.user.update({
-        where: { username },
-        data: { passwordHash, mustChangePassword: true },
-      });
-      return password;
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return null;
-      }
-      throw e;
-    }
-  }
-
   async getMustChangePassword(username: string): Promise<boolean> {
     const row = await this.prisma.user.findUnique({
       where: { username },
       select: { mustChangePassword: true },
     });
     return row?.mustChangePassword ?? false;
-  }
-
-  async getSyncPassword(username: string): Promise<string | null> {
-    const row = await this.prisma.user.findUnique({
-      where: { username },
-      select: { syncPassword: true },
-    });
-    if (row === null) return null;
-    if (row.syncPassword !== null) return row.syncPassword;
-    const generated = UserStore.generateSyncPassword();
-    await this.prisma.user.update({ where: { username }, data: { syncPassword: generated } });
-    return generated;
-  }
-
-  async changeSyncPassword(username: string, syncPassword: string): Promise<boolean> {
-    try {
-      await this.prisma.user.update({ where: { username }, data: { syncPassword } });
-      return true;
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return false;
-      }
-      throw e;
-    }
   }
 
   async getUserIdByUsername(username: string): Promise<string | null> {

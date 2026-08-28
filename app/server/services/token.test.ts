@@ -6,6 +6,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { hashLoginPassword } from './password';
 import {
   consumeRefreshToken,
   createRefreshToken,
@@ -40,8 +41,8 @@ beforeEach(async () => {
   users = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
 
   // Create real users so FK-referencing inserts succeed (foreign_keys = ON)
-  await users.createUser('alice', await UserStore.hashLoginPassword('pw'));
-  await users.createUser('bob', await UserStore.hashLoginPassword('pw'));
+  await users.createUser('alice', await hashLoginPassword('pw'));
+  await users.createUser('bob', await hashLoginPassword('pw'));
   aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   bobId = (await prisma.user.findUnique({ where: { username: 'bob' } }))!.id;
 });
@@ -144,7 +145,7 @@ describe('refresh tokens', () => {
   });
 
   it('rows are cascade-deleted with the user', async () => {
-    await users.createUser('carol', await UserStore.hashLoginPassword('pw'));
+    await users.createUser('carol', await hashLoginPassword('pw'));
     const carolId = (await prisma.user.findUnique({ where: { username: 'carol' } }))!.id;
     await createRefreshToken(prisma, { username: 'carol', userId: carolId });
     await users.deleteUser('carol');

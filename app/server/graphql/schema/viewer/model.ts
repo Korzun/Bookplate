@@ -1,3 +1,4 @@
+import { getSyncPassword } from '../../../services/password';
 import type { Viewer } from '../../context';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
@@ -75,11 +76,11 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
 
     /**
      * Mirrors `GET /api/my/sync-password` (`routes/ui.ts`): `requireAuth`, then
-     * `403` for an admin session, then `userStore.getSyncPassword(username)` for
+     * `403` for an admin session, then `getSyncPassword(prisma, username)` for
      * the requesting user's *own* account — there is no route, and no field here,
      * that reads another user's sync password.
      *
-     * This is `User.syncPassword` the column, read through `UserStore`, but it
+     * This is `User.syncPassword` the column, read through `services/password.ts`, but it
      * hangs off `Viewer`, not `User`: `user/model.ts`'s own comment records that
      * `passwordHash`/`syncPassword` are deliberately absent from the `User` node
      * and exposed on `Viewer` only. This field is the "only".
@@ -94,7 +95,7 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * comes only from the config-based account, which has no row.
      *
      * NOTE — this read has a write side effect, inherited from
-     * `UserStore.getSyncPassword`: a user whose `sync_password` column is still
+     * `services/password.ts`'s `getSyncPassword`: a user whose `sync_password` column is still
      * null gets one generated and persisted on first read. That is REST's
      * behaviour today (the KOSync credential is created lazily on first view), and
      * reproducing it is the point — a GraphQL client and the REST client must not
@@ -103,7 +104,7 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     syncPassword: t.string({
       nullable: true,
       resolve: (v, _args, context) =>
-        v.isAdmin ? null : context.stores.user.getSyncPassword(v.username),
+        v.isAdmin ? null : getSyncPassword(context.prisma, v.username),
     }),
 
     /**

@@ -1,4 +1,3 @@
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -8,8 +7,8 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { purgeForUser } from './edition';
+import { getSyncPassword, hashLoginPassword, resetPassword } from './password';
 import { UserStore } from './user-store';
-import { WORDLIST } from './wordlist';
 
 vi.mock('../logger');
 // Call-through by default (see edition.test.ts's identical pattern) so every
@@ -55,7 +54,7 @@ afterEach(async () => {
 
 describe('UserStore.createUser', () => {
   it('creates a user and returns true', async () => {
-    const hash = await UserStore.hashLoginPassword('pass');
+    const hash = await hashLoginPassword('pass');
     expect(await store.createUser('alice', hash)).toBe(true);
   });
 
@@ -64,14 +63,14 @@ describe('UserStore.createUser', () => {
   });
 
   it('returns false for duplicate username', async () => {
-    const hash = await UserStore.hashLoginPassword('pass');
+    const hash = await hashLoginPassword('pass');
     await store.createUser('alice', hash);
     expect(await store.createUser('alice', hash)).toBe(false);
   });
 
   it('auto-generates syncPassword if not provided', async () => {
     await store.createUser('alice', null);
-    const syncPwd = await store.getSyncPassword('alice');
+    const syncPwd = await getSyncPassword(prisma, 'alice');
     expect(syncPwd).not.toBeNull();
     expect(syncPwd!.split(' ')).toHaveLength(2);
   });
@@ -87,145 +86,6 @@ describe('UserStore.createUser', () => {
   });
 });
 
-describe('UserStore.validateUser', () => {
-  it('returns the user ID string for correct password', async () => {
-    const hash = await UserStore.hashLoginPassword('mypass');
-    await store.createUser('alice', hash);
-    const result = await store.validateUser('alice', 'mypass');
-    expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
-  });
-
-  it('returns false for wrong password', async () => {
-    const hash = await UserStore.hashLoginPassword('mypass');
-    await store.createUser('alice', hash);
-    expect(await store.validateUser('alice', 'wrong')).toBe(false);
-  });
-
-  it('returns false when passwordHash is null', async () => {
-    await store.createUser('alice', null);
-    expect(await store.validateUser('alice', 'anything')).toBe(false);
-  });
-});
-
-describe('UserStore.userHasPassword', () => {
-  it('returns true when passwordHash is set', async () => {
-    const hash = await UserStore.hashLoginPassword('pw');
-    await store.createUser('alice', hash);
-    expect(await store.userHasPassword('alice')).toBe(true);
-  });
-
-  it('returns false when passwordHash is null', async () => {
-    await store.createUser('alice', null);
-    expect(await store.userHasPassword('alice')).toBe(false);
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await store.userHasPassword('nobody')).toBe(false);
-  });
-});
-
-describe('UserStore.changePassword', () => {
-  it('updates passwordHash and allows login with new password', async () => {
-    const oldHash = await UserStore.hashLoginPassword('old');
-    await store.createUser('alice', oldHash);
-    const newHash = await UserStore.hashLoginPassword('new');
-    expect(await store.changePassword('alice', newHash)).toBe(true);
-    expect(await store.validateUser('alice', 'new')).toBeTruthy();
-    expect(await store.validateUser('alice', 'old')).toBe(false);
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await store.changePassword('nobody', 'hash')).toBe(false);
-  });
-
-  it('clears mustChangePassword flag', async () => {
-    await store.createUser('alice', null);
-    await store.resetPassword('alice');
-    expect(await store.getMustChangePassword('alice')).toBe(true);
-
-    const newHash = await UserStore.hashLoginPassword('newpass');
-    await store.changePassword('alice', newHash);
-
-    expect(await store.getMustChangePassword('alice')).toBe(false);
-  });
-});
-
-describe('UserStore.getSyncPassword', () => {
-  it('returns the stored syncPassword', async () => {
-    await store.createUser('alice', null);
-    const p1 = await store.getSyncPassword('alice');
-    const p2 = await store.getSyncPassword('alice');
-    expect(p1).toBe(p2); // same value on second call (persisted)
-  });
-
-  it('lazy-generates and saves when syncPassword is null', async () => {
-    await prisma.user.create({
-      data: {
-        id: `test-id-${Math.random().toString(36).slice(2)}`,
-        username: 'alice',
-        passwordHash: null,
-        syncPassword: null,
-      },
-    });
-    const pwd = await store.getSyncPassword('alice');
-    expect(pwd).not.toBeNull();
-    expect(pwd!.split(' ')).toHaveLength(2);
-    // Confirm it was persisted
-    expect(await store.getSyncPassword('alice')).toBe(pwd);
-  });
-
-  it('returns null for unknown user', async () => {
-    expect(await store.getSyncPassword('nobody')).toBeNull();
-  });
-});
-
-describe('UserStore.changeSyncPassword', () => {
-  it('updates syncPassword and returns true', async () => {
-    await store.createUser('alice', null);
-    expect(await store.changeSyncPassword('alice', 'swift stone')).toBe(true);
-    expect(await store.getSyncPassword('alice')).toBe('swift stone');
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await store.changeSyncPassword('nobody', 'phrase')).toBe(false);
-  });
-});
-
-describe('UserStore.generateLoginPassword', () => {
-  it('returns a 16-character password', () => {
-    expect(UserStore.generateLoginPassword()).toHaveLength(16);
-  });
-
-  it('only uses unambiguous alphanumeric characters', () => {
-    const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-    for (let i = 0; i < 50; i++) {
-      const password = UserStore.generateLoginPassword();
-      for (const ch of password) {
-        expect(charset).toContain(ch);
-      }
-    }
-  });
-});
-
-describe('UserStore.resetPassword', () => {
-  it('sets a new passwordHash and mustChangePassword flag, returns the plaintext password', async () => {
-    const oldHash = await UserStore.hashLoginPassword('old');
-    await store.createUser('alice', oldHash);
-
-    const newPassword = await store.resetPassword('alice');
-
-    expect(newPassword).not.toBeNull();
-    expect(newPassword).toHaveLength(16);
-    expect(await store.validateUser('alice', newPassword!)).toBeTruthy();
-    expect(await store.validateUser('alice', 'old')).toBe(false);
-    expect(await store.getMustChangePassword('alice')).toBe(true);
-  });
-
-  it('returns null for unknown user', async () => {
-    expect(await store.resetPassword('nobody')).toBeNull();
-  });
-});
-
 describe('UserStore.getMustChangePassword', () => {
   it('returns false by default', async () => {
     await store.createUser('alice', null);
@@ -234,7 +94,7 @@ describe('UserStore.getMustChangePassword', () => {
 
   it('returns true after resetPassword', async () => {
     await store.createUser('alice', null);
-    await store.resetPassword('alice');
+    await resetPassword(prisma, 'alice');
     expect(await store.getMustChangePassword('alice')).toBe(true);
   });
 
@@ -389,30 +249,6 @@ describe('UserStore.deleteUser', () => {
   });
 });
 
-describe('UserStore.authenticate', () => {
-  it('returns the user ID string with correct sync password key', async () => {
-    await store.createUser('alice', null);
-    const syncPwd = await store.getSyncPassword('alice');
-    const key = UserStore.hashSyncPassword(syncPwd!);
-    const result = await store.authenticate('alice', key);
-    expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
-  });
-
-  it('returns false for wrong sync key', async () => {
-    await store.createUser('alice', null);
-    expect(await store.authenticate('alice', 'wrongkey')).toBe(false);
-  });
-
-  it('returns false when syncPassword is null', async () => {
-    await prisma.user.create({ data: { id: 'nosync-id', username: 'nosync', syncPassword: null } });
-    expect(await store.authenticate('nosync', 'anything')).toBe(false);
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await store.authenticate('nobody', 'key')).toBe(false);
-  });
-});
-
 describe('UserStore.getUserIdByUsername', () => {
   it('returns null for unknown user', async () => {
     expect(await store.getUserIdByUsername('nobody')).toBeNull();
@@ -476,44 +312,6 @@ describe('UserStore.clearProgress', () => {
     });
     await store.clearProgress(aliceId, 'doc1');
     expect(await store.getProgress(bobId, 'doc1')).not.toBeNull();
-  });
-});
-
-describe('UserStore.generateSyncPassword', () => {
-  it('returns two words separated by a space', () => {
-    const result = UserStore.generateSyncPassword();
-    expect(result.split(' ')).toHaveLength(2);
-  });
-
-  it('never exceeds 15 characters across 100 calls', () => {
-    for (let i = 0; i < 100; i++) {
-      expect(UserStore.generateSyncPassword().length).toBeLessThanOrEqual(15);
-    }
-  });
-
-  it('uses words from the wordlist', () => {
-    const [w1, w2] = UserStore.generateSyncPassword().split(' ');
-    expect(WORDLIST).toContain(w1);
-    expect(WORDLIST).toContain(w2);
-  });
-});
-
-describe('UserStore.hashSyncPassword', () => {
-  it('returns the MD5 hex digest of the input', () => {
-    const expected = crypto.createHash('md5').update('blue oak').digest('hex');
-    expect(UserStore.hashSyncPassword('blue oak')).toBe(expected);
-  });
-});
-
-describe('UserStore.hashLoginPassword / verifyLoginPassword', () => {
-  it('produces a hash that verifies correctly', async () => {
-    const hash = await UserStore.hashLoginPassword('s3cr3t');
-    expect(await UserStore.verifyLoginPassword('s3cr3t', hash)).toBe(true);
-  });
-
-  it('rejects wrong password', async () => {
-    const hash = await UserStore.hashLoginPassword('s3cr3t');
-    expect(await UserStore.verifyLoginPassword('wrong', hash)).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
+import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -115,12 +116,12 @@ export const createHarness = async (): Promise<Harness> => {
     replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
   };
 
-  await user.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
+  await user.createUser('alice', await hashLoginPassword('alicepass'));
   const aliceId = (await user.getUserIdByUsername('alice'))!;
   const aliceGlobalId = encodeGlobalID('User', aliceId);
   fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
 
-  await user.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+  await user.createUser('bob', await hashLoginPassword('bobpass'));
   const bobId = (await user.getUserIdByUsername('bob'))!;
   fs.mkdirSync(path.join(booksDir, 'bob'), { recursive: true });
 

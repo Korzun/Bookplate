@@ -9,6 +9,7 @@ import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
+import { hashSyncPassword } from '../services/password';
 import { UserStore } from '../services/user-store';
 import { createKosyncRouter } from './kosync';
 
@@ -34,7 +35,7 @@ beforeEach(async () => {
   bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
   app = express();
   app.use(express.json());
-  app.use('/sync', createKosyncRouter(userStore, bookStore));
+  app.use('/sync', createKosyncRouter(userStore, bookStore, prisma));
 });
 
 afterEach(async () => {
@@ -52,7 +53,7 @@ const ALICE_SYNC_PASSWORD = 'secret';
 function authHeaders(username: string, syncPassword: string) {
   return {
     'x-auth-user': username,
-    'x-auth-key': UserStore.hashSyncPassword(syncPassword),
+    'x-auth-key': hashSyncPassword(syncPassword),
   };
 }
 

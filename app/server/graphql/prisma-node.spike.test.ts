@@ -33,6 +33,7 @@ import { PrismaClient } from '@prisma/client';
 import { graphql } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
+import { hashLoginPassword } from '../services/password';
 import { UserStore } from '../services/user-store';
 import { getDatamodel } from './generated/pothos-types';
 import type PrismaTypes from './generated/pothos-types';
@@ -57,7 +58,7 @@ beforeEach(async () => {
   await runMigrations(prisma, booksDir);
 
   const userStore = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
-  await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
+  await userStore.createUser('alice', await hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
 
   await prisma.book.create({

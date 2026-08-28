@@ -61,15 +61,14 @@ export function createServer(
     '/opds',
     createOpdsRouter(
       bookStore,
-      userStore,
+      prisma,
       config.thumbnailWidths,
       config.libraryName,
-      prisma,
       editionsRoot,
       config.validationThreshold
     )
   );
-  server.use('/sync', createKosyncRouter(userStore, bookStore));
+  server.use('/sync', createKosyncRouter(userStore, bookStore, prisma));
   server.use(
     '/',
     createUiRouter(bookStore, userStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)

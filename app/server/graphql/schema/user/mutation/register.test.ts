@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { validateUser } from '../../../../services/password';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -55,7 +56,7 @@ describe('Mutation.userRegister', () => {
     const row = await harness.prisma.user.findUnique({ where: { username: 'charlie1' } });
     expect(row).not.toBeNull();
     expect(row?.mustChangePassword).toBe(true);
-    expect(await harness.stores.user.validateUser('charlie1', password)).toBe(row?.id);
+    expect(await validateUser(harness.prisma, 'charlie1', password)).toBe(row?.id);
     expect(fs.existsSync(path.join(harness.config.booksDir, 'charlie1'))).toBe(true);
   });
 
@@ -166,7 +167,7 @@ describe('Mutation.userRegister', () => {
       username: 'charlie3',
     });
     expect(await harness.prisma.user.count({ where: { username: 'charlie3' } })).toBe(1);
-    expect(await harness.stores.user.validateUser('charlie3', firstPassword)).not.toBe(false);
+    expect(await validateUser(harness.prisma, 'charlie3', firstPassword)).not.toBe(false);
   });
 
   it('refuses a non-admin caller, and creates nothing', async () => {
