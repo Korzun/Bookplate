@@ -17,8 +17,8 @@ import {
 import { model as userModel } from '../model';
 
 /**
- * `username` only — REST's `POST /api/users` (`routes/users.ts:115-156`)
- * takes nothing else in its body. No `userId`: unlike every other
+ * `username` only — REST's `POST /api/users` took nothing else in its body,
+ * before Phase 0 removed that route. No `userId`: unlike every other
  * user-associated mutation in this file, this one creates the row rather
  * than acting on an existing one, so there is nothing yet to name with a
  * `User` global ID.
@@ -107,8 +107,8 @@ const result = builder.unionType('UserRegisterResult', {
 });
 
 /**
- * Mirrors `POST /api/users` (`routes/users.ts:115-156`) — `router.use(adminAuth)`
- * gates the whole router, so this is admin-only with no `ownerOf` alternative
+ * Mirrored REST's `POST /api/users`, removed in Phase 0 — `router.use(adminAuth)`
+ * gated the whole router, so this is admin-only with no `ownerOf` alternative
  * (there is no self-registration in this app).
  *
  * The four REST checks run in this exact order, reproduced here rather than
@@ -116,8 +116,8 @@ const result = builder.unionType('UserRegisterResult', {
  * evaluates it strictly between the other two:
  *
  *  1. charset (400) — `isValidUsername`, `charsetSchema` above.
- *  2. reserved name (409) — `trimmedUsername === adminUsername`
- *     (`routes/users.ts:132-136`). Checked before the length floor, so the
+ *  2. reserved name (409) — `trimmedUsername === adminUsername` (mirroring
+ *     REST's `routes/users.ts`, removed in Phase 0). Checked before the length floor, so the
  *     default built-in admin name ("admin", 5 chars — one under
  *     `MIN_USERNAME_LENGTH`) hits THIS branch, not the length one; a
  *     combined schema checking length first would silently reorder REST's
@@ -130,9 +130,9 @@ const result = builder.unionType('UserRegisterResult', {
  *     registrations of the same name). Same `UsernameAlreadyExistsError`.
  *
  * `fs.mkdirSync` before `createUser` mirrors REST's own ordering
- * (`routes/users.ts:144-147`) and creates the on-disk library folder
- * immediately rather than waiting for the first book — REST does this even
- * though `BookStore.addBook` (`services/book-store.ts:452`) would create the
+ * (`routes/users.ts`, removed in Phase 0) and creates the on-disk library
+ * folder immediately rather than waiting for the first book — REST did this
+ * even though `BookStore.addBook` (`services/book-store.ts:452`) would create the
  * same folder lazily on first write; mirrored literally rather than dropped,
  * since an admin (or an SFTP/rsync workflow) may expect the folder to exist
  * the moment the account does.

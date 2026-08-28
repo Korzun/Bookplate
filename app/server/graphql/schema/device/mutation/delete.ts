@@ -57,8 +57,8 @@ const result = builder.unionType('DeviceDeleteResult', {
 });
 
 /**
- * Mirrors `DELETE /:id` (`routes/devices.ts`) — admin-only, same router-wide
- * gate `deviceCreate`'s doc comment traces.
+ * Mirrored REST's `DELETE /:id`, removed in Phase 0 — admin-only, same
+ * router-wide gate `deviceCreate`'s doc comment traces.
  *
  * REST checks existence twice (`getById`, then re-checks `delete`'s boolean
  * return) before answering 404 either way. `DeviceStore.delete` already

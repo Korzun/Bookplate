@@ -132,8 +132,9 @@ describe('Mutation.progressDelete', () => {
   });
 
   it('lets an admin delete a named user’s row without touching an identically-named row of another user', async () => {
-    // REST parity: `DELETE /api/users/:username/progress/:document` is
-    // admin-only and clears any user's progress. The two users share a
+    // REST parity: `DELETE /api/users/:username/progress/:document` was
+    // admin-only and cleared any user's progress, before Phase 0 removed it.
+    // The two users share a
     // document id on purpose — document ids are book content hashes, so two
     // users routinely hold the same one, and an owner-derivation bug shows up
     // as the wrong user's row disappearing rather than as a count changing.

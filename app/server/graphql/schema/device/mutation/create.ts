@@ -16,8 +16,8 @@ import { model as deviceModel } from '../model';
 import { deviceFieldsSchema } from './device-fields-schema';
 
 /**
- * Every field `POST /api/devices` (`routes/devices.ts`'s `parseBody`)
- * requires, plus the two optional dimensions. `Device` has no owner — unlike
+ * Every field REST's `POST /api/devices` required (via its `parseBody`,
+ * removed in Phase 0), plus the two optional dimensions. `Device` has no owner — unlike
  * every book/progress/user mutation in this schema, there is no `userId`
  * here at all (see `device/model.ts`'s doc comment on why `Device` is a
  * single global record, not tenant-scoped).
@@ -71,9 +71,9 @@ const result = builder.unionType('DeviceCreateResult', {
 });
 
 /**
- * Mirrors `POST /api/devices` (`routes/devices.ts`) — `router.use(adminAuth)`
- * (after `router.use(requireAuth)`) gates every route in this router except
- * `GET /`, which is open to any authenticated user (verified by reading
+ * Mirrored REST's `POST /api/devices`, removed in Phase 0 — `router.use(adminAuth)`
+ * (after `router.use(requireAuth)`) gated every route in that router except
+ * `GET /`, which was open to any authenticated user (verified by reading
  * every route end to end, not assumed from the task brief — the read-model
  * plan's `Viewer.devices` doc comment records the identical finding). No
  * `ownerOf` alternative exists: devices are not owned by any user.

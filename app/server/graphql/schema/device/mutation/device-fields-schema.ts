@@ -6,12 +6,14 @@ import { generateSlug } from '../../../../utils/slug';
  * The `name`/`coverWidth`/`coverHeight` validation `deviceCreate` and
  * `deviceUpdate` share, extracted into one definition so the two mutations
  * cannot drift the way two independent copies could (review, task 7, I-1).
- * This is the direct GraphQL analogue of REST's own sharing: `POST /` and
- * `PATCH /:id` (`routes/devices.ts`) both call the exact same `parseBody`
- * function, so REST structurally cannot have PATCH accept something POST
- * rejects (or vice versa) — before this extraction, the two GraphQL copies
- * had no such guarantee, and `update.test.ts` pinned none of these four
- * rules, only `deviceId`'s.
+ * This is the direct GraphQL analogue of REST's own sharing, before Phase 0
+ * removed it: `POST /` and `PATCH /:id` both called the exact same
+ * `parseBody` function, so REST structurally could not have PATCH accept
+ * something POST rejected (or vice versa). The same guarantee holds here —
+ * `deviceCreate` and `deviceUpdate` both call this exact schema function, so
+ * GraphQL structurally cannot have one accept something the other rejects —
+ * before this extraction, the two GraphQL copies had no such guarantee, and
+ * `update.test.ts` pinned none of these four rules, only `deviceId`'s.
  *
  * Mirrors `parseBody`'s checks on `name` exactly, in the same order:
  * required-after-trim, then the 50-character ceiling, then the "must derive

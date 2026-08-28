@@ -62,9 +62,10 @@ describe('Viewer.devices', () => {
     expect(Number.isNaN(Date.parse(device.updatedAt))).toBe(false);
   });
 
-  // REST parity, NOT the brief's "refuses a non-admin" assertion: routes/devices.ts's
-  // `GET /` handler is reachable by any logged-in user (only `requireAuth`, no
-  // `adminAuth`) — a non-admin gets `deviceStore.listForUser`, not FORBIDDEN. A
+  // REST parity, NOT the brief's "refuses a non-admin" assertion: REST's
+  // `routes/devices.ts` (removed in Phase 0) `GET /` handler was reachable
+  // by any logged-in user (only `requireAuth`, no `adminAuth`) — a non-admin
+  // got `deviceStore.listForUser`, not FORBIDDEN. The same holds here: a
   // regular user not enabled on any device sees an empty list, not an error.
   it('returns an empty list for a non-admin enabled on no device', async () => {
     const result = await harness.execute('{ viewer { devices { name } } }', {

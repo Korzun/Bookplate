@@ -12,7 +12,7 @@ import { model as user } from '../user/model';
  * redundant second door. `Device` is not reached through an owner-scoped
  * parent at all — it has no owner. It is a single, global row shared
  * identically by every user enabled on it, and by every admin regardless of
- * enablement (see `routes/devices.ts`'s `GET /`).
+ * enablement (mirroring REST's `GET /`, removed in Phase 0).
  *
  * node-scope.ts's guard (`ownerScopedFindUnique`/`isOwnerOrAdmin`) and
  * node-scope.test.ts's generic cross-tenant walk exist to answer one
@@ -56,14 +56,14 @@ export const model = builder.prismaObject('Device', {
      * `deviceDisableUser` will mutate in phase 4, so the schema must be able to
      * read it.
      *
-     * REST equivalent: `GET /api/devices/:id/users` (`routes/devices.ts`), which
-     * carries `adminAuth` explicitly, unlike that router's `GET /`. Verified
-     * against the router rather than assumed: of its seven routes only `GET /` is
-     * ungated; `POST /`, `PATCH /:id`, `DELETE /:id`, `GET /:id/users`,
-     * `PUT /:id/users/:username` and `DELETE /:id/users/:username` all carry
-     * `adminAuth`. So `Viewer.devices` stays open (see `viewer/model.ts`) and
-     * this field is admin-only. The two differ, and that difference is REST's,
-     * not an invention here.
+     * REST's equivalent, `GET /api/devices/:id/users`, carried `adminAuth`
+     * explicitly, unlike that router's `GET /`. That precedent was verified
+     * against the router rather than assumed, before Phase 0 removed it: of
+     * its seven routes only `GET /` was ungated; `POST /`, `PATCH /:id`,
+     * `DELETE /:id`, `GET /:id/users`, `PUT /:id/users/:username` and
+     * `DELETE /:id/users/:username` all carried `adminAuth`. So `Viewer.devices`
+     * stays open (see `viewer/model.ts`) and this field stays admin-only —
+     * a distinction inherited from REST, not invented here.
      *
      * Typed `[User!]!`, not REST's `[String!]!` of usernames. Every user-associated
      * mutation in the spec takes a `User` global ID, never a username

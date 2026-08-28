@@ -41,11 +41,12 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     }),
 
     /**
-     * Mirrors `GET /api/users` (`routes/users.ts`). That whole router applies
-     * `router.use(adminAuth)` before any handler, so the list is admin-only —
-     * verified against the router itself, not assumed, and it agrees with the
-     * design spec's annotation (`users: [User!]! # admin-only scope`). Contrast
-     * `Viewer.devices`, whose REST equivalent is deliberately *not* admin-gated.
+     * Mirrored REST's `GET /api/users` (`routes/users.ts`, removed in
+     * Phase 0). That whole router applied `router.use(adminAuth)` before any
+     * handler, so the list was admin-only — verified against the router
+     * itself, not assumed, and it agrees with the design spec's annotation
+     * (`users: [User!]! # admin-only scope`). Contrast `Viewer.devices`,
+     * whose REST equivalent was deliberately *not* admin-gated.
      *
      * `orderBy: { username: 'asc' }` is `UserStore.listUsers()`'s own ordering.
      * Read through `context.prisma` rather than the store because `listUsers()`
@@ -106,12 +107,13 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     }),
 
     /**
-     * Matches `routes/devices.ts`'s `GET /` exactly (see its handler and its own
-     * comment: "Listing devices is open to any user ... creating, editing, and
-     * deleting devices stay admin-only"). Every GraphQL field already requires an
-     * authenticated viewer (the builder's default `authenticated` scope), so the
-     * REST route's outer `requireAuth` is already covered — the branching below
-     * reproduces the REST handler's OWN branching, not a tightened or loosened
+     * Matched REST's `routes/devices.ts`'s `GET /` exactly, before Phase 0
+     * removed that router (its handler's own comment read: "Listing devices
+     * is open to any user ... creating, editing, and deleting devices stay
+     * admin-only"). Every GraphQL field already requires an authenticated
+     * viewer (the builder's default `authenticated` scope), so that route's
+     * outer `requireAuth` was already covered — the branching below
+     * reproduces that handler's OWN branching, not a tightened or loosened
      * version of it:
      *   - an admin sees every device;
      *   - a regular user sees only the devices they are enabled on;

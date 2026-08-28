@@ -54,9 +54,10 @@ describe('Viewer.users', () => {
     ]);
   });
 
-  // `routes/users.ts` applies `router.use(adminAuth)` to the whole router, so
-  // `GET /api/users` is admin-only. This must match it exactly — the plan
-  // asserted the opposite of REST for `Viewer.devices` once already.
+  // REST's `routes/users.ts` (removed in Phase 0) applied `router.use(adminAuth)`
+  // to the whole router, so `GET /api/users` was admin-only. This must match
+  // it exactly — the plan asserted the opposite of REST for `Viewer.devices`
+  // once already.
   //
   // `users` is nullable (pre-client hardening spec, §4 "Nullability
   // ruling"): a denial nulls JUST this field, not the whole operation — the

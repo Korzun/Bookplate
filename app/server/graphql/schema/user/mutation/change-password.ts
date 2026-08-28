@@ -90,11 +90,12 @@ const result = builder.unionType('UserChangePasswordResult', {
 });
 
 /**
- * Mirrors `PATCH /api/my/password` (`routes/ui.ts:383-428`) — self-service,
- * viewer-only, with NO admin path: `req.user!.isAdmin` gets a flat 403
- * (`routes/ui.ts:387-390`), and `routes/users.ts` has no admin route that
- * changes a *known* current password (only `POST .../reset-password`, which
- * `userResetPassword` mirrors, generates a NEW one). So — like `progressSet`
+ * Mirrored REST's `PATCH /api/my/password` (`routes/ui.ts`, that route since
+ * removed) — self-service, viewer-only, with NO admin path: `req.user!.isAdmin`
+ * got a flat 403, and `routes/users.ts` had no admin route that changed a
+ * *known* current password (only `POST .../reset-password`, which
+ * `userResetPassword` mirrors, generated a NEW one), before Phase 0 removed
+ * both routers. So — like `progressSet`
  * — this deliberately does NOT use the `ownerOf` scope every admin-capable
  * user-associated mutation in this schema uses. The target is not an argument
  * at all (see the input type's own comment): it IS the caller, taken from

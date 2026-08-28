@@ -150,14 +150,15 @@ const result = builder.unionType('ProgressSetResult', {
 });
 
 /**
- * Mirrors `PUT /api/my/progress/:document` (`routes/ui.ts:338-381`) — a
- * viewer-only route with NO admin path at all: `req.user!.isAdmin` gets a
- * flat 403, and unlike `DELETE /api/my/progress/:document` (which
- * `progressDelete` also mirrors), there is no second, admin-capable REST
- * route to widen from — `routes/users.ts` has `GET .../progress` and
+ * Mirrored `PUT /api/my/progress/:document` (`routes/ui.ts`, that route
+ * since removed) — a viewer-only route with NO admin path at all:
+ * `req.user!.isAdmin` got a flat 403, and unlike `DELETE /api/my/progress/:document`
+ * (which `progressDelete` also mirrored), there was no second, admin-capable
+ * REST route to widen from — `routes/users.ts` had `GET .../progress` and
  * `DELETE .../progress/:document` for an admin acting on a named user, but
- * no `PUT`/`POST` equivalent. Checked directly against that file: no branch
- * writes another user's progress, admin or otherwise.
+ * no `PUT`/`POST` equivalent. That was checked directly against that file's
+ * source before Phase 0 removed both routers: no branch wrote another
+ * user's progress, admin or otherwise.
  *
  * So this mutation deliberately does NOT use the `ownerOf` scope
  * (`isOwnerOrAdmin`) every other user-associated mutation in this schema

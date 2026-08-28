@@ -25,10 +25,11 @@ import { purgeEditionsQuietly } from './purge-quietly';
  * the Book-Relay-ID pass moved them to `id: ID!` because Book IS a Node with a
  * compound key to encode. Device has neither, so the raw id stays honest here.)
  *
- * `PATCH /:id` (`routes/devices.ts`) takes the exact same body shape
- * `POST /` does — REST's `parseBody` is the one function both routes call —
- * so this is a full replacement, not a partial patch despite the HTTP verb:
- * every field is required, exactly like `DeviceCreateInput`.
+ * REST's `PATCH /:id` took the exact same body shape `POST /` did — its
+ * `parseBody` was the one function both routes called, before Phase 0
+ * removed that router — so this is a full replacement, not a partial patch
+ * despite the HTTP verb: every field is required, exactly like
+ * `DeviceCreateInput`.
  */
 const input = builder.inputType('DeviceUpdateInput', {
   fields: (t) => ({
@@ -84,16 +85,21 @@ const result = builder.unionType('DeviceUpdateResult', {
 });
 
 /**
- * Mirrors `PATCH /:id` (`routes/devices.ts`) — admin-only, same router-wide
- * gate `deviceCreate`'s doc comment traces. Two REST 404s collapse into this
- * mutation's single `null` result, the same "no such row" convention every
- * delete/update mutation in this schema uses: the device doesn't exist
- * before the write, or a P2025 races the write out from under it
- * (`DeviceStore.update`'s own `P2025` catch, `device-store.ts:84`) — REST
- * answers "Device not found" for both, and so does this.
+ * Mirrored REST's `PATCH /:id`, removed in Phase 0 — admin-only, same
+ * router-wide gate `deviceCreate`'s doc comment traces. Two REST 404s
+ * collapsed into this mutation's single `null` result, the same "no such
+ * row" convention every delete/update mutation in this schema uses: the
+ * device doesn't exist before the write, or a P2025 races the write out
+ * from under it (`DeviceStore.update`'s own `P2025` catch,
+ * `device-store.ts:84`) — REST answered "Device not found" for both, and so
+ * does this.
  *
  * **Ordering (review, task 7, M-2):** REST checks existence (`getById` → 404)
- * BEFORE parsing the body (`parseBody` → 400) — `routes/devices.ts:111-119`.
+ * BEFORE parsing the body (`parseBody` → 400). (Dangling pointer to
+ * `routes/devices.ts:111-119` removed — that router is gone as of Phase 0.
+ * Phase 1 revisits this ordering: it re-orders this resolver to
+ * validate-then-resolve and drops the `getById` precheck below. The
+ * rationale that follows is left as-is until then.)
  * This resolver mirrors that order literally: `deviceId` is validated and
  * looked up first, and only once the device is confirmed to exist does
  * `deviceFieldsSchema` run against `name`/`coverWidth`/`coverHeight`. For an
@@ -132,11 +138,11 @@ const result = builder.unionType('DeviceUpdateResult', {
  * route-specific "Slug already in use" — see `create.ts`'s identical note
  * (review, task 7, M-6).
  *
- * `editionStore.purgeForDevice` runs after a successful update — REST does
- * the same (`routes/devices.ts`'s `PATCH /:id`, "settings changed -> stale
- * cache") and swallows a purge failure with a warning rather than failing the
- * request; see `purge-quietly.ts` for why that swallow lives outside this
- * `resolve` body.
+ * `editionStore.purgeForDevice` runs after a successful update — REST did
+ * the same on its `PATCH /:id` ("settings changed -> stale cache"), before
+ * Phase 0 removed that route, and swallowed a purge failure with a warning
+ * rather than failing the request; see `purge-quietly.ts` for why that
+ * swallow lives outside this `resolve` body.
  */
 builder.mutationField('deviceUpdate', (t) =>
   t.field({

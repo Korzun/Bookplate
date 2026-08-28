@@ -426,11 +426,13 @@ describe('Mutation.progressSet', () => {
   });
 
   /**
-   * REST-verified divergence from `progressDelete`: `routes/users.ts` has no
+   * REST-verified divergence from `progressDelete`: `routes/users.ts` had no
    * `PUT`/`POST` route letting an admin write another user's progress (only
-   * `GET .../progress` and `DELETE .../progress/:document`), unlike
-   * `progressDelete`'s admin-capable `DELETE /api/users/:username/progress/
-   * :document`. So — the viewer-only equivalent, not the CONTENTS assertion
+   * `GET .../progress` and `DELETE .../progress/:document`), before Phase 0
+   * removed that router — unlike `progressDelete`'s admin-capable
+   * `DELETE /api/users/:username/progress/:document`. This mutation keeps
+   * that divergence by design: it stays self-only. So — the viewer-only
+   * equivalent, not the CONTENTS assertion
    * `progressDelete`'s admin test makes — and seen-to-fail in both
    * directions: this failed red before the `ownerOf`→self-only scope fix
    * (the naive `ownerOf` scope would have let this through), and the "own

@@ -325,8 +325,9 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
   // a SEPARATE read — today `DeviceUsersDocument` (`graphql/device.ts`,
   // `viewer { devices { id enabledUsers { id } } }`, `id` only), issued by
   // `component/device-form` when an admin edits ONE device; before the
-  // client's GraphQL migration, the REST `GET /api/devices/:id/users`. Not
-  // part of the list screen either way.
+  // client's GraphQL migration, the REST `GET /api/devices/:id/users` served
+  // it, and Phase 0 has since removed that route. Not part of the list
+  // screen either way.
   //
   // (Doc sweep: this note cited `provider/device/type.ts` for the 8-field
   // list and a `useDeviceUsers` hook; the client migration deleted both.
