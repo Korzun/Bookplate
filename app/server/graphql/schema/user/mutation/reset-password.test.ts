@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -28,7 +29,7 @@ const MUTATION = `
 
 describe('Mutation.userResetPassword', () => {
   it("resets bob's password for an admin, forces a change, and revokes bob's outstanding refresh tokens", async () => {
-    const refreshToken = await harness.stores.token.createRefreshToken({
+    const refreshToken = await createRefreshToken(harness.prisma, {
       username: 'bob',
       userId: harness.bobOwner.userId,
     });
@@ -46,7 +47,7 @@ describe('Mutation.userResetPassword', () => {
     const password = payload.password;
     expect(await harness.stores.user.validateUser('bob', password)).toBe(harness.bobOwner.userId);
     expect(await harness.stores.user.validateUser('bob', 'bobpass')).toBe(false);
-    expect(await harness.stores.token.consumeRefreshToken(refreshToken)).toBeNull();
+    expect(await consumeRefreshToken(harness.prisma, refreshToken)).toBeNull();
   });
 
   it('resolves to null for a User global ID that names no user', async () => {

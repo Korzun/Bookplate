@@ -16,7 +16,13 @@ import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
-import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
+import {
+  consumeRefreshToken,
+  createRefreshToken,
+  deleteExpired,
+  revokeRefreshToken,
+  REFRESH_TOKEN_TTL_MS,
+} from '../services/token';
 import { UserStore } from '../services/user-store';
 import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
@@ -297,7 +303,6 @@ export function createUiRouter(
   userStore: UserStore,
   config: AppConfig,
   thumbnailQueue: ThumbnailQueue,
-  tokenStore: TokenStore,
   jwtSecret: Buffer,
   prisma: PrismaClient,
   replaceStaging: ReplaceStaging,
@@ -313,7 +318,7 @@ export function createUiRouter(
 
   async function issueTokens(res: Response, user: AuthUser): Promise<void> {
     const accessToken = signAccessToken(jwtSecret, user);
-    const refreshToken = await tokenStore.createRefreshToken({
+    const refreshToken = await createRefreshToken(prisma, {
       username: user.username,
       userId: user.userId ?? null,
     });
@@ -519,7 +524,7 @@ export function createUiRouter(
       }
       if (username === config.username && password === config.password) {
         log.info(`Admin "${username}" logged in`);
-        await tokenStore.deleteExpired();
+        await deleteExpired(prisma);
         await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
         return;
       }
@@ -531,7 +536,7 @@ export function createUiRouter(
       const userId = await userStore.validateUser(username, password);
       if (userId) {
         log.info(`User "${username}" logged in`);
-        await tokenStore.deleteExpired();
+        await deleteExpired(prisma);
         await issueTokens(res, {
           userId,
           username,
@@ -557,7 +562,7 @@ export function createUiRouter(
         reject();
         return;
       }
-      const identity = await tokenStore.consumeRefreshToken(raw);
+      const identity = await consumeRefreshToken(prisma, raw);
       if (!identity) {
         log.warn('Refresh rejected — unknown, reused, or expired refresh token');
         reject();
@@ -592,7 +597,7 @@ export function createUiRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const raw = (req.cookies as Record<string, string> | undefined)?.refresh_token;
       if (typeof raw === 'string' && raw) {
-        await tokenStore.revokeRefreshToken(raw);
+        await revokeRefreshToken(prisma, raw);
       }
       log.info('User logged out');
       clearRefreshCookie(res);

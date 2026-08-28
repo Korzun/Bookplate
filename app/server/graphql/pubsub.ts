@@ -20,8 +20,8 @@ import type { ScanPublisher } from '../services/scan-publisher';
  *
  * `ScanJobStore` (`services/scan-job-store.ts`) is the only publisher —
  * one instance, constructor-injected there, same "single shared instance"
- * rule `TokenStore`/`ReplaceStaging` follow (`context.ts`'s `Stores` doc
- * comments) — and the only subscriber is `Subscription.scanProgress`
+ * rule `ReplaceStaging` follows (`context.ts`'s `Stores.replaceStaging` doc
+ * comment) — and the only subscriber is `Subscription.scanProgress`
  * (`schema/library/subscription/scan-progress.ts`), reached only through
  * `ScanJobStore.subscribe`. Nothing else in the schema touches this module
  * directly.

@@ -1,3 +1,4 @@
+import { revokeAllForUsername } from '../../../../services/token';
 import { builder } from '../../builder';
 import { model as userModel } from '../model';
 
@@ -70,10 +71,10 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * a races-with-itself "user deleted mid-request" into `null` — nothing left
  * in its body can throw one of the seven known store errors.
  *
- * `context.stores.token.revokeAllForUsername` mirrors REST's identical call
- * right after a successful reset (`routes/users.ts`, removed in Phase 0) —
- * see `graphql/context.ts`'s `Stores.token` doc comment for why the same
- * `TokenStore` instance REST used is threaded through here. Unlike REST's own
+ * `revokeAllForUsername`, imported directly from `services/token.ts` (a
+ * plain function over `context.prisma` — no store instance to thread
+ * through), mirrors REST's identical call right after a successful reset
+ * (`routes/users.ts`, removed in Phase 0). Unlike REST's own
  * `/api/my/password` self-service flow (mirrored by `userChangePassword`),
  * there is no token *reissue* to mirror here: the admin calling this
  * mutation is not the user whose password just changed, so there is nothing
@@ -96,7 +97,7 @@ builder.mutationField('userResetPassword', (t) =>
       const password = await context.stores.user.resetPassword(owner.username);
       if (password === null) return null;
 
-      await context.stores.token.revokeAllForUsername(owner.username);
+      await revokeAllForUsername(context.prisma, owner.username);
 
       return { __typename: 'UserResetPasswordPayload' as const, userId: owner.userId, password };
     },
