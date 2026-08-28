@@ -13,6 +13,7 @@ import {
   changeSyncPassword,
   generateLoginPassword,
   generateSyncPassword,
+  getMustChangePassword,
   getSyncPassword,
   hashLoginPassword,
   hashSyncPassword,
@@ -21,15 +22,13 @@ import {
   validateUser,
   verifyLoginPassword,
 } from './password';
-import { UserStore } from './user-store';
+import { createUser } from './user';
 import { WORDLIST } from './wordlist';
 
 vi.mock('../logger');
 
 let prisma: PrismaClient;
-let store: UserStore;
 let dbPath: string;
-let editionsRoot: string;
 
 beforeEach(async () => {
   dbPath = path.join(
@@ -39,8 +38,6 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, os.tmpdir());
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'password-editions-'));
-  store = new UserStore(prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -57,19 +54,19 @@ afterEach(async () => {
 describe('validateUser', () => {
   it('returns the user ID string for correct password', async () => {
     const hash = await hashLoginPassword('mypass');
-    await store.createUser('alice', hash);
+    await createUser(prisma, 'alice', hash);
     const result = await validateUser(prisma, 'alice', 'mypass');
     expect(result).toMatch(/^[A-Za-z0-9]{21}$/);
   });
 
   it('returns false for wrong password', async () => {
     const hash = await hashLoginPassword('mypass');
-    await store.createUser('alice', hash);
+    await createUser(prisma, 'alice', hash);
     expect(await validateUser(prisma, 'alice', 'wrong')).toBe(false);
   });
 
   it('returns false when passwordHash is null', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     expect(await validateUser(prisma, 'alice', 'anything')).toBe(false);
   });
 });
@@ -77,12 +74,12 @@ describe('validateUser', () => {
 describe('userHasPassword', () => {
   it('returns true when passwordHash is set', async () => {
     const hash = await hashLoginPassword('pw');
-    await store.createUser('alice', hash);
+    await createUser(prisma, 'alice', hash);
     expect(await userHasPassword(prisma, 'alice')).toBe(true);
   });
 
   it('returns false when passwordHash is null', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     expect(await userHasPassword(prisma, 'alice')).toBe(false);
   });
 
@@ -91,10 +88,27 @@ describe('userHasPassword', () => {
   });
 });
 
+describe('getMustChangePassword', () => {
+  it('returns false by default', async () => {
+    await createUser(prisma, 'alice', null);
+    expect(await getMustChangePassword(prisma, 'alice')).toBe(false);
+  });
+
+  it('returns true after resetPassword', async () => {
+    await createUser(prisma, 'alice', null);
+    await resetPassword(prisma, 'alice');
+    expect(await getMustChangePassword(prisma, 'alice')).toBe(true);
+  });
+
+  it('returns false for unknown user', async () => {
+    expect(await getMustChangePassword(prisma, 'nobody')).toBe(false);
+  });
+});
+
 describe('changePassword', () => {
   it('updates passwordHash and allows login with new password', async () => {
     const oldHash = await hashLoginPassword('old');
-    await store.createUser('alice', oldHash);
+    await createUser(prisma, 'alice', oldHash);
     const newHash = await hashLoginPassword('new');
     expect(await changePassword(prisma, 'alice', newHash)).toBe(true);
     expect(await validateUser(prisma, 'alice', 'new')).toBeTruthy();
@@ -106,20 +120,20 @@ describe('changePassword', () => {
   });
 
   it('clears mustChangePassword flag', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     await resetPassword(prisma, 'alice');
-    expect(await store.getMustChangePassword('alice')).toBe(true);
+    expect(await getMustChangePassword(prisma, 'alice')).toBe(true);
 
     const newHash = await hashLoginPassword('newpass');
     await changePassword(prisma, 'alice', newHash);
 
-    expect(await store.getMustChangePassword('alice')).toBe(false);
+    expect(await getMustChangePassword(prisma, 'alice')).toBe(false);
   });
 });
 
 describe('getSyncPassword', () => {
   it('returns the stored syncPassword', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     const p1 = await getSyncPassword(prisma, 'alice');
     const p2 = await getSyncPassword(prisma, 'alice');
     expect(p1).toBe(p2); // same value on second call (persisted)
@@ -148,7 +162,7 @@ describe('getSyncPassword', () => {
 
 describe('changeSyncPassword', () => {
   it('updates syncPassword and returns true', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     expect(await changeSyncPassword(prisma, 'alice', 'swift stone')).toBe(true);
     expect(await getSyncPassword(prisma, 'alice')).toBe('swift stone');
   });
@@ -177,7 +191,7 @@ describe('generateLoginPassword', () => {
 describe('resetPassword', () => {
   it('sets a new passwordHash and mustChangePassword flag, returns the plaintext password', async () => {
     const oldHash = await hashLoginPassword('old');
-    await store.createUser('alice', oldHash);
+    await createUser(prisma, 'alice', oldHash);
 
     const newPassword = await resetPassword(prisma, 'alice');
 
@@ -185,7 +199,7 @@ describe('resetPassword', () => {
     expect(newPassword).toHaveLength(16);
     expect(await validateUser(prisma, 'alice', newPassword!)).toBeTruthy();
     expect(await validateUser(prisma, 'alice', 'old')).toBe(false);
-    expect(await store.getMustChangePassword('alice')).toBe(true);
+    expect(await getMustChangePassword(prisma, 'alice')).toBe(true);
   });
 
   it('returns null for unknown user', async () => {
@@ -195,7 +209,7 @@ describe('resetPassword', () => {
 
 describe('authenticate', () => {
   it('returns the user ID string with correct sync password key', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     const syncPwd = await getSyncPassword(prisma, 'alice');
     const key = hashSyncPassword(syncPwd!);
     const result = await authenticate(prisma, 'alice', key);
@@ -203,7 +217,7 @@ describe('authenticate', () => {
   });
 
   it('returns false for wrong sync key', async () => {
-    await store.createUser('alice', null);
+    await createUser(prisma, 'alice', null);
     expect(await authenticate(prisma, 'alice', 'wrongkey')).toBe(false);
   });
 

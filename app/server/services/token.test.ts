@@ -16,14 +16,14 @@ import {
   revokeRefreshToken,
   REFRESH_TOKEN_TTL_MS,
 } from './token';
-import { UserStore } from './user-store';
+import { createUser, deleteUser } from './user';
 
 vi.mock('../logger');
 
 let prisma: PrismaClient;
 let dbPath: string;
 let booksDir: string;
-let users: UserStore;
+const editionsRoot = path.join(os.tmpdir(), 'unused-editions');
 
 // Pre-created user IDs for tests that need FK-valid userId values
 let aliceId: string;
@@ -38,11 +38,10 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  users = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
 
   // Create real users so FK-referencing inserts succeed (foreign_keys = ON)
-  await users.createUser('alice', await hashLoginPassword('pw'));
-  await users.createUser('bob', await hashLoginPassword('pw'));
+  await createUser(prisma, 'alice', await hashLoginPassword('pw'));
+  await createUser(prisma, 'bob', await hashLoginPassword('pw'));
   aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   bobId = (await prisma.user.findUnique({ where: { username: 'bob' } }))!.id;
 });
@@ -145,10 +144,10 @@ describe('refresh tokens', () => {
   });
 
   it('rows are cascade-deleted with the user', async () => {
-    await users.createUser('carol', await hashLoginPassword('pw'));
+    await createUser(prisma, 'carol', await hashLoginPassword('pw'));
     const carolId = (await prisma.user.findUnique({ where: { username: 'carol' } }))!.id;
     await createRefreshToken(prisma, { username: 'carol', userId: carolId });
-    await users.deleteUser('carol');
+    await deleteUser(prisma, editionsRoot, 'carol');
     expect(await prisma.refreshToken.count()).toBe(0);
   });
 });

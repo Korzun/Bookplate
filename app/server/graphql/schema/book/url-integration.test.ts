@@ -51,7 +51,6 @@ beforeEach(async () => {
     '/',
     createUiRouter(
       harness.stores.book,
-      harness.stores.user,
       harness.config,
       harness.stores.thumbnail,
       jwtSecret,

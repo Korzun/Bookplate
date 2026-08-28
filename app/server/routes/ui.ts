@@ -14,7 +14,7 @@ import { BookStore, BookAlreadyExistsError } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import { userHasPassword, validateUser } from '../services/password';
+import { getMustChangePassword, userHasPassword, validateUser } from '../services/password';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -24,7 +24,6 @@ import {
   revokeRefreshToken,
   REFRESH_TOKEN_TTL_MS,
 } from '../services/token';
-import { UserStore } from '../services/user-store';
 import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
@@ -301,7 +300,6 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
 
 export function createUiRouter(
   bookStore: BookStore,
-  userStore: UserStore,
   config: AppConfig,
   thumbnailQueue: ThumbnailQueue,
   jwtSecret: Buffer,
@@ -390,12 +388,21 @@ export function createUiRouter(
         res.status(400).json({ error: 'user query parameter is required for admin sessions' });
         return null;
       }
-      const userId = await userStore.getUserIdByUsername(target);
-      if (!userId) {
+      // Bare `findUnique` by unique username, selecting nothing but `id` —
+      // inlined under the placement rule's existence-check exception
+      // (`docs/superpowers/specs/2026-08-28-remove-stores-design.md`,
+      // "The placement rule"): the row read here backs an existence check
+      // (404 below when it's null) and the caller reads nothing off it but
+      // `id`, so a shared function would only re-wrap a three-line query.
+      const targetUser = await prisma.user.findUnique({
+        where: { username: target },
+        select: { id: true },
+      });
+      if (!targetUser) {
         res.status(404).json({ error: 'User not found' });
         return null;
       }
-      return { userId, username: target };
+      return { userId: targetUser.id, username: target };
     }
     if (target !== undefined) {
       res.status(403).json({ error: 'Forbidden' });
@@ -529,7 +536,13 @@ export function createUiRouter(
         await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
         return;
       }
-      if ((await userStore.userExists(username)) && !(await userHasPassword(prisma, username))) {
+      // Single-statement `findUnique` with exactly one production caller —
+      // inlined under the placement rule.
+      const loginUser = await prisma.user.findUnique({
+        where: { username },
+        select: { username: true },
+      });
+      if (loginUser !== null && !(await userHasPassword(prisma, username))) {
         log.warn(`Login failed for "${username}" — password not set`);
         res.sendStatus(403);
         return;
@@ -542,7 +555,7 @@ export function createUiRouter(
           userId,
           username,
           isAdmin: false,
-          mustChangePassword: await userStore.getMustChangePassword(username),
+          mustChangePassword: await getMustChangePassword(prisma, username),
         });
         return;
       }
@@ -578,17 +591,23 @@ export function createUiRouter(
         return;
       }
       // Rebuild claims from current state so renames/deletes and admin actions propagate.
-      const userId = await userStore.getUserIdByUsername(identity.username);
-      if (!userId) {
+      // Bare `findUnique` selecting only `id`, existence-checked by the null
+      // branch below — same placement-rule exception as `resolveOwner`'s
+      // identical lookup above.
+      const refreshUser = await prisma.user.findUnique({
+        where: { username: identity.username },
+        select: { id: true },
+      });
+      if (!refreshUser) {
         log.warn(`Refresh rejected — user "${identity.username}" no longer exists`);
         reject();
         return;
       }
       await issueTokens(res, {
-        userId,
+        userId: refreshUser.id,
         username: identity.username,
         isAdmin: false,
-        mustChangePassword: await userStore.getMustChangePassword(identity.username),
+        mustChangePassword: await getMustChangePassword(prisma, identity.username),
       });
     })
   );

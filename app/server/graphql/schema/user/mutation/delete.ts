@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { deleteUser } from '../../../../services/user';
 import { removeUserBooksDir } from '../../../../utils/user-books-dir';
 import { builder } from '../../builder';
 import { model as userModel } from '../model';
@@ -130,7 +131,7 @@ builder.mutationField('userDelete', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const deleted = await context.stores.user.deleteUser(owner.username);
+      const deleted = await deleteUser(context.prisma, context.editionsRoot, owner.username);
       if (!deleted) return null;
 
       removeUserBooksDir(context.config.booksDir, owner.username);

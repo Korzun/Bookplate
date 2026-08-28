@@ -7,12 +7,11 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { clearProgress, getProgress, getUserProgressPage, saveProgress } from './progress';
-import { UserStore } from './user-store';
+import { createUser, deleteUser } from './user';
 
 vi.mock('../logger');
 
 let prisma: PrismaClient;
-let store: UserStore;
 let dbPath: string;
 let editionsRoot: string;
 
@@ -25,8 +24,15 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, os.tmpdir());
   editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'progress-editions-'));
-  store = new UserStore(prisma, editionsRoot);
 });
+
+/** Test-fixture helper — not production code, so not subject to the
+ * placement rule's caller-count clause. Replaces `UserStore.
+ * getUserIdByUsername`, dissolved along with the rest of the class. */
+async function getUserId(username: string): Promise<string> {
+  const row = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  return row!.id;
+}
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -43,8 +49,8 @@ describe('saveProgress + getProgress', () => {
   let aliceId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', null);
+    aliceId = await getUserId('alice');
   });
 
   it('retrieves saved progress', async () => {
@@ -90,10 +96,10 @@ describe('clearProgress', () => {
   let bobId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', null);
-    await store.createUser('bob', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
-    bobId = (await store.getUserIdByUsername('bob'))!;
+    await createUser(prisma, 'alice', null);
+    await createUser(prisma, 'bob', null);
+    aliceId = await getUserId('alice');
+    bobId = await getUserId('bob');
   });
 
   it('returns false when no record exists', async () => {
@@ -136,8 +142,8 @@ describe('saveProgress — history', () => {
   let aliceId: string;
 
   beforeEach(async () => {
-    await store.createUser('alice', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', null);
+    aliceId = await getUserId('alice');
   });
 
   it('inserts a new history row with matching start and end timestamps on first sync', async () => {
@@ -275,7 +281,7 @@ describe('saveProgress — history', () => {
       device_id: 'dev-1',
       timestamp: 1000,
     });
-    await store.deleteUser('alice');
+    await deleteUser(prisma, editionsRoot, 'alice');
     const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
     expect(rows).toHaveLength(0);
   });
@@ -345,16 +351,16 @@ describe('getUserProgressPage', () => {
   }
 
   it('returns an empty page with null cursor when there is no progress', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', 'pass');
+    const id = await getUserId('alice');
     const page = await getUserProgressPage(prisma, id, null, 50);
     expect(page.items).toEqual([]);
     expect(page.nextCursor).toBeNull();
   });
 
   it('orders by timestamp desc, document asc and maps fields', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', 'pass');
+    const id = await getUserId('alice');
     await seed(id, 'a', 100);
     await seed(id, 'b', 200);
     const page = await getUserProgressPage(prisma, id, null, 50);
@@ -370,8 +376,8 @@ describe('getUserProgressPage', () => {
   });
 
   it('returns a nextCursor when more rows exist and advances past them', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', 'pass');
+    const id = await getUserId('alice');
     await seed(id, 'a', 100);
     await seed(id, 'b', 200);
     await seed(id, 'c', 300);
@@ -388,10 +394,10 @@ describe('getUserProgressPage', () => {
   });
 
   it('only returns rows for the specified user', async () => {
-    await store.createUser('alice', 'pass');
-    await store.createUser('bob', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    const bobId = (await store.getUserIdByUsername('bob'))!;
+    await createUser(prisma, 'alice', 'pass');
+    await createUser(prisma, 'bob', 'pass');
+    const id = await getUserId('alice');
+    const bobId = await getUserId('bob');
     await seed(id, 'doc1', 100);
     await seed(bobId, 'doc2', 200);
     const page = await getUserProgressPage(prisma, id, null, 50);
@@ -399,8 +405,8 @@ describe('getUserProgressPage', () => {
   });
 
   it('breaks timestamp ties by document ascending', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
+    await createUser(prisma, 'alice', 'pass');
+    const id = await getUserId('alice');
     await seed(id, 'y', 100);
     await seed(id, 'x', 100);
     const page1 = await getUserProgressPage(prisma, id, null, 1);

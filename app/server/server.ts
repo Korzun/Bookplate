@@ -12,14 +12,12 @@ import { createUiRouter } from './routes/ui';
 import { BookStore } from './services/book-store';
 import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
-import { UserStore } from './services/user-store';
 import { AppConfig } from './types';
 
 const log = logger('Server');
 
 export function createServer(
   config: AppConfig,
-  userStore: UserStore,
   bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue,
   jwtSecret: Buffer,
@@ -71,7 +69,7 @@ export function createServer(
   server.use('/sync', createKosyncRouter(bookStore, prisma));
   server.use(
     '/',
-    createUiRouter(bookStore, userStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
+    createUiRouter(bookStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {

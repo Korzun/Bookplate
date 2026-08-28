@@ -5,7 +5,6 @@ import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
-import type { UserStore } from '../services/user-store';
 import type { AppConfig } from '../types';
 import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
 import {
@@ -41,7 +40,6 @@ export type Viewer = {
 
 export type Stores = {
   book: BookStore;
-  user: UserStore;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;
   /**
