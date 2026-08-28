@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
+import type { PrismaClient } from '@prisma/client';
 import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
@@ -17,7 +18,7 @@ import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-stag
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
 import { UserStore } from '../services/user-store';
-import { ValidationStore } from '../services/validation-store';
+import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
 
@@ -298,7 +299,7 @@ export function createUiRouter(
   thumbnailQueue: ThumbnailQueue,
   tokenStore: TokenStore,
   jwtSecret: Buffer,
-  validationStore: ValidationStore,
+  prisma: PrismaClient,
   replaceStaging: ReplaceStaging,
   loginRateLimitNow: () => number = Date.now
 ): Router {
@@ -718,7 +719,7 @@ export function createUiRouter(
           }
           throw err;
         }
-        await validationStore.saveValidation(owner, id, analysis.report);
+        await saveValidation(prisma, owner, id, analysis.report);
         // Detect metadata issues; auto-apply the high-confidence ones in-request.
         let finalId = id;
         const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
@@ -728,7 +729,7 @@ export function createUiRouter(
           const created = await bookStore.getBookById(owner, id);
           if (created) {
             const result = await applyAutoAndAccepted(
-              { bookStore, validationStore, validationThreshold: config.validationThreshold },
+              { bookStore, prisma, validationThreshold: config.validationThreshold },
               owner,
               created,
               { originalName: file.originalname, librarySubjects, acceptedKeys: [] }

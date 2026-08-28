@@ -35,7 +35,7 @@ import {
 } from '../services/replace-staging';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
-import { ValidationStore } from '../services/validation-store';
+import * as validationModule from '../services/validation';
 import { AppConfig, EpubMeta, Owner } from '../types';
 import { createLoginRateLimit, createUiRouter } from './ui';
 
@@ -114,7 +114,6 @@ let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
 let tokenStore: TokenStore;
-let validationStore: ValidationStore;
 let replaceStaging: ReplaceStaging;
 let app: express.Express;
 let dbPath: string;
@@ -301,7 +300,6 @@ async function gqlExecute(
     user: userStore,
     device: new DeviceStore(prisma),
     edition: new EditionStore(path.join(os.tmpdir(), 'ui-test-round-trip-editions'), prisma),
-    validation: validationStore,
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
@@ -332,7 +330,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
   bookStore = new BookStore(booksDir, prisma);
-  validationStore = new ValidationStore(prisma);
   replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
@@ -354,7 +351,7 @@ beforeEach(async () => {
       mockThumbnailQueue,
       tokenStore,
       jwtSecret,
-      validationStore,
+      prisma,
       replaceStaging
     )
   );
@@ -473,7 +470,7 @@ describe('POST /api/login', () => {
           mockThumbnailQueue,
           tokenStore,
           jwtSecret,
-          validationStore,
+          prisma,
           replaceStaging,
           () => now
         )
@@ -520,7 +517,7 @@ describe('POST /api/login', () => {
           mockThumbnailQueue,
           tokenStore,
           jwtSecret,
-          validationStore,
+          prisma,
           replaceStaging
         )
       );
@@ -934,7 +931,7 @@ describe('POST /api/books/upload', () => {
   });
 
   it('persists validation after a successful upload', async () => {
-    const spy = vi.spyOn(validationStore, 'saveValidation');
+    const spy = vi.spyOn(validationModule, 'saveValidation');
     const epubBuf = makeEpub({ title: 'Validated Book' });
     const token = await loginAlice();
     const res = await request(app)
@@ -943,7 +940,7 @@ describe('POST /api/books/upload', () => {
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(spy).toHaveBeenCalled();
-    const [, bookId] = spy.mock.calls[0];
+    const [, , bookId] = spy.mock.calls[0];
     expect(typeof bookId).toBe('string');
   });
 

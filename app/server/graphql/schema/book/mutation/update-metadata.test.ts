@@ -2,6 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { BookHashCollisionError } from '../../../../services/book-store';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
+import { saveValidation } from '../../../../services/validation';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
 import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
@@ -247,7 +248,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Failed Validation', {
       valid: false,
     });
-    await harness.stores.validation.saveValidation(harness.aliceOwner, BOOK_ID, {
+    await saveValidation(harness.prisma, harness.aliceOwner, BOOK_ID, {
       valid: false,
       threshold: 'ERROR',
       messages: [{ id: 'RSC-005', severity: 'ERROR', message: 'broken reference' }],

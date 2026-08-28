@@ -9,7 +9,6 @@ import type { ScanJobStore } from '../services/scan-job-store';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { TokenStore } from '../services/token-store';
 import type { UserStore } from '../services/user-store';
-import type { ValidationStore } from '../services/validation-store';
 import type { AppConfig } from '../types';
 import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
 import {
@@ -48,7 +47,6 @@ export type Stores = {
   user: UserStore;
   device: DeviceStore;
   edition: EditionStore;
-  validation: ValidationStore;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;
   /**

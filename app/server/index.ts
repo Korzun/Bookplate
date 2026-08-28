@@ -17,7 +17,6 @@ import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
-import { ValidationStore } from './services/validation-store';
 
 const version: string = packageJson.version;
 
@@ -42,7 +41,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const editionStore = new EditionStore(path.join(config.dataDir, 'editions'), prisma);
   const userStore = new UserStore(prisma, editionStore);
   const bookStore = new BookStore(config.booksDir, prisma, editionStore);
-  const validationStore = new ValidationStore(prisma);
   const deviceStore = new DeviceStore(prisma);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
   const tokenStore = new TokenStore(prisma);
@@ -67,7 +65,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       user: userStore,
       device: deviceStore,
       edition: editionStore,
-      validation: validationStore,
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
@@ -93,7 +90,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     jwtSecret,
     deviceStore,
     editionStore,
-    validationStore,
+    prisma,
     graphqlHandler,
     replaceStaging
   );

@@ -156,7 +156,7 @@ builder.mutationField('bookValidate', (t) =>
 
       await revalidateBook(
         {
-          validationStore: context.stores.validation,
+          prisma: context.prisma,
           validationThreshold: context.config.validationThreshold,
         },
         owner,

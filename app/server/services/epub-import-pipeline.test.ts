@@ -32,7 +32,6 @@ import { runMigrations } from '../db/migrate';
 import type { Book, EpubMeta, Owner } from '../types';
 import { BookStore } from './book-store';
 import { applyAutoAndAccepted, analyzeEpub, fixKey, toFix } from './epub-import-pipeline';
-import { ValidationStore } from './validation-store';
 
 const OWNER: Owner = { userId: 'u1', username: 'alice' };
 
@@ -79,10 +78,10 @@ function makeEpub(opts: { title?: string; author?: string; subjects?: string[] }
 
 describe('epub-import-pipeline', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
-  let bookStore: BookStore, validationStore: ValidationStore;
+  let bookStore: BookStore;
   let deps: {
     bookStore: BookStore;
-    validationStore: ValidationStore;
+    prisma: PrismaClient;
     validationThreshold: 'ERROR';
   };
 
@@ -94,8 +93,7 @@ describe('epub-import-pipeline', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     bookStore = new BookStore(booksDir, prisma);
-    validationStore = new ValidationStore(prisma);
-    deps = { bookStore, validationStore, validationThreshold: 'ERROR' };
+    deps = { bookStore, prisma, validationThreshold: 'ERROR' };
   });
 
   afterEach(async () => {

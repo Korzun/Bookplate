@@ -23,7 +23,6 @@ import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
 import { BookStore } from './book-store';
 import { revalidateLibrary } from './revalidate-library';
-import { ValidationStore } from './validation-store';
 
 const FAKE_META = {
   title: 'T',
@@ -48,7 +47,6 @@ describe('revalidateLibrary', () => {
   let booksDir: string;
   let prisma: PrismaClient;
   let bookStore: BookStore;
-  let validationStore: ValidationStore;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   async function seedBook(id: string): Promise<void> {
@@ -65,7 +63,6 @@ describe('revalidateLibrary', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     bookStore = new BookStore(booksDir, prisma);
-    validationStore = new ValidationStore(prisma);
   });
 
   const readValidation = (bookId: string) =>
@@ -82,7 +79,7 @@ describe('revalidateLibrary', () => {
     await seedBook('book1');
     await seedBook('book2');
     const summary = await revalidateLibrary(
-      { bookStore, validationStore, validationThreshold: 'ERROR' },
+      { bookStore, prisma, validationThreshold: 'ERROR' },
       owner
     );
     expect(summary).toEqual({ validated: 2, failed: 0 });
@@ -96,7 +93,7 @@ describe('revalidateLibrary', () => {
     // Remove book1's on-disk file so fs.readFileSync throws for it.
     fs.rmSync(path.join(booksDir, 'alice', 'book1.epub'));
     const summary = await revalidateLibrary(
-      { bookStore, validationStore, validationThreshold: 'ERROR' },
+      { bookStore, prisma, validationThreshold: 'ERROR' },
       owner
     );
     expect(summary).toEqual({ validated: 1, failed: 1 });

@@ -5,6 +5,7 @@ import { decodeGlobalID } from '@pothos/plugin-relay';
 import AdmZip from 'adm-zip';
 
 import type { Severity } from '../../../../services/epub-validator';
+import { saveValidation } from '../../../../services/validation';
 import type { EpubMeta, Owner } from '../../../../types';
 import type { Harness } from '../../../test-util';
 import { parseCompoundId } from '../../node-scope';
@@ -95,7 +96,7 @@ export async function seedEditableBook(
   // "never validated" test case this option exists for.
   const valid = opts.valid === undefined ? true : opts.valid;
   if (valid !== null) {
-    await harness.stores.validation.saveValidation(owner, id, {
+    await saveValidation(harness.prisma, owner, id, {
       valid,
       threshold: 'ERROR',
       messages: [],
