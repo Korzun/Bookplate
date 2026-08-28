@@ -110,10 +110,10 @@ export const rejectOversizeIdBatch = (
  *    verbatim; see its comment there).
  *  - `Library.progress` mirrors `utils/progress-pagination.ts`'s
  *    `DEFAULT_TAKE`/`MAX_TAKE` — default 50, max 100 — the same bounds both
- *    `GET /api/my/progress` and `GET /api/users/:username/progress` applied
- *    via `parseProgressTake`/`clampProgressTake`, before Phase 0 removed
- *    both routes; `Library.progress`'s resolver now calls
- *    `clampProgressTake` directly (see `library/model.ts`).
+ *    `GET /api/my/progress` (removed earlier, in `e67b4ad9`) and
+ *    `GET /api/users/:username/progress` (removed in Phase 0) applied via
+ *    `parseProgressTake`/`clampProgressTake`; `Library.progress`'s resolver
+ *    now calls `clampProgressTake` directly (see `library/model.ts`).
  *
  * `Series.books` / `Validation.messages` — no REST precedent, but (per the
  * correction above) an existing effective bound from `@pothos/plugin-prisma`'s

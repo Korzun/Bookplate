@@ -114,13 +114,13 @@ const result = builder.unionType('ProgressDeleteResult', {
 
 /**
  * Mirrored two REST routes at once, which is why it takes an id that can
- * name ANY user's row rather than acting on the viewer implicitly (both
- * removed in Phase 0):
+ * name ANY user's row rather than acting on the viewer implicitly:
  *
- *  - `DELETE /api/my/progress/:document` (`routes/ui.ts`) — `requireAuth`,
- *    403 for an admin (who has no library), otherwise the caller's own row.
- *  - `DELETE /api/users/:username/progress/:document` (`routes/users.ts`) —
- *    `requireAuth` + `adminAuth`, any named user's row.
+ *  - `DELETE /api/my/progress/:document` (`routes/ui.ts`, removed earlier,
+ *    in `e67b4ad9`) — `requireAuth`, 403 for an admin (who has no library),
+ *    otherwise the caller's own row.
+ *  - `DELETE /api/users/:username/progress/:document` (`routes/users.ts`,
+ *    removed in Phase 0) — `requireAuth` + `adminAuth`, any named user's row.
  *
  * The `ownerOf` scope was the union of those two rules (`isOwnerOrAdmin`), so
  * the GraphQL field covers both without inheriting REST's split. The one

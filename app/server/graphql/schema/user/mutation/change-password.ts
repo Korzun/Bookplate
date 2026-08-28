@@ -95,7 +95,7 @@ const result = builder.unionType('UserChangePasswordResult', {
  * got a flat 403, and `routes/users.ts` had no admin route that changed a
  * *known* current password (only `POST .../reset-password`, which
  * `userResetPassword` mirrors, generated a NEW one), before Phase 0 removed
- * both routers. So — like `progressSet`
+ * that router. So — like `progressSet`
  * — this deliberately does NOT use the `ownerOf` scope every admin-capable
  * user-associated mutation in this schema uses. The target is not an argument
  * at all (see the input type's own comment): it IS the caller, taken from
