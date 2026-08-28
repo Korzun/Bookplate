@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import express from 'express';
 import request from 'supertest';
 
@@ -43,6 +43,25 @@ function stage(id: string, content: string | Buffer = 'x'): string {
   const p = path.join(booksDir, `staged-${id}.epub`);
   fs.writeFileSync(p, content);
   return p;
+}
+
+// The dissolved `DeviceStore.create` used to provide id generation and slug
+// derivation for free; this is the local equivalent for tests that just need
+// a device row to exist, with the same defaults every call site here used.
+async function makeDevice(name: string, overrides: Partial<Prisma.DeviceCreateInput> = {}) {
+  return prisma.device.create({
+    data: {
+      id: randomUUID(),
+      slug: generateSlug(name),
+      name,
+      coverWidth: null,
+      coverHeight: null,
+      coverFit: 'contain',
+      bwCover: false,
+      simplify: true,
+      ...overrides,
+    },
+  });
 }
 
 let booksDir: string;
@@ -241,18 +260,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     const bookId = 'devicedl1';
     await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
 
-    const device = await prisma.device.create({
-      data: {
-        id: randomUUID(),
-        slug: generateSlug('Kindle'),
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: true,
-      },
-    });
+    const device = await makeDevice('Kindle');
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const editionStore = new EditionStore(editionsRoot, prisma, {
@@ -295,18 +303,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
   it('403s on a device download for a user the device is not enabled for', async () => {
     const bookId = 'devicedl-forbidden';
     await bookStore.addBook(bob, bookId, stage(bookId, 'epub-content'), FAKE_META);
-    const device = await prisma.device.create({
-      data: {
-        id: randomUUID(),
-        slug: generateSlug('Kindle'),
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: true,
-      },
-    });
+    const device = await makeDevice('Kindle');
     // alice enabled, bob not
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
@@ -492,18 +489,7 @@ describe('OPDS feed thumbnail link', () => {
   it('does not list per-device acquisition links in the base book feed', async () => {
     const bookId = 'opds-device1';
     await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
-    await prisma.device.create({
-      data: {
-        id: randomUUID(),
-        slug: generateSlug('Kindle'),
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: true,
-      },
-    });
+    await makeDevice('Kindle');
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma);
     const app2 = express();
     app2.use(
@@ -875,18 +861,7 @@ describe('GET /opds/status/:status', () => {
 
 describe('GET /opds/device/:slug (per-device catalog)', () => {
   async function deviceApp() {
-    const device = await prisma.device.create({
-      data: {
-        id: randomUUID(),
-        slug: generateSlug('Kindle'),
-        name: 'Kindle',
-        coverWidth: null,
-        coverHeight: null,
-        coverFit: 'contain',
-        bwCover: false,
-        simplify: true,
-      },
-    });
+    const device = await makeDevice('Kindle');
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
       buildEdition: async () => Buffer.from('EDITION'),

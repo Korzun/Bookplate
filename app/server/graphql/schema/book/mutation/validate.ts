@@ -27,7 +27,7 @@ type BookValidatePayloadShape = {
  * `validation` is a fresh `t.prismaField` lookup, not the `ValidationReport`
  * `revalidateBook` returns — same reason `BookUpdateMetadataPayload.book` and
  * `BookHashCollisionError.collidingBook` are fresh lookups rather than the
- * DTO/report the store call produced (see those files' doc comments):
+ * DTO/report the underlying write produced (see those files' doc comments):
  * `Validation`'s GraphQL type has a real `messages` connection
  * (`validation/model.ts`) that a plain report object has no relation to
  * satisfy. `findUniqueOrThrow` is safe: `revalidateBook` just persisted this
@@ -40,7 +40,7 @@ type BookValidatePayloadShape = {
  * lookup, exactly `BookUpdateMetadataPayload.book`'s shape
  * (`update-metadata.ts`) copied verbatim: `findUniqueOrThrow` keyed on
  * `owner.userId` + `bookId`, both already in hand on this payload's own
- * shape — no new store call, no new data the resolver didn't already have.
+ * shape — no new query, no new data the resolver didn't already have.
  */
 const payload = builder.objectRef<BookValidatePayloadShape>('BookValidatePayload').implement({
   fields: (t) => ({

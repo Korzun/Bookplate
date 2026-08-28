@@ -65,10 +65,11 @@ describe('getOrCreateJwtSecret', () => {
     expect(second.equals(first)).toBe(true);
   });
 
-  it('persists the secret across separate calls', async () => {
-    const first = await getOrCreateJwtSecret(prisma);
-    const second = await getOrCreateJwtSecret(prisma);
-    expect(second.equals(first)).toBe(true);
+  it('persists the secret to the database, not to caller state', async () => {
+    const secret = await getOrCreateJwtSecret(prisma);
+    const row = await prisma.setting.findUnique({ where: { key: 'jwt_secret' } });
+    expect(row).not.toBeNull();
+    expect(secret.toString('hex')).toBe(row!.value);
   });
 });
 

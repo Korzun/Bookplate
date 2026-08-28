@@ -58,7 +58,6 @@ export type Stores = {
   replaceStaging: ReplaceStaging;
 };
 
-// Token revocation on password change: see `revokeAllForUsername` in `services/token.ts`.
 export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;
