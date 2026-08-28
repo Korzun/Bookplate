@@ -155,7 +155,7 @@ const result = builder.unionType('ProgressSetResult', {
  * REST route to widen from — `routes/users.ts` had `GET .../progress` and
  * `DELETE .../progress/:document` for an admin acting on a named user, but
  * no `PUT`/`POST` equivalent. That was checked directly against that file's
- * source before Phase 0 removed both routers: no branch wrote another
+ * source before Phase 0 removed that router: no branch wrote another
  * user's progress, admin or otherwise.
  *
  * So this mutation deliberately does NOT use the `ownerOf` scope

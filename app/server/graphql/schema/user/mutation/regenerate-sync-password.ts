@@ -53,7 +53,7 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * got a flat 403, and `routes/users.ts` had no admin-write route for sync
  * passwords at all (only `Viewer.syncPassword`, this schema's mirror of
  * REST's `GET /api/my/sync-password`, reads the caller's own), before
- * Phase 0 removed both routers. So — like `progressSet` and
+ * Phase 0 removed that router. So — like `progressSet` and
  * `userChangePassword` — this deliberately does NOT use
  * the `ownerOf` scope; `userId` is a required input field for shape
  * consistency only, and the scope pins it to exactly the caller.

@@ -94,8 +94,8 @@ const result = builder.unionType('DeviceUpdateResult', {
  * `device-store.ts:84`) — REST answered "Device not found" for both, and so
  * does this.
  *
- * **Ordering (review, task 7, M-2):** REST checks existence (`getById` → 404)
- * BEFORE parsing the body (`parseBody` → 400). (Dangling pointer to
+ * **Ordering (review, task 7, M-2):** REST checked existence (`getById` →
+ * 404) BEFORE parsing the body (`parseBody` → 400). (Dangling pointer to
  * `routes/devices.ts:111-119` removed — that router is gone as of Phase 0.
  * Phase 1 revisits this ordering: it re-orders this resolver to
  * validate-then-resolve and drops the `getById` precheck below. The

@@ -117,6 +117,7 @@ describe('Mutation.userRegister', () => {
       issues: [{ path: ['username'], message: 'Username must be at least 6 characters' }],
     });
     expect(await harness.prisma.user.findUnique({ where: { username: 'abcde' } })).toBeNull();
+    expect(fs.existsSync(path.join(harness.config.booksDir, 'abcde'))).toBe(false);
   });
 
   /**
