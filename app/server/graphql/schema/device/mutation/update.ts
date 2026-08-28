@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
-import {
-  DeviceSlugConflictError,
-  isPrismaError,
-  type DeviceInput,
-} from '../../../../services/device';
+import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
+import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -65,8 +62,8 @@ type DeviceUpdatePayloadShape = {
 };
 
 /**
- * `device` is a fresh `t.prismaField` lookup, never the store's own return
- * value — same reasoning as `DeviceCreatePayload.device`.
+ * `device` is a fresh `t.prismaField` lookup, never the updated row handed
+ * straight back — same reasoning as `DeviceCreatePayload.device`.
  */
 const payload = builder.objectRef<DeviceUpdatePayloadShape>('DeviceUpdatePayload').implement({
   fields: (t) => ({

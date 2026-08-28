@@ -359,6 +359,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);

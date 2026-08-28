@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isPrismaError } from '../../../../services/device';
+import { isPrismaError } from '../../../../services/prisma-errors';
 import { builder } from '../../builder';
 import {
   invalidInputError,
@@ -63,12 +63,12 @@ const result = builder.unionType('DeviceDeleteResult', {
  *
  * REST checks existence twice (`getById`, then re-checks `delete`'s boolean
  * return) before answering 404 either way. This resolver's own `P2025` catch
- * below folds both cases into one boolean (`false` for "never existed" or
- * "P2025 raced it away"), so a single call is sufficient — the second REST
- * check exists only because the route re-reads the row for its own
- * bookkeeping, not because the two cases need different handling. Collapsed
- * here into one `null` result, same "no such row" convention every delete
- * mutation in this schema uses.
+ * below folds both cases into one `null` result (returned directly for
+ * either "never existed" or "P2025 raced it away"), so a single call is
+ * sufficient — the second REST check exists only because the route re-reads
+ * the row for its own bookkeeping, not because the two cases need different
+ * handling. Collapsed here into one `null` result, same "no such row"
+ * convention every delete mutation in this schema uses.
  *
  * The `prisma.device.delete` call below is NOT wrapped in `toResult`: traced
  * end to end, its own `P2025` catch converts a races-with-itself
@@ -94,17 +94,12 @@ builder.mutationField('deviceDelete', (t) =>
       const parsed = inputSchema.safeParse({ deviceId: args.input.deviceId });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      let deleted = true;
       try {
         await context.prisma.device.delete({ where: { id: parsed.data.deviceId } });
       } catch (err) {
-        if (isPrismaError(err, 'P2025')) {
-          deleted = false; // already deleted
-        } else {
-          throw err;
-        }
+        if (isPrismaError(err, 'P2025')) return null; // already deleted
+        throw err;
       }
-      if (!deleted) return null;
 
       await purgeEditionsQuietly('deviceDelete', `device "${parsed.data.deviceId}"`, () =>
         context.stores.edition.purgeForDevice(parsed.data.deviceId)

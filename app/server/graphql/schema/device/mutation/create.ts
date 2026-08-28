@@ -1,10 +1,7 @@
 import { randomUUID } from 'crypto';
 
-import {
-  DeviceSlugConflictError,
-  isPrismaError,
-  type DeviceInput,
-} from '../../../../services/device';
+import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
+import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -30,7 +27,7 @@ import { deviceFieldsSchema } from './device-fields-schema';
  * `coverFit` reuses the existing `CoverFit` enum (`cover-fit/model.ts`) — its
  * `value:` mapping already produces the lowercase storage string
  * `DeviceInput['coverFit']` expects, so `args.input.coverFit` needs no
- * translation before it reaches the store.
+ * translation before it reaches the `prisma.device.create` call below.
  */
 const input = builder.inputType('DeviceCreateInput', {
   fields: (t) => ({
@@ -49,10 +46,10 @@ type DeviceCreatePayloadShape = {
 };
 
 /**
- * `device` is a fresh `t.prismaField` lookup by the id the store call
- * reported, never the store's own return value handed straight to a
- * `prismaObject` field — same "field resolvers do the lookup" pattern every
- * other payload in this schema uses (`BookUpdateMetadataPayload.book`,
+ * `device` is a fresh `t.prismaField` lookup by the id the `prisma.device.create`
+ * call reported, never the created row handed straight to a `prismaObject`
+ * field — same "field resolvers do the lookup" pattern every other payload
+ * in this schema uses (`BookUpdateMetadataPayload.book`,
  * `UserRegisterPayload.user`), and required here for the same reason: a
  * `prismaObject` field expects a real Prisma row shape, not an arbitrary
  * plain object, even one with matching field names.

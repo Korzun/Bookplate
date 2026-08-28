@@ -1,13 +1,6 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 import { Device } from '../types';
-
-/**
- * `toDevice` maps a Prisma row to the app-level `Device` type. GraphQL does
- * not need it — `Device` is a `prismaObject`, so resolvers hand Pothos raw
- * rows — but `routes/opds.ts` passes a `Device` to `getOrCreateEdition`.
- * When that call site changes, this mapper can go.
- */
 
 export interface DeviceInput {
   name: string;
@@ -26,10 +19,6 @@ export class DeviceSlugConflictError extends Error {
   }
 }
 
-export function isPrismaError(err: unknown, code: string): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === code;
-}
-
 type Row = {
   id: string;
   name: string;
@@ -41,6 +30,12 @@ type Row = {
   simplify: boolean;
 };
 
+/**
+ * Maps a Prisma row to the app-level `Device` type. GraphQL does not need
+ * it — `Device` is a `prismaObject`, so resolvers hand Pothos raw rows — but
+ * `routes/opds.ts` passes a `Device` to `getOrCreateEdition`. When that call
+ * site changes, this mapper can go.
+ */
 function toDevice(r: Row): Device {
   return {
     id: r.id,
