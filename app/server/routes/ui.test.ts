@@ -33,7 +33,6 @@ import {
   createReplaceStaging,
   type ReplaceStaging,
 } from '../services/replace-staging';
-import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import * as validationModule from '../services/validation';
 import { AppConfig, EpubMeta, Owner } from '../types';
@@ -113,7 +112,6 @@ let booksDir: string;
 let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
-let tokenStore: TokenStore;
 let replaceStaging: ReplaceStaging;
 let app: express.Express;
 let dbPath: string;
@@ -303,7 +301,6 @@ async function gqlExecute(
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
-    token: tokenStore,
   };
   const contextValue: Context = {
     viewer,
@@ -334,7 +331,6 @@ beforeEach(async () => {
   userStore = new UserStore(prisma);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
-  tokenStore = new TokenStore(prisma);
   aliceOwner = { userId: aliceId, username: 'alice' };
 
   scanJobStore = new ScanJobStore();
@@ -349,7 +345,6 @@ beforeEach(async () => {
       userStore,
       { ...config, booksDir },
       mockThumbnailQueue,
-      tokenStore,
       jwtSecret,
       prisma,
       replaceStaging
@@ -468,7 +463,6 @@ describe('POST /api/login', () => {
           userStore,
           { ...config, booksDir },
           mockThumbnailQueue,
-          tokenStore,
           jwtSecret,
           prisma,
           replaceStaging,
@@ -515,7 +509,6 @@ describe('POST /api/login', () => {
           userStore,
           { ...config, booksDir, trustProxyHops: 1 },
           mockThumbnailQueue,
-          tokenStore,
           jwtSecret,
           prisma,
           replaceStaging

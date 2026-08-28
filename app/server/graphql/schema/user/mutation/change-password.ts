@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { revokeAllForUsername } from '../../../../services/token';
 import { UserStore } from '../../../../services/user-store';
 import { builder } from '../../builder';
 import {
@@ -147,19 +148,21 @@ const result = builder.unionType('UserChangePasswordResult', {
  * mirror, not an invented case. Neither store call is wrapped in
  * `toResult`: neither throws any of the seven known store errors.
  *
- * `context.stores.token.revokeAllForUsername` mirrors REST's identical call
- * on success (`routes/ui.ts:420`). REST also reissues tokens
- * (`issueTokens`, `routes/ui.ts:421-426`) so the client's existing cookies
- * immediately carry `mustChangePassword: false` — this resolver does NOT
- * reproduce that half: yoga's context (`graphql/context.ts`'s `createContext`)
- * only ever sees the fetch `Request`, never a `Response` to set cookies on,
- * so there is no channel to reissue tokens from here.
+ * `revokeAllForUsername`, imported directly from `services/token.ts` (a
+ * plain function over `context.prisma` — no store instance to thread
+ * through), mirrors REST's identical call on success (`routes/ui.ts:420`).
+ * REST also reissues tokens (`issueTokens`, `routes/ui.ts:421-426`) so the
+ * client's existing cookies immediately carry `mustChangePassword: false` —
+ * this resolver does NOT reproduce that half: yoga's context
+ * (`graphql/context.ts`'s `createContext`) only ever sees the fetch
+ * `Request`, never a `Response` to set cookies on, so there is no channel to
+ * reissue tokens from here.
  *
  * **Corrected (task-6 review, I-3) — the caller does NOT recover via
  * `/api/auth/refresh`.** `revokeAllForUsername` two lines above deletes
- * EVERY refresh-token row for this username (`TokenStore.
- * revokeAllForUsername`, `services/token-store.ts:71-73`) — including the one
- * the current session's own refresh cookie names. `POST /api/auth/refresh`
+ * EVERY refresh-token row for this username (`services/token.ts`'s
+ * `revokeAllForUsername`) — including the one the current session's own
+ * refresh cookie names. `POST /api/auth/refresh`
  * (`routes/ui.ts:222-262`) therefore finds nothing to consume and 401s
  * (`reject()`, clearing the cookie), it does not "rebuild claims from
  * current DB state" for a caller in this position — that only happens for a
@@ -221,7 +224,7 @@ builder.mutationField('userChangePassword', (t) =>
       const changed = await context.stores.user.changePassword(username, newHash);
       if (!changed) return null;
 
-      await context.stores.token.revokeAllForUsername(username);
+      await revokeAllForUsername(context.prisma, username);
 
       return { __typename: 'UserChangePasswordPayload' as const, userId };
     },

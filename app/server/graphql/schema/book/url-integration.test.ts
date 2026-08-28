@@ -54,7 +54,6 @@ beforeEach(async () => {
       harness.stores.user,
       harness.config,
       harness.stores.thumbnail,
-      harness.stores.token,
       jwtSecret,
       harness.prisma,
       harness.stores.replaceStaging

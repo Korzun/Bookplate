@@ -7,7 +7,6 @@ import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
-import type { TokenStore } from '../services/token-store';
 import type { UserStore } from '../services/user-store';
 import type { AppConfig } from '../types';
 import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
@@ -59,30 +58,17 @@ export type Stores = {
    * the registry is in-memory and per-process to begin with.
    */
   replaceStaging: ReplaceStaging;
-  /**
-   * Wired in for task 6 (`userResetPassword`/`userChangePassword`): every
-   * outstanding refresh token for the affected username is revoked right
-   * after either write, so a stolen/old refresh token cannot outlive a
-   * password change. The same rule REST applied on `routes/users.ts`'s
-   * `POST /:username/reset-password`, the one surviving REST password
-   * write, before Phase 0 removed that router. GraphQL cannot reach
-   * the `tokenStore` instance `server.ts` builds for it any other way, so
-   * the same shared instance is threaded through here too — same "one
-   * instance, never a second one" rule as `replaceStaging` above. GraphQL cannot reproduce REST's *cookie* reissue
-   * half of that flow (no response object reaches this context — see
-   * `createContext` below): a `userResetPassword`/`userChangePassword` caller
-   * does NOT recover a fresh token via REST's `/api/auth/refresh` afterward —
-   * `revokeAllForUsername` deletes the very refresh-token row that endpoint
-   * would need, so it 401s instead. The caller's already-issued *access*
-   * token (a stateless JWT) simply keeps its stale claim for the rest of its
-   * short life, gated out of everything, until they log in again — see
-   * `user/mutation/change-password.ts`'s doc comment for the full trace.
-   * Revocation, the security-relevant half, is fully mirrored; only the
-   * convenience of an immediately-fresh token is not.
-   */
-  token: TokenStore;
 };
 
+/**
+ * `services/token.ts`'s `revokeAllForUsername` is called directly (no
+ * `Stores` entry — a module function reads the same refresh-token rows from
+ * anywhere, so there is no shared instance to thread through here) right
+ * after `userResetPassword`/`userChangePassword` succeed: every outstanding
+ * refresh token for the affected username is revoked immediately, so a
+ * stolen/old refresh token cannot outlive a password change — see
+ * `user/mutation/change-password.ts`'s doc comment for the full trace.
+ */
 export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;

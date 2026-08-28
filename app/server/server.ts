@@ -14,7 +14,6 @@ import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
 import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
-import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
 import { AppConfig } from './types';
 
@@ -25,7 +24,6 @@ export function createServer(
   userStore: UserStore,
   bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue,
-  tokenStore: TokenStore,
   jwtSecret: Buffer,
   deviceStore: DeviceStore,
   editionStore: EditionStore,
@@ -77,16 +75,7 @@ export function createServer(
   server.use('/sync', createKosyncRouter(userStore, bookStore));
   server.use(
     '/',
-    createUiRouter(
-      bookStore,
-      userStore,
-      config,
-      thumbnailQueue,
-      tokenStore,
-      jwtSecret,
-      prisma,
-      replaceStaging
-    )
+    createUiRouter(bookStore, userStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {

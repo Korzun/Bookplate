@@ -15,7 +15,7 @@ import { EditionStore } from './services/edition-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
-import { TokenStore } from './services/token-store';
+import { getOrCreateJwtSecret } from './services/token';
 import { UserStore } from './services/user-store';
 
 const version: string = packageJson.version;
@@ -43,8 +43,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const bookStore = new BookStore(config.booksDir, prisma, editionStore);
   const deviceStore = new DeviceStore(prisma);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
-  const tokenStore = new TokenStore(prisma);
-  const jwtSecret = await tokenStore.getOrCreateJwtSecret();
+  const jwtSecret = await getOrCreateJwtSecret(prisma);
 
   // Shared by REST's `POST /api/books/scan` and every GraphQL scan resolver
   // (`libraryScan`, `Subscription.scanProgress`, `Library.scanStatus`) — one
@@ -68,7 +67,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
-      token: tokenStore,
     },
     config,
     jwtSecret,
@@ -86,7 +84,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     userStore,
     bookStore,
     thumbnailQueue,
-    tokenStore,
     jwtSecret,
     deviceStore,
     editionStore,

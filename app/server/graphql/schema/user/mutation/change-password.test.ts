@@ -1,3 +1,4 @@
+import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import type { Viewer } from '../../../context';
 import { createHarness, type Harness } from '../../../test-util';
 
@@ -64,7 +65,7 @@ describe('Mutation.userChangePassword', () => {
   });
 
   it('revokes outstanding refresh tokens on a successful change', async () => {
-    const refreshToken = await harness.stores.token.createRefreshToken({
+    const refreshToken = await createRefreshToken(harness.prisma, {
       username: 'alice',
       userId: harness.aliceOwner.userId,
     });
@@ -79,7 +80,7 @@ describe('Mutation.userChangePassword', () => {
       },
     });
 
-    expect(await harness.stores.token.consumeRefreshToken(refreshToken)).toBeNull();
+    expect(await consumeRefreshToken(harness.prisma, refreshToken)).toBeNull();
   });
 
   it("returns IncorrectPasswordError for a wrong current password, and leaves alice's password unchanged", async () => {
