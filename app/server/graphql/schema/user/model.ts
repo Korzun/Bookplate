@@ -35,7 +35,7 @@ export const model = builder.prismaNode('User', {
 
     // The "N books synced" figure the admin user list renders
     // (`app/client/src/component/user-row/index.tsx`), and the second half of
-    // what `GET /api/users` returns.
+    // what REST's `GET /api/users` used to return, before Phase 0 removed it.
     //
     // `UserStore.listUsers()` produces it as `_count.progresses` on a
     // `prisma.user.findMany`. `t.relationCount` compiles to that exact same

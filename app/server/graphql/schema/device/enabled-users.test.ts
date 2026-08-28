@@ -62,9 +62,10 @@ describe('Device.enabledUsers', () => {
     expect(devices.map((d) => d.enabledUsers.length)).toEqual([2, 0]);
   });
 
-  // `GET /api/devices/:id/users` carries `adminAuth`, unlike that router's
-  // `GET /`. The two must not be conflated: `Viewer.devices` is open to every
-  // authenticated user and this field is not.
+  // REST's `GET /api/devices/:id/users` carried `adminAuth`, unlike that
+  // router's `GET /`, before Phase 0 removed both. The same split holds
+  // here: `Viewer.devices` is open to every authenticated user and this
+  // field is not.
   //
   // `enabledUsers` is nullable (pre-client hardening spec, §4 "Nullability
   // ruling"): a denial nulls JUST that field on EACH device, not the whole

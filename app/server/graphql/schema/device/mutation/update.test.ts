@@ -187,14 +187,15 @@ describe('Mutation.deviceUpdate', () => {
   });
 
   /**
-   * Review, task 7, M-2: REST's `PATCH /:id` checks existence (`getById` →
-   * 404) BEFORE parsing the body (`parseBody` → 400) — `routes/devices.ts:
-   * 111-119`. For an input that fails both (an unknown `deviceId` AND a
-   * blank `name`), REST answers 404, never 400. This resolver reorders to
+   * Review, task 7, M-2: REST's `PATCH /:id` checked existence (`getById` →
+   * 404) BEFORE parsing the body (`parseBody` → 400), before Phase 0 removed
+   * that route. For an input that failed both (an unknown `deviceId` AND a
+   * blank `name`), REST answered 404, never 400. This resolver reorders to
    * match: `deviceId` is validated and looked up first, and the
    * `name`/dimension fields are only parsed once the device is confirmed to
    * exist — so this must resolve to `null` (REST's 404-equivalent), not
-   * `InvalidInputError`, even though the name is also invalid.
+   * `InvalidInputError`, even though the name is also invalid. (Phase 1
+   * revisits this ordering — see `update.ts`'s doc comment.)
    */
   it('resolves to null (not InvalidInputError) for an unknown device with an invalid body', async () => {
     const result = await harness.execute(MUTATION, {

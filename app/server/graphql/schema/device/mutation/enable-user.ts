@@ -64,12 +64,13 @@ const result = builder.unionType('DeviceEnableUserResult', {
 });
 
 /**
- * Mirrors `PUT /:id/users/:username` (`routes/devices.ts`) — admin-only,
- * same router-wide gate `deviceCreate`'s doc comment traces. This is
- * admin-managing-users, not self-service: REST has no equivalent
+ * Mirrored REST's `PUT /:id/users/:username`, removed in Phase 0 —
+ * admin-only, same router-wide gate `deviceCreate`'s doc comment traces.
+ * This is admin-managing-users, not self-service: REST had no equivalent
  * `/api/my/...` route letting a user enable itself on a device, and the
- * whole router (bar `GET /`) is `adminAuth`-gated regardless of whose
- * `userId` is named — including the caller's own. Confirmed live
+ * whole router (bar `GET /`) was `adminAuth`-gated regardless of whose
+ * `userId` was named — including the caller's own. The same shape holds
+ * here. Confirmed live
  * (seen-to-fail): a non-admin calling this mutation naming THEMSELVES as
  * `userId` is refused exactly like naming anyone else, which is what
  * discriminates this admin-only `{ admin: true }` scope from an

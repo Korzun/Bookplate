@@ -273,8 +273,8 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * (`app/client/src/graphql/device.ts`) — literally `viewer { devices { id
  * enabledUsers { id } } }` — driven by
  * `app/client/src/component/device-form/index.tsx` when an admin edits ONE
- * device, replacing the old per-device `GET /api/devices/:id/users`
- * (`routes/devices.ts:178`). It is affordable only because `id` and
+ * device, replacing the old per-device `GET /api/devices/:id/users`,
+ * removed in Phase 0. It is affordable only because `id` and
  * NOTHING else travels through the ×5000 position: measured at breadth
  * 9.0% / complexity 31.2% of budget. That is the limit doing its job, and
  * it is why the numbers below still matter — the shape is now real. Real
@@ -282,9 +282,8 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * 1-5 users each (a household's e-readers, non-admin branch), and
  * `Viewer.devices` × `Device.enabledUsers` at the PRE-round-2 flat 100×100
  * scored complexity 20,402 — 5.3× the (then-stale) legit ceiling — for
- * ~15 real rows either way. No REST endpoint, admin UI, or schema
- * constraint caps device or user count numerically (confirmed:
- * `routes/users.ts`'s own `GET /users` is equally unpaginated), so
+ * ~15 real rows either way. No endpoint, admin UI, or schema
+ * constraint caps device or user count numerically, so
  * `INSTANCE_DEVICE_MULTIPLIER`/`INSTANCE_USER_MULTIPLIER` are ASSUMED, not
  * measured or sourced from code — stated as such, not disguised as a real
  * bound — but chosen an order of magnitude below the library-scale 100 to
@@ -871,8 +870,8 @@ export const BREADTH_BUDGET = 100;
  *   `component/user-progress-row` renders, at `Library.progress`'s own
  *   default page size (50), plus the two `pageInfo` fields a paginated
  *   client needs to keep fetching. Unlike the other three anchors, this one
- *   is a REAL, presently-reachable screen (an admin traversal REST already
- *   supports via `GET /api/users/:username/progress`), not a hypothetical
+ *   is a REAL, presently-reachable screen — `component/user-progress-row`
+ *   above actually renders it, not a hypothetical
  *   or near-future shape — and it was never in any calibration table before
  *   this fix (`cost-limit.test.ts`'s "every legit fixture ACCEPTS" describe
  *   block, below, now carries it permanently). At the then-shipped 25,000

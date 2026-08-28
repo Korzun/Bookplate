@@ -48,12 +48,13 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * `userDelete`'s doc comment for the full reasoning (task-6 review
  * adjudication).
  *
- * Mirrors `POST /api/my/sync-password/regenerate` (`routes/ui.ts:447-464`) —
- * self-service, viewer-only: `req.user!.isAdmin` gets a flat 403
- * (`routes/ui.ts:451-454`), and `routes/users.ts` has no admin-write route
- * for sync passwords at all (only `Viewer.syncPassword`, this schema's mirror
- * of `GET /api/my/sync-password`, reads the caller's own). So — like
- * `progressSet` and `userChangePassword` — this deliberately does NOT use
+ * Mirrored REST's `POST /api/my/sync-password/regenerate` (`routes/ui.ts`,
+ * that route since removed) — self-service, viewer-only: `req.user!.isAdmin`
+ * got a flat 403, and `routes/users.ts` had no admin-write route for sync
+ * passwords at all (only `Viewer.syncPassword`, this schema's mirror of
+ * REST's `GET /api/my/sync-password`, reads the caller's own), before
+ * Phase 0 removed both routers. So — like `progressSet` and
+ * `userChangePassword` — this deliberately does NOT use
  * the `ownerOf` scope; `userId` is a required input field for shape
  * consistency only, and the scope pins it to exactly the caller.
  *

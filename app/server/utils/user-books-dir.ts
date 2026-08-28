@@ -5,11 +5,12 @@ import { isValidUsername } from './username';
 
 /**
  * Recursively removes a user's on-disk books directory (`<booksRoot>/<username>/`),
- * mirroring `DELETE /api/users/:username` (`routes/users.ts`) — extracted
- * verbatim from that route so the GraphQL `userDelete` mutation
- * (`graphql/schema/user/mutation/delete.ts`) can call the identical cleanup
- * rather than carrying its own copy that could drift from REST's. Behaviour is
- * unchanged from the route's original inline version: `force: true` makes a
+ * mirroring REST's `DELETE /api/users/:username` (`routes/users.ts`, removed
+ * in Phase 0) — extracted verbatim from that route before its removal so the
+ * GraphQL `userDelete` mutation (`graphql/schema/user/mutation/delete.ts`)
+ * can call the identical cleanup rather than carrying its own copy that
+ * could drift from REST's. Behaviour is unchanged from the route's original
+ * inline version: `force: true` makes a
  * missing directory a silent no-op (the row could already have no folder, e.g.
  * a legacy/never-scanned account), and the `isValidUsername` guard is
  * defensive — a username that somehow reached this point without being

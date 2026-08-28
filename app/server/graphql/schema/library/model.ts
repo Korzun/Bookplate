@@ -387,14 +387,15 @@ builder.node(model, {
     /**
      * A connection, not the plain list this started as.
      *
-     * WHY PAGINATED: REST already is. `GET /api/my/progress` (`routes/ui.ts`) and
-     * `GET /api/users/:username/progress` (`routes/users.ts`) both go through
-     * `UserStore.getUserProgressPage` with a keyset cursor and a take clamped to
-     * 1..100. A progress list grows with every book a user opens on any device and
-     * is never pruned, so it is genuinely unbounded — an unpaginated field would
-     * mean the capability REST has today vanishes when the REST routes are
-     * deleted, and it would do so silently, by serving ever-larger responses
-     * rather than by failing.
+     * WHY PAGINATED: REST already was. `GET /api/my/progress` (`routes/ui.ts`,
+     * that endpoint since removed) and `GET /api/users/:username/progress`
+     * (`routes/users.ts`, removed in Phase 0 along with the rest of that
+     * router) both went through `UserStore.getUserProgressPage` with a keyset
+     * cursor and a take clamped to 1..100 — this field reuses that exact page
+     * shape. A progress list grows with every book a user opens on any device
+     * and is never pruned, so it is genuinely unbounded — an unpaginated
+     * field would serve ever-larger responses forever rather than failing,
+     * the same silent growth REST's pagination existed to prevent.
      *
      * WHY A CONNECTION RATHER THAN A CLAMP: a bare `first:` clamp caps the damage
      * but throws away the ability to read past the first page at all. The spec

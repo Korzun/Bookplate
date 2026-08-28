@@ -7,9 +7,10 @@ export function isValidUsername(username: string): boolean {
   return USERNAME_RE.test(username);
 }
 
-// Minimum username length, enforced at registration (client + POST /api/users).
-// Kept separate from isValidUsername, which is a charset / filesystem-safety
-// check with no length component.
+// Minimum username length, enforced at registration (client + GraphQL's
+// userRegister mutation; formerly also REST's POST /api/users, removed in
+// Phase 0). Kept separate from isValidUsername, which is a charset /
+// filesystem-safety check with no length component.
 export const MIN_USERNAME_LENGTH = 6;
 
 /**

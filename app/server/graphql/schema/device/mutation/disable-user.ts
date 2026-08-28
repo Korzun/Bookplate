@@ -60,8 +60,8 @@ const result = builder.unionType('DeviceDisableUserResult', {
 });
 
 /**
- * Mirrors `DELETE /:id/users/:username` (`routes/devices.ts`) — admin-only,
- * same router-wide gate and admin-managing-users (not self-service) shape as
+ * Mirrored REST's `DELETE /:id/users/:username`, removed in Phase 0 —
+ * admin-only, same router-wide gate and admin-managing-users (not self-service) shape as
  * `deviceEnableUser` — see that file's doc comment, including the
  * seen-to-fail note on the self-targeting discrimination test.
  *

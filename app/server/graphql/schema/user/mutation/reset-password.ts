@@ -52,12 +52,12 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * — see `userDelete`'s doc comment for the full reasoning; task-6 review
  * adjudicated this ruling for all three single-field-input mutations.
  *
- * Mirrors `POST /api/users/:username/reset-password` (`routes/users.ts:94-113`)
- * — admin-only (`router.use(adminAuth)` gates the whole router), no
+ * Mirrored REST's `POST /api/users/:username/reset-password`, removed in
+ * Phase 0 — admin-only (`router.use(adminAuth)` gated the whole router), no
  * `ownerOf` alternative.
  *
  * REST's target-specific 403 ("Cannot reset the built-in admin password",
- * checked BEFORE the store call, `routes/users.ts:98-102`) has no equivalent
+ * checked BEFORE the store call, before Phase 0 removed that route) has no equivalent
  * branch here, for the same structural reason `userDelete`'s doc comment
  * gives in full: the config admin has no `User` row and so no `User` global
  * ID could ever name it — the REST case this guards against cannot arise
@@ -71,9 +71,9 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * in its body can throw one of the seven known store errors.
  *
  * `context.stores.token.revokeAllForUsername` mirrors REST's identical call
- * right after a successful reset (`routes/users.ts:109`) — see
- * `graphql/context.ts`'s `Stores.token` doc comment for why the same
- * `TokenStore` instance REST uses is threaded through here. Unlike REST's own
+ * right after a successful reset (`routes/users.ts`, removed in Phase 0) —
+ * see `graphql/context.ts`'s `Stores.token` doc comment for why the same
+ * `TokenStore` instance REST used is threaded through here. Unlike REST's own
  * `/api/my/password` self-service flow (mirrored by `userChangePassword`),
  * there is no token *reissue* to mirror here: the admin calling this
  * mutation is not the user whose password just changed, so there is nothing

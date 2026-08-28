@@ -79,8 +79,8 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * every mutation in this schema returns `<Name>Result`, even when the union
  * has exactly one member today.
  *
- * Mirrors `DELETE /api/users/:username` (`routes/users.ts:76-92`) —
- * `router.use(adminAuth)` gates the whole router, so this is admin-only with
+ * Mirrored REST's `DELETE /api/users/:username`, removed in Phase 0 —
+ * `router.use(adminAuth)` gated the whole router, so this is admin-only with
  * no `ownerOf` alternative, same as `userRegister`.
  *
  * Self-deletion / "last admin" (raised in the task brief) does not apply:
@@ -110,8 +110,8 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * `bookDelete`'s identical note on `BookStore.deleteBook`.
  *
  * `removeUserBooksDir` (`utils/user-books-dir.ts`) replicates REST's on-disk
- * cleanup (`fs.rmSync(booksRoot/<username>)`) via the SAME helper the route
- * now calls too (extracted from `routes/users.ts`, see that file's diff) —
+ * cleanup (`fs.rmSync(booksRoot/<username>)`) via the SAME helper that route
+ * called too (extracted from `routes/users.ts` before Phase 0 removed it) —
  * not a second copy of the two-line body, per the task brief's explicit
  * instruction. Run only after `deleteUser` reports success, matching REST's
  * own ordering (DB row gone, then the folder).

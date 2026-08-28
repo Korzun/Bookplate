@@ -972,9 +972,10 @@ export function createUiRouter(
    * than Express's default HTML 404 body.
    *
    * Mounted last, so it cannot shadow anything: every real route above has
-   * already had its chance, and the sibling routers (`/api/users`,
-   * `/api/devices` — `server.ts`) are mounted AHEAD of this one, so a request
-   * only reaches here after they too declined it.
+   * already had its chance. (The sibling routers this was written to sit
+   * behind, `/api/users` and `/api/devices`, were themselves removed in
+   * Phase 0 — this catch-all now answers what they, and every other retired
+   * route above, no longer do.)
    */
   router.all('/api/*', (_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });
