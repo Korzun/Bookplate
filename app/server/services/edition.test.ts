@@ -8,10 +8,32 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { Book, Device, Owner } from '../types';
-import { EditionStore, EditionDeps } from './edition-store';
-import { EpubValidationError } from './epub-validator';
+import {
+  countForBook,
+  getOrCreateEdition,
+  purgeForDevice,
+  purgeForDeviceAndUser,
+  purgeForUser,
+} from './edition';
+import { buildEdition } from './edition-builder';
+import { partialMD5 } from './epub-parser';
+import { assertValidEpub, EpubValidationError } from './epub-validator';
 
 vi.mock('../logger');
+vi.mock('./edition-builder', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./edition-builder')>()),
+  buildEdition: vi.fn((await importOriginal<typeof import('./edition-builder')>()).buildEdition),
+}));
+vi.mock('./epub-parser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./epub-parser')>()),
+  partialMD5: vi.fn((await importOriginal<typeof import('./epub-parser')>()).partialMD5),
+}));
+vi.mock('./epub-validator', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./epub-validator')>()),
+  assertValidEpub: vi.fn(
+    (await importOriginal<typeof import('./epub-validator')>()).assertValidEpub
+  ),
+}));
 
 let prisma: PrismaClient, dbPath: string, root: string;
 
@@ -85,6 +107,12 @@ beforeEach(async () => {
   await runMigrations(prisma, booksDir);
 });
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; the buildEdition/
+  // assertValidEpub/partialMD5 mocks here are module-mocked vi.fn()s with a
+  // call-through default and no "original" to restore to, so their call
+  // history survives restoreAllMocks alone — clear it explicitly too.
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);
@@ -93,54 +121,45 @@ afterEach(async () => {
   }
 });
 
-function store(deps: EditionDeps): EditionStore {
-  return new EditionStore(root, prisma, deps);
-}
-
 it('generates, caches, and records the edition; second call is a cache hit', async () => {
   let builds = 0;
-  const deps: EditionDeps = {
-    buildEdition: async () => {
-      builds++;
-      return Buffer.from('EDITION-BYTES');
-    },
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'editionHash1',
-  };
-  const s = store(deps);
-  const r1 = await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockImplementation(async () => {
+    builds++;
+    return Buffer.from('EDITION-BYTES');
+  });
+  vi.mocked(assertValidEpub).mockResolvedValueOnce(report()).mockResolvedValueOnce(report());
+  vi.mocked(partialMD5).mockReturnValueOnce('editionHash1');
+
+  const r1 = await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
   expect(fs.readFileSync(r1.path).toString()).toBe('EDITION-BYTES');
   expect(r1.filename).toBe('Orig.epub');
   const row = await prisma.deviceEdition.findFirst();
   expect(row?.editionId).toBe('editionHash1');
 
-  const r2 = await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  const r2 = await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
   expect(r2.path).toBe(r1.path);
   expect(builds).toBe(1); // no rebuild
 });
 
 it('falls back to the original when validation fails', async () => {
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('BAD'),
-    assertValidEpub: async () => {
-      throw new EpubValidationError([], EMPTY_COUNTS, ValidationThreshold.ERROR);
-    },
-    partialMD5: () => 'x',
-  };
-  const r = await store(deps).getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockResolvedValueOnce(Buffer.from('BAD'));
+  vi.mocked(assertValidEpub).mockImplementationOnce(async () => {
+    throw new EpubValidationError([], EMPTY_COUNTS, ValidationThreshold.ERROR);
+  });
+
+  const r = await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
   expect(r.path).toBe(book.path);
   expect(await prisma.deviceEdition.findFirst()).toBeNull();
 });
 
 it('falls back to the original when persisting the edition fails', async () => {
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('EDITION-BYTES'),
-    assertValidEpub: async () => report(),
-    partialMD5: () => {
-      throw new Error('hash boom');
-    },
-  };
-  const r = await store(deps).getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockResolvedValueOnce(Buffer.from('EDITION-BYTES'));
+  vi.mocked(assertValidEpub).mockResolvedValueOnce(report());
+  vi.mocked(partialMD5).mockImplementationOnce(() => {
+    throw new Error('hash boom');
+  });
+
+  const r = await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
   expect(r.path).toBe(book.path);
   expect(r.filename).toBe(book.filename);
   expect(await prisma.deviceEdition.findFirst()).toBeNull();
@@ -154,26 +173,20 @@ it('short-circuits to the original for a no-transform device', async () => {
     bwCover: false,
     simplify: false,
   };
-  const buildEditionSpy = vi.fn(async () => Buffer.from('SHOULD-NOT-BUILD'));
-  const deps: EditionDeps = {
-    buildEdition: buildEditionSpy,
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'x',
-  };
-  const r = await store(deps).getOrCreateEdition(owner, book, noop, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockImplementationOnce(async () => Buffer.from('SHOULD-NOT-BUILD'));
+
+  const r = await getOrCreateEdition(prisma, root, owner, book, noop, ValidationThreshold.ERROR);
   expect(r.path).toBe(book.path);
-  expect(buildEditionSpy).not.toHaveBeenCalled();
+  expect(buildEdition).not.toHaveBeenCalled();
 });
 
 it('purgeForDevice removes rows and files', async () => {
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('E'),
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'h',
-  };
-  const s = store(deps);
-  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
-  await s.purgeForDevice(device.id);
+  vi.mocked(buildEdition).mockResolvedValueOnce(Buffer.from('E'));
+  vi.mocked(assertValidEpub).mockResolvedValueOnce(report());
+  vi.mocked(partialMD5).mockReturnValueOnce('h');
+
+  await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
+  await purgeForDevice(prisma, root, device.id);
   expect(await prisma.deviceEdition.count()).toBe(0);
   expect(fs.existsSync(path.join(root, device.id))).toBe(false);
 });
@@ -181,17 +194,15 @@ it('purgeForDevice removes rows and files', async () => {
 it('purgeForUser removes rows and files across devices, leaving other users intact', async () => {
   const otherOwner: Owner = { userId: 'u2', username: 'bob' };
   const device2: Device = { ...device, id: 'devP', slug: 'phone', name: 'Phone' };
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('E'),
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'h',
-  };
-  const s = store(deps);
-  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(owner, book, device2, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(otherOwner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockResolvedValue(Buffer.from('E'));
+  vi.mocked(assertValidEpub).mockResolvedValue(report());
+  vi.mocked(partialMD5).mockReturnValue('h');
 
-  await s.purgeForUser(owner.userId);
+  await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, owner, book, device2, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, otherOwner, book, device, ValidationThreshold.ERROR);
+
+  await purgeForUser(prisma, root, owner.userId);
 
   expect(await prisma.deviceEdition.count({ where: { userId: owner.userId } })).toBe(0);
   expect(fs.existsSync(path.join(root, device.id, owner.userId, `${book.id}.epub`))).toBe(false);
@@ -205,36 +216,32 @@ it('purgeForUser removes rows and files across devices, leaving other users inta
 });
 
 it("countForBook counts a book's editions for the user, ignoring other users/books", async () => {
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('E'),
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'h',
-  };
-  const s = store(deps);
   const device2: Device = { ...device, id: 'devP', slug: 'phone', name: 'Phone' };
   const otherOwner: Owner = { userId: 'u2', username: 'bob' };
-  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(owner, book, device2, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(otherOwner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockResolvedValue(Buffer.from('E'));
+  vi.mocked(assertValidEpub).mockResolvedValue(report());
+  vi.mocked(partialMD5).mockReturnValue('h');
 
-  expect(await s.countForBook(owner.userId, book.id)).toBe(2);
-  expect(await s.countForBook(owner.userId, 'nonexistent')).toBe(0);
+  await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, owner, book, device2, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, otherOwner, book, device, ValidationThreshold.ERROR);
+
+  expect(await countForBook(prisma, owner.userId, book.id)).toBe(2);
+  expect(await countForBook(prisma, owner.userId, 'nonexistent')).toBe(0);
 });
 
 it('purgeForDeviceAndUser removes only that user+device editions, leaving others intact', async () => {
   const otherOwner: Owner = { userId: 'u2', username: 'bob' };
   const device2: Device = { ...device, id: 'devP', slug: 'phone', name: 'Phone' };
-  const deps: EditionDeps = {
-    buildEdition: async () => Buffer.from('E'),
-    assertValidEpub: async () => report(),
-    partialMD5: () => 'h',
-  };
-  const s = store(deps);
-  await s.getOrCreateEdition(owner, book, device, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(owner, book, device2, ValidationThreshold.ERROR);
-  await s.getOrCreateEdition(otherOwner, book, device, ValidationThreshold.ERROR);
+  vi.mocked(buildEdition).mockResolvedValue(Buffer.from('E'));
+  vi.mocked(assertValidEpub).mockResolvedValue(report());
+  vi.mocked(partialMD5).mockReturnValue('h');
 
-  await s.purgeForDeviceAndUser(device.id, owner.userId);
+  await getOrCreateEdition(prisma, root, owner, book, device, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, owner, book, device2, ValidationThreshold.ERROR);
+  await getOrCreateEdition(prisma, root, otherOwner, book, device, ValidationThreshold.ERROR);
+
+  await purgeForDeviceAndUser(prisma, root, device.id, owner.userId);
 
   // Target pair gone (row + file).
   expect(

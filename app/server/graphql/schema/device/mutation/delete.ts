@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { purgeForDevice } from '../../../../services/edition';
 import { isPrismaError } from '../../../../services/prisma-errors';
 import { builder } from '../../builder';
 import {
@@ -80,7 +81,7 @@ const result = builder.unionType('DeviceDeleteResult', {
  * by any explicit cleanup here — same as REST, which never touches
  * `device_users` in this route either.
  *
- * `editionStore.purgeForDevice` runs after a successful delete, swallowed on
+ * `purgeForDevice` runs after a successful delete, swallowed on
  * failure — see `update.ts`'s identical note and `purge-quietly.ts`.
  */
 builder.mutationField('deviceDelete', (t) =>
@@ -102,7 +103,7 @@ builder.mutationField('deviceDelete', (t) =>
       }
 
       await purgeEditionsQuietly('deviceDelete', `device "${parsed.data.deviceId}"`, () =>
-        context.stores.edition.purgeForDevice(parsed.data.deviceId)
+        purgeForDevice(context.prisma, context.editionsRoot, parsed.data.deviceId)
       );
 
       return { __typename: 'DeviceDeletePayload' as const, deletedDeviceId: parsed.data.deviceId };

@@ -4,7 +4,7 @@ const log = logger('graphql-device-mutation');
 
 /**
  * Best-effort edition-cache purge, mirroring REST's identical try/catch +
- * `log.warn` around `editionStore.purgeForDevice`/`purgeForDeviceAndUser`
+ * `log.warn` around `purgeForDevice`/`purgeForDeviceAndUser`
  * after `PATCH /:id`, `DELETE /:id` and `DELETE /:id/users/:username` on
  * `routes/devices.ts`, removed in Phase 0 — a settings change or removal
  * invalidates any cached per-device (and per-device-per-user) edition, but

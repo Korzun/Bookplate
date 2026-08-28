@@ -6,6 +6,7 @@ import argon2 from 'argon2';
 import { logger } from '../logger';
 import { Owner, Progress, ProgressPageCursor } from '../types';
 import { generateUserId } from '../utils/id';
+import { purgeForUser } from './edition';
 import { WORDLIST } from './wordlist';
 
 const log = logger('UserStore');
@@ -13,20 +14,10 @@ const log = logger('UserStore');
 const LOGIN_PASSWORD_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 const LOGIN_PASSWORD_LENGTH = 16;
 
-/**
- * Minimal structural interface for purging cached device editions when a user
- * is deleted. Kept separate from a concrete EditionStore class to avoid a
- * hard dependency from UserStore onto the edition-store module. Mirrors
- * BookStore's EditionPurger.
- */
-export interface EditionUserPurger {
-  purgeForUser(userId: string): Promise<void>;
-}
-
 export class UserStore {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly editionStore?: EditionUserPurger
+    private readonly editionsRoot: string
   ) {}
 
   static generateSyncPassword(): string {
@@ -355,14 +346,12 @@ export class UserStore {
       }
       throw e;
     }
-    if (this.editionStore) {
-      try {
-        await this.editionStore.purgeForUser(userId);
-      } catch (err) {
-        log.warn(
-          `deleteUser: edition-cache purge failed for "${userId}" — ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
+    try {
+      await purgeForUser(this.prisma, this.editionsRoot, userId);
+    } catch (err) {
+      log.warn(
+        `deleteUser: edition-cache purge failed for "${userId}" — ${err instanceof Error ? err.message : String(err)}`
+      );
     }
     return true;
   }

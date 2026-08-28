@@ -73,8 +73,8 @@ const result = builder.unionType('BookClearEditionsResult', {
  *
  * `BookStore.clearDeviceEditions` is NOT wrapped in `toResult`: traced end to
  * end (`book-store.ts:776-784`), it only ever calls `getBookById` (a plain
- * read) and `EditionPurger.purgeForBook` — neither throws any of the seven
- * known store errors. Wrapping it would make `toResult`'s `err` branch
+ * read) and `purgeForBook` (`services/edition.ts`) — neither throws any of
+ * the seven known store errors. Wrapping it would make `toResult`'s `err` branch
  * undischargeable — see `to-result.ts`'s doc comment, and `bookDelete`'s
  * identical note for `deleteBook`.
  *

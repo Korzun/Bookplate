@@ -37,7 +37,7 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  users = new UserStore(prisma);
+  users = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
 
   // Create real users so FK-referencing inserts succeed (foreign_keys = ON)
   await users.createUser('alice', await UserStore.hashLoginPassword('pw'));

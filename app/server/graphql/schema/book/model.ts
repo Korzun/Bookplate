@@ -1,3 +1,4 @@
+import { countForBook } from '../../../services/edition';
 import type { Context } from '../../context';
 import {
   epochToDate,
@@ -345,21 +346,21 @@ export const model = builder.prismaNode('Book', {
      * How many per-device converted editions of this book are cached for its
      * owner. `GET /api/books/:id` (`routes/ui.ts`) asks `getBookById` for it via
      * `{ withEditionCount: true }`, and `getBookById` in turn calls exactly this
-     * store method with exactly these two arguments (`book-store.ts`:
-     * `book.deviceEditionCount = await this.editionStore.countForBook(owner.userId, id)`),
+     * function with exactly these two arguments (`book-store.ts`:
+     * `book.deviceEditionCount = await countForBook(this.prisma, owner.userId, id)`),
      * so this is the same number REST reports, from the same query.
      *
      * Both arguments come off the parent row — `parent.userId` is the book's own
      * owner, never re-derived from the viewer — so the count is owner-scoped by
      * construction, in the same sense `Book.progress` is.
      *
-     * `t.int` over a store call, not `t.relationCount`: this resolves through a
-     * store, not a Prisma relation — `DeviceEdition` has no relation to `Book`
-     * in `schema.prisma` (it is keyed `[userId, originalBookId, deviceId]` with
-     * no foreign key), so `t.relationCount` cannot express it.
+     * `t.int` over a direct call, not `t.relationCount`: this resolves through a
+     * plain function, not a Prisma relation — `DeviceEdition` has no relation to
+     * `Book` in `schema.prisma` (it is keyed `[userId, originalBookId, deviceId]`
+     * with no foreign key), so `t.relationCount` cannot express it.
      */
     deviceEditionCount: t.int({
-      resolve: (book, _args, context) => context.stores.edition.countForBook(book.userId, book.id),
+      resolve: (book, _args, context) => countForBook(context.prisma, book.userId, book.id),
     }),
   }),
 });

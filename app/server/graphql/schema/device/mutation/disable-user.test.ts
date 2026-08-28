@@ -2,6 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { logger } from '../../../../logger';
 import { isEnabled } from '../../../../services/device';
+import { purgeForDeviceAndUser } from '../../../../services/edition';
 import { createHarness, type Harness } from '../../../test-util';
 
 // A bare `vi.mock('../../../../logger')` auto-mock hands back a FRESH mocked
@@ -24,6 +25,16 @@ vi.mock('../../../../logger', () => {
   };
 });
 
+// Call-through by default (see services/edition.test.ts's identical pattern)
+// so every test but the one below that stubs it still exercises the real
+// `purgeForDeviceAndUser`.
+vi.mock('../../../../services/edition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../services/edition')>()),
+  purgeForDeviceAndUser: vi.fn(
+    (await importOriginal<typeof import('../../../../services/edition')>()).purgeForDeviceAndUser
+  ),
+}));
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -37,6 +48,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; `purgeForDeviceAndUser`
+  // above is a module-mocked vi.fn() with a call-through default and no
+  // "original" to restore to, so its call history survives restoreAllMocks
+  // alone — clear it explicitly too (see edition.test.ts's identical note).
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await harness.cleanup();
 });
 
@@ -123,9 +140,7 @@ describe('Mutation.deviceDisableUser', () => {
   });
 
   it('still succeeds when the edition-cache purge fails, and logs a warning', async () => {
-    vi.spyOn(harness.stores.edition, 'purgeForDeviceAndUser').mockRejectedValueOnce(
-      new Error('disk full')
-    );
+    vi.mocked(purgeForDeviceAndUser).mockRejectedValueOnce(new Error('disk full'));
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,

@@ -62,7 +62,7 @@ describe('revalidateLibrary', () => {
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    bookStore = new BookStore(booksDir, prisma);
+    bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
   });
 
   const readValidation = (bookId: string) =>

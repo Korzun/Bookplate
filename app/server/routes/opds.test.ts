@@ -11,13 +11,31 @@ import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
-import { EditionStore } from '../services/edition-store';
+import { buildEdition } from '../services/edition-builder';
+import { assertValidEpub } from '../services/epub-validator';
 import { UserStore } from '../services/user-store';
 import { EpubMeta, Owner } from '../types';
 import { generateSlug } from '../utils/slug';
 import { createOpdsRouter } from './opds';
 
 vi.mock('../logger');
+// Call-through by default (see services/edition.test.ts's identical pattern):
+// only the one test below that actually exercises a device-edition download
+// stubs these — everything else (including the base-feed and device-catalog
+// browse tests that construct a router with a real `editionsRoot` but never
+// hit the download route) keeps the real `buildEdition`/`assertValidEpub`.
+vi.mock('../services/edition-builder', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/edition-builder')>()),
+  buildEdition: vi.fn(
+    (await importOriginal<typeof import('../services/edition-builder')>()).buildEdition
+  ),
+}));
+vi.mock('../services/epub-validator', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/epub-validator')>()),
+  assertValidEpub: vi.fn(
+    (await importOriginal<typeof import('../services/epub-validator')>()).assertValidEpub
+  ),
+}));
 
 const FAKE_META: EpubMeta = {
   title: 'My Book',
@@ -65,6 +83,7 @@ async function makeDevice(name: string, overrides: Partial<Prisma.DeviceCreateIn
 }
 
 let booksDir: string;
+let editionsRoot: string;
 let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
@@ -81,6 +100,7 @@ function basicAuth(username: string, password: string) {
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-opds-'));
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-opds-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -88,8 +108,8 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma);
-  userStore = new UserStore(prisma);
+  bookStore = new BookStore(booksDir, prisma, editionsRoot);
+  userStore = new UserStore(prisma, editionsRoot);
   // Register a test user with syncPassword 'secret' so OPDS Basic Auth works.
   await userStore.createUser('alice', null, 'secret');
   const aliceId = await userStore.getUserIdByUsername('alice');
@@ -102,6 +122,13 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; `buildEdition`/
+  // `assertValidEpub` above are module-mocked vi.fn()s with a call-through
+  // default and no "original" to restore to, so their call history survives
+  // restoreAllMocks alone — clear it explicitly too (see edition.test.ts's
+  // identical note).
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);
@@ -262,12 +289,12 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
 
     const device = await makeDevice('Kindle');
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
-    const editionStore = new EditionStore(editionsRoot, prisma, {
-      buildEdition: async () => Buffer.from('EDITION'),
-      assertValidEpub: async () => ({}) as never,
-      partialMD5: () => 'edhash',
-    });
+    const deviceEditionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
+    // Real `buildEdition`/`assertValidEpub` would reject the fake bytes below
+    // as an invalid epub — this is the one test in this file that actually
+    // exercises a device-edition download, so it's the one that stubs them.
+    vi.mocked(buildEdition).mockImplementationOnce(async () => Buffer.from('EDITION'));
+    vi.mocked(assertValidEpub).mockImplementationOnce(async () => ({}) as never);
     const app2 = express();
     app2.use(
       '/opds',
@@ -277,7 +304,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
         [60, 170],
         'Bookplate',
         prisma,
-        editionStore,
+        deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
     );
@@ -306,11 +333,9 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     const device = await makeDevice('Kindle');
     // alice enabled, bob not
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
-    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
-      buildEdition: async () => Buffer.from('EDITION'),
-      assertValidEpub: async () => ({}) as never,
-      partialMD5: () => 'edhash',
-    });
+    // Not enabled for bob, so the route 403s before ever reaching
+    // `getOrCreateEdition` — no need to stub `buildEdition`/`assertValidEpub`.
+    const deviceEditionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const app3 = express();
     app3.use(
       '/opds',
@@ -320,7 +345,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
         [60, 170],
         'Bookplate',
         prisma,
-        editionStore,
+        deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
     );
@@ -490,7 +515,11 @@ describe('OPDS feed thumbnail link', () => {
     const bookId = 'opds-device1';
     await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
     await makeDevice('Kindle');
-    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma);
+    // Real `buildEdition`/`assertValidEpub` — this test only lists the base
+    // feed, never downloads a device edition, and is the file's designated
+    // "real builder" case: keep it unstubbed so a future `vi.mock` change
+    // that accidentally widens scope to this test is caught.
+    const deviceEditionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const app2 = express();
     app2.use(
       '/opds',
@@ -500,7 +529,7 @@ describe('OPDS feed thumbnail link', () => {
         [60, 170],
         'Bookplate',
         prisma,
-        editionStore,
+        deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
     );
@@ -863,11 +892,10 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
   async function deviceApp() {
     const device = await makeDevice('Kindle');
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
-    const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
-      buildEdition: async () => Buffer.from('EDITION'),
-      assertValidEpub: async () => ({}) as never,
-      partialMD5: () => 'edhash',
-    });
+    // None of this describe block's tests hit the download route (browse/nav
+    // feeds only, plus the browse-only 404 guarantees below), so
+    // `buildEdition`/`assertValidEpub` never run here — no need to stub them.
+    const deviceEditionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const a = express();
     a.use(
       '/opds',
@@ -877,7 +905,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
         [60, 170],
         'Bookplate',
         prisma,
-        editionStore,
+        deviceEditionsRoot,
         ValidationThreshold.ERROR
       )
     );

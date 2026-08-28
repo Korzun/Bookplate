@@ -66,7 +66,7 @@ describe('saveValidation', () => {
     await runMigrations(prisma, booksDir);
     // seed a user + a book row (FK targets)
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    bookStore = new BookStore(booksDir, prisma);
+    bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, 'x');
     await bookStore.addBook(owner, 'book1', staged, FAKE_META);

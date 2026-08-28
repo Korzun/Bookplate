@@ -56,7 +56,7 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
 
-  const userStore = new UserStore(prisma);
+  const userStore = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
 

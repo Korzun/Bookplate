@@ -17,10 +17,18 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
 } from './book-store';
-import { EditionStore } from './edition-store';
+import { countForBook, purgeForBook } from './edition';
 import { partialMD5 } from './epub-parser';
 
 vi.mock('../logger');
+// Call-through by default (see edition.test.ts's identical pattern) so every
+// test but the ones that explicitly stub `purgeForBook`/`countForBook` below
+// still exercises the real functions against the real (temp) DB and disk.
+vi.mock('./edition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./edition')>()),
+  purgeForBook: vi.fn((await importOriginal<typeof import('./edition')>()).purgeForBook),
+  countForBook: vi.fn((await importOriginal<typeof import('./edition')>()).countForBook),
+}));
 
 const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
@@ -135,6 +143,7 @@ let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
 // and assert on-disk paths here, matching the owner-scoped BookStore.
 let booksDir: string;
+let editionsRoot: string;
 let bookStore: BookStore;
 let dbPath: string;
 
@@ -142,6 +151,7 @@ beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -150,10 +160,17 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma);
+  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; `purgeForBook`/
+  // `countForBook` above are module-mocked vi.fn()s with a call-through
+  // default and no "original" to restore to, so their call history survives
+  // restoreAllMocks alone — clear it explicitly too (see edition.test.ts's
+  // identical note).
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);
@@ -504,10 +521,8 @@ describe('getBookById', () => {
 });
 
 describe('getBookById deviceEditionCount', () => {
-  it('includes the edition count when an edition store is present', async () => {
-    const editionStore = new EditionStore(path.join(booksRoot, 'editions'), prisma);
-    const bs = new BookStore(booksRoot, prisma, editionStore);
-    await bs.addBook(OWNER, 'cnt1', stage('cnt1'), FAKE_META);
+  it('includes the edition count when withEditionCount is requested', async () => {
+    await bookStore.addBook(OWNER, 'cnt1', stage('cnt1'), FAKE_META);
     await prisma.device.create({
       data: { id: 'dvc', name: 'K', slug: 'k', coverFit: 'contain' },
     });
@@ -520,11 +535,11 @@ describe('getBookById deviceEditionCount', () => {
         settingsHash: 'h',
       },
     });
-    const book = await bs.getBookById(OWNER, 'cnt1', { withEditionCount: true });
+    const book = await bookStore.getBookById(OWNER, 'cnt1', { withEditionCount: true });
     expect(book?.deviceEditionCount).toBe(1);
   });
 
-  it('omits the count when no edition store is present', async () => {
+  it('omits the count when withEditionCount is not requested', async () => {
     await bookStore.addBook(OWNER, 'cnt2', stage('cnt2'), FAKE_META);
     const book = await bookStore.getBookById(OWNER, 'cnt2');
     expect(book?.deviceEditionCount).toBeUndefined();
@@ -555,48 +570,38 @@ describe('deleteBook', () => {
   });
 
   it('purges editions for the book', async () => {
-    const purged: Array<[string, string]> = [];
-    const purger = {
-      purgeForBook: async (u: string, b: string) => {
-        purged.push([u, b]);
-      },
-      countForBook: async () => 0,
-    };
-    const bs = new BookStore(booksRoot, prisma, purger);
-    await bs.addBook(OWNER, 'del3', stage('del3'), FAKE_META);
-    await bs.deleteBook(OWNER, 'del3');
-    expect(purged).toContainEqual([OWNER.userId, 'del3']);
+    await bookStore.addBook(OWNER, 'del3', stage('del3'), FAKE_META);
+    await bookStore.deleteBook(OWNER, 'del3');
+    expect(purgeForBook).toHaveBeenCalledWith(
+      expect.anything(),
+      editionsRoot,
+      OWNER.userId,
+      'del3'
+    );
   });
 });
 
 describe('clearDeviceEditions', () => {
   it('returns null for an unknown book and does not purge', async () => {
-    const purger = {
-      purgeForBook: vi.fn().mockResolvedValue(undefined),
-      countForBook: vi.fn().mockResolvedValue(0),
-    };
-    const bs = new BookStore(booksRoot, prisma, purger);
-    expect(await bs.clearDeviceEditions(OWNER, 'nope')).toBeNull();
-    expect(purger.purgeForBook).not.toHaveBeenCalled();
+    expect(await bookStore.clearDeviceEditions(OWNER, 'nope')).toBeNull();
+    expect(purgeForBook).not.toHaveBeenCalled();
   });
 
   it('purges editions and returns the count for an existing book', async () => {
-    const purger = {
-      purgeForBook: vi.fn().mockResolvedValue(undefined),
-      countForBook: vi.fn().mockResolvedValue(3),
-    };
-    const bs = new BookStore(booksRoot, prisma, purger);
-    await bs.addBook(OWNER, 'clr1', stage('clr1'), FAKE_META);
-    const cleared = await bs.clearDeviceEditions(OWNER, 'clr1');
+    vi.mocked(countForBook).mockResolvedValueOnce(3);
+    await bookStore.addBook(OWNER, 'clr1', stage('clr1'), FAKE_META);
+    const cleared = await bookStore.clearDeviceEditions(OWNER, 'clr1');
     expect(cleared).toBe(3);
-    expect(purger.purgeForBook).toHaveBeenCalledWith(OWNER.userId, 'clr1');
+    expect(purgeForBook).toHaveBeenCalledWith(
+      expect.anything(),
+      editionsRoot,
+      OWNER.userId,
+      'clr1'
+    );
   });
 
-  it('removes edition rows and files via a real edition store', async () => {
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
-    const editionStore = new EditionStore(editionsRoot, prisma);
-    const bs = new BookStore(booksRoot, prisma, editionStore);
-    await bs.addBook(OWNER, 'clr2', stage('clr2'), FAKE_META);
+  it('removes edition rows and files via the real edition purge', async () => {
+    await bookStore.addBook(OWNER, 'clr2', stage('clr2'), FAKE_META);
     await prisma.device.create({
       data: { id: 'dv2', name: 'K', slug: 'k', coverFit: 'contain' },
     });
@@ -613,7 +618,7 @@ describe('clearDeviceEditions', () => {
     fs.mkdirSync(path.dirname(editionFile), { recursive: true });
     fs.writeFileSync(editionFile, 'X');
 
-    const cleared = await bs.clearDeviceEditions(OWNER, 'clr2');
+    const cleared = await bookStore.clearDeviceEditions(OWNER, 'clr2');
     expect(cleared).toBe(1);
     expect(await prisma.deviceEdition.count({ where: { originalBookId: 'clr2' } })).toBe(0);
     expect(fs.existsSync(editionFile)).toBe(false);
@@ -1262,51 +1267,38 @@ describe('reimportBook', () => {
   });
 
   it('purges editions for the book', async () => {
-    const purged: Array<[string, string]> = [];
-    const purger = {
-      purgeForBook: async (u: string, b: string) => {
-        purged.push([u, b]);
-      },
-      countForBook: async () => 0,
-    };
-    const bs = new BookStore(booksRoot, prisma, purger);
-
     const stagedPath = path.join(booksDir, 'staged-purge.epub');
     fs.writeFileSync(stagedPath, makeMinimalEpub('Purge'));
     const id = partialMD5(stagedPath);
-    await bs.addBook(OWNER, id, stagedPath, FAKE_META);
+    await bookStore.addBook(OWNER, id, stagedPath, FAKE_META);
 
     const importer: ScanImporter = {
       parseEpub: () => ({ ...FAKE_META, title: 'Purged' }),
       partialMD5: () => id,
     };
-    await bs.reimportBook(OWNER, id, importer);
+    await bookStore.reimportBook(OWNER, id, importer);
 
-    expect(purged).toContainEqual([OWNER.userId, id]);
+    expect(purgeForBook).toHaveBeenCalledWith(expect.anything(), editionsRoot, OWNER.userId, id);
   });
 
   it('still resolves successfully when edition purge throws', async () => {
-    const purger = {
-      purgeForBook: vi.fn().mockRejectedValue(new Error('purge boom')),
-      countForBook: vi.fn().mockResolvedValue(0),
-    };
-    const bs = new BookStore(booksRoot, prisma, purger);
+    vi.mocked(purgeForBook).mockRejectedValueOnce(new Error('purge boom'));
 
     const stagedPath = path.join(booksDir, 'staged-purge-throws.epub');
     fs.writeFileSync(stagedPath, makeMinimalEpub('Purge Throws'));
     const id = partialMD5(stagedPath);
-    await bs.addBook(OWNER, id, stagedPath, FAKE_META);
+    await bookStore.addBook(OWNER, id, stagedPath, FAKE_META);
 
     const importer: ScanImporter = {
       parseEpub: () => ({ ...FAKE_META, title: 'Purged Throws' }),
       partialMD5: () => id,
     };
 
-    const result = await bs.reimportBook(OWNER, id, importer);
+    const result = await bookStore.reimportBook(OWNER, id, importer);
 
     expect(result).not.toBeNull();
     expect(result!.title).toBe('Purged Throws');
-    expect(purger.purgeForBook).toHaveBeenCalledWith(OWNER.userId, id);
+    expect(purgeForBook).toHaveBeenCalledWith(expect.anything(), editionsRoot, OWNER.userId, id);
   });
 
   it('re-reads metadata from disk and updates the DB row', async () => {

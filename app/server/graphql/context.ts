@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { BookStore } from '../services/book-store';
-import type { EditionStore } from '../services/edition-store';
 import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
@@ -43,7 +42,6 @@ export type Viewer = {
 export type Stores = {
   book: BookStore;
   user: UserStore;
-  edition: EditionStore;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;
   /**
@@ -62,6 +60,8 @@ export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;
   stores: Stores;
+  /** `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical wiring. */
+  editionsRoot: string;
   config: AppConfig;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
@@ -75,6 +75,7 @@ export type Context = {
 export type ContextDeps = {
   prisma: PrismaClient;
   stores: Stores;
+  editionsRoot: string;
   config: AppConfig;
   jwtSecret: Buffer;
 };
@@ -110,6 +111,7 @@ export const createContext =
     viewer: viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined),
     prisma: deps.prisma,
     stores: deps.stores,
+    editionsRoot: deps.editionsRoot,
     config: deps.config,
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),
