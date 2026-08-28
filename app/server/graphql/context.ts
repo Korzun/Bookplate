@@ -58,15 +58,7 @@ export type Stores = {
   replaceStaging: ReplaceStaging;
 };
 
-/**
- * `services/token.ts`'s `revokeAllForUsername` is called directly (no
- * `Stores` entry — a module function reads the same refresh-token rows from
- * anywhere, so there is no shared instance to thread through here) right
- * after `userResetPassword`/`userChangePassword` succeed: every outstanding
- * refresh token for the affected username is revoked immediately, so a
- * stolen/old refresh token cannot outlive a password change — see
- * `user/mutation/change-password.ts`'s doc comment for the full trace.
- */
+// Token revocation on password change: see `revokeAllForUsername` in `services/token.ts`.
 export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;

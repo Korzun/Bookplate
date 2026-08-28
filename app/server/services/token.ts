@@ -1,3 +1,8 @@
+/**
+ * Persistence for JWT auth: rotating refresh tokens (only the SHA-256 hash is
+ * stored) and the HS256 signing secret (generated on first boot, kept in the
+ * settings table so tokens survive restarts).
+ */
 import * as crypto from 'crypto';
 
 import { PrismaClient } from '@prisma/client';
@@ -7,11 +12,7 @@ const JWT_SECRET_KEY = 'jwt_secret';
 
 export type RefreshIdentity = { username: string; userId: string | null };
 
-/**
- * Persistence for JWT auth: rotating refresh tokens (only the SHA-256 hash is
- * stored) and the HS256 signing secret (generated on first boot, kept in the
- * settings table so tokens survive restarts).
- */
+/** SHA-256 hash of a refresh token — the only form ever persisted. */
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -71,6 +72,15 @@ export async function revokeRefreshToken(prisma: PrismaClient, token: string): P
   });
 }
 
+/**
+ * Called directly (no `Stores` entry — a module function reads the same
+ * refresh-token rows from anywhere, so there is no shared instance to thread
+ * through the context) right after `userResetPassword`/`userChangePassword`
+ * succeed: every outstanding refresh token for the affected username is
+ * revoked immediately, so a stolen/old refresh token cannot outlive a
+ * password change — see `user/mutation/change-password.ts`'s doc comment
+ * for the full trace.
+ */
 export async function revokeAllForUsername(prisma: PrismaClient, username: string): Promise<void> {
   await prisma.refreshToken.deleteMany({ where: { username } });
 }

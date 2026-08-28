@@ -83,19 +83,19 @@ const result = builder.unionType('DeviceCreateResult', {
  * plan's `Viewer.devices` doc comment records the identical finding). No
  * `ownerOf` alternative exists: devices are not owned by any user.
  *
- * REST runs a `getBySlug` precheck (409) AND catches `DeviceSlugConflictError`
- * from `DeviceStore.create` itself (a second 409, defense against a race
- * between the precheck and the write) — both produce the identical response.
- * This resolver keeps only the second: the `prisma.device.create` call below
- * already throws `DeviceSlugConflictError` on the DB's own unique-constraint
- * violation (a Prisma `P2002`, backed by `slug @unique` in
- * `prisma/schema.prisma`), so the precheck is redundant for outcome
- * purposes — it exists in REST only to avoid an unnecessary write attempt,
- * not to produce a different result. Relying solely on the real throw, via
- * `toResult`, is also more in keeping with this schema's "`toResult` is the
- * single boundary" discipline than fabricating a synthetic
- * `DeviceSlugConflictError` instance to match a precheck that has no
- * separate observable behaviour. Flagged here as a deliberate
+ * REST ran a `getBySlug` precheck (409) AND caught `DeviceSlugConflictError`
+ * from the now-dissolved `DeviceStore`'s `create` itself (a second 409,
+ * defense against a race between the precheck and the write) — both
+ * produced the identical response. This resolver keeps only the second: the
+ * `prisma.device.create` call below already throws `DeviceSlugConflictError`
+ * on the DB's own unique-constraint violation (a Prisma `P2002`, backed by
+ * `slug @unique` in `prisma/schema.prisma`), so the precheck was redundant
+ * for outcome purposes — it existed in REST only to avoid an unnecessary
+ * write attempt, not to produce a different result. Relying solely on the
+ * real throw, via `toResult`, is also more in keeping with this schema's
+ * "`toResult` is the single boundary" discipline than fabricating a
+ * synthetic `DeviceSlugConflictError` instance to match a precheck that has
+ * no separate observable behaviour. Flagged here as a deliberate
  * simplification, not an oversight.
  *
  * `DeviceSlugConflictError` carries no data of its own (`services/device.ts`'s

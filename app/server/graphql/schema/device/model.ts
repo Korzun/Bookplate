@@ -22,12 +22,13 @@ import { model as user } from '../user/model';
  * viewer who can see a device at all sees the exact same row. Registering
  * `Device` as a `Node` would force a false choice between (a) letting
  * `node(id:)` hand any device to any authenticated viewer, a capability REST
- * does not even offer non-admins directly (only the already-scoped `GET /`
- * list does, via `deviceStore.listForUser`), or (b) inventing an "ownership"
- * relation out of `DeviceUser` enablement that does not exist in REST and
- * that the generic suite's "non-owner sees null / owner sees data" shape does
- * not fit anyway — a device with zero enabled users would have no possible
- * "owner" for the positive control to seed against.
+ * did not even offer non-admins directly (only the already-scoped `GET /`
+ * list did, via the now-dissolved `DeviceStore`'s `listForUser`), or (b)
+ * inventing an "ownership" relation out of `DeviceUser` enablement that did
+ * not exist in REST and that the generic suite's "non-owner sees null /
+ * owner sees data" shape does not fit anyway — a device with zero enabled
+ * users would have no possible "owner" for the positive control to seed
+ * against.
  *
  * `Device` is reached exclusively through `Viewer.devices`
  * (`viewer/model.ts`), which already applies REST's real scoping
