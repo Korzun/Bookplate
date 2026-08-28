@@ -35,7 +35,7 @@ beforeEach(async () => {
   bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
   app = express();
   app.use(express.json());
-  app.use('/sync', createKosyncRouter(userStore, bookStore, prisma));
+  app.use('/sync', createKosyncRouter(bookStore, prisma));
 });
 
 afterEach(async () => {

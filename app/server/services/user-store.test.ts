@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import { runMigrations } from '../db/migrate';
 import { purgeForUser } from './edition';
 import { getSyncPassword, hashLoginPassword, resetPassword } from './password';
+import { saveProgress } from './progress';
 import { UserStore } from './user-store';
 
 vi.mock('../logger');
@@ -103,52 +104,6 @@ describe('UserStore.getMustChangePassword', () => {
   });
 });
 
-describe('UserStore.saveProgress + getProgress', () => {
-  let aliceId: string;
-
-  beforeEach(async () => {
-    await store.createUser('alice', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
-  });
-
-  it('retrieves saved progress', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'abc123',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-    });
-    const p = await store.getProgress(aliceId, 'abc123');
-    expect(p).not.toBeNull();
-    expect(p!.progress).toBe('/body/DocFragment[5]');
-    expect(p!.percentage).toBeCloseTo(0.42);
-  });
-
-  it('updates existing progress on conflict', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'abc123',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-    });
-    await store.saveProgress(aliceId, {
-      document: 'abc123',
-      progress: '/body/DocFragment[10]',
-      percentage: 0.8,
-      device: 'Kobo',
-      device_id: 'dev-1',
-    });
-    const p = await store.getProgress(aliceId, 'abc123');
-    expect(p!.percentage).toBeCloseTo(0.8);
-  });
-
-  it('returns null when no progress exists', async () => {
-    expect(await store.getProgress(aliceId, 'unknown')).toBeNull();
-  });
-});
-
 describe('UserStore.userExists', () => {
   it('returns false for unknown user', async () => {
     expect(await store.userExists('nobody')).toBe(false);
@@ -169,14 +124,14 @@ describe('UserStore.listUsers', () => {
     await store.createUser('zara', null);
     await store.createUser('alice', null);
     const aliceId = (await store.getUserIdByUsername('alice'))!;
-    await store.saveProgress(aliceId, {
+    await saveProgress(prisma, aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
       device: 'Kobo',
       device_id: 'd1',
     });
-    await store.saveProgress(aliceId, {
+    await saveProgress(prisma, aliceId, {
       document: 'doc2',
       progress: '/p[1]',
       percentage: 0.2,
@@ -198,7 +153,7 @@ describe('UserStore.deleteUser', () => {
   beforeEach(async () => {
     await store.createUser('alice', null);
     aliceId = (await store.getUserIdByUsername('alice'))!;
-    await store.saveProgress(aliceId, {
+    await saveProgress(prisma, aliceId, {
       document: 'doc1',
       progress: '/p[1]',
       percentage: 0.5,
@@ -265,333 +220,5 @@ describe('UserStore.getUserIdByUsername', () => {
     const id1 = await store.getUserIdByUsername('alice');
     const id2 = await store.getUserIdByUsername('alice');
     expect(id1).toBe(id2);
-  });
-});
-
-describe('UserStore.clearProgress', () => {
-  let aliceId: string;
-  let bobId: string;
-
-  beforeEach(async () => {
-    await store.createUser('alice', null);
-    await store.createUser('bob', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
-    bobId = (await store.getUserIdByUsername('bob'))!;
-  });
-
-  it('returns false when no record exists', async () => {
-    expect(await store.clearProgress(aliceId, 'doc1')).toBe(false);
-  });
-
-  it('deletes an existing record and returns true', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/p[1]',
-      percentage: 0.5,
-      device: 'Kobo',
-      device_id: 'd1',
-    });
-    expect(await store.clearProgress(aliceId, 'doc1')).toBe(true);
-    expect(await store.getProgress(aliceId, 'doc1')).toBeNull();
-  });
-
-  it("does not affect another user's progress for the same document", async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/p[1]',
-      percentage: 0.5,
-      device: 'Kobo',
-      device_id: 'd1',
-    });
-    await store.saveProgress(bobId, {
-      document: 'doc1',
-      progress: '/p[2]',
-      percentage: 0.7,
-      device: 'Kobo',
-      device_id: 'd2',
-    });
-    await store.clearProgress(aliceId, 'doc1');
-    expect(await store.getProgress(bobId, 'doc1')).not.toBeNull();
-  });
-});
-
-describe('UserStore.saveProgress — history', () => {
-  let aliceId: string;
-
-  beforeEach(async () => {
-    await store.createUser('alice', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
-  });
-
-  it('inserts a new history row with matching start and end timestamps on first sync', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].startTimestamp).toBe(1000);
-    expect(rows[0].endTimestamp).toBe(1000);
-  });
-
-  it('extends endTimestamp when same position + device syncs within 10 minutes', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1599, // 599 s later — within 10 min
-    });
-    const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].startTimestamp).toBe(1000);
-    expect(rows[0].endTimestamp).toBe(1599);
-  });
-
-  it('inserts a new row when same position + device syncs after 10 minutes', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1601, // 601 s later — past 10 min
-    });
-    const rows = await prisma.progressHistory.findMany({
-      where: { userId: aliceId },
-      orderBy: { startTimestamp: 'asc' },
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows[0].endTimestamp).toBe(1000);
-    expect(rows[1].startTimestamp).toBe(1601);
-    expect(rows[1].endTimestamp).toBe(1601);
-  });
-
-  it('inserts a new row when position changes', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[6]',
-      percentage: 0.45,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1100,
-    });
-    const rows = await prisma.progressHistory.findMany({
-      where: { userId: aliceId },
-      orderBy: { startTimestamp: 'asc' },
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows[0].progress).toBe('/body/DocFragment[5]');
-    expect(rows[1].progress).toBe('/body/DocFragment[6]');
-  });
-
-  it('inserts a new row when same position is synced from a different device', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kindle',
-      device_id: 'dev-2',
-      timestamp: 1100,
-    });
-    const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
-    expect(rows).toHaveLength(2);
-  });
-
-  it('does not delete history when clearProgress is called', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.clearProgress(aliceId, 'doc1');
-    const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
-    expect(rows).toHaveLength(1);
-  });
-
-  it('cascades to delete history when user is deleted', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.deleteUser('alice');
-    const rows = await prisma.progressHistory.findMany({ where: { userId: aliceId } });
-    expect(rows).toHaveLength(0);
-  });
-
-  it('inserts a new row when a stale timestamp is earlier than the existing endTimestamp', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 500, // stale — earlier than existing endTimestamp
-    });
-    const rows = await prisma.progressHistory.findMany({
-      where: { userId: aliceId },
-      orderBy: { startTimestamp: 'asc' },
-    });
-    expect(rows).toHaveLength(2);
-    expect(rows[0].startTimestamp).toBe(500); // stale row recorded at its own timestamp
-    expect(rows[0].endTimestamp).toBe(500);
-    expect(rows[1].startTimestamp).toBe(1000); // original row untouched
-    expect(rows[1].endTimestamp).toBe(1000);
-  });
-
-  it('does not throw and still saves current progress when history write fails', async () => {
-    vi.spyOn(prisma.progressHistory, 'findFirst').mockRejectedValueOnce(
-      new Error('simulated DB failure')
-    );
-
-    const result = await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/body/DocFragment[5]',
-      percentage: 0.42,
-      device: 'Kobo',
-      device_id: 'dev-1',
-      timestamp: 1000,
-    });
-
-    expect(result.percentage).toBeCloseTo(0.42);
-    const current = await store.getProgress(aliceId, 'doc1');
-    expect(current).not.toBeNull();
-    expect(current!.percentage).toBeCloseTo(0.42);
-  });
-});
-
-describe('UserStore.getUserProgressPage', () => {
-  async function seed(userId: string, document: string, timestamp: number): Promise<void> {
-    await prisma.progress.create({
-      data: {
-        userId,
-        document,
-        progress: `/p/${document}`,
-        percentage: 0.5,
-        device: 'Kobo',
-        deviceId: 'd1',
-        timestamp,
-      },
-    });
-  }
-
-  it('returns an empty page with null cursor when there is no progress', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    const page = await store.getUserProgressPage(id, null, 50);
-    expect(page.items).toEqual([]);
-    expect(page.nextCursor).toBeNull();
-  });
-
-  it('orders by timestamp desc, document asc and maps fields', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    await seed(id, 'a', 100);
-    await seed(id, 'b', 200);
-    const page = await store.getUserProgressPage(id, null, 50);
-    expect(page.items.map((i) => i.document)).toEqual(['b', 'a']);
-    expect(page.items[0]).toMatchObject({
-      document: 'b',
-      progress: '/p/b',
-      device: 'Kobo',
-      device_id: 'd1',
-      timestamp: 200,
-    });
-    expect(page.nextCursor).toBeNull();
-  });
-
-  it('returns a nextCursor when more rows exist and advances past them', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    await seed(id, 'a', 100);
-    await seed(id, 'b', 200);
-    await seed(id, 'c', 300);
-    const page1 = await store.getUserProgressPage(id, null, 2);
-    expect(page1.items.map((i) => i.document)).toEqual(['c', 'b']);
-    expect(page1.nextCursor).not.toBeNull();
-
-    const cursor = JSON.parse(
-      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
-    ) as { timestamp: number; document: string };
-    const page2 = await store.getUserProgressPage(id, cursor, 2);
-    expect(page2.items.map((i) => i.document)).toEqual(['a']);
-    expect(page2.nextCursor).toBeNull();
-  });
-
-  it('only returns rows for the specified user', async () => {
-    await store.createUser('alice', 'pass');
-    await store.createUser('bob', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    const bobId = (await store.getUserIdByUsername('bob'))!;
-    await seed(id, 'doc1', 100);
-    await seed(bobId, 'doc2', 200);
-    const page = await store.getUserProgressPage(id, null, 50);
-    expect(page.items.map((i) => i.document)).toEqual(['doc1']);
-  });
-
-  it('breaks timestamp ties by document ascending', async () => {
-    await store.createUser('alice', 'pass');
-    const id = (await store.getUserIdByUsername('alice'))!;
-    await seed(id, 'y', 100);
-    await seed(id, 'x', 100);
-    const page1 = await store.getUserProgressPage(id, null, 1);
-    expect(page1.items.map((i) => i.document)).toEqual(['x']); // same ts, 'x' < 'y'
-    const cursor = JSON.parse(
-      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
-    ) as { timestamp: number; document: string };
-    const page2 = await store.getUserProgressPage(id, cursor, 1);
-    expect(page2.items.map((i) => i.document)).toEqual(['y']);
   });
 });

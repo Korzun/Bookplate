@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { saveProgress } from '../../../../services/progress';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import {
@@ -235,7 +236,7 @@ builder.mutationField('progressSet', (t) =>
         args.input.device != null && args.input.device !== '' ? args.input.device : 'Web';
       const deviceId = args.input.deviceId ?? '';
 
-      await context.stores.user.saveProgress(owner.userId, {
+      await saveProgress(context.prisma, owner.userId, {
         document: parsed.data.document,
         progress: progressCfi,
         percentage: parsed.data.percentage,
