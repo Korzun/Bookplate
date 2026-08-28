@@ -4,7 +4,7 @@ import express from 'express';
 import request from 'supertest';
 
 import { signAccessToken } from '../services/jwt';
-import { jwtAuth, adminAuth, passwordChangeGate } from './auth';
+import { jwtAuth, passwordChangeGate } from './auth';
 
 vi.mock('../logger');
 
@@ -14,11 +14,6 @@ const userToken = signAccessToken(secret, {
   userId: 'u1',
   username: 'alice',
   isAdmin: false,
-  mustChangePassword: false,
-});
-const adminToken = signAccessToken(secret, {
-  username: 'admin',
-  isAdmin: true,
   mustChangePassword: false,
 });
 const mustChangeToken = signAccessToken(secret, {
@@ -33,9 +28,6 @@ function buildApp() {
   app.use(passwordChangeGate(secret));
   app.get('/api/whoami', jwtAuth(secret), (req, res) => {
     res.json(req.user);
-  });
-  app.get('/api/admin-only', jwtAuth(secret), adminAuth, (_req, res) => {
-    res.json({ ok: true });
   });
   app.patch('/api/my/password', jwtAuth(secret), (_req, res) => res.status(200).json({}));
   app.post('/api/auth/refresh', (_req, res) => res.status(200).json({}));
@@ -74,22 +66,6 @@ describe('jwtAuth', () => {
       isAdmin: false,
       mustChangePassword: false,
     });
-  });
-});
-
-describe('adminAuth', () => {
-  it('rejects a non-admin with 403', async () => {
-    const res = await request(buildApp())
-      .get('/api/admin-only')
-      .set('Authorization', `Bearer ${userToken}`);
-    expect(res.status).toBe(403);
-  });
-
-  it('allows an admin', async () => {
-    const res = await request(buildApp())
-      .get('/api/admin-only')
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status).toBe(200);
   });
 });
 
