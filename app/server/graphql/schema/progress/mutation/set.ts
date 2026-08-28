@@ -31,9 +31,7 @@ const input = builder.inputType('ProgressSetInput', {
       for: user,
       description:
         "Must be the viewer's own User id: unlike every other user-associated " +
-        'mutation, there is no admin write path for progress ' +
-        '(`PUT /api/my/progress/:document` 403s admins, and `routes/users.ts` has ' +
-        'no write route for progress at all).',
+        'mutation, there is no admin write path for progress.',
     }),
     document: t.string({ required: true }),
     currentChapter: t.int({ required: true }),
