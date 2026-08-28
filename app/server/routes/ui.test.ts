@@ -32,7 +32,7 @@ import {
   createReplaceStaging,
   type ReplaceStaging,
 } from '../services/replace-staging';
-import { UserStore } from '../services/user-store';
+import { createUser, deleteUser } from '../services/user';
 import * as validationModule from '../services/validation';
 import { AppConfig, EpubMeta, Owner } from '../types';
 import { createLoginRateLimit, createUiRouter } from './ui';
@@ -111,7 +111,6 @@ let booksDir: string;
 let editionsRoot: string;
 let prisma: PrismaClient;
 let bookStore: BookStore;
-let userStore: UserStore;
 let replaceStaging: ReplaceStaging;
 let app: express.Express;
 let dbPath: string;
@@ -295,7 +294,6 @@ async function gqlExecute(
 ): ReturnType<typeof graphql<Record<string, unknown>>> {
   const stores: Stores = {
     book: bookStore,
-    user: userStore,
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
@@ -328,9 +326,8 @@ beforeEach(async () => {
   await runMigrations(prisma, booksDir);
   bookStore = new BookStore(booksDir, prisma, editionsRoot);
   replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
-  userStore = new UserStore(prisma, editionsRoot);
-  await userStore.createUser('alice', await hashLoginPassword('alicepass'));
-  aliceId = (await userStore.getUserIdByUsername('alice'))!;
+  await createUser(prisma, 'alice', await hashLoginPassword('alicepass'));
+  aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   aliceOwner = { userId: aliceId, username: 'alice' };
 
   scanJobStore = new ScanJobStore();
@@ -342,7 +339,6 @@ beforeEach(async () => {
     '/',
     createUiRouter(
       bookStore,
-      userStore,
       { ...config, booksDir },
       mockThumbnailQueue,
       jwtSecret,
@@ -422,7 +418,7 @@ describe('POST /api/login', () => {
   });
 
   it('returns 403 with a clear message when the user has no password set', async () => {
-    await userStore.createUser('nopass', null);
+    await createUser(prisma, 'nopass', null);
     const res = await request(app)
       .post('/api/login')
       .send('username=nopass&password=anything')
@@ -461,7 +457,6 @@ describe('POST /api/login', () => {
         '/',
         createUiRouter(
           bookStore,
-          userStore,
           { ...config, booksDir },
           mockThumbnailQueue,
           jwtSecret,
@@ -507,7 +502,6 @@ describe('POST /api/login', () => {
         '/',
         createUiRouter(
           bookStore,
-          userStore,
           { ...config, booksDir, trustProxyHops: 1 },
           mockThumbnailQueue,
           jwtSecret,
@@ -1469,7 +1463,7 @@ describe('surviving book REST routes accept a Relay global ID', () => {
   let aliceBookId: string;
 
   beforeEach(async () => {
-    await userStore.createUser('bob', await hashLoginPassword('bobpass'));
+    await createUser(prisma, 'bob', await hashLoginPassword('bobpass'));
     const bobRes = await request(app)
       .post('/api/login')
       .send('username=bob&password=bobpass')
@@ -1682,7 +1676,7 @@ describe('per-user library authorization', () => {
 
   beforeEach(async () => {
     // alice already exists (created in the outer beforeEach); add a second user bob.
-    await userStore.createUser('bob', await hashLoginPassword('bobpass'));
+    await createUser(prisma, 'bob', await hashLoginPassword('bobpass'));
 
     aliceToken = await loginAlice();
     const bobRes = await request(app)
@@ -1918,7 +1912,7 @@ describe('POST /api/auth/refresh', () => {
       .post('/api/login')
       .send('username=alice&password=alicepass')
       .set('Content-Type', 'application/x-www-form-urlencoded');
-    await userStore.deleteUser('alice');
+    await deleteUser(prisma, editionsRoot, 'alice');
     const res = await agent.post('/api/auth/refresh');
     expect(res.status).toBe(401);
   });

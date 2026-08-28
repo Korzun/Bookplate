@@ -10,13 +10,12 @@ import request from 'supertest';
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
 import { hashSyncPassword } from '../services/password';
-import { UserStore } from '../services/user-store';
+import { createUser } from '../services/user';
 import { createKosyncRouter } from './kosync';
 
 vi.mock('../logger');
 
 let prisma: PrismaClient;
-let userStore: UserStore;
 let bookStore: BookStore;
 let app: express.Express;
 let dbPath: string;
@@ -31,7 +30,6 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  userStore = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
   bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
   app = express();
   app.use(express.json());
@@ -68,7 +66,7 @@ describe('POST /sync/users/create', () => {
 
 describe('GET /sync/users/auth', () => {
   beforeEach(async () => {
-    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('returns 200 with correct credentials', async () => {
@@ -92,7 +90,7 @@ describe('GET /sync/users/auth', () => {
 
 describe('PUT /sync/syncs/progress', () => {
   beforeEach(async () => {
-    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('saves progress and returns document + timestamp', async () => {
@@ -122,7 +120,7 @@ describe('PUT /sync/syncs/progress', () => {
 
 describe('GET /sync/syncs/progress/:document', () => {
   beforeEach(async () => {
-    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
     await request(app)
       .put('/sync/syncs/progress')
       .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
@@ -154,7 +152,7 @@ describe('GET /sync/syncs/progress/:document', () => {
 
 describe('KOSync lineage resolution', () => {
   beforeEach(async () => {
-    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
     // Seed a per-user history entry for alice: 'old-doc-id' → 'current-doc-id'
     const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
     await prisma.$executeRaw`
@@ -229,7 +227,7 @@ describe('KOSync lineage resolution', () => {
 
 describe('PUT /sync/syncs/progress — history', () => {
   beforeEach(async () => {
-    await userStore.createUser('alice', null, ALICE_SYNC_PASSWORD);
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
   });
 
   it('creates a history row on first sync', async () => {

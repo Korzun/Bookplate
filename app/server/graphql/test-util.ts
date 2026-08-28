@@ -13,7 +13,7 @@ import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
-import { UserStore } from '../services/user-store';
+import { createUser } from '../services/user';
 import type { AppConfig, Owner } from '../types';
 import { createBookByDocumentLoader } from './book-by-document-loader';
 import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
@@ -94,11 +94,9 @@ export const createHarness = async (): Promise<Harness> => {
 
   const config = testConfig(booksDir, dataDir);
   const editionsRoot = path.join(dataDir, 'editions');
-  const user = new UserStore(prisma, editionsRoot);
   const book = new BookStore(booksDir, prisma, editionsRoot);
   const stores: Stores = {
     book,
-    user,
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
     // `context.stores.scanJob.subscribe`) — not the class's own default,
@@ -116,13 +114,13 @@ export const createHarness = async (): Promise<Harness> => {
     replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
   };
 
-  await user.createUser('alice', await hashLoginPassword('alicepass'));
-  const aliceId = (await user.getUserIdByUsername('alice'))!;
+  await createUser(prisma, 'alice', await hashLoginPassword('alicepass'));
+  const aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   const aliceGlobalId = encodeGlobalID('User', aliceId);
   fs.mkdirSync(path.join(booksDir, 'alice'), { recursive: true });
 
-  await user.createUser('bob', await hashLoginPassword('bobpass'));
-  const bobId = (await user.getUserIdByUsername('bob'))!;
+  await createUser(prisma, 'bob', await hashLoginPassword('bobpass'));
+  const bobId = (await prisma.user.findUnique({ where: { username: 'bob' } }))!.id;
   fs.mkdirSync(path.join(booksDir, 'bob'), { recursive: true });
 
   const aliceViewer: Viewer = {

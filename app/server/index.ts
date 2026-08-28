@@ -14,7 +14,6 @@ import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
-import { UserStore } from './services/user-store';
 
 const version: string = packageJson.version;
 
@@ -37,7 +36,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   await runMigrations(prisma, config.booksDir);
 
   const editionsRoot = path.join(config.dataDir, 'editions');
-  const userStore = new UserStore(prisma, editionsRoot);
   const bookStore = new BookStore(config.booksDir, prisma, editionsRoot);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
@@ -58,7 +56,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     prisma,
     stores: {
       book: bookStore,
-      user: userStore,
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
@@ -77,7 +74,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   const server = createServer(
     config,
-    userStore,
     bookStore,
     thumbnailQueue,
     jwtSecret,
@@ -90,7 +86,17 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // Startup scan: per user — create missing folders, import untracked EPUBs,
   // clean up stale DB entries.
   try {
-    const owners = await userStore.listOwners();
+    // Single-statement `findMany`, one production caller — inlined under
+    // the placement rule. No unit test covers this directly (it runs only
+    // as part of server startup); `graphql/schema/viewer/users.test.ts`'s
+    // "lists every user ... ordered by username" test covers the identical
+    // shape (`findMany` + `orderBy: { username: 'asc' }`) for the separate
+    // `Viewer.users` resolver, which is the closest existing coverage.
+    const ownerRows = await prisma.user.findMany({
+      select: { id: true, username: true },
+      orderBy: { username: 'asc' },
+    });
+    const owners = ownerRows.map((r) => ({ userId: r.id, username: r.username }));
     let scanned = 0;
     let imported = 0;
     let removed = 0;

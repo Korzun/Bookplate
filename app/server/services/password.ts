@@ -79,6 +79,26 @@ export async function userHasPassword(prisma: PrismaClient, username: string): P
   return !!row?.passwordHash;
 }
 
+/**
+ * A function, not inlined, despite being a single-statement lookup: it has
+ * two production callers (`routes/ui.ts`'s login and refresh routes) and
+ * doesn't fit the placement rule's existence-check exception — it isn't
+ * checking whether the user exists (both callers already know the user
+ * exists by the time they call this) and it doesn't return `id`, so
+ * duplicating the query at both call sites would duplicate a *read of
+ * account state*, the thing the two-caller clause protects.
+ */
+export async function getMustChangePassword(
+  prisma: PrismaClient,
+  username: string
+): Promise<boolean> {
+  const row = await prisma.user.findUnique({
+    where: { username },
+    select: { mustChangePassword: true },
+  });
+  return row?.mustChangePassword ?? false;
+}
+
 export async function changePassword(
   prisma: PrismaClient,
   username: string,
