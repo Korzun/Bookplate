@@ -18,14 +18,10 @@ type PendingLookup = {
  * shape of answer, as `progress-loader.ts`, which this deliberately mirrors
  * line for line rather than inventing a second batching idiom.
  *
- * `BookStore.getChapterSpineMaps` is the REST path's batched equivalent, and
- * it is not reused here for two reasons: it takes an `Owner` (userId +
- * username) where a loader keyed per request must batch across users, and it
- * batches only within a single call, which is exactly what a GraphQL resolver
- * cannot arrange. The *parsing* is shared instead — both go through the same
- * "JSON array of finite numbers, malformed degrading to empty" rule, this one
- * via `derive.ts`'s `parseNumberArray`, which is also what `Book.chapterSpineMap`
- * exposes. So the two paths cannot disagree about what the column means.
+ * Parsing is shared with `Book.chapterSpineMap` rather than reimplemented:
+ * both go through `derive.ts`'s `parseNumberArray` and its "JSON array of
+ * finite numbers, malformed degrading to empty" rule, so the two readings
+ * cannot disagree about what the column means.
  *
  * Returns `null` — distinct from `[]` — for a book that does not exist, so a
  * progress row whose book has been deleted is distinguishable from a book with

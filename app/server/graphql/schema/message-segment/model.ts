@@ -10,12 +10,11 @@ export type MessageSegmentShape = { text: string; subject: boolean };
  * message (quotes stripped); the client renders it monospaced. Everything
  * else is plain prose with `subject: false`.
  *
- * NEW API surface, not a restored field: `splitSubjects` is a STORE-only
- * helper today — `ValidationStore.getValidation`
- * (`services/validation-store.ts`) calls it to rebuild `segments` from the
- * stored `message` text on every read, but GraphQL never exposed a
- * `segments` field before this task, on `ValidationMessage` or anywhere
- * else.
+ * NEW API surface, not a restored field: GraphQL never exposed a `segments`
+ * field before this task, on `ValidationMessage` or anywhere else. This is
+ * now the only reader that rebuilds segments from the stored `message` text
+ * — `ValidationStore` used to do the same on its own read path, which went
+ * away with the REST library surface.
  *
  * `subject` is declared `Boolean!` even though `splitSubjects`'s own
  * `MessageSegment` type leaves `subject` UNSET (not `false`) on prose runs

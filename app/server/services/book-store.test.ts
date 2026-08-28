@@ -1772,50 +1772,46 @@ const withProposal = () => ({
 });
 
 describe('PendingFix store', () => {
+  const readPendingFixes = (): Promise<{ bookId: string; state: string }[]> =>
+    prisma.pendingFix.findMany({ where: { userId: OWNER.userId } });
+
   beforeEach(async () => {
     await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
   });
 
-  it('upsert then get returns the parsed row', async () => {
+  it('upsert writes a row carrying the serialized state', async () => {
     await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
-    const rows = await bookStore.getPendingFixes(OWNER);
+    const rows = await readPendingFixes();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ bookId: 'abc123', fileName: 'x.epub', fileSize: 42 });
-    expect(rows[0].proposals).toHaveLength(1);
+    expect(JSON.parse(rows[0].state).proposals).toHaveLength(1);
   });
 
   it('upsert with no proposals and no undo deletes the row', async () => {
     await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
     await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, emptyState());
-    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+    expect(await readPendingFixes()).toHaveLength(0);
   });
 
-  it('getPendingFixes drops an undo-only row older than the TTL, keeps a fresh one', async () => {
-    // fresh undo-only row
+  // An undo-only row is persisted, not dropped on write — that is the
+  // persist-undo-across-reload path. Whether it is still *shown* is a
+  // read-time decision made by `isLivePendingFix` (`graphql/derive.ts`),
+  // including its 7-day TTL boundary; see `derive.test.ts` for those cases.
+  it('upsert persists an undo-only row', async () => {
     await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, {
       ...emptyState(),
       undo: { kind: 'dismiss', proposals: [], appliedFixes: [] },
     });
-    // fresh: must be kept (this is the persist-undo-across-reload path)
-    const freshRows = await bookStore.getPendingFixes(OWNER);
-    expect(freshRows).toHaveLength(1);
-    expect(freshRows[0].proposals).toHaveLength(0);
-    expect(freshRows[0].undo).not.toBeNull();
-
-    // force it stale by backdating updated_at 8 days
-    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
-    await prisma.pendingFix.update({
-      where: { userId_bookId: { userId: OWNER.userId, bookId: 'abc123' } },
-      data: { updatedAt: eightDaysAgo },
-    });
-    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+    const rows = await readPendingFixes();
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].state).undo).not.toBeNull();
   });
 
   it('deletePendingFix is idempotent', async () => {
     await bookStore.deletePendingFix(OWNER, 'abc123'); // no row yet
     await bookStore.upsertPendingFix(OWNER, 'abc123', 'x.epub', 42, withProposal());
     await bookStore.deletePendingFix(OWNER, 'abc123');
-    expect(await bookStore.getPendingFixes(OWNER)).toHaveLength(0);
+    expect(await readPendingFixes()).toHaveLength(0);
   });
 
   it('row follows a bookId change via FK onUpdate cascade', async () => {
@@ -1825,8 +1821,7 @@ describe('PendingFix store', () => {
       where: { userId_id: { userId: OWNER.userId, id: 'abc123' } },
       data: { id: 'def456' },
     });
-    const rows = await bookStore.getPendingFixes(OWNER);
-    expect(rows.map((r) => r.bookId)).toEqual(['def456']);
+    expect((await readPendingFixes()).map((r) => r.bookId)).toEqual(['def456']);
   });
 });
 
@@ -3596,39 +3591,6 @@ describe('listBooksByStatus', () => {
     const books = await bookStore.listBooksByStatus(alice, 'completed');
     expect(books.map((b) => b.id)).toContain('g8');
     expect(books.map((b) => b.id)).not.toContain('g9');
-  });
-});
-
-describe('BookStore.getChapterSpineMaps', () => {
-  it('returns parsed spine maps keyed by id and omits missing books', async () => {
-    await bookStore.addBook(OWNER, 'has-map', stage('has-map'), {
-      ...FAKE_META,
-      chapterCount: 3,
-      chapterSpineMap: [1, 2, 3],
-    });
-    const map = await bookStore.getChapterSpineMaps(OWNER, ['has-map', 'missing']);
-    expect(map.get('has-map')).toEqual([1, 2, 3]);
-    expect(map.has('missing')).toBe(false);
-  });
-
-  it('returns an empty map for an empty id list (no query)', async () => {
-    const map = await bookStore.getChapterSpineMaps(OWNER, []);
-    expect(map.size).toBe(0);
-  });
-
-  it('filters out non-number and non-finite entries from a mixed chapterSpineMap', async () => {
-    await bookStore.addBook(OWNER, 'mixed-map', stage('mixed-map'), {
-      ...FAKE_META,
-      chapterCount: 3,
-      chapterSpineMap: [1, 2, 3],
-    });
-    // Overwrite the stored JSON with garbage values directly via SQL.
-    await prisma.$executeRaw`
-      UPDATE books SET chapter_spine_map = '[1,"bad",null,2,3,true]'
-      WHERE user_id = ${OWNER.userId} AND id = 'mixed-map'
-    `;
-    const map = await bookStore.getChapterSpineMaps(OWNER, ['mixed-map']);
-    expect(map.get('mixed-map')).toEqual([1, 2, 3]);
   });
 });
 

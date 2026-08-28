@@ -94,7 +94,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     deviceStore,
     editionStore,
     validationStore,
-    scanJobStore,
     graphqlHandler,
     replaceStaging
   );

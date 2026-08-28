@@ -15,7 +15,6 @@ import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
 import type { ReplaceStaging } from './services/replace-staging';
-import type { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
@@ -34,7 +33,6 @@ export function createServer(
   deviceStore: DeviceStore,
   editionStore: EditionStore,
   validationStore: ValidationStore,
-  scanJobStore: ScanJobStore,
   graphqlHandler: RequestHandler,
   replaceStaging: ReplaceStaging
 ): express.Express {
@@ -97,7 +95,6 @@ export function createServer(
       thumbnailQueue,
       tokenStore,
       jwtSecret,
-      scanJobStore,
       validationStore,
       replaceStaging
     )

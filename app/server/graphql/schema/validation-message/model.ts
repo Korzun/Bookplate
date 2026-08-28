@@ -17,8 +17,9 @@ export const model = builder.prismaObject('ValidationMessage', {
     path: t.exposeString('path', { nullable: true }),
     line: t.exposeInt('line', { nullable: true }),
     column: t.exposeInt('column', { nullable: true }),
-    // Rebuilt from `message` via `splitSubjects` on every read — the SAME
-    // function `ValidationStore.getValidation` calls, not a duplicate parse.
+    // Rebuilt from `message` via `splitSubjects` on every read, the same
+    // function `epub-validator.ts` uses when it first produces a report —
+    // not a duplicate parse.
     // Not persisted: the `validationMessage` row stores only the raw
     // `message` string, so this is always derived, never stale relative to
     // it. `subject: s.subject === true` normalizes `splitSubjects`'s

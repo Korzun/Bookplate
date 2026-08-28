@@ -56,7 +56,11 @@ const storedValidity = async (
   owner: Harness['aliceOwner'],
   bookId: string
 ): Promise<boolean | null> =>
-  (await harness.stores.validation.getValidation(owner, bookId))?.valid ?? null;
+  (
+    await harness.prisma.validation.findUnique({
+      where: { userId_bookId: { userId: owner.userId, bookId } },
+    })
+  )?.valid ?? null;
 
 // Computed the same way the resolver decodes it — the independent check that
 // the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
@@ -167,10 +171,13 @@ describe('Mutation.bookValidate', () => {
     // which has no library/userId at all) — proves the write landed under
     // alice specifically rather than being lost, misfiled, or silently
     // re-derived from the (library-less) admin viewer.
-    const stored = await harness.stores.validation.getValidation(harness.aliceOwner, BOOK_ID);
+    const stored = await harness.prisma.validation.findUnique({
+      where: { userId_bookId: { userId: harness.aliceOwner.userId, bookId: BOOK_ID } },
+      include: { messages: { orderBy: { seq: 'asc' } } },
+    });
     expect(stored?.valid).toBe(false);
     expect(stored?.messages).toMatchObject([
-      { id: 'RSC-005', severity: 'ERROR', message: 'admin-triggered finding' },
+      { code: 'RSC-005', severity: 'ERROR', message: 'admin-triggered finding' },
     ]);
   });
 

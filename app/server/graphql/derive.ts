@@ -171,12 +171,10 @@ const parseUndoSnapshot = (value: unknown): UndoSnapshot | null => {
 };
 
 /**
- * Parses `PendingFix.state` (and `PendingFixDto`'s reconstructed JSON) into
- * the typed `PendingFixState` shape both GraphQL readings serve. Total like
- * every other parser in this module: malformed JSON, a non-object top level
- * (including the JSON literal `null` or a top-level array), and missing keys
- * all degrade to the empty state — mirroring the store's own
- * `state.autoFixes ?? []` defaulting in `getPendingFixes` (book-store.ts) —
+ * Parses `PendingFix.state` into the typed `PendingFixState` shape both
+ * GraphQL readings serve. Total like every other parser in this module:
+ * malformed JSON, a non-object top level (including the JSON literal `null`
+ * or a top-level array), and missing keys all degrade to the empty state
  * rather than throwing.
  */
 export const parsePendingFixState = (json: string): PendingFixState => {
@@ -194,25 +192,24 @@ export const parsePendingFixState = (json: string): PendingFixState => {
 };
 
 /**
- * 7 days, mirrored from `book-store.ts:31`'s `PENDING_FIX_TTL_MS`. Not
- * imported from there: the store constant is a private module-level `const`,
- * and this predicate is meant to be the shared *decision*, not a dependency
- * on the store module from the GraphQL read path.
+ * 7 days. The single definition of the pending-fix TTL — `BookStore` no
+ * longer carries its own copy, since the REST reader that applied it
+ * (`getPendingFixes`) is gone along with the rest of the REST library
+ * surface.
  */
 const PENDING_FIX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Whether a `PendingFix` row should still be visible, mirrored exactly from
- * the keep/drop decision inside `BookStore.getPendingFixes`
- * (`book-store.ts:699-705`): live unless (no proposals and no undo) — the fix
- * is fully resolved — or (no proposals, an undo snapshot present, and
- * `updatedAt` older than the 7-day TTL) — the undo-only tail has expired.
+ * Whether a `PendingFix` row should still be visible: live unless (no
+ * proposals and no undo) — the fix is fully resolved — or (no proposals, an
+ * undo snapshot present, and `updatedAt` older than the 7-day TTL) — the
+ * undo-only tail has expired. The sole keep/drop rule now that REST's
+ * `getPendingFixes`, which used to apply the same one destructively, is gone.
  *
  * A row whose `state` column failed to parse lands here as
  * `EMPTY_PENDING_FIX_STATE` (`parsePendingFixState`'s total fallback), which
  * has no proposals and no undo — the first clause classifies it not-live,
- * matching the store's own delete-on-parse-failure without this predicate
- * needing to know about parsing at all.
+ * without this predicate needing to know about parsing at all.
  *
  * `now` is a parameter, not `Date.now()` read internally, so this stays a
  * pure function — the TTL-boundary tests in `derive.test.ts` pin an exact

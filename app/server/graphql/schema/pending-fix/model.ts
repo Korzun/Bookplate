@@ -13,9 +13,8 @@ import { model as pendingFixState } from '../pending-fix-state';
  *
  * `state` resolves the stored JSON string through `parsePendingFixState`
  * (`derive.ts`) into the typed `PendingFixState` object graph — see the
- * cleanup spec, §"2. Typed PendingFixState". The same total parser backs
- * `getPendingFixes`'s DTO reading (`book-store.ts`), so this reading and
- * REST's never disagree about what the string means.
+ * cleanup spec, §"2. Typed PendingFixState". That parser is the only reader
+ * of the column, so there is no second interpretation to drift from.
  *
  * The formerly-separate `PendingFixSummary` type is merged in here (cleanup
  * spec, §"3. One PendingFix type"): `Library.pendingFixes` now resolves this

@@ -133,37 +133,6 @@ describe('UserStore.changePassword', () => {
   });
 });
 
-describe('UserStore.authenticateSync', () => {
-  it('returns true when key equals MD5(syncPassword)', async () => {
-    await store.createUser('alice', null);
-    const syncPwd = await store.getSyncPassword('alice');
-    const key = UserStore.hashSyncPassword(syncPwd!);
-    expect(await store.authenticateSync('alice', key)).toBe(true);
-  });
-
-  it('returns false for wrong key', async () => {
-    await store.createUser('alice', null);
-    expect(await store.authenticateSync('alice', 'wrongkey')).toBe(false);
-  });
-
-  it('returns false when syncPassword is null', async () => {
-    // createUser with explicit syncPassword: null (bypassing auto-generation)
-    await prisma.user.create({
-      data: {
-        id: `test-id-${Math.random().toString(36).slice(2)}`,
-        username: 'alice',
-        passwordHash: null,
-        syncPassword: null,
-      },
-    });
-    expect(await store.authenticateSync('alice', 'anything')).toBe(false);
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await store.authenticateSync('nobody', 'key')).toBe(false);
-  });
-});
-
 describe('UserStore.getSyncPassword', () => {
   it('returns the stored syncPassword', async () => {
     await store.createUser('alice', null);
@@ -346,65 +315,6 @@ describe('UserStore.listUsers', () => {
   });
 });
 
-describe('UserStore.getUserProgress', () => {
-  let aliceId: string;
-  let bobId: string;
-
-  beforeEach(async () => {
-    await store.createUser('alice', null);
-    aliceId = (await store.getUserIdByUsername('alice'))!;
-  });
-
-  it('returns empty array when user has no progress', async () => {
-    expect(await store.getUserProgress(aliceId)).toEqual([]);
-  });
-
-  it('returns all progress records ordered by timestamp descending', async () => {
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/p[1]',
-      percentage: 0.3,
-      device: 'Kobo',
-      device_id: 'd1',
-      timestamp: 100,
-    });
-    await store.saveProgress(aliceId, {
-      document: 'doc2',
-      progress: '/p[2]',
-      percentage: 0.8,
-      device: 'Kobo',
-      device_id: 'd1',
-      timestamp: 200,
-    });
-    const records = await store.getUserProgress(aliceId);
-    expect(records).toHaveLength(2);
-    expect(records[0].document).toBe('doc2');
-    expect(records[1].document).toBe('doc1');
-  });
-
-  it('only returns records for the specified user', async () => {
-    await store.createUser('bob', null);
-    bobId = (await store.getUserIdByUsername('bob'))!;
-    await store.saveProgress(aliceId, {
-      document: 'doc1',
-      progress: '/p[1]',
-      percentage: 0.5,
-      device: 'Kobo',
-      device_id: 'd1',
-    });
-    await store.saveProgress(bobId, {
-      document: 'doc2',
-      progress: '/p[1]',
-      percentage: 0.3,
-      device: 'Kobo',
-      device_id: 'd2',
-    });
-    const aliceRecords = await store.getUserProgress(aliceId);
-    expect(aliceRecords).toHaveLength(1);
-    expect(aliceRecords[0].document).toBe('doc1');
-  });
-});
-
 describe('UserStore.deleteUser', () => {
   let aliceId: string;
 
@@ -431,7 +341,7 @@ describe('UserStore.deleteUser', () => {
 
   it('cascades to delete all progress records', async () => {
     await store.deleteUser('alice');
-    expect(await store.getUserProgress(aliceId)).toEqual([]);
+    expect(await prisma.progress.findMany({ where: { userId: aliceId } })).toEqual([]);
   });
 
   it('does not affect other users', async () => {
@@ -842,6 +752,17 @@ describe('UserStore.getUserProgressPage', () => {
     const page2 = await store.getUserProgressPage(id, cursor, 2);
     expect(page2.items.map((i) => i.document)).toEqual(['a']);
     expect(page2.nextCursor).toBeNull();
+  });
+
+  it('only returns rows for the specified user', async () => {
+    await store.createUser('alice', 'pass');
+    await store.createUser('bob', 'pass');
+    const id = (await store.getUserIdByUsername('alice'))!;
+    const bobId = (await store.getUserIdByUsername('bob'))!;
+    await seed(id, 'doc1', 100);
+    await seed(bobId, 'doc2', 200);
+    const page = await store.getUserProgressPage(id, null, 50);
+    expect(page.items.map((i) => i.document)).toEqual(['doc1']);
   });
 
   it('breaks timestamp ties by document ascending', async () => {

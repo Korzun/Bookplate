@@ -101,7 +101,11 @@ describe('replaceEpubBytes', () => {
     );
     expect(updated.id).not.toBe('oldid'); // fingerprint changed
     expect(updated.title).toBe('New'); // metadata re-derived
-    expect(await validationStore.getValidation(OWNER, updated.id)).not.toBeNull();
+    expect(
+      await prisma.validation.findUnique({
+        where: { userId_bookId: { userId: OWNER.userId, bookId: updated.id } },
+      })
+    ).not.toBeNull();
     // lineage recorded old -> new
     const rows = await prisma.$queryRawUnsafe<Array<{ old_id: string }>>(
       `SELECT old_id FROM book_id_history WHERE user_id='u1' AND current_id=?`,

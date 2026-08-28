@@ -99,10 +99,6 @@ export class UserStore {
     return row.id;
   }
 
-  async authenticateSync(username: string, key: string): Promise<boolean> {
-    return !!(await this.authenticate(username, key));
-  }
-
   async validateUser(username: string, password: string): Promise<string | false> {
     const row = await this.prisma.user.findUnique({
       where: { username },
@@ -287,21 +283,6 @@ export class UserStore {
       orderBy: { username: 'asc' },
     });
     return rows.map((r) => ({ userId: r.id, username: r.username }));
-  }
-
-  async getUserProgress(userId: string): Promise<Progress[]> {
-    const rows = await this.prisma.progress.findMany({
-      where: { userId },
-      orderBy: { timestamp: 'desc' },
-    });
-    return rows.map((row) => ({
-      document: row.document,
-      progress: row.progress,
-      percentage: row.percentage,
-      device: row.device,
-      device_id: row.deviceId,
-      timestamp: row.timestamp,
-    }));
   }
 
   /**

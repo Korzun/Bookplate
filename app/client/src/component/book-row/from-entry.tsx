@@ -66,14 +66,12 @@ interface BookRowFromEntryProps {
  *
  * `unmasked.id` is `Book`'s Relay global ID (`builder.prismaNode('Book', {
  * id: { field: 'userId_id' } ... })`, server-side), not the raw content-hash
- * id `page/book` was built against — this component's own task-7 doc
- * comment used to warn that a click from a GraphQL-rendered grid row might
- * not resolve there. That gap closed two commits later, in task 13:
- * `/api/books/:id` (and four sibling REST routes — `routes/ui.ts`'s
- * `resolveBookLocalId`) now accepts EITHER form and resolves a global id to
- * the raw one before querying `bookStore`, so `path.book(unmasked.id)`
- * below reaches `page/book` correctly today, ahead of `page/book` itself
- * ever moving onto GraphQL.
+ * id `page/book` was originally built against, so `path.book(unmasked.id)`
+ * below carries the global form. `page/book` reads GraphQL, and the two
+ * remaining REST routes that still take a book id in the path
+ * (`/api/books/:id/cover` and `/api/books/:id/download`) accept EITHER form
+ * — `routes/ui.ts`'s `resolveBookLocalId` resolves a global id to the raw
+ * one before querying `bookStore`.
  */
 export function BookRowFromEntry({ asCard, showAuthor, book }: BookRowFromEntryProps) {
   const navigate = useNavigate();

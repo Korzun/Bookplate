@@ -1,16 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { Owner } from '../types';
-import {
-  splitSubjects,
-  type Severity,
-  type ValidationMessage,
-  type ValidationReport,
-} from './epub-validator';
-
-export type StoredValidation = ValidationReport & { validatedAt: Date };
-
-const SEVERITIES: Severity[] = ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE'];
+import type { ValidationReport } from './epub-validator';
 
 export class ValidationStore {
   constructor(private readonly prisma: PrismaClient) {}
@@ -44,37 +35,5 @@ export class ValidationStore {
         });
       }
     });
-  }
-
-  async getValidation(owner: Owner, bookId: string): Promise<StoredValidation | null> {
-    const row = await this.prisma.validation.findUnique({
-      where: { userId_bookId: { userId: owner.userId, bookId } },
-      include: { messages: { orderBy: { seq: 'asc' } } },
-    });
-    if (!row) return null;
-
-    const counts = Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as Record<Severity, number>;
-    const messages: ValidationMessage[] = row.messages.map((m) => {
-      const severity = m.severity as Severity;
-      counts[severity] = (counts[severity] ?? 0) + 1;
-      return {
-        id: m.code,
-        severity,
-        message: m.message,
-        segments: splitSubjects(m.message),
-        location:
-          m.path != null
-            ? { path: m.path, line: m.line ?? undefined, column: m.column ?? undefined }
-            : undefined,
-      };
-    });
-
-    return {
-      valid: row.valid,
-      threshold: row.threshold as StoredValidation['threshold'],
-      counts,
-      messages,
-      validatedAt: new Date(row.validatedAt),
-    };
   }
 }

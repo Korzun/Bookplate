@@ -199,7 +199,9 @@ describe('Mutation.libraryScan', () => {
 
     const [bookId] = job!.importedBookIds;
     expect(
-      await harness.stores.validation.getValidation(harness.aliceOwner, bookId)
+      await harness.prisma.validation.findUnique({
+        where: { userId_bookId: { userId: harness.aliceOwner.userId, bookId } },
+      })
     ).not.toBeNull();
     expect(reconcileSpy).toHaveBeenCalled();
   });
