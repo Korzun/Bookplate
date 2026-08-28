@@ -72,7 +72,7 @@ const result = builder.unionType('DeviceDeleteResult', {
  *
  * The `prisma.device.delete` call below is NOT wrapped in `toResult`: traced
  * end to end, its own `P2025` catch converts a races-with-itself
- * double-delete into `false` — nothing left in its body can throw one of the
+ * double-delete into `null` — nothing left in its body can throw one of the
  * seven known store errors.
  *
  * `DeviceUser` rows for this device are removed by the DB itself
