@@ -6,7 +6,6 @@ import { jwtAuth } from './middleware/auth';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
 import { requestLog } from './middleware/request-log';
 import { requestTimeout } from './middleware/timeout';
-import { createDevicesRouter } from './routes/devices';
 import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
 import { createUiRouter } from './routes/ui';
@@ -81,10 +80,6 @@ export function createServer(
   server.use(
     '/api/users',
     createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
-  );
-  server.use(
-    '/api/devices',
-    createDevicesRouter(deviceStore, editionStore, userStore, jwtAuth(jwtSecret))
   );
   server.use(
     '/',
