@@ -62,15 +62,15 @@ export type Stores = {
    */
   replaceStaging: ReplaceStaging;
   /**
-   * Wired in for task 6 (`userResetPassword`/`userChangePassword`): REST
-   * revokes every outstanding refresh token for the affected username right
-   * after either write (`routes/users.ts`'s `POST /:username/reset-password`,
-   * `routes/ui.ts`'s `PATCH /api/my/password`) so a stolen/old refresh token
-   * cannot outlive a password change. GraphQL is mounted outside those route
-   * handlers and cannot reach the `tokenStore` instance `server.ts` builds
-   * for them any other way, so the same shared instance is threaded through
-   * here too — same "one instance, never a second one" rule as
-   * `replaceStaging` above. GraphQL cannot reproduce REST's *cookie* reissue
+   * Wired in for task 6 (`userResetPassword`/`userChangePassword`): every
+   * outstanding refresh token for the affected username is revoked right
+   * after either write, so a stolen/old refresh token cannot outlive a
+   * password change. The same rule REST applies on `routes/users.ts`'s
+   * `POST /:username/reset-password`, the one surviving REST password
+   * write. GraphQL is mounted outside that route handler and cannot reach
+   * the `tokenStore` instance `server.ts` builds for it any other way, so
+   * the same shared instance is threaded through here too — same "one
+   * instance, never a second one" rule as `replaceStaging` above. GraphQL cannot reproduce REST's *cookie* reissue
    * half of that flow (no response object reaches this context — see
    * `createContext` below): a `userResetPassword`/`userChangePassword` caller
    * does NOT recover a fresh token via REST's `/api/auth/refresh` afterward —

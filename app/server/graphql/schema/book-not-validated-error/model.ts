@@ -22,13 +22,12 @@ import { model as validation } from '../validation/model';
  * instead — see task-2's review, Adjudication 2, for the full reasoning
  * behind replacing the earlier reuse.
  *
- * `t.prismaField`, resolved by a fresh lookup rather than carrying the
- * `StoredValidation` DTO `ValidationStore.getValidation` returns: same reason
- * `BookHashCollisionError.collidingBook` and `BookUpdateMetadataPayload.book`
- * are fresh lookups rather than DTOs — `Validation`'s GraphQL type
- * (`validation/model.ts`) is Prisma-row-backed (its `messages` field is a
- * real `t.relatedConnection`), and the DTO's already-parsed `messages` array
- * has no relation to merge a connection query against.
+ * `t.prismaField`, resolved by a fresh lookup rather than carrying a
+ * pre-read DTO: same reason `BookHashCollisionError.collidingBook` and
+ * `BookUpdateMetadataPayload.book` are fresh lookups — `Validation`'s
+ * GraphQL type (`validation/model.ts`) is Prisma-row-backed (its `messages`
+ * field is a real `t.relatedConnection`), and an already-parsed `messages`
+ * array has no relation to merge a connection query against.
  */
 export type BookNotValidatedErrorShape = {
   readonly __typename: 'BookNotValidatedError';

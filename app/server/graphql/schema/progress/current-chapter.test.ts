@@ -132,10 +132,9 @@ describe('Progress.currentChapter', () => {
     ).toEqual([2]);
   });
 
-  // REST batches the whole page's spine maps in one `getChapterSpineMaps`
-  // call. A resolver has no page to batch over, so `context.loadChapterSpineMap`
-  // does it instead — this asserts the batching actually happens rather than
-  // trusting that the loader exists.
+  // A resolver has no page to batch spine-map lookups over, so
+  // `context.loadChapterSpineMap` does it instead — this asserts the batching
+  // actually happens rather than trusting that the loader exists.
   it('batches the spine-map lookups across a page into a single query', async () => {
     for (let i = 0; i < 15; i++) {
       const id = i.toString().padStart(32, '0');

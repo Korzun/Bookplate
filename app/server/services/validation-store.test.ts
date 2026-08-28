@@ -79,39 +79,39 @@ describe('ValidationStore', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns null when never validated', async () => {
-    expect(await store.getValidation(owner, 'book1')).toBeNull();
+  const readValidation = (bookId: string) =>
+    prisma.validation.findUnique({
+      where: { userId_bookId: { userId: owner.userId, bookId } },
+      include: { messages: { orderBy: { seq: 'asc' } } },
+    });
+
+  it('writes no row when never validated', async () => {
+    expect(await readValidation('book1')).toBeNull();
   });
 
-  it('round-trips a saved report with derived counts and segments, ordered by seq', async () => {
+  it('persists the report and its messages, ordered by seq', async () => {
     await store.saveValidation(owner, 'book1', report(false));
-    const got = await store.getValidation(owner, 'book1');
+    const got = await readValidation('book1');
     expect(got).not.toBeNull();
     expect(got!.valid).toBe(false);
     expect(got!.threshold).toBe('ERROR');
-    expect(got!.validatedAt).toBeInstanceOf(Date);
-    expect(got!.messages.map((m) => m.id)).toEqual(['HTM-004', 'OPF-014']);
-    expect(got!.counts).toEqual({ FATAL: 0, ERROR: 1, WARNING: 1, INFO: 0, USAGE: 0 });
-    // segments recomputed from the message text
-    expect(got!.messages[0].segments).toEqual([
-      { text: 'Attribute ' },
-      { text: 'x', subject: true },
-      { text: ' not allowed' },
-    ]);
-    expect(got!.messages[0].location).toEqual({ path: 'c.xhtml', line: 2, column: undefined });
+    expect(got!.validatedAt).toEqual(expect.any(Number));
+    expect(got!.messages.map((m) => m.code)).toEqual(['HTM-004', 'OPF-014']);
+    expect(got!.messages.map((m) => m.severity)).toEqual(['WARNING', 'ERROR']);
+    expect(got!.messages[0]).toMatchObject({ path: 'c.xhtml', line: 2, column: null });
   });
 
   it('upsert replaces prior messages', async () => {
     await store.saveValidation(owner, 'book1', report(false)); // 2 messages
     await store.saveValidation(owner, 'book1', report(true)); // 1 message, valid
-    const got = await store.getValidation(owner, 'book1');
+    const got = await readValidation('book1');
     expect(got!.valid).toBe(true);
-    expect(got!.messages.map((m) => m.id)).toEqual(['HTM-004']);
+    expect(got!.messages.map((m) => m.code)).toEqual(['HTM-004']);
   });
 
   it('cascades on book delete', async () => {
     await store.saveValidation(owner, 'book1', report(false));
     await bookStore.deleteBook(owner, 'book1');
-    expect(await store.getValidation(owner, 'book1')).toBeNull();
+    expect(await readValidation('book1')).toBeNull();
   });
 });

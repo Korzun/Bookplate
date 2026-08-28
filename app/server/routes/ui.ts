@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -6,42 +6,20 @@ import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 import express, { Router, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 
-import { deriveCurrentChapter } from '../graphql/derive';
 import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
-import { applyEpubChanges, replaceEpubBytes } from '../services/apply-epub-changes';
-import {
-  BookStore,
-  BookHashCollisionError,
-  BookAlreadyExistsError,
-  SelfLinkError,
-  DocumentAlreadyLinkedError,
-  DocumentIsBookError,
-} from '../services/book-store';
+import { BookStore, BookAlreadyExistsError } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
-import { EpubValidationError } from '../services/epub-validator';
-import { EpubChanges, repairPackageDocument } from '../services/epub-writer';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
-import { revalidateBook, revalidateLibrary } from '../services/revalidate-library';
-import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore, REFRESH_TOKEN_TTL_MS } from '../services/token-store';
 import { UserStore } from '../services/user-store';
 import { ValidationStore } from '../services/validation-store';
-import {
-  AppConfig,
-  BookListFilters,
-  EpubMeta,
-  MetadataFix,
-  Owner,
-  PageCursor,
-  SearchSuggestionsResponse,
-} from '../types';
+import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
-import { decodeProgressCursor, parseProgressTake } from '../utils/progress-pagination';
 
 const log = logger('UI');
 
@@ -50,8 +28,7 @@ const ALLOWED_EXTENSIONS = new Set(['.epub']);
 /**
  * Shared multer `fileSize` caps (Task 4, pre-client-polish plan §5): EPUB
  * uploads (bulk `/api/books/upload` and staged-EPUB `/api/books/replace-
- * staging`) at 200MB, covers (`/api/books/cover-staging` and the legacy
- * multipart-cover branch of `PATCH /api/books/:id/metadata`) at 20MB.
+ * staging`) at 200MB, covers (`/api/books/cover-staging`) at 20MB.
  * `epubUpload` already carried the 200MB figure pre-Task-4 (bumped up from
  * the plain `upload` instance's previous UNBOUNDED limit — see `upload`
  * below); `coverUpload` is raised here from its previous 10MB. One constant
@@ -102,8 +79,6 @@ function withUploadLimit(mw: RequestHandler): RequestHandler {
   };
 }
 
-const ISO_8601_RE = /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/;
-
 /**
  * Returns the authenticated user's surrogate ID, or null after responding
  * with 401 (e.g. a token for a since-deleted user, or an admin token used
@@ -143,8 +118,6 @@ function requireStagingIdentity(req: Request, res: Response): string | null {
   }
   return identity;
 }
-
-const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed']);
 
 const LOGIN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
@@ -325,7 +298,6 @@ export function createUiRouter(
   thumbnailQueue: ThumbnailQueue,
   tokenStore: TokenStore,
   jwtSecret: Buffer,
-  scanJobStore: ScanJobStore,
   validationStore: ValidationStore,
   replaceStaging: ReplaceStaging,
   loginRateLimitNow: () => number = Date.now
@@ -428,19 +400,18 @@ export function createUiRouter(
   }
 
   /**
-   * TEMPORARY (Task 13). Dies with this route: `/api/books/:id` and its
-   * siblings below are on spec 3's deletion list, and this dual-form
-   * acceptance is not a permanent identifier design — do not extend it or
-   * copy it elsewhere.
+   * Accepts either form of book identifier on the two `/api/books/:id/*`
+   * routes that outlived the client's move to GraphQL (`/cover` and
+   * `/download`). This dual-form acceptance is not a permanent identifier
+   * design — do not extend it or copy it elsewhere.
    *
    * GraphQL's `Book.id` is a Relay global ID encoding `[userId, bookId]`
    * (spec 1's book-relay-id pass removed the raw `bookId` field from the
    * schema entirely — the global ID is now the only book identifier
-   * GraphQL emits). But `page/book` is still REST, and the GraphQL-fed
-   * library grid navigates to it with that global ID in the URL, which
-   * flows straight through to this route's `:id` param. Resolves either
-   * form to the raw, content-hash id `bookStore` expects; a raw id (every
-   * screen not yet on GraphQL) passes through unchanged.
+   * GraphQL emits), and the GraphQL-fed screens build cover/download URLs
+   * from it, so that global ID flows straight through to this route's
+   * `:id` param. Resolves either form to the raw, content-hash id
+   * `bookStore` expects; a raw id passes through unchanged.
    *
    * Reuses the schema's own `parseCompoundId` (`graphql/schema/node-
    * scope.ts`) rather than hand-rolling base64/JSON parsing — same
@@ -457,7 +428,7 @@ export function createUiRouter(
    * alice's userId, the two disagree and the request is refused — same as
    * it would be if a raw id simply didn't belong to bob's library.
    *
-   * WHAT THIS CHECK IS FOR (security-reviewed, Task 13 round 2): every
+   * WHAT THIS CHECK IS FOR (security-reviewed): every
    * caller of this function passes the returned local id straight into a
    * `bookStore` method that re-scopes its own query by `owner.userId`
    * (`prisma.book.findUnique({ where: { userId_id: { userId:
@@ -465,7 +436,7 @@ export function createUiRouter(
    * specifically, this check is REDUNDANT with that query today; removing
    * it does not open a cross-tenant read (verified: reducing this function
    * to `return bookId` unconditionally leaves every cross-tenant test in
-   * `ui.test.ts`'s Task 13 suite green). What it DOES do, non-redundantly:
+   * `ui.test.ts` green). What it DOES do, non-redundantly:
    * (1) since book ids are content hashes and two owners routinely hold
    * the same id for the same file (`graphql/schema/node-scope.ts`'s
    * `NO_MATCH_USER_ID` doc comment), without this check a global id naming
@@ -508,16 +479,15 @@ export function createUiRouter(
    * `deletedId` (`encodeGlobalID('Book', JSON.stringify([owner.userId,
    * deleted.id]))`) — not a fresh encoding scheme invented for REST.
    *
-   * 2026-08-13 final review, C-2 (human ruling, Option 1): `PATCH .../
-   * metadata` and `POST .../replace` both return a NEW raw id (editing
-   * metadata or replacing the file changes the content hash), and
-   * `page/book` (GraphQL) needs a Relay global id to navigate back to it —
-   * there is no client-side way to produce one without this. Named
-   * `bookGlobalId` (a local helper, not a response field name) to keep this
-   * unambiguously distinct from `resolveBookLocalId` above; the two REST
-   * response bodies that call it expose it as `globalId` — see their own
-   * comments for why that field name, not `id` (already means the raw hash
-   * in every REST response) or `documentId` (means raw on the GraphQL side).
+   * 2026-08-13 final review, C-2 (human ruling, Option 1): an upload mints
+   * a raw, content-hash id, and the GraphQL screens need a Relay global id
+   * to navigate to the new book — there is no client-side way to produce
+   * one without this. Named `bookGlobalId` (a local helper, not a response
+   * field name) to keep this unambiguously distinct from
+   * `resolveBookLocalId` above; `POST /api/books/upload`'s response body
+   * exposes it as `globalId` — see that route's own comment for why that
+   * field name, not `id` (already means the raw hash in every REST
+   * response) or `documentId` (means raw on the GraphQL side).
    */
   function bookGlobalId(owner: Owner, rawId: string): string {
     return encodeGlobalID('Book', JSON.stringify([owner.userId, rawId]));
@@ -629,349 +599,11 @@ export function createUiRouter(
     })
   );
 
-  router.get('/api/config', requireAuth, (_req: Request, res: Response) => {
-    res.json({
-      libraryName: config.libraryName,
-      maxConcurrentUploads: config.maxConcurrentUploads,
-    });
-  });
-
-  router.get(
-    '/api/my/progress',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.json({ items: [], nextCursor: null });
-        return;
-      }
-      const userId = requireUserId(req, res);
-      if (!userId) return;
-      const owner: Owner = { userId, username: req.user!.username };
-      const cursor = decodeProgressCursor(req.query.cursor);
-      const take = parseProgressTake(req.query.take);
-      const page = await userStore.getUserProgressPage(userId, cursor, take);
-      const spineMaps = await bookStore.getChapterSpineMaps(
-        owner,
-        page.items.map((p) => p.document)
-      );
-      const items = page.items.map((p) => {
-        const spineMap = spineMaps.get(p.document);
-        const currentChapter = deriveCurrentChapter(p.progress, spineMap) ?? undefined;
-        return {
-          ...p,
-          ...(currentChapter !== undefined ? { currentChapter } : {}),
-        };
-      });
-      res.json({ items, nextCursor: page.nextCursor });
-    })
-  );
-
-  router.delete(
-    '/api/my/progress/:document',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const userId = requireUserId(req, res);
-      if (!userId) return;
-      // Permissive, not the strict `resolveBookLocalId` treatment the other
-      // book routes get: `:document` is a KOReader document id, and a
-      // progress row may legitimately exist for a document with no `Book`
-      // row at all (an e-reader syncing a book outside the library). A Book
-      // global ID still resolves to its raw id (and, since resolution
-      // includes the owner check, a cross-tenant one still 404s instead of
-      // clearing a stray row under a hash nobody owns); anything else
-      // — including an ordinary document hash — passes through untouched,
-      // exactly as `resolveBookLocalId` already behaves for non-global-ID
-      // input.
-      const owner: Owner = { userId, username: req.user!.username };
-      const documentId = resolveBookLocalId(owner, req.params.document);
-      if (documentId === null) {
-        res.status(404).json({ error: 'Progress record not found' });
-        return;
-      }
-      const cleared = await userStore.clearProgress(userId, documentId);
-      if (!cleared) {
-        res.status(404).json({ error: 'Progress record not found' });
-        return;
-      }
-      res.status(204).send();
-    })
-  );
-
-  router.put(
-    '/api/my/progress/:document',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const userId = requireUserId(req, res);
-      if (!userId) return;
-      const owner: Owner = { userId, username: req.user!.username };
-      // See the DELETE sibling above for why this resolution is permissive
-      // rather than the strict treatment the other book routes get.
-      const documentId = resolveBookLocalId(owner, req.params.document);
-      if (documentId === null) {
-        res.status(404).json({ error: 'Progress record not found' });
-        return;
-      }
-      const { currentChapter, percentage, device, device_id } = req.body as Record<string, unknown>;
-      if (
-        typeof currentChapter !== 'number' ||
-        !Number.isInteger(currentChapter) ||
-        currentChapter < 1 ||
-        typeof percentage !== 'number' ||
-        percentage <= 0 ||
-        percentage > 1
-      ) {
-        res.status(400).json({ error: 'Invalid body' });
-        return;
-      }
-      // Synthesise a minimal EPUB CFI so currentChapter persists through GET /api/my/progress
-      const book = await bookStore.getBookById(owner, documentId);
-      let progress = '';
-      if (
-        book &&
-        book.chapterSpineMap.length > 0 &&
-        currentChapter <= book.chapterSpineMap.length
-      ) {
-        const spineIndex = book.chapterSpineMap[currentChapter - 1];
-        progress = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
-      }
-      await userStore.saveProgress(userId, {
-        document: documentId,
-        progress,
-        percentage,
-        device: typeof device === 'string' && device ? device : 'Web',
-        device_id: typeof device_id === 'string' ? device_id : '',
-      });
-      res.status(200).json({});
-    })
-  );
-
-  router.patch(
-    '/api/my/password',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const userId = requireUserId(req, res);
-      if (!userId) return;
-      const { currentPassword, newPassword } = req.body as {
-        currentPassword?: string;
-        newPassword?: string;
-      };
-      if (
-        typeof currentPassword !== 'string' ||
-        !currentPassword ||
-        typeof newPassword !== 'string' ||
-        !newPassword
-      ) {
-        res.status(400).json({ error: 'Current and new password are required' });
-        return;
-      }
-      const valid = await userStore.validateUser(req.user!.username, currentPassword);
-      if (!valid) {
-        res.status(401).json({ error: 'Current password is incorrect' });
-        return;
-      }
-      const newHash = await UserStore.hashLoginPassword(newPassword);
-      const changed = await userStore.changePassword(req.user!.username, newHash);
-      if (!changed) {
-        res.status(404).json({ error: 'User not found' });
-        return;
-      }
-      log.info(`User "${req.user!.username}" changed their password`);
-      // Revoke all outstanding refresh tokens, then hand back a fresh pair so
-      // the client immediately holds claims with mustChangePassword: false.
-      await tokenStore.revokeAllForUsername(req.user!.username);
-      await issueTokens(res, {
-        userId,
-        username: req.user!.username,
-        isAdmin: false,
-        mustChangePassword: false,
-      });
-    })
-  );
-
-  router.get(
-    '/api/my/sync-password',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const syncPassword = await userStore.getSyncPassword(req.user!.username);
-      if (syncPassword === null) {
-        res.status(404).json({ error: 'User not found' });
-        return;
-      }
-      res.json({ syncPassword });
-    })
-  );
-
-  router.post(
-    '/api/my/sync-password/regenerate',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      if (req.user!.isAdmin) {
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-      const newPassword = UserStore.generateSyncPassword();
-      const changed = await userStore.changeSyncPassword(req.user!.username, newPassword);
-      if (!changed) {
-        res.status(404).json({ error: 'User not found' });
-        return;
-      }
-      log.info(`User "${req.user!.username}" regenerated sync password`);
-      res.json({ syncPassword: newPassword });
-    })
-  );
-
   // ── Static assets (no auth required) ──────────────────
   // Serves the built client's hashed bundles (/assets/*) plus root brand files
   // (favicon.ico, favicon.svg, apple-touch-icon, site.webmanifest, /png/*).
   // `index: false` so "/" falls through to the SPA catch-all below.
   router.use(express.static(path.join(__dirname, '../../../client/dist'), { index: false }));
-
-  router.get(
-    '/api/books',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-
-      const { cursor, take, status, query, author, seriesName, subjects, entryType } = req.query;
-
-      if (status !== undefined && (typeof status !== 'string' || !VALID_STATUSES.has(status))) {
-        res.status(400).json({
-          error: 'Invalid status. Must be "not-started", "in-progress", or "completed".',
-        });
-        return;
-      }
-
-      const entryTypeValue =
-        entryType === 'series' || entryType === 'standalone' ? entryType : undefined;
-
-      const queryValue = typeof query === 'string' && query ? query : undefined;
-      const authorValue = typeof author === 'string' && author ? author : undefined;
-      const seriesNameValue = typeof seriesName === 'string' && seriesName ? seriesName : undefined;
-      const subjectsValue: string[] = Array.isArray(subjects)
-        ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
-        : typeof subjects === 'string' && subjects
-          ? [subjects]
-          : [];
-
-      const filters: BookListFilters | undefined =
-        status !== undefined ||
-        queryValue !== undefined ||
-        authorValue !== undefined ||
-        seriesNameValue !== undefined ||
-        subjectsValue.length > 0 ||
-        entryTypeValue !== undefined
-          ? {
-              status: status as BookListFilters['status'],
-              query: queryValue,
-              author: authorValue,
-              seriesName: seriesNameValue,
-              subjects: subjectsValue.length > 0 ? subjectsValue : undefined,
-              entryType: entryTypeValue,
-            }
-          : undefined;
-
-      if (cursor !== undefined || take !== undefined || filters !== undefined) {
-        let pageCursor: PageCursor | null = null;
-        if (typeof cursor === 'string' && cursor) {
-          try {
-            pageCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as PageCursor;
-          } catch {
-            pageCursor = null;
-          }
-        }
-        const pageSize =
-          typeof take === 'string' ? Math.min(Math.max(parseInt(take, 10) || 20, 1), 100) : 20;
-        const result = await bookStore.listBooksPage(owner, pageCursor, pageSize, filters);
-        res.json(result);
-        return;
-      }
-
-      res.json(
-        (await bookStore.listBooks(owner)).map((b) => {
-          const {
-            path: _path,
-            description: _description,
-            identifiers: _identifiers,
-            subjects: _subjects,
-            addedAt: _addedAt,
-            chapterSpineMap: _chapterSpineMap,
-            chapterNames: _chapterNames,
-            ...rest
-          } = b;
-          return rest;
-        })
-      );
-    })
-  );
-
-  router.get(
-    '/api/search/suggestions',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const { q, author, seriesName, subjects } = req.query;
-      if (!q || typeof q !== 'string' || !q.trim()) {
-        res.json({ groups: [] } satisfies SearchSuggestionsResponse);
-        return;
-      }
-      const activeSubjects: string[] = Array.isArray(subjects)
-        ? (subjects as string[]).filter((s): s is string => typeof s === 'string' && s.length > 0)
-        : typeof subjects === 'string' && subjects
-          ? [subjects]
-          : [];
-      const result = await bookStore.getSearchSuggestions(owner, {
-        q: q.trim(),
-        filter: {
-          author: typeof author === 'string' && author ? author : undefined,
-          seriesName: typeof seriesName === 'string' && seriesName ? seriesName : undefined,
-          activeSubjects,
-        },
-      });
-      res.json(result);
-    })
-  );
-
-  router.get(
-    '/api/subjects',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const subjects = await bookStore.getSubjects(owner);
-      res.json({ subjects });
-    })
-  );
-
-  // Series names ordered by the server-computed sort key (articles stripped),
-  // used to populate the series autocomplete in the book edit form.
-  router.get(
-    '/api/series',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const series = await bookStore.listSeries(owner);
-      res.json({ series: series.map((s) => s.name) });
-    })
-  );
 
   router.post(
     '/api/books/upload',
@@ -1150,177 +782,6 @@ export function createUiRouter(
   );
 
   router.get(
-    '/api/books/pending-fixes',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const rows = await bookStore.getPendingFixes(owner);
-      // `globalId` (Task 7, book-edit spec): this endpoint reseeds the
-      // upload queue on page reload — a raw `bookId` alone can't build a
-      // working Edit link once `page/book-edit` requires a Relay global id.
-      // Same `bookGlobalId` helper the metadata/replace responses already
-      // use, applied additively per row — `bookId` keeps meaning the raw hash.
-      res.json(rows.map((row) => ({ ...row, globalId: bookGlobalId(owner, row.bookId) })));
-    })
-  );
-
-  router.put(
-    '/api/books/:id/pending-fixes',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const { fileName, fileSize, state } = req.body ?? {};
-      if (
-        typeof fileName !== 'string' ||
-        typeof fileSize !== 'number' ||
-        typeof state !== 'object' ||
-        state === null
-      ) {
-        res.status(400).json({ error: 'fileName, fileSize, and state are required' });
-        return;
-      }
-      await bookStore.upsertPendingFix(owner, bookId, fileName, fileSize, {
-        autoFixes: state.autoFixes ?? [],
-        appliedFixes: state.appliedFixes ?? [],
-        proposals: state.proposals ?? [],
-        undo: state.undo ?? null,
-      });
-      res.status(204).end();
-    })
-  );
-
-  router.delete(
-    '/api/books/:id/pending-fixes',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      await bookStore.deletePendingFix(owner, bookId);
-      res.status(204).end();
-    })
-  );
-
-  router.get(
-    '/api/books/:id',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const book = await bookStore.getBookById(owner, bookId, { withEditionCount: true });
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const { path: _path, ...rest } = book;
-      res.json(rest);
-    })
-  );
-
-  router.get(
-    '/api/books/:id/lineage',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const lineage = await bookStore.getBookLineage(owner, req.params.id);
-      if (!lineage) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      res.json(lineage);
-    })
-  );
-
-  router.delete(
-    '/api/books/:id/lineage',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const cleared = await bookStore.clearEditLineage(owner, book.id);
-      log.info(`Cleared ${cleared} edit-lineage row(s) for book=${book.id}`);
-      res.json({ cleared });
-    })
-  );
-
-  router.post(
-    '/api/books/:id/link',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const { documentId } = req.body as { documentId?: unknown };
-      if (typeof documentId !== 'string' || !documentId.trim()) {
-        res.status(400).json({ error: 'documentId is required' });
-        return;
-      }
-      try {
-        const result = await bookStore.linkDocument(owner, req.params.id, documentId.trim());
-        if (result === null) {
-          res.status(404).json({ error: 'Book not found' });
-          return;
-        }
-        res.status(204).send();
-      } catch (err) {
-        if (err instanceof SelfLinkError) {
-          res.status(400).json({ error: err.message });
-          return;
-        }
-        if (err instanceof DocumentAlreadyLinkedError) {
-          res.status(409).json({ error: err.message });
-          return;
-        }
-        if (err instanceof DocumentIsBookError) {
-          res.status(409).json({ error: err.message });
-          return;
-        }
-        throw err;
-      }
-    })
-  );
-
-  router.delete(
-    '/api/books/:id/link/:documentId',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const result = await bookStore.unlinkDocument(owner, req.params.id, req.params.documentId);
-      if (result === 'not_found') {
-        res.status(404).json({ error: 'Lineage entry not found' });
-        return;
-      }
-      if (result === 'edit_row') {
-        res.status(400).json({ error: 'Cannot unlink an organic edit entry' });
-        return;
-      }
-      res.status(204).send();
-    })
-  );
-
-  router.get(
     '/api/books/:id/cover',
     requireAuth,
     asyncHandler(async (req: Request, res: Response) => {
@@ -1385,32 +846,6 @@ export function createUiRouter(
   );
 
   router.get(
-    '/api/series/:name',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const series = await bookStore.getSeriesByName(owner, req.params.name);
-      if (!series) {
-        res.status(404).json({ error: 'Series not found' });
-        return;
-      }
-      res.json(series);
-    })
-  );
-
-  router.get(
-    '/api/series/:name/next-index',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const nextIndex = await bookStore.getSeriesNextIndex(owner, req.params.name);
-      res.json({ nextIndex });
-    })
-  );
-
-  router.get(
     '/api/books/:id/download',
     requireAuth,
     asyncHandler(async (req: Request, res: Response) => {
@@ -1438,337 +873,13 @@ export function createUiRouter(
     })
   );
 
-  router.delete(
-    '/api/books/:id',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        log.warn(`Delete attempted with a cross-tenant global ID: ${req.params.id}`);
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const deleted = await bookStore.deleteBook(owner, bookId);
-      if (!deleted) {
-        log.warn(`Delete attempted for unknown book ID: ${bookId}`);
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      log.info(`Book deleted: "${deleted.filename}"`);
-      res.status(204).send();
-    })
-  );
-
-  router.delete(
-    '/api/books/:id/editions',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        log.warn(`Clear editions attempted with a cross-tenant global ID: ${req.params.id}`);
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const cleared = await bookStore.clearDeviceEditions(owner, bookId);
-      if (cleared === null) {
-        log.warn(`Clear editions attempted for unknown book ID: ${bookId}`);
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      log.info(`Cleared ${cleared} device edition(s) for book "${bookId}"`);
-      res.json({ cleared });
-    })
-  );
-
-  router.post(
-    '/api/books/scan',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      if (scanJobStore.isRunning(owner.userId)) {
-        res.status(409).json(scanJobStore.get(owner.userId));
-        return;
-      }
-      const job = scanJobStore.start(owner.userId);
-      res.status(202).json(job);
-      // Run the scan in the background; the client polls /api/books/scan/status.
-      void (async () => {
-        try {
-          const result = await bookStore.scan(owner);
-          const val = await revalidateLibrary(
-            { bookStore, validationStore, validationThreshold: config.validationThreshold },
-            owner
-          );
-          await thumbnailQueue.reconcile();
-          log.info(
-            `Scan: ${result.imported.length} imported, ${result.removed.length} removed, ` +
-              `${val.validated} validated (${val.failed} failed)`
-          );
-          scanJobStore.complete(owner.userId, result);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          log.error(`Scan failed for "${owner.username}": ${message}`);
-          scanJobStore.fail(owner.userId, message);
-        }
-      })();
-    })
-  );
-
-  router.get(
-    '/api/books/scan/status',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const job = scanJobStore.get(owner.userId);
-      res.json(job ?? { status: 'idle' });
-    })
-  );
-
-  router.patch(
-    '/api/books/:id/metadata',
-    requireAuth,
-    withUploadLimit(coverUpload.single('cover')),
-    asyncHandler(async (req: Request, res: Response) => {
-      log.info(
-        `Metadata edit requested: book=${req.params.id} ` +
-          `target=${typeof req.query.user === 'string' ? req.query.user : (req.user?.username ?? 'unknown')} ` +
-          `contentType=${req.headers['content-type'] ?? 'none'} ` +
-          `hasCover=${req.file ? 'yes' : 'no'} ` +
-          `fields=[${Object.keys((req.body ?? {}) as Record<string, unknown>).join(',')}]`
-      );
-      const owner = await resolveOwner(req, res);
-      if (!owner) {
-        log.warn(`Metadata edit rejected: could not resolve owner for book=${req.params.id}`);
-        return;
-      }
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        log.warn(
-          `Metadata edit rejected: global id=${req.params.id} not owned by user=${owner.username}`
-        );
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const book = await bookStore.getBookById(owner, bookId);
-      if (!book) {
-        log.warn(`Metadata edit rejected: book=${bookId} not found for user=${owner.username}`);
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-
-      if (book.valid !== true) {
-        res.status(409).json({
-          error: 'This book must pass validation before it can be edited.',
-        });
-        return;
-      }
-
-      const body = req.body as Record<string, string>;
-      const changes: EpubChanges = {};
-      if (body.title !== undefined) changes.title = body.title;
-      if (body.author !== undefined) changes.author = body.author;
-      if (body.titleSort !== undefined) changes.titleSort = body.titleSort;
-      if (body.authorSort !== undefined) changes.authorSort = body.authorSort;
-      if (body.publishDate !== undefined) {
-        const publishDate = body.publishDate.trim();
-        if (publishDate !== '' && !ISO_8601_RE.test(publishDate)) {
-          log.warn(
-            `Metadata edit rejected: invalid publishDate "${publishDate}" for book=${book.id}`
-          );
-          res.status(400).json({ error: 'publishDate must be a valid ISO 8601 date string' });
-          return;
-        }
-        changes.publishDate = publishDate;
-      }
-      if (body.description !== undefined) changes.description = body.description;
-      if (body.publisher !== undefined) changes.publisher = body.publisher;
-      if (body.series !== undefined) changes.series = body.series;
-      if (body.seriesIndex !== undefined) {
-        const n = parseFloat(body.seriesIndex);
-        if (Number.isNaN(n)) {
-          log.warn(
-            `Metadata edit rejected: invalid seriesIndex "${body.seriesIndex}" for book=${book.id}`
-          );
-          res.status(400).json({ error: 'seriesIndex must be a number' });
-          return;
-        }
-        changes.seriesIndex = n;
-      }
-      if (body.identifiers !== undefined) {
-        try {
-          changes.identifiers = JSON.parse(body.identifiers) as { scheme: string; value: string }[];
-        } catch {
-          log.warn(`Metadata edit rejected: invalid identifiers JSON for book=${book.id}`);
-          res.status(400).json({ error: 'Invalid identifiers JSON' });
-          return;
-        }
-      }
-      if (body.subjects !== undefined) {
-        try {
-          changes.subjects = JSON.parse(body.subjects) as string[];
-        } catch {
-          log.warn(`Metadata edit rejected: invalid subjects JSON for book=${book.id}`);
-          res.status(400).json({ error: 'Invalid subjects JSON' });
-          return;
-        }
-      }
-      if (req.file) {
-        changes.coverData = req.file.buffer;
-        changes.coverMime = req.file.mimetype;
-      }
-
-      log.info(
-        `Metadata edit applying changes for book=${book.id}: [${Object.keys(changes).join(',')}]`
-      );
-
-      let updated;
-      try {
-        updated = await applyEpubChanges(
-          { bookStore, validationStore, validationThreshold: config.validationThreshold },
-          owner,
-          book,
-          changes
-        );
-      } catch (err: unknown) {
-        if (err instanceof EpubValidationError) {
-          log.warn(
-            `Metadata edit rejected: edited EPUB failed validation for book=${book.id}: ` +
-              err.messages
-                .map(
-                  (m) =>
-                    `${m.severity} ${m.id} ${m.message}` +
-                    (m.location
-                      ? ` @ ${m.location.path}${m.location.line != null ? `:${m.location.line}` : ''}`
-                      : '')
-                )
-                .join('; ')
-          );
-          res.status(422).json({
-            error: 'Edited EPUB failed validation',
-            validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
-          });
-          return;
-        }
-        if (err instanceof BookHashCollisionError) {
-          log.warn(
-            `Metadata edit rejected: edited book=${book.id} now collides with another book's fingerprint`
-          );
-          res.status(409).json({
-            error:
-              'The edited book now has the same fingerprint as another book in your library. ' +
-              'Remove the duplicate book and try again.',
-          });
-          return;
-        }
-        log.error(
-          `Metadata edit failed for book=${book.id}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
-        );
-        res.status(500).json({
-          error: `Failed to update EPUB: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        return;
-      }
-
-      if (req.file) {
-        thumbnailQueue.enqueue(owner.userId, updated.id);
-      }
-
-      log.info(`Book metadata updated: "${updated.filename}"`);
-      const {
-        path: _path,
-        chapterSpineMap: _chapterSpineMap,
-        chapterNames: _chapterNames,
-        ...rest
-      } = updated;
-      // `globalId` (2026-08-13 final review, C-2 — additive, `id` above is
-      // UNCHANGED and stays the raw content hash every existing consumer of
-      // this response already reads): the Relay global id for `rest.id`
-      // (the NEW, post-edit raw id) — see `bookGlobalId`'s own doc comment.
-      res.json({ ...rest, globalId: bookGlobalId(owner, updated.id) });
-    })
-  );
-
-  router.post(
-    '/api/books/:id/regen-chapters',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const book = await bookStore.getBookById(owner, req.params.id);
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-
-      if (book.valid !== true) {
-        res.status(409).json({
-          error: 'This book must pass validation before it can be edited.',
-        });
-        return;
-      }
-
-      let updated: Awaited<ReturnType<typeof bookStore.reimportBook>>;
-      try {
-        updated = await bookStore.reimportBook(owner, req.params.id);
-      } catch (err) {
-        if (err instanceof BookHashCollisionError) {
-          res.status(409).json({ error: 'Book fingerprint collision during re-import' });
-          return;
-        }
-        throw err;
-      }
-      if (!updated) {
-        res.status(500).json({ error: 'Failed to re-import book' });
-        return;
-      }
-
-      log.info(`Book chapters regenerated: "${updated.filename}"`);
-      const { path: _path, ...rest } = updated;
-      res.json(rest);
-    })
-  );
-
-  router.post(
-    '/api/books/:id/validate',
-    requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const book = await bookStore.getBookById(owner, bookId);
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const report = await revalidateBook(
-        { validationStore, validationThreshold: config.validationThreshold },
-        owner,
-        book
-      );
-      log.info(`Book validated: "${book.filename}" (valid=${report.valid})`);
-      res.json(report);
-    })
-  );
-
   /**
    * Adjudicated 2026-08-01 (spec, §"Seams that stay REST" → "Replace
    * staging"): the GraphQL `bookAnalyzeReplace`/`bookReplace` mutations
-   * cannot carry EPUB bytes themselves (binary boundary), and the legacy
-   * `/replace/analyze`/`/replace` routes below are pure multer uploads with
-   * no separable JSON-only leg. This route is the one exception to "REST
-   * routes stay untouched" this migration otherwise holds to: it is new, not
-   * a change to an existing route, and exists solely so the two GraphQL
-   * mutations have bytes to operate on.
+   * cannot carry EPUB bytes themselves (binary boundary). This route exists
+   * solely so those two mutations have bytes to operate on — it is why the
+   * REST replace routes it superseded could be deleted outright rather than
+   * kept for their upload leg.
    *
    * Deliberately `requireStagingIdentity`, not `resolveOwner`: the staged
    * file is keyed to the *authenticated* caller's staging identity, never a
@@ -1813,13 +924,11 @@ export function createUiRouter(
    * declared above), before any request body — including a hypothetical
    * `kind` field — has been parsed, so one endpoint cannot dispatch to two
    * different multer configs. Uses `coverUpload` (memory storage, `image/*`
-   * MIME filter, `COVER_UPLOAD_MAX_BYTES` (20MB) limit — the exact config
-   * `PATCH /api/books/:id/metadata`'s multipart-cover branch uses,
-   * `coverUpload.single('cover')`
-   * at this file's top and again on that route below) with the SAME field
-   * name, `cover`, for the same reason: this route stages bytes for that
-   * exact same cover-write path, just deferred into a later
-   * `bookUpdateMetadata` call instead of applied inline.
+   * MIME filter, `COVER_UPLOAD_MAX_BYTES` (20MB) limit — the same config
+   * REST's since-removed multipart-cover branch used) with the SAME field
+   * name, `cover`: this route stages bytes for the cover-write path
+   * `bookUpdateMetadata` performs, just deferred into that later call
+   * instead of applied inline.
    *
    * `requireStagingIdentity`, not `resolveOwner`, matching `/replace-staging`
    * exactly: the staged file is keyed to the *authenticated* caller's
@@ -1846,144 +955,6 @@ export function createUiRouter(
         req.file.mimetype
       );
       res.json({ stagedUploadId });
-    })
-  );
-
-  router.post(
-    '/api/books/:id/replace/analyze',
-    requireAuth,
-    withUploadLimit(epubUpload.single('file')),
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const book = await bookStore.getBookById(owner, bookId);
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      if (!req.file) {
-        res.status(400).json({ error: 'No file uploaded' });
-        return;
-      }
-      const dir = bookStore.getStagingDir();
-      fs.mkdirSync(dir, { recursive: true });
-      const tmpPath = path.join(dir, `analyze-${randomUUID()}.epub`);
-      fs.writeFileSync(tmpPath, req.file.buffer);
-      try {
-        const analysis = await analyzeEpub(tmpPath, {
-          originalName: req.file.originalname,
-          librarySubjects: await bookStore.getSubjects(owner),
-          validationThreshold: config.validationThreshold,
-        });
-        res.json({
-          valid: analysis.valid,
-          messages: analysis.report.messages,
-          counts: analysis.report.counts,
-          threshold: analysis.report.threshold,
-          autoFixes: analysis.autoFixes,
-          proposals: analysis.proposals,
-        });
-      } finally {
-        fs.unlinkSync(tmpPath);
-      }
-    })
-  );
-
-  router.post(
-    '/api/books/:id/replace',
-    requireAuth,
-    withUploadLimit(epubUpload.single('file')),
-    asyncHandler(async (req: Request, res: Response) => {
-      const owner = await resolveOwner(req, res);
-      if (!owner) return;
-      const bookId = resolveBookLocalId(owner, req.params.id);
-      if (bookId === null) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      const book = await bookStore.getBookById(owner, bookId);
-      if (!book) {
-        res.status(404).json({ error: 'Book not found' });
-        return;
-      }
-      if (!req.file) {
-        res.status(400).json({ error: 'No file uploaded' });
-        return;
-      }
-
-      let acceptedKeys: string[] = [];
-      try {
-        const parsed = JSON.parse((req.body.acceptedFixKeys as string) ?? '[]') as unknown;
-        if (Array.isArray(parsed) && parsed.every((k) => typeof k === 'string')) {
-          acceptedKeys = parsed;
-        }
-      } catch {
-        acceptedKeys = [];
-      }
-
-      // Structurally repair the candidate buffer before swapping it in, so
-      // the file that gets persisted matches what /replace/analyze previewed.
-      // Best-effort, like analyzeEpub's own repair guard: on failure, fall
-      // through using the original candidate bytes so replaceEpubBytes's own
-      // validation still runs (a normal 422/success) instead of a bare 500.
-      const dir = bookStore.getStagingDir();
-      fs.mkdirSync(dir, { recursive: true });
-      const tmpPath = path.join(dir, `replace-${randomUUID()}.epub`);
-      fs.writeFileSync(tmpPath, req.file.buffer);
-      let repairedBytes: Buffer = req.file.buffer;
-      try {
-        try {
-          repairedBytes = repairPackageDocument(tmpPath).bytes;
-        } catch (err: unknown) {
-          log.warn(
-            `Package repair skipped for "${req.file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-      } finally {
-        fs.unlinkSync(tmpPath);
-      }
-
-      let finalBook: Awaited<ReturnType<typeof replaceEpubBytes>>;
-      try {
-        const deps = {
-          bookStore,
-          validationStore,
-          validationThreshold: config.validationThreshold,
-        };
-        const updated = await replaceEpubBytes(deps, owner, book, repairedBytes);
-        const result = await applyAutoAndAccepted(deps, owner, updated, {
-          originalName: req.file.originalname,
-          librarySubjects: await bookStore.getSubjects(owner),
-          acceptedKeys,
-        });
-        finalBook = result.book;
-      } catch (err: unknown) {
-        if (err instanceof EpubValidationError) {
-          res.status(422).json({
-            error: 'EPUB failed validation',
-            validation: { messages: err.messages, counts: err.counts, threshold: err.threshold },
-          });
-          return;
-        }
-        if (err instanceof BookHashCollisionError) {
-          res
-            .status(409)
-            .json({ error: 'A book with the same fingerprint is already in the library.' });
-          return;
-        }
-        throw err;
-      }
-      log.info(`Book replaced: "${finalBook.filename}"`);
-      const { path: _p, ...rest } = finalBook;
-      // `globalId` (2026-08-13 final review, C-2 — additive, same as the
-      // metadata route above): the Relay global id for `rest.id` (the NEW,
-      // post-replace raw id).
-      res.json({ ...rest, globalId: bookGlobalId(owner, finalBook.id) });
     })
   );
 

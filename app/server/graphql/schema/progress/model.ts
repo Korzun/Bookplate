@@ -88,9 +88,8 @@ export const model = builder.prismaObject('Progress', {
      *
      * The spine map is fetched through `context.loadChapterSpineMap`, a
      * request-scoped batching loader, because a page of progress rows would
-     * otherwise be one book lookup per row. REST solves the same N+1 with
-     * `getChapterSpineMaps`, batching the whole page in its handler; a
-     * resolver has no page to batch over, so the loader does it instead.
+     * otherwise be one book lookup per row. A resolver has no page to batch
+     * over the way a list handler would, so the loader does it instead.
      *
      * `parent.userId` is the progress row's own owner, read off the parent
      * and never re-derived — the book whose spine map is consulted is the

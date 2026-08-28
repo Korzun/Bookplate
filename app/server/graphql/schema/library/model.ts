@@ -490,21 +490,21 @@ builder.node(model, {
     }),
 
     /**
-     * Resolves `PendingFix` rows directly, rather than `context.stores.book
-     * .getPendingFixes`'s DTO — the summary type that DTO existed for
-     * (`PendingFixSummary`) is deleted; see the cleanup spec, §"3. One
-     * PendingFix type".
+     * Resolves `PendingFix` rows directly, rather than through a DTO — the
+     * summary type a DTO existed for (`PendingFixSummary`) is deleted; see
+     * the cleanup spec, §"3. One PendingFix type".
      *
-     * DELIBERATELY FILTERS, NEVER DELETES: `getPendingFixes` deletes expired
-     * rows as a side effect of reading (`book-store.ts:685-717`) — REST keeps
-     * that behaviour untouched (this migration does not modify `routes/` or
-     * `book-store.ts`). A read resolver that mutates was the thing the read
-     * model declined to replicate elsewhere in this schema, and this field
-     * keeps that stance: it excludes not-live rows from the list it returns,
-     * but leaves them in the database for REST (or a future phase-3 sweep) to
-     * clean up. The net effect for a client is the same list either way — a
-     * not-live row is invisible here whether or not REST has gotten to it
-     * yet.
+     * DELIBERATELY FILTERS, NEVER DELETES: not-live rows are excluded from
+     * the list this returns but left in the database, because a read resolver
+     * that mutates is the thing the read model declines to do anywhere in
+     * this schema. REST's `BookStore.getPendingFixes` used to delete them as
+     * a side effect of reading; it is gone with the rest of the REST library
+     * surface, so nothing prunes an expired row today — a resolved or
+     * TTL-expired row simply stays invisible to every reader (this field and
+     * `Book.pendingFix` apply the identical `isLivePendingFix` predicate)
+     * until `deletePendingFix` removes it on the next resolve/dismiss of that
+     * book, or a future sweep collects it. Client-visible behaviour is
+     * unaffected; only the row's physical lifetime is.
      */
     pendingFixes: t.prismaField({
       type: [pendingFix],

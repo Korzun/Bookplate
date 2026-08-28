@@ -29,14 +29,6 @@ import type { ScanProgress } from './scan-events';
 
 const log = logger('BookStore');
 
-const PENDING_FIX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-export type PendingFixDto = {
-  bookId: string;
-  fileName: string;
-  fileSize: number;
-} & PendingFixState;
-
 /** Compares two cover blobs (or their absence) for equality. */
 function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | null): boolean {
   if (a === null && b === null) return true;
@@ -148,10 +140,6 @@ export class BookStore {
     private readonly prisma: PrismaClient,
     private readonly editionStore?: EditionPurger
   ) {}
-
-  getBooksRoot(): string {
-    return this.booksRoot;
-  }
 
   getStagingDir(): string {
     return path.join(this.booksRoot, '.staging');
@@ -300,7 +288,7 @@ export class BookStore {
     return { groups };
   }
 
-  getUserDir(owner: Owner): string {
+  private getUserDir(owner: Owner): string {
     return path.join(this.booksRoot, owner.username);
   }
 
@@ -412,33 +400,6 @@ export class BookStore {
       book.deviceEditionCount = await this.editionStore.countForBook(owner.userId, id);
     }
     return book;
-  }
-
-  /**
-   * Batched chapter-spine-map lookup for the given book ids in one query.
-   * Returns a map of id → parsed spine indices; ids without a matching book
-   * (e.g. progress whose book was deleted) are absent from the map.
-   */
-  async getChapterSpineMaps(owner: Owner, ids: string[]): Promise<Map<string, number[]>> {
-    const map = new Map<string, number[]>();
-    if (ids.length === 0) return map;
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId, id: { in: ids } },
-      select: { id: true, chapterSpineMap: true },
-    });
-    for (const row of rows) {
-      let parsed: number[];
-      try {
-        const json: unknown = JSON.parse(row.chapterSpineMap);
-        parsed = Array.isArray(json)
-          ? json.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
-          : [];
-      } catch {
-        parsed = [];
-      }
-      map.set(row.id, parsed);
-    }
-    return map;
   }
 
   async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
@@ -681,40 +642,6 @@ export class BookStore {
     await this.prisma.pendingFix.deleteMany({
       where: { userId: owner.userId, bookId },
     });
-  }
-
-  async getPendingFixes(owner: Owner): Promise<PendingFixDto[]> {
-    const rows = await this.prisma.pendingFix.findMany({
-      where: { userId: owner.userId },
-    });
-    const now = Date.now();
-    const keep: PendingFixDto[] = [];
-    for (const row of rows) {
-      let state: PendingFixState;
-      try {
-        state = JSON.parse(row.state) as PendingFixState;
-      } catch {
-        await this.deletePendingFix(owner, row.bookId);
-        continue;
-      }
-      const noProposals = (state.proposals?.length ?? 0) === 0;
-      const noUndo = !state.undo;
-      const expiredUndo = noProposals && !noUndo && row.updatedAt < now - PENDING_FIX_TTL_MS;
-      if ((noProposals && noUndo) || expiredUndo) {
-        await this.deletePendingFix(owner, row.bookId);
-        continue;
-      }
-      keep.push({
-        bookId: row.bookId,
-        fileName: row.fileName,
-        fileSize: row.fileSize,
-        autoFixes: state.autoFixes ?? [],
-        appliedFixes: state.appliedFixes ?? [],
-        proposals: state.proposals ?? [],
-        undo: state.undo ?? null,
-      });
-    }
-    return keep;
   }
 
   async deleteBook(owner: Owner, id: string): Promise<Book | null> {
@@ -1064,49 +991,6 @@ export class BookStore {
       }
     }
     return result;
-  }
-
-  async getSeriesByName(
-    owner: Owner,
-    name: string
-  ): Promise<{
-    name: string;
-    subjects: string[];
-    bookCount: number;
-    author: string;
-    publisher: string;
-    totalPages: number;
-    totalSize: number;
-  } | null> {
-    const row = await this.prisma.series.findUnique({
-      where: { userId_name: { userId: owner.userId, name } },
-      select: {
-        name: true,
-        subjects: true,
-        bookCount: true,
-        author: true,
-        publisher: true,
-        totalPages: true,
-        totalSize: true,
-      },
-    });
-    if (!row) return null;
-    let subjects: string[];
-    try {
-      const parsed: unknown = JSON.parse(row.subjects);
-      subjects = Array.isArray(parsed) ? (parsed as string[]) : [];
-    } catch {
-      subjects = [];
-    }
-    return {
-      name: row.name,
-      subjects,
-      bookCount: row.bookCount,
-      author: row.author,
-      publisher: row.publisher,
-      totalPages: row.totalPages,
-      totalSize: row.totalSize,
-    };
   }
 
   async getSeriesNextIndex(owner: Owner, name: string): Promise<number> {

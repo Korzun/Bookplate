@@ -256,11 +256,10 @@ describe('parsePendingFixState', () => {
   });
 });
 
-// Mirrors book-store.ts:699-705's keep/drop decision inside `getPendingFixes`
-// exactly, so REST's delete-on-read and GraphQL's filter-on-read never
-// disagree about which rows are live. TTL is book-store.ts:31's
-// `PENDING_FIX_TTL_MS` (7 days), inlined here as a literal so this test does
-// not import a private store constant.
+// The sole keep/drop rule for pending-fix rows since REST's delete-on-read
+// reader (`BookStore.getPendingFixes`) was removed. TTL is 7 days, inlined
+// here as a literal so this test does not import derive.ts's private
+// module-level constant.
 describe('isLivePendingFix', () => {
   const TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const NOW = 1_700_000_000_000;

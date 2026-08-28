@@ -182,14 +182,12 @@ export const model = builder.prismaNode('Book', {
     // previously-accepted drift: before this predicate existed, this field
     // was a bare relation with no expiry check, so a fix applied 7+ days ago
     // with no proposals left would vanish from `Library.pendingFixes` (which
-    // ran `getPendingFixes`'s TTL cleanup) while still showing here as a
-    // stale badge, until something else happened to read the list and
-    // trigger REST's delete-on-read. Both GraphQL readings now apply the
-    // identical predicate, so that gap cannot reopen from this side. Read
-    // cleanup (deleting the expired row, as REST's `getPendingFixes` still
-    // does) is deliberately NOT replicated here — see `Library.pendingFixes`'s
-    // doc comment in `library/model.ts` for why a read resolver filters
-    // rather than mutates.
+    // ran REST's now-removed `getPendingFixes` TTL cleanup) while still
+    // showing here as a stale badge. Both readings now apply the identical
+    // predicate, so that gap cannot reopen. Read cleanup (deleting the
+    // expired row) is deliberately NOT done here — see `Library
+    // .pendingFixes`'s doc comment in `library/model.ts` for why a read
+    // resolver filters rather than mutates, and for what prunes rows now.
     //
     // `t.field`, not `t.relation`: `t.relation`'s `resolve` option is only a
     // *fallback*, used solely when the plugin's own query-merging optimizer

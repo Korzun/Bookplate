@@ -275,7 +275,7 @@ describe('DELETE /api/users/:username', () => {
       device_id: 'd1',
     });
     await request(app).delete('/api/users/alice').set('Authorization', `Bearer ${adminToken()}`);
-    expect(await userStore.getUserProgress(aliceId)).toEqual([]);
+    expect(await prisma.progress.findMany({ where: { userId: aliceId } })).toEqual([]);
   });
 });
 

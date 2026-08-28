@@ -56,7 +56,6 @@ beforeEach(async () => {
       harness.stores.thumbnail,
       harness.stores.token,
       jwtSecret,
-      harness.stores.scanJob,
       harness.stores.validation,
       harness.stores.replaceStaging
     )

@@ -19,13 +19,11 @@ const bookGlobalId = (userId: string, id: string): string =>
 // derive.test.ts's isLivePendingFix suite.
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// A genuinely-pending fix: `getPendingFixes` (book-store.ts) treats a row
-// with no proposals and no undo as already resolved and deletes it on read,
-// so an empty `proposals` array would make `Library.pendingFixes` correctly
-// return `[]` — starving the "lists" test below of any row to find, even
-// though `Book.pendingFix` (a raw relation, no such cleanup) would still see
-// it. A non-empty `proposals` array keeps the fixture "pending" under both
-// readings.
+// A genuinely-pending fix: `isLivePendingFix` (derive.ts) treats a row with
+// no proposals and no undo as already resolved, so an empty `proposals` array
+// would make `Library.pendingFixes` correctly return `[]` — starving the
+// "lists" test below of any row to find. A non-empty `proposals` array keeps
+// the fixture "pending" under every reading.
 const PROPOSAL = {
   field: 'title',
   kind: 'replace',
@@ -36,8 +34,7 @@ const PROPOSAL = {
 const SEEDED_STATE_JSON = JSON.stringify({ proposals: [PROPOSAL] });
 
 // An undo-only, no-proposals row whose `updatedAt` is well past the TTL —
-// `isLivePendingFix` (derive.ts) classifies this not-live, mirroring
-// `getPendingFixes`'s own delete-on-read decision for the same shape.
+// `isLivePendingFix` (derive.ts) classifies this not-live.
 const EXPIRED_STATE_JSON = JSON.stringify({
   proposals: [],
   undo: { kind: 'apply', proposals: [], appliedFixes: [] },

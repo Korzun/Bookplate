@@ -6,7 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../logger');
-// Keep splitSubjects/formatMessages real (ValidationStore.getValidation uses them);
+// Keep splitSubjects/formatMessages real (report construction uses them);
 // only stub validateEpubReport so the pass doesn't run real epubcheck.
 vi.mock('./epub-validator', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./epub-validator')>()),
@@ -68,6 +68,11 @@ describe('revalidateLibrary', () => {
     validationStore = new ValidationStore(prisma);
   });
 
+  const readValidation = (bookId: string) =>
+    prisma.validation.findUnique({
+      where: { userId_bookId: { userId: owner.userId, bookId } },
+    });
+
   afterEach(async () => {
     await prisma.$disconnect();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -81,8 +86,8 @@ describe('revalidateLibrary', () => {
       owner
     );
     expect(summary).toEqual({ validated: 2, failed: 0 });
-    expect(await validationStore.getValidation(owner, 'book1')).not.toBeNull();
-    expect(await validationStore.getValidation(owner, 'book2')).not.toBeNull();
+    expect(await readValidation('book1')).not.toBeNull();
+    expect(await readValidation('book2')).not.toBeNull();
   });
 
   it('counts a book whose file is missing as failed and still validates the rest', async () => {
@@ -95,7 +100,7 @@ describe('revalidateLibrary', () => {
       owner
     );
     expect(summary).toEqual({ validated: 1, failed: 1 });
-    expect(await validationStore.getValidation(owner, 'book1')).toBeNull();
-    expect(await validationStore.getValidation(owner, 'book2')).not.toBeNull();
+    expect(await readValidation('book1')).toBeNull();
+    expect(await readValidation('book2')).not.toBeNull();
   });
 });
