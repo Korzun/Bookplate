@@ -1,3 +1,4 @@
+import { validateUser } from '../../../../services/password';
 import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import type { Viewer } from '../../../context';
 import { createHarness, type Harness } from '../../../test-util';
@@ -58,10 +59,10 @@ describe('Mutation.userChangePassword', () => {
       __typename: 'UserChangePasswordPayload',
       user: { username: 'alice', mustChangePassword: false },
     });
-    expect(await harness.stores.user.validateUser('alice', 'newpass123')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'newpass123')).toBe(
       harness.aliceOwner.userId
     );
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(false);
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(false);
   });
 
   it('revokes outstanding refresh tokens on a successful change', async () => {
@@ -98,7 +99,7 @@ describe('Mutation.userChangePassword', () => {
       __typename: 'IncorrectPasswordError',
       message: 'Current password is incorrect',
     });
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
@@ -116,7 +117,7 @@ describe('Mutation.userChangePassword', () => {
       message: 'Invalid input',
       issues: [{ path: ['newPassword'], message: 'Current and new password are required' }],
     });
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
@@ -162,8 +163,8 @@ describe('Mutation.userChangePassword', () => {
     expect(result.data?.userChangePassword).toMatchObject({
       __typename: 'IncorrectPasswordError',
     });
-    expect(await harness.stores.user.validateUser('bob', 'newpass123')).toBe(false);
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'bob', 'newpass123')).toBe(false);
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
@@ -188,10 +189,8 @@ describe('Mutation.userChangePassword', () => {
       __typename: 'UserChangePasswordPayload',
       user: { username: 'bob', mustChangePassword: false },
     });
-    expect(await harness.stores.user.validateUser('bob', 'bobnewpass')).toBe(
-      harness.bobOwner.userId
-    );
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'bob', 'bobnewpass')).toBe(harness.bobOwner.userId);
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
@@ -222,7 +221,7 @@ describe('Mutation.userChangePassword', () => {
     });
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });
@@ -280,7 +279,7 @@ describe('Mutation.userChangePassword', () => {
       __typename: 'UserChangePasswordPayload',
       user: { username: 'alice', mustChangePassword: false },
     });
-    expect(await harness.stores.user.validateUser('alice', 'newpass123')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'newpass123')).toBe(
       harness.aliceOwner.userId
     );
   });

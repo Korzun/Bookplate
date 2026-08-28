@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import { changePassword, hashLoginPassword, validateUser } from '../../../../services/password';
 import { revokeAllForUsername } from '../../../../services/token';
-import { UserStore } from '../../../../services/user-store';
 import { builder } from '../../builder';
 import {
   incorrectPasswordError,
@@ -134,12 +134,12 @@ const result = builder.unionType('UserChangePasswordResult', {
  * mutation stays on the ordinary `authenticated` scope.
  *
  * The 401 REST returns for a wrong `currentPassword` (`routes/ui.ts:406-409`,
- * `UserStore.validateUser` returning `false` — never a throw, see
- * `services/user-store.ts:106-114`) is modelled as the honest
+ * `validateUser` returning `false` — never a throw, see
+ * `services/password.ts`) is modelled as the honest
  * `IncorrectPasswordError`, not folded into `InvalidInputError` — see that
  * type's doc comment.
  *
- * `UserStore.changePassword` returning `false` (`services/user-store.ts:124-137`,
+ * `changePassword` returning `false` (`services/password.ts`,
  * its own `P2025` catch — the account was deleted between token issuance and
  * this request) is modelled as `null`, the same "no such row" convention
  * every other mutation in this schema uses; genuinely unreachable through
@@ -217,11 +217,11 @@ builder.mutationField('userChangePassword', (t) =>
       const userId = context.viewer!.userId!;
       const username = context.viewer!.username;
 
-      const valid = await context.stores.user.validateUser(username, parsed.data.currentPassword);
+      const valid = await validateUser(context.prisma, username, parsed.data.currentPassword);
       if (!valid) return incorrectPasswordError();
 
-      const newHash = await UserStore.hashLoginPassword(parsed.data.newPassword);
-      const changed = await context.stores.user.changePassword(username, newHash);
+      const newHash = await hashLoginPassword(parsed.data.newPassword);
+      const changed = await changePassword(context.prisma, username, newHash);
       if (!changed) return null;
 
       await revokeAllForUsername(context.prisma, username);

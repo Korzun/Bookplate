@@ -9,7 +9,6 @@ import { opdsAuth } from '../middleware/auth';
 import { BookStore } from '../services/book-store';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
-import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
 import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
 
@@ -47,15 +46,14 @@ function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
 
 export function createOpdsRouter(
   bookStore: BookStore,
-  userStore: UserStore,
+  prisma: PrismaClient,
   thumbnailWidths: number[],
   libraryName: string = 'Bookplate',
-  prisma?: PrismaClient,
   editionsRoot?: string,
   validationThreshold: ValidationThreshold = ValidationThreshold.ERROR
 ): Router {
   const router = Router();
-  const auth = opdsAuth(userStore, libraryName);
+  const auth = opdsAuth(prisma, libraryName);
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;
 
   // Base vs device-scoped context. `req.opdsDevice` is set only under the
@@ -409,7 +407,7 @@ export function createOpdsRouter(
     auth,
     asyncHandler(async (req: Request, res: Response) => {
       const owner = req.opdsOwner!;
-      if (!prisma || !editionsRoot) {
+      if (!editionsRoot) {
         res.status(404).send('Not found');
         return;
       }
@@ -507,7 +505,7 @@ export function createOpdsRouter(
   );
 
   // --- Device-scoped catalog (browse-only): auth first, then resolve the slug ---
-  if (prisma && editionsRoot) {
+  if (editionsRoot) {
     const deviceCatalog = Router({ mergeParams: true });
     deviceCatalog.use(auth, resolveDevice(prisma), requireDeviceEnabled(prisma));
     mountFeeds(deviceCatalog);

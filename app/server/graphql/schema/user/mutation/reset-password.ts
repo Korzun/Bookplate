@@ -1,3 +1,4 @@
+import { resetPassword } from '../../../../services/password';
 import { revokeAllForUsername } from '../../../../services/token';
 import { builder } from '../../builder';
 import { model as userModel } from '../model';
@@ -66,8 +67,8 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * a real row (including one an attacker crafts to embed the reserved
  * username) collapses into the ordinary "no such user" `null` below.
  *
- * `UserStore.resetPassword` is NOT wrapped in `toResult`: traced end to end
- * (`services/user-store.ts:139-154`), its own `P2025` catch already converts
+ * `resetPassword` is NOT wrapped in `toResult`: traced end to end
+ * (`services/password.ts`), its own `P2025` catch already converts
  * a races-with-itself "user deleted mid-request" into `null` — nothing left
  * in its body can throw one of the seven known store errors.
  *
@@ -94,7 +95,7 @@ builder.mutationField('userResetPassword', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const password = await context.stores.user.resetPassword(owner.username);
+      const password = await resetPassword(context.prisma, owner.username);
       if (password === null) return null;
 
       await revokeAllForUsername(context.prisma, owner.username);

@@ -3,7 +3,7 @@ import * as path from 'path';
 
 import { z } from 'zod';
 
-import { UserStore } from '../../../../services/user-store';
+import { generateLoginPassword, hashLoginPassword } from '../../../../services/password';
 import { isValidUsername, MIN_USERNAME_LENGTH } from '../../../../utils/username';
 import { builder } from '../../builder';
 import {
@@ -164,8 +164,8 @@ builder.mutationField('userRegister', (t) =>
 
       fs.mkdirSync(path.join(context.config.booksDir, username), { recursive: true });
 
-      const password = UserStore.generateLoginPassword();
-      const passwordHash = await UserStore.hashLoginPassword(password);
+      const password = generateLoginPassword();
+      const passwordHash = await hashLoginPassword(password);
       const created = await context.stores.user.createUser(username, passwordHash, undefined, true);
       if (!created) return usernameAlreadyExistsError(username);
 

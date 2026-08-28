@@ -1,4 +1,5 @@
 // app/server/routes/kosync.ts
+import type { PrismaClient } from '@prisma/client';
 import { Router, Request, Response } from 'express';
 
 import { logger } from '../logger';
@@ -9,18 +10,22 @@ import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('KOSync');
 
-export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): Router {
+export function createKosyncRouter(
+  userStore: UserStore,
+  bookStore: BookStore,
+  prisma: PrismaClient
+): Router {
   const router = Router();
 
   // Auth check: GET /sync/users/auth
-  router.get('/users/auth', kosyncAuth(userStore), (_req: Request, res: Response) => {
+  router.get('/users/auth', kosyncAuth(prisma), (_req: Request, res: Response) => {
     res.status(200).json({ authorized: 'OK' });
   });
 
   // Save progress: PUT /sync/syncs/progress
   router.put(
     '/syncs/progress',
-    kosyncAuth(userStore),
+    kosyncAuth(prisma),
     asyncHandler(async (req: Request, res: Response) => {
       const { document, progress, percentage, device, device_id } = req.body as {
         document?: string;
@@ -52,7 +57,7 @@ export function createKosyncRouter(userStore: UserStore, bookStore: BookStore): 
   // Get progress: GET /sync/syncs/progress/:document
   router.get(
     '/syncs/progress/:document',
-    kosyncAuth(userStore),
+    kosyncAuth(prisma),
     asyncHandler(async (req: Request, res: Response) => {
       const currentId = await bookStore.resolveBookId(req.kosyncUserId!, req.params.document);
       const p = await userStore.getProgress(req.kosyncUserId!, currentId);

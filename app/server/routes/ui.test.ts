@@ -26,6 +26,7 @@ import { createValidationCountsLoader } from '../graphql/validation-counts-loade
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookStore } from '../services/book-store';
 import { verifyAccessToken } from '../services/jwt';
+import { hashLoginPassword, resetPassword } from '../services/password';
 import {
   ADMIN_STAGING_ID,
   createReplaceStaging,
@@ -328,7 +329,7 @@ beforeEach(async () => {
   bookStore = new BookStore(booksDir, prisma, editionsRoot);
   replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
   userStore = new UserStore(prisma, editionsRoot);
-  await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
+  await userStore.createUser('alice', await hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
   aliceOwner = { userId: aliceId, username: 'alice' };
 
@@ -1468,7 +1469,7 @@ describe('surviving book REST routes accept a Relay global ID', () => {
   let aliceBookId: string;
 
   beforeEach(async () => {
-    await userStore.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+    await userStore.createUser('bob', await hashLoginPassword('bobpass'));
     const bobRes = await request(app)
       .post('/api/login')
       .send('username=bob&password=bobpass')
@@ -1681,7 +1682,7 @@ describe('per-user library authorization', () => {
 
   beforeEach(async () => {
     // alice already exists (created in the outer beforeEach); add a second user bob.
-    await userStore.createUser('bob', await UserStore.hashLoginPassword('bobpass'));
+    await userStore.createUser('bob', await hashLoginPassword('bobpass'));
 
     aliceToken = await loginAlice();
     const bobRes = await request(app)
@@ -1843,7 +1844,7 @@ describe('unmatched /api/* paths', () => {
 
 describe('passwordChangeGate middleware', () => {
   async function resetAndLoginAlice(): Promise<{ token: string; newPassword: string }> {
-    const newPassword = await userStore.resetPassword('alice');
+    const newPassword = await resetPassword(prisma, 'alice');
     const res = await request(app)
       .post('/api/login')
       .send(new URLSearchParams({ username: 'alice', password: newPassword! }).toString())

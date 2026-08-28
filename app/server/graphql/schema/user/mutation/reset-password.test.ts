@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { validateUser } from '../../../../services/password';
 import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import { createHarness, type Harness } from '../../../test-util';
 
@@ -45,8 +46,8 @@ describe('Mutation.userResetPassword', () => {
     });
     const payload = result.data?.userResetPassword as { password: string };
     const password = payload.password;
-    expect(await harness.stores.user.validateUser('bob', password)).toBe(harness.bobOwner.userId);
-    expect(await harness.stores.user.validateUser('bob', 'bobpass')).toBe(false);
+    expect(await validateUser(harness.prisma, 'bob', password)).toBe(harness.bobOwner.userId);
+    expect(await validateUser(harness.prisma, 'bob', 'bobpass')).toBe(false);
     expect(await consumeRefreshToken(harness.prisma, refreshToken)).toBeNull();
   });
 
@@ -68,7 +69,7 @@ describe('Mutation.userResetPassword', () => {
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     expect(result.data?.userResetPassword ?? null).toBeNull();
-    expect(await harness.stores.user.validateUser('bob', 'bobpass')).toBe(harness.bobOwner.userId);
+    expect(await validateUser(harness.prisma, 'bob', 'bobpass')).toBe(harness.bobOwner.userId);
   });
 
   /**
@@ -95,7 +96,7 @@ describe('Mutation.userResetPassword', () => {
 
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     expect(result.data?.userResetPassword ?? null).toBeNull();
-    expect(await harness.stores.user.validateUser('alice', 'alicepass')).toBe(
+    expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
   });

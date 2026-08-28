@@ -1,3 +1,4 @@
+import { changeSyncPassword } from '../../../services/password';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -22,14 +23,14 @@ const read = async (viewer: Harness['aliceViewer']) => {
 
 describe('Viewer.syncPassword', () => {
   it("returns the viewer's own sync password", async () => {
-    await harness.stores.user.changeSyncPassword('alice', 'alice-sync-secret');
+    await changeSyncPassword(harness.prisma, 'alice', 'alice-sync-secret');
 
     expect(await read(harness.aliceViewer)).toBe('alice-sync-secret');
   });
 
   it("returns the requesting viewer's password, never a fixed user's", async () => {
-    await harness.stores.user.changeSyncPassword('alice', 'alice-sync-secret');
-    await harness.stores.user.changeSyncPassword('bob', 'bob-sync-secret');
+    await changeSyncPassword(harness.prisma, 'alice', 'alice-sync-secret');
+    await changeSyncPassword(harness.prisma, 'bob', 'bob-sync-secret');
 
     // Bob must see his own. A resolver keyed on anything but the viewer would
     // hand him alice's, and the single-viewer test above could not tell.

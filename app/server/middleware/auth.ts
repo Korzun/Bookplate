@@ -1,20 +1,21 @@
 // app/middleware/auth.ts
+import type { PrismaClient } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 
 import { logger } from '../logger';
 import { verifyAccessToken, AuthUser } from '../services/jwt';
-import { UserStore } from '../services/user-store';
+import { authenticate, hashSyncPassword } from '../services/password';
 
 export type { AuthUser };
 
 const log = logger('Auth');
 
 /**
- * HTTP Basic Auth for OPDS — validates against the KOSync UserStore.
+ * HTTP Basic Auth for OPDS — validates against the KOSync credentials.
  * OPDS clients send the password as plaintext (just Base64-encoded per RFC 7617),
  * so we hash it with MD5 before comparing against the stored key.
  */
-export function opdsAuth(userStore: UserStore, realm: string = 'Bookplate') {
+export function opdsAuth(prisma: PrismaClient, realm: string = 'Bookplate') {
   const safeRealm = realm.replace(/[\r\n"\\]/g, '');
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -29,7 +30,7 @@ export function opdsAuth(userStore: UserStore, realm: string = 'Bookplate') {
       const colonIndex = decoded.indexOf(':');
       const username = decoded.slice(0, colonIndex);
       const password = decoded.slice(colonIndex + 1);
-      const userId = await userStore.authenticate(username, UserStore.hashSyncPassword(password));
+      const userId = await authenticate(prisma, username, hashSyncPassword(password));
       if (!userId) {
         log.warn(`OPDS auth failed for user "${username}"`);
         res.set('WWW-Authenticate', `Basic realm="${safeRealm}"`);
@@ -44,8 +45,8 @@ export function opdsAuth(userStore: UserStore, realm: string = 'Bookplate') {
   };
 }
 
-/** KOSync header auth — validates x-auth-user + x-auth-key against UserStore. */
-export function kosyncAuth(userStore: UserStore) {
+/** KOSync header auth — validates x-auth-user + x-auth-key against stored credentials. */
+export function kosyncAuth(prisma: PrismaClient) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const username = req.headers['x-auth-user'];
@@ -55,7 +56,7 @@ export function kosyncAuth(userStore: UserStore) {
         res.status(401).json({ message: 'Unauthorized' });
         return;
       }
-      const userId = await userStore.authenticate(username, key);
+      const userId = await authenticate(prisma, username, key);
       if (!userId) {
         log.warn(`KOSync auth failed for user "${username}"`);
         res.status(401).json({ message: 'Unauthorized' });

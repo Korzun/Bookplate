@@ -1,4 +1,4 @@
-import { UserStore } from '../../../../services/user-store';
+import { changeSyncPassword, generateSyncPassword } from '../../../../services/password';
 import { builder } from '../../builder';
 import { model as userModel } from '../model';
 
@@ -66,8 +66,8 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * every other `/api/my/*` route). `userChangePassword` is the one and only
  * exemption; see its doc comment for the REST trace.
  *
- * `UserStore.changeSyncPassword` returning `false` (`services/user-store.ts:
- * 176-186`, its own `P2025` catch — the account was deleted mid-request) is
+ * `changeSyncPassword` returning `false` (`services/password.ts`,
+ * its own `P2025` catch — the account was deleted mid-request) is
  * modelled as `null`, the same "no such row" convention every other mutation
  * in this schema uses; not wrapped in `toResult` since it throws none of the
  * seven known store errors.
@@ -86,8 +86,8 @@ builder.mutationField('userRegenerateSyncPassword', (t) =>
       const userId = args.input.userId.id;
       const username = context.viewer!.username;
 
-      const syncPassword = UserStore.generateSyncPassword();
-      const changed = await context.stores.user.changeSyncPassword(username, syncPassword);
+      const syncPassword = generateSyncPassword();
+      const changed = await changeSyncPassword(context.prisma, username, syncPassword);
       if (!changed) return null;
 
       return { __typename: 'UserRegenerateSyncPasswordPayload' as const, userId, syncPassword };

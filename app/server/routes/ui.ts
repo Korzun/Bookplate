@@ -14,6 +14,7 @@ import { BookStore, BookAlreadyExistsError } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
+import { userHasPassword, validateUser } from '../services/password';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -528,12 +529,12 @@ export function createUiRouter(
         await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
         return;
       }
-      if ((await userStore.userExists(username)) && !(await userStore.userHasPassword(username))) {
+      if ((await userStore.userExists(username)) && !(await userHasPassword(prisma, username))) {
         log.warn(`Login failed for "${username}" — password not set`);
         res.sendStatus(403);
         return;
       }
-      const userId = await userStore.validateUser(username, password);
+      const userId = await validateUser(prisma, username, password);
       if (userId) {
         log.info(`User "${username}" logged in`);
         await deleteExpired(prisma);
