@@ -48,10 +48,9 @@ const input = builder.inputType('DeviceUpdateInput', {
  * be empty) but matches every other id-like field's rule in this schema
  * (`bookId`, `deviceDelete`'s `deviceId`, …) — an empty string is a client
  * bug, not a valid lookup. Kept as its OWN schema, separate from
- * `deviceFieldsSchema`, so it can be checked and used to look the device up
- * BEFORE the `name`/`coverWidth`/`coverHeight` fields are validated — see the
- * resolver's doc comment (review, task 7, M-2) for why the two are ordered
- * that way.
+ * `deviceFieldsSchema`, because an empty `deviceId` is a malformed
+ * identifier rather than a bad field value — checking it first means an
+ * unusable id is reported before the resolver bothers validating the body.
  */
 const deviceIdSchema = z.object({
   deviceId: z.string().min(1, 'deviceId must not be empty'),
@@ -94,37 +93,17 @@ const result = builder.unionType('DeviceUpdateResult', {
  * `device-store.ts:84`) — REST answered "Device not found" for both, and so
  * does this.
  *
- * **Ordering (review, task 7, M-2):** REST checked existence (`getById` →
- * 404) BEFORE parsing the body (`parseBody` → 400). (Dangling pointer to
- * `routes/devices.ts:111-119` removed — that router is gone as of Phase 0.
- * Phase 1 revisits this ordering: it re-orders this resolver to
- * validate-then-resolve and drops the `getById` precheck below. The
- * rationale that follows is left as-is until then.)
- * This resolver mirrors that order literally: `deviceId` is validated and
- * looked up first, and only once the device is confirmed to exist does
- * `deviceFieldsSchema` run against `name`/`coverWidth`/`coverHeight`. For an
- * input that fails both (an unknown `deviceId` AND a blank/oversized `name`),
- * this returns `null` (REST's 404), never `InvalidInputError` — pinned by a
- * dedicated test below. Every OTHER mutation in this schema validates first,
- * then resolves — this is the one deliberate exception, because it is the
- * one case where REST's own ordering is observable and worth matching
- * exactly rather than defaulting to this schema's usual convention.
+ * **Ordering:** validates before it resolves, like every other mutation in
+ * this schema. An input that is both an unknown device and a malformed body
+ * reports the malformed body. This deliberately inverts the behaviour of the
+ * removed `PATCH /api/devices/:id`, which checked existence first — the
+ * spec's Resolved decision D-1 chose this schema's own convention over a
+ * dead endpoint's ordering.
  *
- * **`getById` is kept even though it's outcome-redundant with
- * `DeviceStore.update`'s own `P2025`-to-`null` conversion (review, task 7,
- * M-4)**, unlike the `getBySlug` prechecks below, which are dropped. Two
- * reasons, not one: (1) the ordering guarantee above — REST answers 404
- * before ever looking at the body, and the only way to reproduce that here
- * is to resolve existence before parsing `deviceFieldsSchema`, which needs a
- * confirmed-existing device to compare a rename against in the first place;
- * (2) without it, "does a malformed body on an unknown device 404 or 400"
- * would depend on Prisma's own internal ordering between resolving the
- * `WHERE id = ...` clause and evaluating the `slug` unique constraint on the
- * `UPDATE` — an implementation detail of the database driver, not a decision
- * this resolver should delegate to. `getBySlug` has no equivalent stake:
- * dropping it changes nothing about ordering (the slug conflict is still
- * only knowable after parsing) or determinism (the DB's constraint is
- * already authoritative either way — see the note below).
+ * No `getById` precheck: `DeviceStore.update` already converts `P2025` to
+ * `null` and `P2002` to `DeviceSlugConflictError`, so the outcome is decided
+ * by which constraint failed, not by evaluation order. The precheck was one
+ * extra query and nothing else.
  *
  * The slug-conflict handling is the same deliberate simplification
  * `deviceCreate` documents: REST's `getBySlug` precheck (excluding the row
@@ -156,9 +135,6 @@ builder.mutationField('deviceUpdate', (t) =>
       const idParsed = deviceIdSchema.safeParse({ deviceId: args.input.deviceId });
       if (!idParsed.success) return invalidInputError(idParsed.error);
 
-      const existing = await context.stores.device.getById(idParsed.data.deviceId);
-      if (existing === null) return null;
-
       const fieldsParsed = deviceFieldsSchema.safeParse({
         name: args.input.name,
         coverWidth: args.input.coverWidth ?? null,
@@ -176,7 +152,7 @@ builder.mutationField('deviceUpdate', (t) =>
       };
 
       const outcome = await toResult<Device | null, DeviceSlugConflictError>(
-        () => context.stores.device.update(existing.id, deviceInput),
+        () => context.stores.device.update(idParsed.data.deviceId, deviceInput),
         [DeviceSlugConflictError]
       );
       if ('err' in outcome) {
@@ -185,13 +161,14 @@ builder.mutationField('deviceUpdate', (t) =>
         }
         return assertUnreachableStoreError(outcome.err);
       }
-      if (outcome.ok === null) return null;
+      const device = outcome.ok;
+      if (device === null) return null;
 
-      await purgeEditionsQuietly('deviceUpdate', `device "${existing.id}"`, () =>
-        context.stores.edition.purgeForDevice(existing.id)
+      await purgeEditionsQuietly('deviceUpdate', `device "${device.id}"`, () =>
+        context.stores.edition.purgeForDevice(device.id)
       );
 
-      return { __typename: 'DeviceUpdatePayload' as const, deviceId: outcome.ok.id };
+      return { __typename: 'DeviceUpdatePayload' as const, deviceId: device.id };
     },
   })
 );

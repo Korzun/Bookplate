@@ -187,24 +187,26 @@ describe('Mutation.deviceUpdate', () => {
   });
 
   /**
-   * Review, task 7, M-2: REST's `PATCH /:id` checked existence (`getById` →
-   * 404) BEFORE parsing the body (`parseBody` → 400), before Phase 0 removed
-   * that route. For an input that failed both (an unknown `deviceId` AND a
-   * blank `name`), REST answered 404, never 400. This resolver reorders to
-   * match: `deviceId` is validated and looked up first, and the
-   * `name`/dimension fields are only parsed once the device is confirmed to
-   * exist — so this must resolve to `null` (REST's 404-equivalent), not
-   * `InvalidInputError`, even though the name is also invalid. (Phase 1
-   * revisits this ordering — see `update.ts`'s doc comment.)
+   * Ordering: this resolver validates before it resolves, like every other
+   * mutation in this schema. An input that is BOTH an unknown device AND a
+   * malformed body therefore reports the malformed body — the validation
+   * failure is knowable without a query, so it is answered first.
+   *
+   * This inverts a former REST-parity behaviour: `PATCH /api/devices/:id`
+   * checked existence before parsing and so answered 404 here. That route was
+   * removed in Phase 0, and the spec's Resolved decision D-1 normalized this
+   * resolver rather than preserving a dead endpoint's ordering.
    */
-  it('resolves to null (not InvalidInputError) for an unknown device with an invalid body', async () => {
+  it('returns InvalidInputError for an unknown device with an invalid body', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
-      variables: { input: validInput({ deviceId: 'no-such-device', name: '   ' }) },
+      variables: { input: validInput({ deviceId: 'no-such-device', name: '' }) },
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.data?.deviceUpdate).toBeNull();
+    expect((result.data?.deviceUpdate as { __typename: string }).__typename).toBe(
+      'InvalidInputError'
+    );
   });
 
   it('purges the edition cache for the device on success', async () => {
