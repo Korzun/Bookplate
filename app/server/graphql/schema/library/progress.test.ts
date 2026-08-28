@@ -1,3 +1,7 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
+import type { ScanImporter } from '../../../services/book-store';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -223,5 +227,55 @@ describe('Library.progress', () => {
     const bobPage = await readPage({ first: 10 }, harness.bobViewer);
 
     expect(bobPage.edges.map((e) => e.node.document)).toEqual(['9'.repeat(32)]);
+  });
+
+  it('returns only the current-id entry after a reimport changes the book id', async () => {
+    const FAKE_META = {
+      title: 'T',
+      author: 'A',
+      series: '',
+      seriesIndex: 0,
+      publisher: '',
+      publishDate: '',
+      description: '',
+      subjects: [],
+      identifiers: [],
+      coverData: null,
+      coverMime: null,
+      chapterCount: 0,
+      chapterSpineMap: [],
+      chapterNames: [],
+      pageCount: 0,
+    } as never;
+
+    const staged = path.join(harness.config.booksDir, 'staged-lin.epub');
+    fs.writeFileSync(staged, 'x');
+    await harness.stores.book.addBook(harness.aliceOwner, 'lin-old', staged, FAKE_META);
+    await harness.prisma.progress.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        document: 'lin-old',
+        progress: '/p[2]',
+        percentage: 0.4,
+        device: 'Kobo',
+        deviceId: 'd1',
+        timestamp: 1_700_000_100,
+      },
+    });
+
+    const mockImporter: ScanImporter = {
+      parseEpub: () => FAKE_META,
+      partialMD5: () => 'lin-new',
+    };
+    await harness.stores.book.reimportBook(harness.aliceOwner, 'lin-old', mockImporter);
+
+    const result = await harness.execute(PAGE, { viewer: harness.aliceViewer });
+    const documents = (result.data as PageData).viewer.library.progress.edges.map(
+      (edge) => edge.node.document
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(documents).toContain('lin-new');
+    expect(documents).not.toContain('lin-old');
   });
 });

@@ -178,4 +178,52 @@ describe('Mutation.userRegister', () => {
     expect(result.data?.userRegister ?? null).toBeNull();
     expect(await harness.prisma.user.findUnique({ where: { username: 'charlie4' } })).toBeNull();
   });
+
+  it('accepts a username of exactly 6 characters, the minimum', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'abcdef' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect((result.data?.userRegister as { __typename: string }).__typename).toBe(
+      'UserRegisterPayload'
+    );
+    expect(await harness.prisma.user.findUnique({ where: { username: 'abcdef' } })).not.toBeNull();
+  });
+
+  it('returns InvalidInputError for a username starting with a dot, and creates nothing', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: '.charlie' } },
+    });
+
+    expect(result.data?.userRegister).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [
+        {
+          path: ['username'],
+          message:
+            'Username may only contain letters, numbers, dots, underscores and dashes, and must start with a letter or number',
+        },
+      ],
+    });
+    expect(await harness.prisma.user.findUnique({ where: { username: '.charlie' } })).toBeNull();
+  });
+
+  it('accepts a username containing a dot and a dash', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'char.lie-1' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect((result.data?.userRegister as { __typename: string }).__typename).toBe(
+      'UserRegisterPayload'
+    );
+    expect(
+      await harness.prisma.user.findUnique({ where: { username: 'char.lie-1' } })
+    ).not.toBeNull();
+  });
 });

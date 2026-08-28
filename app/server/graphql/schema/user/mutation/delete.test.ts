@@ -95,4 +95,28 @@ describe('Mutation.userDelete', () => {
       await harness.prisma.user.findUnique({ where: { id: harness.aliceOwner.userId } })
     ).not.toBeNull();
   });
+
+  it('cascades to delete the user’s progress rows', async () => {
+    await harness.prisma.progress.create({
+      data: {
+        userId: harness.bobOwner.userId,
+        document: 'd'.repeat(32),
+        progress: '/p[1]',
+        percentage: 0.5,
+        device: 'Kobo',
+        deviceId: 'dev-1',
+        timestamp: 1_700_000_001,
+      },
+    });
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', harness.bobOwner.userId) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      await harness.prisma.progress.findMany({ where: { userId: harness.bobOwner.userId } })
+    ).toEqual([]);
+  });
 });
