@@ -60,7 +60,7 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma);
+  bookStore = new BookStore(booksRoot, prisma, path.join(os.tmpdir(), 'unused-editions'));
   mockResize.mockClear();
 });
 

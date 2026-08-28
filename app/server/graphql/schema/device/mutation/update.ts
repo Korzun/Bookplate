@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
+import { purgeForDevice } from '../../../../services/edition';
 import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
@@ -116,7 +117,7 @@ const result = builder.unionType('DeviceUpdateResult', {
  * route-specific "Slug already in use" — see `create.ts`'s identical note
  * (review, task 7, M-6).
  *
- * `editionStore.purgeForDevice` runs after a successful update — REST did
+ * `purgeForDevice` runs after a successful update — REST did
  * the same on its `PATCH /:id` ("settings changed -> stale cache"), before
  * Phase 0 removed that route, and swallowed a purge failure with a warning
  * rather than failing the request; see `purge-quietly.ts` for why that
@@ -172,7 +173,7 @@ builder.mutationField('deviceUpdate', (t) =>
       if (device === null) return null;
 
       await purgeEditionsQuietly('deviceUpdate', `device "${device.id}"`, () =>
-        context.stores.edition.purgeForDevice(device.id)
+        purgeForDevice(context.prisma, context.editionsRoot, device.id)
       );
 
       return { __typename: 'DeviceUpdatePayload' as const, deviceId: device.id };

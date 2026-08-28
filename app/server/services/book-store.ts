@@ -24,6 +24,7 @@ import {
   scoreAndRank,
 } from '../utils/fuzzy-search';
 import { seriesSortKey } from '../utils/series-sort-key';
+import { countForBook, purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import type { ScanProgress } from './scan-events';
 
@@ -101,17 +102,6 @@ export interface ScanImporter {
   partialMD5: (filePath: string) => string;
 }
 
-/**
- * Minimal structural interface for purging cached device editions when a book
- * is reimported or deleted, and for counting them (a non-destructive read used
- * by the UI). Kept separate from a concrete EditionStore class to avoid a hard
- * dependency from BookStore onto the edition-store module.
- */
-export interface EditionPurger {
-  purgeForBook(userId: string, originalBookId: string): Promise<void>;
-  countForBook(userId: string, originalBookId: string): Promise<number>;
-}
-
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
 
 function standaloneStatusWhere(
@@ -138,7 +128,7 @@ export class BookStore {
   constructor(
     private readonly booksRoot: string,
     private readonly prisma: PrismaClient,
-    private readonly editionStore?: EditionPurger
+    private readonly editionsRoot: string
   ) {}
 
   getStagingDir(): string {
@@ -396,8 +386,8 @@ export class BookStore {
     });
     if (!row) return null;
     const book = this.prismaBookToBook(owner, row);
-    if (opts?.withEditionCount && this.editionStore) {
-      book.deviceEditionCount = await this.editionStore.countForBook(owner.userId, id);
+    if (opts?.withEditionCount) {
+      book.deviceEditionCount = await countForBook(this.prisma, owner.userId, id);
     }
     return book;
   }
@@ -683,14 +673,12 @@ export class BookStore {
         /* file already gone */
       }
     }
-    if (this.editionStore) {
-      try {
-        await this.editionStore.purgeForBook(owner.userId, id);
-      } catch (err) {
-        log.warn(
-          `deleteBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
+    try {
+      await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
+    } catch (err) {
+      log.warn(
+        `deleteBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
+      );
     }
     return book;
   }
@@ -705,9 +693,7 @@ export class BookStore {
     const book = await this.getBookById(owner, id, { withEditionCount: true });
     if (!book) return null;
     const cleared = book.deviceEditionCount ?? 0;
-    if (this.editionStore) {
-      await this.editionStore.purgeForBook(owner.userId, id);
-    }
+    await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
     return cleared;
   }
 
@@ -892,15 +878,13 @@ export class BookStore {
       }
     });
 
-    if (this.editionStore) {
-      try {
-        await this.editionStore.purgeForBook(owner.userId, id);
-        if (newId !== id) await this.editionStore.purgeForBook(owner.userId, newId);
-      } catch (err) {
-        log.warn(
-          `reimportBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
+    try {
+      await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
+      if (newId !== id) await purgeForBook(this.prisma, this.editionsRoot, owner.userId, newId);
+    } catch (err) {
+      log.warn(
+        `reimportBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
+      );
     }
 
     return this.getBookById(owner, newId);

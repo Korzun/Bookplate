@@ -30,8 +30,8 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  userStore = new UserStore(prisma);
-  bookStore = new BookStore(booksDir, prisma);
+  userStore = new UserStore(prisma, path.join(os.tmpdir(), 'unused-editions'));
+  bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
   app = express();
   app.use(express.json());
   app.use('/sync', createKosyncRouter(userStore, bookStore));

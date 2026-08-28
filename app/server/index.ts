@@ -10,7 +10,6 @@ import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
 import { BookStore } from './services/book-store';
-import { EditionStore } from './services/edition-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
@@ -37,9 +36,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const prisma = createPrismaClient(`file:${dbPath}`);
   await runMigrations(prisma, config.booksDir);
 
-  const editionStore = new EditionStore(path.join(config.dataDir, 'editions'), prisma);
-  const userStore = new UserStore(prisma, editionStore);
-  const bookStore = new BookStore(config.booksDir, prisma, editionStore);
+  const editionsRoot = path.join(config.dataDir, 'editions');
+  const userStore = new UserStore(prisma, editionsRoot);
+  const bookStore = new BookStore(config.booksDir, prisma, editionsRoot);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
@@ -60,11 +59,11 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     stores: {
       book: bookStore,
       user: userStore,
-      edition: editionStore,
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
     },
+    editionsRoot,
     config,
     jwtSecret,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
@@ -82,7 +81,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     bookStore,
     thumbnailQueue,
     jwtSecret,
-    editionStore,
+    editionsRoot,
     prisma,
     graphqlHandler,
     replaceStaging

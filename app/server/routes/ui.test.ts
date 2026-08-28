@@ -25,7 +25,6 @@ import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
 import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { BookStore } from '../services/book-store';
-import { EditionStore } from '../services/edition-store';
 import { verifyAccessToken } from '../services/jwt';
 import {
   ADMIN_STAGING_ID,
@@ -108,6 +107,7 @@ afterAll(() => {
 });
 
 let booksDir: string;
+let editionsRoot: string;
 let prisma: PrismaClient;
 let bookStore: BookStore;
 let userStore: UserStore;
@@ -295,7 +295,6 @@ async function gqlExecute(
   const stores: Stores = {
     book: bookStore,
     user: userStore,
-    edition: new EditionStore(path.join(os.tmpdir(), 'ui-test-round-trip-editions'), prisma),
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
@@ -304,6 +303,7 @@ async function gqlExecute(
     viewer,
     prisma,
     stores,
+    editionsRoot,
     config: { ...config, booksDir },
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -317,6 +317,7 @@ async function gqlExecute(
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-'));
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -324,9 +325,9 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma);
+  bookStore = new BookStore(booksDir, prisma, editionsRoot);
   replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
-  userStore = new UserStore(prisma);
+  userStore = new UserStore(prisma, editionsRoot);
   await userStore.createUser('alice', await UserStore.hashLoginPassword('alicepass'));
   aliceId = (await userStore.getUserIdByUsername('alice'))!;
   aliceOwner = { userId: aliceId, username: 'alice' };

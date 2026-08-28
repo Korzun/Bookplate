@@ -7,14 +7,24 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { purgeForUser } from './edition';
 import { UserStore } from './user-store';
 import { WORDLIST } from './wordlist';
 
 vi.mock('../logger');
+// Call-through by default (see edition.test.ts's identical pattern) so every
+// test that doesn't care about the edition purge still exercises the real
+// `purgeForUser` — only the two tests below that assert on the purge itself
+// stub it, via `mockImplementationOnce`/`mockRejectedValueOnce`.
+vi.mock('./edition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./edition')>()),
+  purgeForUser: vi.fn((await importOriginal<typeof import('./edition')>()).purgeForUser),
+}));
 
 let prisma: PrismaClient;
 let store: UserStore;
 let dbPath: string;
+let editionsRoot: string;
 
 beforeEach(async () => {
   dbPath = path.join(
@@ -24,10 +34,17 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, os.tmpdir());
-  store = new UserStore(prisma);
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'user-store-editions-'));
+  store = new UserStore(prisma, editionsRoot);
 });
 
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; `purgeForUser`
+  // above is a module-mocked vi.fn() with a call-through default and no
+  // "original" to restore to, so its call history survives restoreAllMocks
+  // alone — clear it explicitly too (see edition.test.ts's identical note).
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);
@@ -350,23 +367,24 @@ describe('UserStore.deleteUser', () => {
     expect(await store.userExists('bob')).toBe(true);
   });
 
-  it('invokes the injected edition purger with the deleted userId', async () => {
-    const purgeForUser = vi.fn().mockResolvedValue(undefined);
-    const withPurger = new UserStore(prisma, { purgeForUser });
-    await withPurger.createUser('carol', null);
-    const carolId = (await withPurger.getUserIdByUsername('carol'))!;
+  it('invokes the edition purge with the deleted userId', async () => {
+    vi.mocked(purgeForUser).mockResolvedValueOnce(undefined);
+    await store.createUser('carol', null);
+    const carolId = (await store.getUserIdByUsername('carol'))!;
 
-    expect(await withPurger.deleteUser('carol')).toBe(true);
-    expect(purgeForUser).toHaveBeenCalledWith(carolId);
+    expect(await store.deleteUser('carol')).toBe(true);
+    // `expect.anything()` for the leading `prisma` arg, not the real
+    // instance: a deep-equal match against a PrismaClient's circular
+    // internal structure overflows the assertion's own call stack.
+    expect(purgeForUser).toHaveBeenCalledWith(expect.anything(), editionsRoot, carolId);
   });
 
-  it('still succeeds when the injected edition purger throws', async () => {
-    const purgeForUser = vi.fn().mockRejectedValue(new Error('purge boom'));
-    const withPurger = new UserStore(prisma, { purgeForUser });
-    await withPurger.createUser('dave', null);
+  it('still succeeds when the edition purge throws', async () => {
+    vi.mocked(purgeForUser).mockRejectedValueOnce(new Error('purge boom'));
+    await store.createUser('dave', null);
 
-    expect(await withPurger.deleteUser('dave')).toBe(true);
-    expect(await withPurger.userExists('dave')).toBe(false);
+    expect(await store.deleteUser('dave')).toBe(true);
+    expect(await store.userExists('dave')).toBe(false);
     expect(purgeForUser).toHaveBeenCalled();
   });
 });

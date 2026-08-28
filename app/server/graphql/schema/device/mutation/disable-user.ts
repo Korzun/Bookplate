@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { purgeForDeviceAndUser } from '../../../../services/edition';
 import { builder } from '../../builder';
 import {
   invalidInputError,
@@ -74,7 +75,7 @@ const result = builder.unionType('DeviceDisableUserResult', {
  * wrapped in `toResult`: a `deleteMany` cannot raise any of the seven known
  * store errors.
  *
- * `editionStore.purgeForDeviceAndUser` runs after every call (REST does the
+ * `purgeForDeviceAndUser` runs after every call (REST does the
  * same unconditionally, not just when a row was actually deleted) and is
  * swallowed on failure — see `update.ts`'s identical note and
  * `purge-quietly.ts`.
@@ -107,7 +108,7 @@ builder.mutationField('deviceDisableUser', (t) =>
       await purgeEditionsQuietly(
         'deviceDisableUser',
         `device "${device.id}" user "${owner.userId}"`,
-        () => context.stores.edition.purgeForDeviceAndUser(device.id, owner.userId)
+        () => purgeForDeviceAndUser(context.prisma, context.editionsRoot, device.id, owner.userId)
       );
 
       return {

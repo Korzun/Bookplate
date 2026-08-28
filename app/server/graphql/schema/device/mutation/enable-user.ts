@@ -98,7 +98,7 @@ const result = builder.unionType('DeviceEnableUserResult', {
  * primary key cannot raise a unique-slug conflict or any of the other six
  * known store errors.
  *
- * No `editionStore` purge here: REST's `PUT` route doesn't call one either —
+ * No edition-cache purge here: REST's `PUT` route doesn't call one either —
  * granting access creates no stale cache to invalidate (only losing access,
  * `deviceDisableUser`, does).
  */

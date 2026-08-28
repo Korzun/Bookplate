@@ -79,7 +79,7 @@ describe('replaceEpubBytes', () => {
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    bookStore = new BookStore(booksDir, prisma);
+    bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
     deps = { bookStore, prisma, validationThreshold: 'ERROR' };
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, epub('Old'));

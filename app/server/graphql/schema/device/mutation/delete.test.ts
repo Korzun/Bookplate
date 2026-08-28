@@ -1,4 +1,5 @@
 import { logger } from '../../../../logger';
+import { purgeForDevice } from '../../../../services/edition';
 import { createHarness, type Harness } from '../../../test-util';
 
 // A bare `vi.mock('../../../../logger')` auto-mock hands back a FRESH mocked
@@ -21,6 +22,16 @@ vi.mock('../../../../logger', () => {
   };
 });
 
+// Call-through by default (see services/edition.test.ts's identical pattern)
+// so every test but the one below that stubs it still exercises the real
+// `purgeForDevice`.
+vi.mock('../../../../services/edition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../services/edition')>()),
+  purgeForDevice: vi.fn(
+    (await importOriginal<typeof import('../../../../services/edition')>()).purgeForDevice
+  ),
+}));
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -31,6 +42,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // restoreAllMocks() only reverts vi.spyOn()-created spies; `purgeForDevice`
+  // above is a module-mocked vi.fn() with a call-through default and no
+  // "original" to restore to, so its call history survives restoreAllMocks
+  // alone — clear it explicitly too (see edition.test.ts's identical note).
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   await harness.cleanup();
 });
 
@@ -94,9 +111,7 @@ describe('Mutation.deviceDelete', () => {
   });
 
   it('still succeeds when the edition-cache purge fails, and logs a warning', async () => {
-    vi.spyOn(harness.stores.edition, 'purgeForDevice').mockRejectedValueOnce(
-      new Error('disk full')
-    );
+    vi.mocked(purgeForDevice).mockRejectedValueOnce(new Error('disk full'));
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,

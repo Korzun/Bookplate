@@ -9,7 +9,6 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
-import { EditionStore } from '../services/edition-store';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -93,13 +92,12 @@ export const createHarness = async (): Promise<Harness> => {
   await runMigrations(prisma, booksDir);
 
   const config = testConfig(booksDir, dataDir);
-  const edition = new EditionStore(path.join(dataDir, 'editions'), prisma);
-  const user = new UserStore(prisma, edition);
-  const book = new BookStore(booksDir, prisma, edition);
+  const editionsRoot = path.join(dataDir, 'editions');
+  const user = new UserStore(prisma, editionsRoot);
+  const book = new BookStore(booksDir, prisma, editionsRoot);
   const stores: Stores = {
     book,
     user,
-    edition,
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
     // `context.stores.scanJob.subscribe`) — not the class's own default,
@@ -153,6 +151,7 @@ export const createHarness = async (): Promise<Harness> => {
       viewer: options.viewer === undefined ? aliceViewer : options.viewer,
       prisma,
       stores,
+      editionsRoot,
       config,
       loadOwner: createOwnerLoader(prisma),
       loadProgress: createProgressLoader(prisma),

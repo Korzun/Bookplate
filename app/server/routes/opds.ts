@@ -8,7 +8,7 @@ import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
 import { BookStore } from '../services/book-store';
 import { getBySlug, isEnabled } from '../services/device';
-import { EditionStore } from '../services/edition-store';
+import { getOrCreateEdition } from '../services/edition';
 import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
 import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
@@ -51,7 +51,7 @@ export function createOpdsRouter(
   thumbnailWidths: number[],
   libraryName: string = 'Bookplate',
   prisma?: PrismaClient,
-  editionStore?: EditionStore,
+  editionsRoot?: string,
   validationThreshold: ValidationThreshold = ValidationThreshold.ERROR
 ): Router {
   const router = Router();
@@ -409,7 +409,7 @@ export function createOpdsRouter(
     auth,
     asyncHandler(async (req: Request, res: Response) => {
       const owner = req.opdsOwner!;
-      if (!prisma || !editionStore) {
+      if (!prisma || !editionsRoot) {
         res.status(404).send('Not found');
         return;
       }
@@ -430,7 +430,9 @@ export function createOpdsRouter(
         res.status(403).send('Forbidden');
         return;
       }
-      const { path: filePath, filename } = await editionStore.getOrCreateEdition(
+      const { path: filePath, filename } = await getOrCreateEdition(
+        prisma,
+        editionsRoot,
         owner,
         book,
         device,
@@ -505,7 +507,7 @@ export function createOpdsRouter(
   );
 
   // --- Device-scoped catalog (browse-only): auth first, then resolve the slug ---
-  if (prisma && editionStore) {
+  if (prisma && editionsRoot) {
     const deviceCatalog = Router({ mergeParams: true });
     deviceCatalog.use(auth, resolveDevice(prisma), requireDeviceEnabled(prisma));
     mountFeeds(deviceCatalog);
