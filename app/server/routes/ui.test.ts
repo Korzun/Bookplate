@@ -1234,10 +1234,7 @@ describe('POST /api/books/upload — dcterms:modified repair', () => {
     expect(fix).toBeTruthy();
     expect(fix.field).toBe('document');
     // Book is retrievable under the (repaired) id.
-    await request(app)
-      .get(`/api/books/${result.bookId}`)
-      .set(...bearer(token))
-      .expect(200);
+    expect(await bookStore.getBookById(aliceOwner, result.bookId)).not.toBeNull();
   });
 
   it('injects a missing dcterms:modified and reports a document fix', async () => {
@@ -1303,10 +1300,7 @@ describe('POST /api/books/upload — dcterms:modified repair', () => {
     expect(metadataFix).toBeTruthy();
 
     // The returned bookId is the final post-auto-fix id and is retrievable.
-    await request(app)
-      .get(`/api/books/${result.bookId}`)
-      .set(...bearer(token))
-      .expect(200);
+    expect(await bookStore.getBookById(aliceOwner, result.bookId)).not.toBeNull();
   });
 });
 
@@ -1808,6 +1802,50 @@ describe('SPA routes serve index.html', () => {
 
   it('GET /upload serves the SPA without auth', async () => {
     const res = await request(app).get('/upload');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<!DOCTYPE html>');
+  });
+});
+
+// The guard that keeps the catch-all above from swallowing API paths. Every
+// route this router shed in the GraphQL migration now lands here, and a
+// caller that reaches one must get a parseable JSON 404 rather than 200 with
+// an HTML body.
+describe('unmatched /api/* paths', () => {
+  it('GET at a retired API path returns a JSON 404, not the SPA', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .get('/api/books')
+      .set(...bearer(token));
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Not found' });
+    expect(res.text).not.toContain('<!DOCTYPE html>');
+  });
+
+  it('answers 404 for a retired non-GET API path too', async () => {
+    const token = await loginAlice();
+    const res = await request(app)
+      .patch('/api/books/someid/metadata')
+      .set(...bearer(token))
+      .send({ title: 'x' });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Not found' });
+  });
+
+  it('answers 404 for an unknown API path without a token', async () => {
+    const res = await request(app).get('/api/nope');
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Not found' });
+  });
+
+  it('does not shadow a surviving API route', async () => {
+    const res = await request(app).get('/api/public-config');
+    expect(res.status).toBe(200);
+    expect(res.body.libraryName).toEqual(expect.any(String));
+  });
+
+  it('leaves non-API paths on the SPA catch-all', async () => {
+    const res = await request(app).get('/apiary');
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
