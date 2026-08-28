@@ -65,7 +65,7 @@ describe('getOrCreateJwtSecret', () => {
     expect(second.equals(first)).toBe(true);
   });
 
-  it('persists the secret across store instances', async () => {
+  it('persists the secret across separate calls', async () => {
     const first = await getOrCreateJwtSecret(prisma);
     const second = await getOrCreateJwtSecret(prisma);
     expect(second.equals(first)).toBe(true);
