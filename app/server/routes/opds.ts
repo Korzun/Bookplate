@@ -1,12 +1,13 @@
 import { createHash } from 'crypto';
 
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
+import type { PrismaClient } from '@prisma/client';
 import { Router, Request, Response, RequestHandler } from 'express';
 
 import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
 import { BookStore } from '../services/book-store';
-import { DeviceStore } from '../services/device-store';
+import { getBySlug, isEnabled } from '../services/device';
 import { EditionStore } from '../services/edition-store';
 import { UserStore } from '../services/user-store';
 import { asyncHandler } from '../utils/async-handler';
@@ -17,9 +18,9 @@ const log = logger('OPDS');
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as const);
 
 /** Resolves the `:slug` mount param to a Device, 404ing if it does not exist. */
-function resolveDevice(deviceStore: DeviceStore): RequestHandler {
+function resolveDevice(prisma: PrismaClient): RequestHandler {
   return asyncHandler(async (req, res, next) => {
-    const device = await deviceStore.getBySlug(req.params.slug);
+    const device = await getBySlug(prisma, req.params.slug);
     if (!device) {
       log.warn(`Device catalog requested for unknown slug: ${JSON.stringify(req.params.slug)}`);
       res.status(404).send('Not found');
@@ -31,11 +32,11 @@ function resolveDevice(deviceStore: DeviceStore): RequestHandler {
 }
 
 /** Blocks the device-scoped catalog unless the OPDS owner is enabled for the device. */
-function requireDeviceEnabled(deviceStore: DeviceStore): RequestHandler {
+function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
   return asyncHandler(async (req, res, next) => {
     const owner = req.opdsOwner!;
     const device = req.opdsDevice!;
-    if (!(await deviceStore.isEnabled(device.id, owner.userId))) {
+    if (!(await isEnabled(prisma, device.id, owner.userId))) {
       log.warn(`User "${owner.username}" denied device catalog "${device.slug}" (not enabled)`);
       res.status(403).send('Forbidden');
       return;
@@ -49,7 +50,7 @@ export function createOpdsRouter(
   userStore: UserStore,
   thumbnailWidths: number[],
   libraryName: string = 'Bookplate',
-  deviceStore?: DeviceStore,
+  prisma?: PrismaClient,
   editionStore?: EditionStore,
   validationThreshold: ValidationThreshold = ValidationThreshold.ERROR
 ): Router {
@@ -408,7 +409,7 @@ export function createOpdsRouter(
     auth,
     asyncHandler(async (req: Request, res: Response) => {
       const owner = req.opdsOwner!;
-      if (!deviceStore || !editionStore) {
+      if (!prisma || !editionStore) {
         res.status(404).send('Not found');
         return;
       }
@@ -418,13 +419,13 @@ export function createOpdsRouter(
         res.status(404).send('Not found');
         return;
       }
-      const device = await deviceStore.getBySlug(req.params.slug);
+      const device = await getBySlug(prisma, req.params.slug);
       if (!device) {
         log.warn(`Device download requested for unknown device slug: ${req.params.slug}`);
         res.status(404).send('Not found');
         return;
       }
-      if (!(await deviceStore.isEnabled(device.id, owner.userId))) {
+      if (!(await isEnabled(prisma, device.id, owner.userId))) {
         log.warn(`User "${owner.username}" denied device download "${device.slug}" (not enabled)`);
         res.status(403).send('Forbidden');
         return;
@@ -504,9 +505,9 @@ export function createOpdsRouter(
   );
 
   // --- Device-scoped catalog (browse-only): auth first, then resolve the slug ---
-  if (deviceStore && editionStore) {
+  if (prisma && editionStore) {
     const deviceCatalog = Router({ mergeParams: true });
-    deviceCatalog.use(auth, resolveDevice(deviceStore), requireDeviceEnabled(deviceStore));
+    deviceCatalog.use(auth, resolveDevice(prisma), requireDeviceEnabled(prisma));
     mountFeeds(deviceCatalog);
     router.use('/device/:slug', deviceCatalog);
   }

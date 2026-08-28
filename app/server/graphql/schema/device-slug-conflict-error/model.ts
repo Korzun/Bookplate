@@ -1,14 +1,16 @@
-import type { DeviceSlugConflictError as StoreError } from '../../../services/device-store';
+import type { DeviceSlugConflictError as StoreError } from '../../../services/device';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
  * `DeviceSlugConflictError` is raised from a Prisma P2002 on the unique `slug`
- * column (`device-store.ts:18`) and — unlike the book-store errors — carries
- * NO data: the store never puts the offending slug on it. So the slug the SDL
- * promises has to come from the caller, which is the only side that knows it:
- * `generateSlug(input.name)`, the same derivation `DeviceStore` applied before
- * the insert. Task 7's device mutations pass it in.
+ * column (`deviceCreate`/`deviceUpdate`'s own catch, `graphql/schema/device/
+ * mutation/{create,update}.ts`) and — unlike the book-store errors — carries
+ * NO data: the class has a zero-arg constructor, so nothing puts the
+ * offending slug on it. So the slug the SDL promises has to come from the
+ * caller, which is the only side that knows it: `generateSlug(input.name)`,
+ * the same derivation the mutation applies before the insert/update. Task 7's
+ * device mutations pass it in.
  */
 export type DeviceSlugConflictErrorShape = {
   readonly __typename: 'DeviceSlugConflictError';

@@ -72,11 +72,12 @@ export const model = builder.prismaObject('Device', {
      * second lookup. `username` is still one field away, so nothing REST returns
      * is lost.
      *
-     * `orderBy: { username: 'asc' }` reproduces
+     * `orderBy: { username: 'asc' }` reproduces the now-deleted
      * `DeviceStore.listUsernamesForDevice`'s own `orderBy: { user: { username:
-     * 'asc' } }`, and the `deviceAccess.some` filter is the Prisma equivalent of
-     * its `deviceUser.findMany({ where: { deviceId } })` join, read from the User
-     * side so the rows are `User`s.
+     * 'asc' } }` (dead code, removed when `DeviceStore` was dissolved — it had
+     * no production caller), and the `deviceAccess.some` filter is the Prisma
+     * equivalent of its `deviceUser.findMany({ where: { deviceId } })` join,
+     * read from the User side so the rows are `User`s.
      */
     // `nullable: true` (pre-client hardening spec, §4 "Nullability
     // ruling") — same reasoning as `Viewer.users` (viewer/model.ts): a

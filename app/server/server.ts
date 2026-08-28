@@ -10,7 +10,6 @@ import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
 import { createUiRouter } from './routes/ui';
 import { BookStore } from './services/book-store';
-import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
 import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
@@ -25,7 +24,6 @@ export function createServer(
   bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue,
   jwtSecret: Buffer,
-  deviceStore: DeviceStore,
   editionStore: EditionStore,
   prisma: PrismaClient,
   graphqlHandler: RequestHandler,
@@ -67,7 +65,7 @@ export function createServer(
       userStore,
       config.thumbnailWidths,
       config.libraryName,
-      deviceStore,
+      prisma,
       editionStore,
       config.validationThreshold
     )

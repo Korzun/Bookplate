@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { BookStore } from '../services/book-store';
-import type { DeviceStore } from '../services/device-store';
 import type { EditionStore } from '../services/edition-store';
 import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
@@ -44,7 +43,6 @@ export type Viewer = {
 export type Stores = {
   book: BookStore;
   user: UserStore;
-  device: DeviceStore;
   edition: EditionStore;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;

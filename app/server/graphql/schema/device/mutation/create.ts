@@ -1,5 +1,10 @@
-import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device-store';
-import type { Device } from '../../../../types';
+import { randomUUID } from 'crypto';
+
+import {
+  DeviceSlugConflictError,
+  isPrismaError,
+  type DeviceInput,
+} from '../../../../services/device';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -79,26 +84,27 @@ const result = builder.unionType('DeviceCreateResult', {
  * `ownerOf` alternative exists: devices are not owned by any user.
  *
  * REST runs a `getBySlug` precheck (409) AND catches `DeviceSlugConflictError`
- * from `deviceStore.create` itself (a second 409, defense against a race
+ * from `DeviceStore.create` itself (a second 409, defense against a race
  * between the precheck and the write) — both produce the identical response.
- * This resolver keeps only the second: `DeviceStore.create` already throws
- * `DeviceSlugConflictError` on the DB's own unique-constraint violation
- * (`device-store.ts:18`, backed by `slug @unique` in `prisma/schema.prisma`),
- * so the precheck is redundant for outcome purposes — it exists in REST only
- * to avoid an unnecessary write attempt, not to produce a different result.
- * Relying solely on the store's real throw, via `toResult`, is also more in
- * keeping with this schema's "`toResult` is the single boundary" discipline
- * than fabricating a synthetic `DeviceSlugConflictError` instance to match a
- * precheck that has no separate observable behaviour. Flagged here as a
- * deliberate simplification, not an oversight.
+ * This resolver keeps only the second: the `prisma.device.create` call below
+ * already throws `DeviceSlugConflictError` on the DB's own unique-constraint
+ * violation (a Prisma `P2002`, backed by `slug @unique` in
+ * `prisma/schema.prisma`), so the precheck is redundant for outcome
+ * purposes — it exists in REST only to avoid an unnecessary write attempt,
+ * not to produce a different result. Relying solely on the real throw, via
+ * `toResult`, is also more in keeping with this schema's "`toResult` is the
+ * single boundary" discipline than fabricating a synthetic
+ * `DeviceSlugConflictError` instance to match a precheck that has no
+ * separate observable behaviour. Flagged here as a deliberate
+ * simplification, not an oversight.
  *
- * `DeviceSlugConflictError` carries no data of its own (`device-store.ts`'s
+ * `DeviceSlugConflictError` carries no data of its own (`services/device.ts`'s
  * class has a zero-arg constructor) — the SDL's `slug` field is filled in
- * from `generateSlug(parsed.data.name)`, the same derivation the store
- * itself would have applied, per the ledger's binding rule for this type.
+ * from `generateSlug(parsed.data.name)`, the same derivation this resolver
+ * applies before the insert, per the ledger's binding rule for this type.
  *
- * `message` deliberately carries the STORE's own text ("A device with this
- * name already exists", `device-store.ts:20`), not either of REST's two
+ * `message` deliberately carries the error class's own text ("A device with
+ * this name already exists", `services/device.ts`), not either of REST's two
  * per-route strings ("A device with this name/slug already exists" on
  * `POST /`, "Slug already in use" on `PATCH /:id`) — this is the same
  * "factories carry the store error's own message" convention every other
@@ -131,10 +137,16 @@ builder.mutationField('deviceCreate', (t) =>
         simplify: args.input.simplify,
       };
 
-      const outcome = await toResult<Device, DeviceSlugConflictError>(
-        () => context.stores.device.create(deviceInput),
-        [DeviceSlugConflictError]
-      );
+      const outcome = await toResult<{ id: string }, DeviceSlugConflictError>(async () => {
+        try {
+          return await context.prisma.device.create({
+            data: { id: randomUUID(), slug: generateSlug(deviceInput.name), ...deviceInput },
+          });
+        } catch (err) {
+          if (isPrismaError(err, 'P2002')) throw new DeviceSlugConflictError();
+          throw err;
+        }
+      }, [DeviceSlugConflictError]);
       if ('err' in outcome) {
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(parsed.data.name));

@@ -10,7 +10,6 @@ import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
 import { BookStore } from './services/book-store';
-import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
@@ -41,7 +40,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const editionStore = new EditionStore(path.join(config.dataDir, 'editions'), prisma);
   const userStore = new UserStore(prisma, editionStore);
   const bookStore = new BookStore(config.booksDir, prisma, editionStore);
-  const deviceStore = new DeviceStore(prisma);
   const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
@@ -62,7 +60,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     stores: {
       book: bookStore,
       user: userStore,
-      device: deviceStore,
       edition: editionStore,
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
@@ -85,7 +82,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     bookStore,
     thumbnailQueue,
     jwtSecret,
-    deviceStore,
     editionStore,
     prisma,
     graphqlHandler,

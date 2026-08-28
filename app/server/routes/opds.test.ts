@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -10,10 +11,10 @@ import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
 import { BookStore } from '../services/book-store';
-import { DeviceStore } from '../services/device-store';
 import { EditionStore } from '../services/edition-store';
 import { UserStore } from '../services/user-store';
 import { EpubMeta, Owner } from '../types';
+import { generateSlug } from '../utils/slug';
 import { createOpdsRouter } from './opds';
 
 vi.mock('../logger');
@@ -240,16 +241,19 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     const bookId = 'devicedl1';
     await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
 
-    const deviceStore = new DeviceStore(prisma);
-    const device = await deviceStore.create({
-      name: 'Kindle',
-      coverWidth: null,
-      coverHeight: null,
-      coverFit: 'contain',
-      bwCover: false,
-      simplify: true,
+    const device = await prisma.device.create({
+      data: {
+        id: randomUUID(),
+        slug: generateSlug('Kindle'),
+        name: 'Kindle',
+        coverWidth: null,
+        coverHeight: null,
+        coverFit: 'contain',
+        bwCover: false,
+        simplify: true,
+      },
     });
-    await deviceStore.enableUser(device.id, alice.userId);
+    await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
     const editionStore = new EditionStore(editionsRoot, prisma, {
       buildEdition: async () => Buffer.from('EDITION'),
@@ -264,7 +268,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
         userStore,
         [60, 170],
         'Bookplate',
-        deviceStore,
+        prisma,
         editionStore,
         ValidationThreshold.ERROR
       )
@@ -291,16 +295,20 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
   it('403s on a device download for a user the device is not enabled for', async () => {
     const bookId = 'devicedl-forbidden';
     await bookStore.addBook(bob, bookId, stage(bookId, 'epub-content'), FAKE_META);
-    const deviceStore = new DeviceStore(prisma);
-    const device = await deviceStore.create({
-      name: 'Kindle',
-      coverWidth: null,
-      coverHeight: null,
-      coverFit: 'contain',
-      bwCover: false,
-      simplify: true,
+    const device = await prisma.device.create({
+      data: {
+        id: randomUUID(),
+        slug: generateSlug('Kindle'),
+        name: 'Kindle',
+        coverWidth: null,
+        coverHeight: null,
+        coverFit: 'contain',
+        bwCover: false,
+        simplify: true,
+      },
     });
-    await deviceStore.enableUser(device.id, alice.userId); // alice enabled, bob not
+    // alice enabled, bob not
+    await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
       buildEdition: async () => Buffer.from('EDITION'),
       assertValidEpub: async () => ({}) as never,
@@ -314,7 +322,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
         userStore,
         [60, 170],
         'Bookplate',
-        deviceStore,
+        prisma,
         editionStore,
         ValidationThreshold.ERROR
       )
@@ -484,14 +492,17 @@ describe('OPDS feed thumbnail link', () => {
   it('does not list per-device acquisition links in the base book feed', async () => {
     const bookId = 'opds-device1';
     await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
-    const deviceStore = new DeviceStore(prisma);
-    await deviceStore.create({
-      name: 'Kindle',
-      coverWidth: null,
-      coverHeight: null,
-      coverFit: 'contain',
-      bwCover: false,
-      simplify: true,
+    await prisma.device.create({
+      data: {
+        id: randomUUID(),
+        slug: generateSlug('Kindle'),
+        name: 'Kindle',
+        coverWidth: null,
+        coverHeight: null,
+        coverFit: 'contain',
+        bwCover: false,
+        simplify: true,
+      },
     });
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma);
     const app2 = express();
@@ -502,7 +513,7 @@ describe('OPDS feed thumbnail link', () => {
         userStore,
         [60, 170],
         'Bookplate',
-        deviceStore,
+        prisma,
         editionStore,
         ValidationThreshold.ERROR
       )
@@ -864,16 +875,19 @@ describe('GET /opds/status/:status', () => {
 
 describe('GET /opds/device/:slug (per-device catalog)', () => {
   async function deviceApp() {
-    const deviceStore = new DeviceStore(prisma);
-    const device = await deviceStore.create({
-      name: 'Kindle',
-      coverWidth: null,
-      coverHeight: null,
-      coverFit: 'contain',
-      bwCover: false,
-      simplify: true,
+    const device = await prisma.device.create({
+      data: {
+        id: randomUUID(),
+        slug: generateSlug('Kindle'),
+        name: 'Kindle',
+        coverWidth: null,
+        coverHeight: null,
+        coverFit: 'contain',
+        bwCover: false,
+        simplify: true,
+      },
     });
-    await deviceStore.enableUser(device.id, alice.userId);
+    await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
     const editionStore = new EditionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'ed-')), prisma, {
       buildEdition: async () => Buffer.from('EDITION'),
       assertValidEpub: async () => ({}) as never,
@@ -887,12 +901,12 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
         userStore,
         [60, 170],
         'Bookplate',
-        deviceStore,
+        prisma,
         editionStore,
         ValidationThreshold.ERROR
       )
     );
-    return { app: a, device, deviceStore };
+    return { app: a, device };
   }
 
   it('403s for a user the device is not enabled for', async () => {

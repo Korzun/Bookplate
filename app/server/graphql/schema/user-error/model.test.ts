@@ -13,7 +13,7 @@ import {
   DocumentIsBookError,
   SelfLinkError,
 } from '../../../services/book-store';
-import { DeviceSlugConflictError } from '../../../services/device-store';
+import { DeviceSlugConflictError } from '../../../services/device';
 import { EpubValidationError } from '../../../services/epub-validator';
 import { createChapterSpineMapLoader } from '../../chapter-spine-map-loader';
 import type { Context } from '../../context';

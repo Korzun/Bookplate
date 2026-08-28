@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
-import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device-store';
-import type { Device } from '../../../../types';
+import {
+  DeviceSlugConflictError,
+  isPrismaError,
+  type DeviceInput,
+} from '../../../../services/device';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -89,9 +92,8 @@ const result = builder.unionType('DeviceUpdateResult', {
  * collapsed into this mutation's single `null` result, the same "no such
  * row" convention every delete/update mutation in this schema uses: the
  * device doesn't exist before the write, or a P2025 races the write out
- * from under it (`DeviceStore.update`'s own `P2025` catch,
- * `device-store.ts:84`) — REST answered "Device not found" for both, and so
- * does this.
+ * from under it (this resolver's own `P2025` catch below) — REST answered
+ * "Device not found" for both, and so does this.
  *
  * **Ordering:** validates before it resolves, like every other mutation in
  * this schema. An input that is both an unknown device and a malformed body
@@ -100,20 +102,20 @@ const result = builder.unionType('DeviceUpdateResult', {
  * spec's Resolved decision D-1 chose this schema's own convention over a
  * dead endpoint's ordering.
  *
- * No `getById` precheck: `DeviceStore.update` already converts `P2025` to
- * `null` and `P2002` to `DeviceSlugConflictError`, so the outcome is decided
- * by which constraint failed, not by evaluation order. The precheck was one
- * extra query and nothing else.
+ * No `getById` precheck: the `prisma.device.update` call below already
+ * converts `P2025` to `null` and `P2002` to `DeviceSlugConflictError`, so the
+ * outcome is decided by which constraint failed, not by evaluation order.
+ * The precheck was one extra query and nothing else.
  *
  * The slug-conflict handling is the same deliberate simplification
  * `deviceCreate` documents: REST's `getBySlug` precheck (excluding the row
- * being updated) is redundant with `DeviceStore.update`'s own
+ * being updated) is redundant with this resolver's own
  * `DeviceSlugConflictError` throw on the DB's unique constraint, so only the
  * throw is mirrored here, via `toResult`. Renaming a device to its OWN
  * current name is not a conflict either way — updating a unique column to
  * the value it already holds never violates the constraint.
  *
- * `message` deliberately carries the store's own text, not REST's
+ * `message` deliberately carries the error class's own text, not REST's
  * route-specific "Slug already in use" — see `create.ts`'s identical note
  * (review, task 7, M-6).
  *
@@ -151,10 +153,18 @@ builder.mutationField('deviceUpdate', (t) =>
         simplify: args.input.simplify,
       };
 
-      const outcome = await toResult<Device | null, DeviceSlugConflictError>(
-        () => context.stores.device.update(idParsed.data.deviceId, deviceInput),
-        [DeviceSlugConflictError]
-      );
+      const outcome = await toResult<{ id: string } | null, DeviceSlugConflictError>(async () => {
+        try {
+          return await context.prisma.device.update({
+            where: { id: idParsed.data.deviceId },
+            data: { slug: generateSlug(deviceInput.name), ...deviceInput, updatedAt: Date.now() },
+          });
+        } catch (err) {
+          if (isPrismaError(err, 'P2025')) return null; // record no longer exists
+          if (isPrismaError(err, 'P2002')) throw new DeviceSlugConflictError();
+          throw err;
+        }
+      }, [DeviceSlugConflictError]);
       if ('err' in outcome) {
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(fieldsParsed.data.name));
