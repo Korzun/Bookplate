@@ -101,14 +101,15 @@ export const buildOwner = (userId: string, viewer: { readonly username: string }
 
 /**
  * `progress` is a fresh read of the row this resolver just wrote, by its
- * compound key — NOT the DTO `UserStore.saveProgress` returns (`device_id`,
- * no `userId`), which cannot serve as `progress/model.ts`'s `currentChapter`
- * field resolver: that resolver reads `progress.userId` off its parent, and
- * the DTO doesn't have one. Same "two queries, deliberately" split
- * `Library.progress` already uses, for the identical reason (see that
- * field's doc comment in `library/model.ts`) — the store decides what was
- * written, a second read supplies the real row shape every `Progress` field
- * resolver expects. `t.prismaField` (rather than a plain `t.field`) lets a
+ * compound key — NOT the DTO `saveProgress` (`services/progress.ts`)
+ * returns (`device_id`, no `userId`), which cannot serve as
+ * `progress/model.ts`'s `currentChapter` field resolver: that resolver reads
+ * `progress.userId` off its parent, and the DTO doesn't have one. Same "two
+ * queries, deliberately" split `Library.progress` already uses, for the
+ * identical reason (see that field's doc comment in `library/model.ts`) —
+ * `saveProgress` decides what was written, a second read supplies the real
+ * row shape every `Progress` field resolver expects. `t.prismaField`
+ * (rather than a plain `t.field`) lets a
  * client select only the sub-fields it needs off that second read.
  */
 const payload = builder.objectRef<ProgressSetPayloadShape>('ProgressSetPayload').implement({
@@ -180,7 +181,7 @@ const result = builder.unionType('ProgressSetResult', {
  * resolve to a real row) — `owner` is built directly from the input/context,
  * and the field is non-nullable.
  *
- * `UserStore.saveProgress` (`services/user-store.ts:211`) is an upsert — it
+ * `saveProgress` (`services/progress.ts:27`) is an upsert — it
  * creates the row if absent, updates it otherwise — so this mirrors REST's
  * upsert semantics exactly: there is no "document must already exist"
  * precondition, and `BookStore.getBookById` below is consulted only to

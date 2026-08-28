@@ -43,8 +43,9 @@ describe('Viewer.syncPassword', () => {
   });
 
   it('generates and persists one on first read, as the REST route does', async () => {
-    // `UserStore.getSyncPassword` creates the KOSync credential lazily. This
-    // read path must not diverge from REST's about whether a user has one.
+    // `getSyncPassword` (`services/password.ts`) creates the KOSync
+    // credential lazily. This read path must not diverge from REST's about
+    // whether a user has one.
     const generated = await read(harness.aliceViewer);
 
     expect(generated).toEqual(expect.any(String));

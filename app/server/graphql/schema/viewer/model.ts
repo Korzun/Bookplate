@@ -49,12 +49,14 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * (`users: [User!]! # admin-only scope`). Contrast `Viewer.devices`,
      * whose REST equivalent was deliberately *not* admin-gated.
      *
-     * `orderBy: { username: 'asc' }` is `UserStore.listUsers()`'s own ordering.
-     * Read through `context.prisma` rather than the store because `listUsers()`
-     * returns a `{ username, progressCount }` DTO with no `id` — it cannot back a
-     * `User` node. `User.progressCount` (see `user/model.ts`) exposes the same
-     * `_count.progresses` the DTO carried, so nothing from the REST payload is
-     * lost.
+     * `orderBy: { username: 'asc' }` is `UserStore.listUsers()`'s own ordering,
+     * preserved here even though `UserStore` itself is gone: this phase
+     * dissolved it and inlined the lookup at this one call site.
+     * Read through `context.prisma` rather than a service function because
+     * `listUsers()` used to return a `{ username, progressCount }` DTO with
+     * no `id` — it could not back a `User` node. `User.progressCount` (see
+     * `user/model.ts`) exposes the same `_count.progresses` that DTO
+     * carried, so nothing from the REST payload is lost.
      *
      * `nullable: true` (pre-client hardening spec, §4 "Nullability ruling"):
      * a scope denial on a NON-nullable list here would null-propagate all

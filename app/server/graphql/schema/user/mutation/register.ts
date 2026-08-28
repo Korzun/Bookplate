@@ -82,7 +82,7 @@ type UserRegisterPayloadShape = {
  * `user` is a fresh `t.prismaField` lookup by the username this resolver just
  * created, not a hand-built DTO — same "field resolvers do the lookup"
  * pattern `BookUpdateMetadataPayload.book` and `ProgressSetPayload.progress`
- * use, and for the identical reason: `UserStore.createUser` returns a plain
+ * use, and for the identical reason: `createUser` (`services/user.ts`) returns a plain
  * `boolean`, not a row, so there is nothing to carry forward except the
  * username that named it. `findUniqueOrThrow` is safe: the row was created by
  * the very `createUser` call that produced this payload, inside the same
@@ -126,7 +126,7 @@ const result = builder.unionType('UserRegisterResult', {
  *     `InvalidInputError` — see that type's doc comment for why both 409
  *     branches share it.
  *  3. length (400) — `lengthSchema` above.
- *  4. genuine duplicate (409) — `UserStore.createUser` returns `false` on a
+ *  4. genuine duplicate (409) — `createUser` returns `false` on a
  *     `P2002` unique-constraint collision (a race: two concurrent
  *     registrations of the same name). Same `UsernameAlreadyExistsError`.
  *
@@ -138,12 +138,12 @@ const result = builder.unionType('UserRegisterResult', {
  * since an admin (or an SFTP/rsync workflow) may expect the folder to exist
  * the moment the account does.
  *
- * `UserStore.createUser` is NOT wrapped in `toResult`: it already converts
+ * `createUser` is NOT wrapped in `toResult`: it already converts
  * its one throwable case (`P2002`) into `false` internally
- * (`services/user-store.ts:84-89`) — nothing it can still throw is one of the
+ * (`services/user.ts:15-39`) — nothing it can still throw is one of the
  * seven known store errors, so the `err` branch `toResult` would add could
  * only be discharged by throwing or mislabelling. Same reasoning as
- * `progressDelete`'s note on `UserStore.clearProgress`.
+ * `progressDelete`'s note on `clearProgress`.
  */
 builder.mutationField('userRegister', (t) =>
   t.field({

@@ -25,12 +25,12 @@ export function decodeProgressCursor(raw: unknown): ProgressPageCursor | null {
 }
 
 /**
- * Encodes a progress page cursor. Mirrors `UserStore.getUserProgressPage`'s own
- * `nextCursor` encoding exactly, so a cursor minted here for an interior page
- * edge is interchangeable with one the store mints for the end of a page.
- * `getUserProgressPage` keeps producing its own — this is only for callers
- * that need a cursor per row rather than per page, i.e. GraphQL connection
- * edges.
+ * Encodes a progress page cursor. Mirrors `getUserProgressPage`'s
+ * (services/progress.ts) own `nextCursor` encoding exactly, so a cursor
+ * minted here for an interior page edge is interchangeable with one
+ * `getUserProgressPage` mints for the end of a page. `getUserProgressPage`
+ * keeps producing its own — this is only for callers that need a cursor per
+ * row rather than per page, i.e. GraphQL connection edges.
  */
 export function encodeProgressCursor(cursor: ProgressPageCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString('base64');
