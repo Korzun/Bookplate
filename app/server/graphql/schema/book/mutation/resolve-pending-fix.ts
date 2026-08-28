@@ -452,7 +452,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       // instance — both reach the identical `applyEpubChanges` call.
       const deps: ApplyEpubChangesDeps = {
         bookStore: context.stores.book,
-        validationStore: context.stores.validation,
+        prisma: context.prisma,
         validationThreshold: context.config.validationThreshold,
       };
 

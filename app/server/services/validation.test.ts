@@ -10,7 +10,7 @@ import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
 import { BookStore } from './book-store';
 import type { ValidationReport } from './epub-validator';
-import { ValidationStore } from './validation-store';
+import { saveValidation } from './validation';
 
 vi.mock('../logger');
 
@@ -52,11 +52,10 @@ function report(valid: boolean): ValidationReport {
   };
 }
 
-describe('ValidationStore', () => {
+describe('saveValidation', () => {
   let tmpDir: string;
   let prisma: PrismaClient;
   let bookStore: BookStore;
-  let store: ValidationStore;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   beforeEach(async () => {
@@ -71,7 +70,6 @@ describe('ValidationStore', () => {
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, 'x');
     await bookStore.addBook(owner, 'book1', staged, FAKE_META);
-    store = new ValidationStore(prisma);
   });
 
   afterEach(async () => {
@@ -90,7 +88,7 @@ describe('ValidationStore', () => {
   });
 
   it('persists the report and its messages, ordered by seq', async () => {
-    await store.saveValidation(owner, 'book1', report(false));
+    await saveValidation(prisma, owner, 'book1', report(false));
     const got = await readValidation('book1');
     expect(got).not.toBeNull();
     expect(got!.valid).toBe(false);
@@ -102,15 +100,15 @@ describe('ValidationStore', () => {
   });
 
   it('upsert replaces prior messages', async () => {
-    await store.saveValidation(owner, 'book1', report(false)); // 2 messages
-    await store.saveValidation(owner, 'book1', report(true)); // 1 message, valid
+    await saveValidation(prisma, owner, 'book1', report(false)); // 2 messages
+    await saveValidation(prisma, owner, 'book1', report(true)); // 1 message, valid
     const got = await readValidation('book1');
     expect(got!.valid).toBe(true);
     expect(got!.messages.map((m) => m.code)).toEqual(['HTM-004']);
   });
 
   it('cascades on book delete', async () => {
-    await store.saveValidation(owner, 'book1', report(false));
+    await saveValidation(prisma, owner, 'book1', report(false));
     await bookStore.deleteBook(owner, 'book1');
     expect(await readValidation('book1')).toBeNull();
   });

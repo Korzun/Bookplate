@@ -16,7 +16,6 @@ import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { TokenStore } from '../services/token-store';
 import { UserStore } from '../services/user-store';
-import { ValidationStore } from '../services/validation-store';
 import type { AppConfig, Owner } from '../types';
 import { createBookByDocumentLoader } from './book-by-document-loader';
 import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
@@ -104,7 +103,6 @@ export const createHarness = async (): Promise<Harness> => {
     user,
     device: new DeviceStore(prisma),
     edition,
-    validation: new ValidationStore(prisma),
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
     // `context.stores.scanJob.subscribe`) — not the class's own default,

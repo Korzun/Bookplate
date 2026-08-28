@@ -1,10 +1,11 @@
+import type { PrismaClient } from '@prisma/client';
+
 import { logger } from '../../../../logger';
 import type { BookStore } from '../../../../services/book-store';
 import { revalidateLibrary, type RevalidateDeps } from '../../../../services/revalidate-library';
 import type { ScanJob } from '../../../../services/scan-events';
 import type { ScanJobStore } from '../../../../services/scan-job-store';
 import type { ThumbnailQueue } from '../../../../services/thumbnail-queue';
-import type { ValidationStore } from '../../../../services/validation-store';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import {
@@ -51,7 +52,7 @@ const result = builder.unionType('LibraryScanResult', {
 type ScanBackgroundDeps = {
   readonly book: BookStore;
   readonly scanJob: ScanJobStore;
-  readonly validation: ValidationStore;
+  readonly prisma: PrismaClient;
   readonly thumbnail: ThumbnailQueue;
   readonly validationThreshold: RevalidateDeps['validationThreshold'];
 };
@@ -69,7 +70,7 @@ type ScanBackgroundDeps = {
  *
  * Mirrors `POST /api/books/scan`'s detached body (`routes/ui.ts:1069-1087`)
  * line for line: `bookStore.scan(owner)` → `revalidateLibrary({bookStore,
- * validationStore, validationThreshold}, owner)` → `await thumbnailQueue.
+ * prisma, validationThreshold}, owner)` → `await thumbnailQueue.
  * reconcile()` → the same `log.info`/`log.error` wording → `scanJobStore.
  * complete`/`fail`. See `libraryScan`'s own doc comment below for why this
  * full pipeline — not just `bookStore.scan` — is replicated rather than
@@ -83,7 +84,7 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
     const val = await revalidateLibrary(
       {
         bookStore: deps.book,
-        validationStore: deps.validation,
+        prisma: deps.prisma,
         validationThreshold: deps.validationThreshold,
       },
       owner
@@ -156,7 +157,7 @@ builder.mutationField('libraryScan', (t) =>
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      const { scanJob, book, validation, thumbnail } = context.stores;
+      const { scanJob, book, thumbnail } = context.stores;
 
       // Read before start(), not via `isRunning` + a second `get()` cast: a
       // single read either has a running job (409) or doesn't (proceed to
@@ -173,7 +174,7 @@ builder.mutationField('libraryScan', (t) =>
         {
           book,
           scanJob,
-          validation,
+          prisma: context.prisma,
           thumbnail,
           validationThreshold: context.config.validationThreshold,
         },

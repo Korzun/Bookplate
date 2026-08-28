@@ -1,3 +1,4 @@
+import type { PrismaClient } from '@prisma/client';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 
@@ -15,7 +16,6 @@ import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { TokenStore } from './services/token-store';
 import { UserStore } from './services/user-store';
-import { ValidationStore } from './services/validation-store';
 import { AppConfig } from './types';
 
 const log = logger('Server');
@@ -29,7 +29,7 @@ export function createServer(
   jwtSecret: Buffer,
   deviceStore: DeviceStore,
   editionStore: EditionStore,
-  validationStore: ValidationStore,
+  prisma: PrismaClient,
   graphqlHandler: RequestHandler,
   replaceStaging: ReplaceStaging
 ): express.Express {
@@ -84,7 +84,7 @@ export function createServer(
       thumbnailQueue,
       tokenStore,
       jwtSecret,
-      validationStore,
+      prisma,
       replaceStaging
     )
   );

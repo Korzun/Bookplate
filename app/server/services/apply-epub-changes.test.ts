@@ -26,7 +26,6 @@ import type { Owner } from '../types';
 import { replaceEpubBytes } from './apply-epub-changes';
 import { BookHashCollisionError, BookStore } from './book-store';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
-import { ValidationStore } from './validation-store';
 
 const OWNER: Owner = { userId: 'u1', username: 'alice' };
 const FAKE_META = {
@@ -66,10 +65,10 @@ function epub(title: string): Buffer {
 
 describe('replaceEpubBytes', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
-  let bookStore: BookStore, validationStore: ValidationStore;
+  let bookStore: BookStore;
   let deps: {
     bookStore: BookStore;
-    validationStore: ValidationStore;
+    prisma: PrismaClient;
     validationThreshold: 'ERROR';
   };
 
@@ -81,8 +80,7 @@ describe('replaceEpubBytes', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     bookStore = new BookStore(booksDir, prisma);
-    validationStore = new ValidationStore(prisma);
-    deps = { bookStore, validationStore, validationThreshold: 'ERROR' };
+    deps = { bookStore, prisma, validationThreshold: 'ERROR' };
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, epub('Old'));
     await bookStore.addBook(OWNER, 'oldid', staged, FAKE_META);

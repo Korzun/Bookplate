@@ -408,7 +408,7 @@ builder.mutationField('bookUpdateMetadata', (t) =>
 
       const deps: ApplyEpubChangesDeps = {
         bookStore: context.stores.book,
-        validationStore: context.stores.validation,
+        prisma: context.prisma,
         validationThreshold: context.config.validationThreshold,
       };
 

@@ -2,15 +2,17 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { PrismaClient } from '@prisma/client';
+
 import { Book, Owner } from '../types';
 import { BookStore } from './book-store';
 import { assertValidEpub, toValidationReport } from './epub-validator';
 import { buildUpdatedEpub, EpubChanges } from './epub-writer';
-import { ValidationStore } from './validation-store';
+import { saveValidation } from './validation';
 
 export interface ApplyEpubChangesDeps {
   bookStore: BookStore;
-  validationStore: ValidationStore;
+  prisma: PrismaClient;
   validationThreshold: Parameters<typeof assertValidEpub>[1];
 }
 
@@ -62,7 +64,8 @@ export async function replaceEpubBytes(
     fs.writeFileSync(book.path, originalBytes);
     throw new Error('Re-import returned no book after replace');
   }
-  await deps.validationStore.saveValidation(
+  await saveValidation(
+    deps.prisma,
     owner,
     updated.id,
     toValidationReport(report, deps.validationThreshold)

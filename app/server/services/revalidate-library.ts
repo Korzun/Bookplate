@@ -1,28 +1,30 @@
 import * as fs from 'fs';
 
+import type { PrismaClient } from '@prisma/client';
+
 import { logger } from '../logger';
 import { Book, Owner } from '../types';
 import { BookStore } from './book-store';
 import { validateEpubReport, type ValidationReport } from './epub-validator';
-import { ValidationStore } from './validation-store';
+import { saveValidation } from './validation';
 
 const log = logger('revalidate-library');
 
 export interface RevalidateDeps {
   bookStore: BookStore;
-  validationStore: ValidationStore;
+  prisma: PrismaClient;
   validationThreshold: Parameters<typeof validateEpubReport>[1];
 }
 
 // Validate one stored book against the configured threshold and persist the
 // report. Returns the report. Throws if the file can't be read.
 export async function revalidateBook(
-  deps: Pick<RevalidateDeps, 'validationStore' | 'validationThreshold'>,
+  deps: Pick<RevalidateDeps, 'prisma' | 'validationThreshold'>,
   owner: Owner,
   book: Book
 ): Promise<ValidationReport> {
   const report = await validateEpubReport(fs.readFileSync(book.path), deps.validationThreshold);
-  await deps.validationStore.saveValidation(owner, book.id, report);
+  await saveValidation(deps.prisma, owner, book.id, report);
   return report;
 }
 
