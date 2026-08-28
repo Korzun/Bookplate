@@ -2,14 +2,12 @@ import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import { logger } from './logger';
-import { jwtAuth } from './middleware/auth';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
 import { requestLog } from './middleware/request-log';
 import { requestTimeout } from './middleware/timeout';
 import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
 import { createUiRouter } from './routes/ui';
-import { createUsersRouter } from './routes/users';
 import { BookStore } from './services/book-store';
 import { DeviceStore } from './services/device-store';
 import { EditionStore } from './services/edition-store';
@@ -77,10 +75,6 @@ export function createServer(
     )
   );
   server.use('/sync', createKosyncRouter(userStore, bookStore));
-  server.use(
-    '/api/users',
-    createUsersRouter(userStore, config.username, jwtAuth(jwtSecret), tokenStore, config.booksDir)
-  );
   server.use(
     '/',
     createUiRouter(
