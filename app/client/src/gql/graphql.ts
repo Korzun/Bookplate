@@ -108,7 +108,7 @@ export type ProgressSetInput = {
   deviceId?: string | null | undefined;
   document: string;
   percentage: number;
-  /** Must be the viewer's own User id: unlike every other user-associated mutation, there is no admin write path for progress (`PUT /api/my/progress/:document` 403s admins, and `routes/users.ts` has no write route for progress at all). */
+  /** Must be the viewer's own User id: unlike every other user-associated mutation, there is no admin write path for progress. */
   userId: string | number;
 };
 
