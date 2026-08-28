@@ -958,6 +958,28 @@ export function createUiRouter(
     })
   );
 
+  /**
+   * Unmatched `/api/*` requests get a JSON 404 rather than falling through to
+   * the SPA catch-all below. Without this, a GET at an API path that matches
+   * no route above answers 200 with `<!DOCTYPE html>`, so a caller doing
+   * `res.json()` fails on an HTML parse error that points at the wrong layer
+   * entirely. Always true for a typo'd path; it became worth guarding when
+   * this router shed the ~30 routes GraphQL replaced, since every retired
+   * path now lands here.
+   *
+   * `router.all`, not `router.get`: only GET fell through to the SPA, but a
+   * retired POST/PATCH/DELETE deserves the same clean JSON refusal rather
+   * than Express's default HTML 404 body.
+   *
+   * Mounted last, so it cannot shadow anything: every real route above has
+   * already had its chance, and the sibling routers (`/api/users`,
+   * `/api/devices` — `server.ts`) are mounted AHEAD of this one, so a request
+   * only reaches here after they too declined it.
+   */
+  router.all('/api/*', (_req: Request, res: Response) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+
   // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
   router.get('*', serveSpa);
 
