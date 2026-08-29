@@ -190,12 +190,23 @@ export const model = builder.prismaNode('Book', {
     // .pendingFixes`'s doc comment in `library/model.ts` for why a read
     // resolver filters rather than mutates, and for what prunes rows now.
     //
-    // `t.field`, not `t.relation`: `t.relation`'s `resolve` option is only a
-    // *fallback*, used solely when the plugin's own query-merging optimizer
-    // did not already eagerly select the relation onto the parent `Book` row
-    // — and `Library.book` (`library/model.ts`) fetches `Book` through
-    // `t.prismaField`, whose smart-select machinery does exactly that, so a
-    // `t.relation` gate here would silently never run.
+    // `t.field`, not `t.relation`. Two reasons, and the second is MEASURED
+    // rather than reasoned (see `README.md`, "separate what was MEASURED from
+    // what was CONCLUDED"):
+    //
+    //  1. `t.relation`'s `resolve` option is only a *fallback*, used solely
+    //     when the plugin's own query-merging optimizer did not already
+    //     eagerly select the relation onto the parent `Book` row — and
+    //     `Library.book` (`library/model.ts`) fetches `Book` through
+    //     `t.prismaField`, whose smart-select machinery does exactly that, so
+    //     a `t.relation` gate here would silently never run.
+    //  2. On the path that actually carries a multiplier, `t.relation` is
+    //     SLOWER, not merely awkward: converting the sibling `Book.progress`
+    //     to `t.relation` over a real Prisma relation took a page of 8 from 2
+    //     queries to 9, because `Library.entries` is hand-built and so never
+    //     plugin-planned. `graphql/loaders/pair-loader.ts` has the mechanism
+    //     and the numbers. That is the general rule for every field on this
+    //     type, not a quirk of this one.
     //
     // Resolved through `context.loadPendingFix` rather than a direct
     // `prisma.pendingFix.findUnique`, for exactly the reason `Book.progress`

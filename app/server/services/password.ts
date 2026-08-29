@@ -9,9 +9,10 @@
  */
 import * as crypto from 'crypto';
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 
+import { isPrismaError } from './prisma-errors';
 import { WORDLIST } from './wordlist';
 
 const LOGIN_PASSWORD_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -112,7 +113,7 @@ export async function changePassword(
     });
     return true;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+    if (isPrismaError(e, 'P2025')) {
       return false;
     }
     throw e;
@@ -132,7 +133,7 @@ export async function resetPassword(
     });
     return password;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+    if (isPrismaError(e, 'P2025')) {
       return null;
     }
     throw e;
@@ -163,7 +164,7 @@ export async function changeSyncPassword(
     await prisma.user.update({ where: { username }, data: { syncPassword } });
     return true;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+    if (isPrismaError(e, 'P2025')) {
       return false;
     }
     throw e;

@@ -1,7 +1,8 @@
-import { PrismaClient, Prisma, type Progress as ProgressRow } from '@prisma/client';
+import { PrismaClient, type Progress as ProgressRow } from '@prisma/client';
 
 import { logger } from '../logger';
 import { Progress, ProgressPageCursor } from '../types';
+import { isPrismaError } from './prisma-errors';
 
 const log = logger('progress');
 
@@ -145,7 +146,7 @@ export async function clearProgress(
     });
     return true;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+    if (isPrismaError(e, 'P2025')) {
       return false;
     }
     throw e;

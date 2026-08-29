@@ -1,9 +1,10 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 import { logger } from '../logger';
 import { generateUserId } from '../utils/id';
 import { purgeForUser } from './edition';
 import { generateSyncPassword } from './password';
+import { isPrismaError } from './prisma-errors';
 
 const log = logger('user');
 
@@ -31,7 +32,7 @@ export async function createUser(
     });
     return true;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    if (isPrismaError(e, 'P2002')) {
       return false;
     }
     throw e;
@@ -55,7 +56,7 @@ export async function deleteUser(
     const deleted = await prisma.user.delete({ where: { username } });
     userId = deleted.id;
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+    if (isPrismaError(e, 'P2025')) {
       return false;
     }
     throw e;
