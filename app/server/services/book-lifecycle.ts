@@ -204,10 +204,9 @@ export async function deleteBook(
         if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'))
           throw err;
       }
-      await tx.$executeRaw`
-        DELETE FROM book_id_history
-        WHERE user_id = ${owner.userId} AND (old_id = ${id} OR current_id = ${id})
-      `;
+      await tx.bookIdHistory.deleteMany({
+        where: { userId: owner.userId, OR: [{ oldId: id }, { currentId: id }] },
+      });
 
       if (seriesId) {
         const remaining = await tx.book.count({ where: { seriesId } });
@@ -376,15 +375,30 @@ export async function reimportBook(
         }
       }
 
-      // Record lineage and flatten any prior chains pointing to old id
-      await tx.$executeRaw`
-        INSERT OR REPLACE INTO book_id_history (user_id, old_id, current_id, timestamp)
-        VALUES (${owner.userId}, ${id}, ${newId}, ${Date.now()})
-      `;
-      await tx.$executeRaw`
-        UPDATE book_id_history SET current_id = ${newId}
-        WHERE user_id = ${owner.userId} AND current_id = ${id}
-      `;
+      // Record lineage and flatten any prior chains pointing to old id.
+      //
+      // `upsert` replaces an `INSERT OR REPLACE`, and `type: 'edit'` is spelled
+      // out in BOTH branches to keep it equivalent. The raw statement omitted
+      // `type`, and `INSERT OR REPLACE` deletes-then-inserts, so a replaced row
+      // got the column DEFAULT back (`@default("edit")`). `upsert`'s update
+      // branch does not — it leaves untouched columns alone — so omitting it
+      // here would silently preserve a `'merge'` row's type while rewriting its
+      // target, turning a manual link into something `clearEditLineage` no
+      // longer collects and `unlinkDocument` still refuses. Setting it
+      // explicitly reproduces the old behaviour exactly.
+      const timestamp = Date.now();
+      await tx.bookIdHistory.upsert({
+        where: { userId_oldId: { userId: owner.userId, oldId: id } },
+        create: { userId: owner.userId, oldId: id, currentId: newId, timestamp, type: 'edit' },
+        update: { currentId: newId, timestamp, type: 'edit' },
+      });
+      // Flattening: every row that pointed at the OLD id now points at the new
+      // head. Cannot touch the row just upserted — that one's `currentId` is
+      // already `newId`, so it does not match this filter.
+      await tx.bookIdHistory.updateMany({
+        where: { userId: owner.userId, currentId: id },
+        data: { currentId: newId },
+      });
     } else {
       await tx.book.update({
         where: { userId_id: { userId: owner.userId, id } },

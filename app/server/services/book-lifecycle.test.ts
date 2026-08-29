@@ -280,6 +280,41 @@ describe('Series lifecycle — reimportBook', () => {
     );
   }
 
+  // Pins the `INSERT OR REPLACE` -> `upsert` equivalence on the ONE column that
+  // could silently differ. The raw statement omitted `type`, and `INSERT OR
+  // REPLACE` deletes-then-inserts, so a replaced row got `@default("edit")`
+  // back. `upsert`'s update branch leaves untouched columns alone, so it must
+  // set `type` explicitly — otherwise a pre-existing `'merge'` row keyed on
+  // this book's id would keep that type while having its target rewritten,
+  // leaving a row `clearEditLineage` no longer collects and `unlinkDocument`
+  // still refuses to remove.
+  //
+  // Reachable, if narrowly: `linkDocument` refuses to link a document id that
+  // is already a book, but nothing stops the real file for a
+  // previously-linked id being imported later, at which point reimporting it
+  // lands on exactly this upsert.
+  it('resets a pre-existing merge lineage row to edit, as INSERT OR REPLACE did', async () => {
+    await addBook(prisma, booksRoot, OWNER, 'id1', stage('id1'), FAKE_META);
+    await prisma.bookIdHistory.create({
+      data: {
+        userId: OWNER.userId,
+        oldId: 'id1',
+        currentId: 'some-other-head',
+        timestamp: 1,
+        type: 'merge',
+      },
+    });
+
+    armImporterWithMeta({});
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id1');
+
+    const row = await prisma.bookIdHistory.findUnique({
+      where: { userId_oldId: { userId: OWNER.userId, oldId: 'id1' } },
+    });
+    expect(row?.type).toBe('edit');
+    expect(row?.currentId).not.toBe('some-other-head');
+  });
+
   it('upserts a new Series when series name changes', async () => {
     await addBook(prisma, booksRoot, OWNER, 'id1', stage('id1'), { ...FAKE_META, series: 'Old' });
     armImporterWithMeta({ series: 'New' });
