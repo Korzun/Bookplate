@@ -303,6 +303,14 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
   return loginRateLimit;
 }
 
+// `editionsRoot` is a genuine independent input here, NOT derivable from
+// `config.dataDir` the way `createServer`'s was (that one was always
+// `path.join(config.dataDir, 'editions')` and got collapsed into an options
+// object). `routes/ui.ts` never reads `config.dataDir` at all, and
+// `routes/ui.test.ts`'s `beforeEach` reassigns `editionsRoot` to its own
+// fresh `mkdtempSync(...)`, independent of `config`, to isolate tests. Do
+// not "fix" this leading positional param for symmetry with `createServer` —
+// doing so would break that test isolation.
 export function createUiRouter(
   editionsRoot: string,
   config: AppConfig,
