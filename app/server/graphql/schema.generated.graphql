@@ -402,9 +402,9 @@ type Library implements Node {
   pendingFixes: [PendingFix!]!
 
   """
-  Forward pagination only: this connection offers `first`/`after` and no `last`/`before` — the underlying cursor is forward-only.
+  The reading positions this library owner has synced, newest first. Paginates in both directions.
   """
-  progress(after: String, first: Int): LibraryProgressConnection!
+  progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
   scanStatus: ScanStatus
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!

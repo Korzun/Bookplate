@@ -7,7 +7,6 @@ import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import {
   createBookByDocumentLoader,
-  createChapterSpineMapLoader,
   createDeviceEditionCountLoader,
   createLineageLoader,
   createOwnerLoader,
@@ -16,7 +15,6 @@ import {
   createSeriesProgressLoader,
   createValidationCountsLoader,
   type BookByDocumentLoader,
-  type ChapterSpineMapLoader,
   type DeviceEditionCountLoader,
   type LineageLoader,
   type OwnerLoader,
@@ -66,7 +64,6 @@ export type Context = {
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
   loadPendingFix: PendingFixLoader;
-  loadChapterSpineMap: ChapterSpineMapLoader;
   loadSeriesProgress: SeriesProgressLoader;
   loadValidationCounts: ValidationCountsLoader;
   loadBookByDocument: BookByDocumentLoader;
@@ -122,7 +119,6 @@ export const createContext =
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),
     loadPendingFix: createPendingFixLoader(deps.prisma),
-    loadChapterSpineMap: createChapterSpineMapLoader(deps.prisma),
     loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
     loadValidationCounts: createValidationCountsLoader(deps.prisma),
     loadBookByDocument: createBookByDocumentLoader(deps.prisma),

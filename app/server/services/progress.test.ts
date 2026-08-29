@@ -6,7 +6,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
-import { clearProgress, getProgress, getUserProgressPage, saveProgress } from './progress';
+import { clearProgress, getProgress, saveProgress } from './progress';
 import { createUser, deleteUser } from './user';
 
 vi.mock('../logger');
@@ -331,95 +331,5 @@ describe('saveProgress — history', () => {
     const current = await getProgress(prisma, aliceId, 'doc1');
     expect(current).not.toBeNull();
     expect(current!.percentage).toBeCloseTo(0.42);
-  });
-});
-
-describe('getUserProgressPage', () => {
-  async function seed(userId: string, document: string, timestamp: number): Promise<void> {
-    await prisma.progress.create({
-      data: {
-        userId,
-        document,
-        progress: `/p/${document}`,
-        percentage: 0.5,
-        device: 'Kobo',
-        deviceId: 'd1',
-        timestamp,
-      },
-    });
-  }
-
-  it('returns an empty page with null cursor when there is no progress', async () => {
-    await createUser(prisma, 'alice', 'pass');
-    const id = await getUserId('alice');
-    const page = await getUserProgressPage(prisma, id, null, 50);
-    expect(page.items).toEqual([]);
-    expect(page.nextCursor).toBeNull();
-  });
-
-  // `userId`/`deviceId`, not the DTO's `device_id`-with-no-`userId`: this
-  // function returns the REAL Prisma rows, which is what lets
-  // `Library.progress` read one page in one query instead of re-reading it to
-  // recover `userId` for `Progress.currentChapter`. Asserting `userId`
-  // explicitly is the point — it is the column the old DTO dropped.
-  it('orders by timestamp desc, document asc and returns whole rows', async () => {
-    await createUser(prisma, 'alice', 'pass');
-    const id = await getUserId('alice');
-    await seed(id, 'a', 100);
-    await seed(id, 'b', 200);
-    const page = await getUserProgressPage(prisma, id, null, 50);
-    expect(page.items.map((i) => i.document)).toEqual(['b', 'a']);
-    expect(page.items[0]).toMatchObject({
-      userId: id,
-      document: 'b',
-      progress: '/p/b',
-      device: 'Kobo',
-      deviceId: 'd1',
-      timestamp: 200,
-    });
-    expect(page.nextCursor).toBeNull();
-  });
-
-  it('returns a nextCursor when more rows exist and advances past them', async () => {
-    await createUser(prisma, 'alice', 'pass');
-    const id = await getUserId('alice');
-    await seed(id, 'a', 100);
-    await seed(id, 'b', 200);
-    await seed(id, 'c', 300);
-    const page1 = await getUserProgressPage(prisma, id, null, 2);
-    expect(page1.items.map((i) => i.document)).toEqual(['c', 'b']);
-    expect(page1.nextCursor).not.toBeNull();
-
-    const cursor = JSON.parse(
-      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
-    ) as { timestamp: number; document: string };
-    const page2 = await getUserProgressPage(prisma, id, cursor, 2);
-    expect(page2.items.map((i) => i.document)).toEqual(['a']);
-    expect(page2.nextCursor).toBeNull();
-  });
-
-  it('only returns rows for the specified user', async () => {
-    await createUser(prisma, 'alice', 'pass');
-    await createUser(prisma, 'bob', 'pass');
-    const id = await getUserId('alice');
-    const bobId = await getUserId('bob');
-    await seed(id, 'doc1', 100);
-    await seed(bobId, 'doc2', 200);
-    const page = await getUserProgressPage(prisma, id, null, 50);
-    expect(page.items.map((i) => i.document)).toEqual(['doc1']);
-  });
-
-  it('breaks timestamp ties by document ascending', async () => {
-    await createUser(prisma, 'alice', 'pass');
-    const id = await getUserId('alice');
-    await seed(id, 'y', 100);
-    await seed(id, 'x', 100);
-    const page1 = await getUserProgressPage(prisma, id, null, 1);
-    expect(page1.items.map((i) => i.document)).toEqual(['x']); // same ts, 'x' < 'y'
-    const cursor = JSON.parse(
-      Buffer.from(page1.nextCursor as string, 'base64').toString('utf-8')
-    ) as { timestamp: number; document: string };
-    const page2 = await getUserProgressPage(prisma, id, cursor, 1);
-    expect(page2.items.map((i) => i.document)).toEqual(['y']);
   });
 });

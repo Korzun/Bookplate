@@ -19,18 +19,21 @@ const pageSizeExceededError = (message: string): GraphQLError =>
  * clamp with no error — exactly the failure mode this ruling exists to
  * prevent, and it applied to `first` only before this fix.
  *
- * `args.last` is nevertheless always `undefined` for
- * `Library.entries`/`Library.progress`: those two fields no longer DECLARE
- * `last`/`before` at all (they are hand-declared with `t.field` over an
+ * `args.last` is always `undefined` for `Library.entries`: that field does not
+ * DECLARE `last`/`before` at all (it is hand-declared with `t.field` over an
  * explicit `connectionObject` — see `library/model.ts`), so GraphQL's own
  * validation rejects the argument as unknown, with `GRAPHQL_VALIDATION_FAILED`,
- * before any resolver runs. That replaced an earlier
- * `rejectBackwardPagination` guard which threw `BACKWARD_PAGINATION_UNSUPPORTED`
- * from inside the resolver — the schema now states forward-only rather than
- * advertising `last`/`before` and refusing them. The `last` branch below is
- * therefore reached only by `Series.books`/`Validation.messages`, where
- * backward pagination genuinely works and this is the only guard `last` ever
- * meets.
+ * before any resolver runs. That replaced an earlier `rejectBackwardPagination`
+ * guard which threw `BACKWARD_PAGINATION_UNSUPPORTED` from inside the resolver
+ * — the schema states forward-only rather than advertising `last`/`before` and
+ * refusing them.
+ *
+ * `Library.progress` was in that same sentence until it became a
+ * `t.prismaConnection`, which injects all four args and honours them. So the
+ * `last` branch below is reached by three fields now —
+ * `Series.books`/`Validation.messages`/`Library.progress` — and on all three
+ * backward pagination genuinely works, which is exactly why an oversize `last`
+ * needs this guard: the plugin's own `maxSize` would otherwise CLAMP it.
  */
 export const rejectOversizePage = (
   fieldName: string,
@@ -108,12 +111,14 @@ export const rejectOversizeIdBatch = (
  *    `Math.min(Math.max(parseInt(take,10) || 20, 1), 100)` — default 20, max
  *    100 (`Library.entries`'s own resolver already restates this clamp
  *    verbatim; see its comment there).
- *  - `Library.progress` mirrors `utils/progress-pagination.ts`'s
- *    `DEFAULT_TAKE`/`MAX_TAKE` — default 50, max 100 — the same bounds both
+ *  - `Library.progress` mirrors what `utils/progress-pagination.ts`'s
+ *    `DEFAULT_TAKE`/`MAX_TAKE` applied — default 50, max 100 — the bounds both
  *    `GET /api/my/progress` (removed earlier, in `e67b4ad9`) and
- *    `GET /api/users/:username/progress` (removed in Phase 0) applied via
- *    `parseProgressTake`/`clampProgressTake`; `Library.progress`'s resolver
- *    now calls `clampProgressTake` directly (see `library/model.ts`).
+ *    `GET /api/users/:username/progress` (removed in Phase 0) enforced via
+ *    `parseProgressTake`/`clampProgressTake`. That module is deleted: the
+ *    field is a `t.prismaConnection` and takes these two numbers from HERE, as
+ *    its native `maxSize`/`defaultSize` and as the bound its `resolve` rejects
+ *    against. Same numbers, one source now instead of two that agreed.
  *
  * `Series.books` / `Validation.messages` — no REST precedent, but (per the
  * correction above) an existing effective bound from `@pothos/plugin-prisma`'s

@@ -18,7 +18,6 @@ import type { AppConfig, Owner } from '../types';
 import type { Context, Viewer } from './context';
 import {
   createBookByDocumentLoader,
-  createChapterSpineMapLoader,
   createDeviceEditionCountLoader,
   createLineageLoader,
   createOwnerLoader,
@@ -182,7 +181,6 @@ export const createHarness = async (): Promise<Harness> => {
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
     loadPendingFix: createPendingFixLoader(prisma),
-    loadChapterSpineMap: createChapterSpineMapLoader(prisma),
     loadSeriesProgress: createSeriesProgressLoader(prisma),
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),

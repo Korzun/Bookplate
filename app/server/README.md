@@ -55,10 +55,25 @@ Each of these was accurate when written and actively misleading later:
 ### The one that would have saved all three
 
 If a comment states that some plugin mechanism can or cannot be used on a field
-reached from `Library.entries` or `Library.progress`, read
-`graphql/loaders/pair-loader.ts` first. Those two connections are permanently
-hand-built (their SDL omits `last`/`before`, and `entries` is a union over an
-interleaved two-table keyset besides), so `@pothos/plugin-prisma` never plans
-their queries and no `select`-carrying field on their rows can merge into one.
-That single fact explains every request-scoped loader in this server, and it is
-the thing three separate comments each described a corner of.
+reached from `Library.entries`, read `graphql/loaders/pair-loader.ts` first.
+That connection is hand-built — its node type is a union over an interleaved
+two-table keyset, so `t.prismaConnection`, which binds to one model, cannot
+express it — and `@pothos/plugin-prisma` never plans a query it did not build,
+so no `select`-carrying field on its rows can merge into one. That single fact
+explains every request-scoped loader left in this server, and it is the thing
+three separate comments each described a corner of.
+
+### A fourth example, of the opposite failure
+
+The same paragraph used to name `Library.progress` alongside `Library.entries`,
+and to call both "permanently hand-built". Every word of the mechanism was
+right; "permanently" was the word doing the damage. `Library.progress` was
+hand-built to keep `last`/`before` out of its SDL — a DECISION (`e7f99557`),
+not a constraint — and the comment stated the consequence so well that the
+decision behind it stopped being visible as one. It cost two loaders. Reversing
+the decision took the field to `t.prismaConnection` and a page of 8 from 3
+queries to 1.
+
+The lesson is not "the comment was wrong". It is that a conclusion resting on a
+decision should name the decision, so the next reader can weigh it, rather than
+reading as a law of the library.

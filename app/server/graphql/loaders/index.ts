@@ -5,7 +5,7 @@
  * under `schema/`, which side-effect-import their mutations and must therefore
  * never be imported from a model file. Nothing here participates in a require
  * cycle, so the three consumers (`context.ts`, `test-util.ts`,
- * `routes/ui.test.ts`) can each take one import line instead of eight.
+ * `routes/ui.test.ts`) can each take one import line instead of seven.
  *
  * `pair-loader.ts` — the shared implementation, and the explanation of why
  * these loaders exist rather than `t.relation`/`t.relationCount` — is
@@ -14,7 +14,6 @@
  * building a loader, which belongs in here beside its siblings.
  */
 export { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document';
-export { createChapterSpineMapLoader, type ChapterSpineMapLoader } from './chapter-spine-map';
 export {
   createDeviceEditionCountLoader,
   type DeviceEditionCountLoader,

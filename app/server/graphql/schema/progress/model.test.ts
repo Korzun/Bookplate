@@ -330,13 +330,20 @@ describe('Progress', () => {
     expect(orphan?.node.book ?? null).toBeNull();
   });
 
-  // `Progress.book` used to be reachable only via a per-row lookup, a
-  // textbook N+1 across a page of progress rows. It now goes through
-  // `context.loadBookByDocument`, a request-scoped batching loader (see
-  // `book-by-document-loader.ts`) — this asserts the batching actually
-  // happens, not merely that the loader exists. Seeds at least three rows:
-  // a single-row fixture would pass even with no batching at all.
-  it('batches Progress.book across a page of progress rows into a single query', async () => {
+  // `Progress.book` used to be reachable only via a per-row lookup, a textbook
+  // N+1 across a page of progress rows; it then went through
+  // `context.loadBookByDocument`, which batched those into one `book.findMany`.
+  // It is now a `t.relation` over a real Prisma relation, joined into
+  // `Library.progress`'s own `progress.findMany` — so the correct assertion is
+  // no longer "one batched query" but ZERO book queries of any kind. Seeds five
+  // rows: a single-row fixture would pass even with a per-row lookup.
+  //
+  // This is the pin on the conversion, and it is worth stating why it can pass
+  // here and could NOT pass on `Book.progress`: the plugin merges a relation
+  // select only into a query it planned itself, and `Library.progress` is
+  // plugin-planned since it became a `t.prismaConnection`. `Library.entries`
+  // still is not (see `graphql/loaders/pair-loader.ts`).
+  it('joins Progress.book into the page query, with no book lookup of its own', async () => {
     for (let i = 0; i < 5; i++) {
       const id = `batch-book-${i}`.padStart(32, '0');
       await harness.prisma.book.create({
@@ -363,6 +370,9 @@ describe('Progress', () => {
     }
 
     const findManySpy = vi.spyOn(harness.prisma.book, 'findMany');
+    const findUniqueSpy = vi.spyOn(harness.prisma.book, 'findUnique');
+    const findUniqueOrThrowSpy = vi.spyOn(harness.prisma.book, 'findUniqueOrThrow');
+    const progressSpy = vi.spyOn(harness.prisma.progress, 'findMany');
 
     const result = await harness.execute(
       '{ viewer { library { progress(first: 10) { edges { node { book { title } } } } } } }',
@@ -370,7 +380,10 @@ describe('Progress', () => {
     );
 
     expect(result.errors).toBeUndefined();
-    expect(findManySpy).toHaveBeenCalledTimes(1);
+    expect(progressSpy).toHaveBeenCalledTimes(1);
+    expect(findManySpy).not.toHaveBeenCalled();
+    expect(findUniqueSpy).not.toHaveBeenCalled();
+    expect(findUniqueOrThrowSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -2,25 +2,41 @@
  * The one batching-loader implementation the request-scoped loaders in this
  * directory share.
  *
- * WHY THESE LOADERS EXIST AT ALL, since it is not obvious and was twice
+ * WHY THESE LOADERS EXIST AT ALL, since it is not obvious and was three times
  * re-litigated: `@pothos/plugin-prisma` merges a field's `select` only into a
  * query IT planned — `wrapResolve` takes its fast path only on a
  * `getLoaderMapping` hit (`@pothos/plugin-prisma/lib/index.js`). `Library
- * .entries` and `Library.progress` are BOTH hand-declared over
- * `builder.connectionObject`, and must be: their SDL deliberately omits
- * `last`/`before` (commit `e7f99557`), which `t.connection`/`t.prismaConnection`
- * cannot express. So neither is ever plugin-planned, and every
- * `select`-carrying field on the rows they yield — `t.relation`,
- * `t.relationCount` — falls back to a PER-ROW `ModelLoader` re-query.
+ * .entries` is hand-declared over `builder.connectionObject`, so it is never
+ * plugin-planned, and every `select`-carrying field on the rows it yields —
+ * `t.relation`, `t.relationCount` — falls back to a PER-ROW `ModelLoader`
+ * re-query.
  *
  * That was measured, twice, rather than assumed: converting `Progress.book` and
  * `Book.progress` to `t.relation` over a real Prisma relation took a page of 8
  * from 2 queries to 9 in both cases. A batching loader is therefore not a
- * workaround for a missing relation here — it is the only mechanism that
- * batches at all on the two paths that carry a 100x multiplier.
+ * workaround for a missing relation on that path — it is the only mechanism
+ * that batches at all on a connection carrying a 100x multiplier.
  *
- * WHAT THE SHARED MECHANICS BUY, beyond deduplication: five of these loaders
- * were near-verbatim copies of one another, and the settle-on-throw discipline
+ * `Library.progress` USED to be the second such connection, and is no longer:
+ * it is a `t.prismaConnection` (`schema/library/model.ts`), so it IS
+ * plugin-planned, and the two loaders that existed only to serve it are gone.
+ * `Progress.book` is a `t.relation` and `Progress.currentChapter` a field
+ * `select` over the same relation; measured on a page of 8 selecting both,
+ * 3 queries became 1. Retiring those two loaders cost an SDL change — the
+ * connection gained `last`/`before`, reversing `e7f99557` — which is why the
+ * same conversion is NOT available for `Library.entries` and why this file's
+ * general rule survives with a narrower scope:
+ *
+ *   A field on `Book` or `Progress` reached through `Library.entries` cannot
+ *   use plugin select-merging, whatever relations exist in `schema.prisma`.
+ *
+ * `Library.entries` cannot follow `Library.progress` even if the arg question
+ * were reopened: its node type is the union `LibraryEntry = Book | Series`
+ * over an interleaved two-table keyset, and `t.prismaConnection` binds to a
+ * single model. That is structural, not a ruling.
+ *
+ * WHAT THE SHARED MECHANICS BUY, beyond deduplication: these loaders were
+ * near-verbatim copies of one another, and the settle-on-throw discipline
  * below had to be discovered once (`progress-loader` shipped without it and a
  * transient DB error HUNG the request instead of surfacing an error) and then
  * hand-copied into each. There is one copy now.
