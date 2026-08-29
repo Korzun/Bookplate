@@ -141,7 +141,7 @@ const result = builder.unionType('UserRegisterResult', {
  * `createUser` is NOT wrapped in `toResult`: it already converts
  * its one throwable case (`P2002`) into `false` internally
  * (`services/user.ts:15-39`) — nothing it can still throw is one of the
- * seven known store errors, so the `err` branch `toResult` would add could
+ * seven known domain errors, so the `err` branch `toResult` would add could
  * only be discharged by throwing or mislabelling. Same reasoning as
  * `progressDelete`'s note on `clearProgress`.
  */

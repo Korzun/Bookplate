@@ -107,7 +107,7 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * (`services/user.ts:48-71`), its own `P2025` catch already converts
  * a races-with-itself double-delete into `false`, and its edition-cache
  * purge failure is caught and logged, never rethrown — nothing left in its
- * body can throw one of the seven known store errors. Same reasoning as
+ * body can throw one of the seven known domain errors. Same reasoning as
  * `bookDelete`'s identical note on `deleteBook` (`services/book-lifecycle.ts`).
  *
  * `removeUserBooksDir` (`utils/user-books-dir.ts`) replicates REST's on-disk

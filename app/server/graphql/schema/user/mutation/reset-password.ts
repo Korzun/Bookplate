@@ -70,7 +70,7 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * `resetPassword` is NOT wrapped in `toResult`: traced end to end
  * (`services/password.ts`), its own `P2025` catch already converts
  * a races-with-itself "user deleted mid-request" into `null` — nothing left
- * in its body can throw one of the seven known store errors.
+ * in its body can throw one of the seven known domain errors.
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a
  * plain function over `context.prisma` — no store instance to thread

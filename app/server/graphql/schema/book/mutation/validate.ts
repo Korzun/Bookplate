@@ -116,7 +116,7 @@ const result = builder.unionType('BookValidateResult', {
  * `revalidateBook` (`services/revalidate-library.ts`) is NOT wrapped in
  * `toResult`: traced end to end, it throws only by letting
  * `fs.readFileSync(book.path)` escape when the on-disk file is missing — not
- * one of the seven known store errors. Wrapping it would make the `err`
+ * one of the seven known domain errors. Wrapping it would make the `err`
  * branch unreachable and undischargeable except by throwing or mislabelling
  * — the same rule `bookDelete`'s doc comment already explains for
  * `deleteBook` (`services/book-lifecycle.ts`). That failure (and any other unexpected one) reaches

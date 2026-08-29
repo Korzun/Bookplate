@@ -8,20 +8,20 @@ import {
 import { DeviceSlugConflictError } from '../services/device';
 import { EpubValidationError } from '../services/epub-validator';
 import {
-  assertUnreachableStoreError,
-  isKnownStoreError,
+  assertUnreachableDomainError,
+  isKnownDomainError,
   toResult,
-  type KnownStoreError,
+  type KnownDomainError,
 } from './to-result';
 
 /**
- * The seven store error classes the spec names as "known", each constructed
+ * The seven domain error classes the spec names as "known", each constructed
  * exactly as its throwing call site constructs it. Table-driven on purpose:
  * an eighth class added to `to-result.ts` without a row here is a class no
  * test proves is caught, and a row here for a class `to-result.ts` forgot is
  * an immediate failure rather than a silent 500 in production.
  */
-const knownErrors: [name: string, error: KnownStoreError][] = [
+const knownErrors: [name: string, error: KnownDomainError][] = [
   ['BookHashCollisionError', new BookHashCollisionError('c'.repeat(32))],
   ['BookAlreadyExistsError', new BookAlreadyExistsError('e'.repeat(32))],
   ['SelfLinkError', new SelfLinkError()],
@@ -101,17 +101,17 @@ describe('toResult', () => {
       expect(result).toEqual({ err: error });
     });
 
-    it('re-throws a genuinely known store error that is NOT in the caller-declared expected list, instead of silently mislabelling it', async () => {
+    it('re-throws a genuinely known domain error that is NOT in the caller-declared expected list, instead of silently mislabelling it', async () => {
       // This is the exact failure mode Important-3 flags: a mis-traced call
       // site declares a narrower `expected` than what its wrapped call can
-      // really throw. `BookAlreadyExistsError` is a real, `isKnownStoreError`-
+      // really throw. `BookAlreadyExistsError` is a real, `isKnownDomainError`-
       // recognised class — but it is not in this call's declared subset, so it
       // must rethrow (reaching yoga's masking, same as a REST 500 fallback)
       // rather than being coerced into `{ err: ... }` and rendered as
       // whichever of the two declared types a discharge's last branch
       // happens to return.
       const error = new BookAlreadyExistsError('e'.repeat(32));
-      expect(isKnownStoreError(error)).toBe(true); // sanity: it IS a known class
+      expect(isKnownDomainError(error)).toBe(true); // sanity: it IS a known class
 
       await expect(
         toResult(async () => {
@@ -132,17 +132,17 @@ describe('toResult', () => {
   });
 });
 
-describe('assertUnreachableStoreError', () => {
+describe('assertUnreachableDomainError', () => {
   it('throws — it exists to fail loudly, never to be reached by a live resolver path', () => {
-    expect(() => assertUnreachableStoreError(undefined as never)).toThrow(
-      'Unreachable store error'
+    expect(() => assertUnreachableDomainError(undefined as never)).toThrow(
+      'Unreachable domain error'
     );
   });
 });
 
-describe('isKnownStoreError', () => {
+describe('isKnownDomainError', () => {
   it.each(knownErrors)('recognises %s', (_name, error) => {
-    expect(isKnownStoreError(error)).toBe(true);
+    expect(isKnownDomainError(error)).toBe(true);
   });
 
   it.each([
@@ -152,6 +152,6 @@ describe('isKnownStoreError', () => {
     ['a string', 'BookHashCollisionError'],
     ['a lookalike object', { name: 'SelfLinkError', message: 'x' }],
   ])('rejects %s', (_name, value) => {
-    expect(isKnownStoreError(value)).toBe(false);
+    expect(isKnownDomainError(value)).toBe(false);
   });
 });

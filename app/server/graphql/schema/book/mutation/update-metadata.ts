@@ -13,7 +13,7 @@ import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
 import { stagingIdentityOf } from '../../../../services/replace-staging';
 import type { Book, Owner } from '../../../../types';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import {
   bookHashCollisionError,
   model as bookHashCollisionErrorModel,
@@ -280,8 +280,8 @@ const buildChanges = (
  *    and collapsed REST's 409/422 distinction into one union member a client
  *    cannot discriminate).
  *
- * `applyEpubChanges`'s store path can throw exactly two of the seven known
- * store errors, traced from `services/apply-epub-changes.ts`: `assertValidEpub`
+ * `applyEpubChanges` can throw exactly two of the seven known
+ * domain errors, traced from `services/apply-epub-changes.ts`: `assertValidEpub`
  * throws `EpubValidationError` when the rewritten EPUB fails validation, and
  * `reimportBook` throws `BookHashCollisionError` when the edited
  * content's new fingerprint collides with another book already in the
@@ -426,7 +426,7 @@ builder.mutationField('bookUpdateMetadata', (t) =>
         if (outcome.err instanceof EpubValidationError) {
           return epubValidationError(outcome.err);
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
 
       if (parsedInput.data.stagedCoverId !== undefined) {

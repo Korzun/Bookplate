@@ -147,7 +147,7 @@ const result = builder.unionType('UserChangePasswordResult', {
  * caller's own row exists), but REST's branch is real and this is its
  * mirror, not an invented case. Neither `validateUser` nor `changePassword`
  * (both plain functions in `services/password.ts`) is wrapped in
- * `toResult`: neither throws any of the seven known store errors.
+ * `toResult`: neither throws any of the seven known domain errors.
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a
  * plain function over `context.prisma` — no store instance to thread

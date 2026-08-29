@@ -73,7 +73,7 @@ const result = builder.unionType('DeviceDisableUserResult', {
  * already-disabled (or never-enabled) pair deletes zero rows and reports no
  * error, matching REST's `DELETE` (idempotent by HTTP convention). Not
  * wrapped in `toResult`: a `deleteMany` cannot raise any of the seven known
- * store errors.
+ * domain errors.
  *
  * `purgeForDeviceAndUser` runs after every call (REST does the
  * same unconditionally, not just when a row was actually deleted) and is

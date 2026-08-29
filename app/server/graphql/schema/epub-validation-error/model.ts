@@ -14,7 +14,7 @@ import { model as userError } from '../user-error';
  * `[ValidationMessage!]!`: see `epub-validation-message/model.ts` for why the
  * stored row type cannot honestly back these values.
  *
- * `counts` and `threshold` are carried by the store error but not exposed —
+ * `counts` and `threshold` are carried by the domain error but not exposed —
  * the counts are derivable from `messages`, and the threshold is already
  * readable as `Config`/`Validation.threshold`.
  */

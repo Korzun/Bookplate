@@ -81,7 +81,7 @@ const result = builder.unionType('BookDeleteResult', {
  * `deleteBook` (`services/book-lifecycle.ts`) is NOT wrapped in `toResult`:
  * traced end to end, it only ever throws by letting a Prisma
  * transaction failure or filesystem error escape — no `throw` of any of the
- * seven known store errors appears anywhere in its body (its own internal
+ * seven known domain errors appears anywhere in its body (its own internal
  * `P2025` catch converts a races-with-itself double-delete into a no-op, not
  * an error). Wrapping it would make the `err` branch unreachable and
  * undischargeable except by throwing or mislabelling — exactly what

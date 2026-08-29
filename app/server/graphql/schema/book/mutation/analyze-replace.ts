@@ -114,7 +114,7 @@ const result = builder.unionType('BookAnalyzeReplaceResult', {
  * this only widens the FIRST one to include admins, not merges the two.
  *
  * `analyzeEpub` (`services/epub-import-pipeline.ts`) never throws one of the
- * seven known store errors on this path: its own internal `assertValidEpub`
+ * seven known domain errors on this path: its own internal `assertValidEpub`
  * call catches exactly `EpubValidationError` and folds it into an in-band
  * `valid: false` result (never rethrown), and its `repairPackageDocument`
  * call is separately guarded with warn-and-continue. Nothing here is wrapped

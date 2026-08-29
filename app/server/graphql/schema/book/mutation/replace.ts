@@ -15,7 +15,7 @@ import { EpubValidationError } from '../../../../services/epub-validator';
 import { repairPackageDocument } from '../../../../services/epub-writer';
 import { stagingIdentityOf } from '../../../../services/replace-staging';
 import type { Book, Owner } from '../../../../types';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import {
   bookHashCollisionError,
   model as bookHashCollisionErrorModel,
@@ -103,7 +103,7 @@ const log = logger('bookReplace');
  * `try`/`catch` is kept out of `resolve`'s own body — same as `regen-
  * chapters.ts`'s `assertReimportSucceeded` — so "resolver bodies: zero
  * try/catch/throw" holds literally, not just in spirit; `toResult` stays the
- * one boundary for the seven declared store errors, and this is not one of
+ * one boundary for the seven declared domain errors, and this is not one of
  * them (REST's own guard is not a `catch`-a-declared-error site either — it
  * only ever swallows `repairPackageDocument`'s own possible throw, never
  * calls `toResult`, and doesn't discharge anything the union declares).
@@ -242,7 +242,7 @@ builder.mutationField('bookReplace', (t) =>
         if (outcome.err instanceof BookHashCollisionError) {
           return bookHashCollisionError(outcome.err, owner);
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
 
       const applied = await applyAutoAndAccepted(deps, owner, outcome.ok, {

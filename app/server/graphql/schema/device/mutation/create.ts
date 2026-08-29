@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
 import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
 import { model as coverFit } from '../../cover-fit/model';
 import {
@@ -104,7 +104,7 @@ const result = builder.unionType('DeviceCreateResult', {
  * this name already exists", `services/device.ts`), not either of REST's two
  * per-route strings ("A device with this name/slug already exists" on
  * `POST /`, "Slug already in use" on `PATCH /:id`) — this is the same
- * "factories carry the store error's own message" convention every other
+ * "factories carry the domain error's own message" convention every other
  * typed error in this schema follows (`user-error/model.test.ts`'s
  * dedicated assertion), and the typed `slug` field alongside it already
  * carries strictly more than either REST string does. Flagged for Task 10's
@@ -148,7 +148,7 @@ builder.mutationField('deviceCreate', (t) =>
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(parsed.data.name));
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
 
       return { __typename: 'DeviceCreatePayload' as const, deviceId: outcome.ok.id };

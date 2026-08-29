@@ -96,7 +96,7 @@ const result = builder.unionType('DeviceEnableUserResult', {
  * convention, and the upsert itself never distinguishes "already enabled"
  * from "newly enabled"). Not wrapped in `toResult`: an upsert on a compound
  * primary key cannot raise a unique-slug conflict or any of the other six
- * known store errors.
+ * known domain errors.
  *
  * No edition-cache purge here: REST's `PUT` route doesn't call one either —
  * granting access creates no stale cache to invalidate (only losing access,

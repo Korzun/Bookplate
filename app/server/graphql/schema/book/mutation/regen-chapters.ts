@@ -2,7 +2,7 @@ import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { reimportBook } from '../../../../services/book-lifecycle';
 import type { Book, Owner } from '../../../../types';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import {
   bookHashCollisionError,
   model as bookHashCollisionErrorModel,
@@ -79,11 +79,11 @@ const result = builder.unionType('BookRegenChaptersResult', {
  * from disk between the existence check above and this call — the same edge
  * case `replaceEpubBytes` guards with its own `throw new Error('Re-import
  * returned no book after replace')` (see that function's doc comment, and
- * `bookUpdateMetadata`'s note on it). It is not one of the seven known store
+ * `bookUpdateMetadata`'s note on it). It is not one of the seven known domain
  * errors, so it is not a `toResult`-discharged branch; REST's own fallback
  * here is an untyped 500 ("Failed to re-import book", `routes/ui.ts:1285`).
  * Mirrored the same way: a `throw` kept out of `resolve`'s own body (per
- * `assertUnreachableStoreError`'s precedent in `to-result.ts`), so it still
+ * `assertUnreachableDomainError`'s precedent in `to-result.ts`), so it still
  * satisfies "resolver bodies: zero try/catch/throw" literally, while
  * reaching yoga's masking exactly like REST's 500 does.
  */
@@ -107,13 +107,13 @@ function assertReimportSucceeded(reimported: Book | null): asserts reimported is
  * validation before it can be edited.") is checked before `reimportBook` is
  * ever called — mirrored here exactly like `bookUpdateMetadata` mirrors its
  * own identical gate: an honest, distinct `BookNotValidatedError` (not a
- * store throw), reused as-is since the semantics genuinely match (same
+ * domain-error throw), reused as-is since the semantics genuinely match (same
  * message, same `book.valid !== true` test — see that type's doc comment for
  * why it isn't a reused `EpubValidationError`).
  *
  * `reimportBook` is traced end to end (`book-lifecycle.ts`): it throws
  * `BookHashCollisionError` when the re-parsed content's new fingerprint
- * collides with another book already in the library — the one known store
+ * collides with another book already in the library — the one known domain
  * error this path can raise. `expected` below is scoped to exactly that,
  * matching `bookUpdateMetadata`'s narrower-than-all-seven pattern.
  */
@@ -158,7 +158,7 @@ builder.mutationField('bookRegenChapters', (t) =>
         if (outcome.err instanceof BookHashCollisionError) {
           return bookHashCollisionError(outcome.err, owner);
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
 
       assertReimportSucceeded(outcome.ok);

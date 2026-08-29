@@ -75,7 +75,7 @@ const result = builder.unionType('BookClearEditionsResult', {
  * `clearDeviceEditions` (`services/book-lifecycle.ts`) is NOT wrapped in
  * `toResult`: traced end to end, it only ever calls `getBookById`
  * (`services/book-catalog.ts` — a plain read) and `purgeForBook`
- * (`services/edition.ts`) — neither throws any of the seven known store
+ * (`services/edition.ts`) — neither throws any of the seven known domain
  * errors. Wrapping it would make `toResult`'s `err` branch undischargeable —
  * see `to-result.ts`'s doc comment, and `bookDelete`'s identical note for
  * `deleteBook`.

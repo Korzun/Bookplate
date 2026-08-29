@@ -138,7 +138,7 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
  * `scanProgress` subscription, not by anything in this task.
  *
  * Not wrapped in `toResult`: `scan()` (`services/book-lifecycle.ts`) throws
- * none of the seven known store errors (it catches and logs per-file
+ * none of the seven known domain errors (it catches and logs per-file
  * failures itself, same as `revalidateBook`'s per-book catch) — any throw
  * that does escape the
  * detached block is a genuine unexpected fault, mirrored into the job via
