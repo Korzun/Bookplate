@@ -61,9 +61,10 @@ describe('UserError', () => {
     // error/`) was removed by the lineage-gap plan's task 2 because it was
     // referenced by zero result unions — no mutation could ever return it, so
     // it only polluted Apollo's generated `possibleTypes`. The *store* error
-    // class of the same name (`services/book-store.ts`, thrown by `addBook`)
-    // is unaffected and still flows through `to-result.ts`'s
-    // `KnownStoreError` union for the REST upload seam and scan pipeline.
+    // class of the same name (`services/book-errors.ts`, thrown by `addBook`
+    // in `services/book-lifecycle.ts`) is unaffected and still flows through
+    // `to-result.ts`'s `KnownStoreError` union for the REST upload seam and
+    // scan pipeline.
     //
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
     // Important-2) for a REST precondition (`book.valid !== true`) the spec's

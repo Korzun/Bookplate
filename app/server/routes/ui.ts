@@ -430,7 +430,8 @@ export function createUiRouter(
    * GraphQL emits), and the GraphQL-fed screens build cover/download URLs
    * from it, so that global ID flows straight through to this route's
    * `:id` param. Resolves either form to the raw, content-hash id
-   * `bookStore` expects; a raw id passes through unchanged.
+   * `getBookById`/`getCover`/`getThumbnail` expect; a raw id passes
+   * through unchanged.
    *
    * Reuses the schema's own `parseCompoundId` (`graphql/schema/node-
    * scope.ts`) rather than hand-rolling base64/JSON parsing — same
@@ -449,9 +450,11 @@ export function createUiRouter(
    *
    * WHAT THIS CHECK IS FOR (security-reviewed): every
    * caller of this function passes the returned local id straight into a
-   * `bookStore` method that re-scopes its own query by `owner.userId`
+   * lookup (`getBookById`/`getCover`/`getThumbnail`) that re-scopes its own
+   * query by `owner.userId`
    * (`prisma.book.findUnique({ where: { userId_id: { userId:
-   * owner.userId, id } } })`, `book-store.ts`) — so for tenant isolation
+   * owner.userId, id } } })`, `services/book-catalog.ts`/`services/
+   * book-assets.ts`) — so for tenant isolation
    * specifically, this check is REDUNDANT with that query today; removing
    * it does not open a cross-tenant read (verified: reducing this function
    * to `return bookId` unconditionally leaves every cross-tenant test in

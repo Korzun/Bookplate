@@ -312,7 +312,7 @@ const selectProposals = (
  * This resolver reproduces exactly that shape via `upsertPendingFix`, keyed
  * to `outcome.ok.id` (see below for why). Because `undo` is always non-null
  * on this path, `upsertPendingFix`'s own "resolved ⟹ delete" rule
- * (`book-store.ts:661-665`) never fires here — the row survives, live, for
+ * (`services/pending-fix.ts`) never fires here — the row survives, live, for
  * the client's existing undo affordance to keep working after a
  * GraphQL-driven accept, exactly as it would after REST's.
  *
@@ -363,7 +363,7 @@ const selectProposals = (
  *   other typed-failure branch in this schema leaves its row untouched — a
  *   failed revert must not strand the book in the applied state with no way
  *   back. A successful revert best-effort clears the book's organic edit
- *   lineage (`BookStore.clearEditLineage`) the same way REST's client's
+ *   lineage (`clearEditLineage`, `services/book-lineage.ts`) the same way REST's client's
  *   `DELETE` did, but — mirroring that client's own fire-and-forget
  *   tolerance — the revert stands even if that cleanup throws, since the
  *   metadata is already back by the time it runs.
@@ -371,7 +371,7 @@ const selectProposals = (
  * Either way, on success the row is rewritten with the snapshot's `proposals`/
  * `appliedFixes` restored and `undo: null` — the mirror image of what DISMISS/
  * ACCEPT arm on their own way in. Because `undo` is `null` here,
- * `upsertPendingFix`'s "resolved ⟹ delete" rule (`book-store.ts:661-665`)
+ * `upsertPendingFix`'s "resolved ⟹ delete" rule (`services/pending-fix.ts`)
  * DOES fire when the restored `proposals` is also empty (a `dismiss` snapshot
  * that itself held nothing) — correct: a row with nothing pending and nothing
  * armed has no reason to exist.

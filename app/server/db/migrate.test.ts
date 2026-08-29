@@ -224,7 +224,7 @@ describe('data_v13_series_meta backfill', () => {
     // Run migrations to establish the full modern schema
     await runMigrations(prisma, booksDir);
 
-    // Directly insert a user, series, and two books bypassing BookStore
+    // Directly insert a user, series, and two books bypassing addBook
     // (simulates data that existed before this migration ran)
     await prisma.$executeRaw`INSERT INTO users (id, username) VALUES ('u1', 'alice')`;
     await prisma.$executeRaw`

@@ -72,7 +72,7 @@ const FAKE_META: EpubMeta = {
 let prisma: PrismaClient;
 let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
-// and assert on-disk paths here, matching the owner-scoped BookStore.
+// and assert on-disk paths here.
 let booksDir: string;
 let dbPath: string;
 

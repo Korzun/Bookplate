@@ -224,7 +224,7 @@ describe('Mutation.bookLinkDocument', () => {
   // Review M-6: the reverse direction — bob names ALICE's book id as the
   // `documentId` to merge into HIS OWN book. Adjudicated safe by
   // construction (`linkDocument`'s `book_id_history` writes and progress
-  // migration are both `user_id`-scoped, `book-store.ts:560-614`), but
+  // migration are both `user_id`-scoped, `services/book-lineage.ts`), but
   // previously untested. Succeeds for bob (writing only into his own
   // namespace) and leaves alice's book row and progress untouched.
   it('lets bob merge a documentId that names alice’s own book into HIS OWN book, leaving alice’s book and progress untouched', async () => {

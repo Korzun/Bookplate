@@ -119,7 +119,7 @@ const result = builder.unionType('BookValidateResult', {
  * one of the seven known store errors. Wrapping it would make the `err`
  * branch unreachable and undischargeable except by throwing or mislabelling
  * — the same rule `bookDelete`'s doc comment already explains for
- * `BookStore.deleteBook`. That failure (and any other unexpected one) reaches
+ * `deleteBook` (`services/book-lifecycle.ts`). That failure (and any other unexpected one) reaches
  * yoga's masking, same as REST's fallback 500 for the same read failure
  * (REST has no try/catch around this call either).
  *

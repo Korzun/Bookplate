@@ -189,7 +189,7 @@ describe('Book', () => {
 /**
  * A book's id is its content hash, so re-importing an edited EPUB MINTS A NEW
  * ONE and the old id names nothing — `reimportBook` writes the old → new
- * mapping into `book_id_history` as it goes (`services/book-store.ts`). Until
+ * mapping into `book_id_history` as it goes (`services/book-lifecycle.ts`). Until
  * this resolver consulted that table, every superseded id was a dead end that
  * a reload could not clear: a bookmark, the back button, a shared link or a
  * second tab all rendered "Book not found." for a book that plainly still
@@ -323,7 +323,7 @@ describe('Book URL fields', () => {
   });
 
   // Task-2 review, I-3: `mtime` is a Prisma `Float` holding `stat.mtimeMs`
-  // (services/book-store.ts), so a real book's mtime is routinely fractional
+  // (services/book-lifecycle.ts), so a real book's mtime is routinely fractional
   // (e.g. `1785702915092.761`). The pre-fix `v=${book.mtime}` emitted that
   // fraction verbatim, diverging byte-for-byte from the REST client's own
   // cache-busting token (`app/client/src/lib/cover-url.ts`'s `versionToken`,

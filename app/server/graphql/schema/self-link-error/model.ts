@@ -3,10 +3,10 @@ import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
- * `SelfLinkError` carries no data — the store throws it when `documentId ===
- * bookId` (`book-store.ts:561`), and the client already knows both. Its only
- * field is the `message` Pothos copies down from `UserError`, so `fields`
- * below is deliberately empty rather than restating it.
+ * `SelfLinkError` carries no data — `linkDocument` (`services/book-lineage.
+ * ts`) throws it when `documentId === bookId`, and the client already knows
+ * both. Its only field is the `message` Pothos copies down from `UserError`,
+ * so `fields` below is deliberately empty rather than restating it.
  */
 export type SelfLinkErrorShape = {
   readonly __typename: 'SelfLinkError';

@@ -892,8 +892,8 @@ describe('Mutation.bookResolvePendingFix', () => {
       // (`prisma/schema.prisma`), keyed by `oldId`/`currentId`, with the
       // organic-edit discriminator `type: 'edit'` (the column's own
       // `@default("edit")`, written by `reimportBook`'s lineage INSERT,
-      // `book-store.ts:906-909`) versus `'merge'` for manual links
-      // (`linkDocument`, `book-store.ts:609`) — NOT the illustrative
+      // `services/book-lifecycle.ts`) versus `'merge'` for manual links
+      // (`linkDocument`, `services/book-lineage.ts`) — NOT the illustrative
       // `bookLineage`/`type: 'edit'` model name from the brief.
       expect(
         await harness.prisma.bookIdHistory.count({

@@ -4,7 +4,7 @@ import { builder } from '../builder';
 
 /**
  * `userId` is internal only — not an SDL field. Traced against
- * `BookStore.getSearchSuggestions` (`book-store.ts`): of the four suggestion
+ * `getSearchSuggestions` (`services/search-suggestions.ts`): of the four suggestion
  * group types (`author`, `series`, `book`, `subject`), only `book`'s `value`
  * is semantically a book id (`bookRows.map((r) => ({ label: r.title, value:
  * r.id }))` — the book's own content-hash `id`, the same id `LinkedDocument.

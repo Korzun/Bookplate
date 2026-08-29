@@ -72,8 +72,8 @@ const result = builder.unionType('BookClearEditionsResult', {
  * comment for the full malformed-id / wrong-type-id reasoning, which applies
  * here unchanged.
  *
- * `BookStore.clearDeviceEditions` is NOT wrapped in `toResult`: traced end to
- * end (`book-store.ts:494-501`), it only ever calls `getBookById`
+ * `clearDeviceEditions` (`services/book-lifecycle.ts`) is NOT wrapped in
+ * `toResult`: traced end to end, it only ever calls `getBookById`
  * (`services/book-catalog.ts` — a plain read) and `purgeForBook`
  * (`services/edition.ts`) — neither throws any of the seven known store
  * errors. Wrapping it would make `toResult`'s `err` branch undischargeable —

@@ -14,8 +14,8 @@ const EXPIRED_BOOK_ID = '2'.repeat(32);
 const bookGlobalId = (userId: string, id: string): string =>
   encodeGlobalID('Book', JSON.stringify([userId, id]));
 
-// Mirrored from book-store.ts:31's PENDING_FIX_TTL_MS (7 days) — inlined as a
-// literal so this file does not import a private store constant, same as
+// Mirrors `derive.ts`'s own private PENDING_FIX_TTL_MS (7 days) — inlined as
+// a literal so this file does not import a private module constant, same as
 // derive.test.ts's isLivePendingFix suite.
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
