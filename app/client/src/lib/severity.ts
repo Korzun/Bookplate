@@ -29,7 +29,9 @@ export interface ValidationFailure {
 }
 
 // A validation run's full result: the failure payload plus whether the book
-// passes the configured threshold. Returned by POST /api/books/:id/validate.
+// passes the configured threshold. Mirrors the server's own `ValidationReport`
+// (`app/server/services/epub-validator.ts`); the live client path to it is now
+// the `bookValidate` mutation's `BookValidatePayload.validation`.
 export interface ValidationReport extends ValidationFailure {
   valid: boolean;
 }

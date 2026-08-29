@@ -33,7 +33,8 @@ import { useStyle } from './style';
 const NAME_MAX_LENGTH = 50;
 
 // Empty (cleared to "auto") or a positive integer, matching the server's
-// `${label} must be a positive integer` validation in app/server/routes/devices.ts.
+// `coverWidth/coverHeight must be a positive integer` zod rules in
+// app/server/graphql/schema/device/mutation/device-fields-schema.ts.
 const isValidCoverDimension = (newValue: string) =>
   newValue === '' ||
   (isNumeric(newValue) && Number.isInteger(parseFloat(newValue)) && parseFloat(newValue) > 0);

@@ -55,8 +55,10 @@ import { useStyle } from './style';
  * `Record<Severity, number>`. `SeverityCounts`' own `orderSeverityCounts`
  * reads `counts[severity] ?? 0`, so a partial record — every severity NOT in
  * the list is simply absent here — is safe to hand it; the cast matches the
- * same `Object.fromEntries(...) as Record<Severity, number>` idiom the
- * server's own `validation-store.ts` uses for the identical shape.
+ * partial-record shape the server itself builds for a validation run
+ * (`services/epub-validator.ts`'s `counts`, which likewise populates a
+ * severity's key only when a message of that severity exists — see
+ * `graphql/validation-counts-loader.ts`'s note on omitted zero counts).
  */
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
 // the call, so each is named explicitly here, extracted from the generated
@@ -351,7 +353,8 @@ export const BookPage = () => {
    * help, because the same URL hits the same dead id. This mirrors the
    * `onReplaced(newId)` precedent already in this file. The deeper half is
    * server-side: `Library.book(id:)` now resolves a superseded id through
-   * `bookStore.resolveBookId` (`app/server/graphql/schema/library/model.ts`),
+   * `resolveBookId` (`app/server/services/book-lineage.ts`, called from
+   * `graphql/schema/library/model.ts`),
    * which makes EVERY stale book id recoverable — bookmarks, the back
    * button, a shared link, a second tab — not just this handler's path. This
    * navigate still earns its place: it keeps the URL from silently lying
