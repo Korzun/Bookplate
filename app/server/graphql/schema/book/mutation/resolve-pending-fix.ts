@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { logger } from '../../../../logger';
 import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
@@ -38,6 +39,8 @@ import { model as metadataFixKey } from '../../metadata-fix-key';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as resolution } from '../../pending-fix-resolution';
 import { model as bookType } from '../model';
+
+const log = logger('GraphQL:bookResolvePendingFix');
 
 /**
  * The `Book` global ID IS the input, alongside `action` — no separate
@@ -220,8 +223,23 @@ const selectProposals = (
  * `err` branch would have nothing to discharge it — exactly the case
  * `to-result.ts`'s doc comment says not to wrap.
  *
- * The swallow is silent, as it was when the UNDO action landed (`0d07d3ac`):
- * this lift is a placement fix, not a re-litigation of what the catch does.
+ * The swallow stays — the UNDO branch must still succeed when this throws,
+ * for the reason the first paragraph gives — but it is no longer SILENT. It
+ * was, from when the UNDO action landed (`0d07d3ac`) through the Stores
+ * migration, which lifted the try/catch here under a no-behaviour-changes
+ * constraint and so could not touch what the catch does. Both sibling
+ * best-effort swallows log (`purge-quietly.ts`'s `purgeEditionsQuietly`,
+ * `replace.ts`'s `repairBestEffort` — the latter added its own `log.warn`
+ * for exactly this reason, review finding M-2), and this one left the
+ * operator nothing: a failure here strands `book_id_history` rows that say
+ * a book was edited when the edit has just been reverted, with no trace
+ * anywhere. `regen-chapters.ts`'s `assertReimportSucceeded` is NOT a
+ * counter-precedent — it rethrows rather than swallowing, so it has yoga's
+ * masking to reach an operator through, which this has not.
+ *
+ * The namespace follows `library/mutation/scan.ts`'s `GraphQL:libraryScan`
+ * (mutation-named), so the message itself carries only the detail an
+ * operator needs to find the stale rows — the book and whose library it is.
  */
 async function clearEditLineageQuietly(
   prisma: PrismaClient,
@@ -230,8 +248,10 @@ async function clearEditLineageQuietly(
 ): Promise<void> {
   try {
     await clearEditLineage(prisma, owner, bookId);
-  } catch {
-    // intentionally swallowed — see this function's doc comment
+  } catch (err) {
+    log.warn(
+      `Edit-lineage cleanup failed for book "${bookId}" (user "${owner.username}") — ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 }
 
