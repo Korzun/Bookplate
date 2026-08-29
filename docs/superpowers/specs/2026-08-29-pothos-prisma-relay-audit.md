@@ -134,19 +134,31 @@ SDL that ADVERTISED backward pagination while the resolver threw
 `BACKWARD_PAGINATION_UNSUPPORTED`. The plugin genuinely paginates backward, so
 the schema again promises only what it delivers.
 
-Three behaviours changed with it, each tested (`schema/library/progress.test.ts`):
+Two behaviours changed with it, both tested (`schema/library/progress.test.ts`):
 
-1. **Cursor format.** base64 `{timestamp, document}` -> the plugin's compound-PK
-   cursor. Opaque by contract; a client mid-pagination across the deploy gets an
-   `Invalid cursor` error rather than wrong rows.
-2. **A deleted cursor row ends pagination early.** Prisma's `cursor` + `skip: 1`
-   needs the row to exist; measured, it returns an EMPTY page with
-   `hasNextPage: false` rather than erroring. The old keyset compared values
-   carried in the cursor and did not care. This is the one thing the conversion
-   made worse.
-3. **A malformed cursor now errors** instead of silently restarting from page
+1. **Cursor format.** base64 `{timestamp, document}` -> the plugin's own cursor
+   over `@@unique([userId, timestamp, document])`. Opaque by contract; a client
+   mid-pagination across the deploy gets an `Invalid cursor` error rather than
+   wrong rows.
+2. **A malformed cursor now errors** instead of silently restarting from page
    one (`decodeProgressCursor` returned `null`, which the resolver read as "no
    cursor").
+
+**A third change was found, and then removed rather than accepted.** Prisma
+implements `cursor` by seeking to a row, so it needs that row to still exist;
+measured, when it does not the page returns EMPTY with `hasNextPage: false` and
+no error — a client deleting the row it last paged from would silently stop
+paginating, which the hand-built keyset never did. Shipping that as a documented
+cost was the wrong call and was reverted before merge: the resolver now drops
+the plugin's `cursor`/`skip` and rebuilds the original keyset predicate from the
+parsed cursor. That needs `timestamp` inside the cursor, which is what
+`@@unique([userId, timestamp, document])` is for — declared for cursor shape
+only, emitting no DDL, and unable to be violated since its columns are a
+superset of the primary key. Delete-stability is pinned in both directions.
+
+The lesson is the same one this audit keeps re-learning: "measured, and here is
+the cost" is not automatically a finished decision. The measurement was right;
+accepting it was optional.
 
 `hasPreviousPage` did NOT change on the forward path: the plugin computes
 `args.after ? true : …` (`util/cursors.js`'s `wrapConnectionResult`), which is
@@ -788,7 +800,7 @@ the single highest-value item in the audit and is not in the original scope.
 | ~~2~~ | ~~`Library.user` + two payload `user` fields → `t.prismaField`~~ — **DONE, `864c07cb`**. 2→1 query each | B-1/2/3 | `graphql/` | High | Low | none |
 | ~~3~~ | ~~Drop `getUserProgressPage`'s DTO; delete `Library.progress`'s second query~~ — **DONE, `fd2d9770`**. 2→1 query per page | B-4a | `graphql/` + `services/` | Medium | Medium | none |
 | ~~5~~ | ~~`Progress`↔`Book` relation; retire 3 loaders~~ — **ABANDONED, measured 2→9 queries.** See F-1 | F-1 | — | — | — | — |
-| ~~10~~ | ~~`Library.progress` → `t.prismaConnection`~~ — **DONE.** Reversed `e7f99557` by ruling, which unblocked slice 5's relation. 3→1 queries per page; 1 loader deleted, 1 narrowed; `getUserProgressPage` + `utils/progress-pagination.ts` deleted | A/F-1 | `graphql/` + `services/` + `prisma/` | High | Medium — SDL + cursor format | **`last`/`before` added** |
+| ~~10~~ | ~~`Library.progress` → `t.prismaConnection`~~ — **DONE.** Reversed `e7f99557` by ruling, which unblocked slice 5's relation. 3→1 queries per page; 1 loader deleted, 1 narrowed; `getUserProgressPage` + `utils/progress-pagination.ts` deleted; keyset rebuilt in the resolver so delete-stability survives | A/F-1 | `graphql/` + `services/` + `prisma/` | High | Medium — SDL + cursor format | **`last`/`before` added** |
 | ~~4~~ | ~~Loaders → `graphql/loaders/` + shared factory~~ — **DONE, `6dc84688`**. 7 copies → 1, net −84 lines | F-5 | `graphql/` | High | Low | none |
 | ~~6~~ | ~~`book_id_history`/`device_editions` raw SQL → typed client~~ — **DONE, `6079942c`**. 9 statements converted, 2 documented keeps | E-1/E-2 | `services/` | Medium | Low | none |
 | 7 | `queryFromInfo` on `Library.progress` | B-4b | `graphql/` | Low | Low | none |

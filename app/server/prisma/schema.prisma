@@ -189,6 +189,31 @@ model Progress {
   book       Book?  @relation(fields: [userId, document], references: [userId, id])
 
   @@id([userId, document])
+  // EXISTS ONLY TO SHAPE `Library.progress`'s CURSOR, and is never used as a
+  // lookup key by any query.
+  //
+  // `@pothos/plugin-prisma` derives a connection's cursor from the field or
+  // index named in the `cursor:` option, and the cursor must carry every column
+  // the page's `orderBy` sorts on — otherwise a resolver cannot reconstruct
+  // "the rows after this one" without re-reading the cursor row itself, which
+  // is exactly what breaks when that row is deleted mid-pagination. The primary
+  // key `[userId, document]` does not carry `timestamp`; this index does.
+  // `library/model.ts`'s `progress` resolver translates the parsed cursor into
+  // a keyset `where` and never passes Prisma a `cursor` at all.
+  //
+  // It emits no DDL, for the same reason the relation above emits no foreign
+  // key (see that comment), and unlike the relation that is harmless rather
+  // than merely safe: these columns are a SUPERSET of the primary key, so the
+  // uniqueness is already guaranteed by `@@id` and this constraint cannot be
+  // violated even in principle. A physical index here would be a modest read
+  // win for the page query's `ORDER BY`, and is deliberately NOT added: every
+  // database rebuilds `progress` from scratch in `data_v10_user_surrogate_id`
+  // (`db/migrate.ts`), which runs AFTER the DDL pass, so a `CREATE INDEX`
+  // migration would be dropped on its way in and would have to be mirrored
+  // inside that rebuild — the trap `prisma/migrations/
+  // 20260801000000_book_id_history_current_id_index` already documents for
+  // another table.
+  @@unique([userId, timestamp, document])
   @@map("progress")
 }
 
