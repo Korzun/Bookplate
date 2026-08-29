@@ -351,14 +351,14 @@ beforeEach(async () => {
   app.use(cookieParser());
   app.use(
     '/',
-    createUiRouter(
+    createUiRouter({
       editionsRoot,
-      { ...config, booksDir },
-      mockThumbnailQueue,
+      config: { ...config, booksDir },
+      thumbnailQueue: mockThumbnailQueue,
       jwtSecret,
       prisma,
-      replaceStaging
-    )
+      replaceStaging,
+    })
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
   app.use((_err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
@@ -461,7 +461,7 @@ describe('POST /api/login', () => {
       expect(res11.body).toEqual({ error: 'Too many login attempts. Please try again later.' });
     });
 
-    it('window expiry admits again (injected clock via createUiRouter’s optional now parameter — no fake timers)', async () => {
+    it('window expiry admits again (injected clock via createUiRouter’s optional loginRateLimitNow dep — no fake timers)', async () => {
       let now = 0;
       const clockedApp = express();
       clockedApp.use(express.json());
@@ -469,15 +469,15 @@ describe('POST /api/login', () => {
       clockedApp.use(cookieParser());
       clockedApp.use(
         '/',
-        createUiRouter(
+        createUiRouter({
           editionsRoot,
-          { ...config, booksDir },
-          mockThumbnailQueue,
+          config: { ...config, booksDir },
+          thumbnailQueue: mockThumbnailQueue,
           jwtSecret,
           prisma,
           replaceStaging,
-          () => now
-        )
+          loginRateLimitNow: () => now,
+        })
       );
 
       for (let i = 0; i < 11; i++) {
@@ -514,14 +514,14 @@ describe('POST /api/login', () => {
       proxyApp.use(cookieParser());
       proxyApp.use(
         '/',
-        createUiRouter(
+        createUiRouter({
           editionsRoot,
-          { ...config, booksDir, trustProxyHops: 1 },
-          mockThumbnailQueue,
+          config: { ...config, booksDir, trustProxyHops: 1 },
+          thumbnailQueue: mockThumbnailQueue,
           jwtSecret,
           prisma,
-          replaceStaging
-        )
+          replaceStaging,
+        })
       );
 
       for (let i = 0; i < 10; i++) {

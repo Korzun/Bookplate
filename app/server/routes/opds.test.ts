@@ -3,7 +3,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { ValidationThreshold } from '@korzun/epubcheck-ts';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { Prisma, PrismaClient } from '@prisma/client';
 import express from 'express';
@@ -114,7 +113,7 @@ beforeEach(async () => {
   const bobId = (await prisma.user.findUnique({ where: { username: 'bob' } }))!.id;
   bob = { userId: bobId, username: 'bob' };
   app = express();
-  app.use('/opds', createOpdsRouter(booksDir, prisma, [60, 170]));
+  app.use('/opds', createOpdsRouter({ booksRoot: booksDir, prisma, thumbnailWidths: [60, 170] }));
 });
 
 afterEach(async () => {
@@ -315,14 +314,12 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     const app2 = express();
     app2.use(
       '/opds',
-      createOpdsRouter(
-        booksDir,
+      createOpdsRouter({
+        booksRoot: booksDir,
         prisma,
-        [60, 170],
-        'Bookplate',
-        deviceEditionsRoot,
-        ValidationThreshold.ERROR
-      )
+        thumbnailWidths: [60, 170],
+        editionsRoot: deviceEditionsRoot,
+      })
     );
 
     const res = await request(app2)
@@ -370,14 +367,12 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     const app3 = express();
     app3.use(
       '/opds',
-      createOpdsRouter(
-        booksDir,
+      createOpdsRouter({
+        booksRoot: booksDir,
         prisma,
-        [60, 170],
-        'Bookplate',
-        deviceEditionsRoot,
-        ValidationThreshold.ERROR
-      )
+        thumbnailWidths: [60, 170],
+        editionsRoot: deviceEditionsRoot,
+      })
     );
     const res = await request(app3)
       .get(`/opds/books/${bookId}/devices/${device.slug}/download`)
@@ -563,14 +558,12 @@ describe('OPDS feed thumbnail link', () => {
     const app2 = express();
     app2.use(
       '/opds',
-      createOpdsRouter(
-        booksDir,
+      createOpdsRouter({
+        booksRoot: booksDir,
         prisma,
-        [60, 170],
-        'Bookplate',
-        deviceEditionsRoot,
-        ValidationThreshold.ERROR
-      )
+        thumbnailWidths: [60, 170],
+        editionsRoot: deviceEditionsRoot,
+      })
     );
 
     const res = await request(app2).get('/opds/books').set(basicAuth('alice', 'secret'));
@@ -971,14 +964,12 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
     const a = express();
     a.use(
       '/opds',
-      createOpdsRouter(
-        booksDir,
+      createOpdsRouter({
+        booksRoot: booksDir,
         prisma,
-        [60, 170],
-        'Bookplate',
-        deviceEditionsRoot,
-        ValidationThreshold.ERROR
-      )
+        thumbnailWidths: [60, 170],
+        editionsRoot: deviceEditionsRoot,
+      })
     );
     return { app: a, device };
   }
