@@ -108,7 +108,7 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * a races-with-itself double-delete into `false`, and its edition-cache
  * purge failure is caught and logged, never rethrown — nothing left in its
  * body can throw one of the seven known store errors. Same reasoning as
- * `bookDelete`'s identical note on `BookStore.deleteBook`.
+ * `bookDelete`'s identical note on `deleteBook` (`services/book-lifecycle.ts`).
  *
  * `removeUserBooksDir` (`utils/user-books-dir.ts`) replicates REST's on-disk
  * cleanup (`fs.rmSync(booksRoot/<username>)`) via the SAME helper that route

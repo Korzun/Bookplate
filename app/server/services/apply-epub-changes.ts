@@ -23,9 +23,10 @@ import { saveValidation } from './validation';
  * one of those signatures — `(reimportBook, prisma, validationThreshold,
  * owner, book, changes)` at each layer — which is the "call signature nobody
  * can read" case the spec warns flattening can produce, for no offsetting
- * clarity gain (there are 5 call sites total: `regen-chapters.ts`,
- * `update-metadata.ts`, `resolve-pending-fix.ts`, `replace.ts`, and
- * `routes/ui.ts`, all constructing the identical shape). Contrast
+ * clarity gain (there are 4 call sites total: `update-metadata.ts`,
+ * `resolve-pending-fix.ts`, `replace.ts`, and `routes/ui.ts`, all
+ * constructing the identical shape — `regen-chapters.ts` calls `reimportBook`
+ * directly, positionally, and never touches this interface at all). Contrast
  * `Stores.book` (`graphql/context.ts`, removed this same task): that WAS a
  * DI seam — an interface existing so a class instance could be swapped in —
  * with no cohesion between its methods beyond "things a book might need".
@@ -34,8 +35,8 @@ import { saveValidation } from './validation';
 export interface ApplyEpubChangesDeps {
   /**
    * Bound to a concrete `(prisma, booksRoot, editionsRoot)` by each caller —
-   * see `regen-chapters.ts`, `update-metadata.ts`, `resolve-pending-fix.ts`,
-   * `replace.ts`, and `routes/ui.ts` for the closures. Replaced `bookStore:
+   * see `update-metadata.ts`, `resolve-pending-fix.ts`, `replace.ts`, and
+   * `routes/ui.ts` for the closures. Replaced `bookStore:
    * BookStore` when the class was deleted (Task 9b); this is the one method
    * of it this module ever called.
    */

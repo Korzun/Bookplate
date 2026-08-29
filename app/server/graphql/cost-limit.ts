@@ -419,8 +419,8 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
 /**
  * `Library.searchSuggestions`/`SuggestionGroup.items` — task-3-re-review-2.md,
  * I-5. Previously ruled SAFE (priced at 1) because `getSearchSuggestions`
- * (`services/book-store.ts:172-301`) caps every branch at `LIMIT 30`
- * (4 occurrences: `book-store.ts:195,227,253,265`, one per suggestion
+ * (`services/search-suggestions.ts`) caps every branch at `LIMIT 30`
+ * (4 occurrences, one per suggestion
  * group), ≤4 groups (`author`/`series`/`book`/`subject`). That reasoning
  * used "has a code-enforced bound" as grounds for EXEMPTION — but this
  * file's own precedent (`CONNECTION_FIELD_LIMITS`, `Library.entries` etc.)
@@ -435,9 +435,9 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
  *
  * Priced at the SOURCED bounds, not an assumption: `searchSuggestions`
  * itself returns at most 4 groups — `getSearchSuggestions`'s own four
- * `groups.push(...)` sites, `book-store.ts:202` (`author`), `:234`
- * (`series`), `:274` (`book`), `:291` (`subject`), each behind its own
- * guard and pushed at most once (full function: `book-store.ts:172-301`);
+ * `groups.push(...)` sites (one each for `author`, `series`, `book`, and
+ * `subject`), each behind its own
+ * guard and pushed at most once (`services/search-suggestions.ts`);
  * each group's `items` is capped at `LIMIT 30`.
  * `Suggestion.book` (`schema/suggestion/model.ts:33-40`) only resolves a
  * lookup for `BOOK`-typed items (`suggestion.userId === undefined` short-
@@ -1042,7 +1042,7 @@ export const BREADTH_BUDGET = 100;
  * (task-3-report.md §5, "Handoff requirement for Task 4") measured this
  * precisely: 200 aliased `viewer { library { authors subjects } }` calls
  * (`Library.subjects`/`Library.authors` are unpaginated scalar lists, no
- * `LIMIT`, `book-store.ts:155-169`) score complexity **800** — 2.4% of THIS
+ * `LIMIT`, `services/book-catalog.ts`'s `getSubjects`/`getAuthors`) score complexity **800** — 2.4% of THIS
  * budget, nowhere near rejecting — while breadth (800) clears
  * `BREADTH_BUDGET` (100) 8× over. Neither number is decorative — each is
  * the ONLY defense against one proven attack family (see

@@ -422,8 +422,8 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
 /**
  * Round-2 re-review, I-5: `Library.searchSuggestions` / `SuggestionGroup.items`
  * were ruled SAFE (priced at 1) because `getSearchSuggestions`
- * (`services/book-store.ts:172-265`) caps every branch at `LIMIT 30`
- * (`book-store.ts:195,227,253,265`), at most 4 groups — but "has a
+ * (`services/search-suggestions.ts`) caps every branch at `LIMIT 30`
+ * (4 occurrences), at most 4 groups — but "has a
  * code-enforced bound" was used as grounds for EXEMPTION, when this file's
  * own precedent (`Library.entries` etc.) is to price AT a bound, not skip
  * it. Measured pre-fix: `searchSuggestions { items { book { series {
