@@ -1,8 +1,11 @@
 import { z } from 'zod';
 
-import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
+import {
+  DeviceSlugConflictError,
+  updateDevice,
+  type DeviceInput,
+} from '../../../../services/device';
 import { purgeForDevice } from '../../../../services/edition';
-import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -90,7 +93,8 @@ const result = builder.unionType('DeviceUpdateResult', {
  * collapsed into this mutation's single `null` result, the same "no such
  * row" convention every delete/update mutation in this schema uses: the
  * device doesn't exist before the write, or a P2025 races the write out
- * from under it (this resolver's own `P2025` catch below) — REST answered
+ * from under it (`updateDevice`'s own `P2025` → `null` conversion,
+ * `services/device.ts`) — REST answered
  * "Device not found" for both, and so does this.
  *
  * **Ordering:** validates before it resolves, like every other mutation in
@@ -100,14 +104,14 @@ const result = builder.unionType('DeviceUpdateResult', {
  * spec's Resolved decision D-1 chose this schema's own convention over a
  * dead endpoint's ordering.
  *
- * No `getById` precheck: the `prisma.device.update` call below already
- * converts `P2025` to `null` and `P2002` to `DeviceSlugConflictError`, so the
- * outcome is decided by which constraint failed, not by evaluation order.
- * The precheck was one extra query and nothing else.
+ * No `getById` precheck: `updateDevice` already converts `P2025` to `null`
+ * and `P2002` to `DeviceSlugConflictError`, so the outcome is decided by
+ * which constraint failed, not by evaluation order. The precheck was one
+ * extra query and nothing else.
  *
  * The slug-conflict handling is the same deliberate simplification
  * `deviceCreate` documents: REST's `getBySlug` precheck (excluding the row
- * being updated) is redundant with this resolver's own
+ * being updated) is redundant with `updateDevice`'s own
  * `DeviceSlugConflictError` throw on the DB's unique constraint, so only the
  * throw is mirrored here, via `toResult`. Renaming a device to its OWN
  * current name is not a conflict either way — updating a unique column to
@@ -151,32 +155,24 @@ builder.mutationField('deviceUpdate', (t) =>
         simplify: args.input.simplify,
       };
 
-      const outcome = await toResult<{ id: string } | null, DeviceSlugConflictError>(async () => {
-        try {
-          return await context.prisma.device.update({
-            where: { id: idParsed.data.deviceId },
-            data: { slug: generateSlug(deviceInput.name), ...deviceInput, updatedAt: Date.now() },
-          });
-        } catch (err) {
-          if (isPrismaError(err, 'P2025')) return null; // record no longer exists
-          if (isPrismaError(err, 'P2002')) throw new DeviceSlugConflictError();
-          throw err;
-        }
-      }, [DeviceSlugConflictError]);
+      const outcome = await toResult<string | null, DeviceSlugConflictError>(
+        () => updateDevice(context.prisma, idParsed.data.deviceId, deviceInput),
+        [DeviceSlugConflictError]
+      );
       if ('err' in outcome) {
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(fieldsParsed.data.name));
         }
         return assertUnreachableDomainError(outcome.err);
       }
-      const device = outcome.ok;
-      if (device === null) return null;
+      const deviceId = outcome.ok;
+      if (deviceId === null) return null;
 
-      await purgeEditionsQuietly('deviceUpdate', `device "${device.id}"`, () =>
-        purgeForDevice(context.prisma, context.editionsRoot, device.id)
+      await purgeEditionsQuietly('deviceUpdate', `device "${deviceId}"`, () =>
+        purgeForDevice(context.prisma, context.editionsRoot, deviceId)
       );
 
-      return { __typename: 'DeviceUpdatePayload' as const, deviceId: device.id };
+      return { __typename: 'DeviceUpdatePayload' as const, deviceId };
     },
   })
 );

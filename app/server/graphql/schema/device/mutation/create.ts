@@ -1,7 +1,8 @@
-import { randomUUID } from 'crypto';
-
-import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/device';
-import { isPrismaError } from '../../../../services/prisma-errors';
+import {
+  createDevice,
+  DeviceSlugConflictError,
+  type DeviceInput,
+} from '../../../../services/device';
 import { generateSlug } from '../../../../utils/slug';
 import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -27,7 +28,8 @@ import { deviceFieldsSchema } from './device-fields-schema';
  * `coverFit` reuses the existing `CoverFit` enum (`cover-fit/model.ts`) — its
  * `value:` mapping already produces the lowercase storage string
  * `DeviceInput['coverFit']` expects, so `args.input.coverFit` needs no
- * translation before it reaches the `prisma.device.create` call below.
+ * translation before it reaches the `prisma.device.create` call `createDevice`
+ * makes.
  */
 const input = builder.inputType('DeviceCreateInput', {
   fields: (t) => ({
@@ -46,8 +48,8 @@ type DeviceCreatePayloadShape = {
 };
 
 /**
- * `device` is a fresh `t.prismaField` lookup by the id the `prisma.device.create`
- * call reported, never the created row handed straight to a `prismaObject`
+ * `device` is a fresh `t.prismaField` lookup by the id `createDevice`
+ * reported, never the created row handed straight to a `prismaObject`
  * field — same "field resolvers do the lookup" pattern every other payload
  * in this schema uses (`BookUpdateMetadataPayload.book`,
  * `UserRegisterPayload.user`), and required here for the same reason: a
@@ -83,10 +85,11 @@ const result = builder.unionType('DeviceCreateResult', {
  * REST ran a `getBySlug` precheck (409) AND caught `DeviceSlugConflictError`
  * from the now-dissolved `DeviceStore`'s `create` itself (a second 409,
  * defense against a race between the precheck and the write) — both
- * produced the identical response. This resolver keeps only the second: the
- * `prisma.device.create` call below already throws `DeviceSlugConflictError`
- * on the DB's own unique-constraint violation (a Prisma `P2002`, backed by
- * `slug @unique` in `prisma/schema.prisma`), so the precheck was redundant
+ * produced the identical response. This resolver keeps only the second:
+ * `createDevice` (`services/device.ts`) already throws
+ * `DeviceSlugConflictError` on the DB's own unique-constraint violation (a
+ * Prisma `P2002`, backed by `slug @unique` in `prisma/schema.prisma`), so the
+ * precheck was redundant
  * for outcome purposes — it existed in REST only to avoid an unnecessary
  * write attempt, not to produce a different result. Relying solely on the
  * real throw, via `toResult`, is also more in keeping with this schema's
@@ -134,16 +137,10 @@ builder.mutationField('deviceCreate', (t) =>
         simplify: args.input.simplify,
       };
 
-      const outcome = await toResult<{ id: string }, DeviceSlugConflictError>(async () => {
-        try {
-          return await context.prisma.device.create({
-            data: { id: randomUUID(), slug: generateSlug(deviceInput.name), ...deviceInput },
-          });
-        } catch (err) {
-          if (isPrismaError(err, 'P2002')) throw new DeviceSlugConflictError();
-          throw err;
-        }
-      }, [DeviceSlugConflictError]);
+      const outcome = await toResult<string, DeviceSlugConflictError>(
+        () => createDevice(context.prisma, deviceInput),
+        [DeviceSlugConflictError]
+      );
       if ('err' in outcome) {
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(parsed.data.name));
@@ -151,7 +148,7 @@ builder.mutationField('deviceCreate', (t) =>
         return assertUnreachableDomainError(outcome.err);
       }
 
-      return { __typename: 'DeviceCreatePayload' as const, deviceId: outcome.ok.id };
+      return { __typename: 'DeviceCreatePayload' as const, deviceId: outcome.ok };
     },
   })
 );

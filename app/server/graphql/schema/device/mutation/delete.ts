@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import { deleteDevice } from '../../../../services/device';
 import { purgeForDevice } from '../../../../services/edition';
-import { isPrismaError } from '../../../../services/prisma-errors';
 import { builder } from '../../builder';
 import {
   invalidInputError,
@@ -63,18 +63,19 @@ const result = builder.unionType('DeviceDeleteResult', {
  * router-wide gate `deviceCreate`'s doc comment traces.
  *
  * REST checks existence twice (`getById`, then re-checks `delete`'s boolean
- * return) before answering 404 either way. This resolver's own `P2025` catch
- * below folds both cases into one `null` result (returned directly for
- * either "never existed" or "P2025 raced it away"), so a single call is
+ * return) before answering 404 either way. `deleteDevice`'s own `P2025` →
+ * `false` conversion (`services/device.ts`) folds both cases into one `null`
+ * result (returned directly for either "never existed" or "P2025 raced it
+ * away"), so a single call is
  * sufficient — the second REST check exists only because the route re-reads
  * the row for its own bookkeeping, not because the two cases need different
  * handling. Collapsed here into one `null` result, same "no such row"
  * convention every delete mutation in this schema uses.
  *
- * The `prisma.device.delete` call below is NOT wrapped in `toResult`: traced
- * end to end, its own `P2025` catch converts a races-with-itself
- * double-delete into `null` — nothing left in its body can throw one of the
- * seven known domain errors.
+ * The `deleteDevice` call below is NOT wrapped in `toResult`: traced end to
+ * end, its own `P2025` conversion turns a races-with-itself double-delete
+ * into `false` — nothing left in its body can throw one of the seven known
+ * domain errors.
  *
  * `DeviceUser` rows for this device are removed by the DB itself
  * (`DeviceUser.device` is `onDelete: Cascade`, `prisma/schema.prisma`), not
@@ -95,12 +96,8 @@ builder.mutationField('deviceDelete', (t) =>
       const parsed = inputSchema.safeParse({ deviceId: args.input.deviceId });
       if (!parsed.success) return invalidInputError(parsed.error);
 
-      try {
-        await context.prisma.device.delete({ where: { id: parsed.data.deviceId } });
-      } catch (err) {
-        if (isPrismaError(err, 'P2025')) return null; // already deleted
-        throw err;
-      }
+      const deleted = await deleteDevice(context.prisma, parsed.data.deviceId);
+      if (!deleted) return null; // never existed, or a P2025 raced it away
 
       await purgeEditionsQuietly('deviceDelete', `device "${parsed.data.deviceId}"`, () =>
         purgeForDevice(context.prisma, context.editionsRoot, parsed.data.deviceId)
