@@ -1,10 +1,21 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { ScanImporter } from '../../../services/book-store';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
+// Only the one 'returns only the current-id entry after a reimport...' test
+// below drives reimportBook's now-direct parseEpub/partialMD5 imports, and it
+// arms both with mockImplementationOnce right before the call it's testing —
+// no other test in this file exercises either, so there's no shared default
+// to re-arm in a beforeEach (contrast book-lifecycle.test.ts, which does).
+vi.mock('../../../services/epub-parser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../services/epub-parser')>()),
+  parseEpub: vi.fn(),
+  partialMD5: vi.fn(),
+}));
+
+import { parseEpub, partialMD5 } from '../../../services/epub-parser';
 
 let harness: Harness;
 
@@ -264,11 +275,9 @@ describe('Library.progress', () => {
       },
     });
 
-    const mockImporter: ScanImporter = {
-      parseEpub: () => FAKE_META,
-      partialMD5: () => 'lin-new',
-    };
-    await harness.stores.book.reimportBook(harness.aliceOwner, 'lin-old', mockImporter);
+    vi.mocked(parseEpub).mockImplementationOnce(() => FAKE_META);
+    vi.mocked(partialMD5).mockImplementationOnce(() => 'lin-new');
+    await harness.stores.book.reimportBook(harness.aliceOwner, 'lin-old');
 
     const result = await harness.execute(PAGE, { viewer: harness.aliceViewer });
     const documents = (result.data as PageData).viewer.library.progress.edges.map(

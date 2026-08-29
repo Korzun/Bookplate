@@ -8,15 +8,29 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner } from '../types';
-import { BookStore, ScanImporter } from './book-store';
+import { BookStore } from './book-store';
 import type { ScanProgress } from './scan-events';
 
 // Dedicated coverage for BookStore.scan()'s onProgress hook — kept in its own
-// file rather than added to book-store.test.ts (the 3702-line store suite the
-// task 8 brief requires stay untouched), following the same "new file,
-// existing suite unedited" split the brief calls for.
+// file rather than folded into book-lifecycle.test.ts (already the largest
+// suite in this task), following the same "new file, existing suite
+// unedited" split this file's predecessor (book-store-scan-progress.test.ts)
+// used against book-store.test.ts. Renamed/retargeted for task 7: `scan()`
+// now lives in `./book-lifecycle`, reached here (as before) through the
+// `BookStore` facade.
 
 vi.mock('../logger');
+// `ScanImporter` is gone — `scan` now imports `parseEpub`/`partialMD5`
+// directly from `./epub-parser`. `vi.fn(actual.X)` self-heals back to the
+// real implementation on every `mockReset` (see book-lifecycle.test.ts's
+// longer note on this same seam), so every test below stubs both right
+// before the `scan()` call it targets via `armImporter`.
+vi.mock('./epub-parser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./epub-parser')>();
+  return { ...actual, parseEpub: vi.fn(actual.parseEpub), partialMD5: vi.fn(actual.partialMD5) };
+});
+
+import { parseEpub, partialMD5 } from './epub-parser';
 
 const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
@@ -40,12 +54,15 @@ const FAKE_META: EpubMeta = {
   pageCount: 0,
 };
 
-function makeMockImporter(idFor?: (filePath: string) => string): ScanImporter {
-  return {
-    parseEpub: (): EpubMeta => ({ ...FAKE_META, title: 'Mock Title' }),
-    partialMD5: (filePath: string): string =>
-      idFor ? idFor(filePath) : crypto.createHash('md5').update(filePath).digest('hex'),
-  };
+// Arms parseEpub/partialMD5 with a persistent (not "once") stub, matching how
+// the old `makeMockImporter(): ScanImporter` handed a fresh importer object
+// to each `scan()` call. `idFor`, when given, replaces the default
+// filePath-keyed md5 hash — mirroring `makeMockImporter`'s own `idFor` param.
+function armImporter(idFor?: (filePath: string) => string): void {
+  vi.mocked(parseEpub).mockImplementation((): EpubMeta => ({ ...FAKE_META, title: 'Mock Title' }));
+  vi.mocked(partialMD5).mockImplementation((filePath: string): string =>
+    idFor ? idFor(filePath) : crypto.createHash('md5').update(filePath).digest('hex')
+  );
 }
 
 let prisma: PrismaClient;
@@ -89,15 +106,17 @@ function collect(): { events: ScanProgress[]; onProgress: (p: ScanProgress) => v
 
 describe('BookStore.scan() onProgress', () => {
   it('is never called when there is nothing on disk and nothing in the DB', async () => {
+    armImporter();
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, makeMockImporter(), onProgress);
+    await bookStore.scan(OWNER, onProgress);
     expect(events).toEqual([]);
   });
 
   it('emits an importing/imported event with total=1, processed=1 and the new bookId', async () => {
     fs.writeFileSync(path.join(booksDir, 'new-book.epub'), 'content');
+    armImporter();
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, makeMockImporter(), onProgress);
+    await bookStore.scan(OWNER, onProgress);
 
     const importing = events.filter((e) => e.phase === 'importing');
     expect(importing).toHaveLength(1);
@@ -118,8 +137,9 @@ describe('BookStore.scan() onProgress', () => {
     fs.writeFileSync(filePath, 'content');
     await bookStore.addBook(OWNER, id, filePath, FAKE_META);
 
+    armImporter();
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, makeMockImporter(), onProgress);
+    const result = await bookStore.scan(OWNER, onProgress);
     expect(result.imported).toEqual([]);
 
     const importing = events.filter((e) => e.phase === 'importing');
@@ -136,14 +156,14 @@ describe('BookStore.scan() onProgress', () => {
 
   it('emits skipped with no bookId when the importer fails to parse the file', async () => {
     fs.writeFileSync(path.join(booksDir, 'bad.epub'), 'bad');
-    const failingImporter: ScanImporter = {
-      parseEpub: () => {
-        throw new Error('parse failed');
-      },
-      partialMD5: (filePath) => crypto.createHash('md5').update(filePath).digest('hex'),
-    };
+    vi.mocked(parseEpub).mockImplementation(() => {
+      throw new Error('parse failed');
+    });
+    vi.mocked(partialMD5).mockImplementation((filePath) =>
+      crypto.createHash('md5').update(filePath).digest('hex')
+    );
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, failingImporter, onProgress);
+    await bookStore.scan(OWNER, onProgress);
 
     const importing = events.filter((e) => e.phase === 'importing');
     expect(importing).toHaveLength(1);
@@ -167,10 +187,10 @@ describe('BookStore.scan() onProgress', () => {
     // with the one already occupying the canonical path.
     const arbitraryPath = path.join(booksDir, 'duplicate.epub');
     fs.writeFileSync(arbitraryPath, 'duplicate content');
-    const importer = makeMockImporter(() => id);
+    armImporter(() => id);
 
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, importer, onProgress);
+    const result = await bookStore.scan(OWNER, onProgress);
     expect(result.imported).toEqual([]);
 
     const importing = events.filter(
@@ -197,12 +217,10 @@ describe('BookStore.scan() onProgress', () => {
 
     const arbitraryPath = path.join(booksDir, 'arbitrary-name.epub');
     fs.writeFileSync(arbitraryPath, 'same content, arbitrary name');
-    const importer = makeMockImporter((filePath) =>
-      filePath.includes('arbitrary') ? id : 'other'
-    );
+    armImporter((filePath) => (filePath.includes('arbitrary') ? id : 'other'));
 
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, importer, onProgress);
+    const result = await bookStore.scan(OWNER, onProgress);
     expect(result.imported).toEqual([]);
     expect(fs.existsSync(path.join(booksDir, id + '.epub'))).toBe(true);
 
@@ -229,8 +247,9 @@ describe('BookStore.scan() onProgress', () => {
     await bookStore.addBook(OWNER, staleId, stalePath, FAKE_META);
     fs.unlinkSync(path.join(booksDir, staleId + '.epub'));
 
+    armImporter();
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, makeMockImporter(), onProgress);
+    const result = await bookStore.scan(OWNER, onProgress);
     expect(result.removed).toEqual([staleId + '.epub']);
 
     const pruning = events.filter((e) => e.phase === 'pruning');
@@ -246,7 +265,8 @@ describe('BookStore.scan() onProgress', () => {
 
   it('scan() behaves identically with no onProgress supplied (optional, existing callers unaffected)', async () => {
     fs.writeFileSync(path.join(booksDir, 'no-callback.epub'), 'content');
-    const result = await bookStore.scan(OWNER, makeMockImporter());
+    armImporter();
+    const result = await bookStore.scan(OWNER);
     expect(result.imported).toEqual(['no-callback.epub']);
   });
 });
