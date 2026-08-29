@@ -86,6 +86,66 @@ substantially on the plugins, and the genuine deviations are few.
 | `schema/library/model.ts:90`, `:257` | `Library.entries`: `builder.connectionObject` + hand `{edges,pageInfo}` over `services/library-page.ts`'s keyset; per-edge cursors from `library/entries-cursor.ts` | `t.prismaConnection` | **KEEP** |
 | `schema/library/model.ts:95`, `:461` | `Library.progress`: same shape over `getUserProgressPage` + `utils/progress-pagination.ts` | `t.prismaConnection` | **CONVERTED** — see the ruling above; `getUserProgressPage` and `utils/progress-pagination.ts` are deleted |
 
+## The deleted-cursor seek — one field fixed, two ATTEMPTED AND REVERTED
+
+`@pothos/plugin-prisma` paginates by SEEKING TO A ROW (`prismaCursorConnectionQuery`:
+`cursor` + `skip: 1`), so the row a cursor names must still exist. Measured when
+it does not: **the page returns EMPTY with `hasNextPage: false` and no error** —
+a client that deletes the row it last paged from silently stops paginating
+rather than getting an error it could retry.
+
+That affects all three plugin-paginated connections. It was FIXED on
+`Library.progress` and, after measurement, deliberately NOT fixed on the other
+two.
+
+### Why the fix does not transfer
+
+`Library.progress` is a `t.prismaConnection`, whose `resolve` runs on the one
+path that fetches rows — so the resolver can drop the plugin's `cursor`/`skip`
+and rebuild the original keyset predicate from the parsed cursor.
+`Series.books` and `Validation.messages` are `t.relatedConnection`, whose
+`resolve` is a FALLBACK ONLY: on the normal path their rows arrive through the
+PARENT's merged `select`. There is no always-called hook to translate in.
+
+The `query` callback is always called, but cannot help: it can add a `where`,
+and the plugin then applies its own `cursor` on top of it (`{...query,
+...cursorQuery}`), so the seek still fails on a deleted row. Making the keyset
+`where` inclusive (`>=`) and letting `skip: 1` drop the cursor row works only
+while the row EXISTS, which is the case that already worked.
+
+So the only route is converting both to `t.prismaConnection`. Both conversions
+were implemented in full and measured, then reverted.
+
+### Measured — fixture: 3 series x 3 books, 3 validation messages each
+
+| Path | Mechanism today | Before | After conversion |
+|---|---|---|---|
+| `library.seriesByName.books` | merged `include` | **1** | 2 |
+| `library.series` (3 series) `.books` | merged `include` | **1** | **4** — one per series, a true N+1 |
+| `library.entries` (3 series) `.books` | per-row fallback | 5 | **5** — neutral |
+| `library.book.validation.messages` | merged `include` | **1** | 2 |
+| `library.entries` (3 books) `.validation.messages` | per-row fallback | 5 | **8** — one per book |
+
+SDL is unchanged by either conversion (connection and edge type names passed
+explicitly), so this is purely a query-count trade.
+
+### The rule this settles, which is the F-1 rule read forwards
+
+`t.prismaConnection` is the right shape exactly where there is NO parent merge
+to lose. `Library.progress` qualified because it was already hand-built and
+unplanned — the conversion cost nothing and bought 2 queries plus
+delete-stability. `Series.books` and `Validation.messages` are merged into their
+parent's query today, and that merge is worth more than delete-stability: the
+`library.series` path degrades to an N+1 that scales with the series count (100
+series -> 101 queries), against a failure that needs a client to delete the exact
+row it is paging from. `Validation.messages` is the clearest keep — its rows are
+replaced wholesale on re-validation, so a client paging one while it changes has
+a stale page either way.
+
+**Recorded as a known, accepted defect on those two fields.** Revisit only if
+`@pothos/plugin-prisma` gains a custom cursor-resolution hook for
+`t.relatedConnection`, which is the one change that would make this free.
+
 ## `Library.entries` — two independent blockers
 
 1. **SDL (invariant 2).** `t.prismaConnection` delegates straight to the relay
