@@ -19,7 +19,7 @@ import { model as userError } from '../user-error';
  * `resolveBookId` (`services/book-lineage.ts`), that module's own answer to
  * "which live book does this id resolve to", rather than a second reading of
  * `book_id_history` here: `linkDocument` (`services/book-lineage.ts`) and
- * `reimportBook` (`book-store.ts:449-455`) flatten those chains, and
+ * `reimportBook` (`services/book-lifecycle.ts`) flatten those chains, and
  * `resolveBookId` also covers the device-edition case, so re-deriving the
  * mapping in the schema would be a copy that can drift.
  */

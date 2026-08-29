@@ -78,8 +78,8 @@ const result = builder.unionType('BookDeleteResult', {
  * comment for the full malformed-id / wrong-type-id reasoning, which applies
  * here unchanged.
  *
- * `BookStore.deleteBook` is NOT wrapped in `toResult`: traced end to end
- * (`book-store.ts`'s `deleteBook`), it only ever throws by letting a Prisma
+ * `deleteBook` (`services/book-lifecycle.ts`) is NOT wrapped in `toResult`:
+ * traced end to end, it only ever throws by letting a Prisma
  * transaction failure or filesystem error escape — no `throw` of any of the
  * seven known store errors appears anywhere in its body (its own internal
  * `P2025` catch converts a races-with-itself double-delete into a no-op, not

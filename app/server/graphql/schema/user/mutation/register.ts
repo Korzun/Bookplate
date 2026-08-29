@@ -133,7 +133,7 @@ const result = builder.unionType('UserRegisterResult', {
  * `fs.mkdirSync` before `createUser` mirrors REST's own ordering
  * (`routes/users.ts`, removed in Phase 0) and creates the on-disk library
  * folder immediately rather than waiting for the first book — REST did this
- * even though `BookStore.addBook` (`services/book-store.ts:452`) would create the
+ * even though `addBook` (`services/book-lifecycle.ts`) would create the
  * same folder lazily on first write; mirrored literally rather than dropped,
  * since an admin (or an SFTP/rsync workflow) may expect the folder to exist
  * the moment the account does.

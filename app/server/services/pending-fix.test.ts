@@ -43,8 +43,8 @@ const FAKE_META: EpubMeta = {
 let prisma: PrismaClient;
 let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
-// and use the owner-scoped BookStore only for setup (`addBook`) — every write
-// under test goes through the imported `upsertPendingFix` directly.
+// and use `seedBook` (wrapping `addBook`) only for setup — every write under
+// test goes through the imported `upsertPendingFix` directly.
 let booksDir: string;
 let dbPath: string;
 

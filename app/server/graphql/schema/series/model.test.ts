@@ -30,9 +30,10 @@ beforeEach(async () => {
         userId: harness.aliceOwner.userId,
         id,
         title: `Book ${i + 1}`,
-        // `getSeriesNextIndex` (BookStore, unmodified) filters by the
-        // denormalized `series` string column, not `seriesId` — every real
-        // import path sets both together (see book-store.ts's
+        // `getSeriesNextIndex` (`services/series-meta.ts`, unmodified since
+        // its extraction from `BookStore`) filters by the denormalized
+        // `series` string column, not `seriesId` — every real import path
+        // sets both together (see `book-lifecycle.ts`'s `addBook`,
         // `series: meta.series` / `seriesId` pairs), so the fixture must too
         // or `seriesNextIndex` sees no rows for "The Expanse".
         series: 'The Expanse',
@@ -127,7 +128,7 @@ describe('Series', () => {
   it('floors a fractional max seriesIndex before returning the next ordinal', async () => {
     // `seriesIndex` is a Prisma `Float` column (fractional indices are a real
     // import shape — half-numbered inserts between two existing volumes), but
-    // `seriesNextIndex` is a GraphQL `Int!`. The store already does
+    // `seriesNextIndex` is a GraphQL `Int!`. `getSeriesNextIndex` already does
     // `Math.floor(max) + 1`; this proves that behaviour survives the retype
     // rather than merely asserting the schema's declared type.
     await harness.prisma.book.create({

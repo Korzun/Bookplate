@@ -76,7 +76,8 @@ describe('Mutation.bookClearEditLineage', () => {
   });
 
   // THE LOAD-BEARING TEST: proves the mutation's name honest. `type = 'edit'`
-  // and `type = 'merge'` rows are disjoint (book-store.ts:646-653) — clearing
+  // and `type = 'merge'` rows are disjoint (`clearEditLineage`'s `type = 'edit'`
+  // filter, `services/book-lineage.ts`) — clearing
   // edit lineage must NOT touch a merge row written by `linkDocument`. Without
   // this test, "bookClearEditLineage" would be an unverified claim and could
   // silently regress into behaving like a bulk `bookUnlinkDocument`.

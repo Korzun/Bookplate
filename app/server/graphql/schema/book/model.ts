@@ -63,7 +63,7 @@ import { findUnique } from './node-loader';
  * chased with a test (the race itself is unraceable in-process).
  *
  * `Math.floor` on `mtime`: the Prisma column is a `Float` holding
- * `stat.mtimeMs` (`services/book-store.ts`), so an unfloored value like
+ * `stat.mtimeMs` (`services/book-lifecycle.ts`), so an unfloored value like
  * `1785702915092.761` would diverge, byte for byte, from the REST client's
  * own cache-busting token (`app/client/src/lib/cover-url.ts`'s
  * `versionToken`, which floors) — two different `?v=` strings for the same
@@ -268,13 +268,13 @@ export const model = builder.prismaNode('Book', {
      * Book -> Progress is not a Prisma relation (`Progress` has no FK to
      * `Book`; it is keyed by KOReader `document` hash, which is *normally* a
      * book's own id). It is looked up by `document = book.id` directly, without
-     * consulting `getBookLineage`/`BookIdHistory`, because the store already
-     * maintains that invariant: both `reimportBook` (id changes from re-parsing
-     * an edited EPUB) and `linkDocument` (manual document merges) migrate any
-     * existing progress row onto the book's new/target id inside the same
-     * transaction that writes the lineage row, deleting the old-id row
-     * unconditionally (see `book-store.ts`'s `reimportBook` and
-     * `services/book-lineage.ts`'s `linkDocument`).
+     * consulting `getBookLineage`/`BookIdHistory`, because `reimportBook`/
+     * `linkDocument` already maintain that invariant: both `reimportBook`
+     * (id changes from re-parsing an edited EPUB) and `linkDocument` (manual
+     * document merges) migrate any existing progress row onto the book's
+     * new/target id inside the same transaction that writes the lineage row,
+     * deleting the old-id row unconditionally (see `services/book-lifecycle.
+     * ts`'s `reimportBook` and `services/book-lineage.ts`'s `linkDocument`).
      * KOReader sync writes go through the same normalization (`resolveBookId`
      * before `saveProgress`, in `routes/kosync.ts`). So a live book's progress
      * is never left stranded under a stale id — there is nothing for a

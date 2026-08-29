@@ -9,9 +9,9 @@ import { model as userError } from '../user-error';
 
 /**
  * `DocumentIsBookError(documentId)` — the id the caller tried to link is
- * itself a book in this library (`book-store.ts:576-580`), so `book` is
- * simply that book, looked up by the id the error carries under the owner the
- * mutation was acting for.
+ * itself a book in this library (`linkDocument`, `services/book-lineage.ts`),
+ * so `book` is simply that book, looked up by the id the error carries under
+ * the owner the mutation was acting for.
  */
 export type DocumentIsBookErrorShape = {
   readonly __typename: 'DocumentIsBookError';
