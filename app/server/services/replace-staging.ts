@@ -218,10 +218,10 @@ function extensionFor(kind: StagedKind, mimeType: string | null): string {
  * `Map<id, StagedEntry>` and the `stagingDir`/`ttlMs`/`now` this factory was
  * given, matching this file's "functional style, no classes" instruction —
  * `ThumbnailQueue` and `ScanJobRegistry` are the remaining class-shaped
- * services in this codebase (both predate this instruction, and
- * `ScanJobRegistry`'s own doc comment records its class shape as an explicit
- * spec exception); `BookStore`, the instruction's original target, is gone
- * (Task 9b).
+ * services in this codebase — neither is a dissolved store: both hold
+ * mutable in-process state that must be one shared instance (see
+ * `ScanJobRegistry`'s own doc comment for that justification). `BookStore`,
+ * the instruction's original target, is gone (Task 9b).
  *
  * Denial (`null`) is deliberately indistinguishable across "no such id",
  * "TTL-expired", "staged by a different user", AND (since Task 3b) "staged
