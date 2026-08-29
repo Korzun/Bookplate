@@ -417,6 +417,101 @@ describe('Library.entries — Book column selection', () => {
     expect(select).not.toHaveProperty('coverData');
   });
 
+  // The exercised/excluded lists the coverage-guard test below checks
+  // against schema introspection. Kept as literal constants, not derived
+  // from the query string above (or vice versa) — a typo in either place
+  // should show up as a real mismatch, not be silently reconciled away.
+  // If you add/remove a field from the query below, update this list too.
+  const EXERCISED_BOOK_FIELDS = [
+    'documentId',
+    'title',
+    'titleSort',
+    'author',
+    'authorSort',
+    'description',
+    'publisher',
+    'publishDate',
+    'seriesIndex',
+    'size',
+    'pageCount',
+    'chapterCount',
+    'subjects',
+    'identifiers',
+    'chapterSpineMap',
+    'chapterNames',
+    'mtime',
+    'addedAt',
+    'hasCover',
+    'coverUrl',
+    'downloadUrl',
+    'thumbnailUrl',
+    'deviceEditionCount',
+    'hasActionablePendingFix',
+    'series',
+  ];
+
+  // Every OTHER field the schema exposes on `Book`, each with a reason it is
+  // legitimately NOT sourced from `BOOK_SELECT`'s columns — so a new `Book`
+  // field lands in neither list, and the coverage-guard test below fails
+  // loudly and names it, forcing a deliberate choice (exercise it above, or
+  // add a justified entry here) instead of silent `undefined`.
+  const EXCLUDED_BOOK_FIELDS: Record<string, string> = {
+    id:
+      'The Relay global id, decoded from the same userId+id pair BOOK_SELECT ' +
+      "already guarantees (Book's compound primary key) — not an independent " +
+      'column read, so it carries no BOOK_SELECT risk. Round-tripped by ' +
+      "book/model.test.ts's documentId/id tests.",
+    validation:
+      "t.relation('validation') — resolved through Pothos's own " +
+      "relation fallback keyed on userId+id (see BOOK_SELECT's doc comment), " +
+      'not through a column BOOK_SELECT could omit. Its own fields are ' +
+      'covered by validation/model.test.ts.',
+    pendingFix:
+      'Resolved via context.loadPendingFix(userId, id) — a request-' +
+      'scoped dataloader keyed on userId+id, not a BOOK_SELECT column. Its ' +
+      'own fields are covered by pending-fix/model.test.ts.',
+    progress:
+      'Resolved via context.loadProgress(userId, id) — same ' +
+      'dataloader pattern as pendingFix, no additional BOOK_SELECT column ' +
+      'risk. Its own fields are covered by progress/model.test.ts.',
+    lineage:
+      'Resolved via context.loadOwner(userId) + getBookLineage(prisma, ' +
+      'owner, id) — reads BookIdHistory, not a BOOK_SELECT column beyond ' +
+      'userId (already exercised above). Covered directly by ' +
+      'book/lineage.test.ts.',
+  };
+
+  // Coverage guard: the failure mode the two tests above cannot catch on
+  // their own — a `Book` field added LATER that reads a column absent from
+  // `BOOK_SELECT`. Neither existing test asks the schema what `Book`
+  // actually has, so a new such field would resolve to `undefined` in
+  // production while both stayed green. This test introspects the real
+  // field list and requires every field to land in exactly one of the two
+  // lists above; a field in neither fails loudly and names it. It also
+  // catches the opposite drift — a stale entry naming a field the schema no
+  // longer has.
+  it('accounts for every Book field — exercised above or explicitly excluded', async () => {
+    const result = await harness.execute('{ __type(name: "Book") { fields { name } } }');
+    expect(result.errors).toBeUndefined();
+
+    const schemaFields = (
+      result.data as { __type: { fields: { name: string }[] } }
+    ).__type.fields.map((f) => f.name);
+
+    const accountedFor = new Set([...EXERCISED_BOOK_FIELDS, ...Object.keys(EXCLUDED_BOOK_FIELDS)]);
+
+    // A field the schema has that neither list accounts for — the gap this
+    // test exists to close.
+    const unaccountedFor = schemaFields.filter((f) => !accountedFor.has(f));
+    expect(unaccountedFor).toEqual([]);
+
+    // The reverse drift: an entry in either list naming a field the schema
+    // no longer exposes (a stale exclusion, or a typo).
+    const schemaFieldSet = new Set(schemaFields);
+    const staleEntries = [...accountedFor].filter((f) => !schemaFieldSet.has(f));
+    expect(staleEntries).toEqual([]);
+  });
+
   // Property 2: every field the schema exposes on `Book` still resolves off
   // the selected row — the failure mode a query-count test, or even
   // property 1 above, would NOT catch: a `Book` field resolver silently
