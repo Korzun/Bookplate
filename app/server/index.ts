@@ -72,15 +72,14 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     isProduction: process.env.NODE_ENV !== 'development',
   });
 
-  const server = createServer(
+  const server = createServer({
     config,
     thumbnailQueue,
     jwtSecret,
-    editionsRoot,
     prisma,
     graphqlHandler,
-    replaceStaging
-  );
+    replaceStaging,
+  });
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
   // clean up stale DB entries.

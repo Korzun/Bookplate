@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import type { PrismaClient } from '@prisma/client';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, RequestHandler, Response } from 'express';
@@ -15,15 +17,30 @@ import { AppConfig } from './types';
 
 const log = logger('Server');
 
-export function createServer(
-  config: AppConfig,
-  thumbnailQueue: ThumbnailQueue,
-  jwtSecret: Buffer,
-  editionsRoot: string,
-  prisma: PrismaClient,
-  graphqlHandler: RequestHandler,
-  replaceStaging: ReplaceStaging
-): express.Express {
+export type CreateServerDeps = {
+  config: AppConfig;
+  thumbnailQueue: ThumbnailQueue;
+  jwtSecret: Buffer;
+  prisma: PrismaClient;
+  graphqlHandler: RequestHandler;
+  replaceStaging: ReplaceStaging;
+};
+
+export function createServer({
+  config,
+  thumbnailQueue,
+  jwtSecret,
+  prisma,
+  graphqlHandler,
+  replaceStaging,
+}: CreateServerDeps): express.Express {
+  // `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical
+  // wiring and `graphql/context.ts`'s `Context.editionsRoot` doc comment.
+  // Always this value in production; there is no second caller (no
+  // `server.test.ts` exists) that could need a different one, so it is
+  // derived here rather than threaded through as its own parameter.
+  const editionsRoot = path.join(config.dataDir, 'editions');
+
   const server = express();
 
   // Respond with a clean 503 before Cloudflare's ~100s proxy timeout (524).
