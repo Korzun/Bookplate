@@ -1,4 +1,4 @@
-import type { BookHashCollisionError as StoreError } from '../../../services/book-store';
+import type { BookHashCollisionError as StoreError } from '../../../services/book-errors';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
 // `book/mutation/update-metadata.ts` (task 2), which reaches this file for its

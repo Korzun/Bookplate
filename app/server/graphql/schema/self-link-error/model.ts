@@ -1,4 +1,4 @@
-import type { SelfLinkError as StoreError } from '../../../services/book-store';
+import type { SelfLinkError as StoreError } from '../../../services/book-errors';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 

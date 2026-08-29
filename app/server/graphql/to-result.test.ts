@@ -4,7 +4,7 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
   SelfLinkError,
-} from '../services/book-store';
+} from '../services/book-errors';
 import { DeviceSlugConflictError } from '../services/device';
 import { EpubValidationError } from '../services/epub-validator';
 import {

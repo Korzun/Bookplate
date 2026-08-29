@@ -2,7 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 import type { MockedFunction } from 'vitest';
 
 import { logger } from '../../../../logger';
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import * as epubWriterModule from '../../../../services/epub-writer';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';

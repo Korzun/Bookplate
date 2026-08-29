@@ -2,7 +2,7 @@ import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
 } from '../../../../services/apply-epub-changes';
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import { applySplit } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';

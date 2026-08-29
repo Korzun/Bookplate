@@ -24,7 +24,8 @@ import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
 import { replaceEpubBytes } from './apply-epub-changes';
-import { BookHashCollisionError, BookStore } from './book-store';
+import { BookHashCollisionError } from './book-errors';
+import { BookStore } from './book-store';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 
 const OWNER: Owner = { userId: 'u1', username: 'alice' };

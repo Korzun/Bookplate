@@ -7,7 +7,7 @@ import {
   type ApplyEpubChangesDeps,
   replaceEpubBytes,
 } from '../../../../services/apply-epub-changes';
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import { applyAutoAndAccepted } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import { repairPackageDocument } from '../../../../services/epub-writer';

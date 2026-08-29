@@ -4,7 +4,7 @@ import {
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
   SelfLinkError,
-} from '../../../../services/book-store';
+} from '../../../../services/book-errors';
 import type { Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';

@@ -6,7 +6,7 @@ import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
 } from '../../../../services/apply-epub-changes';
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
 import { stagingIdentityOf } from '../../../../services/replace-staging';
