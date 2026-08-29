@@ -2,8 +2,8 @@ import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
- * `BookStore.unlinkDocument`'s `'edit_row'` result — the matched
- * `book_id_history` row has `type: 'edit'` (an organic re-import lineage
+ * `unlinkDocument`'s (`services/book-lineage.ts`) `'edit_row'` result — the
+ * matched `book_id_history` row has `type: 'edit'` (an organic re-import lineage
  * entry, written by `reimportBook`), not `'merge'` (a manual
  * `linkDocument`). Mirrors `DELETE /api/books/:id/link/:documentId`
  * (`routes/ui.ts`), whose 400 body is `{ error: 'Cannot unlink an organic

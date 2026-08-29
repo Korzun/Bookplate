@@ -180,7 +180,8 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *    (`device/model.ts:87-97`); reaches `User.library.*`, same as
  *    `Viewer.users` above but scoped to one device.
  *  - `Book.lineage` — I-7. See `BOOK_LINEAGE_MULTIPLIER` below; delegates to
- *    `BookStore.getBookLineage` (`book/model.ts:270-278`); reaches
+ *    the imported `getBookLineage` (`services/book-lineage.ts`,
+ *    `book/model.ts:303-308`); reaches
  *    `LinkedDocument.{oldBook,newBook}.series.books`.
  *  - `ScanResult.imported` — `findMany({where:{id:{in:importedBookIds}}})`;
  *    the `findMany` itself is bounded by `importedBookIds`, but that id
@@ -209,7 +210,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * F-1 failure on both sides: once as an over-price (I-6) and once — for
  * `Book.lineage` specifically, task-3-re-review-3.md, I-7 — as a
  * near-miss REJECTION of a real screen. `getBookLineage`
- * (`services/book-store.ts:530-559`) is `SELECT old_id, timestamp, type
+ * (`services/book-lineage.ts:31-61`) is `SELECT old_id, timestamp, type
  * FROM book_id_history WHERE current_id = <this one book>` — one row per
  * re-import/merge event for A SINGLE BOOK, realistically 1-5, and does NOT
  * scale with library size at all; pricing it 100 overstates a typical

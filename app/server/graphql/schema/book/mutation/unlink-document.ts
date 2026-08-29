@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { unlinkDocument } from '../../../../services/book-lineage';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import {
@@ -81,8 +82,9 @@ const payload = builder
   });
 
 /**
- * Compile-time exhaustiveness (review M-4) over `BookStore.unlinkDocument`'s
- * return type, the same `never`-narrowing idiom `assertUnreachableStoreError`
+ * Compile-time exhaustiveness (review M-4) over `unlinkDocument`'s
+ * (`services/book-lineage.ts`) return type, the same `never`-narrowing idiom
+ * `assertUnreachableStoreError`
  * (`to-result.ts`) uses for the seven known store errors: the `switch` below
  * has one `case` per member of `'deleted' | 'not_found' | 'edit_row'`, so a
  * fourth discriminator added to that return type fails `outcome` to narrow to
@@ -118,9 +120,9 @@ const result = builder.unionType('BookUnlinkDocumentResult', {
  * `ownerOf` on the decoded userId, the same way REST's `resolveOwner` lets a
  * regular viewer act only on their own library and an admin target any.
  *
- * `BookStore.unlinkDocument` is NOT wrapped in `toResult`: traced end to end
- * (`book-store.ts:616-637`), it never throws any of the seven known store
- * errors — it returns a plain `'deleted' | 'not_found' | 'edit_row'`
+ * `unlinkDocument` (`services/book-lineage.ts:124-146`) is NOT wrapped in
+ * `toResult`: traced end to end, it never throws any of the seven known
+ * store errors — it returns a plain `'deleted' | 'not_found' | 'edit_row'`
  * discriminator instead, which this resolver maps directly onto the result
  * union (`LineageEntryNotFoundError` / `EditLineageEntryError` — see those
  * files' doc comments for why they exist as honest, REST-mirrored members
@@ -159,7 +161,8 @@ builder.mutationField('bookUnlinkDocument', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const outcome = await context.stores.book.unlinkDocument(
+      const outcome = await unlinkDocument(
+        context.prisma,
         owner,
         bookId,
         parsedInput.data.documentId

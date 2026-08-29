@@ -4,9 +4,11 @@ import {
 } from '../../../../services/apply-epub-changes';
 import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { clearEditLineage } from '../../../../services/book-lineage';
 import { applySplit } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
+import { upsertPendingFix } from '../../../../services/pending-fix';
 import type { Book, MetadataFix, Owner } from '../../../../types';
 import { parsePendingFixState } from '../../../derive';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
@@ -428,7 +430,11 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         // The literal successor to REST's unconditional
         // `DELETE /api/books/:id/pending-fixes` — no row-existence check, no
         // EPUB access, always succeeds once the book itself resolves.
-        await context.stores.book.deletePendingFix(owner, targetBook.id);
+        // Inlined from `BookStore.deletePendingFix` (its one production call
+        // site — see `services/pending-fix.ts`'s doc comment).
+        await context.prisma.pendingFix.deleteMany({
+          where: { userId: owner.userId, bookId: targetBook.id },
+        });
         return {
           __typename: 'BookResolvePendingFixPayload' as const,
           owner,
@@ -469,20 +475,14 @@ builder.mutationField('bookResolvePendingFix', (t) =>
           };
         }
         const dismissedKeys = new Set(dismissed.map(keyOf));
-        await context.stores.book.upsertPendingFix(
-          owner,
-          targetBook.id,
-          row.fileName,
-          row.fileSize,
-          {
-            autoFixes: state.autoFixes,
-            appliedFixes: state.appliedFixes,
-            proposals: state.proposals.filter((fix) => !dismissedKeys.has(keyOf(fix))),
-            // Restores the FULL pre-dismiss list, not just the dismissed subset —
-            // undo reverts to what was there before, not what was removed.
-            undo: { kind: 'dismiss', proposals: state.proposals, appliedFixes: state.appliedFixes },
-          }
-        );
+        await upsertPendingFix(context.prisma, owner, targetBook.id, row.fileName, row.fileSize, {
+          autoFixes: state.autoFixes,
+          appliedFixes: state.appliedFixes,
+          proposals: state.proposals.filter((fix) => !dismissedKeys.has(keyOf(fix))),
+          // Restores the FULL pre-dismiss list, not just the dismissed subset —
+          // undo reverts to what was there before, not what was removed.
+          undo: { kind: 'dismiss', proposals: state.proposals, appliedFixes: state.appliedFixes },
+        });
         return {
           __typename: 'BookResolvePendingFixPayload' as const,
           owner,
@@ -528,13 +528,13 @@ builder.mutationField('bookResolvePendingFix', (t) =>
           // Best-effort, exactly like REST's client: the revert stands even if
           // lineage cleanup fails, because the metadata is already back.
           try {
-            await context.stores.book.clearEditLineage(owner, revertedId);
+            await clearEditLineage(context.prisma, owner, revertedId);
           } catch {
             // intentionally swallowed — see above
           }
         }
 
-        await context.stores.book.upsertPendingFix(owner, revertedId, row.fileName, row.fileSize, {
+        await upsertPendingFix(context.prisma, owner, revertedId, row.fileName, row.fileSize, {
           autoFixes: state.autoFixes,
           appliedFixes: snapshot.appliedFixes,
           proposals: snapshot.proposals,
@@ -602,7 +602,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       // survivors are the `to === null` (advisory) ones — identical to the
       // old `state.proposals.filter(fix => fix.to === null)`.
       const appliedKeys = new Set(actionable.map(keyOf));
-      await context.stores.book.upsertPendingFix(owner, outcome.ok.id, row.fileName, row.fileSize, {
+      await upsertPendingFix(context.prisma, owner, outcome.ok.id, row.fileName, row.fileSize, {
         autoFixes: state.autoFixes,
         appliedFixes: [...state.appliedFixes, ...actionable],
         proposals: state.proposals.filter((fix) => !appliedKeys.has(keyOf(fix))),

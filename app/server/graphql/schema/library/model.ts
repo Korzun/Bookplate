@@ -1,4 +1,5 @@
 import { getAuthors, getSubjects } from '../../../services/book-catalog';
+import { resolveBookId } from '../../../services/book-lineage';
 import { getUserProgressPage } from '../../../services/progress';
 import type { BookListFilters, Owner } from '../../../types';
 import {
@@ -168,8 +169,9 @@ builder.node(model, {
      * resolves null for the same "nothing to look up" reasoning
      * `bookValidate`'s doc comment gives.
      *
-     * SUPERSEDED IDS resolve to the row that supersedes them, via
-     * `bookStore.resolveBookId`. A book's local id is its content hash, so
+     * SUPERSEDED IDS resolve to the row that supersedes them, via the
+     * imported `resolveBookId` (`services/book-lineage.ts`). A book's local
+     * id is its content hash, so
      * re-importing an edited EPUB mints a new one — `reimportBook`, and
      * every `applyEpubChanges` path (accept / undo / replace / regen) —
      * leaving the old id naming nothing. Without this, a bookmark, the back
@@ -214,7 +216,7 @@ builder.node(model, {
           where: { userId_id: { userId: owner.userId, id: parsed[1] } },
         });
         if (live !== null) return live;
-        const currentId = await context.stores.book.resolveBookId(owner.userId, parsed[1]);
+        const currentId = await resolveBookId(context.prisma, owner.userId, parsed[1]);
         if (currentId === parsed[1]) return null;
         return context.prisma.book.findUnique({
           ...query,

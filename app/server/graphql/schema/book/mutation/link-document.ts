@@ -5,6 +5,7 @@ import {
   DocumentIsBookError,
   SelfLinkError,
 } from '../../../../services/book-errors';
+import { linkDocument } from '../../../../services/book-lineage';
 import type { Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
@@ -112,8 +113,8 @@ const result = builder.unionType('BookLinkDocumentResult', {
  * same way REST's `resolveOwner` lets a regular viewer act only on their own
  * library and an admin target any.
  *
- * `BookStore.linkDocument` throws exactly three of the seven known store
- * errors, traced end to end (`book-store.ts:560-614`): `SelfLinkError`
+ * `linkDocument` (`services/book-lineage.ts:63-122`) throws exactly three of
+ * the seven known store errors, traced end to end: `SelfLinkError`
  * (`documentId === bookId`, checked before anything else — including book
  * existence, so a self-link on a book that doesn't even exist still yields
  * `SelfLinkError`, matching the store's own check order literally rather
@@ -154,7 +155,7 @@ builder.mutationField('bookLinkDocument', (t) =>
         true | null,
         SelfLinkError | DocumentAlreadyLinkedError | DocumentIsBookError
       >(
-        () => context.stores.book.linkDocument(owner, bookId, parsedInput.data.documentId),
+        () => linkDocument(context.prisma, owner, bookId, parsedInput.data.documentId),
         [SelfLinkError, DocumentAlreadyLinkedError, DocumentIsBookError]
       );
       if ('err' in outcome) {

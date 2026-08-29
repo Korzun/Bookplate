@@ -4,13 +4,13 @@ import { Router, Request, Response } from 'express';
 
 import { logger } from '../logger';
 import { kosyncAuth } from '../middleware/auth';
-import { BookStore } from '../services/book-store';
+import { resolveBookId } from '../services/book-lineage';
 import { getProgress, saveProgress } from '../services/progress';
 import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('KOSync');
 
-export function createKosyncRouter(bookStore: BookStore, prisma: PrismaClient): Router {
+export function createKosyncRouter(prisma: PrismaClient): Router {
   const router = Router();
 
   // Auth check: GET /sync/users/auth
@@ -34,7 +34,7 @@ export function createKosyncRouter(bookStore: BookStore, prisma: PrismaClient): 
         res.status(400).json({ message: 'Missing required fields' });
         return;
       }
-      const currentId = await bookStore.resolveBookId(req.kosyncUserId!, document);
+      const currentId = await resolveBookId(prisma, req.kosyncUserId!, document);
       const saved = await saveProgress(prisma, req.kosyncUserId!, {
         document: currentId,
         progress,
@@ -55,7 +55,7 @@ export function createKosyncRouter(bookStore: BookStore, prisma: PrismaClient): 
     '/syncs/progress/:document',
     kosyncAuth(prisma),
     asyncHandler(async (req: Request, res: Response) => {
-      const currentId = await bookStore.resolveBookId(req.kosyncUserId!, req.params.document);
+      const currentId = await resolveBookId(prisma, req.kosyncUserId!, req.params.document);
       const p = await getProgress(prisma, req.kosyncUserId!, currentId);
       if (!p) {
         log.warn(`Progress not found for "${req.kosyncUser}" — "${req.params.document}"`);

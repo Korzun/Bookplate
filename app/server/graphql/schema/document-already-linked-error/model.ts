@@ -1,4 +1,5 @@
 import type { DocumentAlreadyLinkedError as StoreError } from '../../../services/book-errors';
+import { resolveBookId } from '../../../services/book-lineage';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
 // `book/mutation/*.ts` (task 2). Not currently reached from those files, but
@@ -14,11 +15,12 @@ import { model as userError } from '../user-error';
  * `DocumentAlreadyLinkedError(documentId)` — the KOReader document id the
  * caller tried to link already appears in this library's id history.
  *
- * `book` is the book it is already linked to. Resolved through
- * `BookStore.resolveBookId`, the store's own answer to "which live book does
- * this id resolve to", rather than a second reading of `book_id_history` here:
- * `linkDocument`/`reimportBook` flatten those chains (`book-store.ts:907-913`)
- * and `resolveBookId` also covers the device-edition case, so re-deriving the
+ * `book` is the book it is already linked to. Resolved through the imported
+ * `resolveBookId` (`services/book-lineage.ts`), that module's own answer to
+ * "which live book does this id resolve to", rather than a second reading of
+ * `book_id_history` here: `linkDocument` (`services/book-lineage.ts`) and
+ * `reimportBook` (`book-store.ts:449-455`) flatten those chains, and
+ * `resolveBookId` also covers the device-edition case, so re-deriving the
  * mapping in the schema would be a copy that can drift.
  */
 export type DocumentAlreadyLinkedErrorShape = {
@@ -53,7 +55,7 @@ export const model = builder
             where: {
               userId_id: {
                 userId: parent.owner.userId,
-                id: await context.stores.book.resolveBookId(parent.owner.userId, parent.documentId),
+                id: await resolveBookId(context.prisma, parent.owner.userId, parent.documentId),
               },
             },
           }),

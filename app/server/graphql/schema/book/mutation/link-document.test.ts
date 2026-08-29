@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { getBookLineage } from '../../../../services/book-lineage';
 import { createHarness, type Harness } from '../../../test-util';
 import { seedEditableBook } from './test-helpers';
 
@@ -39,7 +40,7 @@ const MUTATION = `
 `;
 
 const lineageOf = async (userId: string, id: string) =>
-  harness.stores.book.getBookLineage({ userId, username: '' }, id);
+  getBookLineage(harness.prisma, { userId, username: '' }, id);
 
 // Computed the same way the resolver decodes it — the independent check that
 // the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled

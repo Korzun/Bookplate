@@ -18,6 +18,7 @@ import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epu
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { getMustChangePassword, validateUser } from '../services/password';
+import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -781,7 +782,7 @@ export function createUiRouter(
 
         if (proposals.length > 0) {
           try {
-            await bookStore.upsertPendingFix(owner, finalId, file.originalname, file.size, {
+            await upsertPendingFix(prisma, owner, finalId, file.originalname, file.size, {
               autoFixes: applied,
               appliedFixes: [],
               proposals,
