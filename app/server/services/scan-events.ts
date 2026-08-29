@@ -1,7 +1,8 @@
 /**
  * Pure state machine for `ScanJobStore`: the per-file/per-row events
- * `BookStore.scan()`'s `onProgress` callback raises, the job shape they fold
- * into, and the coalescing rule that decides which folds are worth
+ * `scan()`'s (`services/book-lifecycle.ts`) `onProgress` callback raises, the
+ * job shape they fold into, and the coalescing rule that decides which folds
+ * are worth
  * publishing. Nothing here touches the database, the filesystem, a wall
  * clock, or `Map` state — `ScanJobStore` (a class, by explicit spec
  * exception) is the only thing that owns those, and it delegates every state
@@ -10,7 +11,7 @@
  */
 
 /**
- * One update `BookStore.scan()`'s `onProgress` callback raises at a point the
+ * One update `scan()`'s `onProgress` callback raises at a point the
  * loop already branches on — spec §"Scan progress", binding shape.
  *
  * `scan()` has two countable phases, each with its own total known before the
@@ -39,7 +40,7 @@ export type ScanProgress =
       readonly bookId: string;
     };
 
-/** `BookStore.scan()`'s own return shape — unchanged by this task, spec §"Scan progress". */
+/** `scan()`'s own return shape — unchanged by this task, spec §"Scan progress". */
 export type ScanResult = { readonly imported: string[]; readonly removed: string[] };
 
 export type ScanJobStatus = 'running' | 'completed' | 'failed';
