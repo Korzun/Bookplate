@@ -56,6 +56,7 @@ describe('saveValidation', () => {
   let tmpDir: string;
   let prisma: PrismaClient;
   let bookStore: BookStore;
+  let editionsRoot: string;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   beforeEach(async () => {
@@ -66,7 +67,7 @@ describe('saveValidation', () => {
     await runMigrations(prisma, booksDir);
     // seed a user + a book row (FK targets)
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-editions-'));
+    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-editions-'));
     bookStore = new BookStore(booksDir, prisma, editionsRoot);
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, 'x');
@@ -76,6 +77,7 @@ describe('saveValidation', () => {
   afterEach(async () => {
     await prisma.$disconnect();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(editionsRoot, { recursive: true, force: true });
   });
 
   const readValidation = (bookId: string) =>

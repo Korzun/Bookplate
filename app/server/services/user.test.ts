@@ -47,6 +47,7 @@ afterEach(async () => {
   } catch {
     /* best-effort cleanup */
   }
+  fs.rmSync(editionsRoot, { recursive: true, force: true });
 });
 
 describe('createUser', () => {

@@ -537,10 +537,14 @@ export function createUiRouter(
         return;
       }
       // Single-statement `findUnique` with exactly one production caller —
-      // inlined under the placement rule. One query answers both "does this
-      // user exist" and "does it have a password set": `select: { username: true }`
-      // plus a separate `userHasPassword` lookup used to ask the same
-      // question about the same row in two round-trips.
+      // inlined under the placement rule. One query, selecting only
+      // `passwordHash`, answers both "does this user exist" and "does it
+      // have a password set" in a single round-trip. The two outcomes are
+      // still handled separately below: no such user (`loginUser === null`)
+      // falls through to `validateUser` and the generic 401, while a user
+      // that exists but has no password set is reported immediately as its
+      // own 403 — that is a distinct condition from a wrong password, not
+      // something to fold into the generic login failure.
       const loginUser = await prisma.user.findUnique({
         where: { username },
         select: { passwordHash: true },

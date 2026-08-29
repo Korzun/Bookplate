@@ -48,6 +48,7 @@ describe('revalidateLibrary', () => {
   let booksDir: string;
   let prisma: PrismaClient;
   let bookStore: BookStore;
+  let editionsRoot: string;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   async function seedBook(id: string): Promise<void> {
@@ -72,7 +73,7 @@ describe('revalidateLibrary', () => {
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'reval-editions-'));
+    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'reval-editions-'));
     bookStore = new BookStore(booksDir, prisma, editionsRoot);
   });
 
@@ -84,6 +85,7 @@ describe('revalidateLibrary', () => {
   afterEach(async () => {
     await prisma.$disconnect();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(editionsRoot, { recursive: true, force: true });
   });
 
   it('validates and persists every book', async () => {

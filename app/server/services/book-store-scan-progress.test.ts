@@ -53,6 +53,7 @@ let booksRoot: string;
 let booksDir: string;
 let bookStore: BookStore;
 let dbPath: string;
+let editionsRoot: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-scan-progress-'));
@@ -66,7 +67,7 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-progress-editions-'));
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-progress-editions-'));
   bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
@@ -78,6 +79,7 @@ afterEach(async () => {
     /* best-effort cleanup */
   }
   fs.rmSync(booksRoot, { recursive: true });
+  fs.rmSync(editionsRoot, { recursive: true });
 });
 
 function collect(): { events: ScanProgress[]; onProgress: (p: ScanProgress) => void } {

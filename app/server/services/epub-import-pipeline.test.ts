@@ -80,6 +80,7 @@ function makeEpub(opts: { title?: string; author?: string; subjects?: string[] }
 describe('epub-import-pipeline', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
   let bookStore: BookStore;
+  let editionsRoot: string;
   let deps: {
     bookStore: BookStore;
     prisma: PrismaClient;
@@ -107,7 +108,7 @@ describe('epub-import-pipeline', () => {
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-editions-'));
+    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-editions-'));
     bookStore = new BookStore(booksDir, prisma, editionsRoot);
     deps = { bookStore, prisma, validationThreshold: 'ERROR' };
   });
@@ -115,6 +116,7 @@ describe('epub-import-pipeline', () => {
   afterEach(async () => {
     await prisma.$disconnect();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(editionsRoot, { recursive: true, force: true });
   });
 
   async function seedBook(id = 'book1'): Promise<Book> {
