@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
-import type { Owner } from '../types';
+import type { Owner } from '../../types';
 
 export type OwnerLoader = (userId: string) => Promise<Owner | null>;
 

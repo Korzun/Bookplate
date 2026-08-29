@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createValidationCountsLoader } from './validation-counts-loader';
+import { createValidationCountsLoader } from './validation-counts';
 
 type GroupRow = { userId: string; bookId: string; severity: string; _count: { _all: number } };
 

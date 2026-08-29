@@ -15,16 +15,8 @@ import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
-import { createBookByDocumentLoader } from '../graphql/book-by-document-loader';
-import { createChapterSpineMapLoader } from '../graphql/chapter-spine-map-loader';
 import type { Context, Viewer } from '../graphql/context';
-import { createDeviceEditionCountLoader } from '../graphql/device-edition-count-loader';
-import { createOwnerLoader } from '../graphql/owner';
-import { createPendingFixLoader } from '../graphql/pending-fix-loader';
-import { createProgressLoader } from '../graphql/progress-loader';
 import { schema } from '../graphql/schema';
-import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
-import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
 import { getBookById, listBooks } from '../services/book-catalog';
@@ -93,6 +85,16 @@ vi.mock('../services/epub-validator', () => {
   };
 });
 vi.setConfig({ testTimeout: 30000 });
+import {
+  createBookByDocumentLoader,
+  createChapterSpineMapLoader,
+  createDeviceEditionCountLoader,
+  createOwnerLoader,
+  createPendingFixLoader,
+  createProgressLoader,
+  createSeriesProgressLoader,
+  createValidationCountsLoader,
+} from '../graphql/loaders';
 import {
   assertValidEpub,
   validateEpubReport,

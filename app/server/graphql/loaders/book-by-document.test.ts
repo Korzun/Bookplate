@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createBookByDocumentLoader } from './book-by-document-loader';
+import { createBookByDocumentLoader } from './book-by-document';
 
 type BookRow = { userId: string; id: string; title: string };
 
