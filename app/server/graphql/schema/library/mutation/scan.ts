@@ -4,7 +4,7 @@ import { logger } from '../../../../logger';
 import { scan } from '../../../../services/book-lifecycle';
 import { revalidateLibrary, type RevalidateDeps } from '../../../../services/revalidate-library';
 import type { ScanJob } from '../../../../services/scan-events';
-import type { ScanJobStore } from '../../../../services/scan-job-store';
+import type { ScanJobRegistry } from '../../../../services/scan-job-registry';
 import type { ThumbnailQueue } from '../../../../services/thumbnail-queue';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
@@ -50,7 +50,7 @@ const result = builder.unionType('LibraryScanResult', {
 });
 
 type ScanBackgroundDeps = {
-  readonly scanJob: ScanJobStore;
+  readonly scanJob: ScanJobRegistry;
   readonly prisma: PrismaClient;
   readonly thumbnail: ThumbnailQueue;
   readonly booksRoot: string;
@@ -71,7 +71,7 @@ type ScanBackgroundDeps = {
  * Mirrors `POST /api/books/scan`'s detached body (`routes/ui.ts:1069-1087`)
  * line for line: `bookStore.scan(owner)` → `revalidateLibrary({prisma,
  * booksRoot, validationThreshold}, owner)` → `await thumbnailQueue.
- * reconcile()` → the same `log.info`/`log.error` wording → `scanJobStore.
+ * reconcile()` → the same `log.info`/`log.error` wording → `scanJobRegistry.
  * complete`/`fail`. See `libraryScan`'s own doc comment below for why this
  * full pipeline — not just `bookStore.scan` — is replicated rather than
  * trimmed to the task's narrower brief wording.
@@ -116,7 +116,7 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
  * admin-named target that doesn't resolve, the same "no such row" convention
  * `bookDelete`/`deviceEnableUser` already use.
  *
- * 409: REST checks `scanJobStore.isRunning(owner.userId)` BEFORE starting
+ * 409: REST checks `scanJobRegistry.isRunning(owner.userId)` BEFORE starting
  * anything and responds with the in-flight job's own body — mirrored here as
  * `ScanAlreadyRunningError`, an honest typed member carrying that same job
  * (see that type's doc comment), not a fabricated validation error.
@@ -127,12 +127,12 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
  * handler — the client polls `/api/books/scan/status` for completion. This
  * resolver mirrors that exactly: it returns `LibraryScanPayload` the instant
  * `start()` produces a job, and performs the scan/revalidate/reconcile
- * pipeline in the same kind of detached `void` block, updating `scanJobStore`
+ * pipeline in the same kind of detached `void` block, updating `scanJobRegistry`
  * via `complete`/`fail` when it eventually settles — a client observes that
  * settling through `Library.scanStatus`/`scanProgress` (both task 9), not
  * through this mutation's own return value.
  *
- * `onProgress` is wired through to `scanJobStore.progress` so the job's
+ * `onProgress` is wired through to `scanJobRegistry.progress` so the job's
  * `total`/`processed`/`phase`/`currentFile`/`importedBookIds` stay current
  * while the scan runs — consumed by task 9's `scanStatus` query and
  * `scanProgress` subscription, not by anything in this task.

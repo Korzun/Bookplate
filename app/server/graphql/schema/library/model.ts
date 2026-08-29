@@ -561,7 +561,7 @@ builder.node(model, {
      * §"Scan progress": "`library.scanStatus` stays as a query returning the
      * same type... the fallback if Houdini's SSE support proves awkward in
      * spec 2"). `nullable: true` because no scan has necessarily ever run for
-     * this library — `ScanJobStore.get` returns `undefined` in that case,
+     * this library — `ScanJobRegistry.get` returns `undefined` in that case,
      * unlike `scanProgress` (`subscription/scan-progress.ts`), whose `ScanStatus!`
      * return type has no such "nothing yet" state to express (a subscription
      * that has never seen an event simply hasn't yielded anything).

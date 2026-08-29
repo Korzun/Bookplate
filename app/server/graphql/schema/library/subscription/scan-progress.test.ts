@@ -64,11 +64,11 @@ type ScanProgressData = {
 const dataOf = (result: { value?: { data?: unknown } }): ScanProgressData =>
   result.value?.data as ScanProgressData;
 
-// Real, not fake, timers throughout this file — `ScanJobStore.apply` reads
-// `Date.now()` directly (`services/scan-job-store.ts`), and every wait here
+// Real, not fake, timers throughout this file — `ScanJobRegistry.apply` reads
+// `Date.now()` directly (`services/scan-job-registry.ts`), and every wait here
 // either (a) lets the `subscribe` field's own `await context.loadOwner(...)`
 // (a real sqlite round trip) reach the `for await` that registers the
-// underlying pubsub listener before the triggering store call fires, or (b)
+// underlying pubsub listener before the triggering registry call fires, or (b)
 // clears the 250ms coalescing window `shouldPublish` (services/scan-events.ts)
 // enforces — same real-timer tolerance `library/mutation/scan.test.ts`'s
 // `waitForScanSettled` already uses for a comparable async race.
@@ -181,9 +181,9 @@ describe('Subscription.scanProgress', () => {
    * The M-5 ruling (task 8 review, carried into this task's brief): REST's
    * own `POST /api/books/scan` (since removed along with the rest of the
    * REST surface GraphQL replaced) used to call `bookStore.scan(owner)` with
-   * no `onProgress`, so a REST-started scan only ever reached `ScanJobStore`
+   * no `onProgress`, so a REST-started scan only ever reached `ScanJobRegistry`
    * through `start`/`complete`/`fail` — never `progress`. This test drives
-   * `ScanJobStore` directly, the same calls that REST route used to make (not
+   * `ScanJobRegistry` directly, the same calls that REST route used to make (not
    * through `libraryScan`), and asserts the subscription still observes
    * those transitions — proving a caller that never wires `onProgress`
    * remains visible over `scanProgress`, at start/terminal granularity.
@@ -202,8 +202,8 @@ describe('Subscription.scanProgress', () => {
     const startEvent = result.next();
     await settle(50);
     // Mirrors the old REST route's call shape exactly: `bookStore.scan(owner)`
-    // with no `onProgress` third argument, so the only store calls a REST scan
-    // ever made were `start` and (via the detached pipeline) `complete`/`fail`.
+    // with no `onProgress` third argument, so the only registry calls a REST
+    // scan ever made were `start` and (via the detached pipeline) `complete`/`fail`.
     const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);

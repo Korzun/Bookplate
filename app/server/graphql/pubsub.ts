@@ -3,7 +3,7 @@ import { createPubSub, type PubSub } from 'graphql-yoga';
 import type { ScanJob } from '../services/scan-events';
 // Type-only import, used solely for the compile-time `satisfies` proof below
 // — this file still depends on `services/`, never the reverse (task 9
-// review, I-1: `services/scan-job-store.ts` depends on the structural
+// review, I-1: `services/scan-job-registry.ts` depends on the structural
 // `ScanPublisher` contract, not on this file).
 import type { ScanPublisher } from '../services/scan-publisher';
 
@@ -18,19 +18,19 @@ import type { ScanPublisher } from '../services/scan-publisher';
  * spec and this task's brief name, `scan:${userId}`, without this module
  * having to build that string itself.
  *
- * `ScanJobStore` (`services/scan-job-store.ts`) is the only publisher —
+ * `ScanJobRegistry` (`services/scan-job-registry.ts`) is the only publisher —
  * one instance, constructor-injected there, same "single shared instance"
  * rule `ReplaceStaging` follows (`context.ts`'s `Context.replaceStaging` doc
  * comment) — and the only subscriber is `Subscription.scanProgress`
  * (`schema/library/subscription/scan-progress.ts`), reached only through
- * `ScanJobStore.subscribe`. Nothing else in the schema touches this module
+ * `ScanJobRegistry.subscribe`. Nothing else in the schema touches this module
  * directly.
  *
- * `ScanJobStore` itself never imports this file — it depends only on the
+ * `ScanJobRegistry` itself never imports this file — it depends only on the
  * structural `ScanPublisher` contract (`services/scan-publisher.ts`), which
  * this module's return value satisfies without any adapter. `index.ts`/
  * `graphql/test-util.ts` are the two places that import `createScanPubSub`
- * and hand the result to `new ScanJobStore(...)`.
+ * and hand the result to `new ScanJobRegistry(...)`.
  */
 type ScanPubSubEvents = {
   scan: [userId: string, job: ScanJob];

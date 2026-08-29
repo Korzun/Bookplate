@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { signAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
-import type { ScanJobStore } from '../services/scan-job-store';
+import type { ScanJobRegistry } from '../services/scan-job-registry';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import { createContext, viewerFromHeader } from './context';
@@ -75,7 +75,7 @@ describe('viewerFromHeader', () => {
 
 describe('createContext', () => {
   const prisma = {} as PrismaClient;
-  const scanJobs = {} as ScanJobStore;
+  const scanJobs = {} as ScanJobRegistry;
   const thumbnails = {} as ThumbnailQueue;
   const replaceStaging = {} as ReplaceStaging;
   const config = {} as AppConfig;
