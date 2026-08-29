@@ -59,12 +59,12 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * consistency only, and the scope pins it to exactly the caller.
  *
  * Plain `authenticated`, NOT `passwordChangeAllowed`/`skipTypeScopes`:
- * `middleware/auth.ts`'s `passwordChangeGate` exempts only `/api/login`,
- * `/api/auth/*`, and literally `/api/my/password` — `/api/my/sync-password/
- * regenerate` is not in that list, so REST itself 403s a `mustChangePassword`
- * caller here too (`passwordChangeGate` runs ahead of this route, same as
- * every other `/api/my/*` route). `userChangePassword` is the one and only
- * exemption; see its doc comment for the REST trace.
+ * `userChangePassword` is the one and only mutation exempt from a pending
+ * forced password change, because it is the only one that clears the flag.
+ * Rotating a sync password does not, so a `mustChangePassword` caller is
+ * refused here and stays refused until they change their password — see
+ * `userChangePassword`'s doc comment and `schema/builder.ts`'s
+ * `passwordChangeAllowed` for the rule.
  *
  * `changeSyncPassword` returning `false` (`services/password.ts`,
  * its own `P2025` catch — the account was deleted mid-request) is

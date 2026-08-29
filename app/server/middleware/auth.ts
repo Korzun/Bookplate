@@ -100,8 +100,7 @@ export function passwordChangeGate(secret: Buffer) {
     if (
       !req.path.startsWith('/api/') ||
       req.path === '/api/login' ||
-      req.path.startsWith('/api/auth/') ||
-      req.path === '/api/my/password'
+      req.path.startsWith('/api/auth/')
     ) {
       next();
       return;

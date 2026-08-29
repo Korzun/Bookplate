@@ -19,11 +19,12 @@ export const builder = new SchemaBuilder<{
     admin: boolean;
     ownerOf: string;
     /**
-     * A signed-in viewer, ignoring a pending forced password change. Only the
-     * change-password mutation may use this — everything else must stay on
+     * A signed-in viewer, ignoring a pending forced password change. Only
+     * `userChangePassword` may use this — everything else must stay on
      * `authenticated`, which refuses a viewer whose password change is
-     * outstanding. Mirrors REST's `/api/my/password` exemption from
-     * `passwordChangeGate` (middleware/auth.ts).
+     * outstanding. That single exemption is load-bearing: this mutation is
+     * the only path a locked-out viewer has to clear the flag, so putting it
+     * on `authenticated` like everything else would strand them.
      */
     passwordChangeAllowed: boolean;
   };
