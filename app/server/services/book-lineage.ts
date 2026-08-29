@@ -17,14 +17,21 @@ export async function resolveBookId(
   userId: string,
   id: string
 ): Promise<string> {
-  const rows = await prisma.$queryRaw<Array<{ current_id: string }>>`
-    SELECT current_id FROM book_id_history WHERE user_id = ${userId} AND old_id = ${id}
-  `;
-  if (rows.length > 0) return rows[0].current_id;
-  const editions = await prisma.$queryRaw<Array<{ original_book_id: string }>>`
-    SELECT original_book_id FROM device_editions WHERE user_id = ${userId} AND edition_id = ${id} LIMIT 1
-  `;
-  if (editions.length > 0) return editions[0].original_book_id;
+  // `findUnique` on `@@id([userId, oldId])`, not a scan: the compound primary
+  // key IS this lookup.
+  const historyRow = await prisma.bookIdHistory.findUnique({
+    where: { userId_oldId: { userId, oldId: id } },
+    select: { currentId: true },
+  });
+  if (historyRow) return historyRow.currentId;
+  // `findFirst`, matching the old `LIMIT 1`: `(userId, editionId)` is an
+  // `@@index`, not a unique constraint, so more than one row can match in
+  // principle and `findUnique` is not available.
+  const edition = await prisma.deviceEdition.findFirst({
+    where: { userId, editionId: id },
+    select: { originalBookId: true },
+  });
+  if (edition) return edition.originalBookId;
   return id;
 }
 
@@ -42,6 +49,22 @@ export async function getBookLineage(
   });
   if (!book) return null;
 
+  // THE ONE QUERY IN THIS FILE THAT STAYS RAW, and not by oversight: the
+  // `rowid DESC` tiebreaker. `rowid` is SQLite's implicit column — it is not in
+  // `schema.prisma`, so Prisma cannot order by it, and `BookIdHistory` carries
+  // no other monotonic column to substitute (`@@id([userId, oldId])`,
+  // `timestamp` is the only ordering key and it collides: `reimportBook`
+  // flattens a whole chain inside ONE transaction, so several rows routinely
+  // share a millisecond).
+  //
+  // The ordering is load-bearing, not cosmetic: `entries` below derives each
+  // row's `newId` from its PREDECESSOR in this list, so a reordering of
+  // same-timestamp rows silently mis-links the chain the lineage modal renders.
+  // Dropping the tiebreaker would leave that order unspecified.
+  //
+  // Fixing this properly means giving the model a real tiebreaker column
+  // (`seq Int @default(autoincrement())`) and a data migration — recorded in
+  // the audit as F-3, deliberately not done here.
   const rows = await prisma.$queryRaw<Array<{ old_id: string; timestamp: number; type: string }>>`
     SELECT old_id, timestamp, type FROM book_id_history
     WHERE user_id = ${owner.userId} AND current_id = ${id}
@@ -73,11 +96,11 @@ export async function linkDocument(
   if (!book) return null;
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.$queryRaw<Array<{ current_id: string }>>`
-      SELECT current_id FROM book_id_history
-      WHERE user_id = ${owner.userId} AND old_id = ${documentId}
-    `;
-    if (existing.length > 0) throw new DocumentAlreadyLinkedError(documentId);
+    const existing = await tx.bookIdHistory.findUnique({
+      where: { userId_oldId: { userId: owner.userId, oldId: documentId } },
+      select: { currentId: true },
+    });
+    if (existing) throw new DocumentAlreadyLinkedError(documentId);
 
     const isBook = await tx.book.findUnique({
       where: { userId_id: { userId: owner.userId, id: documentId } },
@@ -110,10 +133,15 @@ export async function linkDocument(
       }
     }
 
-    await tx.$executeRaw`
-      INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
-      VALUES (${owner.userId}, ${documentId}, ${bookId}, ${Date.now()}, 'merge')
-    `;
+    await tx.bookIdHistory.create({
+      data: {
+        userId: owner.userId,
+        oldId: documentId,
+        currentId: bookId,
+        timestamp: Date.now(),
+        type: 'merge',
+      },
+    });
   });
 
   return true;
@@ -126,19 +154,21 @@ export async function unlinkDocument(
   documentId: string
 ): Promise<'deleted' | 'not_found' | 'edit_row'> {
   return await prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ type: string }>>`
-      SELECT type FROM book_id_history
-      WHERE user_id = ${owner.userId} AND old_id = ${documentId} AND current_id = ${bookId}
-    `;
-    if (rows.length === 0) return 'not_found';
-    if (rows[0].type === 'edit') return 'edit_row';
+    // `@@id([userId, oldId])` makes `oldId` unique per user, so this reads the
+    // one candidate row and then checks `currentId` — the old raw query filtered
+    // on all three columns at once, which is the same test in one step.
+    const row = await tx.bookIdHistory.findUnique({
+      where: { userId_oldId: { userId: owner.userId, oldId: documentId } },
+      select: { currentId: true, type: true },
+    });
+    if (!row || row.currentId !== bookId) return 'not_found';
+    if (row.type === 'edit') return 'edit_row';
 
     // By design, unlinking does not reverse the progress migration.
     // Progress that was migrated from documentId to bookId during linkDocument stays on bookId.
-    await tx.$executeRaw`
-      DELETE FROM book_id_history
-      WHERE user_id = ${owner.userId} AND old_id = ${documentId} AND current_id = ${bookId}
-    `;
+    await tx.bookIdHistory.delete({
+      where: { userId_oldId: { userId: owner.userId, oldId: documentId } },
+    });
     return 'deleted';
   });
 }
@@ -154,10 +184,12 @@ export async function clearEditLineage(
   owner: Owner,
   id: string
 ): Promise<number> {
-  return await prisma.$executeRaw`
-    DELETE FROM book_id_history
-    WHERE user_id = ${owner.userId}
-      AND type = 'edit'
-      AND (old_id = ${id} OR current_id = ${id})
-  `;
+  const { count } = await prisma.bookIdHistory.deleteMany({
+    where: {
+      userId: owner.userId,
+      type: 'edit',
+      OR: [{ oldId: id }, { currentId: id }],
+    },
+  });
+  return count;
 }
