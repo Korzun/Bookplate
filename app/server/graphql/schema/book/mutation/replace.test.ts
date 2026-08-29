@@ -117,7 +117,7 @@ const titleOf = async (userId: string, id: string): Promise<string | null> =>
   (await harness.prisma.book.findUnique({ where: { userId_id: { userId, id } } }))?.title ?? null;
 
 const stageFor = (owner: Harness['aliceOwner'], title: string): string =>
-  harness.stores.replaceStaging.stage(fixtureEpub(title), owner.userId, `${title}.epub`);
+  harness.replaceStaging.stage(fixtureEpub(title), owner.userId, `${title}.epub`);
 
 // Computed the same way the resolver decodes it — the independent check that
 // the input `id` is a real, dereferenceable `Book` global ID, not a hand-rolled
@@ -156,7 +156,7 @@ describe('Mutation.bookReplace', () => {
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
     expect(await titleOf(harness.aliceOwner.userId, rawBookId(data.book.id))).toBe('New Title');
     // Consumed — no longer resolvable.
-    expect(harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).toBeNull();
+    expect(harness.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).toBeNull();
   });
 
   it('resolves to null when the book does not exist for the resolved owner', async () => {
@@ -209,7 +209,7 @@ describe('Mutation.bookReplace', () => {
       ttlMs: 1000,
       now: () => now,
     });
-    harness.stores.replaceStaging = shortLivedStaging;
+    harness.replaceStaging = shortLivedStaging;
     const stagedId = shortLivedStaging.stage(
       fixtureEpub('Expired Candidate'),
       harness.aliceOwner.userId,
@@ -261,7 +261,7 @@ describe('Mutation.bookReplace', () => {
     // under test attaches `opf:file-as` to the `dc:creator` element itself
     // (`epub-writer.ts`'s `writeSortedField`), so an author-less candidate
     // would leave the write with no element to attach the sort key to.
-    const stagedId = harness.stores.replaceStaging.stage(
+    const stagedId = harness.replaceStaging.stage(
       fixtureEpub('New Title', 'New Author'),
       harness.aliceOwner.userId,
       'candidate.epub'
@@ -363,9 +363,7 @@ describe('Mutation.bookReplace', () => {
     expect(data.messages).toEqual([{ code: 'RSC-005', severity: 'FATAL', message: 'unparseable' }]);
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
     // NOT consumed — retryable without re-uploading.
-    expect(
-      harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)
-    ).not.toBeNull();
+    expect(harness.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).not.toBeNull();
   });
 
   it('returns BookHashCollisionError, leaves the book unchanged, and does NOT consume the staged upload', async () => {
@@ -398,9 +396,7 @@ describe('Mutation.bookReplace', () => {
       title: 'Alice Book B',
     });
     expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice Book A');
-    expect(
-      harness.stores.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)
-    ).not.toBeNull();
+    expect(harness.replaceStaging.resolve(stagedId, harness.aliceOwner.userId)).not.toBeNull();
   });
 
   it('falls through to the original staged bytes (no 500) when structural repair throws', async () => {
@@ -459,9 +455,7 @@ describe('Mutation.bookReplace', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     expect(result.data?.bookReplace ?? null).toBeNull();
     // Bob's own stage was never even reached — untouched.
-    expect(
-      harness.stores.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)
-    ).not.toBeNull();
+    expect(harness.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)).not.toBeNull();
   });
 
   describe('admin staging identity (Task 4, three-way isolation, each seen-to-fail)', () => {
@@ -498,13 +492,13 @@ describe('Mutation.bookReplace', () => {
       expect(await titleOf(harness.bobOwner.userId, BOOK_ID)).toBe('Bob’s Title');
       // Alice's own stage was never even reached — untouched.
       expect(
-        harness.stores.replaceStaging.resolve(alicesStagedId, harness.aliceOwner.userId)
+        harness.replaceStaging.resolve(alicesStagedId, harness.aliceOwner.userId)
       ).not.toBeNull();
     });
 
     it('alice cannot consume an admin-staged upload, even against her own book', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice’s Title');
-      const adminStagedId = harness.stores.replaceStaging.stage(
+      const adminStagedId = harness.replaceStaging.stage(
         fixtureEpub('Admin’s Candidate'),
         ADMIN_STAGING_ID,
         'admin-candidate.epub'
@@ -525,7 +519,7 @@ describe('Mutation.bookReplace', () => {
       const data = result.data?.bookReplace as { __typename: string };
       expect(data.__typename).toBe('StagedUploadNotFoundError');
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
-      expect(harness.stores.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).not.toBeNull();
+      expect(harness.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).not.toBeNull();
     });
 
     it('admin cannot consume bob’s staged upload, even naming bob’s own book (admin has no staging bypass onto another identity)', async () => {
@@ -547,14 +541,12 @@ describe('Mutation.bookReplace', () => {
       const data = result.data?.bookReplace as { __typename: string };
       expect(data.__typename).toBe('StagedUploadNotFoundError');
       expect(await titleOf(harness.bobOwner.userId, BOOK_ID)).toBe('Old Title');
-      expect(
-        harness.stores.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)
-      ).not.toBeNull();
+      expect(harness.replaceStaging.resolve(bobsStagedId, harness.bobOwner.userId)).not.toBeNull();
     });
 
     it('admin CAN consume its own admin-staged upload, against any user’s book (the capability Task 4 adds)', async () => {
       await seedEditableBook(harness, harness.bobOwner, BOOK_ID, 'Old Title');
-      const adminStagedId = harness.stores.replaceStaging.stage(
+      const adminStagedId = harness.replaceStaging.stage(
         fixtureEpub('Admin’s New Title'),
         ADMIN_STAGING_ID,
         'admin-candidate.epub'
@@ -579,7 +571,7 @@ describe('Mutation.bookReplace', () => {
       expect(data.__typename).toBe('BookReplacePayload');
       expect(data.book.title).toBe('Admin’s New Title');
       // Consumed on success, same as any other caller's staged upload.
-      expect(harness.stores.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).toBeNull();
+      expect(harness.replaceStaging.resolve(adminStagedId, ADMIN_STAGING_ID)).toBeNull();
     });
   });
 

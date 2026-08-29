@@ -53,7 +53,9 @@ beforeEach(async () => {
     '/graphql',
     createGraphqlHandler({
       prisma: harness.prisma,
-      stores: harness.stores,
+      scanJobs: harness.scanJobs,
+      thumbnails: harness.thumbnails,
+      replaceStaging: harness.replaceStaging,
       config: harness.config,
       jwtSecret,
       isProduction: false,

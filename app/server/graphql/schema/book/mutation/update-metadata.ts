@@ -398,7 +398,7 @@ builder.mutationField('bookUpdateMetadata', (t) =>
         const staged =
           stagingIdentity === null
             ? null
-            : context.stores.replaceStaging.resolve(
+            : context.replaceStaging.resolve(
                 parsedInput.data.stagedCoverId,
                 stagingIdentity,
                 'cover'
@@ -430,14 +430,10 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       }
 
       if (parsedInput.data.stagedCoverId !== undefined) {
-        context.stores.thumbnail.enqueue(owner.userId, outcome.ok.id);
+        context.thumbnails.enqueue(owner.userId, outcome.ok.id);
         // stagingIdentity is non-null here — the resolve() above already
         // required it to be non-null to reach a success outcome.
-        context.stores.replaceStaging.consume(
-          parsedInput.data.stagedCoverId,
-          stagingIdentity!,
-          'cover'
-        );
+        context.replaceStaging.consume(parsedInput.data.stagedCoverId, stagingIdentity!, 'cover');
       }
 
       return {

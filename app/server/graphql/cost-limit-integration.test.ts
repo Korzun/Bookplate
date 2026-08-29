@@ -57,7 +57,9 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
       '/graphql',
       createGraphqlHandler({
         prisma: harness.prisma,
-        stores: harness.stores,
+        scanJobs: harness.scanJobs,
+        thumbnails: harness.thumbnails,
+        replaceStaging: harness.replaceStaging,
         config: harness.config,
         jwtSecret,
         isProduction: false,

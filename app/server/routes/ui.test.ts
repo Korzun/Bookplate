@@ -16,7 +16,7 @@ import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
 import { createChapterSpineMapLoader } from '../graphql/chapter-spine-map-loader';
-import type { Context, Stores, Viewer } from '../graphql/context';
+import type { Context, Viewer } from '../graphql/context';
 import { createOwnerLoader } from '../graphql/owner';
 import { createPendingFixLoader } from '../graphql/pending-fix-loader';
 import { createProgressLoader } from '../graphql/progress-loader';
@@ -282,7 +282,7 @@ async function loginAlice(): Promise<string> {
 const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${token}`];
 
 /**
- * Executes a REAL GraphQL query against the exact same `prisma`/stores this
+ * Executes a REAL GraphQL query against the exact same `prisma`/registries this
  * file's REST `app` uses — not a second, disconnected harness
  * (`graphql/test-util.ts`'s `createHarness()` builds its own isolated
  * db/booksDir, which would defeat the one thing this exists for). This is
@@ -298,15 +298,12 @@ async function gqlExecute(
   source: string,
   viewer: Viewer
 ): ReturnType<typeof graphql<Record<string, unknown>>> {
-  const stores: Stores = {
-    scanJob: scanJobStore,
-    thumbnail: mockThumbnailQueue,
-    replaceStaging,
-  };
   const contextValue: Context = {
     viewer,
     prisma,
-    stores,
+    scanJobs: scanJobStore,
+    thumbnails: mockThumbnailQueue,
+    replaceStaging,
     editionsRoot,
     config: { ...config, booksDir },
     loadOwner: createOwnerLoader(prisma),

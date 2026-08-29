@@ -29,8 +29,8 @@ describe('Library.scanStatus', () => {
   });
 
   it('reflects the current job while a scan is running — the reconnect path spec §"Scan progress" describes', async () => {
-    const job = harness.stores.scanJob.start(harness.aliceOwner.userId);
-    harness.stores.scanJob.progress(harness.aliceOwner.userId, {
+    const job = harness.scanJobs.start(harness.aliceOwner.userId);
+    harness.scanJobs.progress(harness.aliceOwner.userId, {
       phase: 'importing',
       total: 3,
       processed: 1,
@@ -66,8 +66,8 @@ describe('Library.scanStatus', () => {
   });
 
   it('reflects a completed job', async () => {
-    harness.stores.scanJob.start(harness.aliceOwner.userId);
-    harness.stores.scanJob.complete(harness.aliceOwner.userId, {
+    harness.scanJobs.start(harness.aliceOwner.userId);
+    harness.scanJobs.complete(harness.aliceOwner.userId, {
       imported: ['a.epub'],
       removed: [],
     });
@@ -84,13 +84,13 @@ describe('Library.scanStatus', () => {
   });
 
   it('does not leak another user’s scan status — cross-tenant, victim state unchanged', async () => {
-    const job = harness.stores.scanJob.start(harness.bobOwner.userId);
+    const job = harness.scanJobs.start(harness.bobOwner.userId);
 
     const result = await harness.execute(QUERY, { viewer: harness.aliceViewer });
     expect(result.errors).toBeUndefined();
     expect(result.data?.viewer).toEqual({ library: { scanStatus: null } });
     // Victim state unchanged — the read did not disturb bob's own job.
-    expect(harness.stores.scanJob.get(harness.bobOwner.userId)?.jobId).toBe(job.jobId);
+    expect(harness.scanJobs.get(harness.bobOwner.userId)?.jobId).toBe(job.jobId);
   });
 
   /**
@@ -107,7 +107,7 @@ describe('Library.scanStatus', () => {
    * (CONTENTS), not just non-null.
    */
   it('resolves through Query.user(id:).library as the admin, asserting CONTENTS not just presence', async () => {
-    const job = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const job = harness.scanJobs.start(harness.aliceOwner.userId);
 
     const result = await harness.execute(
       `query ($id: ID!) { user(id: $id) { library { scanStatus { id state } } } }`,

@@ -10,14 +10,14 @@ import { graphql, type ExecutionResult } from 'graphql';
 import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
 import { hashLoginPassword } from '../services/password';
-import { createReplaceStaging } from '../services/replace-staging';
+import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import type { AppConfig, Owner } from '../types';
 import { createBookByDocumentLoader } from './book-by-document-loader';
 import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
-import type { Context, Stores, Viewer } from './context';
+import type { Context, Viewer } from './context';
 import { createOwnerLoader } from './owner';
 import { createPendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader } from './progress-loader';
@@ -34,7 +34,9 @@ export type ExecuteOptions = {
 export type Harness = {
   execute: (document: string, options?: ExecuteOptions) => Promise<ExecutionResult>;
   prisma: PrismaClient;
-  stores: Stores;
+  scanJobs: ScanJobStore;
+  thumbnails: ThumbnailQueue;
+  replaceStaging: ReplaceStaging;
   config: AppConfig;
   /** `path.join(dataDir, 'editions')` — same value `Context.editionsRoot` carries. */
   editionsRoot: string;
@@ -96,23 +98,27 @@ export const createHarness = async (): Promise<Harness> => {
 
   const config = testConfig(booksDir, dataDir);
   const editionsRoot = path.join(dataDir, 'editions');
-  const stores: Stores = {
-    // Same real `ScanPubSub` a subscription resolver reads from
-    // (`schema/library/subscription/scan-progress.ts`, via
-    // `context.stores.scanJob.subscribe`) — not the class's own default,
-    // throwaway instance, or a test starting/completing a job through this
-    // store would never be observed by a `subscribe()` call against `schema`
-    // in the same test. Mirrors `index.ts`'s identical wiring.
-    scanJob: new ScanJobStore(createScanPubSub()),
-    // Constructed but never started: start() would leave a timer running past
-    // the test. `enqueue()` itself is inert either way — it only pushes onto
-    // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads
-    // that array without a running `processLoop`. Task 3b's staged-cover
-    // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
-    // with `vi.spyOn` — safe precisely because it's inert here.
-    thumbnail: new ThumbnailQueue(prisma, config.thumbnailWidths),
-    replaceStaging: createReplaceStaging({ stagingDir: getStagingDir(booksDir) }),
-  };
+  // Same real `ScanPubSub` a subscription resolver reads from
+  // (`schema/library/subscription/scan-progress.ts`, via
+  // `context.scanJobs.subscribe`) — not the class's own default,
+  // throwaway instance, or a test starting/completing a job through this
+  // store would never be observed by a `subscribe()` call against `schema`
+  // in the same test. Mirrors `index.ts`'s identical wiring.
+  const scanJobs = new ScanJobStore(createScanPubSub());
+  // Constructed but never started: start() would leave a timer running past
+  // the test. `enqueue()` itself is inert either way — it only pushes onto
+  // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads
+  // that array without a running `processLoop`. Task 3b's staged-cover
+  // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
+  // with `vi.spyOn` — safe precisely because it's inert here.
+  const thumbnails = new ThumbnailQueue(prisma, config.thumbnailWidths);
+  // `let`, not `const`: a handful of tests (e.g.
+  // `book/mutation/replace.test.ts`'s expired-staging case) swap in a
+  // short-TTL `ReplaceStaging` mid-test via the returned harness's
+  // `replaceStaging` setter below, and `execute()` must see that
+  // replacement on its next call rather than the original instance closed
+  // over here.
+  let replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(booksDir) });
 
   await createUser(prisma, 'alice', await hashLoginPassword('alicepass'));
   const aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
@@ -149,7 +155,9 @@ export const createHarness = async (): Promise<Harness> => {
     const contextValue: Context = {
       viewer: options.viewer === undefined ? aliceViewer : options.viewer,
       prisma,
-      stores,
+      scanJobs,
+      thumbnails,
+      replaceStaging,
       editionsRoot,
       config,
       loadOwner: createOwnerLoader(prisma),
@@ -284,7 +292,19 @@ export const createHarness = async (): Promise<Harness> => {
   return {
     execute,
     prisma,
-    stores,
+    scanJobs,
+    thumbnails,
+    // Accessors, not a plain field: they read/write the same `let` binding
+    // `execute()` closes over above, so a test that reassigns
+    // `harness.replaceStaging` mid-test (swapping in a short-TTL instance)
+    // is seen by the very next `execute()` call — a plain field here would
+    // only update this returned object's own copy.
+    get replaceStaging() {
+      return replaceStaging;
+    },
+    set replaceStaging(value: ReplaceStaging) {
+      replaceStaging = value;
+    },
     config,
     editionsRoot,
     aliceOwner: { userId: aliceId, username: 'alice' },

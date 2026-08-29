@@ -213,7 +213,9 @@ describe('errors that resolve an id into a Book', () => {
   const contextFor = (viewer: Context['viewer']): Context => ({
     viewer,
     prisma: harness.prisma,
-    stores: harness.stores,
+    scanJobs: harness.scanJobs,
+    thumbnails: harness.thumbnails,
+    replaceStaging: harness.replaceStaging,
     config: harness.config,
     loadOwner: createOwnerLoader(harness.prisma),
     loadProgress: createProgressLoader(harness.prisma),

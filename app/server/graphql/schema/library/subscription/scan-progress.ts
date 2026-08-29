@@ -57,7 +57,7 @@ builder.subscriptionField('scanProgress', (t) =>
     subscribe: async function* (_root, args, context) {
       const owner = await context.loadOwner(args.libraryId.id);
       if (owner === null) return;
-      for await (const job of context.stores.scanJob.subscribe(owner.userId)) {
+      for await (const job of context.scanJobs.subscribe(owner.userId)) {
         yield { owner, job } satisfies ScanStatusShape;
       }
     },

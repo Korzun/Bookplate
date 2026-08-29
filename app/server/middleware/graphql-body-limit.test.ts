@@ -116,7 +116,9 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
       graphqlBodyLimit(GRAPHQL_BODY_LIMIT),
       createGraphqlHandler({
         prisma: harness.prisma,
-        stores: harness.stores,
+        scanJobs: harness.scanJobs,
+        thumbnails: harness.thumbnails,
+        replaceStaging: harness.replaceStaging,
         config: harness.config,
         jwtSecret,
         isProduction: false,
@@ -192,7 +194,9 @@ describe('graphqlBodyLimit + graphqlHandler — chunked transfer-encoding bypass
       graphqlBodyLimit(GRAPHQL_BODY_LIMIT),
       createGraphqlHandler({
         prisma: harness.prisma,
-        stores: harness.stores,
+        scanJobs: harness.scanJobs,
+        thumbnails: harness.thumbnails,
+        replaceStaging: harness.replaceStaging,
         config: harness.config,
         jwtSecret,
         isProduction: true,

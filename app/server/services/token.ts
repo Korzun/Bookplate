@@ -73,7 +73,7 @@ export async function revokeRefreshToken(prisma: PrismaClient, token: string): P
 }
 
 /**
- * Called directly (no `Stores` entry — a module function reads the same
+ * Called directly (no `Context` field — a module function reads the same
  * refresh-token rows from anywhere, so there is no shared instance to thread
  * through the context) right after `userResetPassword`/`userChangePassword`
  * succeed: every outstanding refresh token for the affected username is

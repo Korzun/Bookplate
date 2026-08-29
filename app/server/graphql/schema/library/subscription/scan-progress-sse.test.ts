@@ -35,7 +35,9 @@ beforeEach(async () => {
     '/graphql',
     createGraphqlHandler({
       prisma: harness.prisma,
-      stores: harness.stores,
+      scanJobs: harness.scanJobs,
+      thumbnails: harness.thumbnails,
+      replaceStaging: harness.replaceStaging,
       config: harness.config,
       jwtSecret,
       isProduction: false,
@@ -147,7 +149,7 @@ describe('scanProgress over SSE', () => {
     // request time to reach the server, authenticate, and register the
     // subscription's pubsub listener before the triggering store call fires.
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const started = harness.scanJobs.start(harness.aliceOwner.userId);
 
     const response = await responsePromise;
     expect(response.status).toBe(200);
@@ -181,7 +183,9 @@ describe('scanProgress over SSE', () => {
       graphqlBodyLimit(100 * 1024),
       createGraphqlHandler({
         prisma: harness.prisma,
-        stores: harness.stores,
+        scanJobs: harness.scanJobs,
+        thumbnails: harness.thumbnails,
+        replaceStaging: harness.replaceStaging,
         config: harness.config,
         jwtSecret,
         isProduction: false,
@@ -211,7 +215,7 @@ describe('scanProgress over SSE', () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+      const started = harness.scanJobs.start(harness.aliceOwner.userId);
 
       const response = await responsePromise;
       expect(response.status).toBe(200);
@@ -265,6 +269,6 @@ describe('scanProgress over SSE', () => {
     expect(payload.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
 
     // Victim state unchanged — the denied attempt started no job for alice.
-    expect(harness.stores.scanJob.get(harness.aliceOwner.userId)).toBeUndefined();
+    expect(harness.scanJobs.get(harness.aliceOwner.userId)).toBeUndefined();
   });
 });
