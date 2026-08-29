@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { getBookLineage, linkDocument } from '../../../../services/book-lineage';
 import { createHarness, type Harness } from '../../../test-util';
 import { seedEditableBook } from './test-helpers';
 
@@ -50,7 +51,7 @@ const seedEditRow = async (userId: string, oldId: string, currentId: string) =>
   });
 
 const lineageOf = async (userId: string, id: string) =>
-  harness.stores.book.getBookLineage({ userId, username: '' }, id);
+  getBookLineage(harness.prisma, { userId, username: '' }, id);
 
 describe('Mutation.bookClearEditLineage', () => {
   it('clears the viewer’s own book’s edit-lineage rows and returns the count', async () => {
@@ -82,7 +83,7 @@ describe('Mutation.bookClearEditLineage', () => {
   it('clears only edit-lineage rows; a merge row from bookLinkDocument survives', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Merged And Edited');
     await seedEditRow(harness.aliceOwner.userId, OLD_ID, BOOK_ID);
-    const linked = await harness.stores.book.linkDocument(harness.aliceOwner, BOOK_ID, DOCUMENT_ID);
+    const linked = await linkDocument(harness.prisma, harness.aliceOwner, BOOK_ID, DOCUMENT_ID);
     expect(linked).toBe(true);
 
     const result = await harness.execute(MUTATION, {
@@ -146,7 +147,7 @@ describe('Mutation.bookClearEditLineage', () => {
   it('lets an admin clear a named user’s book edit lineage (content assertion, not just no-error), leaving a merge row intact', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Admin Target');
     await seedEditRow(harness.aliceOwner.userId, OLD_ID, BOOK_ID);
-    await harness.stores.book.linkDocument(harness.aliceOwner, BOOK_ID, DOCUMENT_ID);
+    await linkDocument(harness.prisma, harness.aliceOwner, BOOK_ID, DOCUMENT_ID);
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,

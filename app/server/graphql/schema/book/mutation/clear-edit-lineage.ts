@@ -1,4 +1,5 @@
 import { getBookById } from '../../../../services/book-catalog';
+import { clearEditLineage } from '../../../../services/book-lineage';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
@@ -78,14 +79,14 @@ const result = builder.unionType('BookClearEditLineageResult', {
  * the organic re-import history `reimportBook` writes. `type = 'merge'` rows
  * — the manual KOReader document links `bookLinkDocument`/`bookUnlinkDocument`
  * write and remove — are a DISJOINT row set and are left untouched by this
- * mutation (`BookStore.clearEditLineage`, `book-store.ts:646-653`). This is
+ * mutation (`clearEditLineage`, `services/book-lineage.ts:154-169`). This is
  * therefore NOT a bulk form of `bookUnlinkDocument` — the two operate on rows
  * that never overlap. The wordier name (`bookClearEditLineage`, not
  * `bookClearLineage`) exists precisely so the mutation cannot be mistaken for
  * clearing lineage in general when it only ever clears the edit half of it.
  *
- * `BookStore.clearEditLineage` is NOT wrapped in `toResult`: traced end to
- * end (`book-store.ts:646-653`), it is a single raw `$executeRaw` DELETE and
+ * `clearEditLineage` (`services/book-lineage.ts:154-169`) is NOT wrapped in
+ * `toResult`: traced end to end, it is a single raw `$executeRaw` DELETE and
  * throws none of the seven known store errors. Wrapping it would make
  * `toResult`'s `err` branch undischargeable — see `to-result.ts`'s doc
  * comment, and `bookClearEditions`'s identical note for `clearDeviceEditions`.
@@ -124,7 +125,7 @@ builder.mutationField('bookClearEditLineage', (t) =>
       const existing = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (existing === null) return null;
 
-      const cleared = await context.stores.book.clearEditLineage(owner, bookId);
+      const cleared = await clearEditLineage(context.prisma, owner, bookId);
 
       return {
         __typename: 'BookClearEditLineagePayload' as const,

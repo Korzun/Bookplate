@@ -8,7 +8,6 @@ import express from 'express';
 import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
-import { BookStore } from '../services/book-store';
 import { hashSyncPassword } from '../services/password';
 import { createUser } from '../services/user';
 import { createKosyncRouter } from './kosync';
@@ -16,15 +15,12 @@ import { createKosyncRouter } from './kosync';
 vi.mock('../logger');
 
 let prisma: PrismaClient;
-let bookStore: BookStore;
 let app: express.Express;
 let dbPath: string;
 let booksDir: string;
-let editionsRoot: string;
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-test-'));
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -32,10 +28,9 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma, editionsRoot);
   app = express();
   app.use(express.json());
-  app.use('/sync', createKosyncRouter(bookStore, prisma));
+  app.use('/sync', createKosyncRouter(prisma));
 });
 
 afterEach(async () => {
@@ -46,7 +41,6 @@ afterEach(async () => {
     /* best-effort cleanup */
   }
   fs.rmSync(booksDir, { recursive: true, force: true });
-  fs.rmSync(editionsRoot, { recursive: true, force: true });
 });
 
 const ALICE_SYNC_PASSWORD = 'secret';

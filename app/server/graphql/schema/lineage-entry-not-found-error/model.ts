@@ -2,7 +2,8 @@ import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
- * `BookStore.unlinkDocument`'s `'not_found'` result — no `book_id_history`
+ * `unlinkDocument`'s (`services/book-lineage.ts`) `'not_found'` result — no
+ * `book_id_history`
  * row matches `(userId, old_id: documentId, current_id: bookId)`. Mirrors
  * `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts`), whose 404 body
  * is `{ error: 'Lineage entry not found' }`.

@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { getBookLineage, linkDocument } from '../../../../services/book-lineage';
 import { createHarness, type Harness } from '../../../test-util';
 import { rawBookId, seedEditableBook } from './test-helpers';
 
@@ -62,10 +63,10 @@ const MUTATION = `
 `;
 
 const lineageOf = async (userId: string, id: string) =>
-  harness.stores.book.getBookLineage({ userId, username: '' }, id);
+  getBookLineage(harness.prisma, { userId, username: '' }, id);
 
 const link = async (owner: Harness['aliceOwner'], bookId: string, documentId: string) => {
-  await harness.stores.book.linkDocument(owner, bookId, documentId);
+  await linkDocument(harness.prisma, owner, bookId, documentId);
 };
 
 // Computed the same way the resolver decodes it — the independent check that

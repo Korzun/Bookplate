@@ -193,8 +193,9 @@ describe('Book', () => {
  * this resolver consulted that table, every superseded id was a dead end that
  * a reload could not clear: a bookmark, the back button, a shared link or a
  * second tab all rendered "Book not found." for a book that plainly still
- * exists. `bookStore.resolveBookId` already did this mapping for KOReader
- * sync (`routes/kosync.ts`); these pin it for the GraphQL read.
+ * exists. `resolveBookId` (`services/book-lineage.ts`) already did this
+ * mapping for KOReader sync (`routes/kosync.ts`); these pin it for the
+ * GraphQL read.
  *
  * The lookup is a FALLBACK, not a prefix: the direct `findUnique` runs first
  * and short-circuits, so a live id costs exactly what it always did and only

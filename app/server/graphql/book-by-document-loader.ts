@@ -20,8 +20,9 @@ type PendingLookup = {
  *
  * **`document` IS the book's raw id.** `Progress.document` and `Book.id` are
  * the same KOReader content hash — `routes/kosync.ts` writes
- * `progress.document` as `bookStore.resolveBookId(userId, document)`'s
- * result, the very value that becomes a book's current `id` once it's
+ * `progress.document` as `resolveBookId(prisma, userId, document)`'s
+ * (`services/book-lineage.ts`) result, the very value that becomes a book's
+ * current `id` once it's
  * imported — so this lookup is a `(userId, id)` pair query on `book`, not a
  * join through any foreign key (`Progress` has none to `Book`).
  *

@@ -66,7 +66,7 @@ export function createServer(
       config.validationThreshold
     )
   );
-  server.use('/sync', createKosyncRouter(bookStore, prisma));
+  server.use('/sync', createKosyncRouter(prisma));
   server.use(
     '/',
     createUiRouter(bookStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
