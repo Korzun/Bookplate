@@ -12,9 +12,9 @@ const job = (jobId: string): ScanJob => ({
   importedBookIds: [],
 });
 
-// Direct coverage of the one primitive `ScanJobStore` (services/scan-job-store.ts)
+// Direct coverage of the one primitive `ScanJobRegistry` (services/scan-job-registry.ts)
 // builds its publish/subscribe methods on top of — see that file's own tests
-// for the store-level behaviour (coalescing, per-user isolation via `start`/
+// for the registry-level behaviour (coalescing, per-user isolation via `start`/
 // `progress`/`complete`/`fail`) this module doesn't duplicate.
 describe('createScanPubSub', () => {
   it('delivers a published job to a subscriber on the same userId topic', async () => {

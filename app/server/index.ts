@@ -13,7 +13,7 @@ import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
 import { createReplaceStaging } from './services/replace-staging';
-import { ScanJobStore } from './services/scan-job-store';
+import { ScanJobRegistry } from './services/scan-job-registry';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
 
@@ -41,15 +41,15 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
-  // One pubsub instance, handed to `ScanJobStore` below, shared by every
+  // One pubsub instance, handed to `ScanJobRegistry` below, shared by every
   // GraphQL scan resolver (`libraryScan`, `Subscription.scanProgress`,
   // `Library.scanStatus`) so a scan started through `libraryScan` publishes
   // onto the same per-user topic a GraphQL subscriber reads. REST's own
   // `POST /api/books/scan` used to share this too, before that route (and
-  // `ScanJobStore`'s REST wiring) was removed along with the rest of the
+  // `ScanJobRegistry`'s REST wiring) was removed along with the rest of the
   // REST surface GraphQL replaced. See `graphql/pubsub.ts`'s doc comment.
   const scanPubSub = createScanPubSub();
-  const scanJobStore = new ScanJobStore(scanPubSub);
+  const scanJobRegistry = new ScanJobRegistry(scanPubSub);
   // One instance shared by the REST staging route and the two GraphQL
   // mutations that consume it — see `graphql/context.ts`'s `Context.
   // replaceStaging` doc comment for why a second instance would never see
@@ -57,7 +57,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
   const graphqlHandler = createGraphqlHandler({
     prisma,
-    scanJobs: scanJobStore,
+    scanJobs: scanJobRegistry,
     thumbnails: thumbnailQueue,
     replaceStaging,
     editionsRoot,

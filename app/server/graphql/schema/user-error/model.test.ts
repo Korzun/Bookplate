@@ -100,7 +100,7 @@ describe('UserError', () => {
     //
     // `ScanAlreadyRunningError` is a fifteenth member, added by task 8 for
     // `libraryScan`'s REST-mirrored 409 (`POST /api/books/scan`'s
-    // `scanJobStore.isRunning` precondition check, before `bookStore.scan` is
+    // `scanJobRegistry.isRunning` precondition check, before `bookStore.scan` is
     // ever called) — same "resolver-produced, not store-thrown" shape as
     // `BookNotValidatedError` above. See
     // `scan-already-running-error/model.ts`.

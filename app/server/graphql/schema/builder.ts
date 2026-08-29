@@ -91,7 +91,7 @@ export const builder = new SchemaBuilder<{
     // raw `subscribe` unwrapped, and only `wrapResolve` (run once per emitted
     // event, not once at subscription time) would ever see the auth scope.
     // Left unset, a cross-tenant `scanProgress` call would still establish a
-    // live subscription against another user's `ScanJobStore` topic — no data
+    // live subscription against another user's `ScanJobRegistry` topic — no data
     // would leak (each event's `resolve` step would still deny it), but the
     // subscribe-time rejection this schema's mutations/queries all give a
     // caller immediately would not happen for this field. Setting it true

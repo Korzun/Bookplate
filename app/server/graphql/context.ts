@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
-import type { ScanJobStore } from '../services/scan-job-store';
+import type { ScanJobRegistry } from '../services/scan-job-registry';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
@@ -40,7 +40,7 @@ export type Viewer = {
 export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;
-  scanJobs: ScanJobStore;
+  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   /**
    * The same instance `routes/ui.ts`'s `POST /api/books/replace-staging`
@@ -66,7 +66,7 @@ export type Context = {
 
 export type ContextDeps = {
   prisma: PrismaClient;
-  scanJobs: ScanJobStore;
+  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   editionsRoot: string;

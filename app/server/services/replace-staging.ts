@@ -217,9 +217,9 @@ function extensionFor(kind: StagedKind, mimeType: string | null): string {
  * Functional, not a class: `stage`/`resolve`/`consume` close over one
  * `Map<id, StagedEntry>` and the `stagingDir`/`ttlMs`/`now` this factory was
  * given, matching this file's "functional style, no classes" instruction —
- * `ThumbnailQueue` and `ScanJobStore` are the remaining class-shaped
+ * `ThumbnailQueue` and `ScanJobRegistry` are the remaining class-shaped
  * services in this codebase (both predate this instruction, and
- * `ScanJobStore`'s own doc comment records its class shape as an explicit
+ * `ScanJobRegistry`'s own doc comment records its class shape as an explicit
  * spec exception); `BookStore`, the instruction's original target, is gone
  * (Task 9b).
  *

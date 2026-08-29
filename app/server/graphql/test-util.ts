@@ -11,7 +11,7 @@ import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
-import { ScanJobStore } from '../services/scan-job-store';
+import { ScanJobRegistry } from '../services/scan-job-registry';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import type { AppConfig, Owner } from '../types';
@@ -34,7 +34,7 @@ export type ExecuteOptions = {
 export type Harness = {
   execute: (document: string, options?: ExecuteOptions) => Promise<ExecutionResult>;
   prisma: PrismaClient;
-  scanJobs: ScanJobStore;
+  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   config: AppConfig;
@@ -102,9 +102,9 @@ export const createHarness = async (): Promise<Harness> => {
   // (`schema/library/subscription/scan-progress.ts`, via
   // `context.scanJobs.subscribe`) — not the class's own default,
   // throwaway instance, or a test starting/completing a job through this
-  // store would never be observed by a `subscribe()` call against `schema`
+  // registry would never be observed by a `subscribe()` call against `schema`
   // in the same test. Mirrors `index.ts`'s identical wiring.
-  const scanJobs = new ScanJobStore(createScanPubSub());
+  const scanJobs = new ScanJobRegistry(createScanPubSub());
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
   // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads

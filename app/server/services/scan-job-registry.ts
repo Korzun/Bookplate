@@ -30,10 +30,10 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * delegated transitions: it mints the job's identity (`jobId`, `startedAt`)
  * fresh, with no prior job to fold onto — see `reduceScanJob`'s doc comment.
  *
- * Task 9 adds the publishing half: spec §"Scan progress"/"ScanJobStore" — "a
+ * Task 9 adds the publishing half: spec §"Scan progress"/"ScanJobRegistry" — "a
  * yoga `createPubSub()` publishing on a per-user topic from all four
  * transition points (`start`, `progress`, `complete`, `fail`)". At the time,
- * `ScanJobStore` was the one shared instance both `POST /api/books/scan`
+ * `ScanJobRegistry` was the one shared instance both `POST /api/books/scan`
  * (`routes/ui.ts`) and `libraryScan`/`scanProgress` traversed, so publishing
  * here, not in the GraphQL mutation's `onProgress` callback, was what made a
  * REST-started scan visible over the subscription at all: REST's own call
@@ -42,7 +42,7 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  *
  * REST's `/api/books/scan` route was removed along with the rest of the
  * REST surface GraphQL replaced (the commit that dropped `BookStore`'s
- * production callers), and `index.ts` no longer threads `ScanJobStore` into
+ * production callers), and `index.ts` no longer threads `ScanJobRegistry` into
  * `createServer`/`createUiRouter` — GraphQL's `libraryScan` is this class's
  * only caller today. Publishing still lives here rather than inlined into
  * the mutation, since this remains the one place all four transition points
@@ -57,7 +57,7 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * `graphql/test-util.ts` inject the exact same real instance as before —
  * only the declared dependency direction changed.
  */
-export class ScanJobStore {
+export class ScanJobRegistry {
   private readonly jobs = new Map<string, ScanJob>();
 
   /**
@@ -71,7 +71,7 @@ export class ScanJobStore {
 
   /**
    * Defaults to `noopScanPublisher` so every pre-task-9 caller
-   * (`routes/ui.test.ts`, `scan-job-store.test.ts`'s many `new ScanJobStore()`
+   * (`routes/ui.test.ts`, `scan-job-registry.test.ts`'s many `new ScanJobRegistry()`
    * call sites) keeps compiling and passing unmodified — a genuine no-op, not
    * merely a real pubsub nobody happens to subscribe to. Production
    * (`index.ts`) and the GraphQL test harness (`graphql/test-util.ts`) both

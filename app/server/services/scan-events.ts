@@ -1,13 +1,13 @@
 /**
- * Pure state machine for `ScanJobStore`: the per-file/per-row events
+ * Pure state machine for `ScanJobRegistry`: the per-file/per-row events
  * `scan()`'s (`services/book-lifecycle.ts`) `onProgress` callback raises, the
  * job shape they fold into, and the coalescing rule that decides which folds
  * are worth
  * publishing. Nothing here touches the database, the filesystem, a wall
- * clock, or `Map` state — `ScanJobStore` (a class, by explicit spec
+ * clock, or `Map` state — `ScanJobRegistry` (a class, by explicit spec
  * exception) is the only thing that owns those, and it delegates every state
  * transition to `reduceScanJob` below rather than mutating a `ScanJob` in
- * place. See the GraphQL server design spec, §"Scan progress" / "ScanJobStore".
+ * place. See the GraphQL server design spec, §"Scan progress" / "ScanJobRegistry".
  */
 
 /**
@@ -54,8 +54,8 @@ export type ScanPhase = ScanProgress['phase'];
  * addition, not named in the spec's prose list: it is what makes
  * `ScanResult.imported: [Book!]!` (the SDL the spec's own snippet declares)
  * resolvable at all — `ScanResult`'s two other fields
- * (`importedFilenames`/`removed`) come straight off `ScanResult` the store
- * returns, but that shape carries no ids, only filenames, and a filename
+ * (`importedFilenames`/`removed`) come straight off `ScanResult` the
+ * registry returns, but that shape carries no ids, only filenames, and a filename
  * cannot back a `Book` lookup once the loop has possibly renamed the file out
  * of the id it should have been imported at. Accumulated once per
  * `'imported'`-outcome progress event (never touched by `'renamed'` — a book
@@ -77,9 +77,9 @@ export type ScanJob = {
 };
 
 /**
- * The three transitions `ScanJobStore` folds into a running `ScanJob`.
+ * The three transitions `ScanJobRegistry` folds into a running `ScanJob`.
  * Starting a job is deliberately NOT one of these: it mints a fresh `jobId`/
- * `startedAt` and has no prior job to fold onto (`ScanJobStore.start()`
+ * `startedAt` and has no prior job to fold onto (`ScanJobRegistry.start()`
  * constructs the initial `ScanJob` directly, the same way the pre-task-8 code
  * did) — `reduceScanJob` only ever evolves a job that already exists.
  */
@@ -92,7 +92,7 @@ export type ScanEvent =
  * Folds one `ScanEvent` onto a `ScanJob`, returning a new job — no mutation.
  * Replaces the pre-task-8 in-place assignments (`job.status = 'completed'`,
  * `job.result = result`) the class used to do directly; see
- * `ScanJobStore.complete`/`fail`/`progress`, which now call this instead.
+ * `ScanJobRegistry.complete`/`fail`/`progress`, which now call this instead.
  *
  * A `'progress'` event overwrites `total`/`processed`/`phase`/`currentFile`
  * with whatever the just-fired `ScanProgress` says — both phases carry their
@@ -135,7 +135,7 @@ export const reduceScanJob = (job: ScanJob, event: ScanEvent): ScanJob => {
 export const SCAN_PUBLISH_COALESCE_MS = 250;
 
 /**
- * Whether a `ScanJobStore` publish (a future yoga `pubsub.publish`, wired in
+ * Whether a `ScanJobRegistry` publish (a future yoga `pubsub.publish`, wired in
  * task 9) should actually happen for `event`, given when the last one went
  * out (`lastPublishedAt`) and the current time (`now`).
  *
