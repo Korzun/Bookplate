@@ -417,38 +417,55 @@ describe('Library.entries — Book column selection', () => {
     expect(select).not.toHaveProperty('coverData');
   });
 
-  // The exercised/excluded lists the coverage-guard test below checks
-  // against schema introspection. Kept as literal constants, not derived
-  // from the query string above (or vice versa) — a typo in either place
-  // should show up as a real mismatch, not be silently reconciled away.
-  // If you add/remove a field from the query below, update this list too.
-  const EXERCISED_BOOK_FIELDS = [
-    'documentId',
-    'title',
-    'titleSort',
-    'author',
-    'authorSort',
-    'description',
-    'publisher',
-    'publishDate',
-    'seriesIndex',
-    'size',
-    'pageCount',
-    'chapterCount',
-    'subjects',
-    'identifiers',
-    'chapterSpineMap',
-    'chapterNames',
-    'mtime',
-    'addedAt',
-    'hasCover',
-    'coverUrl',
-    'downloadUrl',
-    'thumbnailUrl',
-    'deviceEditionCount',
-    'hasActionablePendingFix',
-    'series',
-  ];
+  // The exact response shape the field-resolution test below expects when
+  // `Library.entries` returns this fixture book — hoisted to a single const
+  // so the coverage-guard test's exercised-field list is DERIVED from these
+  // keys (`Object.keys(...)` below) rather than hand-maintained separately.
+  // A field can no longer be silently dropped from the query AND the
+  // expectation while staying "exercised": removing it from the query alone
+  // already fails the field-resolution test (the response object comes back
+  // without that key, which fails `toEqual` against this literal); removing
+  // it from here too removes it from `EXERCISED_BOOK_FIELDS` in the very
+  // same edit, so the coverage-guard test below immediately reclassifies it
+  // as unaccounted-for and fails, naming it.
+  const COLUMN_PROBE_BOOK_ID = 'f'.repeat(32);
+  const EXPECTED_COLUMN_PROBE_BOOK = {
+    __typename: 'Book',
+    documentId: COLUMN_PROBE_BOOK_ID,
+    title: 'Column Selection Probe',
+    titleSort: 'column selection probe',
+    author: 'A. Uthor',
+    authorSort: 'uthor, a.',
+    description: 'A book that exercises every Book field resolver.',
+    publisher: 'Selection Press',
+    publishDate: '2020-01-01',
+    seriesIndex: 3,
+    size: 424242,
+    pageCount: 250,
+    chapterCount: 3,
+    subjects: ['Fantasy', 'Epic'],
+    identifiers: [{ scheme: 'ISBN', value: '9780000000000' }],
+    chapterSpineMap: [0, 3, 7],
+    chapterNames: ['One', 'Two', 'Three'],
+    mtime: '2023-11-14T22:13:20.000Z',
+    addedAt: '2023-11-14T22:13:20.000Z',
+    hasCover: true,
+    coverUrl: expect.stringContaining(COLUMN_PROBE_BOOK_ID) as unknown as string,
+    downloadUrl: expect.stringContaining(COLUMN_PROBE_BOOK_ID) as unknown as string,
+    thumbnailUrl: expect.stringContaining('150') as unknown as string,
+    deviceEditionCount: 0,
+    hasActionablePendingFix: false,
+    series: { name: 'Expanse' },
+  };
+
+  // Derived, not hand-maintained: every key of `EXPECTED_COLUMN_PROBE_BOOK`
+  // above except `__typename` (a GraphQL introspection artifact, not a
+  // schema field). One source for both "what the field-resolution test
+  // exercises" and "what the coverage-guard test below checks against
+  // schema introspection" — the two can no longer disagree.
+  const EXERCISED_BOOK_FIELDS = Object.keys(EXPECTED_COLUMN_PROBE_BOOK).filter(
+    (field) => field !== '__typename'
+  );
 
   // Every OTHER field the schema exposes on `Book`, each with a reason it is
   // legitimately NOT sourced from `BOOK_SELECT`'s columns — so a new `Book`
@@ -526,12 +543,19 @@ describe('Library.entries — Book column selection', () => {
   // read path this task's `select` actually touches, not through
   // `Library.book` (`t.prismaField`/`queryFromInfo`, a different read path
   // entirely — see `book/model.test.ts`).
+  //
+  // The query string below is still hand-written (deliberately NOT built
+  // from `EXPECTED_COLUMN_PROBE_BOOK`'s keys — `identifiers` needs a `{
+  // scheme value }` subselection, `thumbnailUrl` needs a `width` arg, and a
+  // future field may need either too; a generated query would fail in a
+  // confusing way far from the cause). Its selection set must still name
+  // every key `EXPECTED_COLUMN_PROBE_BOOK` expects a value for, or the
+  // response comes back without that key and fails `toEqual` below.
   it('resolves every field the schema exposes on Book, sourced from the selected row', async () => {
-    const bookId = 'f'.repeat(32);
     await harness.prisma.book.create({
       data: {
         userId: harness.aliceOwner.userId,
-        id: bookId,
+        id: COLUMN_PROBE_BOOK_ID,
         title: 'Column Selection Probe',
         titleSort: 'column selection probe',
         author: 'A. Uthor',
@@ -588,33 +612,6 @@ describe('Library.entries — Book column selection', () => {
     expect(bookEdges).toHaveLength(1);
     const book = bookEdges[0].node;
 
-    expect(book).toEqual({
-      __typename: 'Book',
-      documentId: bookId,
-      title: 'Column Selection Probe',
-      titleSort: 'column selection probe',
-      author: 'A. Uthor',
-      authorSort: 'uthor, a.',
-      description: 'A book that exercises every Book field resolver.',
-      publisher: 'Selection Press',
-      publishDate: '2020-01-01',
-      seriesIndex: 3,
-      size: 424242,
-      pageCount: 250,
-      chapterCount: 3,
-      subjects: ['Fantasy', 'Epic'],
-      identifiers: [{ scheme: 'ISBN', value: '9780000000000' }],
-      chapterSpineMap: [0, 3, 7],
-      chapterNames: ['One', 'Two', 'Three'],
-      mtime: '2023-11-14T22:13:20.000Z',
-      addedAt: '2023-11-14T22:13:20.000Z',
-      hasCover: true,
-      coverUrl: expect.stringContaining(bookId) as unknown as string,
-      downloadUrl: expect.stringContaining(bookId) as unknown as string,
-      thumbnailUrl: expect.stringContaining('150') as unknown as string,
-      deviceEditionCount: 0,
-      hasActionablePendingFix: false,
-      series: { name: 'Expanse' },
-    });
+    expect(book).toEqual(EXPECTED_COLUMN_PROBE_BOOK);
   });
 });
