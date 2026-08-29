@@ -35,8 +35,7 @@ async function getUserId(username: string): Promise<string> {
 }
 
 afterEach(async () => {
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
+  // Mock reset is handled globally by vite.config.ts's `mockReset: true`.
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);

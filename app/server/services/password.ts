@@ -1,3 +1,12 @@
+/**
+ * Two unrelated credential systems, co-located because they're both "user
+ * passwords": argon2-hashed login passwords (the account password used to
+ * sign in to Bookplate), and the sync password used by the KOSync wire
+ * protocol. `hashSyncPassword`'s MD5 digest is that protocol's required
+ * format — a KOSync client hashes its password with MD5 and sends the
+ * digest, so the server must match it the same way — and must never be
+ * used to hash or verify a login password.
+ */
 import * as crypto from 'crypto';
 
 import { PrismaClient, Prisma } from '@prisma/client';
@@ -27,7 +36,7 @@ export async function hashLoginPassword(password: string): Promise<string> {
   return argon2.hash(password);
 }
 
-export async function verifyLoginPassword(password: string, hash: string): Promise<boolean> {
+async function verifyLoginPassword(password: string, hash: string): Promise<boolean> {
   try {
     return await argon2.verify(hash, password);
   } catch {
@@ -69,14 +78,6 @@ export async function validateUser(
   if (!row?.passwordHash) return false;
   const valid = await verifyLoginPassword(password, row.passwordHash);
   return valid ? row.id : false;
-}
-
-export async function userHasPassword(prisma: PrismaClient, username: string): Promise<boolean> {
-  const row = await prisma.user.findUnique({
-    where: { username },
-    select: { passwordHash: true },
-  });
-  return !!row?.passwordHash;
 }
 
 /**

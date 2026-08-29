@@ -20,10 +20,20 @@ vi.mock('../../../../services/epub-validator', async (importOriginal) => {
   };
 });
 
+import { assertValidEpub } from '../../../../services/epub-validator';
+
 let harness: Harness;
 
 beforeEach(async () => {
   harness = await createHarness();
+  // The vi.mock() factory above only sets this default once, at module load;
+  // vite.config.ts's `mockReset: true` wipes it before every test, so it
+  // must be re-armed here on each run.
+  vi.mocked(assertValidEpub).mockResolvedValue({
+    valid: true,
+    messages: [],
+    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+  });
 });
 
 afterEach(async () => {

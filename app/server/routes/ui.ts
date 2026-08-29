@@ -14,7 +14,7 @@ import { BookStore, BookAlreadyExistsError } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import { getMustChangePassword, userHasPassword, validateUser } from '../services/password';
+import { getMustChangePassword, validateUser } from '../services/password';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -537,12 +537,15 @@ export function createUiRouter(
         return;
       }
       // Single-statement `findUnique` with exactly one production caller —
-      // inlined under the placement rule.
+      // inlined under the placement rule. One query answers both "does this
+      // user exist" and "does it have a password set": `select: { username: true }`
+      // plus a separate `userHasPassword` lookup used to ask the same
+      // question about the same row in two round-trips.
       const loginUser = await prisma.user.findUnique({
         where: { username },
-        select: { username: true },
+        select: { passwordHash: true },
       });
-      if (loginUser !== null && !(await userHasPassword(prisma, username))) {
+      if (loginUser !== null && !loginUser.passwordHash) {
         log.warn(`Login failed for "${username}" — password not set`);
         res.sendStatus(403);
         return;

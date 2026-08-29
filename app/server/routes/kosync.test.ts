@@ -23,6 +23,7 @@ let booksDir: string;
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-test-'));
+  const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -30,7 +31,7 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
+  bookStore = new BookStore(booksDir, prisma, editionsRoot);
   app = express();
   app.use(express.json());
   app.use('/sync', createKosyncRouter(bookStore, prisma));
