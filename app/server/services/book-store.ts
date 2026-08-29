@@ -15,12 +15,6 @@ import {
   BookListFilters,
   SearchSuggestionsResponse,
 } from '../types';
-import {
-  normalizeForSearch,
-  toSubsequenceLike,
-  computeMatchWindow,
-  scoreAndRank,
-} from '../utils/fuzzy-search';
 import { seriesSortKey } from '../utils/series-sort-key';
 import { BOOK_SELECT, getBookById, prismaBookToBook, standaloneStatusWhere } from './book-catalog';
 import { BookAlreadyExistsError, BookHashCollisionError } from './book-errors';
@@ -28,6 +22,8 @@ import { bookPath, getStagingDir, getUserDir } from './book-paths';
 import { purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import type { ScanProgress } from './scan-events';
+import { getSearchSuggestions } from './search-suggestions';
+import { getSeriesNextIndex, recomputeSeriesMeta } from './series-meta';
 
 const log = logger('BookStore');
 
@@ -58,133 +54,12 @@ export class BookStore {
 
   async getSearchSuggestions(
     owner: Owner,
-    {
-      q,
-      filter,
-    }: {
+    args: {
       q: string;
       filter: { author?: string; seriesName?: string; activeSubjects?: string[] };
     }
   ): Promise<SearchSuggestionsResponse> {
-    const normalizedQ = normalizeForSearch(q);
-    if (!normalizedQ) return { groups: [] };
-    const likePat = toSubsequenceLike(normalizedQ);
-    const groups: SearchSuggestionsResponse['groups'] = [];
-
-    if (!filter.author) {
-      const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
-        SELECT DISTINCT author AS value
-        FROM books
-        WHERE user_id = ${owner.userId}
-          AND author LIKE ${likePat}
-          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
-        ORDER BY author
-        LIMIT 30
-      `;
-      const ranked = scoreAndRank(
-        rows.map((r) => ({ label: r.value, value: r.value })),
-        normalizedQ
-      );
-      if (ranked.length > 0)
-        groups.push({
-          type: 'author',
-          items: ranked.map(({ label, value }) => ({
-            label,
-            value,
-            ...computeMatchWindow(q, label),
-          })),
-        });
-    }
-
-    if (!filter.seriesName) {
-      const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
-        SELECT s.name AS value
-        FROM series s
-        WHERE s.user_id = ${owner.userId}
-          AND s.name LIKE ${likePat}
-          ${
-            filter.author
-              ? Prisma.sql`AND EXISTS (
-                  SELECT 1 FROM books b
-                  WHERE b.series_id = s.id AND b.author = ${filter.author}
-                )`
-              : Prisma.empty
-          }
-        ORDER BY s.name
-        LIMIT 30
-      `;
-      const ranked = scoreAndRank(
-        rows.map((r) => ({ label: r.value, value: r.value })),
-        normalizedQ
-      );
-      if (ranked.length > 0)
-        groups.push({
-          type: 'series',
-          items: ranked.map(({ label, value }) => ({
-            label,
-            value,
-            ...computeMatchWindow(q, label),
-          })),
-        });
-    }
-
-    const [bookRows, subjectRows] = await Promise.all([
-      this.prisma.$queryRaw<Array<{ id: string; title: string }>>`
-        SELECT id, title
-        FROM books
-        WHERE user_id = ${owner.userId}
-          AND title LIKE ${likePat}
-          ${filter.author ? Prisma.sql`AND author = ${filter.author}` : Prisma.empty}
-          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
-        ORDER BY title
-        LIMIT 30
-      `,
-      this.prisma.$queryRaw<Array<{ value: string }>>`
-        SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
-        FROM books, json_each(books.subjects)
-        WHERE user_id = ${owner.userId}
-          AND LOWER(trim(CAST(json_each.value AS TEXT))) LIKE LOWER(${likePat})
-          ${filter.author ? Prisma.sql`AND author = ${filter.author}` : Prisma.empty}
-          ${filter.seriesName ? Prisma.sql`AND series = ${filter.seriesName}` : Prisma.empty}
-          AND json_each.type = 'text'
-          AND trim(CAST(json_each.value AS TEXT)) <> ''
-        ORDER BY value
-        LIMIT 30
-      `,
-    ]);
-
-    const rankedBooks = scoreAndRank(
-      bookRows.map((r) => ({ label: r.title, value: r.id })),
-      normalizedQ
-    );
-    if (rankedBooks.length > 0)
-      groups.push({
-        type: 'book',
-        items: rankedBooks.map(({ label, value }) => ({
-          label,
-          value,
-          ...computeMatchWindow(q, label),
-        })),
-      });
-
-    const activeSubjectSet = new Set(filter.activeSubjects ?? []);
-    const rankedSubjects = scoreAndRank(
-      subjectRows
-        .filter((r) => !activeSubjectSet.has(r.value))
-        .map((r) => ({ label: r.value, value: r.value })),
-      normalizedQ
-    );
-    if (rankedSubjects.length > 0)
-      groups.push({
-        type: 'subject',
-        items: rankedSubjects.map(({ label, value }) => ({
-          label,
-          value,
-          ...computeMatchWindow(q, label),
-        })),
-      });
-
-    return { groups };
+    return getSearchSuggestions(this.prisma, owner, args);
   }
 
   async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
@@ -256,7 +131,7 @@ export class BookStore {
       });
 
       if (seriesId) {
-        await this.recomputeSeriesMeta(tx, seriesId);
+        await recomputeSeriesMeta(tx, seriesId);
       }
     });
   }
@@ -289,7 +164,7 @@ export class BookStore {
           if (remaining === 0) {
             await tx.series.delete({ where: { id: seriesId } });
           } else {
-            await this.recomputeSeriesMeta(tx, seriesId);
+            await recomputeSeriesMeta(tx, seriesId);
           }
         }
       });
@@ -497,13 +372,13 @@ export class BookStore {
         if (remaining === 0) {
           await tx.series.delete({ where: { id: oldSeriesId } });
         } else {
-          await this.recomputeSeriesMeta(tx, oldSeriesId);
+          await recomputeSeriesMeta(tx, oldSeriesId);
         }
       }
 
       // Recompute the new series aggregates
       if (newSeriesId) {
-        await this.recomputeSeriesMeta(tx, newSeriesId);
+        await recomputeSeriesMeta(tx, newSeriesId);
       }
     });
 
@@ -534,19 +409,14 @@ export class BookStore {
         if (remaining === 0) {
           await tx.series.delete({ where: { id: book.seriesId } });
         } else {
-          await this.recomputeSeriesMeta(tx, book.seriesId);
+          await recomputeSeriesMeta(tx, book.seriesId);
         }
       }
     });
   }
 
   async getSeriesNextIndex(owner: Owner, name: string): Promise<number> {
-    const result = await this.prisma.book.aggregate({
-      where: { userId: owner.userId, series: name },
-      _max: { seriesIndex: true },
-    });
-    const max = result._max.seriesIndex;
-    return max == null ? 1 : Math.floor(max) + 1;
+    return getSeriesNextIndex(this.prisma, owner, name);
   }
 
   async scan(
@@ -943,66 +813,5 @@ export class BookStore {
       : null;
 
     return { items, books, nextCursor };
-  }
-
-  private async recomputeSeriesMeta(
-    client: Pick<PrismaClient, 'book' | 'series'>,
-    seriesId: string
-  ): Promise<void> {
-    const books = await client.book.findMany({
-      where: { seriesId },
-      select: { subjects: true, author: true, publisher: true, pageCount: true, size: true },
-      orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
-    });
-
-    const bookCount = books.length;
-    const totalPages = books.reduce((sum, b) => sum + b.pageCount, 0);
-    const totalSize = books.reduce((sum, b) => sum + b.size, 0);
-
-    const seenSubjects = new Map<string, string>();
-    for (const book of books) {
-      let parsedSubjects: string[];
-      try {
-        const parsed: unknown = JSON.parse(book.subjects);
-        parsedSubjects = Array.isArray(parsed) ? (parsed as string[]) : [];
-      } catch {
-        parsedSubjects = [];
-      }
-      for (const s of parsedSubjects) {
-        const key = s.toLowerCase();
-        if (!seenSubjects.has(key)) seenSubjects.set(key, s);
-      }
-    }
-    const subjects = [...seenSubjects.values()].sort((a, b) => a.localeCompare(b));
-
-    const seenAuthors = new Map<string, string>();
-    for (const book of books) {
-      if (book.author) {
-        const key = book.author.toLowerCase();
-        if (!seenAuthors.has(key)) seenAuthors.set(key, book.author);
-      }
-    }
-    const author = [...seenAuthors.values()].join(', ');
-
-    const seenPublishers = new Map<string, string>();
-    for (const book of books) {
-      if (book.publisher) {
-        const key = book.publisher.toLowerCase();
-        if (!seenPublishers.has(key)) seenPublishers.set(key, book.publisher);
-      }
-    }
-    const publisher = [...seenPublishers.values()].join(', ');
-
-    await client.series.update({
-      where: { id: seriesId },
-      data: {
-        subjects: JSON.stringify(subjects),
-        bookCount,
-        author,
-        publisher,
-        totalPages,
-        totalSize,
-      },
-    });
   }
 }
