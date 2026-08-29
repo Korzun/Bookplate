@@ -123,7 +123,7 @@ describe('BookLineageModal', () => {
 
   /**
    * THE part most likely to go wrong (task brief). REST's `getBookLineage`
-   * (`app/server/services/book-store.ts:552`, `return { currentId: id,
+   * (`app/server/services/book-lineage.ts`, `return { currentId: id,
    * entries }`) always echoed back the exact `id` it was called with as
    * `currentId` — regardless of whether `entries` was empty. GraphQL's
    * `Book` type exposes no raw id at all through `lineage` (by design — see
