@@ -97,9 +97,6 @@ export const createHarness = async (): Promise<Harness> => {
   const config = testConfig(booksDir, dataDir);
   const editionsRoot = path.join(dataDir, 'editions');
   const stores: Stores = {
-    // No production code reaches this any more — see `Stores.book`'s doc
-    // comment in `context.ts` for why it's still here at all.
-    book: {},
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
     // `context.stores.scanJob.subscribe`) — not the class's own default,

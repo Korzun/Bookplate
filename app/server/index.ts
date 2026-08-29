@@ -56,9 +56,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const graphqlHandler = createGraphqlHandler({
     prisma,
     stores: {
-      // No production code reaches this any more — see `Stores.book`'s doc
-      // comment in `graphql/context.ts` for why it's still here at all.
-      book: {},
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
