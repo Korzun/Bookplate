@@ -7,7 +7,7 @@ import { model as validation } from '../validation/model';
  * REST's `book.valid !== true` gate (`routes/ui.ts:1127-1132`, `PATCH
  * /api/books/:id/metadata`'s 409 "This book must pass validation before it
  * can be edited.") — a route-level precondition checked *before*
- * `applyEpubChanges` is ever called, not a store throw. See
+ * `applyEpubChanges` is ever called, not a thrown domain error. See
  * `book/mutation/update-metadata.ts`'s doc comment for the full trace of why
  * this exists and how it differs from a genuine post-edit `EpubValidationError`.
  *

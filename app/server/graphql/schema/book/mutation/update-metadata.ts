@@ -155,7 +155,7 @@ type BookUpdateMetadataPayloadShape = {
  *
  * So, exactly like `BookHashCollisionError.collidingBook`
  * (`book-hash-collision-error/model.ts`), `book` is a fresh `t.prismaField`
- * lookup keyed by the owner + the post-edit id the store call reported —
+ * lookup keyed by the owner + the post-edit id `applyEpubChanges` reported —
  * never the DTO itself. `findUniqueOrThrow` is safe here: the row the id
  * names was written by the very `applyEpubChanges` call that produced this
  * payload, inside the same request.
@@ -254,15 +254,15 @@ const buildChanges = (
  * The decoded id's malformed-local-id early return (`parsed === null`) runs
  * before the remaining fields' zod parse, matching `progressDelete`'s
  * "input parsed before owner/book resolution" order in spirit: both checks
- * are pure/local, run before any store call, and this does not leak anything
+ * are pure/local, run before any service call, and this does not leak anything
  * an attacker couldn't already learn — a malformed `publishDate` yields the
  * same `InvalidInputError` whether or not the book exists or is valid, so
  * the response is identical either way.
  *
  * Two REST preconditions run before `applyEpubChanges` is ever called, and
  * both are mirrored here as plain early returns rather than typed union
- * members from the store path (they are not store throws; REST checks them
- * itself, before calling into `applyEpubChanges`):
+ * members of the domain-error union (they are not thrown domain errors; REST
+ * checked them itself, before calling into `applyEpubChanges`):
  *
  *  - Book not found → REST 404. Mirrored as `null`, the same convention
  *    `progressDelete` established for "no such row" (see that file's doc

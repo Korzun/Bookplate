@@ -153,15 +153,15 @@ describe('Suggestion.book', () => {
     ]);
   });
 
-  // Task-2 review, M-5: the book row vanishing between the store's raw-SQL
+  // Task-2 review, M-5: the book row vanishing between the service's raw-SQL
   // suggestion query and this edge's own `findUnique` (a real, if narrow,
   // race — "practically unraceable in-process" per the review, but cheap to
   // simulate here) resolves null, not an error: `findUnique` on a since-
   // deleted row returns null the same way `LinkedDocument.oldBook`'s
   // unknown-old-id arm does. Simulated by deleting the row inside a spy on
-  // `getSearchSuggestions`, after the store's own query has already run but
+  // `getSearchSuggestions`, after that function's own query has already run but
   // before `Suggestion.book`'s (separate, later) field resolver does.
-  it('resolves book null when the row is deleted between the store query and the edge resolve', async () => {
+  it('resolves book null when the row is deleted between the suggestion query and the edge resolve', async () => {
     const actual = await vi.importActual<typeof import('../../../services/search-suggestions')>(
       '../../../services/search-suggestions'
     );

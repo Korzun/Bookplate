@@ -14,8 +14,8 @@ import { model as userError } from '../user-error';
  * would on a fresh `libraryScan` success, instead of discarding the
  * in-flight job's state.
  *
- * Not a store-thrown error (`toResult` is not involved): REST's 409 is a
- * precondition the route checks itself, before ever calling `bookStore.scan`
+ * Not a thrown domain error (`toResult` is not involved): REST's 409 was a
+ * precondition the route checked itself, before ever calling `bookStore.scan`
  * — same shape as `BookNotValidatedError`'s doc comment on why that error
  * also isn't a `toResult` discharge.
  */

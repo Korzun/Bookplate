@@ -26,7 +26,7 @@ type BookClearEditLineagePayloadShape = {
 };
 
 /**
- * `book` is a fresh lookup, not a store-returned DTO — same reasoning as
+ * `book` is a fresh lookup, not a service-returned DTO — same reasoning as
  * `BookClearEditionsPayload.book`. Clearing edit lineage never renames the
  * book.
  */
@@ -94,9 +94,9 @@ const result = builder.unionType('BookClearEditLineageResult', {
  * Unlike `clearDeviceEditions` (`Promise<number | null>`), `clearEditLineage`
  * returns a plain `Promise<number>` — a raw `$executeRaw` DELETE reports 0
  * rows affected for a nonexistent book exactly as it does for a book with no
- * edit-lineage rows, so the store itself cannot distinguish "not found" from
+ * edit-lineage rows, so the DELETE itself cannot distinguish "not found" from
  * "nothing to clear". The resolver therefore checks existence explicitly with
- * `getBookById` before calling the store, mirroring REST's own two-step
+ * `getBookById` before calling `clearEditLineage`, mirroring REST's own two-step
  * `getBookById` → `clearEditLineage` (`routes/ui.ts:1102-1108`) rather than
  * inferring not-found from a zero count, which would wrongly turn "book
  * exists, zero edit rows" into `null` too.

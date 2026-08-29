@@ -5,7 +5,7 @@ import { model as userError } from '../user-error';
  * REST's `POST /api/users` (`routes/users.ts`, removed in Phase 0) had two
  * 409 branches, collapsed into one honest member here — both produced the
  * identical body (`{ error: 'Username
- * already exists' }`) and neither is a store throw, so this is not built from
+ * already exists' }`) and neither is a thrown domain error, so this is not built from
  * an `instanceof`-checked class the way `BookHashCollisionError` etc. are
  * (see `to-result.ts`'s doc comment on why only the seven declared classes go
  * through that path):

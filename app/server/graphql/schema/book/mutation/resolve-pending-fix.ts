@@ -74,7 +74,7 @@ type BookResolvePendingFixPayloadShape = {
 };
 
 /**
- * `book` is a fresh lookup, not a store-returned DTO — same reasoning as
+ * `book` is a fresh lookup, not a service-returned DTO — same reasoning as
  * `BookLinkDocumentPayload.book`. `bookId` here is the id AFTER resolution:
  * `DISMISS` never touches the book, so it is always the decoded input id's
  * local part; `ACCEPT` may rewrite the EPUB (when it has live proposals to

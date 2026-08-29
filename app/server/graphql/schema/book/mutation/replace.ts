@@ -74,11 +74,11 @@ type BookReplacePayloadShape = {
 /**
  * `book` is a fresh `t.prismaField` lookup keyed by owner + the post-replace
  * id, exactly like `BookUpdateMetadataPayload.book`/`BookRegenChaptersPayload.
- * book` — see the former's doc comment for why the store's `Book` DTO cannot
- * back this type's field resolvers directly. A successful replace always
- * changes the book's id (the new content's fingerprint), so this must
- * re-read by the id the store call actually returned, never the decoded
- * `id`'s local part.
+ * book` — see the former's doc comment for why the `Book` DTO
+ * `replaceEpubBytes` returns cannot back this type's field resolvers
+ * directly. A successful replace always changes the book's id (the new
+ * content's fingerprint), so this must re-read by the id that call actually
+ * returned, never the decoded `id`'s local part.
  */
 const payload = builder.objectRef<BookReplacePayloadShape>('BookReplacePayload').implement({
   fields: (t) => ({

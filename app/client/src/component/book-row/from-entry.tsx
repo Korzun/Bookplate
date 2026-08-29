@@ -71,7 +71,7 @@ interface BookRowFromEntryProps {
  * remaining REST routes that still take a book id in the path
  * (`/api/books/:id/cover` and `/api/books/:id/download`) accept EITHER form
  * — `routes/ui.ts`'s `resolveBookLocalId` resolves a global id to the raw
- * one before querying `bookStore`.
+ * one before the handler reads the book.
  */
 export function BookRowFromEntry({ asCard, showAuthor, book }: BookRowFromEntryProps) {
   const navigate = useNavigate();

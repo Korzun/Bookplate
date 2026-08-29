@@ -68,7 +68,7 @@ export const model = builder.prismaObject('Validation', {
      * this schema with realistic hundreds-of-rows growth (cleanup spec,
      * §"5. Connections for growable lists"). Same backward-pagination
      * asymmetry as `Series.books`: unlike `Library.entries`/`Library.progress`
-     * (forward-only store cursor, so they do not offer `last`/`before` at all
+     * (forward-only service cursor, so they do not offer `last`/`before` at all
      * — see the `entriesConnection` doc comment in `library/model.ts`),
      * `t.relatedConnection` wraps a genuine Prisma relation, so
      * `last`/`before` genuinely work here.

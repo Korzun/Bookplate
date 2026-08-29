@@ -16,7 +16,7 @@ import introspection from '~/gql/possible-types';
  *
  * NOTE on pagination: `Library.entries` and `Library.progress` are FORWARD-ONLY
  * server-side — the schema no longer offers `last`/`before` on either field at
- * all (they wrap a forward-only store cursor; the two arguments were removed
+ * all (they wrap a forward-only service cursor; the two arguments were removed
  * from the SDL rather than left advertised and refused at runtime).
  * `Series.books` and `Validation.messages` do support backward paging.
  * `relayStylePagination` handles both directions, so this config does not

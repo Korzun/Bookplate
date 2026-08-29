@@ -95,7 +95,7 @@ describe('Library.progress', () => {
     expect(page.pageInfo.hasPreviousPage).toBe(false);
   });
 
-  it('paginates with the store cursor — after excludes what was already returned', async () => {
+  it('paginates with the service cursor — after excludes what was already returned', async () => {
     const first = await readPage({ first: 2 });
 
     expect(first.edges.map((e) => e.node.document)).toEqual(['3'.repeat(32), '2'.repeat(32)]);

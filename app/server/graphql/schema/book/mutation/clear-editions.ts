@@ -25,7 +25,7 @@ type BookClearEditionsPayloadShape = {
 };
 
 /**
- * `book` is a fresh lookup, not a store-returned DTO — same reasoning as
+ * `book` is a fresh lookup, not a service-returned DTO — same reasoning as
  * `BookLinkDocumentPayload.book`. Clearing editions never renames the book.
  */
 const payload = builder
