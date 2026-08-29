@@ -13,6 +13,8 @@ import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
 import { getBookById, getSubjects } from '../services/book-catalog';
 import { BookAlreadyExistsError } from '../services/book-errors';
+import { addBook } from '../services/book-lifecycle';
+import { getStagingDir } from '../services/book-paths';
 import { BookStore } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
@@ -338,7 +340,7 @@ export function createUiRouter(
     res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
   }
 
-  const stagingDir = bookStore.getStagingDir();
+  const stagingDir = getStagingDir(config.booksDir);
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => {
       try {
@@ -740,7 +742,10 @@ export function createUiRouter(
         const titleFallback =
           realTitle || path.basename(file.originalname, path.extname(file.originalname));
         try {
-          await bookStore.addBook(owner, id, savedPath, { ...meta, title: titleFallback });
+          await addBook(prisma, config.booksDir, owner, id, savedPath, {
+            ...meta,
+            title: titleFallback,
+          });
         } catch (err: unknown) {
           try {
             fs.unlinkSync(savedPath);

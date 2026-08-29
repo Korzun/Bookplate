@@ -10,6 +10,8 @@ import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
 import { pruneThumbnails } from './services/book-assets';
+import { scan } from './services/book-lifecycle';
+import { getStagingDir } from './services/book-paths';
 import { BookStore } from './services/book-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
@@ -52,7 +54,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // mutations that consume it — see `graphql/context.ts`'s `Stores.
   // replaceStaging` doc comment for why a second instance would never see
   // the first one's staged files.
-  const replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
+  const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
   const graphqlHandler = createGraphqlHandler({
     prisma,
     stores: {
@@ -106,7 +108,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       // username must not materialize one.
       if (owner.username === config.username) continue;
       fs.mkdirSync(path.join(config.booksDir, owner.username), { recursive: true });
-      const scanResult = await bookStore.scan(owner);
+      const scanResult = await scan(prisma, config.booksDir, owner);
       scanned++;
       imported += scanResult.imported.length;
       removed += scanResult.removed.length;

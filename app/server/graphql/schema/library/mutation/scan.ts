@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { logger } from '../../../../logger';
-import type { BookStore } from '../../../../services/book-store';
+import { scan } from '../../../../services/book-lifecycle';
 import { revalidateLibrary, type RevalidateDeps } from '../../../../services/revalidate-library';
 import type { ScanJob } from '../../../../services/scan-events';
 import type { ScanJobStore } from '../../../../services/scan-job-store';
@@ -50,7 +50,6 @@ const result = builder.unionType('LibraryScanResult', {
 });
 
 type ScanBackgroundDeps = {
-  readonly book: BookStore;
   readonly scanJob: ScanJobStore;
   readonly prisma: PrismaClient;
   readonly thumbnail: ThumbnailQueue;
@@ -79,7 +78,7 @@ type ScanBackgroundDeps = {
  */
 async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Promise<void> {
   try {
-    const scanResult = await deps.book.scan(owner, (progress) => {
+    const scanResult = await scan(deps.prisma, deps.booksRoot, owner, (progress) => {
       deps.scanJob.progress(owner.userId, progress);
     });
     const val = await revalidateLibrary(
@@ -158,7 +157,7 @@ builder.mutationField('libraryScan', (t) =>
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      const { scanJob, book, thumbnail } = context.stores;
+      const { scanJob, thumbnail } = context.stores;
 
       // Read before start(), not via `isRunning` + a second `get()` cast: a
       // single read either has a running job (409) or doesn't (proceed to
@@ -173,7 +172,6 @@ builder.mutationField('libraryScan', (t) =>
 
       void runScanInBackground(
         {
-          book,
           scanJob,
           prisma: context.prisma,
           thumbnail,
