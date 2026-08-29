@@ -24,6 +24,14 @@ import {
   scoreAndRank,
 } from '../utils/fuzzy-search';
 import { seriesSortKey } from '../utils/series-sort-key';
+import {
+  BookAlreadyExistsError,
+  BookHashCollisionError,
+  DocumentAlreadyLinkedError,
+  DocumentIsBookError,
+  SelfLinkError,
+} from './book-errors';
+import { bookPath, getStagingDir, getUserDir } from './book-paths';
 import { countForBook, purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import type { ScanProgress } from './scan-events';
@@ -62,41 +70,6 @@ const BOOK_SELECT = {
   validation: { select: { valid: true } },
 } as const;
 
-export class BookHashCollisionError extends Error {
-  constructor(public readonly collidingId: string) {
-    super(`Book hash collision: edited content matches existing book "${collidingId}"`);
-    this.name = 'BookHashCollisionError';
-  }
-}
-
-export class BookAlreadyExistsError extends Error {
-  constructor(public readonly existingId: string) {
-    super(`Book with id "${existingId}" already exists in the library`);
-    this.name = 'BookAlreadyExistsError';
-  }
-}
-
-export class SelfLinkError extends Error {
-  constructor() {
-    super('Cannot link a document ID to itself');
-    this.name = 'SelfLinkError';
-  }
-}
-
-export class DocumentAlreadyLinkedError extends Error {
-  constructor(public readonly documentId: string) {
-    super(`Document "${documentId}" is already linked to a book`);
-    this.name = 'DocumentAlreadyLinkedError';
-  }
-}
-
-export class DocumentIsBookError extends Error {
-  constructor(public readonly documentId: string) {
-    super(`Document "${documentId}" is an existing book — use the book's lineage to link instead`);
-    this.name = 'DocumentIsBookError';
-  }
-}
-
 export interface ScanImporter {
   parseEpub: (filePath: string) => EpubMeta;
   partialMD5: (filePath: string) => string;
@@ -132,7 +105,7 @@ export class BookStore {
   ) {}
 
   getStagingDir(): string {
-    return path.join(this.booksRoot, '.staging');
+    return getStagingDir(this.booksRoot);
   }
 
   async getSubjects(owner: Owner): Promise<string[]> {
@@ -278,14 +251,6 @@ export class BookStore {
     return { groups };
   }
 
-  private getUserDir(owner: Owner): string {
-    return path.join(this.booksRoot, owner.username);
-  }
-
-  private bookPath(owner: Owner, id: string): string {
-    return path.join(this.getUserDir(owner), id + '.epub');
-  }
-
   private sortByTitle<T extends { titleSort: string; title: string; id: string }>(rows: T[]): T[] {
     return [...rows].sort((a, b) => {
       const aKey = a.titleSort !== '' ? a.titleSort : a.title;
@@ -401,8 +366,8 @@ export class BookStore {
       throw new BookAlreadyExistsError(id);
     }
 
-    fs.mkdirSync(this.getUserDir(owner), { recursive: true });
-    const targetPath = this.bookPath(owner, id);
+    fs.mkdirSync(getUserDir(this.booksRoot, owner), { recursive: true });
+    const targetPath = bookPath(this.booksRoot, owner, id);
     if (path.resolve(srcPath) !== path.resolve(targetPath)) {
       fs.renameSync(srcPath, targetPath);
     }
@@ -709,7 +674,7 @@ export class BookStore {
     if (!exists) return null;
     const oldSeriesId = exists.seriesId;
 
-    const filePath = this.bookPath(owner, id);
+    const filePath = bookPath(this.booksRoot, owner, id);
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -756,8 +721,8 @@ export class BookStore {
       }
 
       if (newId !== id) {
-        const oldPath = this.bookPath(owner, id);
-        const newPath = this.bookPath(owner, newId);
+        const oldPath = bookPath(this.booksRoot, owner, id);
+        const newPath = bookPath(this.booksRoot, owner, newId);
         if (oldPath !== newPath) {
           fs.renameSync(oldPath, newPath);
         }
@@ -993,7 +958,7 @@ export class BookStore {
   ): Promise<{ imported: string[]; removed: string[] }> {
     const imported: string[] = [];
     const removed: string[] = [];
-    const userDir = this.getUserDir(owner);
+    const userDir = getUserDir(this.booksRoot, owner);
 
     const dbIdRows = await this.prisma.book.findMany({
       where: { userId: owner.userId },
@@ -1049,7 +1014,7 @@ export class BookStore {
         continue;
       }
 
-      const canonicalPath = this.bookPath(owner, id);
+      const canonicalPath = bookPath(this.booksRoot, owner, id);
       if (filePath !== canonicalPath) {
         if (fs.existsSync(canonicalPath)) {
           log.warn(`scan: skipping "${filename}" — canonical path ${id}.epub already occupied`);
@@ -1086,7 +1051,7 @@ export class BookStore {
     });
     const totalPruning = allIdRows.length;
     for (const [index, { id }] of allIdRows.entries()) {
-      if (!fs.existsSync(this.bookPath(owner, id))) {
+      if (!fs.existsSync(bookPath(this.booksRoot, owner, id))) {
         await this.removeStaleBook(owner.userId, id);
         removed.push(id + '.epub');
       }
@@ -1453,7 +1418,7 @@ export class BookStore {
         seriesIndex: r.seriesIndex,
         title: r.title,
       }),
-      path: this.bookPath(owner, r.id),
+      path: bookPath(this.booksRoot, owner, r.id),
       title: r.title,
       titleSort: r.titleSort,
       authorSort: r.authorSort,

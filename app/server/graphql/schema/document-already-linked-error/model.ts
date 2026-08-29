@@ -1,4 +1,4 @@
-import type { DocumentAlreadyLinkedError as StoreError } from '../../../services/book-store';
+import type { DocumentAlreadyLinkedError as StoreError } from '../../../services/book-errors';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
 // `book/mutation/*.ts` (task 2). Not currently reached from those files, but

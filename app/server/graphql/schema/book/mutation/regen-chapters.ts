@@ -1,4 +1,4 @@
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import {

@@ -1,6 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import { createHarness, type Harness } from '../../../test-util';
 import { rawBookId, seedEditableBook } from './test-helpers';
 

@@ -10,13 +10,12 @@ import AdmZip from 'adm-zip';
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner, PageCursor } from '../types';
 import {
-  BookStore,
   BookHashCollisionError,
-  ScanImporter,
   SelfLinkError,
   DocumentAlreadyLinkedError,
   DocumentIsBookError,
-} from './book-store';
+} from './book-errors';
+import { BookStore, ScanImporter } from './book-store';
 import { countForBook, purgeForBook } from './edition';
 import { partialMD5 } from './epub-parser';
 

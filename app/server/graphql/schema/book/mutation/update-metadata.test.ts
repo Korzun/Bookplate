@@ -1,6 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
-import { BookHashCollisionError } from '../../../../services/book-store';
+import { BookHashCollisionError } from '../../../../services/book-errors';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { saveValidation } from '../../../../services/validation';
 import { createHarness, type Harness } from '../../../test-util';
