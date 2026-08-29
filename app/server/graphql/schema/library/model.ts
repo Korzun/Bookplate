@@ -241,6 +241,29 @@ builder.node(model, {
     // double read this field used to do), which is correct and provably
     // single-query per page (`entries.test.ts`'s "issues exactly one
     // prisma.book.findMany..." test) even without column-level selection.
+    //
+    // That single-query result still carries a real cost the union-safety
+    // reasoning above doesn't cover: `listBooksPage`'s `prisma.book.findMany`
+    // (`library-page.ts`) has no `select` at all, so every standalone row on
+    // the page — up to 20 — comes back with `coverData` (`prisma/schema.prisma`,
+    // `Bytes?`), the book's full cover image, pulled out of SQLite and thrown
+    // away: no `Book` field resolver reads `coverData` (`hasCover` reads
+    // `coverMime`; `coverUrl`/`thumbnailUrl` only build REST URLs from `id`/
+    // `mtime`), and the one production reader is `getCover`
+    // (`services/book-assets.ts`), which issues its own `select`. This isn't a
+    // regression — the pre-refactor resolver's own second read was equally
+    // unselected — and it's the unaddressed half of the design spec's Problem
+    // #2 ("fixed shapes fight Pothos... defeats field-level selection").
+    //
+    // Crucially, it's a *different* risk from the union-safety one above, and
+    // the `queryFromInfo` reasoning doesn't block fixing it: `sortKey` lives
+    // only on `Series` rows, which come from the separate `prisma.series.findMany`
+    // in the same function, so a hand-written `select` on the book read alone
+    // could never affect `resolveType`. What a `select` there risks instead is
+    // a `Book` field resolver silently seeing `undefined` for a column left
+    // out of the list — a different, real failure mode, which is why trimming
+    // `coverData` off this read is left for its own change with its own test
+    // rather than folded in here.
     entries: t.field({
       type: entriesConnection,
       description:
