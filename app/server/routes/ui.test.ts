@@ -15,6 +15,7 @@ import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
+import { createBookByDocumentLoader } from '../graphql/book-by-document-loader';
 import { createChapterSpineMapLoader } from '../graphql/chapter-spine-map-loader';
 import type { Context, Viewer } from '../graphql/context';
 import { createOwnerLoader } from '../graphql/owner';
@@ -312,6 +313,7 @@ async function gqlExecute(
     loadChapterSpineMap: createChapterSpineMapLoader(prisma),
     loadSeriesProgress: createSeriesProgressLoader(prisma),
     loadValidationCounts: createValidationCountsLoader(prisma),
+    loadBookByDocument: createBookByDocumentLoader(prisma),
   };
   return graphql({ schema, source, contextValue });
 }
