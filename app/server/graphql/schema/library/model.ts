@@ -1,3 +1,5 @@
+import type { Prisma } from '@prisma/client';
+
 import { getAuthors, getSubjects } from '../../../services/book-catalog';
 import { resolveBookId } from '../../../services/book-lineage';
 import { listBooksPage } from '../../../services/library-page';
@@ -94,6 +96,57 @@ const entriesConnection = builder.connectionObject(
   { type: libraryEntry, name: 'LibraryEntriesConnection' },
   { name: 'LibraryEntriesConnectionEdge' }
 );
+
+/**
+ * Translates `Library.progress`'s parsed cursor into the keyset `where` that
+ * page starts from, for `orderBy: [{timestamp:'desc'}, {document:'asc'}]`.
+ *
+ * WHY THIS EXISTS AT ALL — `t.prismaConnection` already hands the resolver a
+ * ready-made `{ cursor, skip: 1, take }`, and using it directly is one line.
+ * That line has a defect worth this function: Prisma implements `cursor` by
+ * SEEKING TO A ROW, so it needs that row to still be there. Measured, when it
+ * is not: the page comes back EMPTY with `hasNextPage: false`, no error — a
+ * client that deletes the row it last paged from silently stops paginating.
+ * The hand-built connection this field replaced did not have that failure,
+ * because a keyset compares VALUES CARRIED IN the cursor and never looks the
+ * row up; the values it needs are `timestamp` and `document`, and both are in
+ * the cursor (that is what `@@unique([userId, timestamp, document])` is for).
+ * So the plugin keeps minting and parsing cursors — that machinery is fine —
+ * and only the seek is replaced.
+ *
+ * `take`'s SIGN is the direction, and it is the plugin's own
+ * (`prismaCursorConnectionQuery` negates it for `before`/`last`), not
+ * something re-derived from `args` here:
+ *
+ *  - forward (`take > 0`): rows strictly AFTER the cursor in the sort order,
+ *    which for `timestamp desc` means an OLDER timestamp, or the same
+ *    timestamp and a LATER document.
+ *  - backward (`take < 0`): the mirror image. A negative `take` makes Prisma
+ *    return the LAST |take| rows of the ordered result, which — over a `where`
+ *    restricted to rows before the cursor — is exactly the rows immediately
+ *    preceding it, still in page order.
+ *
+ * No cursor (a first page, forward or backward) means no predicate at all.
+ */
+const progressKeyset = (
+  from: { timestamp: number; document: string } | undefined,
+  take: number | undefined
+): Prisma.ProgressWhereInput => {
+  if (!from) return {};
+  return take !== undefined && take < 0
+    ? {
+        OR: [
+          { timestamp: { gt: from.timestamp } },
+          { timestamp: from.timestamp, document: { lt: from.document } },
+        ],
+      }
+    : {
+        OR: [
+          { timestamp: { lt: from.timestamp } },
+          { timestamp: from.timestamp, document: { gt: from.document } },
+        ],
+      };
+};
 
 /**
  * A Library is backed by an Owner, and only two resolvers can mint one:
@@ -464,31 +517,32 @@ builder.node(model, {
      * `Library.entries` keeps the hand-declared shape and cannot follow, for a
      * reason unrelated to the args; see `entriesConnection`'s comment.
      *
-     * THE CURSOR FORMAT CHANGED with that conversion, and it is the one real
+     * THE CURSOR FORMAT CHANGED with that conversion, and it is the only real
      * client-visible break. It was base64 `{timestamp, document}`
      * (`utils/progress-pagination.ts`, deleted with the service that minted
-     * it); it is now `@pothos/plugin-prisma`'s own compound-primary-key
-     * cursor over `@@id([userId, document])`. Cursors are opaque by contract
+     * it); it is now `@pothos/plugin-prisma`'s own cursor over
+     * `@@unique([userId, timestamp, document])`. Cursors are opaque by contract
      * and this client only ever round-trips `pageInfo.endCursor`, but a client
      * holding a cursor ACROSS the deploy that ships this gets one page of
      * garbage-in behaviour rather than silent wrong data — the plugin rejects
      * an unparseable cursor with a `PothosValidationError`.
      *
-     * PAGINATION SEMANTICS CHANGED WITH IT. The old keyset walked
-     * `timestamp < X OR (timestamp = X AND document > Y)`, which is stable
-     * even if the cursor row is deleted mid-pagination. Prisma's `cursor` +
-     * `skip: 1` positions at a row that must STILL EXIST, and errors if it
-     * does not. Accepted: a progress row is deleted only by an explicit
-     * `progressDelete` or by the user's own account/book removal, so the
-     * window is a user deleting the exact row they are paging from, and the
-     * failure is a loud error on one page rather than wrong data. Pinned by
-     * `progress.test.ts`'s "the cursor row disappearing mid-pagination".
+     * PAGINATION SEMANTICS ARE UNCHANGED, and keeping them that way is the
+     * only reason `resolve` below is more than one line. The old hand-built
+     * keyset walked `timestamp < X OR (timestamp = X AND document > Y)`, which
+     * is stable even if the cursor row is deleted mid-pagination; Prisma's
+     * `cursor` + `skip: 1` seeks to a row that must STILL EXIST, and measured,
+     * returns an empty page when it does not. The resolver therefore drops the
+     * plugin's `cursor`/`skip` and rebuilds that exact keyset from the parsed
+     * cursor (`progressKeyset`, above). The cursor carries `timestamp` because
+     * of the `@@unique` index named above, which exists for no other purpose.
+     * Pinned both directions by `progress.test.ts`'s two "has been deleted"
+     * tests.
      *
-     * The `orderBy` is unchanged (`timestamp desc, document asc`) and Prisma's
-     * cursor works with it: the cursor identifies a ROW, and Prisma seeks to
-     * that row's position in whatever order the query declares — it is not
-     * constrained to order by the cursor's own columns. Verified by the
-     * pagination tests, which assert the same document sequence as before.
+     * The `orderBy` is unchanged (`timestamp desc, document asc`), and the
+     * cursor's own column order does not constrain it — `progressKeyset` is
+     * written against this order and this order only, which is why the two sit
+     * in the same call.
      */
     progress: t.prismaConnection(
       {
@@ -501,12 +555,18 @@ builder.node(model, {
         description:
           'The reading positions this library owner has synced, newest first. ' +
           'Paginates in both directions.',
-        // The compound primary key `@@id([userId, document])`. Both columns
-        // are in the cursor, which is also what makes it tenant-safe to hand
+        // `@@unique([userId, timestamp, document])`, NOT the primary key
+        // `[userId, document]` — and the difference is the whole of why a
+        // deleted row cannot strand a paging client. See the `resolve` below,
+        // and that index's own comment in `prisma/schema.prisma` (it exists
+        // for this and nothing else; no query uses it as a lookup key).
+        //
+        // Every column the page sorts on is therefore inside the cursor, and
+        // so is `userId`, which is also what makes the cursor safe to hand
         // back: `document` is a KOReader content hash and collides across
         // users, so a cursor naming the document alone would name another
         // user's row just as well.
-        cursor: 'userId_document',
+        cursor: 'userId_timestamp_document',
         // Native `maxSize`/`defaultSize` bound the actual Prisma query
         // (`prismaCursorConnectionQuery`: `take = min(first ?? last ??
         // defaultSize, maxSize) + 1`) — but by CLAMPING an over-max
@@ -530,11 +590,11 @@ builder.node(model, {
         // — so the fallback ambiguity that shaped `Series.books` does not
         // arise here at all.
         //
-        // `...query` carries the plugin's `take`/`skip`/`cursor` AND the merged
-        // `select` for whatever the client asked for on `Progress`. That merge
-        // is the whole point of the conversion, and it is why `Progress.book`
-        // is now a `t.relation` and `currentChapter` a field `select` rather
-        // than two batching loaders.
+        // `...page` carries the plugin's `take` AND the merged `select` for
+        // whatever the client asked for on `Progress`. That merge is the whole
+        // point of the conversion, and it is why `Progress.book` is a
+        // `t.relation` and `currentChapter` a field `select` rather than two
+        // batching loaders.
         //
         // The `where` is the owner's, read off the PARENT `Library` and never
         // from `context.viewer`: an admin reading `user(id:).library.progress`
@@ -542,14 +602,25 @@ builder.node(model, {
         // progress.test.ts` has that exact case.
         resolve: (query, owner, args, context) => {
           rejectOversizePage('Library.progress', args, CONNECTION_LIMITS.libraryProgress.maxSize);
+          // `cursor` and `skip` are DELIBERATELY DROPPED, and `take` is
+          // deliberately kept: see `progressKeyset` above for why, and note
+          // that `take` must be forwarded exactly as the plugin computed it —
+          // `resolvePrismaCursorConnection` slices the extra row off this
+          // result using its OWN copy of that number, so changing it here
+          // would corrupt `hasNextPage` rather than merely resize the page.
+          const { cursor, skip: _skip, ...page } = query;
           return context.prisma.progress.findMany({
-            ...query,
-            where: { userId: owner.userId },
+            ...page,
+            where: {
+              userId: owner.userId,
+              ...progressKeyset(cursor?.userId_timestamp_document, page.take),
+            },
             // `document asc` is the tiebreaker, and it is required, not
             // cosmetic: timestamps are KOReader-supplied whole SECONDS, so two
-            // rows sharing one is routine, and Prisma's cursor pagination needs
-            // a total order or a page boundary can repeat or skip a row. Same
-            // order `getUserProgressPage`'s keyset used before this conversion.
+            // rows sharing one is routine, and cursor pagination needs a total
+            // order or a page boundary can repeat or skip a row. Same order
+            // `getUserProgressPage`'s keyset used before this conversion, and
+            // the order `progressKeyset` is written against.
             orderBy: [{ timestamp: 'desc' }, { document: 'asc' }],
           });
         },

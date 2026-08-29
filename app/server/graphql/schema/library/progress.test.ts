@@ -244,25 +244,23 @@ describe('Library.progress', () => {
   });
 
   /**
-   * THE ONE BEHAVIOUR THE CONVERSION MADE WORSE, pinned so it is a known cost
-   * rather than a surprise.
+   * DELETE-STABLE PAGINATION, which is the one property `t.prismaConnection`
+   * does not give you for free and which this field's resolver goes out of its
+   * way to keep.
    *
-   * The old hand-built keyset (`timestamp < X OR (timestamp = X AND document >
-   * Y)`) did not care whether the cursor row still existed — it was a
-   * comparison against values carried IN the cursor. Prisma's `cursor` +
-   * `skip: 1` positions at a row that must still be there, and when it is not,
-   * the page comes back EMPTY with `hasNextPage: false` — measured here, not
-   * assumed; it does not error.
+   * Prisma implements `cursor` by SEEKING TO A ROW, so it needs that row to
+   * still exist; measured, when it does not, the page comes back EMPTY with
+   * `hasNextPage: false` and no error — a client that deletes the row it last
+   * paged from silently stops paginating. The hand-built keyset this field used
+   * before never had that failure, because a keyset compares values carried IN
+   * the cursor and never looks the row up.
    *
-   * So a client paging through progress while deleting the exact row it last
-   * paged from sees pagination end early rather than see wrong rows. The next
-   * fetch from the top is correct. Accepted when this conversion was ruled on;
-   * the window is narrow (a progress row is removed only by an explicit
-   * `progressDelete`, or with its user or book), and the alternative was
-   * keeping a hand-built connection whose every `Progress` field cost an extra
-   * query.
+   * So the resolver translates the parsed cursor into that same keyset `where`
+   * and drops the plugin's `cursor`/`skip` (`progressKeyset`, `library/
+   * model.ts`). These two tests are the reason that translation exists — delete
+   * it and they fail while every other test in this file still passes.
    */
-  it('ends pagination early — it does not error — when the cursor row is deleted', async () => {
+  it('resumes correctly when the row the cursor names has been deleted', async () => {
     const first = await readPage({ first: 1 });
     expect(first.edges.map((e) => e.node.document)).toEqual(['3'.repeat(32)]);
 
@@ -274,8 +272,31 @@ describe('Library.progress', () => {
 
     const second = await readPage({ first: 10, after: first.pageInfo.endCursor });
 
-    expect(second.edges).toEqual([]);
+    // The rows that follow where the deleted row WAS — not an empty page, and
+    // not the whole list from the top either.
+    expect(second.edges.map((e) => e.node.document)).toEqual(['2'.repeat(32), '1'.repeat(32)]);
     expect(second.pageInfo.hasNextPage).toBe(false);
+  });
+
+  it('pages backward correctly when the row `before` names has been deleted', async () => {
+    const all = await readPage({ first: 10 });
+    const middleCursor = all.edges[1].cursor;
+
+    await harness.prisma.progress.delete({
+      where: {
+        userId_document: { userId: harness.aliceOwner.userId, document: '2'.repeat(32) },
+      },
+    });
+
+    const result = await harness.execute(BIDI_PAGE, {
+      viewer: harness.aliceViewer,
+      variables: { last: 5, before: middleCursor },
+    });
+
+    expect(result.errors).toBeUndefined();
+    const page = (result.data as PageData).viewer.library.progress;
+    // Everything newer than the deleted row, still newest-first.
+    expect(page.edges.map((e) => e.node.document)).toEqual(['3'.repeat(32)]);
   });
 
   // A malformed cursor is now a loud error rather than a silent restart from
