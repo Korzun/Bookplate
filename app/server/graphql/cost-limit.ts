@@ -118,7 +118,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * element type reaches further amplifiable content — task-3-review round 2,
  * I-4, found AFTER the I-1 fix: `multiplierFor` priced five coordinates and
  * left `Library.series: [Series!]!` (an unbounded `findMany`,
- * `library/model.ts:267-275`) at the default multiplier of 1, handing a
+ * `library/model.ts`) at the default multiplier of 1, handing a
  * free `×S` (S = the library's series count) to any connection nested
  * under it. Measured: a 132-byte `{ series { books(first:12) { … }
  * books(first:100) { … } } }` scored breadth 11 / complexity 3,652 / depth
@@ -167,25 +167,25 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * code-enforced ceiling (I-4's original 7) or WITH one that was being used
  * as a reason to price at 1 instead of pricing AT it (I-5's 2, below):
  *  - `Library.series` — `findMany({where:{userId}})`, no cap
- *    (`library/model.ts:267-275`); reaches `Series.books`.
+ *    (`library/model.ts`); reaches `Series.books`.
  *  - `Library.pendingFixes` — `findMany({where:{userId}})`, no cap
- *    (`library/model.ts:411-423`); reaches `PendingFix.book.series.books`.
+ *    (`library/model.ts`); reaches `PendingFix.book.series.books`.
  *  - `Viewer.users` — `findMany({})`, no `where` clause AT ALL (every user
- *    on the instance), admin-only (`viewer/model.ts:67-73`); reaches
+ *    on the instance), admin-only (`viewer/model.ts`); reaches
  *    `User.library.{entries,progress,series,pendingFixes}` — i.e. it can
  *    chain into every other field this map prices, once per user.
  *  - `Viewer.devices` — `findMany`, no cap on either branch
- *    (`viewer/model.ts:127-140`); reaches `Device.enabledUsers`.
+ *    (`viewer/model.ts`); reaches `Device.enabledUsers`.
  *  - `Device.enabledUsers` — `findMany`, no cap, admin-only
- *    (`device/model.ts:87-97`); reaches `User.library.*`, same as
+ *    (`device/model.ts`); reaches `User.library.*`, same as
  *    `Viewer.users` above but scoped to one device.
  *  - `Book.lineage` — I-7. See `BOOK_LINEAGE_MULTIPLIER` below; delegates to
  *    the imported `getBookLineage` (`services/book-lineage.ts`,
- *    `book/model.ts:303-308`); reaches
+ *    `book/model.ts`); reaches
  *    `LinkedDocument.{oldBook,newBook}.series.books`.
  *  - `ScanResult.imported` — `findMany({where:{id:{in:importedBookIds}}})`;
  *    the `findMany` itself is bounded by `importedBookIds`, but that id
- *    list has no cap and scales with scan size (`scan-result/model.ts:32-47`);
+ *    list has no cap and scales with scan size (`scan-result/model.ts`);
  *    reaches `Book.series.books`. Reachable via `Library.scanStatus`,
  *    `libraryScan`'s mutation payload, and the `scanProgress` subscription.
  *  - `Library.searchSuggestions` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
@@ -210,7 +210,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * F-1 failure on both sides: once as an over-price (I-6) and once — for
  * `Book.lineage` specifically, task-3-re-review-3.md, I-7 — as a
  * near-miss REJECTION of a real screen. `getBookLineage`
- * (`services/book-lineage.ts:31-61`) is `SELECT old_id, timestamp, type
+ * (`services/book-lineage.ts`) is `SELECT old_id, timestamp, type
  * FROM book_id_history WHERE current_id = <this one book>` — one row per
  * re-import/merge event for A SINGLE BOOK, realistically 1-5, and does NOT
  * scale with library size at all; pricing it 100 overstates a typical
@@ -234,7 +234,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *
  * `Viewer.users` and `Device.enabledUsers` price the SAME underlying
  * quantity — round-3, M-8: `Device.enabledUsers`
- * (`device/model.ts:87-97`) is `user.findMany({where:{deviceAccess:{some:
+ * (`device/model.ts`) is `user.findMany({where:{deviceAccess:{some:
  * {deviceId}}}})`, a SUBSET of the instance's users, which cannot exceed
  * `Viewer.users`'s own count — so both now share
  * `INSTANCE_USER_MULTIPLIER`. (Previously `Device.enabledUsers` used a
@@ -248,13 +248,13 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * `INSTANCE_DEVICE_MULTIPLIER` — a genuinely different quantity (device
  * count, not user count) — but round-3 also records, for Task 4,
  * that `Viewer.devices` is **NOT household-scoped for an admin caller**:
- * `viewer/model.ts:127-140` runs `device.findMany({orderBy})` with **no
- * `where`** when the viewer is an admin — every device on the instance, not
- * one household's e-readers; the household framing below holds only for
- * the non-admin branch, and an admin-scale instance (e.g. 60 users × 1-2
- * readers ⇒ 60-120 devices) plausibly exceeds the assumed 20 — re-derived
- * by Task 3, see the dedicated paragraph below `INSTANCE_USER_MULTIPLIER`'s
- * own re-examination for the new value and its reasoning.
+ * `viewer/model.ts`'s `Viewer.devices` runs `device.findMany({orderBy})` with
+ * **no `where`** when the viewer is an admin — every device on the instance,
+ * not one household's e-readers; the household framing below holds only for the
+ * non-admin branch, and an admin-scale instance (e.g. 60 users × 1-2 readers ⇒
+ * 60-120 devices) plausibly exceeds the assumed 20 — re-derived by Task 3, see
+ * the dedicated paragraph below `INSTANCE_USER_MULTIPLIER`'s own re-examination
+ * for the new value and its reasoning.
  *
  * The `Viewer.devices`/`Device.enabledUsers` compounding shape this task
  * exists to fix — round-3, M-9, and re-checked against the shipped client
@@ -303,7 +303,7 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * in-place-correction discipline)**
  * (`.superpowers/sdd/2026-08-03-cost-calibration-suite/task-3-report.md`).
  * The paragraph above already named the defect this fixes: `Viewer.devices`
- * is NOT household-scoped for an admin caller (`viewer/model.ts:127-140`'s
+ * is NOT household-scoped for an admin caller (`viewer/model.ts`'s
  * `device.findMany({orderBy})`, no `where`) — it returns every device on the
  * instance, and this codebase has no concept of "instance" smaller than the
  * 50-user ceiling `INSTANCE_USER_MULTIPLIER` already encodes (that
@@ -400,7 +400,7 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
     defaultSize: INSTANCE_DEVICE_MULTIPLIER,
   },
   // M-8: shares Viewer.users's multiplier, not INSTANCE_DEVICE_MULTIPLIER —
-  // enabledUsers is a SUBSET of the instance's users (device/model.ts:87-97's
+  // enabledUsers is a SUBSET of the instance's users (device/model.ts's
   // `where: { deviceAccess: { some: { deviceId } } }`), so it cannot exceed
   // Viewer.users's own count and must never be priced tighter than it.
   'Device.enabledUsers': {
@@ -439,7 +439,7 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
  * `subject`), each behind its own
  * guard and pushed at most once (`services/search-suggestions.ts`);
  * each group's `items` is capped at `LIMIT 30`.
- * `Suggestion.book` (`schema/suggestion/model.ts:33-40`) only resolves a
+ * `Suggestion.book` (`schema/suggestion/model.ts`) only resolves a
  * lookup for `BOOK`-typed items (`suggestion.userId === undefined` short-
  * circuits every other group to `null`, no query at all), so the true
  * reachable fan-out is narrower than 4×30 — but pricing `items` at 30
@@ -491,7 +491,7 @@ const literalIntArg = (field: FieldNode, argName: string): number | 'variable' |
  * The effective page size for a connection field, reading BOTH `first` and
  * `last` — Task-3-review finding I-1. `Series.books`/`Validation.messages`
  * support genuine backward pagination (Task 1 only rejects an OVERSIZE
- * `last`, same as `first` — `rejectOversizePage`, `pagination.ts:66-81`), so
+ * `last`, same as `first` — `rejectOversizePage`, `pagination.ts`), so
  * `books(last: 100)` fetches exactly as many rows as `books(first: 100)`.
  * Reading only `first` (this function's first version) priced that shape at
  * `defaultSize` regardless of how many rows it actually fetched — measured

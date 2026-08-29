@@ -165,7 +165,7 @@ describe('scanProgress over SSE', () => {
   });
 
   // Final-review-wave M-4: `graphqlBodyLimit` is mounted in exactly one
-  // place, `server.ts:64` (`server.use('/graphql', graphqlBodyLimit(100 *
+  // place, `server.ts` (`server.use('/graphql', graphqlBodyLimit(100 *
   // 1024), graphqlHandler)`) — every other SSE/content-negotiation/logging
   // test in this repo builds its own Express app WITHOUT that middleware.
   // The final review reasoned through and manually reproduced (200 +

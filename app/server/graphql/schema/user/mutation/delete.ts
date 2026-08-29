@@ -104,7 +104,7 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * target".
  *
  * `deleteUser` is NOT wrapped in `toResult`: traced end to end
- * (`services/user.ts:48-71`), its own `P2025` catch already converts
+ * (`services/user.ts`), its own `P2025` catch already converts
  * a races-with-itself double-delete into `false`, and its edition-cache
  * purge failure is caught and logged, never rethrown — nothing left in its
  * body can throw one of the seven known domain errors. Same reasoning as

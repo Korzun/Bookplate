@@ -147,7 +147,7 @@ const result = builder.unionType('ProgressDeleteResult', {
  * "no such row" everywhere else (`Library.book`, `Query.user`, node guards) —
  * including a malformed/foreign id, per this file's own convention above.
  *
- * `clearProgress` (`services/progress.ts:128`) is NOT wrapped in
+ * `clearProgress` (`services/progress.ts`) is NOT wrapped in
  * `toResult`: it throws none of the seven known domain errors (it already
  * converts Prisma's P2025 into `false`), so the `err` branch would be
  * unreachable and could only be discharged by throwing — the very thing

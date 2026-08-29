@@ -204,12 +204,12 @@ describe('Mutation.progressDelete', () => {
   });
 
   // M-4 (final whole-branch review): the resolver's `owner === null` branch
-  // (delete.ts:157-158) was reachable only through a well-formed `Progress`
-  // id whose userId component names no real user, sent by an ADMIN —
-  // `isOwnerOrAdmin` passes on the userId alone (an admin, unlike alice
-  // above), so `authScopes` lets the resolver run, and `loadOwner` then
-  // returns null for that made-up userId. The non-admin variant above never
-  // reaches this branch at all (it 403s in authScopes first).
+  // (`delete.ts`'s `loadOwner` result) was reachable only through a well-formed
+  // `Progress` id whose userId component names no real user, sent by an ADMIN —
+  // `isOwnerOrAdmin` passes on the userId alone (an admin, unlike alice above),
+  // so `authScopes` lets the resolver run, and `loadOwner` then returns null
+  // for that made-up userId. The non-admin variant above never reaches this
+  // branch at all (it 403s in authScopes first).
   it('resolves to null for an admin-supplied Progress id whose userId component names no user', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
