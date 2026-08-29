@@ -120,13 +120,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // restoreAllMocks() only reverts vi.spyOn()-created spies; `buildEdition`/
-  // `assertValidEpub` above are module-mocked vi.fn()s with a call-through
-  // default and no "original" to restore to, so their call history survives
-  // restoreAllMocks alone — clear it explicitly too (see edition.test.ts's
-  // identical note).
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
+  // Mock reset (implementations, queued once-behaviors, call history) is
+  // handled globally by vite.config.ts's `mockReset: true`, which restores
+  // the buildEdition/assertValidEpub vi.fn(impl) mocks here to their
+  // call-through default before each test.
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);

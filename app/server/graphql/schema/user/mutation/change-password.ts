@@ -145,7 +145,8 @@ const result = builder.unionType('UserChangePasswordResult', {
  * every other mutation in this schema uses; genuinely unreachable through
  * this mutation's own auth path in practice (the scope just proved the
  * caller's own row exists), but REST's branch is real and this is its
- * mirror, not an invented case. Neither store call is wrapped in
+ * mirror, not an invented case. Neither `validateUser` nor `changePassword`
+ * (both plain functions in `services/password.ts`) is wrapped in
  * `toResult`: neither throws any of the seven known store errors.
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a

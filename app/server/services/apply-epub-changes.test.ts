@@ -73,13 +73,22 @@ describe('replaceEpubBytes', () => {
   };
 
   beforeEach(async () => {
+    // The vi.mock() factory above only sets this default once, at module
+    // load; vite.config.ts's `mockReset: true` wipes it before every test,
+    // so it must be re-armed here on each run.
+    vi.mocked(assertValidEpub).mockResolvedValue({
+      valid: true,
+      messages: [],
+      counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+    });
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'replace-'));
     booksDir = path.join(tmpDir, 'books');
     fs.mkdirSync(booksDir, { recursive: true });
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
+    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'replace-editions-'));
+    bookStore = new BookStore(booksDir, prisma, editionsRoot);
     deps = { bookStore, prisma, validationThreshold: 'ERROR' };
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, epub('Old'));

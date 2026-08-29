@@ -48,12 +48,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // restoreAllMocks() only reverts vi.spyOn()-created spies; `purgeForDeviceAndUser`
-  // above is a module-mocked vi.fn() with a call-through default and no
-  // "original" to restore to, so its call history survives restoreAllMocks
-  // alone — clear it explicitly too (see edition.test.ts's identical note).
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
+  // Mock reset (implementations, queued once-behaviors, call history) is
+  // handled globally by vite.config.ts's `mockReset: true`, which restores
+  // the purgeForDeviceAndUser vi.fn(impl) mock here to its call-through
+  // default before each test.
   await harness.cleanup();
 });
 

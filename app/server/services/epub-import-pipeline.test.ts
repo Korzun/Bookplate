@@ -32,6 +32,7 @@ import { runMigrations } from '../db/migrate';
 import type { Book, EpubMeta, Owner } from '../types';
 import { BookStore } from './book-store';
 import { applyAutoAndAccepted, analyzeEpub, fixKey, toFix } from './epub-import-pipeline';
+import { assertValidEpub, validateEpubReport } from './epub-validator';
 
 const OWNER: Owner = { userId: 'u1', username: 'alice' };
 
@@ -86,13 +87,28 @@ describe('epub-import-pipeline', () => {
   };
 
   beforeEach(async () => {
+    // The vi.mock() factory above only sets these defaults once, at module
+    // load; vite.config.ts's `mockReset: true` wipes them before every
+    // test, so they must be re-armed here on each run.
+    vi.mocked(assertValidEpub).mockResolvedValue({
+      valid: true,
+      messages: [],
+      counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+    });
+    vi.mocked(validateEpubReport).mockResolvedValue({
+      valid: true,
+      messages: [],
+      counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+      threshold: 'ERROR',
+    });
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-'));
     booksDir = path.join(tmpDir, 'books');
     fs.mkdirSync(booksDir, { recursive: true });
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    bookStore = new BookStore(booksDir, prisma, path.join(os.tmpdir(), 'unused-editions'));
+    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-editions-'));
+    bookStore = new BookStore(booksDir, prisma, editionsRoot);
     deps = { bookStore, prisma, validationThreshold: 'ERROR' };
   });
 

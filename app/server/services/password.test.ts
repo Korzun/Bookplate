@@ -18,9 +18,7 @@ import {
   hashLoginPassword,
   hashSyncPassword,
   resetPassword,
-  userHasPassword,
   validateUser,
-  verifyLoginPassword,
 } from './password';
 import { createUser } from './user';
 import { WORDLIST } from './wordlist';
@@ -41,8 +39,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
+  // Mock reset is handled globally by vite.config.ts's `mockReset: true`.
   await prisma.$disconnect();
   try {
     fs.unlinkSync(dbPath);
@@ -52,6 +49,10 @@ afterEach(async () => {
 });
 
 describe('validateUser', () => {
+  // `verifyLoginPassword` is module-private (no production callers outside
+  // `validateUser` itself), so these two cases are the argon2-round-trip
+  // coverage that used to assert against it directly: a correct password
+  // accepted, a wrong one rejected.
   it('returns the user ID string for correct password', async () => {
     const hash = await hashLoginPassword('mypass');
     await createUser(prisma, 'alice', hash);
@@ -68,23 +69,6 @@ describe('validateUser', () => {
   it('returns false when passwordHash is null', async () => {
     await createUser(prisma, 'alice', null);
     expect(await validateUser(prisma, 'alice', 'anything')).toBe(false);
-  });
-});
-
-describe('userHasPassword', () => {
-  it('returns true when passwordHash is set', async () => {
-    const hash = await hashLoginPassword('pw');
-    await createUser(prisma, 'alice', hash);
-    expect(await userHasPassword(prisma, 'alice')).toBe(true);
-  });
-
-  it('returns false when passwordHash is null', async () => {
-    await createUser(prisma, 'alice', null);
-    expect(await userHasPassword(prisma, 'alice')).toBe(false);
-  });
-
-  it('returns false for unknown user', async () => {
-    expect(await userHasPassword(prisma, 'nobody')).toBe(false);
   });
 });
 
@@ -254,17 +238,5 @@ describe('hashSyncPassword', () => {
   it('returns the MD5 hex digest of the input', () => {
     const expected = crypto.createHash('md5').update('blue oak').digest('hex');
     expect(hashSyncPassword('blue oak')).toBe(expected);
-  });
-});
-
-describe('hashLoginPassword / verifyLoginPassword', () => {
-  it('produces a hash that verifies correctly', async () => {
-    const hash = await hashLoginPassword('s3cr3t');
-    expect(await verifyLoginPassword('s3cr3t', hash)).toBe(true);
-  });
-
-  it('rejects wrong password', async () => {
-    const hash = await hashLoginPassword('s3cr3t');
-    expect(await verifyLoginPassword('wrong', hash)).toBe(false);
   });
 });

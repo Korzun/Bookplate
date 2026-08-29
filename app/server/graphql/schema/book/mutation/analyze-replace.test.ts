@@ -32,6 +32,7 @@ vi.mock('../../../../utils/metadata-issues', async (importOriginal) => {
   return { ...actual, detectMetadataIssues: vi.fn(actual.detectMetadataIssues) };
 });
 
+import { assertValidEpub } from '../../../../services/epub-validator';
 import { detectMetadataIssues } from '../../../../utils/metadata-issues';
 
 const mockDetectMetadataIssues = detectMetadataIssues as MockedFunction<
@@ -47,6 +48,14 @@ beforeEach(async () => {
   // proposals/auto-fixes so the "clean analysis" tests aren't coupled to
   // those heuristics; individual tests override this with mockReturnValueOnce.
   mockDetectMetadataIssues.mockReturnValue([]);
+  // The vi.mock() factory above only sets this default once, at module load;
+  // vite.config.ts's `mockReset: true` wipes it before every test, so it
+  // must be re-armed here on each run.
+  vi.mocked(assertValidEpub).mockResolvedValue({
+    valid: true,
+    messages: [],
+    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+  });
 });
 
 afterEach(async () => {

@@ -84,7 +84,11 @@ vi.mock('../services/epub-validator', () => {
   };
 });
 vi.setConfig({ testTimeout: 30000 });
-import { assertValidEpub, EpubValidationError } from '../services/epub-validator';
+import {
+  assertValidEpub,
+  validateEpubReport,
+  EpubValidationError,
+} from '../services/epub-validator';
 import { ScanJobStore } from '../services/scan-job-store';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { detectMetadataIssues } from '../utils/metadata-issues';
@@ -315,6 +319,17 @@ async function gqlExecute(
 }
 
 beforeEach(async () => {
+  // The vi.mock() factory above only sets these defaults once, at module
+  // load; vite.config.ts's `mockReset: true` wipes them before every test,
+  // so they must be re-armed here on each run (individual tests still
+  // override with mockResolvedValueOnce/mockImplementationOnce as before).
+  const okReport = {
+    valid: true,
+    messages: [],
+    counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
+  };
+  vi.mocked(assertValidEpub).mockResolvedValue(okReport);
+  vi.mocked(validateEpubReport).mockResolvedValue({ ...okReport, threshold: 'ERROR' });
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-'));
   editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-editions-'));
   dbPath = path.join(

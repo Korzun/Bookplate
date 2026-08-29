@@ -31,12 +31,26 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
     if (index === -1) throw new Error("logger('GraphQL:cost') was never called");
     return mocked.mock.results[index]?.value as { info: Mock };
   };
+  const operationsLoggerSpy = (): { info: Mock; warn: Mock } => {
+    const mocked = vi.mocked(logger);
+    const index = mocked.mock.calls.findIndex(([namespace]) => namespace === 'GraphQL:operations');
+    if (index === -1) throw new Error("logger('GraphQL:operations') was never called");
+    return mocked.mock.results[index]?.value as { info: Mock; warn: Mock };
+  };
   // Captured once at module load, same reasoning as
-  // `yoga-operation-logging.test.ts`'s own `operationLoggerSpies`.
+  // `yoga-operation-logging.test.ts`'s own `operationLoggerSpies`: the
+  // `logger('GraphQL:cost')`/`logger('GraphQL:operations')` calls each
+  // happen exactly once, the first time `yoga.ts`'s module-scope code runs —
+  // not per-request — so they must be captured before the first test's
+  // `mockReset` (vite.config.ts's `mockReset: true`) clears that call out of
+  // `logger`'s call history for good.
   const spy = costLoggerSpy();
+  const opsSpy = operationsLoggerSpy();
 
   beforeEach(async () => {
     spy.info.mockClear();
+    opsSpy.info.mockClear();
+    opsSpy.warn.mockClear();
     harness = await createHarness();
     const server = express();
     server.use(
@@ -230,18 +244,6 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
   // actually true for THIS rule's own rejections, not just for depth-limit's
   // (which `yoga-operation-logging.test.ts` already pins).
   it('a cost-budget rejection logs one WARN line via the existing operator-visibility mechanism (useOperationLogging), same as a depth-limit rejection already does', async () => {
-    const operationsLoggerSpy = (): { info: Mock; warn: Mock } => {
-      const mocked = vi.mocked(logger);
-      const index = mocked.mock.calls.findIndex(
-        ([namespace]) => namespace === 'GraphQL:operations'
-      );
-      if (index === -1) throw new Error("logger('GraphQL:operations') was never called");
-      return mocked.mock.results[index]?.value as { info: Mock; warn: Mock };
-    };
-    const opsSpy = operationsLoggerSpy();
-    opsSpy.info.mockClear();
-    opsSpy.warn.mockClear();
-
     const source = `{ ${Array.from(
       { length: 200 },
       (_, i) => `a${i}: viewer { library { authors subjects } }`

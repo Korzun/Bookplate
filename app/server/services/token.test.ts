@@ -23,7 +23,7 @@ vi.mock('../logger');
 let prisma: PrismaClient;
 let dbPath: string;
 let booksDir: string;
-const editionsRoot = path.join(os.tmpdir(), 'unused-editions');
+const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'token-editions-'));
 
 // Pre-created user IDs for tests that need FK-valid userId values
 let aliceId: string;
