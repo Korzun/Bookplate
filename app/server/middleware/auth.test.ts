@@ -29,7 +29,6 @@ function buildApp() {
   app.get('/api/whoami', jwtAuth(secret), (req, res) => {
     res.json(req.user);
   });
-  app.patch('/api/my/password', jwtAuth(secret), (_req, res) => res.status(200).json({}));
   app.post('/api/auth/refresh', (_req, res) => res.status(200).json({}));
   app.post('/api/login', (_req, res) => res.status(200).json({}));
   app.get('/anything', (_req, res) => res.status(200).send('spa'));
@@ -78,11 +77,15 @@ describe('passwordChangeGate', () => {
     expect(res.body).toEqual({ error: 'Password change required' });
   });
 
-  it('allows the password-change endpoint itself', async () => {
+  // `PATCH /api/my/password` was exempt here until the route was retired.
+  // The exemption went with it, so a locked-out caller now gets the same 403
+  // at that path as at any other `/api/*` path that matches no route.
+  it('no longer exempts the retired password-change path', async () => {
     const res = await request(buildApp())
       .patch('/api/my/password')
       .set('Authorization', `Bearer ${mustChangeToken}`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Password change required' });
   });
 
   it('allows /api/auth/* and /api/login', async () => {

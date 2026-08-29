@@ -126,19 +126,25 @@ const result = builder.unionType('UserChangePasswordResult', {
  * returns the scope map only when that check also holds, `false` otherwise —
  * see `builder.ts`'s own comment on this exemption.
  *
- * REST's own gate confirms this is the ONE exempted route: `passwordChangeGate`
- * (`middleware/auth.ts`) 403s every `/api/*` request from a
- * `mustChangePassword` token except `/api/login`, `/api/auth/*`, and
- * literally `/api/my/password` — `/api/my/sync-password/regenerate` (mirrored
- * by `userRegenerateSyncPassword`) is NOT in that exemption list, so that
- * mutation stays on the ordinary `authenticated` scope.
+ * This is the ONE exemption in the schema, and nothing may join it casually.
+ * Now that the REST self-service route is retired, this mutation is the only
+ * path a `mustChangePassword` viewer has to clear the flag, so relaxing
+ * `authenticated` anywhere else would only widen what a locked-out caller can
+ * do without moving them any closer to being unlocked.
+ * `userRegenerateSyncPassword` is the case in point: rotating a sync password
+ * does not clear the flag, so it stays on the ordinary `authenticated` scope
+ * and refuses such a caller.
  *
- * That third exemption is now inert, and deliberately left alone: `e67b4ad9`
- * removed `PATCH /api/my/password`, so the path it names reaches no route (an
- * unmatched `/api/*` gets the JSON 404 `79021b3d` added). Dropping the entry
- * would turn that path's answer from 404 into 403 for a `mustChangePassword`
- * caller — a behaviour change needing its own decision, not a doc fix. The
- * precedent it records for THIS mutation is unaffected either way.
+ * REST's own gate carried the mirror of this exemption until `e67b4ad9`
+ * removed `PATCH /api/my/password` and left `passwordChangeGate`
+ * (`middleware/auth.ts`) naming a path that reaches no route; the entry has
+ * since been dropped. That decision was taken on its merits, not as a doc
+ * fix: its one visible effect falls on the dead path alone, where a
+ * `mustChangePassword` caller now gets 403 instead of the JSON 404
+ * `79021b3d` added — which is precisely what every OTHER dead `/api/*` path
+ * already answered such a caller, so it retired an inconsistency rather than
+ * introducing one (`middleware/auth.test.ts` pins it). The precedent the
+ * exemption recorded for THIS mutation is unaffected either way.
  *
  * The 401 REST returned for a wrong `currentPassword` (`routes/ui.ts`, removed
  * in `e67b4ad9`, `validateUser` returning `false` — never a throw, see
