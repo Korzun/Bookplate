@@ -357,7 +357,12 @@ describe('getUserProgressPage', () => {
     expect(page.nextCursor).toBeNull();
   });
 
-  it('orders by timestamp desc, document asc and maps fields', async () => {
+  // `userId`/`deviceId`, not the DTO's `device_id`-with-no-`userId`: this
+  // function returns the REAL Prisma rows, which is what lets
+  // `Library.progress` read one page in one query instead of re-reading it to
+  // recover `userId` for `Progress.currentChapter`. Asserting `userId`
+  // explicitly is the point — it is the column the old DTO dropped.
+  it('orders by timestamp desc, document asc and returns whole rows', async () => {
     await createUser(prisma, 'alice', 'pass');
     const id = await getUserId('alice');
     await seed(id, 'a', 100);
@@ -365,10 +370,11 @@ describe('getUserProgressPage', () => {
     const page = await getUserProgressPage(prisma, id, null, 50);
     expect(page.items.map((i) => i.document)).toEqual(['b', 'a']);
     expect(page.items[0]).toMatchObject({
+      userId: id,
       document: 'b',
       progress: '/p/b',
       device: 'Kobo',
-      device_id: 'd1',
+      deviceId: 'd1',
       timestamp: 200,
     });
     expect(page.nextCursor).toBeNull();
