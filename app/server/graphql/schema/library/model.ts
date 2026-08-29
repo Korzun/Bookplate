@@ -450,18 +450,19 @@ builder.node(model, {
      * `encodeProgressCursor`, which lives beside the decoder it must round-trip
      * with.
      *
-     * TWO QUERIES, DELIBERATELY: `getUserProgressPage` returns its `Progress`
-     * DTO (`device_id`, no `userId`), while this field's `Progress` type is a
-     * `prismaObject` pinned to the real row — and `currentChapter` needs the
-     * `userId` the DTO drops. So `getUserProgressPage` decides the window and
-     * the cursor, and a second query fetches the rows it named. `Library.entries`
-     * looks like the same shape (a service-owned cursor deciding a page) but is
-     * NOT this same two-query split: `services/library-page.ts`'s
-     * `listBooksPage` returns the real `Book`/`Series` rows themselves, not a
-     * DTO missing a column, so that field reads them once and is done (task 8
-     * collapsed what used to be a second, redundant `findMany` there). The
-     * difference is exactly the DTO gap this paragraph describes — `progress`
-     * has one, `entries` no longer does.
+     * ONE QUERY. This used to be two: `getUserProgressPage` returned the
+     * `Progress` DTO (`device_id`, no `userId`) while this field's `Progress`
+     * type is a `prismaObject` pinned to the real row — and `currentChapter`
+     * reads `parent.userId`, the very column the DTO dropped — so a second
+     * `findMany` re-read the rows the service had just read, to recover it.
+     * `getUserProgressPage` now returns the real rows (see its own doc
+     * comment for why nothing else wanted the DTO shape), and this resolver
+     * uses them directly. Measured 2 `progress.findMany` per page before, 1
+     * after; `progress.test.ts` pins it.
+     *
+     * That makes this field the same shape as `Library.entries`, whose
+     * `listBooksPage` already returned real `Book`/`Series` rows after task 8
+     * collapsed the identical double read there. The two no longer differ.
      */
     progress: t.field({
       type: progressConnection,
@@ -489,34 +490,15 @@ builder.node(model, {
         const take = clampProgressTake(args.first);
 
         const page = await getUserProgressPage(context.prisma, owner.userId, cursor, take);
-        const documents = page.items.map((item) => item.document);
 
-        const rows =
-          documents.length > 0
-            ? await context.prisma.progress.findMany({
-                where: { userId: owner.userId, document: { in: documents } },
-              })
-            : [];
-        const byDocument = new Map(rows.map((row) => [row.document, row]));
-
-        // `page.items` is already in `getUserProgressPage`'s `timestamp desc,
-        // document asc` order; this only re-associates rows with it, skipping
-        // any row that vanished between the two reads rather than resolving
-        // `undefined`.
-        const edges = page.items.flatMap((item) => {
-          const row = byDocument.get(item.document);
-          return row
-            ? [
-                {
-                  cursor: encodeProgressCursor({
-                    timestamp: row.timestamp,
-                    document: row.document,
-                  }),
-                  node: row,
-                },
-              ]
-            : [];
-        });
+        // `page.items` ARE the real `Progress` rows, in `getUserProgressPage`'s
+        // own `timestamp desc, document asc` order — so this only wraps each
+        // one in an edge. Only the per-edge cursors are minted here; `endCursor`
+        // below is the service's own string, forwarded untouched.
+        const edges = page.items.map((row) => ({
+          cursor: encodeProgressCursor({ timestamp: row.timestamp, document: row.document }),
+          node: row,
+        }));
 
         return {
           edges,

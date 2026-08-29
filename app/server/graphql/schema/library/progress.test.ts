@@ -304,3 +304,21 @@ describe('Library.progress', () => {
     expect(documents).not.toContain('lin-old');
   });
 });
+
+// Pins the single read, not just the values. This field used to issue two
+// `progress.findMany` per page — one in `getUserProgressPage` and one here to
+// re-fetch the same rows with the `userId` its DTO dropped. Reverting
+// `getUserProgressPage` to a DTO return would reintroduce the second query
+// while every value assertion above still passed, so the cost needs its own
+// guard. Mirrors `library-page.test.ts`'s "fetches every book exactly once".
+it('reads one page of progress in exactly one query', async () => {
+  const spy = vi.spyOn(harness.prisma.progress, 'findMany');
+  const result = await harness.execute(
+    `{ viewer { library { progress(first: 10) {
+        edges { cursor node { id document percentage currentChapter } }
+        pageInfo { hasNextPage endCursor } } } } }`,
+    { viewer: harness.aliceViewer }
+  );
+  expect(result.errors).toBeUndefined();
+  expect(spy).toHaveBeenCalledTimes(1);
+});
