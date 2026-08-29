@@ -1,6 +1,7 @@
 import express from 'express';
 import { getIntrospectionQuery } from 'graphql';
 import request from 'supertest';
+import type { Mock } from 'vitest';
 
 import { logger } from '../logger';
 import { createHarness, type Harness } from './test-util';
@@ -57,6 +58,7 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
       '/graphql',
       createGraphqlHandler({
         prisma: harness.prisma,
+        editionsRoot: harness.editionsRoot,
         scanJobs: harness.scanJobs,
         thumbnails: harness.thumbnails,
         replaceStaging: harness.replaceStaging,

@@ -33,6 +33,19 @@ export type ExecuteOptions = {
 
 export type Harness = {
   execute: (document: string, options?: ExecuteOptions) => Promise<ExecutionResult>;
+  /**
+   * The exact `Context` `execute` builds, for the tests that call a resolver
+   * (or subscribe) directly instead of going through `execute`. Exposed so the
+   * `Context` shape is spelled out in exactly ONE place: three suites used to
+   * hand-roll their own near-copy, and all three had silently fallen behind —
+   * each was missing `editionsRoot`, `loadValidationCounts` and
+   * `loadBookByDocument`, so any resolver reached through them would have hit
+   * `undefined` where a dataloader belonged. Nothing caught it because test
+   * files were not type-checked; `tsconfig.test.json` now checks them, and
+   * routing every construction through here means a new `Context` field can
+   * only be forgotten once.
+   */
+  contextFor: (viewer: Viewer | null) => Context;
   prisma: PrismaClient;
   scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
@@ -149,26 +162,34 @@ export const createHarness = async (): Promise<Harness> => {
     mustChangePassword: false,
   };
 
+  // Reads `replaceStaging` at call time, not at harness-construction time, so
+  // a test that swaps `harness.replaceStaging` mid-test is seen by the next
+  // context built — the same reason the harness exposes that field through an
+  // accessor pair rather than a plain value.
+  const contextFor = (viewer: Viewer | null): Context => ({
+    viewer,
+    prisma,
+    scanJobs,
+    thumbnails,
+    replaceStaging,
+    editionsRoot,
+    config,
+    loadOwner: createOwnerLoader(prisma),
+    loadProgress: createProgressLoader(prisma),
+    loadPendingFix: createPendingFixLoader(prisma),
+    loadChapterSpineMap: createChapterSpineMapLoader(prisma),
+    loadSeriesProgress: createSeriesProgressLoader(prisma),
+    loadValidationCounts: createValidationCountsLoader(prisma),
+    loadBookByDocument: createBookByDocumentLoader(prisma),
+  });
+
   const execute = async (
     document: string,
     options: ExecuteOptions = {}
   ): Promise<ExecutionResult> => {
-    const contextValue: Context = {
-      viewer: options.viewer === undefined ? aliceViewer : options.viewer,
-      prisma,
-      scanJobs,
-      thumbnails,
-      replaceStaging,
-      editionsRoot,
-      config,
-      loadOwner: createOwnerLoader(prisma),
-      loadProgress: createProgressLoader(prisma),
-      loadPendingFix: createPendingFixLoader(prisma),
-      loadChapterSpineMap: createChapterSpineMapLoader(prisma),
-      loadSeriesProgress: createSeriesProgressLoader(prisma),
-      loadValidationCounts: createValidationCountsLoader(prisma),
-      loadBookByDocument: createBookByDocumentLoader(prisma),
-    };
+    const contextValue: Context = contextFor(
+      options.viewer === undefined ? aliceViewer : options.viewer
+    );
     const result = await graphql({
       schema,
       source: document,
@@ -308,6 +329,7 @@ export const createHarness = async (): Promise<Harness> => {
     },
     config,
     editionsRoot,
+    contextFor,
     aliceOwner: { userId: aliceId, username: 'alice' },
     aliceViewer,
     aliceGlobalId,

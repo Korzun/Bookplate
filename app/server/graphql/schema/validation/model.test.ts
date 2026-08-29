@@ -227,6 +227,14 @@ describe('Validation.messages connection', () => {
 
   type MessagesPage = {
     edges: { cursor: string; node: { seq: number } }[];
+    // The query selects `pageInfo` too; declaring only `edges` left every
+    // `pageInfo` assertion below unchecked.
+    pageInfo: {
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+      startCursor: string | null;
+      endCursor: string | null;
+    };
   };
   type MessagesData = {
     viewer: { library: { book: { validation: { messages: MessagesPage } } } };

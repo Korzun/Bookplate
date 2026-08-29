@@ -14,6 +14,19 @@ afterEach(async () => {
 
 const LIB = 'query ($id: ID!) { user(id: $id) { library { id user { username } } } }';
 
+/**
+ * `ExecutionResult['data']` is an index-signature-free `ObjMap<unknown>`, so
+ * `result.data?.user` does not type-check once test files are checked at all.
+ * One narrowing helper, shared by the assertions below, rather than a cast at
+ * each — the queries here all select the same `library { id user { username } }`
+ * shape.
+ */
+type LibraryShape = { id?: string; user?: { username?: string } } | null;
+const userLibraryOf = (
+  result: Awaited<ReturnType<Harness['execute']>>
+): { user?: { library?: LibraryShape }; viewer?: { library?: LibraryShape } } =>
+  (result.data ?? {}) as { user?: { library?: LibraryShape }; viewer?: { library?: LibraryShape } };
+
 describe('Library ownership', () => {
   it('an admin can traverse to any user library', async () => {
     const result = await harness.execute(LIB, {
@@ -22,7 +35,7 @@ describe('Library ownership', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.data?.user?.library?.user?.username).toBe('alice');
+    expect(userLibraryOf(result).user?.library?.user?.username).toBe('alice');
   });
 
   it('viewer.library is the viewer own library', async () => {
@@ -31,7 +44,7 @@ describe('Library ownership', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.data?.viewer?.library?.user?.username).toBe('alice');
+    expect(userLibraryOf(result).viewer?.library?.user?.username).toBe('alice');
   });
 
   it('viewer.library is null for the config admin, which owns no library', async () => {
@@ -40,7 +53,7 @@ describe('Library ownership', () => {
     });
 
     expect(result.errors).toBeUndefined();
-    expect(result.data?.viewer?.library ?? null).toBeNull();
+    expect(userLibraryOf(result).viewer?.library ?? null).toBeNull();
   });
 
   it('a non-admin cannot reach Query.user at all, so cannot traverse to another library', async () => {

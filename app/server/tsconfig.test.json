@@ -1,0 +1,40 @@
+{
+  // Type-checks the files the build config deliberately excludes — every
+  // `*.test.ts`, plus the test-only support modules they import. `tsconfig.
+  // json` must keep excluding them so the production build never ships them
+  // (see its own comment), which meant nothing type-checked them at all:
+  // `vitest` transpiles without checking, so a test file's types were only
+  // ever as good as whatever the editor happened to surface.
+  //
+  // That gap hid real defects. Twelve call sites built a `GraphqlHandlerDeps`
+  // object literal with no `editionsRoot`, a required field, leaving
+  // `context.editionsRoot` `undefined` at runtime while typed `string` — the
+  // same class of bug the Stores migration found by hand in `routes/ui.test.
+  // ts` and fixed there. The migration leaned on `npx tsc --noEmit` as its
+  // primary verification precisely because the type-checker caught call sites
+  // grep missed; hand-built literals in test files were the one place that
+  // method was blind.
+  //
+  // `include` covers the whole project, not just the test files: they import
+  // production modules, so the two have to be checked together anyway, and a
+  // narrower `include` would only re-check the same graph through a different
+  // entry point. `npm run lint` runs BOTH this and the build config — this one
+  // pins `types`, so it is stricter about ambient globals and cannot stand in
+  // for the build config's own check.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Checking only; `tsconfig.json` remains the config that emits.
+    "noEmit": true,
+    // `vitest/globals` supplies `describe`/`it`/`expect`/`vi`, which
+    // `vite.config.ts`'s `globals: true` provides at runtime. Naming `types`
+    // at all opts out of auto-including every `@types/*` package, so `node`
+    // is listed explicitly; everything else in use here arrives through a
+    // real `import` and needs no ambient entry.
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["./**/*"],
+  // `vite.config.ts` stays excluded for the reason `tsconfig.json` gives: it
+  // is an ES module using `import.meta.url` that this CommonJS project cannot
+  // typecheck, and Vite transpiles it itself.
+  "exclude": ["node_modules", "dist", "vite.config.ts"]
+}

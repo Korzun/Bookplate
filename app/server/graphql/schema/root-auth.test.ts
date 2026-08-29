@@ -13,12 +13,7 @@ import {
   type GraphQLObjectType,
 } from 'graphql';
 
-import { createChapterSpineMapLoader } from '../chapter-spine-map-loader';
 import type { Context } from '../context';
-import { createOwnerLoader } from '../owner';
-import { createPendingFixLoader } from '../pending-fix-loader';
-import { createProgressLoader } from '../progress-loader';
-import { createSeriesProgressLoader } from '../series-progress-loader';
 import { createHarness, type Harness } from '../test-util';
 import { schema } from './index';
 
@@ -213,19 +208,8 @@ describe('root type authorization', () => {
       Object.values(type.getFields()).map((field) => ({ operation, name: field.name, field }))
     )
   )('refuses $operation.$name for a null viewer', async ({ operation, field }) => {
-    const context: Context = {
-      viewer: null,
-      prisma: harness.prisma,
-      scanJobs: harness.scanJobs,
-      thumbnails: harness.thumbnails,
-      replaceStaging: harness.replaceStaging,
-      config: harness.config,
-      loadOwner: createOwnerLoader(harness.prisma),
-      loadProgress: createProgressLoader(harness.prisma),
-      loadPendingFix: createPendingFixLoader(harness.prisma),
-      loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
-      loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
-    };
+    // The harness's own builder — see `Harness.contextFor`.
+    const context: Context = harness.contextFor(null);
 
     // `seedNodeFor('Library')` inserts nothing (Library is 1:1 with the
     // already-created `User` row — see that function's own doc comment) and

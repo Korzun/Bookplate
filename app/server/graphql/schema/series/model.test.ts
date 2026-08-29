@@ -433,6 +433,14 @@ describe('Series.progressPercentage', () => {
 describe('Series.books connection', () => {
   type BooksPage = {
     edges: { cursor: string; node: { title: string; seriesIndex: number } }[];
+    // The query selects `pageInfo` too; declaring only `edges` left every
+    // `pageInfo` assertion below unchecked.
+    pageInfo: {
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+      startCursor: string | null;
+      endCursor: string | null;
+    };
   };
   type BooksData = { viewer: { library: { seriesByName: { books: BooksPage } } } };
 

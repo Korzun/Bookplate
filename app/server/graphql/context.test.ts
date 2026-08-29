@@ -79,6 +79,7 @@ describe('createContext', () => {
   const thumbnails = {} as ThumbnailQueue;
   const replaceStaging = {} as ReplaceStaging;
   const config = {} as AppConfig;
+  const editionsRoot = '/tmp/editions';
 
   it('derives the viewer from the request Authorization header', () => {
     const token = signAccessToken(secret, {
@@ -89,6 +90,7 @@ describe('createContext', () => {
     });
     const context = createContext({
       prisma,
+      editionsRoot,
       scanJobs,
       thumbnails,
       replaceStaging,
@@ -106,11 +108,16 @@ describe('createContext', () => {
     expect(context.thumbnails).toBe(thumbnails);
     expect(context.replaceStaging).toBe(replaceStaging);
     expect(context.config).toBe(config);
+    // Asserted because it was the field this suite silently omitted: the deps
+    // literal above had no `editionsRoot` at all, and nothing caught it while
+    // test files went untype-checked.
+    expect(context.editionsRoot).toBe(editionsRoot);
   });
 
   it('yields a null viewer when the request carries no Authorization header', () => {
     const context = createContext({
       prisma,
+      editionsRoot,
       scanJobs,
       thumbnails,
       replaceStaging,
