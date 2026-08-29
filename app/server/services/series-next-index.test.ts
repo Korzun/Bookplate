@@ -8,7 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import { runMigrations } from '../db/migrate';
 import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
-import { getSeriesNextIndex } from './series-meta';
+import { getSeriesNextIndex } from './series-next-index';
 
 vi.mock('../logger');
 
@@ -72,17 +72,21 @@ afterEach(async () => {
   fs.rmSync(booksRoot, { recursive: true });
 });
 
-// Moved from `book-store.test.ts`'s `describe('getSeriesNextIndex', ...)`
-// (task 6) — assertions unchanged, calls retargeted from
+// Originally moved from `book-store.test.ts`'s `describe('getSeriesNextIndex',
+// ...)` (Phase 3 task 6) — assertions unchanged, calls retargeted from
 // `bookStore.getSeriesNextIndex(...)` to the extracted
 // `getSeriesNextIndex(prisma, ...)`.
 //
-// `recomputeSeriesMeta` (also extracted here) has no describe of its own —
-// it has no direct tests. Its behaviour is asserted only through the write
-// paths that call it (`addBook`/`reimportBook`/`deleteBook`); that coverage
-// lives in `book-lifecycle.test.ts`'s `describe('series aggregate
-// metadata', ...)` and the three `describe('Series lifecycle — ...', ...)`
-// blocks (`BookStore`, which used to carry those calls, is gone — Task 9b).
+// This file used to also hold `recomputeSeriesMeta` (as `series-meta.ts`),
+// grouped by the shared word "series" rather than any shared consumer,
+// helper, type, or state. Phase 4 task 6 folded `recomputeSeriesMeta` into
+// `book-lifecycle.ts` as a private function — its only importer — and
+// renamed this file from `series-meta.ts` to `series-next-index.ts` to match
+// the single read it now holds. `recomputeSeriesMeta` has no direct tests;
+// its behaviour is asserted only through the write paths that call it
+// (`addBook`/`reimportBook`/`deleteBook`), covered by
+// `book-lifecycle.test.ts`'s `describe('series aggregate metadata', ...)`
+// and the three `describe('Series lifecycle — ...', ...)` blocks.
 describe('getSeriesNextIndex', () => {
   it('returns 1 for a series with no books', async () => {
     expect(await getSeriesNextIndex(prisma, OWNER, 'Unknown')).toBe(1);

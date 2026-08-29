@@ -30,8 +30,8 @@ beforeEach(async () => {
         userId: harness.aliceOwner.userId,
         id,
         title: `Book ${i + 1}`,
-        // `getSeriesNextIndex` (`services/series-meta.ts`, unmodified since
-        // its extraction from `BookStore`) filters by the denormalized
+        // `getSeriesNextIndex` (`services/series-next-index.ts`, unmodified
+        // since its extraction from `BookStore`) filters by the denormalized
         // `series` string column, not `seriesId` — every real import path
         // sets both together (see `book-lifecycle.ts`'s `addBook`,
         // `series: meta.series` / `seriesId` pairs), so the fixture must too
