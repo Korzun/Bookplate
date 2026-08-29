@@ -177,17 +177,16 @@ describe('Subscription.scanProgress', () => {
 
   /**
    * The M-5 ruling (task 8 review, carried into this task's brief): REST's
-   * own `POST /api/books/scan` (`routes/ui.ts:1071`) calls
-   * `bookStore.scan(owner)` with no `onProgress`, so a REST-started scan only
-   * ever reaches `ScanJobStore` through `start`/`complete`/`fail` — never
-   * `progress`. This test drives the shared store DIRECTLY, the same calls
-   * REST's own route makes (not through `libraryScan`, and with no
-   * `routes/ui.ts` edit), and asserts the subscription still observes those
-   * transitions — proving REST-initiated scans are visible over
-   * `scanProgress`, at start/terminal granularity, without needing to touch
-   * `routes/` at all.
+   * own `POST /api/books/scan` (since removed along with the rest of the
+   * REST surface GraphQL replaced) used to call `bookStore.scan(owner)` with
+   * no `onProgress`, so a REST-started scan only ever reached `ScanJobStore`
+   * through `start`/`complete`/`fail` — never `progress`. This test drives
+   * `ScanJobStore` directly, the same calls that REST route used to make (not
+   * through `libraryScan`), and asserts the subscription still observes
+   * those transitions — proving a caller that never wires `onProgress`
+   * remains visible over `scanProgress`, at start/terminal granularity.
    */
-  it('is visible over the subscription at start/terminal granularity when driven the way REST drives it', async () => {
+  it('is visible over the subscription at start/terminal granularity when driven directly, with no onProgress wired', async () => {
     const result = await subscribe({
       schema,
       document: DOCUMENT,
@@ -200,9 +199,9 @@ describe('Subscription.scanProgress', () => {
 
     const startEvent = result.next();
     await settle(50);
-    // Mirrors `routes/ui.ts`'s own call shape exactly: `bookStore.scan(owner)`
+    // Mirrors the old REST route's call shape exactly: `bookStore.scan(owner)`
     // with no `onProgress` third argument, so the only store calls a REST scan
-    // ever makes are `start` and (via the detached pipeline) `complete`/`fail`.
+    // ever made were `start` and (via the detached pipeline) `complete`/`fail`.
     const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);

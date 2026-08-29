@@ -8,16 +8,17 @@ import { model as book } from '../book/model';
 import { builder } from '../builder';
 
 /**
- * `BookStore.scan()`'s own return shape (`services/scan-events.ts`'s
- * `ScanResult`) only ever carries filenames/ids-as-strings — never real
- * `Book`s. `imported: [Book!]!` (the SDL the spec's own snippet declares,
- * §"Scan progress") needs an owner and a set of ids to look them up by, so
- * this shape carries both instead of the store's raw `{ imported, removed }`
- * pair directly. `importedBookIds` comes from `ScanJob.importedBookIds`
- * (`scan-events.ts`'s `reduceScanJob`, accumulated from `'imported'`-outcome
- * progress events, NOT from the store's own `result.imported`, which holds
- * filenames — see that type's doc comment for why a filename can't back this
- * lookup once a rename may have happened).
+ * `scan()`'s (`services/book-lifecycle.ts`) own return shape
+ * (`services/scan-events.ts`'s `ScanResult`) only ever carries
+ * filenames/ids-as-strings — never real `Book`s. `imported: [Book!]!` (the
+ * SDL the spec's own snippet declares, §"Scan progress") needs an owner and a
+ * set of ids to look them up by, so this shape carries both instead of
+ * `ScanResult`'s raw `{ imported, removed }` pair directly. `importedBookIds`
+ * comes from `ScanJob.importedBookIds` (`scan-events.ts`'s `reduceScanJob`,
+ * accumulated from `'imported'`-outcome progress events, NOT from
+ * `ScanResult.imported`, which holds filenames — see that type's doc comment
+ * for why a filename can't back this lookup once a rename may have
+ * happened).
  */
 export type ScanResultShape = {
   readonly owner: Owner;
@@ -48,9 +49,10 @@ export const model = builder.objectRef<ScanResultShape>('ScanResult').implement(
     importedFilenames: t.field({
       type: ['String'],
       description:
-        'The on-disk filenames this scan imported — REST parity ' +
-        "(`BookStore.scan()`'s own `imported` list). Includes renamed-away " +
-        "names, so it is not 1:1 with `imported`'s ids in general.",
+        'The filenames this scan imported, as they were named on disk ' +
+        'before the scan renamed each one to its canonical `<id>.epub` ' +
+        'form. A name here may therefore no longer exist on disk, which is ' +
+        "why this list is not necessarily 1:1 with `imported`'s ids.",
       resolve: (parent) => parent.importedFilenames,
     }),
     removed: t.field({

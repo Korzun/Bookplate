@@ -32,17 +32,21 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  *
  * Task 9 adds the publishing half: spec §"Scan progress"/"ScanJobStore" — "a
  * yoga `createPubSub()` publishing on a per-user topic from all four
- * transition points (`start`, `progress`, `complete`, `fail`)". `ScanJobStore`
- * is the one shared instance both `POST /api/books/scan` (`routes/ui.ts`,
- * untouched — no `routes/` edit) and `libraryScan`/`scanProgress` traverse
- * (constructed once in `index.ts`, threaded into both `createServer` and
- * `createGraphqlHandler` since phase 1 — see that file), so publishing here,
- * not in the GraphQL mutation's `onProgress` callback, is what makes a
+ * transition points (`start`, `progress`, `complete`, `fail`)". At the time,
+ * `ScanJobStore` was the one shared instance both `POST /api/books/scan`
+ * (`routes/ui.ts`) and `libraryScan`/`scanProgress` traversed, so publishing
+ * here, not in the GraphQL mutation's `onProgress` callback, was what made a
  * REST-started scan visible over the subscription at all: REST's own call
- * site (`routes/ui.ts:1071`, `bookStore.scan(owner)`) passes no `onProgress`,
- * so it only ever reaches this class through `start`/`complete`/`fail` — see
- * `scanProgress`'s own doc comment for the resulting, deliberately narrower,
- * REST-visibility scoping.
+ * site passed no `onProgress`, so it only ever reached this class through
+ * `start`/`complete`/`fail`.
+ *
+ * REST's `/api/books/scan` route was removed along with the rest of the
+ * REST surface GraphQL replaced (the commit that dropped `BookStore`'s
+ * production callers), and `index.ts` no longer threads `ScanJobStore` into
+ * `createServer`/`createUiRouter` — GraphQL's `libraryScan` is this class's
+ * only caller today. Publishing still lives here rather than inlined into
+ * the mutation, since this remains the one place all four transition points
+ * are guaranteed to go through.
  *
  * The publisher this class talks to is `ScanPublisher` (`scan-publisher.ts`),
  * a structural contract declared here in `services/` — NOT `graphql/
@@ -101,8 +105,9 @@ export class ScanJobStore {
   }
 
   /**
-   * The `onProgress` callback `BookStore.scan()` is handed (via `libraryScan`,
-   * task 8) calls this once per branch point the scan loop already hits. A
+   * The `onProgress` callback `scan()` (`services/book-lifecycle.ts`) is
+   * handed (via `libraryScan`, task 8) calls this once per branch point the
+   * scan loop already hits. A
    * no-op when no job is tracked for `userId` — mirrors `complete`/`fail`
    * below, and protects against a stray progress event outliving its job
    * (e.g. a caller that never called `start`).

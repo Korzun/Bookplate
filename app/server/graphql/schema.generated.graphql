@@ -756,7 +756,7 @@ type ScanResult {
   imported: [Book!]!
 
   """
-  The on-disk filenames this scan imported — REST parity (`BookStore.scan()`'s own `imported` list). Includes renamed-away names, so it is not 1:1 with `imported`'s ids in general.
+  The filenames this scan imported, as they were named on disk before the scan renamed each one to its canonical `<id>.epub` form. A name here may therefore no longer exist on disk, which is why this list is not necessarily 1:1 with `imported`'s ids.
   """
   importedFilenames: [String!]!
 
@@ -828,7 +828,7 @@ type StagedUploadNotFoundError implements UserError {
 
 type Subscription {
   """
-  Streams live progress for a running or just-finished library scan. A scan started through REST is visible here too (the shared ScanJobStore instance publishes from both transports), but only at start/terminal granularity — REST passes no onProgress callback, so per-file progress only ever exists for a scan started through `libraryScan`. `Library.scanStatus` is the reconnect/current-state read for a client joining mid-scan.
+  Streams live progress for a running or just-finished library scan, started via the `libraryScan` mutation. `Library.scanStatus` is the reconnect/current-state read for a client joining mid-scan.
   """
   scanProgress(libraryId: ID!): ScanStatus!
 }

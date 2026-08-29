@@ -137,9 +137,10 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
  * while the scan runs — consumed by task 9's `scanStatus` query and
  * `scanProgress` subscription, not by anything in this task.
  *
- * Not wrapped in `toResult`: `BookStore.scan()` throws none of the seven
- * known store errors (it catches and logs per-file failures itself, same as
- * `revalidateBook`'s per-book catch) — any throw that does escape the
+ * Not wrapped in `toResult`: `scan()` (`services/book-lifecycle.ts`) throws
+ * none of the seven known store errors (it catches and logs per-file
+ * failures itself, same as `revalidateBook`'s per-book catch) — any throw
+ * that does escape the
  * detached block is a genuine unexpected fault, mirrored into the job via
  * `fail()` exactly as REST's own `catch (err: unknown)` does, not into a
  * typed union member.

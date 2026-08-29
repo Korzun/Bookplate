@@ -36,13 +36,9 @@ builder.subscriptionField('scanProgress', (t) =>
   t.field({
     type: scanStatus,
     description:
-      'Streams live progress for a running or just-finished library scan. ' +
-      'A scan started through REST is visible here too (the shared ' +
-      'ScanJobStore instance publishes from both transports), but only at ' +
-      'start/terminal granularity — REST passes no onProgress callback, so ' +
-      'per-file progress only ever exists for a scan started through ' +
-      '`libraryScan`. `Library.scanStatus` is the reconnect/current-state ' +
-      'read for a client joining mid-scan.',
+      'Streams live progress for a running or just-finished library scan, ' +
+      'started via the `libraryScan` mutation. `Library.scanStatus` is the ' +
+      'reconnect/current-state read for a client joining mid-scan.',
     args: {
       libraryId: t.arg.globalID({ required: true, for: library }),
     },
