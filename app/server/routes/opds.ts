@@ -55,14 +55,32 @@ function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
   });
 }
 
-export function createOpdsRouter(
-  booksRoot: string,
-  prisma: PrismaClient,
-  thumbnailWidths: number[],
-  libraryName: string = 'Bookplate',
-  editionsRoot?: string,
-  validationThreshold: ValidationThreshold = ValidationThreshold.ERROR
-): Router {
+/**
+ * Named rather than positional, for the same reason `createUiRouter`'s deps
+ * are (see `CreateUiRouterDeps`): this was six positionals, three of them
+ * defaulted or optional, so every caller wanting the last one had to re-pass
+ * the two before it. All five call sites did — `opds.test.ts` spelled out
+ * `'Bookplate'` and `ValidationThreshold.ERROR` four times purely to reach
+ * `editionsRoot`, restating the defaults this type now supplies.
+ */
+export type CreateOpdsRouterDeps = {
+  booksRoot: string;
+  prisma: PrismaClient;
+  thumbnailWidths: number[];
+  libraryName?: string;
+  /** Omitted by the base-catalog-only callers; required for device editions. */
+  editionsRoot?: string;
+  validationThreshold?: ValidationThreshold;
+};
+
+export function createOpdsRouter({
+  booksRoot,
+  prisma,
+  thumbnailWidths,
+  libraryName = 'Bookplate',
+  editionsRoot,
+  validationThreshold = ValidationThreshold.ERROR,
+}: CreateOpdsRouterDeps): Router {
   const router = Router();
   const auth = opdsAuth(prisma, libraryName);
   const smallestWidth = thumbnailWidths.length > 0 ? Math.min(...thumbnailWidths) : null;

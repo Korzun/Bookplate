@@ -72,19 +72,19 @@ export function createServer({
 
   server.use(
     '/opds',
-    createOpdsRouter(
-      config.booksDir,
+    createOpdsRouter({
+      booksRoot: config.booksDir,
       prisma,
-      config.thumbnailWidths,
-      config.libraryName,
+      thumbnailWidths: config.thumbnailWidths,
+      libraryName: config.libraryName,
       editionsRoot,
-      config.validationThreshold
-    )
+      validationThreshold: config.validationThreshold,
+    })
   );
   server.use('/sync', createKosyncRouter(prisma));
   server.use(
     '/',
-    createUiRouter(editionsRoot, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
+    createUiRouter({ editionsRoot, config, thumbnailQueue, jwtSecret, prisma, replaceStaging })
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {

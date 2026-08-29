@@ -303,27 +303,44 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
   return loginRateLimit;
 }
 
-// `editionsRoot` is a genuine independent input here, NOT derivable from
-// `config.dataDir` the way `createServer`'s was (that one was always
-// `path.join(config.dataDir, 'editions')` and got collapsed into an options
-// object). `routes/ui.ts` never reads `config.dataDir` at all, and
-// `routes/ui.test.ts`'s `beforeEach` reassigns `editionsRoot` to its own
-// fresh `mkdtempSync(...)`, independent of `config`, to isolate tests. So do
-// not fold `editionsRoot` INTO `config` (or otherwise derive it from
-// `config.dataDir`) for symmetry with `createServer` — that specific change
-// would break that test isolation. This says nothing about the parameter
-// list's shape: collapsing these seven positionals into one options object,
-// `editionsRoot` included as its own field, is a separate and still-open
-// question this comment does not rule on.
-export function createUiRouter(
-  editionsRoot: string,
-  config: AppConfig,
-  thumbnailQueue: ThumbnailQueue,
-  jwtSecret: Buffer,
-  prisma: PrismaClient,
-  replaceStaging: ReplaceStaging,
-  loginRateLimitNow: () => number = Date.now
-): Router {
+/**
+ * `editionsRoot` is a genuine independent input here, NOT derivable from
+ * `config.dataDir` the way `createServer`'s was (that one was always
+ * `path.join(config.dataDir, 'editions')` and got collapsed into an options
+ * object). `routes/ui.ts` never reads `config.dataDir` at all, and
+ * `routes/ui.test.ts`'s `beforeEach` reassigns `editionsRoot` to its own
+ * fresh `mkdtempSync(...)`, independent of `config`, to isolate tests. So do
+ * not fold `editionsRoot` INTO `config` (or otherwise derive it from
+ * `config.dataDir`) for symmetry with `createServer` — that specific change
+ * would break that test isolation. It stays its own field below for exactly
+ * that reason.
+ *
+ * The parameter list's *shape*, which that reasoning deliberately left open,
+ * is settled here: these were seven positionals — one longer than the
+ * `createServer` signature the Stores migration collapsed — so `createServer`
+ * received its values named (`CreateServerDeps`) and handed them straight
+ * back out positionally. Named both ways now.
+ */
+export type CreateUiRouterDeps = {
+  editionsRoot: string;
+  config: AppConfig;
+  thumbnailQueue: ThumbnailQueue;
+  jwtSecret: Buffer;
+  prisma: PrismaClient;
+  replaceStaging: ReplaceStaging;
+  /** Injectable clock for the login rate limiter; tests pass a fake. */
+  loginRateLimitNow?: () => number;
+};
+
+export function createUiRouter({
+  editionsRoot,
+  config,
+  thumbnailQueue,
+  jwtSecret,
+  prisma,
+  replaceStaging,
+  loginRateLimitNow = Date.now,
+}: CreateUiRouterDeps): Router {
   const router = Router();
 
   const requireAuth = jwtAuth(jwtSecret);

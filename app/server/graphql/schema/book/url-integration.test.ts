@@ -52,14 +52,14 @@ beforeEach(async () => {
   );
   app.use(
     '/',
-    createUiRouter(
-      harness.editionsRoot,
-      harness.config,
-      harness.thumbnails,
+    createUiRouter({
+      editionsRoot: harness.editionsRoot,
+      config: harness.config,
+      thumbnailQueue: harness.thumbnails,
       jwtSecret,
-      harness.prisma,
-      harness.replaceStaging
-    )
+      prisma: harness.prisma,
+      replaceStaging: harness.replaceStaging,
+    })
   );
 });
 
