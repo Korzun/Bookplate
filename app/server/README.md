@@ -36,8 +36,13 @@ Each of these was accurate when written and actively misleading later:
   paragraph explaining why the resolver re-read its own rows. The reasoning was
   sound; the premise (a DTO with two REST consumers) had since become false,
   both consumers having been deleted. It made a fixable defect read as a
-  considered decision. Removed in `fd2d9770`, and it was a twenty-minute fix
-  once someone questioned it.
+  considered decision. Removed once someone questioned it — a twenty-minute
+  fix; `git log -S "TWO QUERIES, DELIBERATELY"` finds the removal.
+
+  (Deliberately named by its content rather than by a commit SHA: this repo
+  rebase-merges, so a branch-local SHA cited in code does not survive landing.
+  Cite something greppable, or a commit that is already on `main`.)
+
 - **`Book.deviceEditionCount`: "`t.relationCount` cannot express it."** True —
   there was no relation. But the framing implied "add the relation and this
   gets better", which is the opposite of what happened: measured, the
