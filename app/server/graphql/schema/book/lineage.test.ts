@@ -197,3 +197,138 @@ describe('Book.lineage', () => {
     ).toEqual([{ oldId: '9'.repeat(32), type: 'MERGE' }]);
   });
 });
+
+describe('Book.lineage — batching and tenancy', () => {
+  /** N books, each with two same-timestamp history rows, all owned by alice. */
+  const seedPage = async (n: number): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      const id = `bk-${String(i).padStart(2, '0')}`.padEnd(32, 'x');
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id,
+          title: `Paged ${i}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      for (const old of ['a', 'b']) {
+        await harness.prisma.bookIdHistory.create({
+          data: {
+            userId: harness.aliceOwner.userId,
+            oldId: `${old}-${i}`,
+            currentId: id,
+            timestamp: 5000,
+            type: 'edit',
+          },
+        });
+      }
+    }
+  };
+
+  // Pins the cost, which no value assertion can. Before batching this field
+  // issued TWO queries per book — a redundant `book.findUnique` existence check
+  // inside `getBookLineage`, plus the history read — measured at 17 for a page
+  // of 8. Reverting either half would keep every value correct.
+  it('reads a whole page of lineage in one history query and no per-book lookups', async () => {
+    await seedPage(8);
+    const findUnique = vi.spyOn(harness.prisma.book, 'findUnique');
+    const raw = vi.spyOn(harness.prisma, '$queryRaw');
+
+    const result = await harness.execute(
+      `{ viewer { library { entries(first: 50, filter: { query: "Paged" }) {
+          edges { node { ... on Book { lineage { oldId newId } } } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(raw).toHaveBeenCalledTimes(1);
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  // `oldBook`/`newBook` resolve once per lineage ENTRY, so their multiplier is
+  // books x entries x 2 — 32 `book.findUnique` calls on this fixture before
+  // they moved onto `loadBookByDocument`.
+  it('resolves oldBook/newBook across a page without a lookup per entry', async () => {
+    await seedPage(8);
+    const findUnique = vi.spyOn(harness.prisma.book, 'findUnique');
+
+    const result = await harness.execute(
+      `{ viewer { library { entries(first: 50, filter: { query: "Paged" }) {
+          edges { node { ... on Book { lineage { oldId oldBook { title } newBook { title } } } } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  // The batched read builds its own `(user_id = ? AND current_id = ?) OR ...`
+  // filter by hand, so the tenancy guard every loader relies on is written out
+  // in raw SQL here rather than inherited from Prisma. Book ids are content
+  // hashes, so two users holding the identical id is normal, not contrived.
+  it('does not return another user’s lineage for a book sharing the same id', async () => {
+    const shared = '7'.repeat(32);
+    for (const owner of [harness.aliceOwner, harness.bobOwner]) {
+      await harness.prisma.book.create({
+        data: {
+          userId: owner.userId,
+          id: shared,
+          title: 'Shared Hash',
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+    }
+    // Only alice has history for it.
+    await harness.prisma.bookIdHistory.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        oldId: 'alice-old',
+        currentId: shared,
+        timestamp: 1,
+        type: 'edit',
+      },
+    });
+
+    const read = async (viewer: Harness['aliceViewer'], userId: string) => {
+      const result = await harness.execute(
+        `{ viewer { library { book(id: "${bookGlobalId(userId, shared)}") { lineage { oldId } } } } }`,
+        { viewer }
+      );
+      expect(result.errors).toBeUndefined();
+      return (result.data as { viewer: { library: { book: { lineage: { oldId: string }[] } } } })
+        .viewer.library.book.lineage;
+    };
+
+    expect(await read(harness.aliceViewer, harness.aliceOwner.userId)).toEqual([
+      { oldId: 'alice-old' },
+    ]);
+    expect(await read(harness.bobViewer, harness.bobOwner.userId)).toEqual([]);
+  });
+
+  // The chain is derived from row ORDER — each entry's `newId` is its
+  // predecessor's `oldId` — and batching re-sorts rows per book in JS rather
+  // than relying on the SQL `ORDER BY` alone, which is why `rowid` is selected.
+  // Same timestamps, so only the tiebreaker distinguishes these two.
+  it('preserves the same-timestamp chain order through batching', async () => {
+    await seedPage(1);
+    const result = await harness.execute(
+      `{ viewer { library { entries(first: 10, filter: { query: "Paged" }) {
+          edges { node { ... on Book { lineage { oldId newId } } } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    const [edge] = (
+      result.data as {
+        viewer: { library: { entries: { edges: { node: { lineage: unknown } }[] } } };
+      }
+    ).viewer.library.entries.edges;
+    expect(edge.node.lineage).toEqual([
+      { oldId: 'b-0', newId: 'bk-00'.padEnd(32, 'x') },
+      { oldId: 'a-0', newId: 'b-0' },
+    ]);
+  });
+});
