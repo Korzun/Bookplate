@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { deleteBook } from '../../../../services/book-lifecycle';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { model as library } from '../../library/model';
@@ -110,7 +111,13 @@ builder.mutationField('bookDelete', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const deleted = await context.stores.book.deleteBook(owner, bookId);
+      const deleted = await deleteBook(
+        context.prisma,
+        context.config.booksDir,
+        context.editionsRoot,
+        owner,
+        bookId
+      );
       if (deleted === null) return null;
 
       return {

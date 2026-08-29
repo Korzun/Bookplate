@@ -1,3 +1,4 @@
+import { clearDeviceEditions } from '../../../../services/book-lifecycle';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
@@ -104,7 +105,13 @@ builder.mutationField('bookClearEditions', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const cleared = await context.stores.book.clearDeviceEditions(owner, bookId);
+      const cleared = await clearDeviceEditions(
+        context.prisma,
+        context.config.booksDir,
+        context.editionsRoot,
+        owner,
+        bookId
+      );
       if (cleared === null) return null;
 
       return {

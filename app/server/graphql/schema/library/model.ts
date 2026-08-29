@@ -2,6 +2,7 @@ import { getAuthors, getSubjects } from '../../../services/book-catalog';
 import { resolveBookId } from '../../../services/book-lineage';
 import { listBooksPage } from '../../../services/library-page';
 import { getUserProgressPage } from '../../../services/progress';
+import { getSeriesNextIndex } from '../../../services/series-meta';
 import type { BookListFilters, Owner } from '../../../types';
 import {
   clampProgressTake,
@@ -385,7 +386,7 @@ builder.node(model, {
 
     seriesNextIndex: t.int({
       args: { name: t.arg.string({ required: true }) },
-      resolve: (owner, args, context) => context.stores.book.getSeriesNextIndex(owner, args.name),
+      resolve: (owner, args, context) => getSeriesNextIndex(context.prisma, owner, args.name),
     }),
 
     /**
