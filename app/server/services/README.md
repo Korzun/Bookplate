@@ -17,11 +17,15 @@ migration (task 7):
   groups the cluster visually in a directory listing and in imports
   (`import { ... } from '../services/book-catalog'`), without adding a path
   segment.
-- The six `book-*` modules have a combined ~95 import sites across the
-  codebase (7-25 importers each). Moving them means touching every one of
-  those import paths purely for cosmetics, at the tail end of a four-phase
-  migration that has already changed a lot of import surface. The
-  risk/churn is real; the readability gain over the existing prefix
+- Moving them means rewriting 72 import lines across 42 distinct files
+  (`git grep -lE "from '[^']*services/book-(assets|catalog|errors|lifecycle|lineage|paths)'" -- app/server`),
+  purely for cosmetics, at the tail end of a four-phase migration that has
+  already changed a lot of import surface.
+- It would also strand the 57 doc-comment citations that name these modules
+  by path — the same provenance notes the migration deliberately wrote to
+  explain where code came from. They would either go stale or need a second
+  sweep of their own.
+- The risk/churn is real; the readability gain over the existing prefix
   convention is marginal.
 - A flat directory with a consistent naming convention is a legitimate,
   common pattern for a services layer of this size. 35 modules is not large
