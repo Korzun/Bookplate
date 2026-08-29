@@ -1,7 +1,7 @@
+import { createHarness, type Harness } from '../test-util';
 import { createOwnerLoader } from './owner';
-import { createHarness, type Harness } from './test-util';
 
-vi.mock('../logger');
+vi.mock('../../logger');
 
 let harness: Harness;
 

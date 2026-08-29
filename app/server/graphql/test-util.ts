@@ -15,17 +15,19 @@ import { ScanJobRegistry } from '../services/scan-job-registry';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import type { AppConfig, Owner } from '../types';
-import { createBookByDocumentLoader } from './book-by-document-loader';
-import { createChapterSpineMapLoader } from './chapter-spine-map-loader';
 import type { Context, Viewer } from './context';
-import { createDeviceEditionCountLoader } from './device-edition-count-loader';
-import { createOwnerLoader } from './owner';
-import { createPendingFixLoader } from './pending-fix-loader';
-import { createProgressLoader } from './progress-loader';
+import {
+  createBookByDocumentLoader,
+  createChapterSpineMapLoader,
+  createDeviceEditionCountLoader,
+  createOwnerLoader,
+  createPendingFixLoader,
+  createProgressLoader,
+  createSeriesProgressLoader,
+  createValidationCountsLoader,
+} from './loaders';
 import { createScanPubSub } from './pubsub';
 import { schema } from './schema';
-import { createSeriesProgressLoader } from './series-progress-loader';
-import { createValidationCountsLoader } from './validation-counts-loader';
 
 export type ExecuteOptions = {
   viewer?: Viewer | null;

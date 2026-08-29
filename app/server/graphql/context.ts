@@ -5,23 +5,24 @@ import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobRegistry } from '../services/scan-job-registry';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
-import { createBookByDocumentLoader, type BookByDocumentLoader } from './book-by-document-loader';
 import {
+  createBookByDocumentLoader,
   createChapterSpineMapLoader,
-  type ChapterSpineMapLoader,
-} from './chapter-spine-map-loader';
-import {
   createDeviceEditionCountLoader,
-  type DeviceEditionCountLoader,
-} from './device-edition-count-loader';
-import { createOwnerLoader, type OwnerLoader } from './owner';
-import { createPendingFixLoader, type PendingFixLoader } from './pending-fix-loader';
-import { createProgressLoader, type ProgressLoader } from './progress-loader';
-import { createSeriesProgressLoader, type SeriesProgressLoader } from './series-progress-loader';
-import {
+  createOwnerLoader,
+  createPendingFixLoader,
+  createProgressLoader,
+  createSeriesProgressLoader,
   createValidationCountsLoader,
+  type BookByDocumentLoader,
+  type ChapterSpineMapLoader,
+  type DeviceEditionCountLoader,
+  type OwnerLoader,
+  type PendingFixLoader,
+  type ProgressLoader,
+  type SeriesProgressLoader,
   type ValidationCountsLoader,
-} from './validation-counts-loader';
+} from './loaders';
 
 /**
  * The WHATWG/undici `Request` yoga hands to the context factory — deliberately
