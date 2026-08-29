@@ -62,9 +62,9 @@ const result = builder.unionType('BookClearEditionsResult', {
 });
 
 /**
- * Mirrors `DELETE /api/books/:id/editions` (`routes/ui.ts:1039-1054`). Owner
- * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
- * comment.
+ * Mirrored REST's `DELETE /api/books/:id/editions` (`routes/ui.ts`, removed in
+ * `e67b4ad9`). Owner resolution mirrors REST's `resolveOwner` — see
+ * `bookUpdateMetadata`'s doc comment.
  *
  * Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`

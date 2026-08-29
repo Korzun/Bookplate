@@ -65,9 +65,9 @@ const result = builder.unionType('BookClearEditLineageResult', {
 });
 
 /**
- * Mirrors `DELETE /api/books/:id/lineage` (`routes/ui.ts:1096-1111`). Owner
- * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
- * comment.
+ * Mirrored REST's `DELETE /api/books/:id/lineage` (`routes/ui.ts`, removed in
+ * `e67b4ad9`). Owner resolution mirrors REST's `resolveOwner` — see
+ * `bookUpdateMetadata`'s doc comment.
  *
  * Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
@@ -79,13 +79,13 @@ const result = builder.unionType('BookClearEditLineageResult', {
  * the organic re-import history `reimportBook` writes. `type = 'merge'` rows
  * — the manual KOReader document links `bookLinkDocument`/`bookUnlinkDocument`
  * write and remove — are a DISJOINT row set and are left untouched by this
- * mutation (`clearEditLineage`, `services/book-lineage.ts:154-169`). This is
+ * mutation (`clearEditLineage`, `services/book-lineage.ts`). This is
  * therefore NOT a bulk form of `bookUnlinkDocument` — the two operate on rows
  * that never overlap. The wordier name (`bookClearEditLineage`, not
  * `bookClearLineage`) exists precisely so the mutation cannot be mistaken for
  * clearing lineage in general when it only ever clears the edit half of it.
  *
- * `clearEditLineage` (`services/book-lineage.ts:154-169`) is NOT wrapped in
+ * `clearEditLineage` (`services/book-lineage.ts`) is NOT wrapped in
  * `toResult`: traced end to end, it is a single raw `$executeRaw` DELETE and
  * throws none of the seven known domain errors. Wrapping it would make
  * `toResult`'s `err` branch undischargeable — see `to-result.ts`'s doc
@@ -96,10 +96,11 @@ const result = builder.unionType('BookClearEditLineageResult', {
  * rows affected for a nonexistent book exactly as it does for a book with no
  * edit-lineage rows, so the DELETE itself cannot distinguish "not found" from
  * "nothing to clear". The resolver therefore checks existence explicitly with
- * `getBookById` before calling `clearEditLineage`, mirroring REST's own two-step
- * `getBookById` → `clearEditLineage` (`routes/ui.ts:1102-1108`) rather than
- * inferring not-found from a zero count, which would wrongly turn "book
- * exists, zero edit rows" into `null` too.
+ * `getBookById` before calling `clearEditLineage`, mirroring the two-step
+ * `getBookById` → `clearEditLineage` REST's own `DELETE /api/books/:id/lineage`
+ * ran (`routes/ui.ts`, removed in `e67b4ad9`) rather than inferring not-found
+ * from a zero count, which would wrongly turn "book exists, zero edit rows"
+ * into `null` too.
  */
 builder.mutationField('bookClearEditLineage', (t) =>
   t.field({

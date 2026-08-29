@@ -208,8 +208,9 @@ describe('Mutation.progressSet', () => {
    * (`book && book.chapterSpineMap.length > 0 && currentChapter <= length`)
    * was previously pinned only on its first clause (no book at all). This
    * pins the third clause: a KNOWN book whose spine map is shorter than the
-   * requested chapter. REST (`routes/ui.ts:364-371`) leaves `progress` as
-   * `''` in that case rather than indexing past the array — mirrored here.
+   * requested chapter. REST's `PUT /api/my/progress/:document` (removed in
+   * `e67b4ad9`) left `progress` as `''` in that case rather than indexing past
+   * the array — mirrored here.
    * Seen-to-fail: collapsing the guard to `if (book)` (the reviewer's
    * experiment) reproducibly turns this red, persisting the literal string
    * `EPUB_CFI(/6/NaN!/4/2:0)` instead — reverted after confirming.
@@ -241,8 +242,9 @@ describe('Mutation.progressSet', () => {
   /**
    * I-1's second, cheaper-to-add clause: a known book with an empty spine
    * map (`chapterSpineMap: []`) — `book.chapterSpineMap.length > 0` is the
-   * guard clause this pins. Same REST fallback (`routes/ui.ts:365`): empty
-   * CFI, no indexing attempted at all.
+   * guard clause this pins. Same REST fallback
+   * (`PUT /api/my/progress/:document`, removed in `e67b4ad9`): empty CFI, no
+   * indexing attempted at all.
    */
   it('writes an empty CFI when a known book has no chapter spine map at all', async () => {
     await seedBook(harness.aliceOwner.userId, 'no-chapters.epub', []);
@@ -268,8 +270,9 @@ describe('Mutation.progressSet', () => {
 
   // M-1 (task-5 review): the `device !== ''` half of the fallback was
   // previously untested — dropping that clause left all tests green.
-  // REST (`routes/ui.ts:376`) treats an explicit empty string the same as a
-  // missing/non-string device: both fall back to 'Web'.
+  // REST's `PUT /api/my/progress/:document` (removed in `e67b4ad9`) treated an
+  // explicit empty string the same as a missing/non-string device: both fall
+  // back to 'Web'.
   it('falls back to device "Web" when explicitly sent as an empty string', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

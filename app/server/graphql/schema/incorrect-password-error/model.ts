@@ -2,16 +2,16 @@ import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
- * `PATCH /api/my/password`'s 401 (`routes/ui.ts:406-409`): the presented
- * `currentPassword` does not verify against the caller's stored hash. Not a
- * thrown error (`validateUser` returns `false`, it never throws — see
- * `services/password.ts:60-72`) and not folded into
+ * `PATCH /api/my/password`'s 401 (`routes/ui.ts`, removed in `e67b4ad9`): the
+ * presented `currentPassword` does not verify against the caller's stored hash.
+ * Not a thrown error (`validateUser` returns `false`, it never throws — see
+ * `services/password.ts`'s `validateUser`) and not folded into
  * `InvalidInputError`: the input is well-formed (a non-empty string), it is
  * simply the wrong password, which is a distinct domain outcome a client acts
  * on differently (re-prompt for the current password, not re-validate the
- * form). Carries no data beyond `message` — same "nothing to add" reasoning
- * as `SelfLinkError` (`self-link-error/model.ts`): the client already knows
- * which password it sent.
+ * form). Carries no data beyond `message` — same "nothing to add" reasoning as
+ * `SelfLinkError` (`self-link-error/model.ts`): the client already knows which
+ * password it sent.
  */
 export type IncorrectPasswordErrorShape = {
   readonly __typename: 'IncorrectPasswordError';

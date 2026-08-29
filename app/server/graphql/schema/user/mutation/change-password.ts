@@ -37,8 +37,8 @@ import { model as userModel } from '../model';
  * removes the deadlock and one class of footgun at once.
  *
  * `currentPassword`/`newPassword` are `PATCH /api/my/password`'s exact body
- * fields (`routes/ui.ts:393-396`), which likewise names no user — REST reads
- * the identity off the session, as this now does.
+ * fields (`routes/ui.ts`, removed in `e67b4ad9`), which likewise named no user
+ * — REST read the identity off the session, as this now does.
  */
 const input = builder.inputType('UserChangePasswordInput', {
   fields: (t) => ({
@@ -49,11 +49,11 @@ const input = builder.inputType('UserChangePasswordInput', {
 
 /**
  * REST checks both fields with one combined guard and one combined message
- * (`routes/ui.ts:397-404`: `!currentPassword || !newPassword` → "Current and
- * new password are required") — reproduced on both fields here rather than a
- * single object-level check, so each empty field gets its own `issues` entry
- * (a client can highlight the specific empty box), while the message text
- * itself stays identical to REST's.
+ * (`routes/ui.ts`, removed in `e67b4ad9`: `!currentPassword || !newPassword` →
+ * "Current and new password are required") — reproduced on both fields here
+ * rather than a single object-level check, so each empty field gets its own
+ * `issues` entry (a client can highlight the specific empty box), while the
+ * message text itself stays identical to REST's.
  */
 const inputSchema = z.object({
   currentPassword: z.string().min(1, 'Current and new password are required'),
@@ -127,17 +127,16 @@ const result = builder.unionType('UserChangePasswordResult', {
  * see `builder.ts`'s own comment on this exemption.
  *
  * REST's own gate confirms this is the ONE exempted route: `passwordChangeGate`
- * (`middleware/auth.ts:97-120`) 403s every `/api/*` request from a
+ * (`middleware/auth.ts`) 403s every `/api/*` request from a
  * `mustChangePassword` token except `/api/login`, `/api/auth/*`, and
  * literally `/api/my/password` — `/api/my/sync-password/regenerate` (mirrored
  * by `userRegenerateSyncPassword`) is NOT in that exemption list, so that
  * mutation stays on the ordinary `authenticated` scope.
  *
- * The 401 REST returns for a wrong `currentPassword` (`routes/ui.ts:406-409`,
- * `validateUser` returning `false` — never a throw, see
- * `services/password.ts`) is modelled as the honest
- * `IncorrectPasswordError`, not folded into `InvalidInputError` — see that
- * type's doc comment.
+ * The 401 REST returned for a wrong `currentPassword` (`routes/ui.ts`, removed
+ * in `e67b4ad9`, `validateUser` returning `false` — never a throw, see
+ * `services/password.ts`) is modelled as the honest `IncorrectPasswordError`,
+ * not folded into `InvalidInputError` — see that type's doc comment.
  *
  * `changePassword` returning `false` (`services/password.ts`,
  * its own `P2025` catch — the account was deleted between token issuance and
@@ -151,26 +150,26 @@ const result = builder.unionType('UserChangePasswordResult', {
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a
  * plain function over `context.prisma` — no class instance to thread
- * through `Context`), mirrors REST's identical call on success (`routes/ui.ts:420`).
- * REST also reissues tokens (`issueTokens`, `routes/ui.ts:421-426`) so the
- * client's existing cookies immediately carry `mustChangePassword: false` —
- * this resolver does NOT reproduce that half: yoga's context
- * (`graphql/context.ts`'s `createContext`) only ever sees the fetch
- * `Request`, never a `Response` to set cookies on, so there is no channel to
- * reissue tokens from here.
+ * through `Context`), mirrors the identical call REST's
+ * `PATCH /api/my/password` made on success. That route also reissued tokens
+ * (`issueTokens`, `routes/ui.ts`, removed in `e67b4ad9`) so the client's
+ * existing cookies immediately carry `mustChangePassword: false` — this
+ * resolver does NOT reproduce that half: yoga's context (`graphql/context.ts`'s
+ * `createContext`) only ever sees the fetch `Request`, never a `Response` to
+ * set cookies on, so there is no channel to reissue tokens from here.
  *
  * **Corrected (task-6 review, I-3) — the caller does NOT recover via
  * `/api/auth/refresh`.** `revokeAllForUsername` two lines above deletes
  * EVERY refresh-token row for this username (`services/token.ts`'s
  * `revokeAllForUsername`) — including the one the current session's own
  * refresh cookie names. `POST /api/auth/refresh`
- * (`routes/ui.ts:222-262`) therefore finds nothing to consume and 401s
+ * (`routes/ui.ts`) therefore finds nothing to consume and 401s
  * (`reject()`, clearing the cookie), it does not "rebuild claims from
  * current DB state" for a caller in this position — that only happens for a
  * refresh token that still exists. The real sequence: the mutation succeeds,
  * the refresh cookie is dead the instant it does, and the caller's *access*
  * token (a stateless JWT, `ACCESS_TOKEN_TTL_SECONDS = 15 * 60`,
- * `services/jwt.ts:3`) keeps its stale `mustChangePassword: true` claim for
+ * `services/jwt.ts`) keeps its stale `mustChangePassword: true` claim for
  * up to the rest of its 15-minute life — gated out of every `authenticated`-
  * scoped GraphQL field and every REST route behind `passwordChangeGate` for
  * that window, with no path back except logging in again with the new

@@ -4,12 +4,13 @@ import { model as userError } from '../user-error';
 import { model as validation } from '../validation/model';
 
 /**
- * REST's `book.valid !== true` gate (`routes/ui.ts:1127-1132`, `PATCH
- * /api/books/:id/metadata`'s 409 "This book must pass validation before it
- * can be edited.") — a route-level precondition checked *before*
- * `applyEpubChanges` is ever called, not a thrown domain error. See
+ * REST's `book.valid !== true` gate (`PATCH /api/books/:id/metadata`'s 409
+ * "This book must pass validation before it can be edited.", in `routes/ui.ts`
+ * until `e67b4ad9` removed that route) — a route-level precondition checked
+ * *before* `applyEpubChanges` was ever called, not a thrown domain error. See
  * `book/mutation/update-metadata.ts`'s doc comment for the full trace of why
- * this exists and how it differs from a genuine post-edit `EpubValidationError`.
+ * this exists and how it differs from a genuine post-edit
+ * `EpubValidationError`.
  *
  * `validation` carries the book's stored `Validation` row when one exists
  * (`valid: false`, real epubcheck findings a client can render) and `null`

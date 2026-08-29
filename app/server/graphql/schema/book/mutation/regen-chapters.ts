@@ -82,10 +82,10 @@ const result = builder.unionType('BookRegenChaptersResult', {
  * returned no book after replace')` (see that function's doc comment, and
  * `bookUpdateMetadata`'s note on it). It is not one of the seven known domain
  * errors, so it is not a `toResult`-discharged branch; REST's own fallback
- * here is an untyped 500 ("Failed to re-import book", `routes/ui.ts:1285`).
- * Mirrored the same way: a `throw` kept out of `resolve`'s own body (per
- * `assertUnreachableDomainError`'s precedent in `to-result.ts`), so it still
- * satisfies "resolver bodies: zero try/catch/throw" literally, while
+ * here was an untyped 500 ("Failed to re-import book", `routes/ui.ts`, removed
+ * in `e67b4ad9`). Mirrored the same way: a `throw` kept out of `resolve`'s own
+ * body (per `assertUnreachableDomainError`'s precedent in `to-result.ts`), so
+ * it still satisfies "resolver bodies: zero try/catch/throw" literally, while
  * reaching yoga's masking exactly like REST's 500 does.
  */
 function assertReimportSucceeded(reimported: Book | null): asserts reimported is Book {
@@ -93,10 +93,10 @@ function assertReimportSucceeded(reimported: Book | null): asserts reimported is
 }
 
 /**
- * Mirrors `POST /api/books/:id/regen-chapters` (`routes/ui.ts:1255`). Owner
- * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
- * comment for the same `ownerOf`-scoped shape and why REST's "admin without a
- * target" 400 cannot occur here.
+ * Mirrored REST's `POST /api/books/:id/regen-chapters` (`routes/ui.ts`, removed
+ * in `e67b4ad9`). Owner resolution mirrors REST's `resolveOwner` — see
+ * `bookUpdateMetadata`'s doc comment for the same `ownerOf`-scoped shape and
+ * why REST's "admin without a target" 400 cannot occur here.
  *
  * Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`

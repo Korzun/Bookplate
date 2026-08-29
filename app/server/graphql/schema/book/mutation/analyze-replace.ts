@@ -87,10 +87,11 @@ const result = builder.unionType('BookAnalyzeReplaceResult', {
 });
 
 /**
- * Mirrors `POST /api/books/:id/replace/analyze` (`routes/ui.ts:1316-1354`),
- * minus the multipart upload half — see `replace-staging.ts`'s doc comment
- * for the staged-upload design this and `bookReplace` share, adjudicated
- * 2026-08-01 to resolve the spec's binary-boundary self-conflict.
+ * Mirrored REST's `POST /api/books/:id/replace/analyze` (`routes/ui.ts`,
+ * removed in `e67b4ad9`), minus the multipart upload half — see
+ * `replace-staging.ts`'s doc comment for the staged-upload design this and
+ * `bookReplace` share, adjudicated 2026-08-01 to resolve the spec's
+ * binary-boundary self-conflict.
  *
  * Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`

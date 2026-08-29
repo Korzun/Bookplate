@@ -244,7 +244,7 @@ describe('createReplaceStaging', () => {
 
     it('sanitizes a hostile MIME type into the safe ".bin" fallback, never letting it reach the filename (review M-4)', () => {
       // A `Content-Type` a client fully controls (only checked for an
-      // `image/` prefix by `coverUpload`'s fileFilter, routes/ui.ts:131-133).
+      // `image/` prefix by `coverUpload`'s fileFilter, routes/ui.ts).
       // Before the M-4 fix, `.split('/')[1]` would have carried `..\..\evil`
       // straight into `path.join`'s filename argument — a Windows traversal
       // vector. The fixed allowlist makes that structurally impossible: the

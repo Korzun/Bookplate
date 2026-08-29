@@ -156,7 +156,7 @@ export type ReplaceStagingDeps = {
  * on `mimeType`, but nothing in the returned extension is built FROM it, so
  * there is no substring of a hostile `mimeType` that can end up inside a
  * filename. Covers the MIME types `coverUpload`'s own `image/*` `fileFilter`
- * (`routes/ui.ts:128-134`) actually admits in practice; anything else
+ * (`routes/ui.ts`) actually admits in practice; anything else
  * (unrecognised, or not even a real MIME string) falls back to `.bin` in
  * `extensionFor` below.
  */
@@ -186,15 +186,16 @@ const COVER_EXTENSIONS: Readonly<Record<string, string>> = {
  * version derived the extension directly from `mimeType`'s substring after
  * the `/` (e.g. `.split('/')[1]`), which is `req.file.mimetype`, i.e. the
  * `Content-Type` of a client-supplied multipart part, only checked for an
- * `image/` prefix (`routes/ui.ts:131-133`) — attacker-controlled beyond that.
- * `/` cannot appear in the derived substring (it's the split delimiter), so
- * traversal via `/` was never possible, but on Windows `\` is also a path
- * separator, and a hostile `Content-Type: image/..\..\evil` would have
- * produced a `path.join` argument containing `..\..`; an absurdly long
- * subtype also risked `ENAMETOOLONG` (a masked 500). The allowlist closes
- * both: every possible return value is one of the fixed literals above, so
- * neither the mimeType's length nor its characters can ever reach the
- * filename.
+ * `image/` prefix (`coverUpload`'s `fileFilter` in `routes/ui.ts`) —
+ * attacker-controlled beyond that. `/` cannot appear in the derived substring
+ * (it's the split delimiter), so traversal via `/` was never possible, but on
+ * Windows `\` is also a path separator, and a hostile
+ * `Content-Type: image/..\..\evil` would have produced a `path.join` argument
+ * containing `..\..`; an absurdly long subtype also risked `ENAMETOOLONG` (a
+ * masked 500).
+ * The allowlist closes both: every possible return value is one of the fixed
+ * literals above, so neither the mimeType's length nor its characters can ever
+ * reach the filename.
  */
 function extensionFor(kind: StagedKind, mimeType: string | null): string {
   if (kind === 'epub') return '.epub';

@@ -672,15 +672,16 @@ describe('Mutation.bookUpdateMetadata', () => {
       ).toBeNull();
     });
 
-    // Review I-1: REST pins this side effect both ways (`ui.test.ts:2858`
-    // "does not enqueue thumbnails when no cover is uploaded", `:2868`
-    // "enqueues thumbnails when a new cover is uploaded") — this mutation's
-    // own thumbnail-enqueue call (`update-metadata.ts`, cover-success branch)
-    // had zero coverage before this fix. `harness.thumbnails` is a
-    // real, never-started `ThumbnailQueue` (`test-util.ts`'s doc comment),
-    // so `enqueue` is inert and safe to spy on directly.
+    // Review I-1: REST pinned this side effect both ways, in
+    // `routes/ui.test.ts` ("does not enqueue thumbnails when no cover is
+    // uploaded" and "enqueues thumbnails when a new cover is uploaded", both
+    // removed with the route in `e67b4ad9`) — this mutation's own
+    // thumbnail-enqueue call (`update-metadata.ts`, cover-success branch) had
+    // zero coverage before this fix. `harness.thumbnails` is a real,
+    // never-started `ThumbnailQueue` (`test-util.ts`'s doc comment), so
+    // `enqueue` is inert and safe to spy on directly.
     describe('thumbnail enqueue on cover success (review I-1)', () => {
-      it('enqueues thumbnail regeneration with (owner.userId, the NEW post-edit book id) — REST parity for ui.test.ts:2868', async () => {
+      it('enqueues thumbnail regeneration with (owner.userId, the NEW post-edit book id) — REST parity for ui.test.ts\'s "enqueues thumbnails when a new cover is uploaded"', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
         const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
         const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
@@ -698,7 +699,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         expect(enqueueSpy).toHaveBeenCalledWith(harness.aliceOwner.userId, rawBookId(data.book.id));
       });
 
-      it('does NOT enqueue on a metadata-only edit (no stagedCoverId) — REST parity for ui.test.ts:2858', async () => {
+      it('does NOT enqueue on a metadata-only edit (no stagedCoverId) — REST parity for ui.test.ts\'s "does not enqueue thumbnails when no cover is uploaded"', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
         const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
 

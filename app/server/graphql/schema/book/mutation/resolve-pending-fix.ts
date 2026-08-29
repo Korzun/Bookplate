@@ -239,17 +239,18 @@ async function clearEditLineageQuietly(
  * Covers the client's upload-queue operations as ONE mutation with an
  * `action` discriminator, per the spec's mutation list, which names only
  * `bookResolvePendingFix` (no separate mutation per action). Of REST's two
- * pending-fix write routes (`PUT`/`DELETE /api/books/:id/pending-fixes`,
- * `routes/ui.ts:776-811`), only `CLEAR` is a literal mirror; `DISMISS`,
- * `ACCEPT`, and `UNDO` are all new server-side behaviour — see each action's
- * own paragraph below.
+ * pending-fix write routes (`PUT`/`DELETE /api/books/:id/pending-fixes`, in
+ * `routes/ui.ts` until `e67b4ad9` removed them), only `CLEAR` is a literal
+ * mirror; `DISMISS`, `ACCEPT`, and `UNDO` are all new server-side behaviour —
+ * see each action's own paragraph below.
  *
  * **CLEAR is a direct REST mirror.** `DELETE /api/books/:id/pending-fixes`
- * is `bookStore.deletePendingFix(owner, id)` unconditionally — no book- or
- * row-existence check at all (traced: `routes/ui.ts:802-811`) — so this
- * branch mirrors that literally: it never touches the EPUB, never checks
- * whether a `PendingFix` row exists, and always succeeds once the book
- * itself resolves. See the `'clear'` branch below for the implementation.
+ * was `bookStore.deletePendingFix(owner, id)` unconditionally — no book- or
+ * row-existence check at all (traced against `routes/ui.ts` before `e67b4ad9`
+ * removed the route) — so this branch mirrors that literally: it never touches
+ * the EPUB, never checks whether a `PendingFix` row exists, and always succeeds
+ * once the book itself resolves. See the `'clear'` branch below for the
+ * implementation.
  *
  * **DISMISS is NOT a REST route — it is client-side-only there**
  * (`dismissAllProposals`, traced in the task report), server-side now. It
@@ -270,39 +271,39 @@ async function clearEditLineageQuietly(
  * review round (task-4-review.md, findings I-1/I-2) found the first version
  * diverged from it in two ways. No REST route atomically "accepts" a pending
  * fix: `PUT /api/books/:id/pending-fixes` only ever WRITES whatever state the
- * client sends (`routes/ui.ts:776-800`); the client's `applyAllProposals` /
- * `applyPatch` actually applies fixes itself via a separate `PATCH
- * /api/books/:id/metadata` call, then a separate sync effect PUTs the
- * resulting reduced state back. Given the brief's own description ("the
- * accept path applies fixes via the `upsertPendingFix`/apply flow") and that
- * the spec names exactly one mutation, ACCEPT here means: apply every
+ * client sent (`routes/ui.ts`, removed in `e67b4ad9`); the client's
+ * `applyAllProposals` / `applyPatch` actually applies fixes itself via a
+ * separate `PATCH /api/books/:id/metadata` call, then a separate sync effect
+ * PUTs the resulting reduced state back. Given the brief's own description
+ * ("the accept path applies fixes via the `upsertPendingFix`/apply flow") and
+ * that the spec names exactly one mutation, ACCEPT here means: apply every
  * ACTIONABLE proposal in one atomic write via `applyEpubChanges` — the same
  * underlying operation `bookUpdateMetadata` uses — then persist the same
- * post-accept `PendingFix` state the client's flow would have left behind.
- * (The trace above was taken against
- * `app/client/src/provider/book/hook/use-upload-queue.ts` — the client's
- * REST upload engine, which is DELETED. It is a historical citation: that
- * file was correct when this comment was written and existed up to
- * `7bfd9ec7`, which merged the queue onto GraphQL and removed it. The live
- * queue is `app/client/src/provider/upload/hook/use-upload-queue.ts`, and
- * it no longer performs the two-step PATCH-then-PUT flow described above —
- * it calls THIS mutation. Read the old path at `7bfd9ec7^` if you need to
- * re-check the equivalence claim; do not look for that behaviour in the
- * live file.)
+ * post-accept `PendingFix` state the client's flow would have left behind. (The
+ * trace above was taken against
+ * `app/client/src/provider/book/hook/use-upload-queue.ts` — the client's REST
+ * upload engine, which is DELETED. It is a historical citation: that file was
+ * correct when this comment was written and existed up to `7bfd9ec7`, which
+ * merged the queue onto GraphQL and removed it. The live queue is
+ * `app/client/src/provider/upload/hook/use-upload-queue.ts`, and it no longer
+ * performs the two-step PATCH-then-PUT flow described above — it calls THIS
+ * mutation. Read the old path at `7bfd9ec7^` if you need to re-check the
+ * equivalence claim; do not look for that behaviour in the live file.)
  *
  * This is a genuine, honest design choice, not a REST citation; see the task
  * report for the full alternative designs considered.
  *
- * **Actionable, not merely present (review I-2).** REST's client filters
- * `proposals.filter(p => p.to !== null)` before applying
- * (`use-upload-queue.ts:421`) and returns early — no PATCH at all — when that
- * filtered set is empty (`:422`). Two detected issue kinds are advisory-only
- * (`html-entity`, `title-is-filename` — `metadata-issues.ts`): they carry
- * `to: null` and an empty `changes`, so folding them changes nothing, yet
- * `applyEpubChanges` would still rebuild/revalidate/re-import the EPUB for
- * that no-op, minting a pointless new content-hash id. This resolver filters
- * to `actionable = proposals.filter(fix => fix.to !== null)` for the exact
- * same reason, BEFORE deciding whether there is anything to do.
+ * **Actionable, not merely present (review I-2).** REST's client filtered
+ * `proposals.filter(p => p.to !== null)` before applying, and returned early —
+ * no PATCH at all — when that filtered set was empty (the REST engine,
+ * `provider/book/hook/use-upload-queue.ts`, deleted in `7bfd9ec7`). Two
+ * detected issue kinds are advisory-only (`html-entity`, `title-is-filename` —
+ * `metadata-issues.ts`): they carry `to: null` and an empty `changes`, so
+ * folding them changes nothing, yet `applyEpubChanges` would still
+ * rebuild/revalidate/re-import the EPUB for that no-op, minting a pointless
+ * new content-hash id. This resolver filters to
+ * `actionable = proposals.filter(fix => fix.to !== null)` for the exact same
+ * reason, BEFORE deciding whether there is anything to do.
  *
  * **No actionable proposals (no row, a resolved row, an expired undo-only
  * row, or a row whose only proposals are advisory) → ACCEPT is a strict
@@ -342,17 +343,17 @@ async function clearEditLineageQuietly(
  * **Persisted state on success mirrors what the client's `applyAllProposals`
  * + sync effect actually write (review I-1), not a delete.** The client
  * removes only the applied (actionable) fixes' keys from `proposals`
- * (`applyPatch`, `use-upload-queue.ts:384-396`) — any advisory-only proposals
- * that were never actionable are left behind — appends the applied fixes to
- * `appliedFixes`, and arms `undo: { kind: 'apply', proposals: <the FULL
- * pre-accept proposals list>, appliedFixes: <the pre-accept appliedFixes> }`
- * (`applyAllProposals`, `:427-443`); only THEN does the sync effect PUT that
- * state (`:207-229`) — it never deletes here, since `undo` is always set.
- * This resolver reproduces exactly that shape via `upsertPendingFix`, keyed
- * to `outcome.ok.id` (see below for why). Because `undo` is always non-null
- * on this path, `upsertPendingFix`'s own "resolved ⟹ delete" rule
- * (`services/pending-fix.ts`) never fires here — the row survives, live, for
- * the client's existing undo affordance to keep working after a
+ * (`applyPatch`, in the REST engine `provider/book/hook/use-upload-queue.ts`
+ * until `7bfd9ec7`) — any advisory-only proposals that were never actionable
+ * are left behind — appends the applied fixes to `appliedFixes`, and arms
+ * `undo: { kind: 'apply', proposals: <the FULL pre-accept proposals list>,
+ * appliedFixes: <the pre-accept appliedFixes> }` (`applyAllProposals`, same
+ * file); only THEN did the sync effect PUT that state — it never deleted here,
+ * since `undo` is always set. This resolver reproduces exactly that shape via
+ * `upsertPendingFix`, keyed to `outcome.ok.id` (see below for why). Because
+ * `undo` is always non-null on this path, `upsertPendingFix`'s own "resolved ⟹
+ * delete" rule (`services/pending-fix.ts`) never fires here — the row survives,
+ * live, for the client's existing undo affordance to keep working after a
  * GraphQL-driven accept, exactly as it would after REST's.
  *
  * A successful ACCEPT may rewrite the EPUB, changing the book's content-hash
@@ -586,12 +587,13 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       }
 
       // Review I-2: only proposals REST's client would itself apply
-      // (`p.to !== null`, `use-upload-queue.ts:421`) — an advisory-only
-      // proposal folds to an empty `EpubChanges` and must not trigger a
-      // pointless rewrite. `selected` narrows to the `fixes` subset first
-      // (all proposals when `fixes` is omitted); a key matching nothing
-      // simply yields an empty `selected`, which falls into the same
-      // strict no-op branch below as "nothing actionable".
+      // (`p.to !== null`, in the REST engine
+      // `provider/book/hook/use-upload-queue.ts` until `7bfd9ec7`) — an
+      // advisory-only proposal folds to an empty `EpubChanges` and must not
+      // trigger a pointless rewrite. `selected` narrows to the `fixes` subset
+      // first (all proposals when `fixes` is omitted); a key matching nothing
+      // simply yields an empty `selected`, which falls into the same strict
+      // no-op branch below as "nothing actionable".
       const selected = selectProposals(state.proposals, args.input.fixes);
       const actionable = selected.filter((fix) => fix.to !== null);
 

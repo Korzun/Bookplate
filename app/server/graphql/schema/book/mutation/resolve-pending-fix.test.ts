@@ -344,8 +344,9 @@ describe('Mutation.bookResolvePendingFix', () => {
   });
 
   describe('ACCEPT', () => {
-    // Review I-1: REST's client (`applyAllProposals` + the sync effect,
-    // `use-upload-queue.ts:356-447`) leaves the `PendingFix` row ALIVE after
+    // Review I-1: REST's client (`applyAllProposals` + the sync effect, in the
+    // REST engine `provider/book/hook/use-upload-queue.ts`, deleted in
+    // `7bfd9ec7`) left the `PendingFix` row ALIVE after
     // an accept — `proposals: []`, an appended `appliedFixes`, and an `undo`
     // snapshot — never deletes it. Deleting (the original, pre-review
     // behaviour) destroys a server-persisted undo affordance the client still
@@ -460,8 +461,9 @@ describe('Mutation.bookResolvePendingFix', () => {
     // Review I-1's mixed-batch case: an advisory-only proposal alongside an
     // actionable one. REST's client applies only the actionable one and
     // leaves the advisory one sitting in `proposals` (`applyPatch` only
-    // removes the KEYS of the fixes it actually applied,
-    // `use-upload-queue.ts:384-396`) — it is not silently dropped.
+    // removes the KEYS of the fixes it actually applied, in the REST engine
+    // `provider/book/hook/use-upload-queue.ts`, deleted in `7bfd9ec7`) — it is
+    // not silently dropped.
     it('applies only the actionable proposal in a mixed batch, leaving the advisory-only one in `proposals`', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
       await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL, ADVISORY_PROPOSAL] });

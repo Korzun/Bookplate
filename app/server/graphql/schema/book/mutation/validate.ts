@@ -82,10 +82,10 @@ const result = builder.unionType('BookValidateResult', {
 });
 
 /**
- * Mirrors `POST /api/books/:id/validate` (`routes/ui.ts:1295`). Owner
- * resolution mirrors REST's `resolveOwner` — see `bookUpdateMetadata`'s doc
- * comment for the same `ownerOf`-scoped shape and why REST's "admin without a
- * target" 400 cannot occur here.
+ * Mirrored REST's `POST /api/books/:id/validate` (`routes/ui.ts`, removed in
+ * `e67b4ad9`). Owner resolution mirrors REST's `resolveOwner` — see
+ * `bookUpdateMetadata`'s doc comment for the same `ownerOf`-scoped shape and
+ * why REST's "admin without a target" 400 cannot occur here.
  *
  * Input is the `Book` global ID alone (design doc's 10-mutation input
  * collapse): `args.input.id.id` is the compound local id Pothos's own
