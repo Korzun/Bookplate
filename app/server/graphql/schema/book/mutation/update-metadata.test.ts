@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { getCover } from '../../../../services/book-assets';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { saveValidation } from '../../../../services/validation';
@@ -445,7 +446,8 @@ describe('Mutation.bookUpdateMetadata', () => {
       };
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('New Title');
-      const cover = await harness.stores.book.getCover(
+      const cover = await getCover(
+        harness.prisma,
         harness.aliceOwner.userId,
         rawBookId(data.book.id)
       );
@@ -477,7 +479,8 @@ describe('Mutation.bookUpdateMetadata', () => {
       };
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('Kept Title');
-      const cover = await harness.stores.book.getCover(
+      const cover = await getCover(
+        harness.prisma,
         harness.aliceOwner.userId,
         rawBookId(data.book.id)
       );
@@ -504,7 +507,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
       // Neither the title NOR a cover landed — applyEpubChanges never ran.
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Untouched Title');
-      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+      expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
     });
 
     it('returns StagedUploadNotFoundError for an EXPIRED stagedCoverId, with the identical message unknown/foreign get, and applies nothing', async () => {
@@ -563,7 +566,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(data.__typename).toBe('StagedUploadNotFoundError');
       expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Alice’s Title');
-      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+      expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
       // Bob's own stage was never even reached — untouched.
       expect(
         harness.stores.replaceStaging.resolve(bobsStagedCoverId, harness.bobOwner.userId, 'cover')
@@ -629,7 +632,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(data.__typename).toBe('EpubValidationError');
       // Neither metadata nor cover landed — same single atomic write REST uses.
       expect(await titleOf(harness.aliceOwner.userId, BOOK_ID)).toBe('Old Title');
-      expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+      expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
       // NOT consumed — retryable without re-uploading the image.
       expect(
         harness.stores.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
@@ -657,7 +660,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(data.__typename).toBe('BookUpdateMetadataPayload');
       expect(data.book.title).toBe('New Title Only');
       expect(
-        await harness.stores.book.getCover(harness.aliceOwner.userId, rawBookId(data.book.id))
+        await getCover(harness.prisma, harness.aliceOwner.userId, rawBookId(data.book.id))
       ).toBeNull();
     });
 
@@ -782,7 +785,8 @@ describe('Mutation.bookUpdateMetadata', () => {
         };
         expect(data.__typename).toBe('BookUpdateMetadataPayload');
         expect(data.book.title).toBe('Alice’s Title'); // unchanged — cover-only edit
-        const cover = await harness.stores.book.getCover(
+        const cover = await getCover(
+          harness.prisma,
           harness.aliceOwner.userId,
           rawBookId(data.book.id)
         );
@@ -812,7 +816,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         const data = result.data?.bookUpdateMetadata as { __typename: string; message: string };
         expect(data.__typename).toBe('StagedUploadNotFoundError');
         expect(data.message).toBe(UNKNOWN_STAGED_UPLOAD_MESSAGE);
-        expect(await harness.stores.book.getCover(harness.aliceOwner.userId, BOOK_ID)).toBeNull();
+        expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
         // The admin's own stage was never even reached — untouched.
         expect(
           harness.stores.replaceStaging.resolve(adminStagedCoverId, ADMIN_STAGING_ID, 'cover')

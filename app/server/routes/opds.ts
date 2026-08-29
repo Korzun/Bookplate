@@ -6,6 +6,7 @@ import { Router, Request, Response, RequestHandler } from 'express';
 
 import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
+import { getCover, getThumbnail } from '../services/book-assets';
 import { BookStore } from '../services/book-store';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
@@ -458,7 +459,7 @@ export function createOpdsRouter(
       let mime: string;
 
       if (!isNaN(parsedWidth) && parsedWidth > 0) {
-        const thumbnail = await bookStore.getThumbnail(owner.userId, req.params.id, parsedWidth);
+        const thumbnail = await getThumbnail(prisma, owner.userId, req.params.id, parsedWidth);
         if (thumbnail) {
           data = thumbnail.data;
           mime = thumbnail.mime;
@@ -466,7 +467,7 @@ export function createOpdsRouter(
           log.warn(
             `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
           );
-          const cover = await bookStore.getCover(owner.userId, req.params.id);
+          const cover = await getCover(prisma, owner.userId, req.params.id);
           if (!cover) {
             res.status(404).send('Not found');
             return;
@@ -475,7 +476,7 @@ export function createOpdsRouter(
           mime = cover.mime;
         }
       } else {
-        const cover = await bookStore.getCover(owner.userId, req.params.id);
+        const cover = await getCover(prisma, owner.userId, req.params.id);
         if (!cover) {
           res.status(404).send('Not found');
           return;

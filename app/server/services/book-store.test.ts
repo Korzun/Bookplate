@@ -9,6 +9,7 @@ import AdmZip from 'adm-zip';
 
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner, PageCursor } from '../types';
+import { getThumbnail, saveThumbnail } from './book-assets';
 import {
   BookHashCollisionError,
   SelfLinkError,
@@ -618,29 +619,6 @@ describe('clearDeviceEditions', () => {
     expect(cleared).toBe(1);
     expect(await prisma.deviceEdition.count({ where: { originalBookId: 'clr2' } })).toBe(0);
     expect(fs.existsSync(editionFile)).toBe(false);
-  });
-});
-
-describe('getCover', () => {
-  it('returns cover data and mime', async () => {
-    await bookStore.addBook(OWNER, 'cov1', stage('cov1'), FAKE_META);
-    const cover = await bookStore.getCover(OWNER.userId, 'cov1');
-    expect(cover).not.toBeNull();
-    expect(Buffer.from(cover!.data)).toEqual(Buffer.from('fake-cover'));
-    expect(cover!.mime).toBe('image/jpeg');
-  });
-
-  it('returns null when no cover', async () => {
-    await bookStore.addBook(OWNER, 'nocov', stage('nocov'), {
-      ...FAKE_META,
-      coverData: null,
-      coverMime: null,
-    });
-    expect(await bookStore.getCover(OWNER.userId, 'nocov')).toBeNull();
-  });
-
-  it('returns null for unknown id', async () => {
-    expect(await bookStore.getCover(OWNER.userId, 'unknown')).toBeNull();
   });
 });
 
@@ -1323,8 +1301,8 @@ describe('reimportBook', () => {
     fs.writeFileSync(stagedPath, makeMinimalEpub('CoverChanged'));
     const id = partialMD5(stagedPath);
     await bookStore.addBook(OWNER, id, stagedPath, FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, id, 150, Buffer.from('thumb-old'), 'image/jpeg');
-    expect(await bookStore.getThumbnail(OWNER.userId, id, 150)).not.toBeNull();
+    await saveThumbnail(prisma, OWNER.userId, id, 150, Buffer.from('thumb-old'), 'image/jpeg');
+    expect(await getThumbnail(prisma, OWNER.userId, id, 150)).not.toBeNull();
 
     const importer: ScanImporter = {
       parseEpub: () => ({ ...FAKE_META, coverData: Buffer.from('fake-cover-NEW') }),
@@ -1332,7 +1310,7 @@ describe('reimportBook', () => {
     };
     await bookStore.reimportBook(OWNER, id, importer);
 
-    expect(await bookStore.getThumbnail(OWNER.userId, id, 150)).toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, id, 150)).toBeNull();
   });
 
   it('keeps thumbnails when the cover is unchanged on reimport', async () => {
@@ -1340,7 +1318,7 @@ describe('reimportBook', () => {
     fs.writeFileSync(stagedPath, makeMinimalEpub('CoverSame'));
     const id = partialMD5(stagedPath);
     await bookStore.addBook(OWNER, id, stagedPath, FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, id, 150, Buffer.from('thumb-keep'), 'image/jpeg');
+    await saveThumbnail(prisma, OWNER.userId, id, 150, Buffer.from('thumb-keep'), 'image/jpeg');
 
     const importer: ScanImporter = {
       // Same cover bytes as FAKE_META, but a changed title to prove the reimport ran.
@@ -1349,7 +1327,7 @@ describe('reimportBook', () => {
     };
     await bookStore.reimportBook(OWNER, id, importer);
 
-    const thumb = await bookStore.getThumbnail(OWNER.userId, id, 150);
+    const thumb = await getThumbnail(prisma, OWNER.userId, id, 150);
     expect(thumb).not.toBeNull();
     expect(Buffer.from(thumb!.data).toString()).toBe('thumb-keep');
   });
@@ -1542,83 +1520,12 @@ describe('reimportBook', () => {
   });
 });
 
-describe('book_thumbnails', () => {
-  it('saveThumbnail stores and getThumbnail retrieves', async () => {
-    await bookStore.addBook(OWNER, 'bk1', stage('bk1'), FAKE_META);
-    const data = Buffer.from('thumb-data');
-    await bookStore.saveThumbnail(OWNER.userId, 'bk1', 150, data, 'image/jpeg');
-    const result = await bookStore.getThumbnail(OWNER.userId, 'bk1', 150);
-    expect(result).not.toBeNull();
-    expect(Buffer.from(result!.data).toString()).toBe('thumb-data');
-    expect(result!.mime).toBe('image/jpeg');
-  });
-
-  it('getThumbnail returns null when not present', async () => {
-    await bookStore.addBook(OWNER, 'bk2', stage('bk2'), FAKE_META);
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk2', 150)).toBeNull();
-  });
-
-  it('saveThumbnail upserts on (book_id, width) conflict', async () => {
-    await bookStore.addBook(OWNER, 'bk3', stage('bk3'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk3', 150, Buffer.from('v1'), 'image/jpeg');
-    await bookStore.saveThumbnail(OWNER.userId, 'bk3', 150, Buffer.from('v2'), 'image/jpeg');
-    expect(
-      Buffer.from((await bookStore.getThumbnail(OWNER.userId, 'bk3', 150))!.data).toString()
-    ).toBe('v2');
-  });
-
-  it('pruneThumbnails removes rows whose width is not in the config list', async () => {
-    await bookStore.addBook(OWNER, 'bk4', stage('bk4'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg');
-    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 150, Buffer.from('y'), 'image/jpeg');
-    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 300, Buffer.from('z'), 'image/jpeg');
-    const removed = await bookStore.pruneThumbnails([60, 150]);
-    expect(removed).toBe(1);
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 60)).not.toBeNull();
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 150)).not.toBeNull();
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 300)).toBeNull();
-  });
-
-  it('pruneThumbnails with empty array removes all thumbnails', async () => {
-    await bookStore.addBook(OWNER, 'bk5', stage('bk5'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk5', 60, Buffer.from('x'), 'image/jpeg');
-    const removed = await bookStore.pruneThumbnails([]);
-    expect(removed).toBe(1);
-  });
-
-  it('getMissingThumbnailPairs returns pairs without thumbnails', async () => {
-    const metaWithCover = {
-      ...FAKE_META,
-      coverData: Buffer.from('cover'),
-      coverMime: 'image/jpeg',
-    };
-    await bookStore.addBook(OWNER, 'bk6', stage('bk6'), metaWithCover);
-    await bookStore.addBook(OWNER, 'bk7', stage('bk7'), metaWithCover);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk6', 60, Buffer.from('x'), 'image/jpeg'); // already has 60px
-
-    const missing = await bookStore.getMissingThumbnailPairs([60, 170]);
-    // bk6 needs 170, bk7 needs both
-    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk6', width: 170 });
-    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk7', width: 60 });
-    expect(missing).toContainEqual({ userId: OWNER.userId, bookId: 'bk7', width: 170 });
-    expect(missing).not.toContainEqual({ userId: OWNER.userId, bookId: 'bk6', width: 60 });
-  });
-
-  it('getMissingThumbnailPairs ignores books without covers', async () => {
-    await bookStore.addBook(OWNER, 'bk8', stage('bk8'), {
-      ...FAKE_META,
-      coverData: null,
-      coverMime: null,
-    });
-    const missing = await bookStore.getMissingThumbnailPairs([60]);
-    expect(missing.map((p) => p.bookId)).not.toContain('bk8');
-  });
-
+describe('book_thumbnails — cascades via deleteBook/reimportBook', () => {
   it('deleting a book cascades to book_thumbnails', async () => {
     await bookStore.addBook(OWNER, 'bk9', stage('bk9'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk9', 60, Buffer.from('x'), 'image/jpeg');
+    await saveThumbnail(prisma, OWNER.userId, 'bk9', 60, Buffer.from('x'), 'image/jpeg');
     await bookStore.deleteBook(OWNER, 'bk9');
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk9', 60)).toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk9', 60)).toBeNull();
   });
 
   it('reimportBook updates book_thumbnails book_id when id changes', async () => {
@@ -1647,7 +1554,7 @@ describe('book_thumbnails', () => {
     const originalId = 'original-id';
     const newId = 'new-id';
     await bookStore.addBook(OWNER, originalId, epubPath, FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, originalId, 60, Buffer.from('thumb'), 'image/jpeg');
+    await saveThumbnail(prisma, OWNER.userId, originalId, 60, Buffer.from('thumb'), 'image/jpeg');
 
     const mockImporter = {
       parseEpub: () => FAKE_META,
@@ -1656,8 +1563,8 @@ describe('book_thumbnails', () => {
     await bookStore.reimportBook(OWNER, originalId, mockImporter);
 
     // Thumbnail should now be under new ID (not lost, not causing FK error)
-    expect(await bookStore.getThumbnail(OWNER.userId, newId, 60)).not.toBeNull();
-    expect(await bookStore.getThumbnail(OWNER.userId, originalId, 60)).toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, newId, 60)).not.toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, originalId, 60)).toBeNull();
   });
 
   it('renames file on disk from <oldId>.epub to <newId>.epub when hash changes', async () => {

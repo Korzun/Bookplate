@@ -10,6 +10,7 @@ import multer from 'multer';
 import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
+import { getCover, getThumbnail } from '../services/book-assets';
 import { BookAlreadyExistsError } from '../services/book-errors';
 import { BookStore } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
@@ -833,7 +834,7 @@ export function createUiRouter(
       let mime: string;
 
       if (!isNaN(parsedWidth) && parsedWidth > 0) {
-        const thumbnail = await bookStore.getThumbnail(owner.userId, bookId, parsedWidth);
+        const thumbnail = await getThumbnail(prisma, owner.userId, bookId, parsedWidth);
         if (thumbnail) {
           data = thumbnail.data;
           mime = thumbnail.mime;
@@ -841,7 +842,7 @@ export function createUiRouter(
           log.warn(
             `Cover thumbnail width=${parsedWidth} not found for book ${bookId}, serving full-size`
           );
-          const cover = await bookStore.getCover(owner.userId, bookId);
+          const cover = await getCover(prisma, owner.userId, bookId);
           if (!cover) {
             res.status(404).send('Not found');
             return;
@@ -850,7 +851,7 @@ export function createUiRouter(
           mime = cover.mime;
         }
       } else {
-        const cover = await bookStore.getCover(owner.userId, bookId);
+        const cover = await getCover(prisma, owner.userId, bookId);
         if (!cover) {
           res.status(404).send('Not found');
           return;
