@@ -143,7 +143,7 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
 
   // Task-3-review, I-1: `Series.books`/`Validation.messages` genuinely
   // support backward pagination (Task 1 only rejects an OVERSIZE `last`,
-  // same as `first` — `rejectOversizePage`, `pagination.ts:66-81`), so a
+  // same as `first` — `rejectOversizePage`, `pagination.ts`), so a
   // `last:100` read fetches exactly as many rows as `first:100` — reading
   // only `first` priced it at `defaultSize` regardless, a 120× underprice
   // measured on the real amplification fixtures (task-3-report.md §4).
@@ -212,7 +212,7 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
 
 /**
  * Task-3-review ROUND 2, I-4: `Library.series: [Series!]!` is an unbounded
- * `findMany` (`library/model.ts:267-275`) that reached `Series.books` (a
+ * `findMany` (`library/model.ts`) that reached `Series.books` (a
  * priced connection) while itself pricing at the default multiplier of 1 —
  * a free `×S` (S = the library's series count) handed to anything nested
  * under it. Measured pre-fix: `{ series { books(first:12) { … }
@@ -303,7 +303,7 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
   // (50) with `Viewer.users`, not its own `INSTANCE_DEVICE_MULTIPLIER`
   // (task 3: re-derived 20 -> 100 and renamed from HOUSEHOLD_DEVICE_MULTIPLIER,
   // `cost-limit.ts`'s own doc comment above that constant) — it prices a SUBSET of the instance's users
-  // (`device/model.ts:87-97`'s `where: {deviceAccess: {some: {deviceId}}}`),
+  // (`device/model.ts`'s `where: {deviceAccess: {some: {deviceId}}}`),
   // which cannot exceed the instance's own user count, so it must never be
   // priced tighter than `Viewer.users` itself.
   it('Viewer.devices -> Device.enabledUsers -> User.library.series.books compounds three multipliers (100 x 50 x 100 — instance devices x instance users x library series)', () => {

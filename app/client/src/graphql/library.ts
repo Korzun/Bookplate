@@ -82,8 +82,8 @@ export const SeriesNextIndexDocument = graphql(`
  * no `Library` field is ever read off the result.
  *
  * Re-homed from `useFetchBookList`'s dead 404 branch
- * (`provider/book/hook/use-fetch-book-list.ts:77`, its last live caller
- * removed by an earlier task): that REST-era clear fired only when
+ * (`provider/book/hook/use-fetch-book-list.ts`, deleted in `db6913fe` once
+ * its last live caller was gone): that REST-era clear fired only when
  * something happened to call `fetchBookList`. Rooting the same check here
  * fires wherever the library is actually read, not only from an
  * action-triggered fetch.

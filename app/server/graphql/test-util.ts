@@ -108,7 +108,7 @@ export const createHarness = async (): Promise<Harness> => {
   const scanJobs = new ScanJobRegistry(createScanPubSub());
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
-  // an in-memory array (`services/thumbnail-queue.ts:53-57`); nothing reads
+  // an in-memory array (`services/thumbnail-queue.ts`'s `enqueue`); nothing reads
   // that array without a running `processLoop`. Task 3b's staged-cover
   // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
   // with `vi.spyOn` — safe precisely because it's inert here.

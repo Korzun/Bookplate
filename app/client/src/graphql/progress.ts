@@ -180,7 +180,8 @@ export const BookLinkDocumentDocument = graphql(`
  * has an inline fragment on `Book`) — a `Series`-heavy library can return
  * materially fewer than `first` usable rows. The compensation is `first:
  * 100` (`CONNECTION_LIMITS.libraryEntries.maxSize`, the most the server will
- * serve — schema-verified, `app/server/graphql/schema/pagination.ts:186`)
+ * serve — schema-verified, `CONNECTION_LIMITS` in
+ * `app/server/graphql/schema/pagination.ts`)
  * plus `pageInfo`/`cursor` so a caller CAN page past a dilute page if it
  * needs to. Raising the literal page size from 20 to 100 is free on the
  * tight axis: breadth counts selected fields, unweighted by any connection

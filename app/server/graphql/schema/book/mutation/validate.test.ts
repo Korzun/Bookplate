@@ -246,8 +246,9 @@ describe('Mutation.bookValidate', () => {
 
     // Rejected by Pothos's relay plugin's argMapper, which decodes the global
     // id against the arg's `for: book` typename before `wrapResolve` (and so
-    // before `ScopeAuthPlugin`'s own wrapper) ever runs (`validate.ts:83-90`
-    // traces the plugin ordering this relies on) — not GraphQL argument
+    // before `ScopeAuthPlugin`'s own wrapper) ever runs (`validate.ts`'s
+    // resolver doc comment traces the plugin ordering this relies on) — not
+    // GraphQL argument
     // coercion, and distinct from any value the resolver could itself
     // produce. Arg-layer errors carry no `extensions.code` (a scope-layer
     // FORBIDDEN would); that, independent of the message's exact wording, is

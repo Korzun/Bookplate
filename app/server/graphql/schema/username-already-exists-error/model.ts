@@ -17,7 +17,7 @@ import { model as userError } from '../user-error';
  *    `InvalidInputError`; `user/mutation/register.ts` reproduces that exact
  *    ordering;
  *  - `createUser` returns `false` on a genuine `P2002` unique-
- *    constraint collision (`services/user.ts:15-39`) — a race, not a
+ *    constraint collision (`services/user.ts`) — a race, not a
  *    validation failure, so it is not folded into `InvalidInputError` either
  *    (that type is reserved for the resolver's own zod parse — see that
  *    type's doc comment).
