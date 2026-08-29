@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import * as bookCatalogModule from '../../../../services/book-catalog';
 import { createHarness, type Harness } from '../../../test-util';
 import { seedEditableBook } from './test-helpers';
 
@@ -232,11 +233,11 @@ describe('Mutation.bookValidate', () => {
       JSON.stringify([harness.aliceOwner.userId, BOOK_ID])
     );
     // Independent proof the resolver body never executes, not just that the
-    // response shape looks like it didn't: the resolver's third store call
-    // (after `parseCompoundId` and `loadOwner`) is `getBookById`, so a spy on
-    // it catching zero calls is direct evidence, not an inference from the
-    // error message alone.
-    const getBookByIdSpy = vi.spyOn(harness.stores.book, 'getBookById');
+    // response shape looks like it didn't: the resolver's third call (after
+    // `parseCompoundId` and `loadOwner`) is `getBookById` (`services/
+    // book-catalog.ts`), so a spy on it catching zero calls is direct
+    // evidence, not an inference from the error message alone.
+    const getBookByIdSpy = vi.spyOn(bookCatalogModule, 'getBookById');
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

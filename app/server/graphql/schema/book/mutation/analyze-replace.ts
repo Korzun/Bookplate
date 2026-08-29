@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { getBookById, getSubjects } from '../../../../services/book-catalog';
 import { analyzeEpub } from '../../../../services/epub-import-pipeline';
 import type { ValidationMessage } from '../../../../services/epub-validator';
 import { stagingIdentityOf } from '../../../../services/replace-staging';
@@ -156,7 +157,7 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       const stagingIdentity = stagingIdentityOf(context.viewer!);
@@ -176,7 +177,7 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
 
       const analysis = await analyzeEpub(staged.path, {
         originalName: staged.originalName,
-        librarySubjects: await context.stores.book.getSubjects(owner),
+        librarySubjects: await getSubjects(context.prisma, owner),
         validationThreshold: context.config.validationThreshold,
       });
 

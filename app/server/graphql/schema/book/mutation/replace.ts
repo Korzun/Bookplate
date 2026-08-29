@@ -7,6 +7,7 @@ import {
   type ApplyEpubChangesDeps,
   replaceEpubBytes,
 } from '../../../../services/apply-epub-changes';
+import { getBookById, getSubjects } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { applyAutoAndAccepted } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
@@ -206,7 +207,7 @@ builder.mutationField('bookReplace', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       const stagingIdentity = stagingIdentityOf(context.viewer!);
@@ -244,7 +245,7 @@ builder.mutationField('bookReplace', (t) =>
 
       const applied = await applyAutoAndAccepted(deps, owner, outcome.ok, {
         originalName: staged.originalName,
-        librarySubjects: await context.stores.book.getSubjects(owner),
+        librarySubjects: await getSubjects(context.prisma, owner),
         acceptedKeys: [...args.input.acceptedFixKeys],
       });
 

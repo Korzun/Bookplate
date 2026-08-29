@@ -11,6 +11,7 @@ import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
 import { saveThumbnail } from '../services/book-assets';
+import { listSeries } from '../services/book-catalog';
 import { BookStore } from '../services/book-store';
 import { buildEdition } from '../services/edition-builder';
 import { assertValidEpub } from '../services/epub-validator';
@@ -117,7 +118,7 @@ beforeEach(async () => {
   const bobId = (await prisma.user.findUnique({ where: { username: 'bob' } }))!.id;
   bob = { userId: bobId, username: 'bob' };
   app = express();
-  app.use('/opds', createOpdsRouter(bookStore, prisma, [60, 170]));
+  app.use('/opds', createOpdsRouter(booksDir, prisma, [60, 170]));
 });
 
 afterEach(async () => {
@@ -295,7 +296,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     app2.use(
       '/opds',
       createOpdsRouter(
-        bookStore,
+        booksDir,
         prisma,
         [60, 170],
         'Bookplate',
@@ -335,7 +336,7 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
     app3.use(
       '/opds',
       createOpdsRouter(
-        bookStore,
+        booksDir,
         prisma,
         [60, 170],
         'Bookplate',
@@ -518,7 +519,7 @@ describe('OPDS feed thumbnail link', () => {
     app2.use(
       '/opds',
       createOpdsRouter(
-        bookStore,
+        booksDir,
         prisma,
         [60, 170],
         'Bookplate',
@@ -662,7 +663,7 @@ describe('GET /opds/series/:seriesId', () => {
       seriesIndex: 1,
       title: 'Other Book',
     });
-    const seriesList = await bookStore.listSeries(alice);
+    const seriesList = await listSeries(prisma, alice);
     const expanse = seriesList.find((s) => s.name === 'The Expanse')!;
     const res = await request(app)
       .get(`/opds/series/${expanse.id}`)
@@ -698,7 +699,7 @@ describe('GET /opds/series/:seriesId', () => {
       seriesIndex: 1,
       title: 'Bob Book',
     });
-    const aliceSeries = await bookStore.listSeries(alice);
+    const aliceSeries = await listSeries(prisma, alice);
     const shared = aliceSeries.find((s) => s.name === 'Shared Series')!;
     const res = await request(app)
       .get(`/opds/series/${shared.id}`)
@@ -893,7 +894,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
     a.use(
       '/opds',
       createOpdsRouter(
-        bookStore,
+        booksDir,
         prisma,
         [60, 170],
         'Bookplate',

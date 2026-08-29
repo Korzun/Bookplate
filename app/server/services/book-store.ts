@@ -16,7 +16,6 @@ import {
   PendingFixState,
   SearchSuggestionsResponse,
 } from '../types';
-import { downloadFilename } from '../utils/download-filename';
 import {
   normalizeForSearch,
   toSubsequenceLike,
@@ -24,6 +23,7 @@ import {
   scoreAndRank,
 } from '../utils/fuzzy-search';
 import { seriesSortKey } from '../utils/series-sort-key';
+import { BOOK_SELECT, getBookById, prismaBookToBook, standaloneStatusWhere } from './book-catalog';
 import {
   BookAlreadyExistsError,
   BookHashCollisionError,
@@ -32,7 +32,7 @@ import {
   SelfLinkError,
 } from './book-errors';
 import { bookPath, getStagingDir, getUserDir } from './book-paths';
-import { countForBook, purgeForBook } from './edition';
+import { purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import type { ScanProgress } from './scan-events';
 
@@ -45,57 +45,12 @@ function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | nu
   return Buffer.from(a).equals(Buffer.from(b));
 }
 
-// All book columns except coverData (binary blob); coverMime serves as the hasCover proxy.
-const BOOK_SELECT = {
-  id: true,
-  title: true,
-  titleSort: true,
-  authorSort: true,
-  publishDate: true,
-  author: true,
-  description: true,
-  publisher: true,
-  series: true,
-  seriesIndex: true,
-  identifiers: true,
-  subjects: true,
-  coverMime: true,
-  size: true,
-  mtime: true,
-  addedAt: true,
-  chapterCount: true,
-  chapterSpineMap: true,
-  chapterNames: true,
-  pageCount: true,
-  validation: { select: { valid: true } },
-} as const;
-
 export interface ScanImporter {
   parseEpub: (filePath: string) => EpubMeta;
   partialMD5: (filePath: string) => string;
 }
 
 const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
-
-function standaloneStatusWhere(
-  status: 'not-started' | 'in-progress' | 'completed',
-  progressMap: Map<string, number>
-): Prisma.BookWhereInput {
-  const allStartedIds = [...progressMap.entries()].filter(([, pct]) => pct > 0).map(([id]) => id);
-  const inProgressIds = [...progressMap.entries()]
-    .filter(([, pct]) => pct > 0 && pct < 1)
-    .map(([id]) => id);
-  const completedIds = [...progressMap.entries()].filter(([, pct]) => pct >= 1).map(([id]) => id);
-
-  switch (status) {
-    case 'not-started':
-      return allStartedIds.length > 0 ? { id: { notIn: allStartedIds } } : {};
-    case 'in-progress':
-      return { id: { in: inProgressIds } };
-    case 'completed':
-      return { id: { in: completedIds } };
-  }
-}
 
 export class BookStore {
   constructor(
@@ -106,18 +61,6 @@ export class BookStore {
 
   getStagingDir(): string {
     return getStagingDir(this.booksRoot);
-  }
-
-  async getSubjects(owner: Owner): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ value: string }>>`
-      SELECT DISTINCT trim(CAST(json_each.value AS TEXT)) AS value
-      FROM books, json_each(books.subjects)
-      WHERE user_id = ${owner.userId}
-        AND json_each.type = 'text'
-        AND trim(CAST(json_each.value AS TEXT)) <> ''
-      ORDER BY value
-    `;
-    return rows.map((r) => r.value);
   }
 
   async getSearchSuggestions(
@@ -249,112 +192,6 @@ export class BookStore {
       });
 
     return { groups };
-  }
-
-  private sortByTitle<T extends { titleSort: string; title: string; id: string }>(rows: T[]): T[] {
-    return [...rows].sort((a, b) => {
-      const aKey = a.titleSort !== '' ? a.titleSort : a.title;
-      const bKey = b.titleSort !== '' ? b.titleSort : b.title;
-      if (aKey < bKey) return -1;
-      if (aKey > bKey) return 1;
-      if (a.title < b.title) return -1;
-      if (a.title > b.title) return 1;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-  }
-
-  async listBooks(owner: Owner): Promise<Book[]> {
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId },
-      select: BOOK_SELECT,
-    });
-    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
-  }
-
-  async getAuthors(owner: Owner): Promise<string[]> {
-    const rows = await this.prisma.book.groupBy({
-      by: ['author'],
-      where: { userId: owner.userId, author: { not: '' } },
-      orderBy: { author: 'asc' },
-    });
-    return rows.map((r) => r.author);
-  }
-
-  async listBooksByAuthor(owner: Owner, author: string): Promise<Book[]> {
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId, author },
-      select: BOOK_SELECT,
-    });
-    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
-  }
-
-  async listSeries(owner: Owner): Promise<{ id: string; name: string; bookCount: number }[]> {
-    const rows = await this.prisma.series.findMany({
-      where: { userId: owner.userId },
-      select: { id: true, name: true, bookCount: true },
-      orderBy: { sortKey: 'asc' },
-    });
-    return rows;
-  }
-
-  async listBooksBySeries(owner: Owner, seriesId: string): Promise<Book[]> {
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId, seriesId },
-      select: BOOK_SELECT,
-      orderBy: [{ seriesIndex: 'asc' }, { title: 'asc' }, { id: 'asc' }],
-    });
-    return rows.map((r) => this.prismaBookToBook(owner, r));
-  }
-
-  async listBooksBySubject(owner: Owner, subject: string): Promise<Book[]> {
-    const matched = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT DISTINCT b.id
-      FROM books b, json_each(b.subjects) je
-      WHERE b.user_id = ${owner.userId}
-        AND je.type = 'text'
-        AND trim(CAST(je.value AS TEXT)) = ${subject}
-    `;
-    if (matched.length === 0) return [];
-    const ids = matched.map((r) => r.id);
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId, id: { in: ids } },
-      select: BOOK_SELECT,
-    });
-    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
-  }
-
-  async listBooksByStatus(
-    owner: Owner,
-    status: 'not-started' | 'in-progress' | 'completed'
-  ): Promise<Book[]> {
-    const progresses = await this.prisma.progress.findMany({
-      where: { userId: owner.userId },
-      select: { document: true, percentage: true },
-    });
-    const progressMap = new Map(progresses.map((p) => [p.document, p.percentage]));
-    const statusWhere = standaloneStatusWhere(status, progressMap);
-    const rows = await this.prisma.book.findMany({
-      where: { userId: owner.userId, ...statusWhere },
-      select: BOOK_SELECT,
-    });
-    return this.sortByTitle(rows).map((r) => this.prismaBookToBook(owner, r));
-  }
-
-  async getBookById(
-    owner: Owner,
-    id: string,
-    opts?: { withEditionCount?: boolean }
-  ): Promise<Book | null> {
-    const row = await this.prisma.book.findUnique({
-      where: { userId_id: { userId: owner.userId, id } },
-      select: BOOK_SELECT,
-    });
-    if (!row) return null;
-    const book = this.prismaBookToBook(owner, row);
-    if (opts?.withEditionCount) {
-      book.deviceEditionCount = await countForBook(this.prisma, owner.userId, id);
-    }
-    return book;
   }
 
   async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
@@ -600,7 +437,7 @@ export class BookStore {
   }
 
   async deleteBook(owner: Owner, id: string): Promise<Book | null> {
-    const book = await this.getBookById(owner, id);
+    const book = await getBookById(this.prisma, this.booksRoot, owner, id);
     if (!book) return null;
     try {
       await this.prisma.$transaction(async (tx) => {
@@ -655,7 +492,9 @@ export class BookStore {
    * a bad state; editions regenerate lazily on the next device download.
    */
   async clearDeviceEditions(owner: Owner, id: string): Promise<number | null> {
-    const book = await this.getBookById(owner, id, { withEditionCount: true });
+    const book = await getBookById(this.prisma, this.booksRoot, owner, id, {
+      withEditionCount: true,
+    });
     if (!book) return null;
     const cleared = book.deviceEditionCount ?? 0;
     await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
@@ -852,7 +691,7 @@ export class BookStore {
       );
     }
 
-    return this.getBookById(owner, newId);
+    return getBookById(this.prisma, this.booksRoot, owner, newId);
   }
 
   private async removeStaleBook(userId: string, id: string): Promise<void> {
@@ -1243,7 +1082,7 @@ export class BookStore {
           });
           seriesBooksMap.set(
             s.name,
-            rows.map((r) => this.prismaBookToBook(owner, r))
+            rows.map((r) => prismaBookToBook(this.booksRoot, owner, r))
           );
         })
     );
@@ -1257,7 +1096,9 @@ export class BookStore {
     const books: BookSummary[] = page.flatMap((p) => {
       if (p.type === 'standalone') {
         return [
-          this.toBookSummary(this.prismaBookToBook(owner, p.row as (typeof standaloneRows)[0])),
+          this.toBookSummary(
+            prismaBookToBook(this.booksRoot, owner, p.row as (typeof standaloneRows)[0])
+          ),
         ];
       }
       return (seriesBooksMap.get((p.row as (typeof seriesRows)[0]).name) ?? []).map((b) =>
@@ -1338,41 +1179,5 @@ export class BookStore {
         totalSize,
       },
     });
-  }
-
-  private prismaBookToBook(
-    owner: Owner,
-    r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>
-  ): Book {
-    return {
-      id: r.id,
-      filename: downloadFilename({
-        author: r.author,
-        series: r.series,
-        seriesIndex: r.seriesIndex,
-        title: r.title,
-      }),
-      path: bookPath(this.booksRoot, owner, r.id),
-      title: r.title,
-      titleSort: r.titleSort,
-      authorSort: r.authorSort,
-      publishDate: r.publishDate,
-      author: r.author,
-      description: r.description,
-      publisher: r.publisher,
-      series: r.series,
-      seriesIndex: r.seriesIndex,
-      identifiers: JSON.parse(r.identifiers) as { scheme: string; value: string }[],
-      subjects: JSON.parse(r.subjects) as string[],
-      hasCover: r.coverMime !== null,
-      size: r.size,
-      mtime: new Date(r.mtime),
-      addedAt: new Date(r.addedAt),
-      chapterCount: r.chapterCount,
-      chapterSpineMap: JSON.parse(r.chapterSpineMap) as number[],
-      chapterNames: r.chapterNames ? (JSON.parse(r.chapterNames) as string[]) : [],
-      pageCount: r.pageCount,
-      valid: r.validation?.valid ?? null,
-    };
   }
 }

@@ -72,11 +72,12 @@ const result = builder.unionType('BookClearEditionsResult', {
  * here unchanged.
  *
  * `BookStore.clearDeviceEditions` is NOT wrapped in `toResult`: traced end to
- * end (`book-store.ts:692-698`), it only ever calls `getBookById` (a plain
- * read) and `purgeForBook` (`services/edition.ts`) — neither throws any of
- * the seven known store errors. Wrapping it would make `toResult`'s `err` branch
- * undischargeable — see `to-result.ts`'s doc comment, and `bookDelete`'s
- * identical note for `deleteBook`.
+ * end (`book-store.ts:494-501`), it only ever calls `getBookById`
+ * (`services/book-catalog.ts` — a plain read) and `purgeForBook`
+ * (`services/edition.ts`) — neither throws any of the seven known store
+ * errors. Wrapping it would make `toResult`'s `err` branch undischargeable —
+ * see `to-result.ts`'s doc comment, and `bookDelete`'s identical note for
+ * `deleteBook`.
  *
  * REST 404 (book not found) is modelled as `null`, the same "no such row"
  * convention every other book mutation in this schema uses —

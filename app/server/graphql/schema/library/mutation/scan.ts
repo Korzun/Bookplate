@@ -54,6 +54,7 @@ type ScanBackgroundDeps = {
   readonly scanJob: ScanJobStore;
   readonly prisma: PrismaClient;
   readonly thumbnail: ThumbnailQueue;
+  readonly booksRoot: string;
   readonly validationThreshold: RevalidateDeps['validationThreshold'];
 };
 
@@ -69,8 +70,8 @@ type ScanBackgroundDeps = {
  * function's own body is character-identical to the block it replaces.
  *
  * Mirrors `POST /api/books/scan`'s detached body (`routes/ui.ts:1069-1087`)
- * line for line: `bookStore.scan(owner)` → `revalidateLibrary({bookStore,
- * prisma, validationThreshold}, owner)` → `await thumbnailQueue.
+ * line for line: `bookStore.scan(owner)` → `revalidateLibrary({prisma,
+ * booksRoot, validationThreshold}, owner)` → `await thumbnailQueue.
  * reconcile()` → the same `log.info`/`log.error` wording → `scanJobStore.
  * complete`/`fail`. See `libraryScan`'s own doc comment below for why this
  * full pipeline — not just `bookStore.scan` — is replicated rather than
@@ -83,8 +84,8 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
     });
     const val = await revalidateLibrary(
       {
-        bookStore: deps.book,
         prisma: deps.prisma,
+        booksRoot: deps.booksRoot,
         validationThreshold: deps.validationThreshold,
       },
       owner
@@ -176,6 +177,7 @@ builder.mutationField('libraryScan', (t) =>
           scanJob,
           prisma: context.prisma,
           thumbnail,
+          booksRoot: context.config.booksDir,
           validationThreshold: context.config.validationThreshold,
         },
         owner

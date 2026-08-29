@@ -1,3 +1,4 @@
+import { getBookById } from '../../../../services/book-catalog';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
 import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
@@ -120,7 +121,7 @@ builder.mutationField('bookClearEditLineage', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const existing = await context.stores.book.getBookById(owner, bookId);
+      const existing = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (existing === null) return null;
 
       const cleared = await context.stores.book.clearEditLineage(owner, bookId);

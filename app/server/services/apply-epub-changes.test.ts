@@ -24,6 +24,7 @@ import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
 import { replaceEpubBytes } from './apply-epub-changes';
+import { getBookById } from './book-catalog';
 import { BookHashCollisionError } from './book-errors';
 import { BookStore } from './book-store';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
@@ -106,7 +107,7 @@ describe('replaceEpubBytes', () => {
     const updated = await replaceEpubBytes(
       deps,
       OWNER,
-      (await bookStore.getBookById(OWNER, 'oldid'))!,
+      (await getBookById(prisma, booksDir, OWNER, 'oldid'))!,
       epub('New')
     );
     expect(updated.id).not.toBe('oldid'); // fingerprint changed
@@ -132,7 +133,7 @@ describe('replaceEpubBytes', () => {
         'ERROR'
       )
     );
-    const book = (await bookStore.getBookById(OWNER, 'oldid'))!;
+    const book = (await getBookById(prisma, booksDir, OWNER, 'oldid'))!;
     const before = fs.readFileSync(book.path);
     await expect(replaceEpubBytes(deps, OWNER, book, epub('Broken'))).rejects.toBeInstanceOf(
       EpubValidationError
@@ -141,7 +142,7 @@ describe('replaceEpubBytes', () => {
   });
 
   it('restores the original bytes when reimport throws a collision', async () => {
-    const book = (await bookStore.getBookById(OWNER, 'oldid'))!;
+    const book = (await getBookById(prisma, booksDir, OWNER, 'oldid'))!;
     const before = fs.readFileSync(book.path);
     vi.spyOn(bookStore, 'reimportBook').mockRejectedValueOnce(new BookHashCollisionError('dup'));
 

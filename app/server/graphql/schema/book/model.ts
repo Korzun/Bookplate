@@ -346,8 +346,8 @@ export const model = builder.prismaNode('Book', {
      * How many per-device converted editions of this book are cached for its
      * owner. `GET /api/books/:id` (`routes/ui.ts`) asks `getBookById` for it via
      * `{ withEditionCount: true }`, and `getBookById` in turn calls exactly this
-     * function with exactly these two arguments (`book-store.ts`:
-     * `book.deviceEditionCount = await countForBook(this.prisma, owner.userId, id)`),
+     * function with exactly these two arguments (`book-catalog.ts`:
+     * `book.deviceEditionCount = await countForBook(prisma, owner.userId, id)`),
      * so this is the same number REST reports, from the same query.
      *
      * Both arguments come off the parent row — `parent.userId` is the book's own

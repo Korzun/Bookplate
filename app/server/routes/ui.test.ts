@@ -25,6 +25,7 @@ import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
 import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
+import { getBookById, listBooks } from '../services/book-catalog';
 import { BookStore } from '../services/book-store';
 import { verifyAccessToken } from '../services/jwt';
 import { hashLoginPassword, resetPassword } from '../services/password';
@@ -854,7 +855,7 @@ describe('POST /api/books/upload', () => {
     expect(res.body.uploaded).toContain('parsed.epub');
 
     // Verify metadata was stored and file is on disk at canonical path
-    const books = await bookStore.listBooks(aliceOwner);
+    const books = await listBooks(prisma, booksDir, aliceOwner);
     expect(fs.existsSync(books[0].path)).toBe(true);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('Parsed Title');
@@ -920,7 +921,7 @@ describe('POST /api/books/upload', () => {
       .set(...bearer(token));
     expect(res.status).toBe(200);
 
-    const books = await bookStore.listBooks(aliceOwner);
+    const books = await listBooks(prisma, booksDir, aliceOwner);
     expect(books[0].hasCover).toBe(true);
   });
 
@@ -956,7 +957,7 @@ describe('POST /api/books/upload', () => {
       .attach('files', epubBuf, 'human-name.epub')
       .set(...bearer(token));
     expect(res.status).toBe(200);
-    const books = await bookStore.listBooks(aliceOwner);
+    const books = await listBooks(prisma, booksDir, aliceOwner);
     expect(books).toHaveLength(1);
     const onDisk = fs
       .readdirSync(path.join(booksDir, 'alice'))
@@ -992,7 +993,7 @@ describe('POST /api/books/upload', () => {
       .post('/api/books/upload')
       .attach('files', epubBuf, 'my-book.epub')
       .set(...bearer(token));
-    const books = await bookStore.listBooks(aliceOwner);
+    const books = await listBooks(prisma, booksDir, aliceOwner);
     expect(books).toHaveLength(1);
     expect(books[0].title).toBe('my-book');
   });
@@ -1072,7 +1073,7 @@ describe('POST /api/books/upload — metadata detection', () => {
     expect(applied.to).toBe('Test Title, The');
 
     // The persisted book reflects the applied fix.
-    const book = await bookStore.getBookById(aliceOwner, result.bookId);
+    const book = await getBookById(prisma, booksDir, aliceOwner, result.bookId);
     expect(book?.titleSort).toBe('Test Title, The');
   });
 
@@ -1114,7 +1115,7 @@ describe('POST /api/books/upload — metadata detection', () => {
     const applied = result.applied.find((f: { kind: string }) => f.kind === 'author-sort-missing');
     expect(applied).toBeTruthy();
 
-    const book = await bookStore.getBookById(aliceOwner, result.bookId);
+    const book = await getBookById(prisma, booksDir, aliceOwner, result.bookId);
     expect(book?.title).toBe('my-great-book');
   });
 
@@ -1235,7 +1236,7 @@ describe('POST /api/books/upload — dcterms:modified repair', () => {
     expect(fix).toBeTruthy();
     expect(fix.field).toBe('document');
     // Book is retrievable under the (repaired) id.
-    expect(await bookStore.getBookById(aliceOwner, result.bookId)).not.toBeNull();
+    expect(await getBookById(prisma, booksDir, aliceOwner, result.bookId)).not.toBeNull();
   });
 
   it('injects a missing dcterms:modified and reports a document fix', async () => {
@@ -1301,7 +1302,7 @@ describe('POST /api/books/upload — dcterms:modified repair', () => {
     expect(metadataFix).toBeTruthy();
 
     // The returned bookId is the final post-auto-fix id and is retrievable.
-    expect(await bookStore.getBookById(aliceOwner, result.bookId)).not.toBeNull();
+    expect(await getBookById(prisma, booksDir, aliceOwner, result.bookId)).not.toBeNull();
   });
 });
 
@@ -1432,7 +1433,7 @@ describe('GET /api/books/:id/cover', () => {
 describe('GET /api/books/:id/download', () => {
   it('streams the epub with attachment headers', async () => {
     await bookStore.addBook(aliceOwner, 'dl1', stage('dl1', 'EPUBDATA'), FAKE_META);
-    const [book] = await bookStore.listBooks(aliceOwner);
+    const [book] = await listBooks(prisma, booksDir, aliceOwner);
 
     const token = await loginAlice();
     const res = await request(app)
@@ -1487,7 +1488,7 @@ describe('surviving book REST routes accept a Relay global ID', () => {
     bobToken = (bobRes.body as { accessToken: string }).accessToken;
 
     await bookStore.addBook(aliceOwner, 'gidbook', stage('gidbook'), FAKE_META);
-    aliceBookId = (await bookStore.listBooks(aliceOwner))[0].id;
+    aliceBookId = (await listBooks(prisma, booksDir, aliceOwner))[0].id;
   });
 
   describe('GET /api/books/:id/download', () => {
@@ -1707,7 +1708,7 @@ describe('per-user library authorization', () => {
       .post('/api/books/upload')
       .attach('files', epubBuf, 'alice-book.epub')
       .set(...bearer(aliceToken));
-    aliceBookId = (await bookStore.listBooks(aliceOwner))[0].id;
+    aliceBookId = (await listBooks(prisma, booksDir, aliceOwner))[0].id;
   });
 
   it("user A cannot reach user B's book", async () => {

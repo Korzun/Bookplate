@@ -4,15 +4,15 @@ import type { PrismaClient } from '@prisma/client';
 
 import { logger } from '../logger';
 import { Book, Owner } from '../types';
-import { BookStore } from './book-store';
+import { listBooks } from './book-catalog';
 import { validateEpubReport, type ValidationReport } from './epub-validator';
 import { saveValidation } from './validation';
 
 const log = logger('revalidate-library');
 
 export interface RevalidateDeps {
-  bookStore: BookStore;
   prisma: PrismaClient;
+  booksRoot: string;
   validationThreshold: Parameters<typeof validateEpubReport>[1];
 }
 
@@ -34,7 +34,7 @@ export async function revalidateLibrary(
   deps: RevalidateDeps,
   owner: Owner
 ): Promise<{ validated: number; failed: number }> {
-  const books = await deps.bookStore.listBooks(owner);
+  const books = await listBooks(deps.prisma, deps.booksRoot, owner);
   let validated = 0;
   let failed = 0;
   for (const book of books) {

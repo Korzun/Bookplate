@@ -58,7 +58,7 @@ export function createServer(
   server.use(
     '/opds',
     createOpdsRouter(
-      bookStore,
+      config.booksDir,
       prisma,
       config.thumbnailWidths,
       config.libraryName,
