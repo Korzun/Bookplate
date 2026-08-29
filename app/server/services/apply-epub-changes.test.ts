@@ -66,6 +66,7 @@ function epub(title: string): Buffer {
 describe('replaceEpubBytes', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
   let bookStore: BookStore;
+  let editionsRoot: string;
   let deps: {
     bookStore: BookStore;
     prisma: PrismaClient;
@@ -87,7 +88,7 @@ describe('replaceEpubBytes', () => {
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'replace-editions-'));
+    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'replace-editions-'));
     bookStore = new BookStore(booksDir, prisma, editionsRoot);
     deps = { bookStore, prisma, validationThreshold: 'ERROR' };
     const staged = path.join(booksDir, 'staged.epub');
@@ -97,6 +98,7 @@ describe('replaceEpubBytes', () => {
   afterEach(async () => {
     await prisma.$disconnect();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(editionsRoot, { recursive: true, force: true });
   });
 
   it('swaps the file, reimports (new id), and saves validation', async () => {

@@ -47,6 +47,7 @@ let booksRoot: string;
 let booksDir: string;
 let bookStore: BookStore;
 let dbPath: string;
+let editionsRoot: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-queue-test-'));
@@ -60,7 +61,7 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-queue-editions-'));
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-queue-editions-'));
   bookStore = new BookStore(booksRoot, prisma, editionsRoot);
   mockResize.mockClear();
 });
@@ -73,6 +74,7 @@ afterEach(async () => {
     /* best-effort cleanup */
   }
   fs.rmSync(booksRoot, { recursive: true });
+  fs.rmSync(editionsRoot, { recursive: true });
 });
 
 describe('enqueue + drainForTest', () => {

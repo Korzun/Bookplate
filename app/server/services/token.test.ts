@@ -52,6 +52,10 @@ afterEach(async () => {
   fs.rmSync(booksDir, { recursive: true, force: true });
 });
 
+afterAll(() => {
+  fs.rmSync(editionsRoot, { recursive: true, force: true });
+});
+
 describe('getOrCreateJwtSecret', () => {
   it('generates a 32-byte secret on first call', async () => {
     const secret = await getOrCreateJwtSecret(prisma);

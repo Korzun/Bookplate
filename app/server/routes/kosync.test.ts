@@ -20,10 +20,11 @@ let bookStore: BookStore;
 let app: express.Express;
 let dbPath: string;
 let booksDir: string;
+let editionsRoot: string;
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-test-'));
-  const editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-editions-'));
+  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kosync-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -45,6 +46,7 @@ afterEach(async () => {
     /* best-effort cleanup */
   }
   fs.rmSync(booksDir, { recursive: true, force: true });
+  fs.rmSync(editionsRoot, { recursive: true, force: true });
 });
 
 const ALICE_SYNC_PASSWORD = 'secret';
