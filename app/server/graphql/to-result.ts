@@ -10,9 +10,26 @@ import { EpubValidationError } from '../services/epub-validator';
 
 /**
  * The seven domain failures raised deliberately by domain functions, as
- * opposed to the database and filesystem failures they let escape. Every one
- * of them has a typed GraphQL counterpart under `schema/*-error/` that a
- * client is expected to render and act on.
+ * opposed to the database and filesystem failures they let escape. Six of
+ * them have a typed GraphQL counterpart under `schema/*-error/` that a client
+ * is expected to render and act on.
+ *
+ * `BookAlreadyExistsError` is the exception, and stays in the list anyway:
+ * membership means "a deliberate domain failure", not "renderable by a
+ * client". Its GraphQL model was deleted because zero result unions
+ * referenced it — no mutation could ever return it (see `user-error/
+ * model.test.ts`) — and it is thrown only by `addBook` (`services/
+ * book-lifecycle.ts`), caught only by REST's upload seam (`routes/ui.ts`),
+ * which tests the class directly rather than going through `toResult`.
+ *
+ * The consequence for this file: no GraphQL call site may let one reach an
+ * `err` branch, because nothing in any result union can discharge it — the
+ * only ways out of a resolver would be to throw (forbidden) or to mislabel it
+ * as some error the mutation's union does contain (worse). Every `toResult`
+ * call site passes an explicit `expected` list today; one added over a path
+ * that can reach `addBook` must leave this class out of that list, so the
+ * error rethrows into yoga's masking as a 500 — which is what REST's own
+ * fallback already does with it.
  *
  * Listed as classes (not names) because membership is decided by `instanceof`:
  * an `Error` whose `name` merely reads "SelfLinkError" is not one, and must
@@ -82,7 +99,10 @@ export const isKnownDomainError = (value: unknown): value is KnownDomainError =>
  * Omitting `expected` defaults to all seven (`KNOWN_DOMAIN_ERROR_CLASSES`),
  * `E` defaults to the full `KnownDomainError` union, and every existing call
  * (there were none before task 2) keeps compiling and behaving identically —
- * this is additive.
+ * this is additive. Defaulting is nonetheless the wrong choice over any path
+ * that can throw `BookAlreadyExistsError`: it has no GraphQL model, so the
+ * resulting `err` could not be discharged — see the note on the class list
+ * above.
  */
 export const toResult = async <T, E extends KnownDomainError = KnownDomainError>(
   run: () => Promise<T>,
