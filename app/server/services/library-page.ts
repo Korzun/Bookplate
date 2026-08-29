@@ -6,42 +6,74 @@ import { standaloneStatusWhere } from './book-catalog';
 /**
  * Every `Book` column a GraphQL `Book` field resolver reads, directly or
  * through a helper — `coverData` (the `Bytes?` cover blob) is the sole
- * omission. Recovered from the pre-refactor `BOOK_SELECT`
- * (`git show 363d33dc:app/server/services/book-store.ts`) rather than
- * reconstructed by hand, then reconciled against a fresh read of every
- * `Book` field resolver (`graphql/schema/book/model.ts`):
+ * omission.
  *
- * - `userId` and `seriesId` were added — the old `BOOK_SELECT` fed a hand-
- *   built `Book` DTO (`services/book-catalog.ts`'s `prismaBookToBook`) that
- *   never carried either, but this read hands the row straight to Pothos.
- *   `userId` is read directly by `coverUrl`/`downloadUrl`/`thumbnailUrl`
- *   (via the shared `urlSuffix` helper), `pendingFix`/`hasActionablePendingFix`
- *   (`context.loadPendingFix`), `progress` (`context.loadProgress`),
- *   `lineage` (`context.loadOwner`), and `deviceEditionCount`
- *   (`countForBook`) — and, together with `id`, is the compound primary key
- *   (`@@id([userId, id])`) Pothos's relation fallback re-queries by for
- *   `series`/`validation` below. `seriesId` is the FK column backing
- *   `series: t.relation('seriesRel', ...)`.
- * - `series` (the denormalized string column) was DROPPED — the old
- *   `BOOK_SELECT` carried it for `prismaBookToBook`'s DTO, but no `Book`
- *   field resolver here exposes it (`Book.series` is the `seriesRel`
- *   relation, a distinct column).
- * - The old `BOOK_SELECT`'s nested `validation: { select: { valid: true } }`
- *   was DROPPED: `Book.validation` is `t.relation('validation', ...)` here,
- *   not a hand-mapped field, so Pothos's own relation fallback (keyed on
- *   `userId`/`id`, same mechanism as `series` above) fetches it — a select
- *   on `validation.valid` alone would starve every OTHER `Validation` field
- *   (`threshold`, `validatedAt`, `messageCounts`).
+ * **This is deliberately NOT the same list as `services/book-catalog.ts`'s
+ * own `BOOK_SELECT`, and the two must not be merged or derived from one
+ * another.** They answer different questions about the same model:
  *
- * Every other column is unchanged from the pre-refactor set: `id`, `title`,
- * `titleSort`, `authorSort`, `publishDate`, `author`, `description`,
- * `publisher`, `seriesIndex`, `identifiers`, `subjects`, `coverMime`,
- * `size`, `mtime`, `addedAt`, `chapterCount`, `chapterSpineMap`,
- * `chapterNames`, `pageCount` — each still read by a `Book` field resolver
- * (`title`/`titleSort`/etc. via `t.exposeString`/`t.exposeInt`/`t.exposeFloat`;
- * `subjects`/`identifiers`/`chapterSpineMap`/`chapterNames` via the `parse*`
- * helpers in `graphql/derive.ts`; `coverMime` via `hasCover`; `mtime` via both
- * `mtime` itself and every `urlSuffix`-built URL's cache-busting `v=`).
+ * - `book-catalog.ts`'s asks "every column `prismaBookToBook` writes into the
+ *   hand-built `Book` DTO" — the shape OPDS, the REST routes, and several
+ *   GraphQL mutations consume.
+ * - This one asks "every column a GraphQL `Book` field resolver reads" — the
+ *   row goes straight to Pothos as a `Book` parent, never through a DTO.
+ *
+ * Each is guarded, by a mechanism suited to its own consumer, and neither
+ * guard depends on the other list. `book-catalog.ts`'s is COMPILE-TIME:
+ * `prismaBookToBook` takes `Prisma.BookGetPayload<{ select: typeof
+ * BOOK_SELECT }>`, so dropping a column it maps fails to compile. This one's
+ * is RUNTIME — the `SelectedBookRow`-to-`BookRow` cast at the `findMany`
+ * below erases the type link, so `graphql/schema/library/entries.test.ts`'s
+ * coverage test stands in for it, requiring every `Book` field the live
+ * schema exposes to be either exercised against a row fetched through this
+ * select or explicitly excluded with a written reason.
+ *
+ * That the two lists happen to share 19 of their 21 keys is a coincidence of
+ * two independent requirements, not a shared requirement — `coverData` is
+ * absent from both for entirely unrelated reasons (the DTO does not carry it;
+ * here it is a per-row blob on a page of up to 20). A shared base would have
+ * to be named for a set that is meaningful to neither consumer, and would
+ * make "add it to the base" the default for a new `Book` column when the only
+ * answerable question is per-consumer.
+ *
+ * The four keys where they differ, each non-transferable:
+ *
+ * - `userId` and `seriesId` are HERE ONLY. The DTO carries neither, but this
+ *   read hands the row straight to Pothos. `userId` is read directly by
+ *   `coverUrl`/`downloadUrl`/`thumbnailUrl` (via the shared `urlSuffix`
+ *   helper), `pendingFix`/`hasActionablePendingFix` (`context.loadPendingFix`),
+ *   `progress` (`context.loadProgress`), `lineage` (`context.loadOwner`), and
+ *   `deviceEditionCount` (`countForBook`) — and, together with `id`, is the
+ *   compound primary key (`@@id([userId, id])`) Pothos's relation fallback
+ *   re-queries by for `series`/`validation` below. `seriesId` is the FK column
+ *   backing `series: t.relation('seriesRel', ...)`.
+ * - `series` (the denormalized string column) is in `book-catalog.ts` ONLY:
+ *   `prismaBookToBook`'s DTO carries it, but no `Book` field resolver here
+ *   exposes it — GraphQL's `Book.series` is the `seriesRel` relation, a
+ *   distinct column.
+ * - `validation: { select: { valid: true } }` is in `book-catalog.ts` ONLY:
+ *   its DTO hand-maps `valid`, whereas `Book.validation` here is
+ *   `t.relation('validation', ...)`, so Pothos's own relation fallback (keyed
+ *   on `userId`/`id`, same mechanism as `series` above) fetches it — and a
+ *   select on `validation.valid` alone would starve every OTHER `Validation`
+ *   field (`threshold`, `validatedAt`, `messageCounts`).
+ *
+ * The other 19 are shared: `id`, `title`, `titleSort`, `authorSort`,
+ * `publishDate`, `author`, `description`, `publisher`, `seriesIndex`,
+ * `identifiers`, `subjects`, `coverMime`, `size`, `mtime`, `addedAt`,
+ * `chapterCount`, `chapterSpineMap`, `chapterNames`, `pageCount` — each read
+ * here by a `Book` field resolver (`title`/`titleSort`/etc. via
+ * `t.exposeString`/`t.exposeInt`/`t.exposeFloat`; `subjects`/`identifiers`/
+ * `chapterSpineMap`/`chapterNames` via the `parse*` helpers in
+ * `graphql/derive.ts`; `coverMime` via `hasCover`; `mtime` via both `mtime`
+ * itself and every `urlSuffix`-built URL's cache-busting `v=`).
+ *
+ * (This list was originally recovered from the pre-refactor `BOOK_SELECT` in
+ * `git show 363d33dc:app/server/services/book-store.ts` — the ancestor of
+ * `book-catalog.ts`'s — rather than reconstructed by hand. The reconciliation
+ * above is stated against the LIVE sibling instead, so a reader can re-check
+ * it against current code; anchoring it to a commit froze a baseline that
+ * nothing keeps in step.)
  */
 const BOOK_SELECT = {
   userId: true,

@@ -21,7 +21,25 @@ import { countForBook } from './edition';
  * change), nothing outside this module needs either, so both are private again.
  */
 
-// All book columns except coverData (binary blob); coverMime serves as the hasCover proxy.
+/**
+ * All book columns except coverData (binary blob); coverMime serves as the
+ * hasCover proxy.
+ *
+ * Scoped to `prismaBookToBook`'s DTO: this is every column that mapper writes,
+ * which is why it is guarded at COMPILE TIME — the mapper's parameter is
+ * `Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>`, so dropping a
+ * column it reads fails to build.
+ *
+ * `services/library-page.ts` has a SECOND, deliberately independent
+ * `BOOK_SELECT` for the `Library.entries` read. Do not merge them or derive
+ * one from the other: that one selects for what a GraphQL `Book` field
+ * resolver reads (its rows go straight to Pothos, never through this DTO),
+ * carries `userId`/`seriesId` which this one has no use for, and omits this
+ * one's `series` and `validation`. See its doc comment for the full
+ * column-by-column reconciliation against this list, and for why the 19 keys
+ * they share are a coincidence of two independent requirements rather than a
+ * shared one.
+ */
 const BOOK_SELECT = {
   id: true,
   title: true,
