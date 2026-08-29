@@ -1,10 +1,5 @@
-import { randomUUID } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-
 import { PrismaClient, Prisma, Series } from '@prisma/client';
 
-import { logger } from '../logger';
 import {
   Book,
   BookSummary,
@@ -15,31 +10,18 @@ import {
   BookListFilters,
   SearchSuggestionsResponse,
 } from '../types';
-import { seriesSortKey } from '../utils/series-sort-key';
-import { BOOK_SELECT, getBookById, prismaBookToBook, standaloneStatusWhere } from './book-catalog';
-import { BookAlreadyExistsError, BookHashCollisionError } from './book-errors';
-import { bookPath, getStagingDir, getUserDir } from './book-paths';
-import { purgeForBook } from './edition';
-import { parseEpub, partialMD5 } from './epub-parser';
+import { BOOK_SELECT, prismaBookToBook, standaloneStatusWhere } from './book-catalog';
+import {
+  addBook as addBookImpl,
+  clearDeviceEditions as clearDeviceEditionsImpl,
+  deleteBook as deleteBookImpl,
+  reimportBook as reimportBookImpl,
+  scan as scanImpl,
+} from './book-lifecycle';
+import { getStagingDir } from './book-paths';
 import type { ScanProgress } from './scan-events';
 import { getSearchSuggestions } from './search-suggestions';
-import { getSeriesNextIndex, recomputeSeriesMeta } from './series-meta';
-
-const log = logger('BookStore');
-
-/** Compares two cover blobs (or their absence) for equality. */
-function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | null): boolean {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  return Buffer.from(a).equals(Buffer.from(b));
-}
-
-export interface ScanImporter {
-  parseEpub: (filePath: string) => EpubMeta;
-  partialMD5: (filePath: string) => string;
-}
-
-const defaultImporter: ScanImporter = { parseEpub, partialMD5 };
+import { getSeriesNextIndex } from './series-meta';
 
 export class BookStore {
   constructor(
@@ -63,126 +45,11 @@ export class BookStore {
   }
 
   async addBook(owner: Owner, id: string, srcPath: string, meta: EpubMeta): Promise<void> {
-    const existing = await this.prisma.book.findUnique({
-      where: { userId_id: { userId: owner.userId, id } },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new BookAlreadyExistsError(id);
-    }
-
-    fs.mkdirSync(getUserDir(this.booksRoot, owner), { recursive: true });
-    const targetPath = bookPath(this.booksRoot, owner, id);
-    if (path.resolve(srcPath) !== path.resolve(targetPath)) {
-      fs.renameSync(srcPath, targetPath);
-    }
-
-    const stat = fs.statSync(targetPath);
-    const title = meta.title.trim();
-    const titleSort = (meta.titleSort || '').trim();
-    const authorSort = (meta.authorSort || '').trim();
-    const publishDate = (meta.publishDate || '').trim();
-    const author = (meta.author || '').trim();
-
-    await this.prisma.$transaction(async (tx) => {
-      let seriesId: string | null = null;
-      const seriesName = meta.series.trim();
-      if (seriesName) {
-        const s = await tx.series.upsert({
-          where: { userId_name: { userId: owner.userId, name: seriesName } },
-          create: {
-            id: randomUUID(),
-            userId: owner.userId,
-            name: seriesName,
-            sortKey: seriesSortKey(seriesName),
-          },
-          update: {},
-          select: { id: true },
-        });
-        seriesId = s.id;
-      }
-
-      await tx.book.create({
-        data: {
-          userId: owner.userId,
-          id,
-          title,
-          titleSort,
-          authorSort,
-          publishDate,
-          author,
-          description: meta.description,
-          publisher: meta.publisher,
-          series: meta.series,
-          seriesIndex: meta.seriesIndex,
-          identifiers: JSON.stringify(meta.identifiers),
-          subjects: JSON.stringify(meta.subjects),
-          coverData: meta.coverData as unknown as Prisma.Bytes | null,
-          coverMime: meta.coverMime,
-          size: stat.size,
-          mtime: stat.mtimeMs,
-          addedAt: Date.now(),
-          chapterCount: meta.chapterCount,
-          chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
-          chapterNames: JSON.stringify(meta.chapterNames),
-          pageCount: meta.pageCount,
-          seriesId,
-        },
-      });
-
-      if (seriesId) {
-        await recomputeSeriesMeta(tx, seriesId);
-      }
-    });
+    return addBookImpl(this.prisma, this.booksRoot, owner, id, srcPath, meta);
   }
 
   async deleteBook(owner: Owner, id: string): Promise<Book | null> {
-    const book = await getBookById(this.prisma, this.booksRoot, owner, id);
-    if (!book) return null;
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        // Capture seriesId before deleting the row
-        const bookRow = await tx.book.findUnique({
-          where: { userId_id: { userId: owner.userId, id } },
-          select: { seriesId: true },
-        });
-        const seriesId = bookRow?.seriesId ?? null;
-
-        try {
-          await tx.book.delete({ where: { userId_id: { userId: owner.userId, id } } });
-        } catch (err) {
-          if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'))
-            throw err;
-        }
-        await tx.$executeRaw`
-          DELETE FROM book_id_history
-          WHERE user_id = ${owner.userId} AND (old_id = ${id} OR current_id = ${id})
-        `;
-
-        if (seriesId) {
-          const remaining = await tx.book.count({ where: { seriesId } });
-          if (remaining === 0) {
-            await tx.series.delete({ where: { id: seriesId } });
-          } else {
-            await recomputeSeriesMeta(tx, seriesId);
-          }
-        }
-      });
-    } finally {
-      try {
-        fs.unlinkSync(book.path);
-      } catch {
-        /* file already gone */
-      }
-    }
-    try {
-      await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
-    } catch (err) {
-      log.warn(
-        `deleteBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-    return book;
+    return deleteBookImpl(this.prisma, this.booksRoot, this.editionsRoot, owner, id);
   }
 
   /**
@@ -192,227 +59,11 @@ export class BookStore {
    * a bad state; editions regenerate lazily on the next device download.
    */
   async clearDeviceEditions(owner: Owner, id: string): Promise<number | null> {
-    const book = await getBookById(this.prisma, this.booksRoot, owner, id, {
-      withEditionCount: true,
-    });
-    if (!book) return null;
-    const cleared = book.deviceEditionCount ?? 0;
-    await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
-    return cleared;
+    return clearDeviceEditionsImpl(this.prisma, this.booksRoot, this.editionsRoot, owner, id);
   }
 
-  async reimportBook(
-    owner: Owner,
-    id: string,
-    importer: ScanImporter = defaultImporter
-  ): Promise<Book | null> {
-    const exists = await this.prisma.book.findUnique({
-      where: { userId_id: { userId: owner.userId, id } },
-      select: { id: true, series: true, seriesId: true, coverData: true },
-    });
-    if (!exists) return null;
-    const oldSeriesId = exists.seriesId;
-
-    const filePath = bookPath(this.booksRoot, owner, id);
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(filePath);
-    } catch {
-      return null;
-    }
-    const meta = importer.parseEpub(filePath);
-    const newId = importer.partialMD5(filePath);
-
-    // Cached per-width thumbnails are derived from the cover; if the cover changed we must
-    // drop them so a stale thumbnail is never served — especially under the new immutable
-    // cache URL, where it would otherwise be cached indefinitely. Regeneration happens via
-    // the caller's thumbnail enqueue / reconcile.
-    const coverChanged = !buffersEqual(exists.coverData, meta.coverData);
-
-    if (newId !== id) {
-      const collision = await this.prisma.book.findUnique({
-        where: { userId_id: { userId: owner.userId, id: newId } },
-        select: { id: true },
-      });
-      if (collision) {
-        throw new BookHashCollisionError(newId);
-      }
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      // Resolve new seriesId
-      let newSeriesId: string | null = null;
-      const newSeriesName = meta.series.trim();
-      const author = (meta.author || '').trim();
-      if (newSeriesName) {
-        const s = await tx.series.upsert({
-          where: { userId_name: { userId: owner.userId, name: newSeriesName } },
-          create: {
-            id: randomUUID(),
-            userId: owner.userId,
-            name: newSeriesName,
-            sortKey: seriesSortKey(newSeriesName),
-          },
-          update: {},
-          select: { id: true },
-        });
-        newSeriesId = s.id;
-      }
-
-      if (newId !== id) {
-        const oldPath = bookPath(this.booksRoot, owner, id);
-        const newPath = bookPath(this.booksRoot, owner, newId);
-        if (oldPath !== newPath) {
-          fs.renameSync(oldPath, newPath);
-        }
-
-        // Update the book row (and cascade-update thumbnails via the FK onUpdate: Cascade).
-        await tx.book.update({
-          where: { userId_id: { userId: owner.userId, id } },
-          data: {
-            id: newId,
-            title: meta.title.trim(),
-            titleSort: (meta.titleSort || '').trim(),
-            authorSort: (meta.authorSort || '').trim(),
-            publishDate: (meta.publishDate || '').trim(),
-            author,
-            description: meta.description,
-            publisher: meta.publisher,
-            series: meta.series,
-            seriesIndex: meta.seriesIndex,
-            identifiers: JSON.stringify(meta.identifiers),
-            subjects: JSON.stringify(meta.subjects),
-            coverData: meta.coverData as unknown as Prisma.Bytes | null,
-            coverMime: meta.coverMime,
-            size: stat.size,
-            mtime: stat.mtimeMs,
-            chapterCount: meta.chapterCount,
-            chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
-            chapterNames: JSON.stringify(meta.chapterNames),
-            pageCount: meta.pageCount,
-            seriesId: newSeriesId,
-          },
-        });
-
-        // Progress has no FK to books and lineage is per-user, so migrate only
-        // the owner's progress rows.
-        const oldProgress = await tx.progress.findUnique({
-          where: { userId_document: { userId: owner.userId, document: id } },
-        });
-        if (oldProgress) {
-          const newProgress = await tx.progress.findUnique({
-            where: { userId_document: { userId: owner.userId, document: newId } },
-          });
-          if (!newProgress || oldProgress.timestamp >= newProgress.timestamp) {
-            if (newProgress) {
-              await tx.progress.delete({
-                where: { userId_document: { userId: owner.userId, document: newId } },
-              });
-            }
-            await tx.progress.delete({
-              where: { userId_document: { userId: owner.userId, document: id } },
-            });
-            await tx.progress.create({ data: { ...oldProgress, document: newId } });
-          } else {
-            await tx.progress.delete({
-              where: { userId_document: { userId: owner.userId, document: id } },
-            });
-          }
-        }
-
-        // Record lineage and flatten any prior chains pointing to old id
-        await tx.$executeRaw`
-          INSERT OR REPLACE INTO book_id_history (user_id, old_id, current_id, timestamp)
-          VALUES (${owner.userId}, ${id}, ${newId}, ${Date.now()})
-        `;
-        await tx.$executeRaw`
-          UPDATE book_id_history SET current_id = ${newId}
-          WHERE user_id = ${owner.userId} AND current_id = ${id}
-        `;
-      } else {
-        await tx.book.update({
-          where: { userId_id: { userId: owner.userId, id } },
-          data: {
-            title: meta.title.trim(),
-            titleSort: (meta.titleSort || '').trim(),
-            authorSort: (meta.authorSort || '').trim(),
-            publishDate: (meta.publishDate || '').trim(),
-            author,
-            description: meta.description,
-            publisher: meta.publisher,
-            series: meta.series,
-            seriesIndex: meta.seriesIndex,
-            identifiers: JSON.stringify(meta.identifiers),
-            subjects: JSON.stringify(meta.subjects),
-            coverData: meta.coverData as unknown as Prisma.Bytes | null,
-            coverMime: meta.coverMime,
-            size: stat.size,
-            mtime: stat.mtimeMs,
-            chapterCount: meta.chapterCount,
-            chapterSpineMap: JSON.stringify(meta.chapterSpineMap),
-            chapterNames: JSON.stringify(meta.chapterNames),
-            pageCount: meta.pageCount,
-            seriesId: newSeriesId,
-          },
-        });
-      }
-
-      // Invalidate stale thumbnails when the cover changed. In the id-change branch the
-      // FK onUpdate: Cascade has already moved the rows to newId, so keying on newId
-      // covers both branches.
-      if (coverChanged) {
-        await tx.bookThumbnail.deleteMany({
-          where: { userId: owner.userId, bookId: newId },
-        });
-      }
-
-      // Clean up the old Series row if it now has no books; recompute if it still has some
-      if (oldSeriesId && oldSeriesId !== newSeriesId) {
-        const remaining = await tx.book.count({ where: { seriesId: oldSeriesId } });
-        if (remaining === 0) {
-          await tx.series.delete({ where: { id: oldSeriesId } });
-        } else {
-          await recomputeSeriesMeta(tx, oldSeriesId);
-        }
-      }
-
-      // Recompute the new series aggregates
-      if (newSeriesId) {
-        await recomputeSeriesMeta(tx, newSeriesId);
-      }
-    });
-
-    try {
-      await purgeForBook(this.prisma, this.editionsRoot, owner.userId, id);
-      if (newId !== id) await purgeForBook(this.prisma, this.editionsRoot, owner.userId, newId);
-    } catch (err) {
-      log.warn(
-        `reimportBook: edition-cache purge failed for "${id}" — ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-
-    return getBookById(this.prisma, this.booksRoot, owner, newId);
-  }
-
-  private async removeStaleBook(userId: string, id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const book = await tx.book.findUnique({
-        where: { userId_id: { userId, id } },
-        select: { seriesId: true },
-      });
-      if (!book) return;
-
-      await tx.book.delete({ where: { userId_id: { userId, id } } });
-
-      if (book.seriesId) {
-        const remaining = await tx.book.count({ where: { seriesId: book.seriesId } });
-        if (remaining === 0) {
-          await tx.series.delete({ where: { id: book.seriesId } });
-        } else {
-          await recomputeSeriesMeta(tx, book.seriesId);
-        }
-      }
-    });
+  async reimportBook(owner: Owner, id: string): Promise<Book | null> {
+    return reimportBookImpl(this.prisma, this.booksRoot, this.editionsRoot, owner, id);
   }
 
   async getSeriesNextIndex(owner: Owner, name: string): Promise<number> {
@@ -421,112 +72,9 @@ export class BookStore {
 
   async scan(
     owner: Owner,
-    importer: ScanImporter = defaultImporter,
     onProgress?: (progress: ScanProgress) => void
   ): Promise<{ imported: string[]; removed: string[] }> {
-    const imported: string[] = [];
-    const removed: string[] = [];
-    const userDir = getUserDir(this.booksRoot, owner);
-
-    const dbIdRows = await this.prisma.book.findMany({
-      where: { userId: owner.userId },
-      select: { id: true },
-    });
-    const dbIds = new Set(dbIdRows.map((r) => r.id));
-
-    const diskFilenames: string[] = fs.existsSync(userDir)
-      ? fs.readdirSync(userDir).filter((f) => path.extname(f).toLowerCase() === '.epub')
-      : [];
-    const totalImporting = diskFilenames.length;
-
-    for (const [index, filename] of diskFilenames.entries()) {
-      const processed = index + 1;
-      // Reports the one outcome the branch below is about to take for this
-      // file, at the exact point the loop already decides it — no branch is
-      // added or reordered to make this possible. `bookId` is included only
-      // when the branch has one in hand (`undefined` is dropped, never sent
-      // as an explicit `bookId: undefined`).
-      const emit = (
-        outcome: 'imported' | 'renamed' | 'already-imported' | 'skipped',
-        bookId?: string
-      ): void => {
-        onProgress?.({
-          phase: 'importing',
-          total: totalImporting,
-          processed,
-          filename,
-          outcome,
-          ...(bookId !== undefined ? { bookId } : {}),
-        });
-      };
-
-      const filePath = path.join(userDir, filename);
-      const stem = path.basename(filename, '.epub');
-
-      // Fast path: file already at <id>.epub and that id is imported.
-      if (/^[0-9a-f]{32}$/.test(stem) && dbIds.has(stem)) {
-        emit('already-imported', stem);
-        continue;
-      }
-
-      let id: string;
-      let meta: EpubMeta;
-      try {
-        id = importer.partialMD5(filePath);
-        meta = importer.parseEpub(filePath);
-      } catch (err: unknown) {
-        log.warn(
-          `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
-        );
-        emit('skipped');
-        continue;
-      }
-
-      const canonicalPath = bookPath(this.booksRoot, owner, id);
-      if (filePath !== canonicalPath) {
-        if (fs.existsSync(canonicalPath)) {
-          log.warn(`scan: skipping "${filename}" — canonical path ${id}.epub already occupied`);
-          emit('skipped', id);
-          continue;
-        }
-        fs.renameSync(filePath, canonicalPath);
-      }
-
-      if (dbIds.has(id)) {
-        // Rename above was the only thing to do.
-        emit('renamed', id);
-        continue;
-      }
-
-      try {
-        const titleFallback = meta.title.trim() || path.basename(filename, path.extname(filename));
-        await this.addBook(owner, id, canonicalPath, { ...meta, title: titleFallback });
-        dbIds.add(id);
-        imported.push(filename);
-        emit('imported', id);
-      } catch (err: unknown) {
-        log.warn(
-          `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
-        );
-        emit('skipped', id);
-      }
-    }
-
-    // Stale rows: in DB but their canonical file is missing.
-    const allIdRows = await this.prisma.book.findMany({
-      where: { userId: owner.userId },
-      select: { id: true },
-    });
-    const totalPruning = allIdRows.length;
-    for (const [index, { id }] of allIdRows.entries()) {
-      if (!fs.existsSync(bookPath(this.booksRoot, owner, id))) {
-        await this.removeStaleBook(owner.userId, id);
-        removed.push(id + '.epub');
-      }
-      onProgress?.({ phase: 'pruning', total: totalPruning, processed: index + 1, bookId: id });
-    }
-
-    return { imported, removed };
+    return scanImpl(this.prisma, this.booksRoot, owner, onProgress);
   }
 
   private toBookSummary(book: Book): BookSummary {

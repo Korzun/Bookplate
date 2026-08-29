@@ -79,7 +79,7 @@ type ScanBackgroundDeps = {
  */
 async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Promise<void> {
   try {
-    const scanResult = await deps.book.scan(owner, undefined, (progress) => {
+    const scanResult = await deps.book.scan(owner, (progress) => {
       deps.scanJob.progress(owner.userId, progress);
     });
     const val = await revalidateLibrary(

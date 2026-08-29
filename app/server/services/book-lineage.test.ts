@@ -15,9 +15,21 @@ import {
   resolveBookId,
   unlinkDocument,
 } from './book-lineage';
-import { BookStore, ScanImporter } from './book-store';
+import { BookStore } from './book-store';
 
 vi.mock('../logger');
+// The vi.mock() factory below only sets these defaults once, at module load;
+// vite.config.ts's `mockReset: true` wipes them before every test. Every
+// call site here arms both with mockImplementationOnce (via `armImporter`)
+// right before the reimportBook call it targets, so no shared default needs
+// re-arming in a beforeEach.
+vi.mock('./epub-parser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./epub-parser')>()),
+  parseEpub: vi.fn(),
+  partialMD5: vi.fn(),
+}));
+
+import { parseEpub, partialMD5 } from './epub-parser';
 
 const OWNER: Owner = { userId: 'usr_test000000000000000', username: 'alice' };
 
@@ -80,6 +92,16 @@ let booksDir: string;
 let editionsRoot: string;
 let bookStore: BookStore;
 let dbPath: string;
+
+// Arms the mocked parseEpub/partialMD5 for exactly the next reimportBook
+// call, so it reports `newId` as the freshly-computed hash — replaces the
+// per-describe `makeImporterWithId(newId): ScanImporter` helper this file
+// used before `reimportBook` took its importer via direct module imports
+// instead of a constructor argument.
+function armImporter(newId: string): void {
+  vi.mocked(parseEpub).mockImplementationOnce(() => ({ ...FAKE_META, title: 'Lineage Book' }));
+  vi.mocked(partialMD5).mockImplementationOnce(() => newId);
+}
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
@@ -153,20 +175,11 @@ describe('resolveBookId', () => {
 });
 
 describe('resolveBookId — lineage via reimportBook', () => {
-  function makeImporterWithId(newId: string): ScanImporter {
-    return {
-      parseEpub: (_filePath: string): EpubMeta => ({
-        ...FAKE_META,
-        title: 'Lineage Book',
-      }),
-      partialMD5: (_filePath: string): string => newId,
-    };
-  }
-
   it('single hop: resolveBookId(old) returns new after reimport changes ID', async () => {
     const stagedPath = stage('lineage-a');
     await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
-    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+    armImporter('id-b');
+    await bookStore.reimportBook(OWNER, 'id-a');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-b');
   });
 
@@ -174,11 +187,13 @@ describe('resolveBookId — lineage via reimportBook', () => {
     const stagedPath = stage('lineage-multi');
     await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
     // First hop: id-a → id-b
-    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+    armImporter('id-b');
+    await bookStore.reimportBook(OWNER, 'id-a');
     // Write a file at id-b so reimportBook can stat it
     fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'epub-content');
     // Second hop: id-b → id-c (also flattens id-a → id-c)
-    await bookStore.reimportBook(OWNER, 'id-b', makeImporterWithId('id-c'));
+    armImporter('id-c');
+    await bookStore.reimportBook(OWNER, 'id-b');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-c');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-b')).toBe('id-c');
   });
@@ -186,7 +201,8 @@ describe('resolveBookId — lineage via reimportBook', () => {
   it('no history entry when ID does not change on reimport', async () => {
     const stagedPath = stage('lineage-noop');
     await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
-    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-a'));
+    armImporter('id-a');
+    await bookStore.reimportBook(OWNER, 'id-a');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-a');
     const rows = await prisma.$queryRaw<Array<unknown>>`
       SELECT * FROM book_id_history WHERE old_id = 'id-a'
@@ -210,7 +226,8 @@ describe('resolveBookId — lineage via reimportBook', () => {
       await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       const epubPath = path.join(booksDir, 'id-a.epub');
       fs.writeFileSync(epubPath, 'content-a');
-      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+      armImporter('id-b');
+      await bookStore.reimportBook(OWNER, 'id-a');
       const after = Date.now();
 
       const result = await getBookLineage(prisma, OWNER, 'id-b');
@@ -226,9 +243,11 @@ describe('resolveBookId — lineage via reimportBook', () => {
     it('entries are ordered newest-first', async () => {
       await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
-      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+      armImporter('id-b');
+      await bookStore.reimportBook(OWNER, 'id-a');
       fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'content-b');
-      await bookStore.reimportBook(OWNER, 'id-b', makeImporterWithId('id-c'));
+      armImporter('id-c');
+      await bookStore.reimportBook(OWNER, 'id-b');
 
       const result = await getBookLineage(prisma, OWNER, 'id-c');
       expect(result!.entries).toHaveLength(2);
@@ -242,7 +261,8 @@ describe('resolveBookId — lineage via reimportBook', () => {
     it('returns null when called with a stale (old) ID that has been reimported', async () => {
       await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
-      await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+      armImporter('id-b');
+      await bookStore.reimportBook(OWNER, 'id-a');
 
       // id-a is no longer a current book; getBookLineage should return null for it
       expect(await getBookLineage(prisma, OWNER, 'id-a')).toBeNull();
@@ -253,20 +273,11 @@ describe('resolveBookId — lineage via reimportBook', () => {
 });
 
 describe('getBookLineage returns type on entries', () => {
-  function makeImporterWithId(newId: string): ScanImporter {
-    return {
-      parseEpub: (_filePath: string): EpubMeta => ({
-        ...FAKE_META,
-        title: 'Lineage Book',
-      }),
-      partialMD5: (_filePath: string): string => newId,
-    };
-  }
-
   it('returns type edit for reimport-created entries', async () => {
     await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
     fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content');
-    await bookStore.reimportBook(OWNER, 'id-a', makeImporterWithId('id-b'));
+    armImporter('id-b');
+    await bookStore.reimportBook(OWNER, 'id-a');
 
     const result = await getBookLineage(prisma, OWNER, 'id-b');
     expect(result!.entries[0].type).toBe('edit');
