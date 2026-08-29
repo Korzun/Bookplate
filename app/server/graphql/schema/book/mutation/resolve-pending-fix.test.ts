@@ -4,7 +4,37 @@ import { BookHashCollisionError } from '../../../../services/book-errors';
 import { createHarness, type Harness } from '../../../test-util';
 import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
 
-vi.mock('../../../../logger');
+// Memoized per namespace rather than a bare `vi.mock('../../../../logger')`
+// auto-mock, which hands back a FRESH object on every `logger(namespace)`
+// call — see `replace.test.ts`'s identical factory and its note. This lets
+// the lineage-cleanup test below get a handle on the exact object
+// `resolve-pending-fix.ts`'s module-scope `const log` captured at import.
+vi.mock('../../../../logger', () => {
+  const loggers = new Map<
+    string,
+    Record<'debug' | 'info' | 'warn' | 'error', ReturnType<typeof vi.fn>>
+  >();
+  return {
+    logger: (namespace: string) => {
+      let entry = loggers.get(namespace);
+      if (entry === undefined) {
+        entry = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        loggers.set(namespace, entry);
+      }
+      return entry;
+    },
+  };
+});
+// Call-through by default: `mockReset: true` (vite.config.ts) restores a
+// `vi.fn(impl)` back to `impl`, so only the one test that needs a failure
+// overrides it, with `mockRejectedValueOnce`.
+vi.mock('../../../../services/book-lineage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/book-lineage')>();
+  return { ...actual, clearEditLineage: vi.fn(actual.clearEditLineage) };
+});
+
+import { logger } from '../../../../logger';
+import { clearEditLineage } from '../../../../services/book-lineage';
 // Call-through by default — see `regen-chapters.test.ts`'s identical note on
 // why this replaces `vi.spyOn(harness.stores.book, 'reimportBook')`.
 vi.mock('../../../../services/book-lifecycle', async (importOriginal) => {
@@ -914,6 +944,56 @@ describe('Mutation.bookResolvePendingFix', () => {
         where: { userId: harness.aliceOwner.userId, type: 'edit' },
       });
       expect(revertedRows).toBe(0);
+    });
+
+    it('UNDO still succeeds when the lineage clear throws, but warns instead of swallowing silently', async () => {
+      // The swallow itself is load-bearing: the metadata is already reverted
+      // on disk and in the row by the time the cleanup runs, so failing the
+      // whole mutation over it would be worse than leaving the rows behind.
+      // But leaving NO trace was the gap — an operator otherwise has no way
+      // to learn that `book_id_history` still claims this book was edited.
+      // Both sibling best-effort swallows already log: `purge-quietly.ts`
+      // and `replace.ts`'s `repairBestEffort`.
+      await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
+      await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
+
+      const accepted = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, BOOK_ID), action: 'ACCEPT' },
+        },
+      });
+      const acceptedId = rawBookId(
+        (accepted.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+
+      vi.mocked(clearEditLineage).mockRejectedValueOnce(new Error('database is locked'));
+
+      const undone = await harness.execute(MUTATION, {
+        viewer: harness.aliceViewer,
+        variables: {
+          input: { id: bookGlobalId(harness.aliceOwner.userId, acceptedId), action: 'UNDO' },
+        },
+      });
+
+      // The revert stands: the failure is swallowed, not surfaced.
+      expect(undone.errors).toBeUndefined();
+      expect((undone.data?.bookResolvePendingFix as { __typename: string }).__typename).toBe(
+        'BookResolvePendingFixPayload'
+      );
+      // ...and the stale rows the failure left behind are named in the log,
+      // with the book and whose library it is, so they can be found. The id
+      // is the REVERTED one — undoing an accept re-imports, minting a third
+      // content-hash id distinct from both `BOOK_ID` and `acceptedId` — which
+      // is exactly the id `book_id_history` now wrongly claims was edited,
+      // and so the only one worth logging.
+      const revertedId = rawBookId(
+        (undone.data?.bookResolvePendingFix as { book: { id: string } }).book.id
+      );
+      expect(revertedId).not.toBe(acceptedId);
+      expect(logger('GraphQL:bookResolvePendingFix').warn).toHaveBeenCalledWith(
+        `Edit-lineage cleanup failed for book "${revertedId}" (user "${harness.aliceOwner.username}") — database is locked`
+      );
     });
   });
 
