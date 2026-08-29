@@ -24,6 +24,7 @@ import { schema } from '../graphql/schema';
 import { createSeriesProgressLoader } from '../graphql/series-progress-loader';
 import { createValidationCountsLoader } from '../graphql/validation-counts-loader';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
+import { saveThumbnail } from '../services/book-assets';
 import { BookStore } from '../services/book-store';
 import { verifyAccessToken } from '../services/jwt';
 import { hashLoginPassword, resetPassword } from '../services/password';
@@ -1349,7 +1350,7 @@ describe('GET /api/books/:id/cover', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     });
-    await bookStore.saveThumbnail(aliceOwner.userId, 'thumbBook', 150, thumbBuf, 'image/jpeg');
+    await saveThumbnail(prisma, aliceOwner.userId, 'thumbBook', 150, thumbBuf, 'image/jpeg');
 
     const token = await loginAlice();
     const res = await request(app)

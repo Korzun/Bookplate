@@ -9,6 +9,7 @@ import { createScanPubSub } from './graphql/pubsub';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
+import { pruneThumbnails } from './services/book-assets';
 import { BookStore } from './services/book-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
@@ -37,7 +38,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   const editionsRoot = path.join(config.dataDir, 'editions');
   const bookStore = new BookStore(config.booksDir, prisma, editionsRoot);
-  const thumbnailQueue = new ThumbnailQueue(bookStore, config.thumbnailWidths);
+  const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
   // Shared by REST's `POST /api/books/scan` and every GraphQL scan resolver
@@ -120,7 +121,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     await prisma.setting.create({ data: { key: 'regenerate_covers', value: 'false' } });
   } else if (regenRow.value === 'true') {
     await prisma.setting.update({ where: { key: 'regenerate_covers' }, data: { value: 'false' } });
-    const deleted = await bookStore.pruneThumbnails([]);
+    const deleted = await pruneThumbnails(prisma, []);
     log.info(`regenerate_covers: deleted ${deleted} thumbnail(s), queuing regeneration`);
   }
 

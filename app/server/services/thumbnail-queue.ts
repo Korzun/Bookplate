@@ -1,7 +1,8 @@
+import { PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
 
 import { logger } from '../logger';
-import { BookStore } from './book-store';
+import { getCover, getMissingThumbnailPairs, pruneThumbnails, saveThumbnail } from './book-assets';
 
 const log = logger('ThumbnailQueue');
 const INTER_JOB_DELAY_MS = 200;
@@ -28,14 +29,14 @@ export class ThumbnailQueue {
   private currentJobPromise: Promise<void> = Promise.resolve();
 
   constructor(
-    private readonly bookStore: BookStore,
+    private readonly prisma: PrismaClient,
     private readonly widths: number[],
     private readonly resize: ResizeFn = defaultResize
   ) {}
 
   async start(): Promise<void> {
     if (this.running) return;
-    const pruned = await this.bookStore.pruneThumbnails(this.widths);
+    const pruned = await pruneThumbnails(this.prisma, this.widths);
     const { bookCount } = await this.reconcile();
     if (pruned > 0) {
       log.info(
@@ -57,7 +58,7 @@ export class ThumbnailQueue {
   }
 
   async reconcile(): Promise<{ bookCount: number }> {
-    const missing = await this.bookStore.getMissingThumbnailPairs(this.widths);
+    const missing = await getMissingThumbnailPairs(this.prisma, this.widths);
     for (const pair of missing) {
       this.queue.push(pair);
     }
@@ -93,7 +94,7 @@ export class ThumbnailQueue {
   private async processJob(job: Job): Promise<void> {
     let cover;
     try {
-      cover = await this.bookStore.getCover(job.userId, job.bookId);
+      cover = await getCover(this.prisma, job.userId, job.bookId);
     } catch (err: unknown) {
       log.warn(
         `Failed to get cover for book ${job.bookId}: ${err instanceof Error ? err.message : String(err)}`
@@ -103,7 +104,7 @@ export class ThumbnailQueue {
     if (!cover) return;
     try {
       const resized = await this.resize(cover.data, job.width);
-      await this.bookStore.saveThumbnail(job.userId, job.bookId, job.width, resized, 'image/jpeg');
+      await saveThumbnail(this.prisma, job.userId, job.bookId, job.width, resized, 'image/jpeg');
       log.info(`Generated ${job.width}px thumbnail for book ${job.bookId}`);
     } catch (err: unknown) {
       log.warn(

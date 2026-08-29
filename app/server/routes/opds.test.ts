@@ -10,6 +10,7 @@ import express from 'express';
 import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
+import { saveThumbnail } from '../services/book-assets';
 import { BookStore } from '../services/book-store';
 import { buildEdition } from '../services/edition-builder';
 import { assertValidEpub } from '../services/epub-validator';
@@ -403,7 +404,7 @@ describe('GET /opds/books/:id/cover', () => {
       coverData: Buffer.from('orig'),
       coverMime: 'image/jpeg',
     });
-    await bookStore.saveThumbnail(alice.userId, 'opds2', 60, thumbBuf, 'image/jpeg');
+    await saveThumbnail(prisma, alice.userId, 'opds2', 60, thumbBuf, 'image/jpeg');
     const res = await request(app)
       .get('/opds/books/opds2/cover?width=60')
       .set(basicAuth('alice', 'secret'));

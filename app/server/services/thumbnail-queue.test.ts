@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner } from '../types';
+import { getThumbnail, saveThumbnail } from './book-assets';
 import { BookStore } from './book-store';
 import { ThumbnailQueue } from './thumbnail-queue';
 
@@ -80,16 +81,16 @@ afterEach(async () => {
 describe('enqueue + drainForTest', () => {
   it('generates thumbnails for each configured width', async () => {
     await bookStore.addBook(OWNER, 'bk1', stage('bk1'), FAKE_META);
-    const queue = new ThumbnailQueue(bookStore, [60, 170], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
     queue.enqueue(OWNER.userId, 'bk1');
     await queue.drainForTest();
 
     expect(mockResize).toHaveBeenCalledTimes(2);
     expect(mockResize).toHaveBeenCalledWith(expect.any(Buffer), 60);
     expect(mockResize).toHaveBeenCalledWith(expect.any(Buffer), 170);
-    const t60 = await bookStore.getThumbnail(OWNER.userId, 'bk1', 60);
+    const t60 = await getThumbnail(prisma, OWNER.userId, 'bk1', 60);
     expect(Buffer.from(t60!.data).toString()).toBe('resized');
-    const t170 = await bookStore.getThumbnail(OWNER.userId, 'bk1', 170);
+    const t170 = await getThumbnail(prisma, OWNER.userId, 'bk1', 170);
     expect(Buffer.from(t170!.data).toString()).toBe('resized');
   });
 
@@ -99,7 +100,7 @@ describe('enqueue + drainForTest', () => {
       coverData: null,
       coverMime: null,
     });
-    const queue = new ThumbnailQueue(bookStore, [60], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60], mockResize);
     queue.enqueue(OWNER.userId, 'bk2');
     await queue.drainForTest();
 
@@ -109,12 +110,12 @@ describe('enqueue + drainForTest', () => {
   it('logs and continues when resize throws', async () => {
     mockResize.mockRejectedValueOnce(new Error('sharp failed'));
     await bookStore.addBook(OWNER, 'bk3', stage('bk3'), FAKE_META);
-    const queue = new ThumbnailQueue(bookStore, [60, 170], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
     queue.enqueue(OWNER.userId, 'bk3');
     await expect(queue.drainForTest()).resolves.not.toThrow();
     // Only the second width should succeed
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk3', 60)).toBeNull();
-    const t170 = await bookStore.getThumbnail(OWNER.userId, 'bk3', 170);
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk3', 60)).toBeNull();
+    const t170 = await getThumbnail(prisma, OWNER.userId, 'bk3', 170);
     expect(Buffer.from(t170!.data).toString()).toBe('resized');
   });
 });
@@ -123,16 +124,16 @@ describe('reconcile', () => {
   it('queues missing (bookId, width) pairs', async () => {
     await bookStore.addBook(OWNER, 'bk4', stage('bk4'), FAKE_META);
     await bookStore.addBook(OWNER, 'bk5', stage('bk5'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg'); // already exists
+    await saveThumbnail(prisma, OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg'); // already exists
 
-    const queue = new ThumbnailQueue(bookStore, [60, 170], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
     await queue.reconcile();
     await queue.drainForTest();
 
     // bk4 needs 170, bk5 needs both
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk4', 170)).not.toBeNull();
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk5', 60)).not.toBeNull();
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk5', 170)).not.toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk4', 170)).not.toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk5', 60)).not.toBeNull();
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk5', 170)).not.toBeNull();
     // bk4/60 should be untouched (was pre-existing)
     expect(mockResize).toHaveBeenCalledTimes(3);
   });
@@ -141,9 +142,9 @@ describe('reconcile', () => {
     await bookStore.addBook(OWNER, 'bk_rc1', stage('bk_rc1'), FAKE_META);
     await bookStore.addBook(OWNER, 'bk_rc2', stage('bk_rc2'), FAKE_META);
     // bk_rc1 already has an 86px thumbnail
-    await bookStore.saveThumbnail(OWNER.userId, 'bk_rc1', 86, Buffer.from('x'), 'image/jpeg');
+    await saveThumbnail(prisma, OWNER.userId, 'bk_rc1', 86, Buffer.from('x'), 'image/jpeg');
 
-    const queue = new ThumbnailQueue(bookStore, [86, 160], mockResize);
+    const queue = new ThumbnailQueue(prisma, [86, 160], mockResize);
     const { bookCount } = await queue.reconcile();
 
     // bk_rc1 needs only 160px, bk_rc2 needs both — 2 unique books
@@ -154,21 +155,21 @@ describe('reconcile', () => {
 describe('start (prune + reconcile)', () => {
   it('prunes widths not in config before reconciling', async () => {
     await bookStore.addBook(OWNER, 'bk6', stage('bk6'), FAKE_META);
-    await bookStore.saveThumbnail(OWNER.userId, 'bk6', 300, Buffer.from('old'), 'image/jpeg'); // obsolete width
+    await saveThumbnail(prisma, OWNER.userId, 'bk6', 300, Buffer.from('old'), 'image/jpeg'); // obsolete width
 
-    const queue = new ThumbnailQueue(bookStore, [60], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60], mockResize);
     // await start() so pruneThumbnails and reconcile complete before we stop
     await queue.start();
     queue.stop();
     await queue.drainForTest();
 
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk6', 300)).toBeNull(); // pruned
-    expect(await bookStore.getThumbnail(OWNER.userId, 'bk6', 60)).not.toBeNull(); // generated
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk6', 300)).toBeNull(); // pruned
+    expect(await getThumbnail(prisma, OWNER.userId, 'bk6', 60)).not.toBeNull(); // generated
   });
 
   it('start() called twice does not spawn a second loop', async () => {
     await bookStore.addBook(OWNER, 'bk7', stage('bk7'), FAKE_META);
-    const queue = new ThumbnailQueue(bookStore, [60], mockResize);
+    const queue = new ThumbnailQueue(prisma, [60], mockResize);
     await queue.start();
     await queue.start(); // second call should return early (running flag already set)
     queue.stop();

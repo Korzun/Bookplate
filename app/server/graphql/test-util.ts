@@ -110,7 +110,7 @@ export const createHarness = async (): Promise<Harness> => {
     // that array without a running `processLoop`. Task 3b's staged-cover
     // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
     // with `vi.spyOn` — safe precisely because it's inert here.
-    thumbnail: new ThumbnailQueue(book, config.thumbnailWidths),
+    thumbnail: new ThumbnailQueue(prisma, config.thumbnailWidths),
     replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
   };
 
