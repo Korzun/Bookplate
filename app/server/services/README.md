@@ -17,10 +17,12 @@ migration (task 7):
   groups the cluster visually in a directory listing and in imports
   (`import { ... } from '../services/book-catalog'`), without adding a path
   segment.
-- Moving them means rewriting 72 import lines across 42 distinct files
-  (`git grep -lE "from '[^']*services/book-(assets|catalog|errors|lifecycle|lineage|paths)'" -- app/server`),
-  purely for cosmetics, at the tail end of a four-phase migration that has
-  already changed a lot of import surface.
+- Moving them means rewriting 72 import lines across 42 distinct files. Run
+  from the repo root, `-l` counts the files and dropping it counts the lines:
+  `git grep -lE "from '[^']*services/book-(assets|catalog|errors|lifecycle|lineage|paths)'" -- app/server`
+  → 42; the same command without `-l` → 72. Purely for cosmetics, at the tail
+  end of a four-phase migration that has already changed a lot of import
+  surface.
 - It would also strand the 57 doc-comment citations that name these modules
   by path — the same provenance notes the migration deliberately wrote to
   explain where code came from. They would either go stale or need a second
