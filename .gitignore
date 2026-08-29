@@ -3,7 +3,6 @@
 .claude/worktrees
 node_modules/
 .superpowers/
-docs/
 *.sqlite
 dev-books/
 /app/server/dist/
