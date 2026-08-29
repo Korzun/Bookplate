@@ -328,10 +328,11 @@ describe('Validation.messages connection', () => {
 
   // `last`/`before` genuinely work here — `t.relatedConnection` paginates a
   // real Prisma relation and supports backward pagination natively, unlike
-  // `Library.entries`/`Library.progress`, whose SDL does not offer the two
-  // arguments at all (see the `entriesConnection` doc comment in
-  // `library/model.ts`). This must not merely be "accepted without error" —
-  // it must return the actual trailing page.
+  // `Library.entries`, whose SDL does not offer the two arguments at all (see
+  // the `entriesConnection` doc comment in `library/model.ts`).
+  // `Library.progress` used to be named here too; it is a `t.prismaConnection`
+  // now and pages backward as well. This must not merely be "accepted without
+  // error" — it must return the actual trailing page.
   it('supports `last` alone, returning the trailing page in ascending order', async () => {
     const page = await readMessages({ last: 2 });
 

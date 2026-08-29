@@ -14,15 +14,27 @@ import introspection from '~/gql/possible-types';
  * are Nodes; `Device`/`PendingFix`/`Validation`/`ScanStatus`/`Progress` carry
  * a scalar `id` without implementing Node.
  *
- * NOTE on pagination: `Library.entries` and `Library.progress` are FORWARD-ONLY
- * server-side — the schema no longer offers `last`/`before` on either field at
- * all (they wrap a forward-only service cursor; the two arguments were removed
- * from the SDL rather than left advertised and refused at runtime).
- * `Series.books` and `Validation.messages` do support backward paging.
- * `relayStylePagination` handles both directions, so this config does not
- * enforce the asymmetry; the client simply never pages backward. Do not add
- * backward paging to `entries`/`progress` — those arguments do not exist, so a
- * query using them fails schema validation.
+ * NOTE on pagination: `Library.entries` is FORWARD-ONLY server-side — the
+ * schema does not offer `last`/`before` on that field at all (it wraps a
+ * forward-only service cursor over an interleaved two-table keyset; the two
+ * arguments were removed from the SDL rather than left advertised and refused
+ * at runtime). Do not add backward paging to `entries` — those arguments do
+ * not exist, so a query using them fails schema validation.
+ *
+ * `Library.progress`, `Series.books` and `Validation.messages` DO support
+ * backward paging. `progress` is the recent one: it was in the sentence above
+ * until it became a `t.prismaConnection` server-side, which injects all four
+ * Relay args and honours them. `relayStylePagination` handles both directions,
+ * so this config does not enforce the asymmetry; the client simply never pages
+ * backward on any of them.
+ *
+ * `Library.progress` CURSORS CHANGED FORMAT in that same server change (they
+ * were base64 `{timestamp, document}`; they are now the Prisma plugin's
+ * compound-primary-key cursor). Nothing here or in any component stores a
+ * cursor beyond the lifetime of one cache entry — `fetchMore` reads
+ * `pageInfo.endCursor` straight back out of the previous page — so this needed
+ * no change; it is recorded because a future "persist the cursor across
+ * sessions" idea would be broken by exactly that kind of server change.
  */
 export const cacheConfig: InMemoryCacheConfig = {
   possibleTypes: introspection.possibleTypes,

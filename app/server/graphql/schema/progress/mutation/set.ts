@@ -103,16 +103,25 @@ export const buildOwner = (userId: string, viewer: { readonly username: string }
 
 /**
  * `progress` is a fresh read of the row this resolver just wrote, by its
- * compound key — NOT the DTO `saveProgress` (`services/progress.ts`)
- * returns (`device_id`, no `userId`), which cannot serve as
- * `progress/model.ts`'s `currentChapter` field resolver: that resolver reads
- * `progress.userId` off its parent, and the DTO doesn't have one. Same "two
- * queries, deliberately" split `Library.progress` already uses, for the
- * identical reason (see that field's doc comment in `library/model.ts`) —
- * `saveProgress` decides what was written, a second read supplies the real
- * row shape every `Progress` field resolver expects. `t.prismaField`
- * (rather than a plain `t.field`) lets a
- * client select only the sub-fields it needs off that second read.
+ * compound key — NOT the DTO `saveProgress` (`services/progress.ts`) returns
+ * (`device_id`, no `userId`), which cannot serve `Progress`'s field resolvers.
+ * `saveProgress` decides what was written; a second read supplies the real row
+ * shape.
+ *
+ * The reason is stronger than it was, and it is no longer the one this comment
+ * used to give (`currentChapter` reading `parent.userId`, which the DTO
+ * dropped). `currentChapter` now carries a Prisma `select` over the `book`
+ * relation (`progress/model.ts`), and only a query `@pothos/plugin-prisma`
+ * planned can satisfy it. A hand-built DTO cannot, at any cost — the field
+ * would resolve `book` as `undefined` rather than merely lose a column.
+ * `t.prismaField` is what makes this read plugin-planned, so the client's
+ * `Progress` sub-selection — the spine-map select included — merges into this
+ * one query rather than costing a second.
+ *
+ * `Library.progress` was cited here as the precedent for a deliberate two-query
+ * split. It is not one any more (it never re-reads; it is a
+ * `t.prismaConnection`), and this is not one either: it is ONE write plus ONE
+ * plugin-planned read, which is the minimum this mutation's payload can cost.
  */
 const payload = builder.objectRef<ProgressSetPayloadShape>('ProgressSetPayload').implement({
   fields: (t) => ({

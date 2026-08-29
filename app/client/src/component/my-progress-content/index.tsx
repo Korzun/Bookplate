@@ -11,9 +11,12 @@ import { MyProgressRow } from '../my-progress-row';
 import { useStyle } from './style';
 
 /**
- * The viewer's own progress. Forward-only — `Library.progress` rejects
- * `last`/`before`. `PAGE_SIZE` (below) matches
- * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the server's cap is 100.
+ * The viewer's own progress. This screen pages forward only, by choice — a
+ * scrolling list has nothing to page backward INTO. `Library.progress` itself
+ * does accept `last`/`before` (it is a `t.prismaConnection` server-side; it
+ * did not always, hence this note). `PAGE_SIZE` (below) matches
+ * `CONNECTION_LIMITS.libraryProgress.defaultSize`; the server's cap is 100,
+ * and an oversize `first` OR `last` is rejected, never clamped.
  *
  * `$first` is a VARIABLE in this document (not a literal), so
  * `Library.progress` is PRICED at its `maxSize` (100) regardless of what a
