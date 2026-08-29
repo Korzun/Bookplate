@@ -1,91 +1,61 @@
-import { PrismaClient, Prisma, Series } from '@prisma/client';
+import { PrismaClient, Prisma, Book as BookRow, Series as SeriesRow } from '@prisma/client';
 
-import {
-  Book,
-  BookSummary,
-  Owner,
-  PageCursor,
-  PagedBookListResponse,
-  BookListFilters,
-} from '../types';
-import { BOOK_SELECT, prismaBookToBook, standaloneStatusWhere } from './book-catalog';
+import { Owner, PageCursor, BookListFilters } from '../types';
+import { standaloneStatusWhere } from './book-catalog';
 
 /**
- * Moved verbatim from `BookStore.listBooksPage` (task 8, mechanical move
- * commit) — only `this.prisma`/`this.booksRoot` became explicit parameters.
- * The contract change (dropping hydrated rows in favour of a single
- * Pothos-selected read) lands in the very next commit; see that commit's
- * message for the full rationale.
+ * One page of `Library.entries`, already in the interleaved series/standalone
+ * display order — this ordering, not the id/name lookups, is why this stays a
+ * function rather than being inlined into the resolver (see `listBooksPage`'s
+ * own doc comment).
+ *
+ * `row` is the real, unselected Prisma row (never a synthetic DTO) — the same
+ * invariant `graphql/schema/library-entry/model.ts`'s `LibraryEntryRow` already
+ * documents for whatever `Library.entries` hands back. Returning it directly
+ * (rather than just `bookId`/`seriesName`, as an earlier revision of this
+ * contract did) is what lets the resolver build its `edges` from this single
+ * read, with no second `book.findMany`/`series.findMany` to re-fetch rows this
+ * function already has in hand.
  */
-function toBookSummary(book: Book): BookSummary {
-  const {
-    path: _path,
-    description: _description,
-    identifiers: _identifiers,
-    subjects: _subjects,
-    addedAt: _addedAt,
-    chapterSpineMap: _chapterSpineMap,
-    chapterNames: _chapterNames,
-    ...rest
-  } = book;
-  return rest;
-}
+export type LibraryPageItem =
+  | { type: 'series'; seriesName: string; row: SeriesRow }
+  | { type: 'standalone'; bookId: string; row: BookRow };
 
-async function seriesIdsForStatus(
-  prisma: PrismaClient,
-  userId: string,
-  status: 'not-started' | 'in-progress' | 'completed'
-): Promise<string[]> {
-  // Compute series status via a single GROUP BY + HAVING aggregate query.
-  // LEFT JOIN books so empty series count as not-started (COUNT(b.id) = 0).
-  // LEFT JOIN progress on (document, user_id) so unread books have NULL percentage.
-  if (status === 'not-started') {
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT s.id
-      FROM series s
-      LEFT JOIN books b ON b.series_id = s.id
-      LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
-      WHERE s.user_id = ${userId}
-      GROUP BY s.id
-      HAVING COALESCE(SUM(CASE WHEN p.percentage > 0 THEN 1 ELSE 0 END), 0) = 0
-    `;
-    return rows.map((r) => r.id);
-  }
-  if (status === 'in-progress') {
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT s.id
-      FROM series s
-      LEFT JOIN books b ON b.series_id = s.id
-      LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
-      WHERE s.user_id = ${userId}
-      GROUP BY s.id
-      HAVING SUM(CASE WHEN p.percentage > 0 AND p.percentage < 1 THEN 1 ELSE 0 END) > 0
-    `;
-    return rows.map((r) => r.id);
-  }
-  // completed: series is non-empty and every member book has percentage >= 1
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT s.id
-    FROM series s
-    LEFT JOIN books b ON b.series_id = s.id
-    LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
-    WHERE s.user_id = ${userId}
-    GROUP BY s.id
-    HAVING
-      COUNT(b.id) > 0
-      AND COUNT(b.id) = SUM(CASE WHEN p.percentage >= 1 THEN 1 ELSE 0 END)
-  `;
-  return rows.map((r) => r.id);
-}
+export type LibraryPage = {
+  items: LibraryPageItem[];
+  /** Opaque cursor for the next page, byte-compatible with `entries-cursor.ts`'s `encodeCursor` — see that file's doc comment. */
+  nextCursor: string | null;
+};
 
+/**
+ * Moved from `BookStore.listBooksPage` (task 8's mechanical-move commit),
+ * then changed here to fix the double read that move was staged to make
+ * fixable: the old contract fetched standalone rows through a hardcoded
+ * `BOOK_SELECT`, discarded them into an `items`/`books` DTO pair, and left
+ * every one of the series entries on the page ALSO fetching its member books
+ * — none of which `Library.entries` ever used, since that resolver always
+ * re-fetched the same rows itself by id/name to get real Pothos-visible
+ * `Book`/`Series` objects. For a page mixing standalones and series that was
+ * `2 + (number of series on the page)` calls to `prisma.book.findMany` for
+ * data that ended up read exactly once by the caller — see
+ * `library-page.test.ts`'s "fetches every book exactly once" test, which
+ * pins this at exactly 1 regardless of how many series share the page.
+ *
+ * This function now does the one read the page actually needs — full,
+ * unselected `book`/`series` rows, fetched only to determine the interleaved
+ * order and the page boundary — and returns those same rows directly as each
+ * item's `row`. There is no separate "ids now, hydrate later" step: the ids
+ * (`bookId`/`seriesName`) are carried alongside `row` because the resolver
+ * needs them for `t: 'b' | 's'` bookkeeping and cursor construction, not
+ * because the rows themselves were dropped.
+ */
 export async function listBooksPage(
   prisma: PrismaClient,
-  booksRoot: string,
   owner: Owner,
   cursor: PageCursor | null,
   take: number,
   filters?: BookListFilters
-): Promise<PagedBookListResponse> {
+): Promise<LibraryPage> {
   // Fetch take+1 from each source so we can detect whether another page exists
   const fetchLimit = take + 1;
 
@@ -205,6 +175,13 @@ export async function listBooksPage(
   // Note: standalone books are sorted by `title`, not `fileAs || title`. This matches the
   // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
   // (listBooks) sorts by fileAs || title, so the two orderings intentionally differ.
+  //
+  // Neither read carries a `select`: the rows fetched here ARE the rows
+  // `Library.entries` hands back as `Book`/`Series` GraphQL nodes (see this
+  // function's own doc comment) — the same "always fetch full, unselected
+  // rows" invariant `library-entry/model.ts`'s `LibraryEntryRow` doc comment
+  // has always documented for this connection, just performed here instead of
+  // a second time in the resolver.
   const [seriesRows, standaloneRows] = await Promise.all([
     includeSeries
       ? prisma.series.findMany({
@@ -212,15 +189,14 @@ export async function listBooksPage(
           orderBy: { sortKey: 'asc' },
           take: fetchLimit,
         })
-      : Promise.resolve([] as Series[]),
+      : Promise.resolve([] as SeriesRow[]),
     includeStandalones
       ? prisma.book.findMany({
           where: bookWhere,
           orderBy: [{ title: 'asc' }, { id: 'asc' }],
           take: fetchLimit,
-          select: BOOK_SELECT,
         })
-      : Promise.resolve([] as Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>[]),
+      : Promise.resolve([] as BookRow[]),
   ]);
 
   // Merge-sort up to take+1 display units to detect overflow.
@@ -229,8 +205,8 @@ export async function listBooksPage(
   // the DB ordering on case and accented characters, causing wrong picks at page
   // boundaries.
   const merged: Array<
-    | { sortKey: string; type: 'series'; row: (typeof seriesRows)[0] }
-    | { sortKey: string; type: 'standalone'; row: (typeof standaloneRows)[0] }
+    | { sortKey: string; type: 'series'; row: SeriesRow }
+    | { sortKey: string; type: 'standalone'; row: BookRow }
   > = [];
   let si = 0;
   let bi = 0;
@@ -254,41 +230,11 @@ export async function listBooksPage(
   const hasMore = merged.length > take;
   const page = hasMore ? merged.slice(0, take) : merged;
 
-  // Fetch all member books for every series item
-  const seriesBooksMap = new Map<string, Book[]>();
-  await Promise.all(
-    page
-      .filter((p) => p.type === 'series')
-      .map(async (p) => {
-        const s = (p as { type: 'series'; row: (typeof seriesRows)[0] }).row;
-        const rows = await prisma.book.findMany({
-          where: { seriesId: s.id },
-          orderBy: { seriesIndex: 'asc' },
-          select: BOOK_SELECT,
-        });
-        seriesBooksMap.set(
-          s.name,
-          rows.map((r) => prismaBookToBook(booksRoot, owner, r))
-        );
-      })
-  );
-
-  const items: PagedBookListResponse['items'] = page.map((p) =>
+  const items: LibraryPageItem[] = page.map((p) =>
     p.type === 'series'
-      ? { type: 'series' as const, seriesName: (p.row as (typeof seriesRows)[0]).name }
-      : { type: 'standalone' as const, bookId: (p.row as (typeof standaloneRows)[0]).id }
+      ? { type: 'series' as const, seriesName: p.row.name, row: p.row }
+      : { type: 'standalone' as const, bookId: p.row.id, row: p.row }
   );
-
-  const books: BookSummary[] = page.flatMap((p) => {
-    if (p.type === 'standalone') {
-      return [
-        toBookSummary(prismaBookToBook(booksRoot, owner, p.row as (typeof standaloneRows)[0])),
-      ];
-    }
-    return (seriesBooksMap.get((p.row as (typeof seriesRows)[0]).name) ?? []).map((b) =>
-      toBookSummary(b)
-    );
-  });
 
   const last = page[page.length - 1];
   const nextCursor = hasMore
@@ -301,5 +247,52 @@ export async function listBooksPage(
       ).toString('base64')
     : null;
 
-  return { items, books, nextCursor };
+  return { items, nextCursor };
+}
+
+async function seriesIdsForStatus(
+  prisma: PrismaClient,
+  userId: string,
+  status: 'not-started' | 'in-progress' | 'completed'
+): Promise<string[]> {
+  // Compute series status via a single GROUP BY + HAVING aggregate query.
+  // LEFT JOIN books so empty series count as not-started (COUNT(b.id) = 0).
+  // LEFT JOIN progress on (document, user_id) so unread books have NULL percentage.
+  if (status === 'not-started') {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id
+      FROM series s
+      LEFT JOIN books b ON b.series_id = s.id
+      LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+      WHERE s.user_id = ${userId}
+      GROUP BY s.id
+      HAVING COALESCE(SUM(CASE WHEN p.percentage > 0 THEN 1 ELSE 0 END), 0) = 0
+    `;
+    return rows.map((r) => r.id);
+  }
+  if (status === 'in-progress') {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id
+      FROM series s
+      LEFT JOIN books b ON b.series_id = s.id
+      LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+      WHERE s.user_id = ${userId}
+      GROUP BY s.id
+      HAVING SUM(CASE WHEN p.percentage > 0 AND p.percentage < 1 THEN 1 ELSE 0 END) > 0
+    `;
+    return rows.map((r) => r.id);
+  }
+  // completed: series is non-empty and every member book has percentage >= 1
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT s.id
+    FROM series s
+    LEFT JOIN books b ON b.series_id = s.id
+    LEFT JOIN progress p ON p.document = b.id AND p.user_id = ${userId}
+    WHERE s.user_id = ${userId}
+    GROUP BY s.id
+    HAVING
+      COUNT(b.id) > 0
+      AND COUNT(b.id) = SUM(CASE WHEN p.percentage >= 1 THEN 1 ELSE 0 END)
+  `;
+  return rows.map((r) => r.id);
 }

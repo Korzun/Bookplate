@@ -35,6 +35,6 @@ export const decodeCursor = (after: string | null | undefined): PageCursor | nul
   return isPageCursor(parsed) ? parsed : null;
 };
 
-/** Mirrors `nextCursor`'s own encoding in `BookStore.listBooksPage` exactly, so a cursor this resolver mints for an interior edge is interchangeable with one the store mints for `endCursor`. */
+/** Mirrors `nextCursor`'s own encoding in `services/library-page.ts`'s `listBooksPage` exactly, so a cursor this resolver mints for an interior edge is interchangeable with one that function mints for `endCursor` — verified by `services/library-page.test.ts`'s "cursor compatibility with entries-cursor.ts" tests, not just asserted here. */
 export const encodeCursor = (cursor: PageCursor): string =>
   Buffer.from(JSON.stringify(cursor)).toString('base64');

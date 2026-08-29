@@ -155,7 +155,8 @@ describe('Library.entries', () => {
     expect((bobResult.data as EntriesData).viewer.library.entries.edges).toEqual([]);
   });
 
-  // `BookStore.listBooksPage` has no backward keyset to walk, so this field
+  // `services/library-page.ts`'s `listBooksPage` has no backward keyset to
+  // walk, so this field
   // does not OFFER `last`/`before` — it is declared with a plain `t.field`
   // over an explicit `connectionObject` rather than `t.connection`, which
   // would inject all four Relay args unconditionally (see `library/model.ts`).

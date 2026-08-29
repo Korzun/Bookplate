@@ -72,23 +72,6 @@ export interface Owner {
   username: string;
 }
 
-export type BookSummary = Omit<
-  Book,
-  | 'path'
-  | 'description'
-  | 'identifiers'
-  | 'subjects'
-  | 'addedAt'
-  | 'chapterSpineMap'
-  | 'chapterNames'
->;
-
-export type PagedBookListResponse = {
-  items: Array<{ type: 'series'; seriesName: string } | { type: 'standalone'; bookId: string }>;
-  books: BookSummary[];
-  nextCursor: string | null;
-};
-
 export type BookListFilters = {
   query?: string;
   author?: string;

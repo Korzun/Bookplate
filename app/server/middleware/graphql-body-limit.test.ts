@@ -7,6 +7,7 @@ import request from 'supertest';
 import { createHarness, type Harness } from '../graphql/test-util';
 import { createGraphqlHandler } from '../graphql/yoga';
 import { signAccessToken } from '../services/jwt';
+import * as libraryPageModule from '../services/library-page';
 import { graphqlBodyLimit } from './graphql-body-limit';
 
 vi.mock('../logger');
@@ -96,11 +97,13 @@ describe('graphqlBodyLimit', () => {
 
 // Real integration, with server.ts's actual mount order (limit ahead of
 // yoga): proves the 100kb limit rejects a request before any resolver runs,
-// not merely before some abstract "downstream handler". `listBooksPage` is
-// the store method `Library.entries` (library/model.ts) calls — spying on it
-// directly is the only way to tell "yoga ran the query and it happened to
-// error" apart from "yoga never ran the query at all", which mere HTTP
-// status can't distinguish.
+// not merely before some abstract "downstream handler". `listBooksPage`
+// (`services/library-page.ts`) is the function `Library.entries`
+// (library/model.ts) calls directly — spying on it via a namespace import
+// (same pattern as `routes/ui.test.ts`'s `applyEpubChangesModule`/
+// `validationModule` spies) is the only way to tell "yoga ran the query and
+// it happened to error" apart from "yoga never ran the query at all", which
+// mere HTTP status can't distinguish.
 describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
   let harness: Harness;
   let app: express.Express;
@@ -137,7 +140,7 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
     });
 
   it('rejects a 101kb body with 413 and never calls the resolver', async () => {
-    const spy = vi.spyOn(harness.stores.book, 'listBooksPage');
+    const spy = vi.spyOn(libraryPageModule, 'listBooksPage');
     // Padding lives in a GraphQL comment so the query stays syntactically
     // valid — the point is to prove the oversized body never reaches parse
     // or execute, not to also exercise a malformed-query path.
@@ -154,7 +157,7 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
   });
 
   it('sanity check: the same query under the limit does reach the resolver', async () => {
-    const spy = vi.spyOn(harness.stores.book, 'listBooksPage');
+    const spy = vi.spyOn(libraryPageModule, 'listBooksPage');
 
     const response = await request(app)
       .post('/graphql')
@@ -229,7 +232,7 @@ describe('graphqlBodyLimit + graphqlHandler — chunked transfer-encoding bypass
     });
 
   it('rejects a chunked, Content-Length-less POST with 411 and never calls the resolver', async () => {
-    const spy = vi.spyOn(harness.stores.book, 'listBooksPage');
+    const spy = vi.spyOn(libraryPageModule, 'listBooksPage');
     const payload = JSON.stringify({
       query: `# ${'a'.repeat(200 * 1024)}\n{ __typename }`,
     });

@@ -16,11 +16,13 @@ import * as series from '../series/model';
 
 /**
  * The real Prisma row shapes `Library.entries` (library/model.ts)
- * resolves into — never a synthetic wrapper. `library/model.ts` always
- * fetches full, unselected `book`/`series` rows (its `context.prisma.book
- * .findMany` / `series.findMany` calls carry no `select`), so every column
- * either table has — including `sortKey`, which `isSeriesRow` below relies on
- * — is guaranteed present on whatever that resolver hands back.
+ * resolves into — never a synthetic wrapper. The fetch itself lives in
+ * `services/library-page.ts`'s `listBooksPage` (task 8 moved it there, out
+ * of `library/model.ts`'s own resolver, to collapse a double read into one),
+ * but the invariant is unchanged: its `prisma.book.findMany`/`series.findMany`
+ * calls carry no `select`, so every column either table has — including
+ * `sortKey`, which `isSeriesRow` below relies on — is guaranteed present on
+ * whatever `Library.entries` hands back.
  */
 export type LibraryEntryRow = BookRow | SeriesRow;
 
