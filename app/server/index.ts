@@ -41,11 +41,13 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
-  // Shared by REST's `POST /api/books/scan` and every GraphQL scan resolver
-  // (`libraryScan`, `Subscription.scanProgress`, `Library.scanStatus`) — one
-  // pubsub instance, handed to `ScanJobStore` below so a scan started through
-  // either transport publishes onto the same per-user topic a GraphQL
-  // subscriber reads. See `graphql/pubsub.ts`'s doc comment.
+  // One pubsub instance, handed to `ScanJobStore` below, shared by every
+  // GraphQL scan resolver (`libraryScan`, `Subscription.scanProgress`,
+  // `Library.scanStatus`) so a scan started through `libraryScan` publishes
+  // onto the same per-user topic a GraphQL subscriber reads. REST's own
+  // `POST /api/books/scan` used to share this too, before that route (and
+  // `ScanJobStore`'s REST wiring) was removed along with the rest of the
+  // REST surface GraphQL replaced. See `graphql/pubsub.ts`'s doc comment.
   const scanPubSub = createScanPubSub();
   const scanJobStore = new ScanJobStore(scanPubSub);
   // One instance shared by the REST staging route and the two GraphQL
