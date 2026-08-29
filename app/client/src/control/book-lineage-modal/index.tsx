@@ -56,8 +56,8 @@ const toMillis = (isoTimestamp: string): number => new Date(isoTimestamp).getTim
 /**
  * The current row's document id. Derived from the newest entry's `newId`
  * when `entries` is non-empty — `entries[0]` is the newest (the server
- * orders lineage `timestamp DESC`, mirrored by `Book.lineage`'s resolver,
- * `app/server/graphql/schema/book/model.ts:270-277`, calling the SAME
+ * orders lineage `timestamp DESC`, mirrored by `Book.lineage`'s resolver
+ * (`app/server/graphql/schema/book/model.ts`), calling the SAME
  * `getBookLineage` service function REST used), and per that function
  * (`app/server/services/book-lineage.ts`) every entry's `newId` chains to the book's own
  * live id — `entries[0].newId` in particular equals it exactly, matching
