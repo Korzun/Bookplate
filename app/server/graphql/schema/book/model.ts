@@ -1,5 +1,4 @@
 import { getBookLineage } from '../../../services/book-lineage';
-import { countForBook } from '../../../services/edition';
 import type { Context } from '../../context';
 import {
   epochToDate,
@@ -358,13 +357,29 @@ export const model = builder.prismaNode('Book', {
      * owner, never re-derived from the viewer — so the count is owner-scoped by
      * construction, in the same sense `Book.progress` is.
      *
-     * `t.int` over a direct call, not `t.relationCount`: this resolves through a
-     * plain function, not a Prisma relation — `DeviceEdition` has no relation to
-     * `Book` in `schema.prisma` (it is keyed `[userId, originalBookId, deviceId]`
-     * with no foreign key), so `t.relationCount` cannot express it.
+     * Resolved through `context.loadDeviceEditionCount`
+     * (`device-edition-count-loader.ts`), a request-scoped batching loader —
+     * NOT a per-book `deviceEdition.count()`, which was a genuine N+1 across a
+     * page of up to 100 books (`Library.entries`,
+     * `CONNECTION_LIMITS.libraryEntries.maxSize`). This field was the only
+     * per-row `Book` aggregate with no batching at all, unlike `progress` and
+     * `pendingFix` above.
+     *
+     * NOT `t.relationCount` over a new `DeviceEdition` -> `Book` relation:
+     * that was implemented and measured, and it does not fix the path that
+     * matters — see the loader's own doc comment for the numbers and for the
+     * `@pothos/plugin-prisma` mechanism (a hand-built parent query has no
+     * loader mapping, so a `select`-carrying field re-queries per row). The
+     * same trap `pendingFix` documents for `t.relation`.
+     *
+     * `countForBook` (`services/edition.ts`) is NOT dead: `getBookById` still
+     * calls it for REST's `{ withEditionCount: true }` payload
+     * (`book-catalog.ts`), so REST and GraphQL still report the same number
+     * from the same table — just reached differently, because only this side
+     * has a page of books to batch across.
      */
     deviceEditionCount: t.int({
-      resolve: (book, _args, context) => countForBook(context.prisma, book.userId, book.id),
+      resolve: (book, _args, context) => context.loadDeviceEditionCount(book.userId, book.id),
     }),
   }),
 });

@@ -98,6 +98,82 @@ describe('Book.deviceEditionCount', () => {
     expect(await countFor(harness.bobViewer)).toBe(0);
   });
 
+  // Pins the batching, not merely the numbers: `Book` is reachable from
+  // `Library.entries` (up to 100 per page — `CONNECTION_LIMITS`), and this
+  // field used to issue one `prisma.deviceEdition.count()` per book with no
+  // loader mitigating it, unlike `progress`/`pendingFix`. Mirrors
+  // `validation/model.test.ts`'s identical "one groupBy" assertion.
+  //
+  // Asserts BOTH that the aggregate is one call AND that no per-book `count`
+  // survives: a regression that reintroduced `countForBook` beside the loader
+  // would still satisfy a groupBy-only assertion.
+  it('issues one groupBy for a page of books, not one count each', async () => {
+    const ids = ['1', '2', '3', '4'].map((n) => n.repeat(32));
+    for (const id of ids) {
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id,
+          title: `Batch ${id[0]}`,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+      await harness.prisma.deviceEdition.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          originalBookId: id,
+          deviceId: 'dev-1',
+          editionId: `ed-${id[0]}`,
+          settingsHash: 'h',
+        },
+      });
+    }
+
+    const groupBySpy = vi.spyOn(harness.prisma.deviceEdition, 'groupBy');
+    const countSpy = vi.spyOn(harness.prisma.deviceEdition, 'count');
+
+    const fields = ids
+      .map(
+        (id, i) =>
+          `b${i}: book(id: "${bookGlobalId(harness.aliceOwner.userId, id)}") { deviceEditionCount }`
+      )
+      .join(' ');
+    const result = await harness.execute(`{ viewer { library { ${fields} } } }`, {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data as Record<
+      string,
+      { library: Record<string, { deviceEditionCount: number }> }
+    >;
+    expect(ids.map((_, i) => data.viewer.library[`b${i}`].deviceEditionCount)).toEqual([
+      1, 1, 1, 1,
+    ]);
+    expect(groupBySpy).toHaveBeenCalledTimes(1);
+    expect(countSpy).not.toHaveBeenCalled();
+  });
+
+  // A book with no editions must resolve 0, not null — the field is `Int!`, and
+  // a book with zero rows is simply absent from the `groupBy` result, so the
+  // loader has to supply the zero rather than pass `undefined` through.
+  it('resolves 0 for a book with no editions rather than failing the field', async () => {
+    const id = '9'.repeat(32);
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id,
+        title: 'No editions',
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    expect(await countFor(harness.aliceViewer, id)).toBe(0);
+  });
+
   it("reports the owner's count when an admin reads through User.library", async () => {
     // The admin has no userId at all, so a resolver reading the count off the
     // *viewer* rather than off the book row would report 0 here.
