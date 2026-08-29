@@ -123,7 +123,7 @@ const DEBOUNCE_MS = 200;
  *     server actually did** (I-3, final whole-branch review): `Progress.id`
  *     is derived from the compound key `[userId, document]`
  *     (`progress/mutation/delete.ts`'s `decodeProgressId`), and
- *     `linkDocument`'s own transaction (`book-store.ts`) DELETES the orphan
+ *     `linkDocument`'s own transaction (`app/server/services/book-lineage.ts`) DELETES the orphan
  *     row and CREATES a new one keyed to `document: bookId` — so the linked
  *     row gets a NEW global id the client never learns
  *     (`BookLinkDocumentPayload` carries only `book`). Evicting only the

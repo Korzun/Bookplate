@@ -149,7 +149,7 @@ export const UserResetPasswordDocument = graphql(`
 /**
  * A dedicated document, NOT folded into `ViewerBootstrapDocument`: `viewer.
  * syncPassword`'s resolver (`viewer/model.ts`) carries a write side effect
- * inherited from `UserStore.getSyncPassword` — an account with no
+ * inherited from `getSyncPassword` (`app/server/services/password.ts`) — an account with no
  * `sync_password` row yet gets one generated and persisted on first read.
  * Bootstrap fires once per app load for every screen; this document is fetched
  * only when the device-password card actually mounts, keeping that

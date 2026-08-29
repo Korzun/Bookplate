@@ -228,8 +228,8 @@ const seededRow = (r: ResolvedRow): UploadItem => ({
  * The row-DELETED reasoning still holds on its own terms and is worth
  * keeping: `bookResolvePendingFix`'s ACCEPT and DISMISS both always arm
  * `undo` on success (`app/server/.../resolve-pending-fix.ts`),
- * `BookStore.upsertPendingFix` only deletes a row when
- * `proposals.length === 0 && !state.undo` (`book-store.ts`), and
+ * `upsertPendingFix` only deletes a row when
+ * `proposals.length === 0 && !state.undo` (`app/server/services/pending-fix.ts`), and
  * `isLivePendingFix` keeps a resolved-but-undo-armed row live in
  * `Library.pendingFixes` for 7 days (`derive.ts`); `CLEAR` removes a row but
  * `dismissCompleted` drops the local transport item in the very same call.

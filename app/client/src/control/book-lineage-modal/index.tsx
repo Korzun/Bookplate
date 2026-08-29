@@ -58,8 +58,8 @@ const toMillis = (isoTimestamp: string): number => new Date(isoTimestamp).getTim
  * when `entries` is non-empty — `entries[0]` is the newest (the server
  * orders lineage `timestamp DESC`, mirrored by `Book.lineage`'s resolver,
  * `app/server/graphql/schema/book/model.ts:270-277`, calling the SAME
- * `getBookLineage` store method REST used), and per that store method
- * (`book-store.ts:530-559`) every entry's `newId` chains to the book's own
+ * `getBookLineage` service function REST used), and per that function
+ * (`app/server/services/book-lineage.ts`) every entry's `newId` chains to the book's own
  * live id — `entries[0].newId` in particular equals it exactly, matching
  * this component's job of showing the book's OWN raw content hash for the
  * top row.
@@ -68,7 +68,7 @@ const toMillis = (isoTimestamp: string): number => new Date(isoTimestamp).getTim
  * response to derive one from — `Book` deliberately exposes none itself
  * (see `LineageEntryFragment`'s doc comment on "the client never holds a raw
  * book id"; `oldId`/`newId` are the one sanctioned exception, and only via
- * lineage entries). REST's `getBookLineage` (`book-store.ts:558`, `return {
+ * lineage entries). REST's `getBookLineage` (`app/server/services/book-lineage.ts`, `return {
  * currentId: id, entries }`) always echoed back the exact `id` it was
  * called with as `currentId` regardless of whether `entries` was empty. The
  * `documentId` prop — a RAW content hash, never the GLOBAL `bookId` — is

@@ -296,7 +296,7 @@ export const BookPage = () => {
 
   /**
    * A regen is an `applyEpubChanges`-shaped write, and its `update` treats it
-   * as one. `reimportBook` (`app/server/services/book-store.ts`) RE-PARSES the
+   * as one. `reimportBook` (`app/server/services/book-lifecycle.ts`) RE-PARSES the
    * EPUB and writes back `title`, `titleSort`, `author`, `authorSort`,
    * `publisher`, `publishDate`, `description`, `series`, `seriesIndex`,
    * `identifiers`, `subjects`, `coverData`, `coverMime` and `seriesId` — in
