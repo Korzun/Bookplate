@@ -198,9 +198,10 @@ describe('Mutation.userChangePassword', () => {
   /**
    * The config admin owns no user row (`viewer.userId` is always null), so it
    * has no password of its own to change and REST 403s it outright
-   * (`routes/ui.ts:387-390`). Previously that fell out of the id comparison;
-   * now it is the explicit `viewer.userId !== null` half of `authScopes`, and
-   * this test is what pins it.
+   * (`PATCH /api/my/password` in `routes/ui.ts`, removed in `e67b4ad9`).
+   * Previously that fell out of the id comparison; now it is the explicit
+   * `viewer.userId !== null` half of `authScopes`, and this test is what pins
+   * it.
    *
    * Seen-to-fail: dropping `&& context.viewer.userId !== null` from
    * `authScopes` turns this red — the admin then passes the scope and reaches

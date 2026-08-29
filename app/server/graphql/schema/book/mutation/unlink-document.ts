@@ -19,18 +19,18 @@ import { NO_MATCH_USER_ID, parseCompoundId } from '../../node-scope';
 import { model as bookType } from '../model';
 
 /**
- * Mirrors `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts:897`) —
- * both `bookId` and `documentId` are REST path segments there, so
- * `documentId` is not trimmed here (an empty path segment can't reach REST
- * in the first place; see `inputSchema`'s doc comment for why this mutation
- * still rejects one explicitly). The `Book` global ID IS the input's `id`
- * field — no separate `userId`/`bookId` pair. Same shape as `bookValidate`'s
- * `BookValidateInput` (see that file's doc comment for the full rationale):
- * the id's compound-key local part already carries the owner, so decoding it
- * at the resolver boundary yields both halves the old two-argument shape
- * used to require. `documentId` stays a raw string, not a `Book`-scoped or
- * global id: it names a KOReader document, which has no `Node` type of its
- * own in this schema.
+ * Mirrored REST's `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts`,
+ * removed in `e67b4ad9`) — both `bookId` and `documentId` are REST path
+ * segments there, so `documentId` is not trimmed here (an empty path segment
+ * can't reach REST in the first place; see `inputSchema`'s doc comment for why
+ * this mutation still rejects one explicitly). The `Book` global ID IS the
+ * input's `id` field — no separate `userId`/`bookId` pair. Same shape as
+ * `bookValidate`'s `BookValidateInput` (see that file's doc comment for the
+ * full rationale): the id's compound-key local part already carries the owner,
+ * so decoding it at the resolver boundary yields both halves the old
+ * two-argument shape used to require. `documentId` stays a raw string, not a
+ * `Book`-scoped or global id: it names a KOReader document, which has no `Node`
+ * type of its own in this schema.
  */
 const input = builder.inputType('BookUnlinkDocumentInput', {
   fields: (t) => ({
@@ -111,16 +111,16 @@ const result = builder.unionType('BookUnlinkDocumentResult', {
 });
 
 /**
- * Mirrors `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts:897-914`).
- * Input is the `Book` global ID alone plus `documentId` (design doc's
- * 10-mutation input collapse), decoded with the same
- * `parseCompoundId`/`NO_MATCH_USER_ID` convention `bookValidate` established
- * — see that file's resolver doc comment for the full malformed-id /
+ * Mirrored REST's `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts`,
+ * removed in `e67b4ad9`). Input is the `Book` global ID alone plus `documentId`
+ * (design doc's 10-mutation input collapse), decoded with the same
+ * `parseCompoundId`/`NO_MATCH_USER_ID` convention `bookValidate` established —
+ * see that file's resolver doc comment for the full malformed-id /
  * wrong-type-id reasoning, which applies here unchanged. `authScopes` runs
  * `ownerOf` on the decoded userId, the same way REST's `resolveOwner` lets a
  * regular viewer act only on their own library and an admin target any.
  *
- * `unlinkDocument` (`services/book-lineage.ts:124-146`) is NOT wrapped in
+ * `unlinkDocument` (`services/book-lineage.ts`) is NOT wrapped in
  * `toResult`: traced end to end, it never throws any of the seven known
  * domain errors — it returns a plain `'deleted' | 'not_found' | 'edit_row'`
  * discriminator instead, which this resolver maps directly onto the result
@@ -131,10 +131,11 @@ const result = builder.unionType('BookUnlinkDocumentResult', {
  * undischargeable — see `to-result.ts`'s doc comment.
  *
  * REST's route itself has no separate book-existence check ahead of the
- * `unlinkDocument` call (traced: `routes/ui.ts:897-914` goes straight from
- * `resolveOwner` to `bookStore.unlinkDocument`), so this resolver doesn't add
- * one either — an unknown `bookId` simply yields no matching lineage row,
- * i.e. `'not_found'`, exactly like REST's own behaviour.
+ * `unlinkDocument` call (traced against `routes/ui.ts` before `e67b4ad9`
+ * removed it: the route went straight from `resolveOwner` to
+ * `bookStore.unlinkDocument`), so this resolver doesn't add one either — an
+ * unknown `bookId` simply yields no matching lineage row, i.e. `'not_found'`,
+ * exactly like REST's own behaviour.
  */
 builder.mutationField('bookUnlinkDocument', (t) =>
   t.field({

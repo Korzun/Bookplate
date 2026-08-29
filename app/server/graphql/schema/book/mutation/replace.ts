@@ -97,22 +97,23 @@ const log = logger('bookReplace');
 
 /**
  * Best-effort structural repair, mirroring REST's identical guard
- * (`routes/ui.ts:1392-1403`, warn-and-continue): on failure, fall back to the
- * staged file's own original bytes so `replaceEpubBytes`'s own validation
- * still runs (a normal typed error or success) instead of a bare 500. The
- * `try`/`catch` is kept out of `resolve`'s own body — same as `regen-
+ * (in `routes/ui.ts` until `e67b4ad9`, warn-and-continue): on failure, fall
+ * back to the staged file's own original bytes so `replaceEpubBytes`'s own
+ * validation still runs (a normal typed error or success) instead of a bare
+ * 500. The `try`/`catch` is kept out of `resolve`'s own body — same as `regen-
  * chapters.ts`'s `assertReimportSucceeded` — so "resolver bodies: zero
  * try/catch/throw" holds literally, not just in spirit; `toResult` stays the
  * one boundary for the seven declared domain errors, and this is not one of
  * them (REST's own guard is not a `catch`-a-declared-error site either — it
- * only ever swallows `repairPackageDocument`'s own possible throw, never
- * calls `toResult`, and doesn't discharge anything the union declares).
+ * only ever swallows `repairPackageDocument`'s own possible throw, never calls
+ * `toResult`, and doesn't discharge anything the union declares).
  *
  * Logs on failure with the exact message shape REST's own guard produces
- * (`routes/ui.ts:1397-1399`, `Package repair skipped for "<name>": <message>`)
- * — review finding M-2: the first draft swallowed this silently, making a
- * systematically unrepairable candidate invisible in the logs on the
- * GraphQL path even though `analyzeEpub`'s own internal guard still logs.
+ * (`routes/ui.ts` before `e67b4ad9`,
+ * `Package repair skipped for "<name>": <message>`) — review finding M-2: the
+ * first draft swallowed this silently, making a systematically unrepairable
+ * candidate invisible in the logs on the GraphQL path even though
+ * `analyzeEpub`'s own internal guard still logs.
  */
 function repairBestEffort(stagedPath: string, originalName: string): Buffer {
   try {
@@ -140,23 +141,23 @@ const result = builder.unionType('BookReplaceResult', {
 });
 
 /**
- * Mirrors `POST /api/books/:id/replace` (`routes/ui.ts:1356-1439`), minus
- * the multipart upload half — see `replace-staging.ts`'s doc comment for the
- * staged-upload design, and `bookAnalyzeReplace`'s doc comment for the
- * owner-vs-staging identity split this mutation shares with it verbatim
+ * Mirrored REST's `POST /api/books/:id/replace` (`routes/ui.ts`, removed in
+ * `e67b4ad9`), minus the multipart upload half — see `replace-staging.ts`'s doc
+ * comment for the staged-upload design, and `bookAnalyzeReplace`'s doc comment
+ * for the owner-vs-staging identity split this mutation shares with it verbatim
  * (the decoded `id` resolves whose `Book` is targeted; `stagingIdentityOf
  * (context.viewer)` — never the decoded owner — is what the staged file is
- * keyed to). Input is the `Book` global ID alone (design doc's 10-mutation input
- * collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
- * convention `bookValidate` established — see that file's resolver doc
- * comment for the full malformed-id / wrong-type-id reasoning, which applies
- * here unchanged.
+ * keyed to). Input is the `Book` global ID alone (design doc's 10-mutation
+ * input collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc comment
+ * for the full malformed-id / wrong-type-id reasoning, which applies here
+ * unchanged.
  *
  * `repairPackageDocument` runs the same warn-and-continue best-effort guard
- * REST's route runs (`routes/ui.ts:1392-1403`): on failure, fall through to
- * the staged file's original bytes so `replaceEpubBytes`'s own validation
- * still runs (a normal typed error or success) instead of a bare 500.
- * Unlike REST, there is no throwaway tmp file to write-then-unlink around
+ * REST's route ran (`routes/ui.ts`, removed in `e67b4ad9`): on failure, fall
+ * through to the staged file's original bytes so `replaceEpubBytes`'s own
+ * validation still runs (a normal typed error or success) instead of a bare
+ * 500. Unlike REST, there is no throwaway tmp file to write-then-unlink around
  * this — `repairPackageDocument` reads directly from the staged path, which
  * `bookAnalyzeReplace` may have already repaired in place (idempotent either
  * way, see that file's doc comment).

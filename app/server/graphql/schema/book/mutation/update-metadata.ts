@@ -56,12 +56,12 @@ const identifierInput = builder.inputType('IdentifierInput', {
 
 /**
  * JSON metadata fields, plus an optional staged-cover reference — mirrors
- * `PATCH /api/books/:id/metadata` (`routes/ui.ts:1101`), whose multipart
- * `coverUpload.single('cover')` field this input's `stagedCoverId` now
- * covers via the staging seam instead (spec §"Seams that stay REST" →
- * "Upload", amended 2026-08-01: "`bookUpdateMetadata` takes an optional
- * `stagedCoverId` so metadata and cover land in one mutation"). The REST
- * multipart-cover branch itself is untouched and stays live until the
+ * `PATCH /api/books/:id/metadata` (`routes/ui.ts`, removed in `e67b4ad9`),
+ * whose multipart `coverUpload.single('cover')` field this input's
+ * `stagedCoverId` now covers via the staging seam instead (spec §"Seams that
+ * stay REST" → "Upload", amended 2026-08-01: "`bookUpdateMetadata` takes an
+ * optional `stagedCoverId` so metadata and cover land in one mutation"). The
+ * REST multipart-cover branch itself is untouched and stays live until the
  * client migrates — this is an addition, not a replacement.
  *
  * A field here left absent (`undefined`, not sent) leaves that column
@@ -240,16 +240,16 @@ const buildChanges = (
 };
 
 /**
- * Mirrors `PATCH /api/books/:id/metadata` (`routes/ui.ts:1101`). Input is
- * the `Book` global ID alone (design doc's 10-mutation input collapse),
- * decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID` convention
- * `bookValidate` established — see that file's resolver doc comment for the
- * full malformed-id / wrong-type-id reasoning, which applies here unchanged.
- * `authScopes` runs `ownerOf` on the decoded userId, the same way REST's
- * `resolveOwner` lets a regular viewer edit only their own library and an
- * admin target any; REST's "admin without a target" 400 cannot occur here,
- * since the decoded id always names a specific owner rather than leaving one
- * to be supplied separately.
+ * Mirrored REST's `PATCH /api/books/:id/metadata` (`routes/ui.ts`, removed in
+ * `e67b4ad9`). Input is the `Book` global ID alone (design doc's 10-mutation
+ * input collapse), decoded with the same `parseCompoundId`/`NO_MATCH_USER_ID`
+ * convention `bookValidate` established — see that file's resolver doc comment
+ * for the full malformed-id / wrong-type-id reasoning, which applies here
+ * unchanged. `authScopes` runs `ownerOf` on the decoded userId, the same way
+ * REST's `resolveOwner` lets a regular viewer edit only their own library and
+ * an admin target any; REST's "admin without a target" 400 cannot occur here,
+ * since the decoded id always names a specific owner rather than leaving one to
+ * be supplied separately.
  *
  * The decoded id's malformed-local-id early return (`parsed === null`) runs
  * before the remaining fields' zod parse, matching `progressDelete`'s
@@ -304,18 +304,17 @@ const buildChanges = (
  * this behaviour is visible.
  *
  * `stagedCoverId` (Task 3b, 2026-08-01): traced end to end against REST's
- * multipart-cover branch (`routes/ui.ts:1106-1244`), which merges
+ * multipart-cover branch (`routes/ui.ts`, removed in `e67b4ad9`), which merged
  * `changes.coverData`/`changes.coverMime` into the SAME `changes` object as
- * every metadata field and calls `applyEpubChanges` exactly ONCE
- * (`routes/ui.ts:1185-1201`) — there is no REST code path where metadata and
- * cover are written separately or one can land without the other. This
- * resolver mirrors that atomicity literally, not just in spirit: when
- * `stagedCoverId` is present, the resolved cover's bytes/mime are folded
- * into the SAME `changes` object `buildChanges` already produced, and
- * `applyEpubChanges` still runs exactly once below — a validation failure or
- * hash collision on that single write rejects metadata and cover together,
- * precisely as it always has for metadata alone (no new partial-application
- * behaviour is introduced).
+ * every metadata field and called `applyEpubChanges` exactly ONCE — there was
+ * no REST code path where metadata and cover are written separately or one can
+ * land without the other. This resolver mirrors that atomicity literally, not
+ * just in spirit: when `stagedCoverId` is present, the resolved cover's
+ * bytes/mime are folded into the SAME `changes` object `buildChanges` already
+ * produced, and `applyEpubChanges` still runs exactly once below — a validation
+ * failure or hash collision on that single write rejects metadata and cover
+ * together, precisely as it always has for metadata alone (no new
+ * partial-application behaviour is introduced).
  *
  * `stagedCoverId` resolution itself happens BEFORE that write, as one more
  * early return alongside the two existing REST-mirrored preconditions
@@ -348,12 +347,12 @@ const buildChanges = (
  * cover alone, so a client can retry with the same `stagedCoverId` without
  * re-uploading the image.
  *
- * Also mirrors REST's thumbnail side effect (`routes/ui.ts:1242-1244`,
- * `if (req.file) thumbnailQueue.enqueue(...)`): a successful cover
- * application enqueues thumbnail regeneration for the (new, post-edit)
- * book id, the same way REST does for its own `req.file` branch — dropping
- * this would leave OPDS/UI thumbnails stale after a GraphQL-driven cover
- * change with no REST request ever having touched the book again.
+ * Also mirrors REST's thumbnail side effect (`routes/ui.ts`, removed in
+ * `e67b4ad9`, `if (req.file) thumbnailQueue.enqueue(...)`): a successful cover
+ * application enqueues thumbnail regeneration for the (new, post-edit) book id,
+ * the same way REST does for its own `req.file` branch — dropping this would
+ * leave OPDS/UI thumbnails stale after a GraphQL-driven cover change with no
+ * REST request ever having touched the book again.
  */
 builder.mutationField('bookUpdateMetadata', (t) =>
   t.field({

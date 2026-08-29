@@ -35,7 +35,7 @@ import { findUnique } from './node-loader';
 /**
  * Builds the query-string suffix (no leading `?`) shared by `coverUrl`,
  * `downloadUrl`, and `thumbnailUrl`. Fixes the admin-broken REST URLs those
- * fields used to emit bare: REST's `resolveOwner` (`routes/ui.ts:150-171`)
+ * fields used to emit bare: REST's `resolveOwner` (`routes/ui.ts`)
  * 400s an admin session that hits a book route without `?user=<username>`,
  * since an admin has no library of its own to default to — so a URL minted
  * for an admin viewer without this param was never actually fetchable.

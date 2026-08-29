@@ -16,15 +16,15 @@ import { model as progressModel } from '../model';
  * `userId` (a `User` global ID, per the spec's rule for every user-associated
  * mutation — `libraryScan`'s identical field, `library/mutation/scan.ts`),
  * `document`, plus the exact body `PUT /api/my/progress/:document` accepts
- * (`routes/ui.ts:338-381`). NOT a raw `progress` CFI string: that route does
- * not take one — the client sends `currentChapter` (a 1-based chapter
- * number) and the server itself synthesises a CFI from the book's
+ * (`routes/ui.ts`, removed in `e67b4ad9`). NOT a raw `progress` CFI string:
+ * that route did not take one — the client sends `currentChapter` (a 1-based
+ * chapter number) and the server itself synthesises a CFI from the book's
  * `chapterSpineMap`, mirrored verbatim in this resolver. This is worth
  * flagging: the task brief describes REST as "kosync-shaped" (matching
  * `PUT /sync/syncs/progress` in `routes/kosync.ts`, which DOES take a raw
- * `progress` CFI), but that is a different route entirely — `/api/my/progress/
- * :document` is the one this mutation actually mirrors, and REST governs on
- * conflict.
+ * `progress` CFI), but that is a different route entirely —
+ * `/api/my/progress/:document` is the one this mutation actually mirrors, and
+ * REST governs on conflict.
  */
 const input = builder.inputType('ProgressSetInput', {
   fields: (t) => ({
@@ -45,16 +45,17 @@ const input = builder.inputType('ProgressSetInput', {
 
 /**
  * `document` and `currentChapter`/`percentage` bounds are REST's exact checks
- * (`routes/ui.ts:350-360`): `currentChapter` must be a positive integer,
- * `percentage` must be in `(0, 1]` — REST rejects `percentage <= 0` (not just
- * `< 0`) and `percentage > 1`. `document.min(1)` has no REST analogue (the
- * route's `:document` path segment cannot be empty) but matches every other
- * id-like field's rule in this schema (`bookId` elsewhere) — an empty string
- * is a client bug, not a valid lookup. `progressDelete` no longer has a
- * comparable field to cite here: its `document` component now rides inside
- * an opaque `Progress` id rather than arriving as a raw argument, so there is
- * nothing left there to zod-validate directly (see that file's own doc
- * comment on why its `InvalidInputError` member was dropped).
+ * (`PUT /api/my/progress/:document` in `routes/ui.ts`, removed in `e67b4ad9`):
+ * `currentChapter` must be a positive integer, `percentage` must be in `(0, 1]`
+ * — REST rejects `percentage <= 0` (not just `< 0`) and `percentage > 1`.
+ * `document.min(1)` has no REST analogue (the route's `:document` path segment
+ * cannot be empty) but matches every other id-like field's rule in this schema
+ * (`bookId` elsewhere) — an empty string is a client bug, not a valid lookup.
+ * `progressDelete` no longer has a comparable field to cite here: its
+ * `document` component now rides inside an opaque `Progress` id rather than
+ * arriving as a raw argument, so there is nothing left there to zod-validate
+ * directly (see that file's own doc comment on why its `InvalidInputError`
+ * member was dropped).
  *
  * No `.int()` on `currentChapter`: GraphQL's `Int!` coercion already rejects
  * a non-integer before the resolver runs (unlike REST, which parses an
@@ -182,17 +183,18 @@ const result = builder.unionType('ProgressSetResult', {
  * resolve to a real row) — `owner` is built directly from the input/context,
  * and the field is non-nullable.
  *
- * `saveProgress` (`services/progress.ts:27`) is an upsert — it
+ * `saveProgress` (`services/progress.ts`) is an upsert — it
  * creates the row if absent, updates it otherwise — so this mirrors REST's
  * upsert semantics exactly: there is no "document must already exist"
  * precondition, and `getBookById` (`services/book-catalog.ts`) below is consulted only to
  * synthesise a chapter-accurate CFI, never as an existence gate (REST
  * proceeds with an empty CFI when the book is unknown or the chapter is out
- * of range — see `routes/ui.ts:362-371` — and so does this resolver). Not
- * wrapped in `toResult`: `saveProgress` throws none of the seven known domain
- * errors, and neither does `getBookById` — both are plain Prisma reads/an
- * upsert with no domain-error path, so the `err` branch `toResult` would add
- * could only be discharged by throwing, the very thing it exists to avoid.
+ * of range — see REST's `PUT /api/my/progress/:document`, removed in `e67b4ad9`
+ * — and so does this resolver). Not wrapped in `toResult`: `saveProgress`
+ * throws none of the seven known domain errors, and neither does `getBookById`
+ * — both are plain Prisma reads/an upsert with no domain-error path, so the
+ * `err` branch `toResult` would add could only be discharged by throwing, the
+ * very thing it exists to avoid.
  */
 builder.mutationField('progressSet', (t) =>
   t.field({
@@ -216,7 +218,7 @@ builder.mutationField('progressSet', (t) =>
 
       // Synthesise a minimal EPUB CFI so currentChapter persists through
       // Progress.currentChapter, exactly like REST's GET /api/my/progress —
-      // see routes/ui.ts:361-371.
+      // see its `PUT /api/my/progress/:document` sibling, removed in e67b4ad9.
       const book = await getBookById(
         context.prisma,
         context.config.booksDir,
@@ -233,8 +235,9 @@ builder.mutationField('progressSet', (t) =>
         progressCfi = `EPUB_CFI(/6/${spineIndex * 2 + 2}!/4/2:0)`;
       }
 
-      // REST's exact fallback rules (routes/ui.ts:376-377): an empty or
-      // missing device becomes 'Web'. deviceId has no such rule — REST keeps
+      // REST's exact fallback rules (PUT /api/my/progress/:document, removed
+      // in e67b4ad9): an empty or missing device becomes 'Web'. deviceId has
+      // no such rule — REST keeps
       // any string value, including '', and only substitutes '' when the
       // field isn't a string at all; `?? ''` below covers omitted/null the
       // same way, and an explicit '' is indistinguishable from omission

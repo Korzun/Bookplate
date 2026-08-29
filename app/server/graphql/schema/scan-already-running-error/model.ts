@@ -5,14 +5,14 @@ import { model as scanStatus, type ScanStatusShape } from '../scan-status/model'
 import { model as userError } from '../user-error';
 
 /**
- * Mirrors REST's `POST /api/books/scan` 409 (`routes/ui.ts:1063-1066`):
- * `if (scanJobRegistry.isRunning(owner.userId)) { res.status(409).json
- * (scanJobRegistry.get(owner.userId)); return; }` — the response body IS the
- * already-running job. This type carries the same job (as `scanStatus`, the
- * same `ScanStatus` shape a success would have returned) rather than a bare
- * message, so a client can render live progress on the 409 exactly like it
- * would on a fresh `libraryScan` success, instead of discarding the
- * in-flight job's state.
+ * Mirrored REST's `POST /api/books/scan` 409 (`routes/ui.ts`, removed in
+ * `e67b4ad9`): `if (scanJobRegistry.isRunning(owner.userId)) { res.status(409)
+ * .json(scanJobRegistry.get(owner.userId)); return; }` — the
+ * response body IS the already-running job. This type carries the same job (as
+ * `scanStatus`, the same `ScanStatus` shape a success would have returned)
+ * rather than a bare message, so a client can render live progress on the 409
+ * exactly like it would on a fresh `libraryScan` success, instead of discarding
+ * the in-flight job's state.
  *
  * Not a thrown domain error (`toResult` is not involved): REST's 409 was a
  * precondition the route checked itself, before ever calling `bookStore.scan`

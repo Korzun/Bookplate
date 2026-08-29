@@ -68,13 +68,13 @@ type ScanBackgroundDeps = {
  * now only calls `void runScanInBackground(...)` — no behaviour change, this
  * function's own body is character-identical to the block it replaces.
  *
- * Mirrors `POST /api/books/scan`'s detached body (`routes/ui.ts:1069-1087`)
- * line for line: `bookStore.scan(owner)` → `revalidateLibrary({prisma,
- * booksRoot, validationThreshold}, owner)` → `await thumbnailQueue.
- * reconcile()` → the same `log.info`/`log.error` wording → `scanJobRegistry.
- * complete`/`fail`. See `libraryScan`'s own doc comment below for why this
- * full pipeline — not just `bookStore.scan` — is replicated rather than
- * trimmed to the task's narrower brief wording.
+ * Mirrored REST's `POST /api/books/scan`'s detached body (`routes/ui.ts`,
+ * removed in `e67b4ad9`) line for line: `bookStore.scan(owner)` →
+ * `revalidateLibrary({prisma, booksRoot, validationThreshold}, owner)` →
+ * `await thumbnailQueue.reconcile()` → the same `log.info`/`log.error` wording
+ * → `scanJobRegistry.complete`/`fail`. See `libraryScan`'s own doc comment
+ * below for why this full pipeline — not just `bookStore.scan` — is replicated
+ * rather than trimmed to the task's narrower brief wording.
  */
 async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Promise<void> {
   try {
@@ -103,11 +103,11 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
 }
 
 /**
- * Mirrors `POST /api/books/scan` (`routes/ui.ts:1057-1090`).
+ * Mirrored REST's `POST /api/books/scan` (`routes/ui.ts`, removed in `e67b4ad9`).
  *
  * OWNER RESOLUTION: that route resolves its owner through the generic
- * `resolveOwner` (`routes/ui.ts:150-171`) — an admin session MUST supply
- * `?user=` (400 without it) and then acts on the named user; a non-admin
+ * `resolveOwner` (`routes/ui.ts`) — an admin session MUST supply `?user=`
+ * (400 without it) and then acts on the named user; a non-admin
  * session always acts on itself. That is exactly the `ownerOf` shape every
  * other admin-widened mutation in this schema uses (`bookDelete`,
  * `bookUpdateMetadata`, …), unlike `progressSet`'s self-only shape — REST has

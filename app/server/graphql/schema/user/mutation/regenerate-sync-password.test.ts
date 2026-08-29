@@ -59,8 +59,9 @@ describe('Mutation.userRegenerateSyncPassword', () => {
    * the naive `ownerOf` scope reproducibly turns THIS test red — an admin
    * has no `userId` of their own, so `ownerOf`'s admin branch lets it
    * through despite REST's flat 403 for an admin session
-   * (`routes/ui.ts:451-454`); the test above (bob acting on alice) is denied
-   * either way and so cannot discriminate the two scopes. Confirmed
+   * (`POST /api/my/sync-password/regenerate` in `routes/ui.ts`, removed in
+   * `e67b4ad9`); the test above (bob acting on alice) is denied either way and
+   * so cannot discriminate the two scopes. Confirmed
    * experimentally (`AssertionError: expected undefined to be 'FORBIDDEN'`),
    * then reverted.
    */

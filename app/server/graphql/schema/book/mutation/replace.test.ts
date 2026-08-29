@@ -425,7 +425,7 @@ describe('Mutation.bookReplace', () => {
       expect(data.__typename).toBe('BookReplacePayload');
       expect(data.book.title).toBe('Fixed Title');
       // M-2: REST logs `Package repair skipped for "<name>": <message>` on
-      // this exact failure (`routes/ui.ts:1397-1399`) — the GraphQL path
+      // this exact failure (`routes/ui.ts`, removed in `e67b4ad9`) — the GraphQL path
       // must not silently swallow it just because the request still
       // succeeds via the byte fallback.
       expect(logger('bookReplace').warn).toHaveBeenCalledWith(

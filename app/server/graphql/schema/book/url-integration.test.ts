@@ -18,13 +18,12 @@ vi.mock('../../../logger');
  * The test task-2's own report names explicitly: a GraphQL `harness.execute`
  * call never leaves the process, so a bug where `coverUrl` looked
  * plausible but 400ed against the real REST route (the original admin-
- * broken-URL bug this task fixes: REST's `resolveOwner`, `routes/ui.ts:150-
- * 171`, 400s an admin session with no `?user=`) would sail through every
- * other test in this file's siblings. This file is the one place both
- * transports run in the same process against the same in-memory
- * registries/`prisma`, so
- * a URL minted by GraphQL can be handed straight to `supertest` against the
- * REST router that actually serves it.
+ * broken-URL bug this task fixes: `resolveOwner` in `routes/ui.ts` 400s an
+ * admin session with no `?user=`) would sail through every other test in this
+ * file's siblings. This file is the one place both transports run in the same
+ * process against the same in-memory registries/`prisma`, so a URL minted by
+ * GraphQL can be handed straight to `supertest` against the REST router that
+ * actually serves it.
  */
 
 let harness: Harness;
@@ -119,7 +118,7 @@ const coverUrlFor = async (token: string, viewerGid: string, gid: string): Promi
 describe('Book URL fields are REST-fetchable', () => {
   // This is the test that would have caught the original bug: a `coverUrl`
   // minted for an admin session without `?user=<username>` 400s against
-  // REST's `resolveOwner` (`routes/ui.ts:150-171` — an admin session has no
+  // REST's `resolveOwner` (`routes/ui.ts` — an admin session has no
   // library of its own to default to). Seen-to-fail: reverting `book/
   // model.ts`'s `coverUrl` resolver to the pre-task-2 bare
   // `` `/api/books/${book.id}/cover` `` and re-running this test turns this
