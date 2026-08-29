@@ -50,9 +50,9 @@ const result = builder.unionType('LibraryScanResult', {
 });
 
 type ScanBackgroundDeps = {
-  readonly scanJob: ScanJobRegistry;
+  readonly scanJobs: ScanJobRegistry;
   readonly prisma: PrismaClient;
-  readonly thumbnail: ThumbnailQueue;
+  readonly thumbnails: ThumbnailQueue;
   readonly booksRoot: string;
   readonly validationThreshold: RevalidateDeps['validationThreshold'];
 };
@@ -79,7 +79,7 @@ type ScanBackgroundDeps = {
 async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Promise<void> {
   try {
     const scanResult = await scan(deps.prisma, deps.booksRoot, owner, (progress) => {
-      deps.scanJob.progress(owner.userId, progress);
+      deps.scanJobs.progress(owner.userId, progress);
     });
     const val = await revalidateLibrary(
       {
@@ -89,16 +89,16 @@ async function runScanInBackground(deps: ScanBackgroundDeps, owner: Owner): Prom
       },
       owner
     );
-    await deps.thumbnail.reconcile();
+    await deps.thumbnails.reconcile();
     log.info(
       `Scan: ${scanResult.imported.length} imported, ${scanResult.removed.length} removed, ` +
         `${val.validated} validated (${val.failed} failed)`
     );
-    deps.scanJob.complete(owner.userId, scanResult);
+    deps.scanJobs.complete(owner.userId, scanResult);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     log.error(`Scan failed for "${owner.username}": ${message}`);
-    deps.scanJob.fail(owner.userId, message);
+    deps.scanJobs.fail(owner.userId, message);
   }
 }
 
@@ -158,24 +158,24 @@ builder.mutationField('libraryScan', (t) =>
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      const { scanJobs: scanJob, thumbnails: thumbnail } = context;
+      const { scanJobs, thumbnails } = context;
 
       // Read before start(), not via `isRunning` + a second `get()` cast: a
       // single read either has a running job (409) or doesn't (proceed to
       // start one) — no "isRunning implies get is defined" comment needed to
       // justify a cast (task 8 review, M-1).
-      const running = scanJob.get(owner.userId);
+      const running = scanJobs.get(owner.userId);
       if (running !== undefined && running.status === 'running') {
         return scanAlreadyRunningError(owner, running);
       }
 
-      const job = scanJob.start(owner.userId);
+      const job = scanJobs.start(owner.userId);
 
       void runScanInBackground(
         {
-          scanJob,
+          scanJobs,
           prisma: context.prisma,
-          thumbnail,
+          thumbnails,
           booksRoot: context.config.booksDir,
           validationThreshold: context.config.validationThreshold,
         },
