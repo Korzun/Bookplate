@@ -82,10 +82,16 @@ const payload = builder.objectRef<ProgressDeletePayloadShape>('ProgressDeletePay
     // tweak to "the viewer's own User" would decrement the wrong person's
     // count when an admin deletes someone else's row. Same resolver shape
     // as `ProgressSetPayload.user` / `Library.user`.
-    user: t.field({
+    //
+    // `t.prismaField` for the same reason `Library.user` is one: it merges the
+    // `_count` select behind `User.progressCount` into this read instead of
+    // paying a second one for it. That matters most HERE — the whole point of
+    // this field is the decremented count, and this test file's own I-2 case
+    // asserts it.
+    user: t.prismaField({
       type: user,
-      resolve: (result, _args, context) =>
-        context.prisma.user.findUniqueOrThrow({ where: { id: result.owner.userId } }),
+      resolve: (query, result, _args, context) =>
+        context.prisma.user.findUniqueOrThrow({ ...query, where: { id: result.owner.userId } }),
     }),
   }),
 });

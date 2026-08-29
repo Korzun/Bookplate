@@ -124,10 +124,19 @@ builder.node(model, {
     return context.loadOwner(id);
   },
   fields: (t) => ({
-    user: t.field({
+    // `t.prismaField`, not `t.field`: `User.progressCount` is
+    // `t.relationCount('progresses')` (`user/model.ts`), whose `_count` select
+    // can only be merged into a query Pothos itself planned. Without the
+    // `query` spread below, `@pothos/plugin-prisma` has no loader mapping for
+    // this field's rows and falls through to `ModelLoader.loadSelection`,
+    // which re-reads the same `User` row purely to obtain `_count` — MEASURED
+    // at two `user.findUniqueOrThrow` calls for `user { username
+    // progressCount }`, now one. Same mechanism written up at length in
+    // `device-edition-count-loader.ts`.
+    user: t.prismaField({
       type: user,
-      resolve: (owner, _args, context) =>
-        context.prisma.user.findUniqueOrThrow({ where: { id: owner.userId } }),
+      resolve: (query, owner, _args, context) =>
+        context.prisma.user.findUniqueOrThrow({ ...query, where: { id: owner.userId } }),
     }),
 
     // `subjects` and `authors` are the two fields the spec assigns to

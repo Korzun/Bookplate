@@ -135,10 +135,13 @@ const payload = builder.objectRef<ProgressSetPayloadShape>('ProgressSetPayload')
     // normalize the count straight onto the already-cached `User:<id>`
     // entity (`graphql/progress.ts`'s `ProgressSetDocument`, I-2) instead of
     // hand-rolling a client-side increment.
-    user: t.field({
+    // `t.prismaField`, not `t.field` — same reason as `Library.user` and
+    // `ProgressDeletePayload.user`: it merges `User.progressCount`'s `_count`
+    // select into this same read rather than paying a second query for it.
+    user: t.prismaField({
       type: user,
-      resolve: (result, _args, context) =>
-        context.prisma.user.findUniqueOrThrow({ where: { id: result.owner.userId } }),
+      resolve: (query, result, _args, context) =>
+        context.prisma.user.findUniqueOrThrow({ ...query, where: { id: result.owner.userId } }),
     }),
   }),
 });

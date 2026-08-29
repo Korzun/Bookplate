@@ -122,3 +122,37 @@ describe('Library.authors', () => {
     ]);
   });
 });
+
+describe('Library.user', () => {
+  it('resolves the library owner', async () => {
+    const result = await harness.execute('{ viewer { library { user { username } } } }', {
+      viewer: harness.aliceViewer,
+    });
+    expect(result.errors).toBeUndefined();
+    expect(
+      (result.data as { viewer: { library: { user: { username: string } } } }).viewer.library.user
+        .username
+    ).toBe('alice');
+  });
+
+  // Pins the `t.prismaField` query merge, not just the value. `User
+  // .progressCount` is `t.relationCount('progresses')`, whose `_count` select
+  // can only be folded into a query Pothos itself planned — so a revert of
+  // this field to a plain `t.field` (no `query` spread) would still return the
+  // right number while silently paying a SECOND `user.findUniqueOrThrow` for
+  // it, via `@pothos/plugin-prisma`'s `ModelLoader` fallback. Measured at 2
+  // before the conversion, 1 after.
+  //
+  // `findUniqueOrThrow` specifically: `loadOwner` (`graphql/owner.ts`) issues
+  // its own `user.findUnique` for the username, which is a different method
+  // and unrelated to this merge.
+  it('folds progressCount into one query rather than re-reading the row', async () => {
+    const spy = vi.spyOn(harness.prisma.user, 'findUniqueOrThrow');
+    const result = await harness.execute(
+      '{ viewer { library { user { username progressCount } } } }',
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
