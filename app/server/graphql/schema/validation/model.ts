@@ -67,11 +67,11 @@ export const model = builder.prismaObject('Validation', {
      * A connection — validation output for a broken EPUB is the one list in
      * this schema with realistic hundreds-of-rows growth (cleanup spec,
      * §"5. Connections for growable lists"). Same backward-pagination
-     * asymmetry as `Series.books`: unlike `Library.entries`/`Library.progress`
-     * (forward-only service cursor, so they do not offer `last`/`before` at all
-     * — see the `entriesConnection` doc comment in `library/model.ts`),
-     * `t.relatedConnection` wraps a genuine Prisma relation, so
-     * `last`/`before` genuinely work here.
+     * asymmetry as `Series.books`: unlike `Library.entries` (a forward-only
+     * service cursor over an interleaved two-table keyset, so it does not
+     * offer `last`/`before` at all — see the `entriesConnection` doc comment
+     * in `library/model.ts`), `t.relatedConnection` wraps a genuine Prisma
+     * relation, so `last`/`before` genuinely work here.
      *
      * `maxSize`/`defaultSize` are 100/20 — NOT raised to accommodate the
      * "hundreds of rows" case above; a client reading hundreds of messages

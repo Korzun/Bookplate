@@ -87,8 +87,11 @@ model.implement({
     // that path: `Library.entries` builds its own query, so Pothos never plans
     // it and there is no merge to lose (`graphql/loaders/pair-loader.ts`).
     // `loadBookByDocument` is the right loader rather than a new one — its key
-    // IS `(userId, book id)`, and `Progress.document` being a book id is the
-    // same identity this field relies on.
+    // IS `(userId, book id)`, the identity these two fields rely on. It is
+    // named for `Progress.document`, its original consumer; that field is a
+    // `t.relation` now (`Library.progress` became plugin-planned, these two did
+    // not), so THESE are the loader's only consumers and its doc comment is
+    // written for them.
     oldBook: t.field({
       type: book,
       nullable: true,

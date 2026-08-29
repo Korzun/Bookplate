@@ -132,10 +132,13 @@ describe('Progress.currentChapter', () => {
     ).toEqual([2]);
   });
 
-  // A resolver has no page to batch spine-map lookups over, so
-  // `context.loadChapterSpineMap` does it instead — this asserts the batching
-  // actually happens rather than trusting that the loader exists.
-  it('batches the spine-map lookups across a page into a single query', async () => {
+  // A resolver has no page to batch spine-map lookups over, so this used to go
+  // through `context.loadChapterSpineMap`, which turned N `book.findUnique`
+  // calls into one `book.findMany`. The spine map now rides in on a field
+  // `select` over the `book` relation, merged into `Library.progress`'s own
+  // query — so the assertion is ZERO book queries, not one batched query.
+  // 15 rows, so a per-row lookup could not hide.
+  it('reads the spine map off the page query, with no book lookup of its own', async () => {
     for (let i = 0; i < 15; i++) {
       const id = i.toString().padStart(32, '0');
       await seedBook(harness.aliceOwner.userId, id, SPINE_MAP);
@@ -144,19 +147,24 @@ describe('Progress.currentChapter', () => {
 
     const findUniqueSpy = vi.spyOn(harness.prisma.book, 'findUnique');
     const findManySpy = vi.spyOn(harness.prisma.book, 'findMany');
+    const progressSpy = vi.spyOn(harness.prisma.progress, 'findMany');
 
     expect(await readChapter(harness.aliceViewer, 50)).toEqual(Array(15).fill(2));
     expect(findUniqueSpy).not.toHaveBeenCalled();
-    expect(findManySpy).toHaveBeenCalledTimes(1);
+    expect(findManySpy).not.toHaveBeenCalled();
+    expect(progressSpy).toHaveBeenCalledTimes(1);
   });
 
-  // The loader owns settling every batched caller's promise once it takes over
-  // via `new Promise`. If it captured only `resolve`, a rejected `findMany`
-  // would leave every lookup permanently unsettled — the request hangs instead
-  // of surfacing an error. This must fail fast, not stall the suite.
-  it('surfaces a GraphQL error instead of hanging when the book query fails', async () => {
+  // The predecessor of this test armed `book.findMany` to reject, because the
+  // spine map came from its own batched query and the loader owned settling
+  // every batched caller's promise — a loader that captured only `resolve`
+  // would leave the request HANGING rather than erroring. There is no second
+  // query and no loader now, so the equivalent failure is the page query
+  // itself failing, and the equivalent risk is that it surfaces as a hang or a
+  // 500 rather than a GraphQL error. Must fail fast, not stall the suite.
+  it('surfaces a GraphQL error instead of hanging when the page query fails', async () => {
     await seedProgress(harness.aliceOwner.userId, BOOK_ID, CFI_SPINE_4);
-    vi.spyOn(harness.prisma.book, 'findMany').mockRejectedValue(new Error('db unavailable'));
+    vi.spyOn(harness.prisma.progress, 'findMany').mockRejectedValue(new Error('db unavailable'));
 
     const result = await harness.execute(
       '{ viewer { library { progress(first: 10) { edges { node { currentChapter } } } } } }',

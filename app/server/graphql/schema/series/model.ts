@@ -62,15 +62,17 @@ export const model = builder.prismaNode('Series', {
     /**
      * A connection, not the plain list this started as — see the cleanup
      * spec, §"5. Connections for growable lists". Backward pagination
-     * (`last`/`before`) genuinely works here, unlike `Library.entries` and
-     * `Library.progress`, which do not OFFER it: those two wrap a
-     * forward-only service cursor and are hand-declared with a plain `t.field`
-     * over an explicit `connectionObject` so the SDL omits `last`/`before`
-     * entirely (see the `entriesConnection` doc comment in
+     * (`last`/`before`) genuinely works here, as it does on
+     * `Validation.messages` and (since it became a `t.prismaConnection`)
+     * `Library.progress`. `Library.entries` is the one connection in this
+     * schema that does not OFFER it: it wraps a forward-only service cursor
+     * over an interleaved two-table keyset and is hand-declared with a plain
+     * `t.field` over an explicit `connectionObject`, so the SDL omits
+     * `last`/`before` entirely (see the `entriesConnection` doc comment in
      * `library/model.ts`). `t.relatedConnection` paginates a real Prisma
      * relation and supports `last`/`before` natively — native support wins,
-     * and the asymmetry between the two pairs is real, now stated in the
-     * schema rather than enforced at runtime.
+     * and the remaining asymmetry is stated in the schema rather than
+     * enforced at runtime.
      */
     books: t.relatedConnection('books', {
       cursor: 'userId_id',

@@ -12,10 +12,15 @@ import { accepts, costOf } from './cost-test-support';
  * `accepts()` runs schema validity plus the REAL `costLimitRule` through
  * `validate()`, exactly as a live request does — which a bare `costOf()`
  * measurement would not. Schema validity is what catches a `last`/`before` on
- * `Library.entries`/`Library.progress`, which no longer declare either
- * argument (see the `entriesConnection` doc comment in
- * `schema/library/model.ts`); it used to be a resolver-level
- * BACKWARD_PAGINATION_UNSUPPORTED that only a real request would surface.
+ * `Library.entries`, which declares neither argument (see the
+ * `entriesConnection` doc comment in `schema/library/model.ts`); it used to be
+ * a resolver-level BACKWARD_PAGINATION_UNSUPPORTED that only a real request
+ * would surface. `Library.progress` was in that sentence until it became a
+ * `t.prismaConnection` and gained both arguments; the cost model already
+ * prices `last` and `first` identically (`cost-limit.ts`'s
+ * `pageSizeMultiplier`, the I-1 fix), so that gained no pricing gap — measured,
+ * both shipped progress operations cost exactly what they did before
+ * (`MyProgressList` 32/2507, `UserProgressList` 33/2508).
  *
  * NOTE on page sizes: a variable-valued `first`/`last` is priced at that
  * field's `maxSize`, not its default (cost-limit.ts, `multiplierFor`). Prefer

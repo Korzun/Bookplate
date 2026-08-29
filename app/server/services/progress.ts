@@ -1,7 +1,7 @@
-import { PrismaClient, type Progress as ProgressRow } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 import { logger } from '../logger';
-import { Progress, ProgressPageCursor } from '../types';
+import { Progress } from '../types';
 import { isPrismaError } from './prisma-errors';
 
 const log = logger('progress');
@@ -78,61 +78,6 @@ export async function saveProgress(
     log.warn(`Progress history write failed for user ${userId}: ${String(err)}`);
   }
   return { ...p, timestamp };
-}
-
-/**
- * Keyset-paginated progress for a user, ordered by timestamp desc then
- * document asc. Fetches take+1 rows to detect a further page; `nextCursor`
- * is a base64-encoded { timestamp, document } of the last row, or null.
- *
- * Returns the REAL Prisma rows, not the `Progress` DTO its siblings
- * (`getProgress`, `saveProgress`) return. The DTO drops `userId` and renames
- * `deviceId` to `device_id` for KOReader's wire format, which is what
- * `routes/kosync.ts` needs — but this function's only caller is GraphQL's
- * `Library.progress` (`graphql/schema/library/model.ts`), whose `Progress`
- * type is a `prismaObject` pinned to the row, and whose `currentChapter`
- * field resolver reads `parent.userId`. Handing back the DTO forced that
- * resolver to issue a SECOND `progress.findMany` re-reading the very rows
- * this function had just read, purely to recover the dropped column —
- * measured at 2 `findMany` per page, now 1.
- *
- * Both REST endpoints that once consumed the DTO shape here are gone
- * (`GET /api/my/progress`, removed in `e67b4ad9`; `GET /api/users/:username/
- * progress`, removed with the rest of that router in Phase 0), so nothing is
- * left that wants the wire shape from THIS function. Same fix, and the same
- * reasoning, as task 8's collapse of `listBooksPage`'s double read.
- */
-export async function getUserProgressPage(
-  prisma: PrismaClient,
-  userId: string,
-  cursor: ProgressPageCursor | null,
-  take: number
-): Promise<{ items: ProgressRow[]; nextCursor: string | null }> {
-  const rows = await prisma.progress.findMany({
-    where: {
-      userId,
-      ...(cursor
-        ? {
-            OR: [
-              { timestamp: { lt: cursor.timestamp } },
-              { timestamp: cursor.timestamp, document: { gt: cursor.document } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ timestamp: 'desc' }, { document: 'asc' }],
-    take: take + 1,
-  });
-  const hasMore = rows.length > take;
-  const page = hasMore ? rows.slice(0, take) : rows;
-  const last = page[page.length - 1];
-  const nextCursor =
-    hasMore && last
-      ? Buffer.from(
-          JSON.stringify({ timestamp: last.timestamp, document: last.document })
-        ).toString('base64')
-      : null;
-  return { items: page, nextCursor };
 }
 
 export async function clearProgress(

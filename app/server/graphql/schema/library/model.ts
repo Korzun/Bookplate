@@ -1,15 +1,9 @@
 import { getAuthors, getSubjects } from '../../../services/book-catalog';
 import { resolveBookId } from '../../../services/book-lineage';
 import { listBooksPage } from '../../../services/library-page';
-import { getUserProgressPage } from '../../../services/progress';
 import { getSearchSuggestions } from '../../../services/search-suggestions';
 import { getSeriesNextIndex } from '../../../services/series-next-index';
 import type { BookListFilters, Owner } from '../../../types';
-import {
-  clampProgressTake,
-  decodeProgressCursor,
-  encodeProgressCursor,
-} from '../../../utils/progress-pagination';
 import { isLivePendingFix, parsePendingFixState } from '../../derive';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
 // `book/mutation/*.ts` (task 2). `book/mutation/delete.ts` reaches `Library`
@@ -50,17 +44,26 @@ import { searchSuggestionsFilter } from './search-suggestions-filter';
 type Edge = { cursor: string; node: LibraryEntryRow };
 
 /**
- * `entries` and `progress` are declared below with a plain `t.field` over these
- * two refs, NOT with `t.connection` — the one reason being that `t.connection`
- * injects all four of Relay's `first`/`after`/`last`/`before` args and offers
- * no way to withhold any of them. Both fields wrap a forward-only cursor
- * (`services/library-page.ts`'s `listBooksPage`, `getUserProgressPage`: one
- * cursor plus a `take`, no keyset to walk backward from), so advertising
- * `last`/`before` and then throwing on them made the SDL promise a capability
- * the resolver refused.
+ * `entries` is declared below with a plain `t.field` over this ref, NOT with
+ * `t.connection` — the one reason being that `t.connection` injects all four
+ * of Relay's `first`/`after`/`last`/`before` args and offers no way to
+ * withhold any of them. The field wraps a forward-only cursor
+ * (`services/library-page.ts`'s `listBooksPage`: one cursor plus a `take`, no
+ * keyset to walk backward from), so advertising `last`/`before` and then
+ * throwing on them made the SDL promise a capability the resolver refused.
  * Declaring the connection type here and the field by hand states the
  * forward-only shape in the schema itself, where a client generating from the
  * SDL can see it.
+ *
+ * `Library.progress` USED to be declared the same way, for the same reason,
+ * and no longer is — it is a `t.prismaConnection` (see the field below), so
+ * it offers all four args and honours them. That asymmetry is not an
+ * oversight: `entries` cannot follow, and not because of the arg question.
+ * Its node type is the union `LibraryEntry = Book | Series` over an
+ * INTERLEAVED two-table keyset (`services/library-page.ts:159`, one shared
+ * `{k,t,id}` cursor driving both `seriesWhere` and `bookWhere`), and
+ * `t.prismaConnection` binds to exactly one model. There is no single model
+ * to root it on, so this ref stays whatever the arg ruling is.
  *
  * Verified against `@pothos/plugin-relay@4.7.1` before choosing this route, so
  * a future reader doesn't re-litigate it:
@@ -90,11 +93,6 @@ type Edge = { cursor: string; node: LibraryEntryRow };
 const entriesConnection = builder.connectionObject(
   { type: libraryEntry, name: 'LibraryEntriesConnection' },
   { name: 'LibraryEntriesConnectionEdge' }
-);
-
-const progressConnection = builder.connectionObject(
-  { type: progress, name: 'LibraryProgressConnection' },
-  { name: 'LibraryProgressConnectionEdge' }
 );
 
 /**
@@ -433,93 +431,132 @@ builder.node(model, {
      * WHY PAGINATED: REST already was. `GET /api/my/progress` (`routes/ui.ts`,
      * that endpoint since removed) and `GET /api/users/:username/progress`
      * (`routes/users.ts`, removed in Phase 0 along with the rest of that
-     * router) both went through `getUserProgressPage` with a keyset
-     * cursor and a take clamped to 1..100 — this field reuses that exact page
-     * shape. A progress list grows with every book a user opens on any device
+     * router) both paged this list with a keyset cursor and a take clamped to
+     * 1..100. A progress list grows with every book a user opens on any device
      * and is never pruned, so it is genuinely unbounded — an unpaginated
      * field would serve ever-larger responses forever rather than failing,
      * the same silent growth REST's pagination existed to prevent.
      *
-     * WHY A CONNECTION RATHER THAN A CLAMP: a bare `first:` clamp caps the damage
-     * but throws away the ability to read past the first page at all. The spec
-     * exempts "series lists, subjects, authors, users, devices and validation
-     * messages" from connections because they are small and unpaginated *today* —
-     * progress is in neither category. `Library.entries` is the existing
-     * connection precedent and this follows its shape exactly: delegate the
-     * keyset to `getUserProgressPage`, pass its own `nextCursor` through
-     * untouched as `endCursor`, and reject backward pagination loudly.
+     * `t.prismaConnection`, NOT the hand-declared `t.field` over a
+     * `builder.connectionObject` this was until now. That earlier shape
+     * existed to withhold `last`/`before` from the SDL (`e7f99557`), and the
+     * cost of withholding them was NOT local to this field: a hand-declared
+     * connection is never planned by `@pothos/plugin-prisma`, so no
+     * `select`-carrying field on the rows it yields could merge into its
+     * query, and `Progress.book`/`Progress.currentChapter` each needed a
+     * request-scoped batching loader to avoid a per-row re-query. Measured on
+     * a page of 8 selecting `book { title }` and `currentChapter`:
+     * **3 queries before (1 `progress.findMany` + 2 `book.findMany`, one per
+     * loader), 1 after** — the book is now joined into this connection's own
+     * query. `progress.test.ts` pins the count.
      *
-     * CURSOR PARITY IS BY CONSTRUCTION, not by two formulas agreeing:
-     * `decodeProgressCursor` is the very function REST's handlers call, and
-     * `endCursor` is the string `getUserProgressPage` minted, forwarded
-     * unmodified. Only the per-edge cursors are encoded here, through
-     * `encodeProgressCursor`, which lives beside the decoder it must round-trip
-     * with.
+     * SO THE SDL GAINED `last`/`before`, deliberately and with the repo
+     * owner's explicit ruling — `t.prismaConnection` delegates to the relay
+     * plugin's `t.connection`, which injects all four Relay args and offers no
+     * option to withhold any (the four routes checked before `e7f99557` chose
+     * the hand-declaration are still listed on `entriesConnection` above, and
+     * still all closed). This does not reintroduce what `e7f99557` fixed:
+     * that commit's grievance was an SDL that ADVERTISED backward pagination
+     * while the resolver threw `BACKWARD_PAGINATION_UNSUPPORTED` on it. Here
+     * the plugin genuinely paginates backward (`prismaCursorConnectionQuery`
+     * negates `take` for `before`/`last`), so the schema promises only what it
+     * delivers — the same principle, reached from the other side.
+     * `Library.entries` keeps the hand-declared shape and cannot follow, for a
+     * reason unrelated to the args; see `entriesConnection`'s comment.
      *
-     * ONE QUERY. This used to be two: `getUserProgressPage` returned the
-     * `Progress` DTO (`device_id`, no `userId`) while this field's `Progress`
-     * type is a `prismaObject` pinned to the real row — and `currentChapter`
-     * reads `parent.userId`, the very column the DTO dropped — so a second
-     * `findMany` re-read the rows the service had just read, to recover it.
-     * `getUserProgressPage` now returns the real rows (see its own doc
-     * comment for why nothing else wanted the DTO shape), and this resolver
-     * uses them directly. Measured 2 `progress.findMany` per page before, 1
-     * after; `progress.test.ts` pins it.
+     * THE CURSOR FORMAT CHANGED with that conversion, and it is the one real
+     * client-visible break. It was base64 `{timestamp, document}`
+     * (`utils/progress-pagination.ts`, deleted with the service that minted
+     * it); it is now `@pothos/plugin-prisma`'s own compound-primary-key
+     * cursor over `@@id([userId, document])`. Cursors are opaque by contract
+     * and this client only ever round-trips `pageInfo.endCursor`, but a client
+     * holding a cursor ACROSS the deploy that ships this gets one page of
+     * garbage-in behaviour rather than silent wrong data — the plugin rejects
+     * an unparseable cursor with a `PothosValidationError`.
      *
-     * That makes this field the same shape as `Library.entries`, whose
-     * `listBooksPage` already returned real `Book`/`Series` rows after task 8
-     * collapsed the identical double read there. The two no longer differ.
+     * PAGINATION SEMANTICS CHANGED WITH IT. The old keyset walked
+     * `timestamp < X OR (timestamp = X AND document > Y)`, which is stable
+     * even if the cursor row is deleted mid-pagination. Prisma's `cursor` +
+     * `skip: 1` positions at a row that must STILL EXIST, and errors if it
+     * does not. Accepted: a progress row is deleted only by an explicit
+     * `progressDelete` or by the user's own account/book removal, so the
+     * window is a user deleting the exact row they are paging from, and the
+     * failure is a loud error on one page rather than wrong data. Pinned by
+     * `progress.test.ts`'s "the cursor row disappearing mid-pagination".
+     *
+     * The `orderBy` is unchanged (`timestamp desc, document asc`) and Prisma's
+     * cursor works with it: the cursor identifies a ROW, and Prisma seeks to
+     * that row's position in whatever order the query declares — it is not
+     * constrained to order by the cursor's own columns. Verified by the
+     * pagination tests, which assert the same document sequence as before.
      */
-    progress: t.field({
-      type: progressConnection,
-      description:
-        'Forward pagination only: this connection offers `first`/`after` and no ' +
-        '`last`/`before` — the underlying cursor is forward-only.',
-      // Forward args only, hand-declared — same reasoning as `entries` above.
-      args: {
-        first: t.arg.int({ required: false }),
-        after: t.arg.string({ required: false }),
+    progress: t.prismaConnection(
+      {
+        // The `Progress` ref, not the string `'Progress'`. Both resolve to the
+        // same prismaObject, but the ref keeps this file's dependency on that
+        // module explicit — and keeps the import comment above (why it is
+        // `../progress/model` and not `../progress`) attached to something
+        // real.
+        type: progress,
+        description:
+          'The reading positions this library owner has synced, newest first. ' +
+          'Paginates in both directions.',
+        // The compound primary key `@@id([userId, document])`. Both columns
+        // are in the cursor, which is also what makes it tenant-safe to hand
+        // back: `document` is a KOReader content hash and collides across
+        // users, so a cursor naming the document alone would name another
+        // user's row just as well.
+        cursor: 'userId_document',
+        // Native `maxSize`/`defaultSize` bound the actual Prisma query
+        // (`prismaCursorConnectionQuery`: `take = min(first ?? last ??
+        // defaultSize, maxSize) + 1`) — but by CLAMPING an over-max
+        // `first`/`last` down to `maxSize`, not rejecting it, which
+        // `pagination.ts`'s "reject, never clamp" ruling forbids. Kept anyway
+        // as the defense-in-depth bound on the SQL itself; the actual reject
+        // lives in `resolve` below. 100/50 is the pre-existing REST-mirrored
+        // bound, restated, not a new number — see `CONNECTION_LIMITS`.
+        maxSize: CONNECTION_LIMITS.libraryProgress.maxSize,
+        defaultSize: CONNECTION_LIMITS.libraryProgress.defaultSize,
+        // WHY THE REJECT LIVES IN `resolve` AND NOT IN A `query` CALLBACK:
+        // `t.prismaConnection` HAS no `query` option — unlike
+        // `t.relatedConnection` (`series/model.ts`, where the reject must live
+        // in `query` because a user `resolve` only runs as a fallback). Read
+        // off `@pothos/plugin-prisma/lib/field-builder.js`'s `prismaConnection`:
+        // its option bag is `{ type, cursor, maxSize, defaultSize, resolve,
+        // totalCount, ...connectionOptions }`, and the `resolve` below is
+        // invoked by `resolvePrismaCursorConnection` on the one path that
+        // fetches rows. There is no parent query for these rows to be embedded
+        // in — `Library` is a synthetic `objectRef<Owner>`, not a Prisma model
+        // — so the fallback ambiguity that shaped `Series.books` does not
+        // arise here at all.
+        //
+        // `...query` carries the plugin's `take`/`skip`/`cursor` AND the merged
+        // `select` for whatever the client asked for on `Progress`. That merge
+        // is the whole point of the conversion, and it is why `Progress.book`
+        // is now a `t.relation` and `currentChapter` a field `select` rather
+        // than two batching loaders.
+        //
+        // The `where` is the owner's, read off the PARENT `Library` and never
+        // from `context.viewer`: an admin reading `user(id:).library.progress`
+        // must page the target user's rows, not their own. `library/
+        // progress.test.ts` has that exact case.
+        resolve: (query, owner, args, context) => {
+          rejectOversizePage('Library.progress', args, CONNECTION_LIMITS.libraryProgress.maxSize);
+          return context.prisma.progress.findMany({
+            ...query,
+            where: { userId: owner.userId },
+            // `document asc` is the tiebreaker, and it is required, not
+            // cosmetic: timestamps are KOReader-supplied whole SECONDS, so two
+            // rows sharing one is routine, and Prisma's cursor pagination needs
+            // a total order or a page boundary can repeat or skip a row. Same
+            // order `getUserProgressPage`'s keyset used before this conversion.
+            orderBy: [{ timestamp: 'desc' }, { document: 'asc' }],
+          });
+        },
       },
-      resolve: async (owner, args, context) => {
-        // Reject before `clampProgressTake` ever silently clamps — its bounds
-        // (50 default / 100 max) are restated in `CONNECTION_LIMITS.libraryProgress`
-        // (pagination.ts) rather than imported from it, since this number's
-        // real source of truth is `utils/progress-pagination.ts`, unchanged by
-        // this migration; `CONNECTION_LIMITS`'s doc comment records that origin.
-        rejectOversizePage('Library.progress', args, CONNECTION_LIMITS.libraryProgress.maxSize);
-        const cursor = decodeProgressCursor(args.after);
-        // Same default (50) REST applies via `parseProgressTake`, now sharing
-        // that function's default rather than restating it. Its own upper
-        // clamp is no longer the operative ceiling (review M-1) —
-        // `rejectOversizePage` above already rejects anything past `maxSize`
-        // before this line runs — kept as harmless defense-in-depth.
-        const take = clampProgressTake(args.first);
-
-        const page = await getUserProgressPage(context.prisma, owner.userId, cursor, take);
-
-        // `page.items` ARE the real `Progress` rows, in `getUserProgressPage`'s
-        // own `timestamp desc, document asc` order — so this only wraps each
-        // one in an edge. Only the per-edge cursors are minted here; `endCursor`
-        // below is the service's own string, forwarded untouched.
-        const edges = page.items.map((row) => ({
-          cursor: encodeProgressCursor({ timestamp: row.timestamp, document: row.document }),
-          node: row,
-        }));
-
-        return {
-          edges,
-          pageInfo: {
-            hasNextPage: page.nextCursor !== null,
-            // Forward-only pagination: having resumed from a cursor is exactly
-            // what "there is content before this page" means here.
-            hasPreviousPage: cursor !== null,
-            startCursor: edges[0]?.cursor ?? null,
-            // `getUserProgressPage`'s own cursor, forwarded rather than recomputed.
-            endCursor: page.nextCursor,
-          },
-        };
-      },
-    }),
+      { name: 'LibraryProgressConnection' },
+      { name: 'LibraryProgressConnectionEdge' }
+    ),
 
     /**
      * Resolves `PendingFix` rows directly, rather than through a DTO — the

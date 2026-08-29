@@ -59,16 +59,27 @@ substantially on the plugins, and the genuine deviations are few.
 
 | Cat | Subject | Sites | Convert | Keep |
 |---|---|---|---|---|
-| A | `t.prismaConnection` (zero uses) | 2 | 0 | 2 |
+| A | `t.prismaConnection` (zero uses) | 2 | **1** *(`Library.progress`, after the `e7f99557` ruling below)* | 1 |
 | B | Manual Prisma calls in `schema/` | 47 | 4 | 43 |
-| C | Request-scoped loaders | 7 | 0 *(3 unlocked by F-1)* | 7 |
+| C | Request-scoped loaders | 7 | **1 removed, 1 rewritten** *(see the A ruling)* | 6 |
 | D | Hand `encode`/`decodeGlobalID` | 7 | 0–6 optional | 1 hard |
 | E | Raw SQL in `services/` | 21 | 9 + 1 careful | 11 |
 | F | Schema / file structure | 5 proposals | 3 recommended | 2 deferred |
 
 ---
 
-# A. `t.prismaConnection` — zero uses, and should stay zero
+# A. `t.prismaConnection` — one use now, and `Library.entries` stays at zero
+
+> **RULING RECORDED, and acted on.** This section originally concluded "keep
+> both". The `Library.entries` half still holds and is structural. The
+> `Library.progress` half rested on a DECISION — `e7f99557`'s removal of
+> `last`/`before` — not on a constraint, and that decision was put back to the
+> repo owner and **reversed**: `Library.progress` is a `t.prismaConnection`,
+> its SDL offers all four Relay args and honours them, and the two loaders that
+> existed only because it was hand-built are gone (one deleted, one narrowed to
+> its other consumers). Measured on a page of 8 selecting `book { title }` and
+> `currentChapter`: **3 queries -> 1**. See the F-1 note for what that reversal
+> settled and what it did not.
 
 | file:line | hand-rolled | plugin feature | call |
 |---|---|---|---|
@@ -96,11 +107,55 @@ misclassify a `Series` as a `Book`. Handing this field's node selection to
 `queryFromInfo` is therefore unsafe — unlike `Library.progress`. The existing
 comment at `library/model.ts:249` says exactly this and is correct.
 
-## `Library.progress` — SDL blocker only
+## `Library.progress` — SDL blocker only, and the SDL ruling went the other way
 
-Blocker 1 applies; blocker 2 does not (single concrete node type `Progress`). So
-the field keeps its hand-declared `connectionObject`, but its body has a real
-defect — see B-4.
+Blocker 1 applied; blocker 2 never did (single concrete node type `Progress`).
+
+**CONVERTED.** Blocker 1 was `e7f99557`, a deliberate SDL decision, so it was
+taken back to the repo owner as a decision rather than treated as settled. The
+ruling was to convert and accept `last`/`before` returning to the SDL. What that
+bought, all measured on a page of 8:
+
+| | Queries | Loaders it needs |
+|---|---|---|
+| Hand-declared `connectionObject` | 3 | `book-by-document` + `chapter-spine-map` |
+| `t.prismaConnection` | **1** | none |
+
+SDL diff, in full — the connection and edge type names are unchanged, because
+they are passed explicitly to reproduce what `t.connection` derived:
+
+```diff
+-  progress(after: String, first: Int): LibraryProgressConnection!
++  progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
+```
+
+`e7f99557`'s actual grievance is not reintroduced. That commit objected to an
+SDL that ADVERTISED backward pagination while the resolver threw
+`BACKWARD_PAGINATION_UNSUPPORTED`. The plugin genuinely paginates backward, so
+the schema again promises only what it delivers.
+
+Three behaviours changed with it, each tested (`schema/library/progress.test.ts`):
+
+1. **Cursor format.** base64 `{timestamp, document}` -> the plugin's compound-PK
+   cursor. Opaque by contract; a client mid-pagination across the deploy gets an
+   `Invalid cursor` error rather than wrong rows.
+2. **A deleted cursor row ends pagination early.** Prisma's `cursor` + `skip: 1`
+   needs the row to exist; measured, it returns an EMPTY page with
+   `hasNextPage: false` rather than erroring. The old keyset compared values
+   carried in the cursor and did not care. This is the one thing the conversion
+   made worse.
+3. **A malformed cursor now errors** instead of silently restarting from page
+   one (`decodeProgressCursor` returned `null`, which the resolver read as "no
+   cursor").
+
+`hasPreviousPage` did NOT change on the forward path: the plugin computes
+`args.after ? true : …` (`util/cursors.js`'s `wrapConnectionResult`), which is
+exactly the "resumed from a cursor" meaning the hand-built resolver gave it.
+
+Reject-not-clamp survives, on both arguments: `rejectOversizePage` runs in the
+`resolve`, which `resolvePrismaCursorConnection` always calls — `t
+.prismaConnection` has no `query` option, unlike `t.relatedConnection`. 100/50
+unchanged.
 
 **Net:** `t.prismaConnection` stays at zero. Every connection is either already
 `t.relatedConnection` or forbidden from being one by invariant 2. Introducing it
@@ -203,28 +258,39 @@ change. **KEEP.** Admin-only, small cardinality; recorded so it isn't re-derived
 # C. The seven request-scoped loaders
 
 The brief expects several to fold into `t.relation`/`t.relationCount`. Checked
-each against `prisma/schema.prisma`. All seven are keeps, **permanently** — F-1 set out to retire three of them and
-was abandoned after measurement proved it a 4.5x regression. See F-1 for the
-general rule.
+each against `prisma/schema.prisma`. Seven were keeps when this was written, on
+the strength of F-1's measurement (a 4.5x regression). **Two of those keeps
+were then overturned, by removing the premise rather than by re-measuring the
+same thing**: converting `Library.progress` to `t.prismaConnection` (see A)
+made that path plugin-planned, so C-4 is deleted and C-7 lost its `Progress
+.book` consumer. Every keep that rests on `Library.entries` stands, and stands
+structurally.
 
 | # | loader | consumer | real Prisma relation? | verdict |
 |---|---|---|---|---|---|
 | C-1 | `graphql/owner.ts` | `Library.*`, `Book` URL fields, `Book.lineage` | n/a — mints the synthetic `Owner` | **KEEP** |
 | C-2 | `progress-loader.ts` | `Book.progress` (`book/model.ts:298`) | No — and adding one measured **2→9 queries**, see F-1 | **KEEP, permanently** |
 | C-3 | `pending-fix-loader.ts` | `Book.pendingFix`, `Book.hasActionablePendingFix` | **Yes** (`schema.prisma:43`) | **KEEP** |
-| C-4 | `chapter-spine-map-loader.ts` | `Progress.currentChapter` | No — inherits C-7's fallback, see F-1 | **KEEP, permanently** |
+| C-4 | `chapter-spine-map-loader.ts` | `Progress.currentChapter` | Reached through the relation added for C-7 | **DELETED** — the field is a `select` on `Progress.book` now |
 | C-5 | `series-progress-loader.ts` | `Series.progressPercentage` | Partly | **KEEP** |
 | C-6 | `validation-counts-loader.ts` | `Validation.counts` | **Yes** | **KEEP** |
-| C-7 | `book-by-document-loader.ts` | `Progress.book` (`progress/model.ts:134`) | No — measured **2→9 queries**, see F-1 | **KEEP, permanently** |
+| C-7 | `book-by-document-loader.ts` | `Progress.book`; **also `LinkedDocument.oldBook`/`newBook`** | **Yes**, once added | **KEPT, narrowed** — `Progress.book` is `t.relation` now; the two `LinkedDocument` fields hang off `Library.entries` and cannot follow |
 | C-8 | `device-edition-count-loader.ts` *(added by slice 1, `166a6b69`)* | `Book.deviceEditionCount` | No — and adding one does not help; see F-2 | **KEEP** |
 
-## Why C-2/C-4/C-7 cannot be relations today
+## Why C-2/C-4/C-7 could not be relations, and what changed
 
-`Progress.document` and `Book.id` hold the same KOReader content hash, but no
-relation is declared (`schema.prisma:154-166`: `Progress` has only `user`).
+`Progress.document` and `Book.id` hold the same KOReader content hash, and when
+this was written no relation was declared (`Progress` had only `user`).
 `routes/kosync.ts` normalizes `document` through `resolveBookId` on write — an
-application invariant, not a schema one. `t.relation` needs a declared relation.
-**This is a schema gap, not a law of nature — see F-1.**
+application invariant, not a schema one.
+
+**The relation is declared now** (`Progress.book`, `[userId, document] ->
+[userId, id]`, no database foreign key — its own comment in `schema.prisma` says
+why that is safe here and exactly what would break it). Declaring it changed the
+answer for C-4 and C-7 but NOT for C-2: `Book.progress` is reached through
+`Library.entries`, so `t.relation` there still measures 9 queries for a page of
+8 against the loader's 2. The determining factor was never the relation; it is
+whether the path is plugin-planned.
 
 ## C-3 `pendingFix` — a real relation that still cannot fold
 
@@ -413,12 +479,37 @@ One omission explains both categories.
 Category C returned 7/7 keeps, but six rest on the **same missing declaration**.
 That makes it a schema question, asked here rather than assumed away.
 
-## F-1 — `Progress` ↔ `Book` — ABANDONED, measured
+## F-1 — `Progress` ↔ `Book` — ABANDONED, then SHIPPED once its premise was removed
+
+> **SHIPPED.** The relation is in `prisma/schema.prisma`. Everything below
+> about the relation ITSELF was right and is unchanged. What was wrong was the
+> conclusion drawn from the measurement — see the correction directly below.
 
 > **ABANDONED after implementing and measuring it (slice 4).** The relation
 > works exactly as F-1 predicted at the *Prisma* level — every claim in the
 > verification table below still holds. It buys nothing anyway, because the
 > two consumers that matter cannot reach it. Reverted; tree unchanged.
+
+### The correction: the measurement was right, the word "permanent" was not
+
+The 2 -> 9 numbers below are real and reproduce. What does not hold is the
+sentence they were used to justify: that both hand-built connections **must**
+be hand-built, and that the loaders are therefore "permanent by design".
+
+`Library.entries` must be, and that is structural — a union node type over an
+interleaved two-table keyset, which `t.prismaConnection` cannot bind to.
+`Library.progress` was hand-built **by a decision** (`e7f99557`, withholding
+`last`/`before`), and a decision can be revisited. It was, and the ruling
+reversed it. With the connection plugin-planned, the very same relation these
+numbers were measured against takes a page of 8 from **3 queries to 1**.
+
+The general rule survives with `Library.progress` struck from it:
+
+> No field on `Book` or `Progress` reached through **`Library.entries`** can
+> use plugin select-merging.
+
+The lesson worth keeping is in `app/server/README.md`: a conclusion resting on
+a decision has to name the decision, or it reads as a law of the library.
 
 ### What was verified about the relation itself (all still true)
 
@@ -455,7 +546,7 @@ C-4 (`Progress.currentChapter`) was not separately converted: it would reach
 `Book.chapterSpineMap` through the same relation on the same
 `Library.progress` path, so it inherits the identical fallback.
 
-### The general rule this establishes
+### The general rule this established (superseded above — `Library.progress` is struck from it)
 
 **No field on `Book` or `Progress` reached through `Library.entries` or
 `Library.progress` can ever use plugin select-merging.** Invariant 2 makes both

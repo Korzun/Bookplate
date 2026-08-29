@@ -42,6 +42,9 @@ model Book {
   thumbnails      BookThumbnail[]
   pendingFix      PendingFix?
   validation      Validation?
+  // The reading position for this book, if the owner has one. See `Progress
+  // .book` below for why this relation carries no database foreign key.
+  progress        Progress?
 
   @@id([userId, id])
   @@map("books")
@@ -160,6 +163,30 @@ model Progress {
   deviceId   String @map("device_id")
   timestamp  Int
   user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // `document` IS the book's id — both hold the same KOReader content hash
+  // (`routes/kosync.ts` writes `document` as `resolveBookId(...)`'s result).
+  // `userId` is part of the relation deliberately: a content hash is the same
+  // string for the same file on two users' shelves, so a join on `document`
+  // alone would cross tenants. 1:1 rather than a list because `@@id([userId,
+  // document])` makes the pair unique.
+  //
+  // NO DATABASE FOREIGN KEY IS EMITTED, and this relation therefore asserts a
+  // referential integrity SQLite is not enforcing. That is deliberate and it
+  // is also a trap:
+  //  - Orphans are NORMAL on both sides and must keep resolving. A KOReader
+  //    device syncs progress for whatever it is reading, imported here or not,
+  //    so a `Progress` row routinely names a `document` with no `Book`
+  //    (`book` -> null); a book nobody has opened has no progress
+  //    (`progress` -> null). Both were probed against a real database.
+  //  - Nothing generates DDL from this file. `prisma/migrations/*/migration.sql`
+  //    is hand-written and applied by `db/migrate.ts`'s own runner, so adding
+  //    this relation adds no constraint to any existing or new database.
+  //  - `relationMode` is left at its default `"foreignKeys"`, which documents
+  //    the OPPOSITE assumption. Running `prisma migrate dev` here would
+  //    generate a migration adding a real FK, and that migration would FAIL
+  //    against the orphan rows above. Do not run it; hand-write the SQL, as
+  //    every migration in this repo already is.
+  book       Book?  @relation(fields: [userId, document], references: [userId, id])
 
   @@id([userId, document])
   @@map("progress")

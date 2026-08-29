@@ -10,9 +10,12 @@ export type ProgressLoader = PairLoader<Progress | null>;
  * mechanics and for why a loader — not `t.relation` — is the only thing that
  * batches on this path.
  *
- * `Book` -> `Progress` is NOT a Prisma relation: `Progress` has no FK to
- * `Book`, it is keyed by the KOReader `document` hash, which is *normally* a
- * book's own id. The lookup is `document = book.id` directly, without
+ * `Book` -> `Progress` IS a Prisma relation (added for `Progress.book`), and
+ * this loader still does not use it: `Book.progress` is reached from
+ * `Library.entries`, which is hand-built, so `t.relation('progress')` measured
+ * a page of 8 at 9 queries against this loader's 2. `pair-loader.ts` has the
+ * mechanism. The join is on the KOReader `document` hash, which is *normally*
+ * a book's own id. The lookup is `document = book.id` directly, without
  * consulting `getBookLineage`/`BookIdHistory`, because `reimportBook` and
  * `linkDocument` both migrate any existing progress row onto the book's new
  * id inside the same transaction that writes the lineage row, and KOReader

@@ -1,12 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
-import { deriveCurrentChapter, epochSecondsToDate } from '../../derive';
-// `../book/model`, not `../book`: `book/index.ts` also side-effect-imports
-// `book/mutation/*.ts` — importing the defining module rather than the
-// index keeps a model-to-model reference from dragging that whole surface
-// into the require graph. Same rule every other entity-directory import in
-// this schema follows; see `library/model.ts`'s identical note.
-import { model as book } from '../book/model';
+import { deriveCurrentChapter, epochSecondsToDate, parseNumberArray } from '../../derive';
 import { builder } from '../builder';
 
 /**
@@ -77,72 +71,86 @@ export const model = builder.prismaObject('Progress', {
     }),
 
     /**
+     * `t.relation`, over the `Progress.book` relation declared in
+     * `prisma/schema.prisma` — read that declaration before touching this: the
+     * relation carries NO database foreign key, and its comment says why and
+     * what would break it.
+     *
+     * This field used to be a `t.field` + `context.loadBookByDocument`, and it
+     * used to live outside this `fields:` callback, in a
+     * `builder.prismaObjectField('Progress', 'book', …)` block, because
+     * naming the `Book` REF here while `book/model.ts` symmetrically named the
+     * `Progress` ref in its own `fields:` callback was the "2 prisma object
+     * refs reference each other" case `@pothos/plugin-prisma`'s README warns
+     * about — it degraded `Book`'s inferred prisma type to `any` and produced
+     * ~150 cascading `tsc` errors across unrelated files.
+     *
+     * `t.relation('book')` does not name the ref at all: it types off the
+     * generated `PrismaTypes` for the relation NAME, so the cycle has nothing
+     * to close. Verified, not assumed — `tsc --noEmit` and
+     * `tsc --noEmit -p tsconfig.test.json` are both clean with this field
+     * inline and `../book/model` no longer imported here at all.
+     * `book/model.ts`'s `Book.progress` is the OTHER direction and still needs
+     * its loader; see `currentChapter` below and `graphql/loaders/pair-loader.ts`.
+     */
+    book: t.relation('book', {
+      nullable: true,
+      description:
+        'The library book this reading position belongs to, or null when the ' +
+        'document is not in this library at all — a KOReader device syncs ' +
+        'progress for whatever it is reading, including books never imported ' +
+        'here. Those rows still render; they simply have no book to link to. ' +
+        'Mirrors `LinkedDocument.oldBook`/`newBook`: a raw content hash for ' +
+        'display (`document`) beside a resolvable edge for navigation.',
+    }),
+
+    /**
      * The 1-based chapter this reading position falls in, or null when it
      * cannot be determined.
      *
-     * `GET /api/my/progress` (`routes/ui.ts`) computes this in the route
+     * `GET /api/my/progress` (`routes/ui.ts`) computed this in the route
      * handler, from `parseCfiSpineIndex` over the `progress` CFI plus the
-     * book's `chapterSpineMap`. That computation now lives in `derive.ts` as
+     * book's `chapterSpineMap`. That computation lives in `derive.ts` as
      * `deriveCurrentChapter`, so the two readings cannot drift — the same
      * anti-drift rule that put the JSON-column parsers there.
      *
-     * The spine map is fetched through `context.loadChapterSpineMap`, a
-     * request-scoped batching loader, because a page of progress rows would
-     * otherwise be one book lookup per row. A resolver has no page to batch
-     * over the way a list handler would, so the loader does it instead.
+     * THE SPINE MAP COMES FROM A FIELD `select` ON THE `book` RELATION, not
+     * from a query of its own and no longer from `context.loadChapterSpineMap`
+     * (that loader is deleted). `@pothos/plugin-prisma` merges this `select`
+     * into whatever query it planned for the rows this field is resolved on,
+     * so a page of N progress rows costs zero extra queries instead of N
+     * `findUnique` calls or one batched `findMany`. Measured on a page of 8
+     * selecting `book { title }` and `currentChapter`: 3 queries before
+     * (1 `progress.findMany` + 2 `book.findMany`, one per loader), 1 after.
      *
-     * `parent.userId` is the progress row's own owner, read off the parent
-     * and never re-derived — the book whose spine map is consulted is the
-     * *owner's* copy, which matters because book ids are content hashes and
-     * two users routinely hold the same id for the same file.
+     * THAT ONLY WORKS ON A PLUGIN-PLANNED PATH, which is exactly what
+     * `Library.progress` became when it stopped being a hand-declared
+     * `connectionObject` — see `graphql/loaders/pair-loader.ts` for the
+     * mechanism and `library/model.ts`'s `progress` field for the conversion.
+     * `Book.progress` (`book/model.ts`) reaches `Progress` from the OTHER
+     * direction, through `Library.entries`, which IS still hand-built — so it
+     * keeps its loader, and any field added here that needs a second query
+     * must reckon with that path too.
+     *
+     * The relation is owner-scoped by construction: it joins on
+     * `[userId, document] -> [userId, id]`, so the book whose spine map is
+     * consulted is the *owner's* copy. That matters because book ids are
+     * content hashes and two users routinely hold the same id for the same
+     * file; it is the same guarantee the loader made by batching explicit
+     * `(userId, key)` pairs.
+     *
+     * `book` is nullable — a KOReader device syncs progress for documents
+     * never imported here — so an absent book degrades to `null`, the same
+     * answer `deriveCurrentChapter` gives for a book with no chapters.
      */
     currentChapter: t.int({
       nullable: true,
-      resolve: async (progress, _args, context) =>
+      select: { book: { select: { chapterSpineMap: true } } } as const,
+      resolve: (progress) =>
         deriveCurrentChapter(
           progress.progress,
-          (await context.loadChapterSpineMap(progress.userId, progress.document)) ?? undefined
+          progress.book ? parseNumberArray(progress.book.chapterSpineMap) : undefined
         ),
     }),
   }),
 });
-
-/**
- * `book` is split out of the `fields:` callback above and registered via
- * `builder.prismaObjectField` instead, per the prisma plugin's own README
- * ("Circular references", §"Type variants"): `Progress` referencing `Book`
- * inside its OWN initial `fields:` callback, while `book/model.ts`
- * symmetrically references `Progress` inside ITS initial `fields:` callback
- * (`Book.progress`), is the "2 prisma object refs reference each other"
- * case the README warns about — TypeScript cannot resolve `model`'s
- * exported type on either side without first resolving the other's, which
- * itself isn't resolvable without the first. Confirmed empirically: with
- * `book` inline above, `tsc --noEmit` fails with ~150 cascading errors
- * across unrelated files that read `Book`'s prisma type (the same
- * `any`-degradation `linked-document/model.ts`'s doc comment describes for
- * the identical hazard on the `Book`↔`LinkedDocument` edge). Moving this
- * one field out here means the `fields:` callback above no longer
- * references `book` at all, so `model`'s exported type resolves cleanly —
- * and `book/model.ts`'s `Book.progress` field (which references `model`
- * from this file) resolves cleanly in turn, breaking the cycle. This call
- * still imports `book` from `../book/model` (needed for `type: book`) and
- * still runs after that whole module has finished loading, exactly like
- * the field would have inline; only the TYPE-CHECKING order changes, not
- * the runtime shape of the schema — confirmed by `graphql:schema`'s SDL
- * diff being identical before and after this split.
- */
-builder.prismaObjectField('Progress', 'book', (t) =>
-  t.field({
-    type: book,
-    nullable: true,
-    description:
-      'The library book this reading position belongs to, or null when the ' +
-      'document is not in this library at all — a KOReader device syncs ' +
-      'progress for whatever it is reading, including books never imported ' +
-      'here. Those rows still render; they simply have no book to link to. ' +
-      'Mirrors `LinkedDocument.oldBook`/`newBook`: a raw content hash for ' +
-      'display (`document`) beside a resolvable edge for navigation.',
-    resolve: (progress, _args, context) =>
-      context.loadBookByDocument(progress.userId, progress.document),
-  })
-);

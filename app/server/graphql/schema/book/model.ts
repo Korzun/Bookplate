@@ -205,7 +205,10 @@ export const model = builder.prismaNode('Book', {
     //     queries to 9, because `Library.entries` is hand-built and so never
     //     plugin-planned. `graphql/loaders/pair-loader.ts` has the mechanism
     //     and the numbers. That is the general rule for every field on this
-    //     type, not a quirk of this one.
+    //     type reached through `Library.entries`, not a quirk of this one —
+    //     and it is specific to that path, not to the plugin: the same
+    //     mechanism on `Library.progress`, once that connection became a
+    //     `t.prismaConnection`, took a page of 8 from 3 queries to 1.
     //
     // Resolved through `context.loadPendingFix` rather than a direct
     // `prisma.pendingFix.findUnique`, for exactly the reason `Book.progress`
@@ -274,9 +277,20 @@ export const model = builder.prismaNode('Book', {
     }),
 
     /**
-     * Book -> Progress is not a Prisma relation (`Progress` has no FK to
-     * `Book`; it is keyed by KOReader `document` hash, which is *normally* a
-     * book's own id). It is looked up by `document = book.id` directly, without
+     * Book -> Progress IS a Prisma relation now (`prisma/schema.prisma`, added
+     * for `Progress.book`; it joins `[userId, document] -> [userId, id]` and
+     * emits no database foreign key — read its declaration before relying on
+     * it). This field still does not USE it, and that is measured, not
+     * inherited: converting this exact field to `t.relation('progress')` took
+     * a page of 8 from 2 queries to 9, because it is reached from
+     * `Library.entries`, whose query is hand-built and therefore never
+     * plugin-planned, so the relation select falls back to a per-row re-query
+     * (`graphql/loaders/pair-loader.ts`). `Progress.book`, the same relation in
+     * the other direction, DOES use it — because `Library.progress` is a
+     * `t.prismaConnection` and is plugin-planned. The difference is the path,
+     * not the relation.
+     *
+     * The lookup is `document = book.id` directly, without
      * consulting `getBookLineage`/`BookIdHistory`, because `reimportBook`/
      * `linkDocument` already maintain that invariant: both `reimportBook`
      * (id changes from re-parsing an edited EPUB) and `linkDocument` (manual
