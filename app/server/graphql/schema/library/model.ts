@@ -227,6 +227,18 @@ builder.node(model, {
       },
     }),
 
+    // NOT `t.prismaField`/`queryFromInfo`-selected, deliberately: `edges.node`
+    // is `LibraryEntry` (`library-entry/model.ts`), a union whose `resolveType`
+    // discriminates `Book` vs `Series` on `'sortKey' in row` — a Pothos-computed
+    // column selection that pruned `sortKey` off an under-requested query would
+    // silently misclassify a `Series` row as a `Book`. `queryFromInfo` has no
+    // existing usage anywhere in this codebase to pattern-match a safe union
+    // path from, so this stays a deliberately deferred optimisation rather than
+    // an oversight: `listBooksPage` (`services/library-page.ts`) already fetches
+    // full, unselected rows once and returns them directly (task 8's fix for the
+    // double read this field used to do), which is correct and provably
+    // single-query per page (`entries.test.ts`'s "issues exactly one
+    // prisma.book.findMany..." test) even without column-level selection.
     entries: t.field({
       type: entriesConnection,
       description:
