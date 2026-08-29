@@ -36,10 +36,22 @@ async function insertProgress(bookId: string, percentage: number): Promise<void>
 }
 
 // Strips each item's `row` down to the bare type/id shape most assertions
-// below care about — `row` (task 8's contract change) carries the full,
-// real `Book`/`Series` row precisely so `Library.entries` doesn't have to
+// below care about — `row` (task 8's contract change) carries the real
+// `Book`/`Series` row precisely so `Library.entries` doesn't have to
 // re-fetch it, but most of these tests only need to know WHICH display units
 // came back and in what order, not their full column set.
+//
+// WHERE `BOOK_SELECT` IS COVERED, AND WHY NOT HERE: the `Book` half of that
+// read is no longer a full row — task 5 gave it a `select` (`BOOK_SELECT`,
+// `library-page.ts`) that drops `coverData`. The guard for it lives in
+// `graphql/schema/library/entries.test.ts`'s "Library.entries — Book column
+// selection" describe, not in this file, and deliberately so: the property
+// that matters is not "the select has these keys" (which this file could
+// assert) but "every `Book` field a client can ask for still resolves off
+// the trimmed row", and only the GraphQL layer can execute a query against
+// the real schema to prove that. A column dropped from `BOOK_SELECT` by
+// mistake would leave every test in THIS file green — the seeds here set
+// `coverData` and nothing reads it back.
 type ItemShape = { type: 'series'; seriesName: string } | { type: 'standalone'; bookId: string };
 function itemsShape(items: LibraryPageItem[]): ItemShape[] {
   return items.map((item) =>
@@ -321,7 +333,7 @@ describe('listBooksPage() cursor compatibility with entries-cursor.ts', () => {
     expect(page1.items).toEqual([{ type: 'series', seriesName: 'Dune', row: page1.items[0].row }]);
     expect(page1.nextCursor).not.toBeNull();
 
-    // Resume using the store's own cursor…
+    // Resume using `listBooksPage`'s own cursor…
     const viaOwnCursor = await listBooksPage(prisma, OWNER, decodeCursor(page1.nextCursor), 1);
 
     // …and using an independently minted, byte-identical cursor for the same row.

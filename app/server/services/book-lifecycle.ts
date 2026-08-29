@@ -28,6 +28,15 @@ function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | nu
  * author, publisher, totalPages, totalSize) from its current member books.
  * Called from every write path that can change a series' membership or a
  * member book's aggregated fields — add, delete, reimport.
+ *
+ * NO DIRECT TESTS, DELIBERATELY: this was `services/series-meta.ts`'s exported
+ * `recomputeSeriesMeta` until Phase 4 task 6 folded it in here as a private
+ * function of its only importer (the file it left is now
+ * `services/series-next-index.ts`, which records the same move). It is
+ * covered transitively, through the write paths above that call it —
+ * `book-lifecycle.test.ts`'s `describe('series aggregate metadata', ...)` and
+ * its three `describe('Series lifecycle — ...', ...)` blocks. Do not read the
+ * absence of a `recomputeSeriesMeta` describe as an absence of coverage.
  */
 async function recomputeSeriesMeta(
   client: Pick<PrismaClient, 'book' | 'series'>,
