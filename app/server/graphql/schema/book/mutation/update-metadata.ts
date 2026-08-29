@@ -60,9 +60,10 @@ const identifierInput = builder.inputType('IdentifierInput', {
  * whose multipart `coverUpload.single('cover')` field this input's
  * `stagedCoverId` now covers via the staging seam instead (spec §"Seams that
  * stay REST" → "Upload", amended 2026-08-01: "`bookUpdateMetadata` takes an
- * optional `stagedCoverId` so metadata and cover land in one mutation"). The
- * REST multipart-cover branch itself is untouched and stays live until the
- * client migrates — this is an addition, not a replacement.
+ * optional `stagedCoverId` so metadata and cover land in one mutation"). When
+ * this was added the REST multipart-cover branch was left untouched and stayed
+ * live alongside it — an addition, not a replacement — until `e67b4ad9` removed
+ * that branch with the rest of the route.
  *
  * A field here left absent (`undefined`, not sent) leaves that column
  * unchanged, the same way `body.title !== undefined` gates each REST branch —

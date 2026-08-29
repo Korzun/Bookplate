@@ -89,8 +89,11 @@ function toValidationCounts(
 
 /**
  * `ValidationMessage.id` is `node.code` (e.g. `"PKG-003"`), not `node.seq` —
- * matching REST's own `validation-store.ts` (`id: m.code`) byte-for-byte, so
- * a message keeps the same rendered id it always had. `location` collapses
+ * matching REST's own read path byte-for-byte (`ValidationStore.getValidation`
+ * in `services/validation-store.ts`, both removed with the REST surface in
+ * `e67b4ad9`), so a message keeps the same rendered id it always had. Not to be
+ * confused with the surviving `services/validation.ts`: that is the write half
+ * only, and its `code: m.id` is this mapping's inverse. `location` collapses
  * the fragment's flat `path`/`line`/`column` into the modal's nested shape,
  * `undefined` when `path` is null (REST's own `m.path != null` check).
  *
