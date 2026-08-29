@@ -75,23 +75,29 @@ model.implement({
     // resolved edge uses the parent book's own owner (`entry.userId`), the
     // same owner-scoping every other tenant-owned lookup in this schema
     // uses, never re-derived from `context.viewer`.
-    oldBook: t.prismaField({
+    //
+    // `t.field` + `context.loadBookByDocument`, NOT `t.prismaField`. These two
+    // resolve once PER LINEAGE ENTRY, and entries hang off `Book.lineage`,
+    // which hangs off `Library.entries` — so the multiplier is books x entries
+    // x 2. Measured on a page of 8 books with 2 entries each: 32
+    // `book.findUnique` calls for these two fields alone, now batched into the
+    // loader's single `findMany`.
+    //
+    // The `query` merge given up by leaving `t.prismaField` costs nothing on
+    // that path: `Library.entries` builds its own query, so Pothos never plans
+    // it and there is no merge to lose (`graphql/loaders/pair-loader.ts`).
+    // `loadBookByDocument` is the right loader rather than a new one — its key
+    // IS `(userId, book id)`, and `Progress.document` being a book id is the
+    // same identity this field relies on.
+    oldBook: t.field({
       type: book,
       nullable: true,
-      resolve: (query, entry, _args, context) =>
-        context.prisma.book.findUnique({
-          ...query,
-          where: { userId_id: { userId: entry.userId, id: entry.oldId } },
-        }),
+      resolve: (entry, _args, context) => context.loadBookByDocument(entry.userId, entry.oldId),
     }),
-    newBook: t.prismaField({
+    newBook: t.field({
       type: book,
       nullable: true,
-      resolve: (query, entry, _args, context) =>
-        context.prisma.book.findUnique({
-          ...query,
-          where: { userId_id: { userId: entry.userId, id: entry.newId } },
-        }),
+      resolve: (entry, _args, context) => context.loadBookByDocument(entry.userId, entry.newId),
     }),
   }),
 });

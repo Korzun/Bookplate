@@ -19,6 +19,7 @@ export {
   createDeviceEditionCountLoader,
   type DeviceEditionCountLoader,
 } from './device-edition-count';
+export { createLineageLoader, type LineageLoader } from './lineage';
 export { createOwnerLoader, type OwnerLoader } from './owner';
 export { createPendingFixLoader, type PendingFixLoader } from './pending-fix';
 export { createProgressLoader, type ProgressLoader } from './progress';

@@ -1,4 +1,3 @@
-import { getBookLineage } from '../../../services/book-lineage';
 import type { Context } from '../../context';
 import {
   epochToDate,
@@ -313,46 +312,38 @@ export const model = builder.prismaNode('Book', {
 
     /**
      * `Book.lineage` is not a Prisma relation (`BookIdHistory` is keyed by
-     * `(userId, oldId)`, not by a FK to `Book`), so it goes through the
-     * imported `getBookLineage` (`services/book-lineage.ts`) — the same
-     * function REST's `GET /api/books/:id/lineage` calls — rather than
-     * `t.relation`.
+     * `(userId, oldId)`, not by a FK to `Book`), so it cannot be `t.relation` —
+     * and even if the relation existed it would not help, for the reason
+     * `graphql/loaders/pair-loader.ts` records: this field is reached from
+     * `Library.entries`, whose query is hand-built and therefore never
+     * plugin-planned.
      *
-     * `getBookLineage` takes a full `Owner` (`{ userId, username }`), but a
-     * `Book` row only carries `userId`. Resolved via `context.loadOwner(userId)`
-     * — the same request-scoped, memoized loader `Viewer.library` and `Library`
-     * itself already use — rather than synthesizing a `{ userId, username: '' }`
-     * stand-in. `getBookLineage` only reads `owner.userId` today (it scopes its
-     * SQL by `user_id` alone; `username` is unused — see
-     * `services/book-lineage.ts`), so a synthesized owner would work right
-     * now, but it would be a landmine for whoever changes that function later
-     * to also depend on `username` (or for any future caller who copies this
-     * resolver as a template). Going
-     * through the real loader costs one memoized `User` lookup per request (or a
-     * cache hit if `Viewer.library` already ran) and always yields a genuine
-     * `Owner` instead of a field-by-field guess about which parts of it matter.
+     * Resolved through `context.loadLineage`, a request-scoped batching loader.
+     * MEASURED, 8 books through `Library.entries`: 17 queries before, 2 after —
+     * the old path issued one redundant `book.findUnique` existence check plus
+     * one history read PER BOOK. At the page cap (100) that was 201 queries.
+     * See `loaders/lineage.ts` for both halves of that win.
      *
-     * A `null` `loadOwner` result (the book's own user row missing) is treated
-     * the same as "no lineage" rather than surfaced as an error: the resolver
-     * has nothing else to report, and the owner-scoped `Book` this field hangs
-     * off of could only be reached at all because that row already resolved once
-     * upstream.
+     * No `context.loadOwner` call any more. It existed only to hand
+     * `getBookLineage` a full `Owner` when the function's signature demanded
+     * one, though it read `owner.userId` and nothing else; the batched reader
+     * takes the id directly, so a memoized `User` lookup and a null-owner
+     * branch both disappear. (The old comment here argued at length for going
+     * through the real loader rather than synthesizing a `{ userId, username:
+     * '' }` stand-in — a good argument about a choice that no longer has to be
+     * made.)
      *
      * Each entry is extended with `parent.userId` here — an internal shape
      * addition, not an SDL field — so `LinkedDocument`'s `oldBook`/`newBook`
      * resolvers (`linked-document/model.ts`) have an owner to look the
-     * referenced book up under without a second `loadOwner` round trip. Same
-     * "thread the owner the parent already resolved" shape
-     * `Library.searchSuggestions` uses for `Suggestion.book` (`library/
-     * model.ts`), for the identical reason.
+     * referenced book up under. Same "thread the owner the parent already
+     * resolved" shape `Library.searchSuggestions` uses for `Suggestion.book`.
      */
     lineage: t.field({
       type: [linkedDocument],
       resolve: async (parent, _args, context) => {
-        const owner = await context.loadOwner(parent.userId);
-        if (owner === null) return [];
-        const lineage = await getBookLineage(context.prisma, owner, parent.id);
-        return (lineage?.entries ?? []).map((entry) => ({ ...entry, userId: parent.userId }));
+        const entries = await context.loadLineage(parent.userId, parent.id);
+        return entries.map((entry) => ({ ...entry, userId: parent.userId }));
       },
     }),
 

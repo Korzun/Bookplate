@@ -9,6 +9,7 @@ import {
   createBookByDocumentLoader,
   createChapterSpineMapLoader,
   createDeviceEditionCountLoader,
+  createLineageLoader,
   createOwnerLoader,
   createPendingFixLoader,
   createProgressLoader,
@@ -17,6 +18,7 @@ import {
   type BookByDocumentLoader,
   type ChapterSpineMapLoader,
   type DeviceEditionCountLoader,
+  type LineageLoader,
   type OwnerLoader,
   type PendingFixLoader,
   type ProgressLoader,
@@ -60,6 +62,7 @@ export type Context = {
   /** `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical wiring. */
   editionsRoot: string;
   config: AppConfig;
+  loadLineage: LineageLoader;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
   loadPendingFix: PendingFixLoader;
@@ -115,6 +118,7 @@ export const createContext =
     replaceStaging: deps.replaceStaging,
     editionsRoot: deps.editionsRoot,
     config: deps.config,
+    loadLineage: createLineageLoader(deps.prisma),
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),
     loadPendingFix: createPendingFixLoader(deps.prisma),
