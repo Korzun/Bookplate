@@ -124,7 +124,9 @@ const DEBOUNCE_MS = 200;
  *     is derived from the compound key `[userId, document]`
  *     (`progress/mutation/delete.ts`'s `decodeProgressId`), and
  *     `linkDocument`'s own transaction (`app/server/services/book-lineage.ts`) DELETES the orphan
- *     row and CREATES a new one keyed to `document: bookId` — so the linked
+ *     row, and — unless a newer progress row already exists at `bookId`, in
+ *     which case that existing row is simply kept — CREATES a replacement
+ *     keyed to `document: bookId`. In the common (create) case the linked
  *     row gets a NEW global id the client never learns
  *     (`BookLinkDocumentPayload` carries only `book`). Evicting only the
  *     old, now-nonexistent entity left the connection with one fewer edge
