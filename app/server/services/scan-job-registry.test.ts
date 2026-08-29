@@ -1,3 +1,5 @@
+import type { MockedFunction } from 'vitest';
+
 import { ScanJobRegistry } from './scan-job-registry';
 import type { ScanPublisher } from './scan-publisher';
 
@@ -171,12 +173,15 @@ describe('ScanJobRegistry', () => {
    * review, I-1).
    */
   describe('pubsub publishing', () => {
-    let publish: ReturnType<typeof vi.fn>;
+    // Typed as the member it stands in for: a bare `ReturnType<typeof vi.fn>`
+    // is `Mock<Constructable | Procedure>`, which matches no call signature and
+    // so cannot satisfy `ScanPublisher['publish']`.
+    let publish: MockedFunction<ScanPublisher['publish']>;
     let publisher: ScanPublisher;
 
     beforeEach(() => {
       vi.useFakeTimers();
-      publish = vi.fn();
+      publish = vi.fn() as MockedFunction<ScanPublisher['publish']>;
       publisher = {
         publish,
         // Never exercised in this describe block — `ScanJobRegistry.subscribe`

@@ -32,6 +32,8 @@ beforeEach(async () => {
   // must be re-armed here on each run.
   vi.mocked(assertValidEpub).mockResolvedValue({
     valid: true,
+    fatal: false,
+    threshold: 'ERROR' as const,
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
   });

@@ -94,7 +94,13 @@ describe('toResult', () => {
     it('converts a thrown error into an err value when it is in the expected list', async () => {
       const error = new BookHashCollisionError('c'.repeat(32));
 
-      const result = await toResult(async () => {
+      // Explicit type arguments, as every production call site passes: `E` is
+      // otherwise inferred from `expected[0]` alone, which then rejects the
+      // second class in the list.
+      const result = await toResult<
+        never,
+        BookHashCollisionError | EpubValidationError
+      >(async () => {
         throw error;
       }, [BookHashCollisionError, EpubValidationError]);
 
@@ -114,7 +120,7 @@ describe('toResult', () => {
       expect(isKnownDomainError(error)).toBe(true); // sanity: it IS a known class
 
       await expect(
-        toResult(async () => {
+        toResult<never, BookHashCollisionError | EpubValidationError>(async () => {
           throw error;
         }, [BookHashCollisionError, EpubValidationError])
       ).rejects.toBe(error);

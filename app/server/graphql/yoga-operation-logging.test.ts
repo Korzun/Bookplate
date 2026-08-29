@@ -1,6 +1,7 @@
 import express from 'express';
 import { parse } from 'graphql';
 import request from 'supertest';
+import type { Mock } from 'vitest';
 
 import { logger } from '../logger';
 import { signAccessToken } from '../services/jwt';
@@ -53,6 +54,7 @@ beforeEach(async () => {
     '/graphql',
     createGraphqlHandler({
       prisma: harness.prisma,
+      editionsRoot: harness.editionsRoot,
       scanJobs: harness.scanJobs,
       thumbnails: harness.thumbnails,
       replaceStaging: harness.replaceStaging,
@@ -256,14 +258,21 @@ describe('operation logging — subscription hooks, called directly', () => {
 
   it('a subscribe-time denial (non-async-iterable result) logs immediately, once', () => {
     const plugin = useOperationLogging(jwtSecret);
-    const onSubscribeResult = plugin.onSubscribe?.({
+    // `onSubscribe`'s declared return is `hookResult | Promise<hookResult>`;
+    // this plugin's is synchronous, so narrow past the Promise arm rather than
+    // reading `onSubscribeResult` straight off the union.
+    const hookResult = plugin.onSubscribe?.({
       args: fakeArgs,
-    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0])?.onSubscribeResult;
+    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0]);
+    if (!hookResult || hookResult instanceof Promise) {
+      throw new Error('expected a synchronous onSubscribe hook result');
+    }
+    const onSubscribeResult = hookResult.onSubscribeResult;
     if (!onSubscribeResult) throw new Error('plugin did not return onSubscribeResult');
 
     onSubscribeResult({
       result: { errors: [{ message: 'Forbidden' }] },
-    } as Parameters<typeof onSubscribeResult>[0]);
+    } as unknown as Parameters<typeof onSubscribeResult>[0]);
 
     expect(spies.warn).toHaveBeenCalledTimes(1);
     const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
@@ -272,26 +281,33 @@ describe('operation logging — subscription hooks, called directly', () => {
 
   it('a live stream logs exactly once, at onEnd, aggregating every event — never per event', () => {
     const plugin = useOperationLogging(jwtSecret);
-    const onSubscribeResult = plugin.onSubscribe?.({
+    // `onSubscribe`'s declared return is `hookResult | Promise<hookResult>`;
+    // this plugin's is synchronous, so narrow past the Promise arm rather than
+    // reading `onSubscribeResult` straight off the union.
+    const hookResult = plugin.onSubscribe?.({
       args: fakeArgs,
-    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0])?.onSubscribeResult;
+    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0]);
+    if (!hookResult || hookResult instanceof Promise) {
+      throw new Error('expected a synchronous onSubscribe hook result');
+    }
+    const onSubscribeResult = hookResult.onSubscribeResult;
     if (!onSubscribeResult) throw new Error('plugin did not return onSubscribeResult');
 
     const fakeStream = { [Symbol.asyncIterator]: () => ({}) };
     const hooks = onSubscribeResult({
       result: fakeStream,
-    } as Parameters<typeof onSubscribeResult>[0]);
+    } as unknown as Parameters<typeof onSubscribeResult>[0]);
     if (!hooks?.onNext || !hooks.onEnd) throw new Error('expected onNext/onEnd for a live stream');
 
     // Three published events, only one carrying an error — nothing should be
     // logged for any of them individually.
-    hooks.onNext({ result: { data: { scanProgress: { state: 'RUNNING' } } } } as Parameters<
+    hooks.onNext({
+      result: { data: { scanProgress: { state: 'RUNNING' } } },
+    } as unknown as Parameters<NonNullable<typeof hooks.onNext>>[0]);
+    hooks.onNext({ result: { errors: [{ message: 'transient' }] } } as unknown as Parameters<
       NonNullable<typeof hooks.onNext>
     >[0]);
-    hooks.onNext({ result: { errors: [{ message: 'transient' }] } } as Parameters<
-      NonNullable<typeof hooks.onNext>
-    >[0]);
-    hooks.onNext({ result: { data: { scanProgress: { state: 'DONE' } } } } as Parameters<
+    hooks.onNext({ result: { data: { scanProgress: { state: 'DONE' } } } } as unknown as Parameters<
       NonNullable<typeof hooks.onNext>
     >[0]);
     expect(spies.info).not.toHaveBeenCalled();

@@ -95,6 +95,12 @@ const buildSpikeSchema = () => {
     // https://github.com/hayes/pothos/tree/main/packages/plugin-prisma#set-up-the-builder.
     prisma: { client: (context: SpikeContext) => context.prisma, dmmf: getDatamodel() },
     relay: {},
+    // Required even though `ScopeAuthPlugin` is absent from this spike's own
+    // `plugins`: the plugin's option types are declaration-merged into
+    // `SchemaBuilder` globally, and `schema/builder.ts` pulls them into the
+    // program. This spike builds a throwaway schema with no auth scopes, so an
+    // empty `authScopes` is the honest value.
+    scopeAuth: { authScopes: () => ({}) },
   });
 
   const Book = builder.prismaNode('Book', {

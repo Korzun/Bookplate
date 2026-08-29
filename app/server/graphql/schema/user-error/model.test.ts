@@ -15,12 +15,7 @@ import {
 } from '../../../services/book-errors';
 import { DeviceSlugConflictError } from '../../../services/device';
 import { EpubValidationError } from '../../../services/epub-validator';
-import { createChapterSpineMapLoader } from '../../chapter-spine-map-loader';
 import type { Context } from '../../context';
-import { createOwnerLoader } from '../../owner';
-import { createPendingFixLoader } from '../../pending-fix-loader';
-import { createProgressLoader } from '../../progress-loader';
-import { createSeriesProgressLoader } from '../../series-progress-loader';
 import { createHarness, type Harness } from '../../test-util';
 import { bookHashCollisionError } from '../book-hash-collision-error';
 import { deviceSlugConflictError } from '../device-slug-conflict-error';
@@ -211,19 +206,10 @@ describe('user error factories', () => {
  * give different answers.
  */
 describe('errors that resolve an id into a Book', () => {
-  const contextFor = (viewer: Context['viewer']): Context => ({
-    viewer,
-    prisma: harness.prisma,
-    scanJobs: harness.scanJobs,
-    thumbnails: harness.thumbnails,
-    replaceStaging: harness.replaceStaging,
-    config: harness.config,
-    loadOwner: createOwnerLoader(harness.prisma),
-    loadProgress: createProgressLoader(harness.prisma),
-    loadPendingFix: createPendingFixLoader(harness.prisma),
-    loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
-    loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
-  });
+  // The harness's own builder — see `Harness.contextFor`. This used to be a
+  // hand-rolled near-copy that had fallen three fields behind the real
+  // `Context`.
+  const contextFor = (viewer: Context['viewer']): Context => harness.contextFor(viewer);
 
   /**
    * Calls one field's resolver on the built schema with the minimum

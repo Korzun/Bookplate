@@ -10,7 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, Response } from 'express';
-import { graphql } from 'graphql';
+import { graphql, type ExecutionResult } from 'graphql';
 import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
@@ -70,8 +70,12 @@ vi.mock('../services/epub-validator', () => {
       this.threshold = threshold;
     }
   }
+  // `fatal`/`threshold` are required on `Report`; kept in step with the
+  // `beforeEach` copy below, which re-arms these same two mocks.
   const okReport = {
     valid: true,
+    fatal: false,
+    threshold: 'ERROR' as const,
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
   };
@@ -180,6 +184,15 @@ function stage(id: string, content: string | Buffer = 'x'): string {
  * memory just to prove multer's `fileSize` limit actually rejects a request
  * that large. superagent's `.attach()` accepts any readable stream.
  */
+/**
+ * Supertest's `.attach` types accept only `MultipartValueSingle` (Buffer,
+ * string, or a path), even though superagent streams a `Readable` fine at
+ * runtime — which is the whole point here: materializing 200MB as a Buffer to
+ * satisfy the types would defeat the test. Cast at the three call sites via
+ * this alias so the reason is stated once.
+ */
+type AttachableStream = Parameters<request.Test['attach']>[1];
+
 function oversizedStream(totalBytes: number): Readable {
   const CHUNK_BYTES = 1024 * 1024;
   let sent = 0;
@@ -295,10 +308,11 @@ const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${
  * SOME global id) could both stay green while the two sides silently
  * disagreed on the compound-id shape. This proves the actual handoff.
  */
-async function gqlExecute(
-  source: string,
-  viewer: Viewer
-): ReturnType<typeof graphql<Record<string, unknown>>> {
+// Return type spelled out rather than `ReturnType<typeof graphql<...>>`: an
+// instantiation expression on `graphql`'s overloaded signature has no
+// applicable type-argument list, so that form never compiled — it simply went
+// unnoticed while test files were not type-checked.
+async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResult> {
   const contextValue: Context = {
     viewer,
     prisma,
@@ -323,13 +337,17 @@ beforeEach(async () => {
   // load; vite.config.ts's `mockReset: true` wipes them before every test,
   // so they must be re-armed here on each run (individual tests still
   // override with mockResolvedValueOnce/mockImplementationOnce as before).
+  // `fatal`/`threshold` are required on `Report` and were simply absent, so
+  // both mocks resolved a value that could not occur in production.
   const okReport = {
     valid: true,
+    fatal: false,
+    threshold: 'ERROR' as const,
     messages: [],
     counts: { FATAL: 0, ERROR: 0, WARNING: 0, INFO: 0, USAGE: 0 },
   };
   vi.mocked(assertValidEpub).mockResolvedValue(okReport);
-  vi.mocked(validateEpubReport).mockResolvedValue({ ...okReport, threshold: 'ERROR' });
+  vi.mocked(validateEpubReport).mockResolvedValue(okReport);
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-'));
   editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-ui-editions-'));
   dbPath = path.join(
@@ -831,7 +849,11 @@ describe('POST /api/books/upload', () => {
     const res = await request(app)
       .post('/api/books/upload')
       .set(...bearer(token))
-      .attach('files', oversizedStream(200 * 1024 * 1024 + 1), 'huge.epub');
+      .attach(
+        'files',
+        oversizedStream(200 * 1024 * 1024 + 1) as unknown as AttachableStream,
+        'huge.epub'
+      );
     expect(res.status).toBe(413);
     expect(res.body).toEqual({ error: 'File too large' });
   }, 30000);
@@ -1630,7 +1652,11 @@ describe('POST /api/books/replace-staging', () => {
     const res = await request(app)
       .post('/api/books/replace-staging')
       .set(...bearer(token))
-      .attach('file', oversizedStream(200 * 1024 * 1024 + 1), 'huge.epub');
+      .attach(
+        'file',
+        oversizedStream(200 * 1024 * 1024 + 1) as unknown as AttachableStream,
+        'huge.epub'
+      );
     expect(res.status).toBe(413);
     expect(res.body).toEqual({ error: 'File too large' });
   }, 30000);
@@ -1709,7 +1735,7 @@ describe('POST /api/books/cover-staging', () => {
     const res = await request(app)
       .post('/api/books/cover-staging')
       .set(...bearer(token))
-      .attach('cover', oversizedStream(20 * 1024 * 1024 + 1), {
+      .attach('cover', oversizedStream(20 * 1024 * 1024 + 1) as unknown as AttachableStream, {
         filename: 'huge.png',
         contentType: 'image/png',
       });
