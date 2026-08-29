@@ -18,6 +18,7 @@ import { runMigrations } from '../db/migrate';
 import { createBookByDocumentLoader } from '../graphql/book-by-document-loader';
 import { createChapterSpineMapLoader } from '../graphql/chapter-spine-map-loader';
 import type { Context, Viewer } from '../graphql/context';
+import { createDeviceEditionCountLoader } from '../graphql/device-edition-count-loader';
 import { createOwnerLoader } from '../graphql/owner';
 import { createPendingFixLoader } from '../graphql/pending-fix-loader';
 import { createProgressLoader } from '../graphql/progress-loader';
@@ -328,6 +329,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     loadSeriesProgress: createSeriesProgressLoader(prisma),
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),
+    loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),
   };
   return graphql({ schema, source, contextValue });
 }

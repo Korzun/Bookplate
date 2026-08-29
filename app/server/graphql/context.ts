@@ -10,6 +10,10 @@ import {
   createChapterSpineMapLoader,
   type ChapterSpineMapLoader,
 } from './chapter-spine-map-loader';
+import {
+  createDeviceEditionCountLoader,
+  type DeviceEditionCountLoader,
+} from './device-edition-count-loader';
 import { createOwnerLoader, type OwnerLoader } from './owner';
 import { createPendingFixLoader, type PendingFixLoader } from './pending-fix-loader';
 import { createProgressLoader, type ProgressLoader } from './progress-loader';
@@ -62,6 +66,7 @@ export type Context = {
   loadSeriesProgress: SeriesProgressLoader;
   loadValidationCounts: ValidationCountsLoader;
   loadBookByDocument: BookByDocumentLoader;
+  loadDeviceEditionCount: DeviceEditionCountLoader;
 };
 
 export type ContextDeps = {
@@ -116,4 +121,5 @@ export const createContext =
     loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
     loadValidationCounts: createValidationCountsLoader(deps.prisma),
     loadBookByDocument: createBookByDocumentLoader(deps.prisma),
+    loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
   });
