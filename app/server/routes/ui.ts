@@ -308,9 +308,13 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
 // `path.join(config.dataDir, 'editions')` and got collapsed into an options
 // object). `routes/ui.ts` never reads `config.dataDir` at all, and
 // `routes/ui.test.ts`'s `beforeEach` reassigns `editionsRoot` to its own
-// fresh `mkdtempSync(...)`, independent of `config`, to isolate tests. Do
-// not "fix" this leading positional param for symmetry with `createServer` —
-// doing so would break that test isolation.
+// fresh `mkdtempSync(...)`, independent of `config`, to isolate tests. So do
+// not fold `editionsRoot` INTO `config` (or otherwise derive it from
+// `config.dataDir`) for symmetry with `createServer` — that specific change
+// would break that test isolation. This says nothing about the parameter
+// list's shape: collapsing these seven positionals into one options object,
+// `editionsRoot` included as its own field, is a separate and still-open
+// question this comment does not rule on.
 export function createUiRouter(
   editionsRoot: string,
   config: AppConfig,
