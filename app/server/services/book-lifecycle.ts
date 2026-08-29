@@ -12,6 +12,7 @@ import { BookAlreadyExistsError, BookHashCollisionError } from './book-errors';
 import { bookPath, getUserDir } from './book-paths';
 import { purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
+import { isPrismaError } from './prisma-errors';
 import type { ScanProgress } from './scan-events';
 
 const log = logger('BookLifecycle');
@@ -201,8 +202,7 @@ export async function deleteBook(
       try {
         await tx.book.delete({ where: { userId_id: { userId: owner.userId, id } } });
       } catch (err) {
-        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'))
-          throw err;
+        if (!isPrismaError(err, 'P2025')) throw err;
       }
       await tx.bookIdHistory.deleteMany({
         where: { userId: owner.userId, OR: [{ oldId: id }, { currentId: id }] },

@@ -239,7 +239,13 @@ builder.node(model, {
       },
     }),
 
-    // NOT `t.prismaField`/`queryFromInfo`-selected, deliberately: `edges.node`
+    // NOT `t.prismaField`/`queryFromInfo`-selected, deliberately. Note this is
+    // the field that MAKES the rest of this server's loaders necessary: because
+    // the query below is hand-built, `@pothos/plugin-prisma` never plans it, so
+    // no `select`-carrying field on the `Book`/`Series` rows it yields can
+    // merge into it — measured at 2 -> 9 queries for a page of 8 when tried.
+    // `graphql/loaders/pair-loader.ts` records the mechanism once; this comment
+    // exists so a reader standing at the cause can find it. `edges.node`
     // is `LibraryEntry` (`library-entry/model.ts`), a union whose `resolveType`
     // discriminates `Book` vs `Series` on `'sortKey' in row` — a Pothos-computed
     // column selection that pruned `sortKey` off an under-requested query would
