@@ -299,7 +299,6 @@ async function gqlExecute(
   viewer: Viewer
 ): ReturnType<typeof graphql<Record<string, unknown>>> {
   const stores: Stores = {
-    book: {},
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
