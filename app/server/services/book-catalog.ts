@@ -12,15 +12,17 @@ import { countForBook } from './edition';
  * `getSubjects`, `getAuthors`) plus `getBookById`, the most widely called
  * read in the codebase (REST/OPDS and eight GraphQL mutations).
  *
- * `BOOK_SELECT`, `standaloneStatusWhere`, and `prismaBookToBook` are exported
- * only because `BookStore.listBooksPage` (not yet moved — a later task in
- * this phase relocates it to `library-page.ts` and changes its query shape
- * to a single Pothos-selected read) still needs them verbatim. Once that
- * lands, nothing outside this module should import them.
+ * `standaloneStatusWhere` is exported because `services/library-page.ts`'s
+ * `listBooksPage` still needs it — status filtering is unaffected by that
+ * function's own rows-not-DTOs contract change (task 8), so this one stays a
+ * cross-module export. `BOOK_SELECT` and `prismaBookToBook` were exported for
+ * the same reason until task 8: `listBooksPage` used to hydrate a `BookSummary[]`
+ * through them. Now that it returns raw Prisma rows instead (task 8's contract
+ * change), nothing outside this module needs either, so both are private again.
  */
 
 // All book columns except coverData (binary blob); coverMime serves as the hasCover proxy.
-export const BOOK_SELECT = {
+const BOOK_SELECT = {
   id: true,
   title: true,
   titleSort: true,
@@ -76,7 +78,7 @@ function sortByTitle<T extends { titleSort: string; title: string; id: string }>
   });
 }
 
-export function prismaBookToBook(
+function prismaBookToBook(
   booksRoot: string,
   owner: Owner,
   r: Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>

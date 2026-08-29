@@ -1,5 +1,6 @@
 import { getAuthors, getSubjects } from '../../../services/book-catalog';
 import { resolveBookId } from '../../../services/book-lineage';
+import { listBooksPage } from '../../../services/library-page';
 import { getUserProgressPage } from '../../../services/progress';
 import type { BookListFilters, Owner } from '../../../types';
 import {
@@ -43,17 +44,18 @@ import { decodeCursor, encodeCursor } from './entries-cursor';
 import { libraryFilter } from './entries-filter';
 import { searchSuggestionsFilter } from './search-suggestions-filter';
 
-/** One connection edge — annotated explicitly so both branches of the `flatMap` in `entries` below (`Book` rows, `Series` rows) unify on the union `LibraryEntryRow` rather than TypeScript inferring two incompatible edge-array types. */
+/** One connection edge — annotated explicitly so both branches of the ternary in `entries` below (`Book` rows, `Series` rows) unify on the union `LibraryEntryRow` rather than TypeScript inferring two incompatible edge types. */
 type Edge = { cursor: string; node: LibraryEntryRow };
 
 /**
  * `entries` and `progress` are declared below with a plain `t.field` over these
  * two refs, NOT with `t.connection` — the one reason being that `t.connection`
  * injects all four of Relay's `first`/`after`/`last`/`before` args and offers
- * no way to withhold any of them. Both fields wrap a forward-only store cursor
- * (`BookStore.listBooksPage`, `getUserProgressPage`: one cursor plus a
- * `take`, no keyset to walk backward from), so advertising `last`/`before` and
- * then throwing on them made the SDL promise a capability the resolver refused.
+ * no way to withhold any of them. Both fields wrap a forward-only cursor
+ * (`services/library-page.ts`'s `listBooksPage`, `getUserProgressPage`: one
+ * cursor plus a `take`, no keyset to walk backward from), so advertising
+ * `last`/`before` and then throwing on them made the SDL promise a capability
+ * the resolver refused.
  * Declaring the connection type here and the field by hand states the
  * forward-only shape in the schema itself, where a client generating from the
  * SDL can see it.
@@ -266,46 +268,32 @@ builder.node(model, {
             }
           : undefined;
 
-        const page = await context.stores.book.listBooksPage(owner, cursor, take, filters);
-
-        const bookIds = page.items.flatMap((item) =>
-          item.type === 'standalone' ? [item.bookId] : []
-        );
-        const seriesNames = page.items.flatMap((item) =>
-          item.type === 'series' ? [item.seriesName] : []
-        );
-
-        const [bookRows, seriesRows] = await Promise.all([
-          bookIds.length > 0
-            ? context.prisma.book.findMany({ where: { userId: owner.userId, id: { in: bookIds } } })
-            : Promise.resolve([]),
-          seriesNames.length > 0
-            ? context.prisma.series.findMany({
-                where: { userId: owner.userId, name: { in: seriesNames } },
-              })
-            : Promise.resolve([]),
-        ]);
-
-        const bookById = new Map(bookRows.map((row) => [row.id, row]));
-        const seriesByName = new Map(seriesRows.map((row) => [row.name, row]));
+        // The single read for this page — ordering, ids, AND the real
+        // `Book`/`Series` rows all come from this one call. Before task 8,
+        // this resolver re-fetched every row `listBooksPage` had already
+        // read (by id/name, in a second `findMany` per type) because the
+        // store handed back a `BookSummary[]` DTO instead of Pothos-visible
+        // rows; `library-page.test.ts`'s "fetches every book exactly once"
+        // test pins the fix at exactly one `prisma.book.findMany` call per
+        // page, however many series share it.
+        const page = await listBooksPage(context.prisma, owner, cursor, take, filters);
 
         // `items` is already the interleaved series/standalone order
-        // `listBooksPage` computed — flatMap over it (skipping a row that
-        // vanished between the store's read and this one, rather than
-        // resolving `undefined`) is only ever reordering data the store
-        // already ordered, not reimplementing that ordering.
-        const edges: Edge[] = page.items.flatMap((item): Edge[] => {
-          if (item.type === 'standalone') {
-            const row = bookById.get(item.bookId);
-            return row
-              ? [{ cursor: encodeCursor({ k: row.title, t: 'b', id: row.id }), node: row }]
-              : [];
-          }
-          const row = seriesByName.get(item.seriesName);
-          return row
-            ? [{ cursor: encodeCursor({ k: row.sortKey, t: 's', id: row.id }), node: row }]
-            : [];
-        });
+        // `listBooksPage` computed, each entry carrying the real row it was
+        // ordered by — mapping over it only reshapes that ordering into
+        // edges, never reimplementing it or re-fetching anything.
+        const edges: Edge[] = page.items.map(
+          (item): Edge =>
+            item.type === 'standalone'
+              ? {
+                  cursor: encodeCursor({ k: item.row.title, t: 'b', id: item.row.id }),
+                  node: item.row,
+                }
+              : {
+                  cursor: encodeCursor({ k: item.row.sortKey, t: 's', id: item.row.id }),
+                  node: item.row,
+                }
+        );
 
         return {
           edges,
@@ -421,9 +409,14 @@ builder.node(model, {
      * DTO (`device_id`, no `userId`), while this field's `Progress` type is a
      * `prismaObject` pinned to the real row — and `currentChapter` needs the
      * `userId` the DTO drops. So `getUserProgressPage` decides the window and
-     * the cursor, and a second query fetches the rows it named. Same division of labour as
-     * `Library.entries`, which asks `listBooksPage` for the page and then reads
-     * the `Book`/`Series` rows itself.
+     * the cursor, and a second query fetches the rows it named. `Library.entries`
+     * looks like the same shape (a store-owned cursor deciding a page) but is
+     * NOT this same two-query split: `services/library-page.ts`'s
+     * `listBooksPage` returns the real `Book`/`Series` rows themselves, not a
+     * DTO missing a column, so that field reads them once and is done (task 8
+     * collapsed what used to be a second, redundant `findMany` there). The
+     * difference is exactly the DTO gap this paragraph describes — `progress`
+     * has one, `entries` no longer does.
      */
     progress: t.field({
       type: progressConnection,
