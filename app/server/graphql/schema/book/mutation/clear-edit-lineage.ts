@@ -87,7 +87,7 @@ const result = builder.unionType('BookClearEditLineageResult', {
  *
  * `clearEditLineage` (`services/book-lineage.ts:154-169`) is NOT wrapped in
  * `toResult`: traced end to end, it is a single raw `$executeRaw` DELETE and
- * throws none of the seven known store errors. Wrapping it would make
+ * throws none of the seven known domain errors. Wrapping it would make
  * `toResult`'s `err` branch undischargeable — see `to-result.ts`'s doc
  * comment, and `bookClearEditions`'s identical note for `clearDeviceEditions`.
  *

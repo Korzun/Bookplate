@@ -70,7 +70,7 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * its own `P2025` catch — the account was deleted mid-request) is
  * modelled as `null`, the same "no such row" convention every other mutation
  * in this schema uses; not wrapped in `toResult` since it throws none of the
- * seven known store errors.
+ * seven known domain errors.
  */
 builder.mutationField('userRegenerateSyncPassword', (t) =>
   t.field({

@@ -84,13 +84,13 @@ const payload = builder
 /**
  * Compile-time exhaustiveness (review M-4) over `unlinkDocument`'s
  * (`services/book-lineage.ts`) return type, the same `never`-narrowing idiom
- * `assertUnreachableStoreError`
- * (`to-result.ts`) uses for the seven known store errors: the `switch` below
+ * `assertUnreachableDomainError`
+ * (`to-result.ts`) uses for the seven known domain errors: the `switch` below
  * has one `case` per member of `'deleted' | 'not_found' | 'edit_row'`, so a
  * fourth discriminator added to that return type fails `outcome` to narrow to
  * `never` at the `default:` branch — a BUILD failure, not a silently-wrong
  * "success" fallthrough. Local to this file, not `to-result.ts`: this is not
- * one of the seven known store errors, and `unlinkDocument` isn't wrapped in
+ * one of the seven known domain errors, and `unlinkDocument` isn't wrapped in
  * `toResult` at all (see the resolver's own doc comment for why).
  */
 function assertUnreachableUnlinkOutcome(outcome: never): never {
@@ -122,7 +122,7 @@ const result = builder.unionType('BookUnlinkDocumentResult', {
  *
  * `unlinkDocument` (`services/book-lineage.ts:124-146`) is NOT wrapped in
  * `toResult`: traced end to end, it never throws any of the seven known
- * store errors — it returns a plain `'deleted' | 'not_found' | 'edit_row'`
+ * domain errors — it returns a plain `'deleted' | 'not_found' | 'edit_row'`
  * discriminator instead, which this resolver maps directly onto the result
  * union (`LineageEntryNotFoundError` / `EditLineageEntryError` — see those
  * files' doc comments for why they exist as honest, REST-mirrored members

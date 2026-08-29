@@ -7,7 +7,7 @@ import { model as validationSeverity } from '../validation-severity';
  * `ValidationMessage` row, and deliberately a second type rather than a reuse
  * of the Prisma-backed one.
  *
- * The two shapes genuinely differ. The store error holds
+ * The two shapes genuinely differ. The domain error holds
  * `services/epub-validator.ts`'s `ValidationMessage`
  * (`{ id, severity, message, segments?, location?: { path, line?, column? } }`),
  * while the Prisma `ValidationMessage` row — and so the GraphQL type built on
@@ -21,7 +21,7 @@ import { model as validationSeverity } from '../validation-severity';
  * `[EpubValidationMessage!]!` instead.
  *
  * Field-for-field it is `ValidationMessage` minus `seq`: `code` carries the
- * store's `id` (epubcheck's message code, e.g. `RSC-005`, the same value the
+ * domain error's `id` (epubcheck's message code, e.g. `RSC-005`, the same value the
  * `code` column stores) and the location is flattened to match. `segments` is
  * not exposed: it is a presentation split of `message` that the client can
  * recompute, and no client renders a *rejected* upload's messages that way.

@@ -60,10 +60,10 @@ describe('UserError', () => {
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
     // referenced by zero result unions — no mutation could ever return it, so
-    // it only polluted Apollo's generated `possibleTypes`. The *store* error
+    // it only polluted Apollo's generated `possibleTypes`. The *domain* error
     // class of the same name (`services/book-errors.ts`, thrown by `addBook`
     // in `services/book-lifecycle.ts`) is unaffected and still flows through
-    // `to-result.ts`'s `KnownStoreError` union for the REST upload seam and
+    // `to-result.ts`'s `KnownDomainError` union for the REST upload seam and
     // scan pipeline.
     //
     // `BookNotValidatedError` is a ninth member, added by task 2 (review
@@ -75,15 +75,16 @@ describe('UserError', () => {
     // `StagedUploadNotFoundError` is a tenth member, added by task 3's
     // staged-upload adjudication (2026-08-01, spec's "Replace staging"
     // paragraph): `bookAnalyzeReplace`/`bookReplace`'s `stagedUploadId` names
-    // a resource with no store class of its own (a `ReplaceStaging` registry
-    // entry, not a Prisma row), so there is no store throw to map — the error
-    // is produced directly by the resolver, same as `InvalidInputError`.
+    // a resource with no domain-error class of its own (a `ReplaceStaging`
+    // registry entry, not a Prisma row), so there is no domain-error throw to
+    // map — the error is produced directly by the resolver, same as
+    // `InvalidInputError`.
     //
     // `EditLineageEntryError` and `LineageEntryNotFoundError` are an eleventh
     // and twelfth member, added by task 4 for `bookUnlinkDocument`'s two REST-
     // mirrored preconditions (`DELETE /api/books/:id/link/:documentId`'s
     // `'edit_row'`/`'not_found'` results — plain string discriminators, not
-    // store throws, so — like the two members above — the error is produced
+    // domain-error throws, so — like the two members above — the error is produced
     // directly by the resolver rather than mapped from a caught class. See
     // `edit-lineage-entry-error/model.ts` and
     // `lineage-entry-not-found-error/model.ts`.
@@ -94,14 +95,14 @@ describe('UserError', () => {
     // both itself, `createUser` returns `false` rather than
     // throwing) and `userChangePassword`'s 401 (`validateUser`
     // also returns `false`, never throws) — same "resolver-produced, not
-    // store-thrown" shape as the four members above. See
+    // domain-error-thrown" shape as the four members above. See
     // `username-already-exists-error/model.ts` and
     // `incorrect-password-error/model.ts`.
     //
     // `ScanAlreadyRunningError` is a fifteenth member, added by task 8 for
     // `libraryScan`'s REST-mirrored 409 (`POST /api/books/scan`'s
     // `scanJobRegistry.isRunning` precondition check, before `bookStore.scan` is
-    // ever called) — same "resolver-produced, not store-thrown" shape as
+    // ever called) — same "resolver-produced, not domain-error-thrown" shape as
     // `BookNotValidatedError` above. See
     // `scan-already-running-error/model.ts`.
     expect(
@@ -137,12 +138,12 @@ describe('UserError', () => {
 });
 
 /**
- * The factories are the only place a store exception becomes a GraphQL value,
- * so they are where "the message the client sees is the store's own" and "the
- * owner rides on the value" are decided.
+ * The factories are the only place a domain exception becomes a GraphQL
+ * value, so they are where "the message the client sees is the domain
+ * error's own" and "the owner rides on the value" are decided.
  */
 describe('user error factories', () => {
-  it('carry the store error’s own message rather than restating it', () => {
+  it('carry the domain error’s own message rather than restating it', () => {
     const collision = new BookHashCollisionError('c'.repeat(32));
     expect(bookHashCollisionError(collision, harness.aliceOwner).message).toBe(collision.message);
 
@@ -169,7 +170,7 @@ describe('user error factories', () => {
     );
   });
 
-  it('carries the slug the store error omits', () => {
+  it('carries the slug the domain error omits', () => {
     // DeviceSlugConflictError is raised from a P2002 and holds no data at all,
     // so the SDL's `slug` can only come from the caller — a regression here
     // would be a permanently empty field in the UI.

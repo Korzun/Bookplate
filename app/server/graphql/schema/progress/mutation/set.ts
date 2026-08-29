@@ -189,7 +189,7 @@ const result = builder.unionType('ProgressSetResult', {
  * synthesise a chapter-accurate CFI, never as an existence gate (REST
  * proceeds with an empty CFI when the book is unknown or the chapter is out
  * of range — see `routes/ui.ts:362-371` — and so does this resolver). Not
- * wrapped in `toResult`: `saveProgress` throws none of the seven known store
+ * wrapped in `toResult`: `saveProgress` throws none of the seven known domain
  * errors, and neither does `getBookById` — both are plain Prisma reads/an
  * upsert with no domain-error path, so the `err` branch `toResult` would add
  * could only be discharged by throwing, the very thing it exists to avoid.

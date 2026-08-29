@@ -7,7 +7,7 @@ import {
 } from '../../../../services/book-errors';
 import { linkDocument } from '../../../../services/book-lineage';
 import type { Owner } from '../../../../types';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
 import {
   documentAlreadyLinkedError,
@@ -114,10 +114,10 @@ const result = builder.unionType('BookLinkDocumentResult', {
  * library and an admin target any.
  *
  * `linkDocument` (`services/book-lineage.ts:63-122`) throws exactly three of
- * the seven known store errors, traced end to end: `SelfLinkError`
+ * the seven known domain errors, traced end to end: `SelfLinkError`
  * (`documentId === bookId`, checked before anything else — including book
  * existence, so a self-link on a book that doesn't even exist still yields
- * `SelfLinkError`, matching the store's own check order literally rather
+ * `SelfLinkError`, matching the function's own check order literally rather
  * than re-ordering it), `DocumentAlreadyLinkedError` and `DocumentIsBookError`
  * (both checked inside the transaction, after the book-existence check).
  * `expected` declares exactly these three — nothing else in `linkDocument`'s
@@ -166,7 +166,7 @@ builder.mutationField('bookLinkDocument', (t) =>
         if (outcome.err instanceof DocumentIsBookError) {
           return documentIsBookError(outcome.err, owner);
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
       if (outcome.ok === null) return null;
 

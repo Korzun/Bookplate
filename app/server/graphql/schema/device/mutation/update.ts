@@ -4,7 +4,7 @@ import { DeviceSlugConflictError, type DeviceInput } from '../../../../services/
 import { purgeForDevice } from '../../../../services/edition';
 import { isPrismaError } from '../../../../services/prisma-errors';
 import { generateSlug } from '../../../../utils/slug';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import { builder } from '../../builder';
 import { model as coverFit } from '../../cover-fit/model';
 import {
@@ -167,7 +167,7 @@ builder.mutationField('deviceUpdate', (t) =>
         if (outcome.err instanceof DeviceSlugConflictError) {
           return deviceSlugConflictError(outcome.err, generateSlug(fieldsParsed.data.name));
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
       const device = outcome.ok;
       if (device === null) return null;

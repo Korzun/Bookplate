@@ -16,7 +16,7 @@ const log = logger('graphql-device-mutation');
  * pattern `book/mutation/replace.ts`'s `repairBestEffort` uses — so
  * "resolver bodies: zero try/catch/throw" holds literally, not just in
  * spirit. This is deliberately NOT a `toResult` site: `purgeForDevice`/
- * `purgeForDeviceAndUser` are not among the seven known store errors, and
+ * `purgeForDeviceAndUser` are not among the seven known domain errors, and
  * REST's own guard never surfaced this failure to the caller at all (it
  * only logged and continued), so there is nothing for a result union to
  * discharge — swallowing it here is the honest mirror, not a shortcut.

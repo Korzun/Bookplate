@@ -12,7 +12,7 @@ import type { EpubChanges } from '../../../../services/epub-writer';
 import { upsertPendingFix } from '../../../../services/pending-fix';
 import type { Book, MetadataFix, Owner } from '../../../../types';
 import { parsePendingFixState } from '../../../derive';
-import { assertUnreachableStoreError, toResult } from '../../../to-result';
+import { assertUnreachableDomainError, toResult } from '../../../to-result';
 import {
   bookHashCollisionError,
   model as bookHashCollisionErrorModel,
@@ -523,7 +523,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
             if (outcome.err instanceof EpubValidationError) {
               return epubValidationError(outcome.err);
             }
-            return assertUnreachableStoreError(outcome.err);
+            return assertUnreachableDomainError(outcome.err);
           }
           revertedId = outcome.ok.id;
 
@@ -585,7 +585,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
         if (outcome.err instanceof EpubValidationError) {
           return epubValidationError(outcome.err);
         }
-        return assertUnreachableStoreError(outcome.err);
+        return assertUnreachableDomainError(outcome.err);
       }
 
       // Review I-1: mirrors what REST's client's `applyAllProposals` +

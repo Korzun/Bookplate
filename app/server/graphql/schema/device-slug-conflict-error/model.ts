@@ -5,7 +5,7 @@ import { model as userError } from '../user-error';
 /**
  * `DeviceSlugConflictError` is raised from a Prisma P2002 on the unique `slug`
  * column (`deviceCreate`/`deviceUpdate`'s own catch, `graphql/schema/device/
- * mutation/{create,update}.ts`) and — unlike the book-store errors — carries
+ * mutation/{create,update}.ts`) and — unlike the book domain errors — carries
  * NO data: the class has a zero-arg constructor, so nothing puts the
  * offending slug on it. So the slug the SDL promises has to come from the
  * caller, which is the only side that knows it: `generateSlug(input.name)`,
