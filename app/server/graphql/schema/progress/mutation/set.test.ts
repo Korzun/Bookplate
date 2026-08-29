@@ -99,6 +99,34 @@ describe('Mutation.progressSet', () => {
   // the already-cached `User:<id>` entity without a second round trip. Two
   // documents (not one) so this can't pass by coincidence of `progressCount`
   // defaulting to 1 either way.
+  // Companion to the I-2 case below: that one pins the NUMBER, this pins the
+  // COST. `ProgressSetPayload.user` is a `t.prismaField` so `User
+  // .progressCount`'s `_count` select merges into the same read; reverted to a
+  // plain `t.field` it would still report the right count while paying a
+  // second `user.findUniqueOrThrow` through `@pothos/plugin-prisma`'s
+  // `ModelLoader` fallback. Measured at 2 before, 1 after. Same guard as
+  // `library/model.test.ts`'s on `Library.user`.
+  it('resolves the payload User in one query, with progressCount merged', async () => {
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id: 'd'.repeat(32),
+        title: 'Cost Probe',
+        size: 1,
+        mtime: 1,
+        addedAt: 1,
+      },
+    });
+    const spy = vi.spyOn(harness.prisma.user, 'findUniqueOrThrow');
+    const result = await harness.execute(
+      `mutation { progressSet(input: { userId: "${harness.aliceGlobalId}", document: "${'d'.repeat(32)}", currentChapter: 1, percentage: 0.5, device: "dev", deviceId: "d1" }) {
+         ... on ProgressSetPayload { user { username progressCount } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it('I-2: exposes the owning User with progressCount reflecting the just-written row', async () => {
     await seedBook(harness.aliceOwner.userId, 'dune.epub', SPINE_MAP);
     await seedBook(harness.aliceOwner.userId, 'foundation.epub', SPINE_MAP);
