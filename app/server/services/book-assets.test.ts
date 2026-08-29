@@ -6,6 +6,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
 import {
   getCover,
@@ -14,7 +15,6 @@ import {
   pruneThumbnails,
   saveThumbnail,
 } from './book-assets';
-import { BookStore } from './book-store';
 
 vi.mock('../logger');
 
@@ -51,15 +51,12 @@ let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
 // and assert on-disk paths here, matching the owner-scoped BookStore.
 let booksDir: string;
-let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -68,7 +65,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -83,7 +79,7 @@ afterEach(async () => {
 
 describe('getCover', () => {
   it('returns cover data and mime', async () => {
-    await bookStore.addBook(OWNER, 'cov1', stage('cov1'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'cov1', stage('cov1'), FAKE_META);
     const cover = await getCover(prisma, OWNER.userId, 'cov1');
     expect(cover).not.toBeNull();
     expect(Buffer.from(cover!.data)).toEqual(Buffer.from('fake-cover'));
@@ -91,7 +87,7 @@ describe('getCover', () => {
   });
 
   it('returns null when no cover', async () => {
-    await bookStore.addBook(OWNER, 'nocov', stage('nocov'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'nocov', stage('nocov'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -106,7 +102,7 @@ describe('getCover', () => {
 
 describe('book_thumbnails', () => {
   it('saveThumbnail stores and getThumbnail retrieves', async () => {
-    await bookStore.addBook(OWNER, 'bk1', stage('bk1'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk1', stage('bk1'), FAKE_META);
     const data = Buffer.from('thumb-data');
     await saveThumbnail(prisma, OWNER.userId, 'bk1', 150, data, 'image/jpeg');
     const result = await getThumbnail(prisma, OWNER.userId, 'bk1', 150);
@@ -116,12 +112,12 @@ describe('book_thumbnails', () => {
   });
 
   it('getThumbnail returns null when not present', async () => {
-    await bookStore.addBook(OWNER, 'bk2', stage('bk2'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk2', stage('bk2'), FAKE_META);
     expect(await getThumbnail(prisma, OWNER.userId, 'bk2', 150)).toBeNull();
   });
 
   it('saveThumbnail upserts on (book_id, width) conflict', async () => {
-    await bookStore.addBook(OWNER, 'bk3', stage('bk3'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk3', stage('bk3'), FAKE_META);
     await saveThumbnail(prisma, OWNER.userId, 'bk3', 150, Buffer.from('v1'), 'image/jpeg');
     await saveThumbnail(prisma, OWNER.userId, 'bk3', 150, Buffer.from('v2'), 'image/jpeg');
     expect(
@@ -130,7 +126,7 @@ describe('book_thumbnails', () => {
   });
 
   it('pruneThumbnails removes rows whose width is not in the config list', async () => {
-    await bookStore.addBook(OWNER, 'bk4', stage('bk4'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk4', stage('bk4'), FAKE_META);
     await saveThumbnail(prisma, OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg');
     await saveThumbnail(prisma, OWNER.userId, 'bk4', 150, Buffer.from('y'), 'image/jpeg');
     await saveThumbnail(prisma, OWNER.userId, 'bk4', 300, Buffer.from('z'), 'image/jpeg');
@@ -142,7 +138,7 @@ describe('book_thumbnails', () => {
   });
 
   it('pruneThumbnails with empty array removes all thumbnails', async () => {
-    await bookStore.addBook(OWNER, 'bk5', stage('bk5'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk5', stage('bk5'), FAKE_META);
     await saveThumbnail(prisma, OWNER.userId, 'bk5', 60, Buffer.from('x'), 'image/jpeg');
     const removed = await pruneThumbnails(prisma, []);
     expect(removed).toBe(1);
@@ -154,8 +150,8 @@ describe('book_thumbnails', () => {
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
     };
-    await bookStore.addBook(OWNER, 'bk6', stage('bk6'), metaWithCover);
-    await bookStore.addBook(OWNER, 'bk7', stage('bk7'), metaWithCover);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk6', stage('bk6'), metaWithCover);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk7', stage('bk7'), metaWithCover);
     await saveThumbnail(prisma, OWNER.userId, 'bk6', 60, Buffer.from('x'), 'image/jpeg'); // already has 60px
 
     const missing = await getMissingThumbnailPairs(prisma, [60, 170]);
@@ -167,7 +163,7 @@ describe('book_thumbnails', () => {
   });
 
   it('getMissingThumbnailPairs ignores books without covers', async () => {
-    await bookStore.addBook(OWNER, 'bk8', stage('bk8'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk8', stage('bk8'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,

@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { reimportBook } from '../../../services/book-lifecycle';
+import { seedBook } from '../../../test-support/seed-book';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -262,7 +264,14 @@ describe('Library.progress', () => {
 
     const staged = path.join(harness.config.booksDir, 'staged-lin.epub');
     fs.writeFileSync(staged, 'x');
-    await harness.stores.book.addBook(harness.aliceOwner, 'lin-old', staged, FAKE_META);
+    await seedBook(
+      harness.prisma,
+      { booksRoot: harness.config.booksDir },
+      harness.aliceOwner,
+      'lin-old',
+      staged,
+      FAKE_META
+    );
     await harness.prisma.progress.create({
       data: {
         userId: harness.aliceOwner.userId,
@@ -277,7 +286,13 @@ describe('Library.progress', () => {
 
     vi.mocked(parseEpub).mockImplementationOnce(() => FAKE_META);
     vi.mocked(partialMD5).mockImplementationOnce(() => 'lin-new');
-    await harness.stores.book.reimportBook(harness.aliceOwner, 'lin-old');
+    await reimportBook(
+      harness.prisma,
+      harness.config.booksDir,
+      harness.editionsRoot,
+      harness.aliceOwner,
+      'lin-old'
+    );
 
     const result = await harness.execute(PAGE, { viewer: harness.aliceViewer });
     const documents = (result.data as PageData).viewer.library.progress.edges.map(

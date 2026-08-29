@@ -6,6 +6,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
 import {
   getAuthors,
@@ -18,7 +19,6 @@ import {
   listBooksByStatus,
   listSeries,
 } from './book-catalog';
-import { BookStore } from './book-store';
 
 vi.mock('../logger');
 
@@ -53,19 +53,16 @@ const FAKE_META: EpubMeta = {
 let prisma: PrismaClient;
 let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
-// and assert on-disk paths here, matching the owner-scoped BookStore used only
-// for setup (`addBook`) — every read under test goes through the imported
-// book-catalog functions directly.
+// and assert on-disk paths here, matching the owner-scoped `seedBook` used
+// only for setup (`addBook`) — every read under test goes through the
+// imported book-catalog functions directly.
 let booksDir: string;
-let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -74,7 +71,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -92,11 +88,11 @@ afterEach(async () => {
 // contract (field mapping via `prismaBookToBook`, and `sortByTitle`'s tie
 // break order), not about `addBook`'s write path. `addBook` itself, and the
 // few `it`s that exercise nothing but its own mechanics (duplicate-id
-// rejection, file move, size/mtime stat-ing, per-owner isolation), stayed in
-// `book-store.test.ts`.
+// rejection, file move, size/mtime stat-ing, per-owner isolation), went to
+// `book-lifecycle.test.ts`'s `describe('addBook', ...)` instead.
 describe('listBooks and getBookById — field mapping', () => {
   it('inserts a book and lists it', async () => {
-    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'abc123', stage('abc123'), FAKE_META);
     const books = await listBooks(prisma, booksRoot, OWNER);
     expect(books).toHaveLength(1);
     expect(books[0].id).toBe('abc123');
@@ -106,11 +102,11 @@ describe('listBooks and getBookById — field mapping', () => {
   });
 
   it('sorts by title', async () => {
-    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       title: 'Zebra',
     });
-    await bookStore.addBook(OWNER, 'id2', stage('id2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id2', stage('id2'), {
       ...FAKE_META,
       title: 'Apple',
     });
@@ -120,7 +116,7 @@ describe('listBooks and getBookById — field mapping', () => {
   });
 
   it('returns hasCover false when no cover', async () => {
-    await bookStore.addBook(OWNER, 'id1', stage('id1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id1', stage('id1'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -136,7 +132,7 @@ describe('listBooks and getBookById — field mapping', () => {
       author: 'Isaac Asimov',
       titleSort: 'Asimov, Isaac',
     };
-    await bookStore.addBook(OWNER, 'id1', stage('id1'), meta);
+    await seedBook(prisma, { booksRoot }, OWNER, 'id1', stage('id1'), meta);
     const book = await getBookById(prisma, booksRoot, OWNER, 'id1');
     expect(book!.titleSort).toBe('Asimov, Isaac');
   });
@@ -146,18 +142,18 @@ describe('listBooks and getBookById — field mapping', () => {
       ...FAKE_META,
       titleSort: '  Asimov, Isaac  ',
     };
-    await bookStore.addBook(OWNER, 'id2', stage('id2'), meta);
+    await seedBook(prisma, { booksRoot }, OWNER, 'id2', stage('id2'), meta);
     const book = await getBookById(prisma, booksRoot, OWNER, 'id2');
     expect(book!.titleSort).toBe('Asimov, Isaac');
   });
 
   it('sorts by titleSort before title', async () => {
-    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-a', stage('id-a'), {
       ...FAKE_META,
       title: 'Zzz',
       titleSort: 'Apple, A.',
     });
-    await bookStore.addBook(OWNER, 'id-z', stage('id-z'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-z', stage('id-z'), {
       ...FAKE_META,
       title: 'Aaa',
       titleSort: 'Zulu, Z.',
@@ -168,12 +164,12 @@ describe('listBooks and getBookById — field mapping', () => {
   });
 
   it('falls back to title when titleSort is empty', async () => {
-    await bookStore.addBook(OWNER, 'id-b', stage('id-b'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-b', stage('id-b'), {
       ...FAKE_META,
       title: 'Banana',
       titleSort: '',
     });
-    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-a', stage('id-a'), {
       ...FAKE_META,
       title: 'Apple',
       titleSort: '',
@@ -189,7 +185,7 @@ describe('listBooks and getBookById — field mapping', () => {
       author: 'Isaac Asimov',
       authorSort: 'Asimov, Isaac',
     };
-    await bookStore.addBook(OWNER, 'id-as', stage('id-as'), meta);
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-as', stage('id-as'), meta);
     const book = await getBookById(prisma, booksRoot, OWNER, 'id-as');
     expect(book!.authorSort).toBe('Asimov, Isaac');
   });
@@ -199,13 +195,13 @@ describe('listBooks and getBookById — field mapping', () => {
       ...FAKE_META,
       publishDate: '2001-01-16',
     };
-    await bookStore.addBook(OWNER, 'id-pd', stage('id-pd'), meta);
+    await seedBook(prisma, { booksRoot }, OWNER, 'id-pd', stage('id-pd'), meta);
     const book = await getBookById(prisma, booksRoot, OWNER, 'id-pd');
     expect(book!.publishDate).toBe('2001-01-16');
   });
 
   it('stores and retrieves chapterNames (JSON round-trip)', async () => {
-    await bookStore.addBook(OWNER, 'ch1', stage('ch1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'ch1', stage('ch1'), {
       ...FAKE_META,
       chapterCount: 2,
       chapterSpineMap: [1, 2],
@@ -225,7 +221,7 @@ describe('listBooks and getBookById — field mapping', () => {
   });
 
   it('exposes book.filename as the computed download name', async () => {
-    await bookStore.addBook(OWNER, 'fname-1', stage('fname-1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'fname-1', stage('fname-1'), {
       ...FAKE_META,
       author: 'Frank Herbert',
       series: '',
@@ -237,7 +233,7 @@ describe('listBooks and getBookById — field mapping', () => {
   });
 
   it('exposes book.path as <booksDir>/<id>.epub regardless of stored path', async () => {
-    await bookStore.addBook(OWNER, 'path-1', stage('path-1'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'path-1', stage('path-1'), FAKE_META);
     const book = await getBookById(prisma, booksRoot, OWNER, 'path-1');
     expect(book!.path).toBe(path.join(booksDir, 'path-1.epub'));
   });
@@ -245,7 +241,7 @@ describe('listBooks and getBookById — field mapping', () => {
 
 describe('getBookById', () => {
   it('returns the book by id', async () => {
-    await bookStore.addBook(OWNER, 'myid', stage('myid'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'myid', stage('myid'), FAKE_META);
     const book = await getBookById(prisma, booksRoot, OWNER, 'myid');
     expect(book).not.toBeNull();
     expect(book!.filename).toBe('Author_Name-Test_Series-1-Test_Book.epub');
@@ -258,7 +254,7 @@ describe('getBookById', () => {
 
 describe('getBookById deviceEditionCount', () => {
   it('includes the edition count when withEditionCount is requested', async () => {
-    await bookStore.addBook(OWNER, 'cnt1', stage('cnt1'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'cnt1', stage('cnt1'), FAKE_META);
     await prisma.device.create({
       data: { id: 'dvc', name: 'K', slug: 'k', coverFit: 'contain' },
     });
@@ -276,7 +272,7 @@ describe('getBookById deviceEditionCount', () => {
   });
 
   it('omits the count when withEditionCount is not requested', async () => {
-    await bookStore.addBook(OWNER, 'cnt2', stage('cnt2'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'cnt2', stage('cnt2'), FAKE_META);
     const book = await getBookById(prisma, booksRoot, OWNER, 'cnt2');
     expect(book?.deviceEditionCount).toBeUndefined();
   });
@@ -284,11 +280,11 @@ describe('getBookById deviceEditionCount', () => {
 
 describe('getSubjects', () => {
   it('returns sorted unique subjects across all books', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       subjects: ['Fiction', 'History'],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       subjects: ['Fiction', 'Science'],
     });
@@ -297,7 +293,7 @@ describe('getSubjects', () => {
   });
 
   it('returns empty array when no books have subjects', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, subjects: [] });
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), { ...FAKE_META, subjects: [] });
     const subjects = await getSubjects(prisma, OWNER);
     expect(subjects).toEqual([]);
   });
@@ -319,11 +315,11 @@ describe('getSubjects', () => {
     fs.mkdirSync(otherDir, { recursive: true });
     const bobBook = path.join(otherDir, 'staged-b2.epub');
     fs.writeFileSync(bobBook, 'x');
-    await bookStore.addBook(OWNER, 'a1', stage('a1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'a1', stage('a1'), {
       ...FAKE_META,
       subjects: ['AliceOnly'],
     });
-    await bookStore.addBook(otherOwner, 'b2', bobBook, {
+    await seedBook(prisma, { booksRoot }, otherOwner, 'b2', bobBook, {
       ...FAKE_META,
       subjects: ['BobOnly'],
     });
@@ -340,15 +336,15 @@ describe('getAuthors', () => {
   });
 
   it('returns distinct authors sorted alphabetically', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       author: 'Zora Neale Hurston',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       author: 'Agatha Christie',
     });
-    await bookStore.addBook(OWNER, 'b3', stage('b3'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b3', stage('b3'), {
       ...FAKE_META,
       author: 'Agatha Christie',
     });
@@ -357,8 +353,11 @@ describe('getAuthors', () => {
   });
 
   it('excludes books with empty author', async () => {
-    await bookStore.addBook(OWNER, 'b4', stage('b4'), { ...FAKE_META, author: '' });
-    await bookStore.addBook(OWNER, 'b4b', stage('b4b'), { ...FAKE_META, author: 'Real Author' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'b4', stage('b4'), { ...FAKE_META, author: '' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'b4b', stage('b4b'), {
+      ...FAKE_META,
+      author: 'Real Author',
+    });
     const authors = await getAuthors(prisma, OWNER);
     expect(authors).toEqual(['Real Author']);
   });
@@ -369,8 +368,14 @@ describe('getAuthors', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'b5', stage('b5'), { ...FAKE_META, author: 'Alice Author' });
-    await bookStore.addBook(bob, 'b6', stage('b6'), { ...FAKE_META, author: 'Bob Author' });
+    await seedBook(prisma, { booksRoot }, alice, 'b5', stage('b5'), {
+      ...FAKE_META,
+      author: 'Alice Author',
+    });
+    await seedBook(prisma, { booksRoot }, bob, 'b6', stage('b6'), {
+      ...FAKE_META,
+      author: 'Bob Author',
+    });
     const authors = await getAuthors(prisma, alice);
     expect(authors).toContain('Alice Author');
     expect(authors).not.toContain('Bob Author');
@@ -384,17 +389,17 @@ describe('listBooksByAuthor', () => {
   });
 
   it('returns only books by the given author', async () => {
-    await bookStore.addBook(OWNER, 'c1', stage('c1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'c1', stage('c1'), {
       ...FAKE_META,
       author: 'Jane Austen',
       title: 'Persuasion',
     });
-    await bookStore.addBook(OWNER, 'c2', stage('c2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'c2', stage('c2'), {
       ...FAKE_META,
       author: 'Jane Austen',
       title: 'Emma',
     });
-    await bookStore.addBook(OWNER, 'c3', stage('c3'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'c3', stage('c3'), {
       ...FAKE_META,
       author: 'Other Author',
       title: 'Other Book',
@@ -409,12 +414,12 @@ describe('listBooksByAuthor', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'c4', stage('c4'), {
+    await seedBook(prisma, { booksRoot }, alice, 'c4', stage('c4'), {
       ...FAKE_META,
       author: 'Shared Author',
       title: 'Alice Copy',
     });
-    await bookStore.addBook(bob, 'c5', stage('c5'), {
+    await seedBook(prisma, { booksRoot }, bob, 'c5', stage('c5'), {
       ...FAKE_META,
       author: 'Shared Author',
       title: 'Bob Copy',
@@ -436,12 +441,12 @@ describe('listSeries', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'd1', stage('d1'), {
+    await seedBook(prisma, { booksRoot }, alice, 'd1', stage('d1'), {
       ...FAKE_META,
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(alice, 'd2', stage('d2'), {
+    await seedBook(prisma, { booksRoot }, alice, 'd2', stage('d2'), {
       ...FAKE_META,
       series: 'Foundation',
       seriesIndex: 1,
@@ -457,12 +462,12 @@ describe('listSeries', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'd3', stage('d3'), {
+    await seedBook(prisma, { booksRoot }, alice, 'd3', stage('d3'), {
       ...FAKE_META,
       series: 'Alice Series',
       seriesIndex: 1,
     });
-    await bookStore.addBook(bob, 'd4', stage('d4'), {
+    await seedBook(prisma, { booksRoot }, bob, 'd4', stage('d4'), {
       ...FAKE_META,
       series: 'Bob Series',
       seriesIndex: 1,
@@ -481,19 +486,19 @@ describe('listBooksBySeries', () => {
 
   it('returns books sorted by seriesIndex then title', async () => {
     const alice: Owner = OWNER;
-    await bookStore.addBook(alice, 'e1', stage('e1'), {
+    await seedBook(prisma, { booksRoot }, alice, 'e1', stage('e1'), {
       ...FAKE_META,
       series: 'The Expanse',
       seriesIndex: 1,
       title: 'Leviathan Wakes',
     });
-    await bookStore.addBook(alice, 'e2', stage('e2'), {
+    await seedBook(prisma, { booksRoot }, alice, 'e2', stage('e2'), {
       ...FAKE_META,
       series: 'The Expanse',
       seriesIndex: 3,
       title: "Abaddon's Gate",
     });
-    await bookStore.addBook(alice, 'e3', stage('e3'), {
+    await seedBook(prisma, { booksRoot }, alice, 'e3', stage('e3'), {
       ...FAKE_META,
       series: 'The Expanse',
       seriesIndex: 2,
@@ -515,13 +520,13 @@ describe('listBooksBySeries', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'e4', stage('e4'), {
+    await seedBook(prisma, { booksRoot }, alice, 'e4', stage('e4'), {
       ...FAKE_META,
       series: 'Shared Series',
       seriesIndex: 1,
       title: 'Alice Book',
     });
-    await bookStore.addBook(bob, 'e5', stage('e5'), {
+    await seedBook(prisma, { booksRoot }, bob, 'e5', stage('e5'), {
       ...FAKE_META,
       series: 'Shared Series',
       seriesIndex: 1,
@@ -541,17 +546,17 @@ describe('listBooksBySubject', () => {
   });
 
   it('returns only books tagged with the given subject', async () => {
-    await bookStore.addBook(OWNER, 'f1', stage('f1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'f1', stage('f1'), {
       ...FAKE_META,
       title: 'A Fantasy Book',
       subjects: ['Fantasy', 'Adventure'],
     });
-    await bookStore.addBook(OWNER, 'f2', stage('f2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'f2', stage('f2'), {
       ...FAKE_META,
       title: 'A Sci-Fi Book',
       subjects: ['Science Fiction'],
     });
-    await bookStore.addBook(OWNER, 'f3', stage('f3'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'f3', stage('f3'), {
       ...FAKE_META,
       title: 'Another Fantasy',
       subjects: ['Fantasy'],
@@ -566,12 +571,12 @@ describe('listBooksBySubject', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'f4', stage('f4'), {
+    await seedBook(prisma, { booksRoot }, alice, 'f4', stage('f4'), {
       ...FAKE_META,
       title: 'Alice Fantasy',
       subjects: ['Fantasy'],
     });
-    await bookStore.addBook(bob, 'f5', stage('f5'), {
+    await seedBook(prisma, { booksRoot }, bob, 'f5', stage('f5'), {
       ...FAKE_META,
       title: 'Bob Fantasy',
       subjects: ['Fantasy'],
@@ -600,22 +605,37 @@ describe('listBooksByStatus', () => {
   }
 
   it('returns all books for not-started when none have progress', async () => {
-    await bookStore.addBook(OWNER, 'g1', stage('g1'), { ...FAKE_META, title: 'Book A' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g1', stage('g1'), {
+      ...FAKE_META,
+      title: 'Book A',
+    });
     const books = await listBooksByStatus(prisma, booksRoot, OWNER, 'not-started');
     expect(books.map((b) => b.id)).toContain('g1');
   });
 
   it('not-started excludes books with any progress', async () => {
-    await bookStore.addBook(OWNER, 'g2', stage('g2'), { ...FAKE_META, title: 'Started Book' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g2', stage('g2'), {
+      ...FAKE_META,
+      title: 'Started Book',
+    });
     await setProgress(OWNER.userId, 'g2', 0.5);
     const books = await listBooksByStatus(prisma, booksRoot, OWNER, 'not-started');
     expect(books.map((b) => b.id)).not.toContain('g2');
   });
 
   it('in-progress returns only partially read books', async () => {
-    await bookStore.addBook(OWNER, 'g3', stage('g3'), { ...FAKE_META, title: 'In Progress' });
-    await bookStore.addBook(OWNER, 'g4', stage('g4'), { ...FAKE_META, title: 'Unread' });
-    await bookStore.addBook(OWNER, 'g5', stage('g5'), { ...FAKE_META, title: 'Done' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g3', stage('g3'), {
+      ...FAKE_META,
+      title: 'In Progress',
+    });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g4', stage('g4'), {
+      ...FAKE_META,
+      title: 'Unread',
+    });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g5', stage('g5'), {
+      ...FAKE_META,
+      title: 'Done',
+    });
     await setProgress(OWNER.userId, 'g3', 0.5);
     await setProgress(OWNER.userId, 'g5', 1.0);
     const books = await listBooksByStatus(prisma, booksRoot, OWNER, 'in-progress');
@@ -623,8 +643,14 @@ describe('listBooksByStatus', () => {
   });
 
   it('completed returns only fully read books', async () => {
-    await bookStore.addBook(OWNER, 'g6', stage('g6'), { ...FAKE_META, title: 'Complete' });
-    await bookStore.addBook(OWNER, 'g7', stage('g7'), { ...FAKE_META, title: 'Partial' });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g6', stage('g6'), {
+      ...FAKE_META,
+      title: 'Complete',
+    });
+    await seedBook(prisma, { booksRoot }, OWNER, 'g7', stage('g7'), {
+      ...FAKE_META,
+      title: 'Partial',
+    });
     await setProgress(OWNER.userId, 'g6', 1.0);
     await setProgress(OWNER.userId, 'g7', 0.3);
     const books = await listBooksByStatus(prisma, booksRoot, OWNER, 'completed');
@@ -637,8 +663,14 @@ describe('listBooksByStatus', () => {
     await prisma.user.create({ data: { id: bob.userId, username: bob.username } });
     fs.mkdirSync(path.join(booksRoot, bob.username), { recursive: true });
 
-    await bookStore.addBook(alice, 'g8', stage('g8'), { ...FAKE_META, title: 'Alice Book' });
-    await bookStore.addBook(bob, 'g9', stage('g9'), { ...FAKE_META, title: 'Bob Book' });
+    await seedBook(prisma, { booksRoot }, alice, 'g8', stage('g8'), {
+      ...FAKE_META,
+      title: 'Alice Book',
+    });
+    await seedBook(prisma, { booksRoot }, bob, 'g9', stage('g9'), {
+      ...FAKE_META,
+      title: 'Bob Book',
+    });
     await setProgress(alice.userId, 'g8', 1.0);
     await setProgress(bob.userId, 'g9', 1.0);
     const books = await listBooksByStatus(prisma, booksRoot, alice, 'completed');
@@ -649,9 +681,9 @@ describe('listBooksByStatus', () => {
 
 describe('getBookById maps validation.valid', () => {
   it('reflects the stored validation valid flag, or null when unvalidated', async () => {
-    await bookStore.addBook(OWNER, 'val-true', stage('val-true'), FAKE_META);
-    await bookStore.addBook(OWNER, 'val-false', stage('val-false'), FAKE_META);
-    await bookStore.addBook(OWNER, 'val-none', stage('val-none'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'val-true', stage('val-true'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'val-false', stage('val-false'), FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, 'val-none', stage('val-none'), FAKE_META);
     await prisma.validation.create({
       data: {
         userId: OWNER.userId,

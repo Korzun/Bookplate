@@ -6,8 +6,8 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
-import { BookStore } from './book-store';
 import { getSearchSuggestions } from './search-suggestions';
 
 vi.mock('../logger');
@@ -43,18 +43,15 @@ const FAKE_META: EpubMeta = {
 let prisma: PrismaClient;
 let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
-// and use the owner-scoped BookStore only for setup (`addBook`) — every read
-// under test goes through the imported `getSearchSuggestions` directly.
+// and use `seedBook` only for setup (`addBook`) — every read under test goes
+// through the imported `getSearchSuggestions` directly.
 let booksDir: string;
-let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -63,7 +60,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -82,7 +78,7 @@ afterEach(async () => {
 // `getSearchSuggestions(prisma, ...)`.
 describe('getSearchSuggestions', () => {
   it('returns matching authors', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       author: 'N.K. Jemisin',
@@ -90,7 +86,7 @@ describe('getSearchSuggestions', () => {
       seriesIndex: 0,
       subjects: [],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Piranesi',
       author: 'Susanna Clarke',
@@ -106,7 +102,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('returns matching series', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       author: 'N.K. Jemisin',
@@ -122,7 +118,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('returns matching book titles', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       author: 'N.K. Jemisin',
@@ -138,7 +134,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('returns matching subjects', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Foo',
       author: 'Author',
@@ -154,7 +150,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('excludes active subject chips from subject group', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Foo',
       author: 'Author',
@@ -171,7 +167,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('omits author group when filter.author is set', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Foo',
       author: 'N.K. Jemisin',
@@ -187,7 +183,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('omits series group when filter.seriesName is set', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Foo',
       author: 'Author',
@@ -203,7 +199,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('constrains series to active author filter', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       author: 'N.K. Jemisin',
@@ -211,7 +207,7 @@ describe('getSearchSuggestions', () => {
       seriesIndex: 1,
       subjects: [],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Piranesi',
       author: 'Susanna Clarke',
@@ -229,7 +225,7 @@ describe('getSearchSuggestions', () => {
 
   it('caps each group at 5 items', async () => {
     for (let i = 0; i < 7; i++) {
-      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+      await seedBook(prisma, { booksRoot }, OWNER, `b${i}`, stage(`b${i}`), {
         ...FAKE_META,
         title: `Alpha Book ${i}`,
         author: `Author${i}`,
@@ -249,7 +245,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('returns author matching initials abbreviation (NK J → N.K. Jemisin)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       author: 'N.K. Jemisin',
@@ -263,7 +259,7 @@ describe('getSearchSuggestions', () => {
   });
 
   it('returns series matching single-char omission typo (Texcalaan → Teixcalaan)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'A Memory Called Empire',
       author: 'Arkady Martine',

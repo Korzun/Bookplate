@@ -26,7 +26,7 @@ import { createValidationCountsLoader } from '../graphql/validation-counts-loade
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
 import { getBookById, listBooks } from '../services/book-catalog';
-import { BookStore } from '../services/book-store';
+import { getStagingDir } from '../services/book-paths';
 import { verifyAccessToken } from '../services/jwt';
 import { hashLoginPassword, resetPassword } from '../services/password';
 import {
@@ -36,6 +36,7 @@ import {
 } from '../services/replace-staging';
 import { createUser, deleteUser } from '../services/user';
 import * as validationModule from '../services/validation';
+import { seedBook } from '../test-support/seed-book';
 import { AppConfig, EpubMeta, Owner } from '../types';
 import { createLoginRateLimit, createUiRouter } from './ui';
 
@@ -116,7 +117,6 @@ afterAll(() => {
 let booksDir: string;
 let editionsRoot: string;
 let prisma: PrismaClient;
-let bookStore: BookStore;
 let replaceStaging: ReplaceStaging;
 let app: express.Express;
 let dbPath: string;
@@ -299,7 +299,7 @@ async function gqlExecute(
   viewer: Viewer
 ): ReturnType<typeof graphql<Record<string, unknown>>> {
   const stores: Stores = {
-    book: bookStore,
+    book: {},
     scanJob: scanJobStore,
     thumbnail: mockThumbnailQueue,
     replaceStaging,
@@ -341,8 +341,7 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma, editionsRoot);
-  replaceStaging = createReplaceStaging({ stagingDir: bookStore.getStagingDir() });
+  replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(booksDir) });
   await createUser(prisma, 'alice', await hashLoginPassword('alicepass'));
   aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   aliceOwner = { userId: aliceId, username: 'alice' };
@@ -355,7 +354,7 @@ beforeEach(async () => {
   app.use(
     '/',
     createUiRouter(
-      bookStore,
+      editionsRoot,
       { ...config, booksDir },
       mockThumbnailQueue,
       jwtSecret,
@@ -473,7 +472,7 @@ describe('POST /api/login', () => {
       clockedApp.use(
         '/',
         createUiRouter(
-          bookStore,
+          editionsRoot,
           { ...config, booksDir },
           mockThumbnailQueue,
           jwtSecret,
@@ -518,7 +517,7 @@ describe('POST /api/login', () => {
       proxyApp.use(
         '/',
         createUiRouter(
-          bookStore,
+          editionsRoot,
           { ...config, booksDir, trustProxyHops: 1 },
           mockThumbnailQueue,
           jwtSecret,
@@ -1314,7 +1313,14 @@ describe('GET /api/books/:id/cover', () => {
       coverData: coverBuf,
       coverMime: 'image/jpeg',
     };
-    await bookStore.addBook(aliceOwner, 'coverId1', stage('coverId1'), meta);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      aliceOwner,
+      'coverId1',
+      stage('coverId1'),
+      meta
+    );
 
     const token = await loginAlice();
     const res = await request(app)
@@ -1326,7 +1332,14 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('returns 404 for a book without cover', async () => {
-    await bookStore.addBook(aliceOwner, 'noCoverId', stage('noCoverId'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      aliceOwner,
+      'noCoverId',
+      stage('noCoverId'),
+      FAKE_META
+    );
 
     const token = await loginAlice();
     const res = await request(app)
@@ -1346,7 +1359,7 @@ describe('GET /api/books/:id/cover', () => {
   it('returns thumbnail when ?width= matches a stored thumbnail', async () => {
     const coverBuf = Buffer.from('original-cover');
     const thumbBuf = Buffer.from('thumbnail-data');
-    await bookStore.addBook(aliceOwner, 'thumbBook', stage('thumbBook'), {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'thumbBook', stage('thumbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -1363,7 +1376,7 @@ describe('GET /api/books/:id/cover', () => {
 
   it('falls back to full-size when ?width= has no matching thumbnail', async () => {
     const coverBuf = Buffer.from('full-size-cover');
-    await bookStore.addBook(aliceOwner, 'fbBook', stage('fbBook'), {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'fbBook', stage('fbBook'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -1378,7 +1391,7 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('serves an immutable cache header when a version token is present', async () => {
-    await bookStore.addBook(aliceOwner, 'cacheBook', stage('cacheBook'), {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'cacheBook', stage('cacheBook'), {
       ...FAKE_META,
       coverData: Buffer.from('cacheable-cover'),
       coverMime: 'image/jpeg',
@@ -1394,7 +1407,7 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('revalidates every time when no version token is present', async () => {
-    await bookStore.addBook(aliceOwner, 'noVerBook', stage('noVerBook'), {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'noVerBook', stage('noVerBook'), {
       ...FAKE_META,
       coverData: Buffer.from('revalidate-cover'),
       coverMime: 'image/jpeg',
@@ -1409,7 +1422,7 @@ describe('GET /api/books/:id/cover', () => {
   });
 
   it('returns 304 when the ETag matches If-None-Match', async () => {
-    await bookStore.addBook(aliceOwner, 'etagBook', stage('etagBook'), {
+    await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'etagBook', stage('etagBook'), {
       ...FAKE_META,
       coverData: Buffer.from('etag-cover'),
       coverMime: 'image/jpeg',
@@ -1432,7 +1445,14 @@ describe('GET /api/books/:id/cover', () => {
 
 describe('GET /api/books/:id/download', () => {
   it('streams the epub with attachment headers', async () => {
-    await bookStore.addBook(aliceOwner, 'dl1', stage('dl1', 'EPUBDATA'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      aliceOwner,
+      'dl1',
+      stage('dl1', 'EPUBDATA'),
+      FAKE_META
+    );
     const [book] = await listBooks(prisma, booksDir, aliceOwner);
 
     const token = await loginAlice();
@@ -1487,7 +1507,14 @@ describe('surviving book REST routes accept a Relay global ID', () => {
       .set('Content-Type', 'application/x-www-form-urlencoded');
     bobToken = (bobRes.body as { accessToken: string }).accessToken;
 
-    await bookStore.addBook(aliceOwner, 'gidbook', stage('gidbook'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      aliceOwner,
+      'gidbook',
+      stage('gidbook'),
+      FAKE_META
+    );
     aliceBookId = (await listBooks(prisma, booksDir, aliceOwner))[0].id;
   });
 
@@ -1512,7 +1539,7 @@ describe('surviving book REST routes accept a Relay global ID', () => {
 
   describe('GET /api/books/:id/cover', () => {
     it('resolves a Relay global ID', async () => {
-      await bookStore.addBook(aliceOwner, 'cover-gid', stage('cover-gid'), {
+      await seedBook(prisma, { booksRoot: booksDir }, aliceOwner, 'cover-gid', stage('cover-gid'), {
         ...FAKE_META,
         coverData: Buffer.from('gid-cover-bytes'),
         coverMime: 'image/jpeg',
@@ -1527,11 +1554,18 @@ describe('surviving book REST routes accept a Relay global ID', () => {
     });
 
     it("404s on another tenant's global id", async () => {
-      await bookStore.addBook(aliceOwner, 'cover-gid2', stage('cover-gid2'), {
-        ...FAKE_META,
-        coverData: Buffer.from('gid-cover-bytes'),
-        coverMime: 'image/jpeg',
-      });
+      await seedBook(
+        prisma,
+        { booksRoot: booksDir },
+        aliceOwner,
+        'cover-gid2',
+        stage('cover-gid2'),
+        {
+          ...FAKE_META,
+          coverData: Buffer.from('gid-cover-bytes'),
+          coverMime: 'image/jpeg',
+        }
+      );
       const globalId = bookGlobalId(aliceId, 'cover-gid2');
       const res = await request(app)
         .get(`/api/books/${encodeURIComponent(globalId)}/cover`)

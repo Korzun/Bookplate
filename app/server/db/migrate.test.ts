@@ -4,7 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { PrismaClient } from '@prisma/client';
+import AdmZip from 'adm-zip';
 
+import { partialMD5 } from '../services/epub-parser';
 import { createPrismaClient } from './client';
 import { runMigrations } from './migrate';
 
@@ -343,5 +345,377 @@ describe('data_v17_validation', () => {
       `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('validations','validation_messages') ORDER BY name`
     );
     expect(rows.map((r) => r.name)).toEqual(['validation_messages', 'validations']);
+  });
+});
+
+// Moved from `services/book-store.test.ts` (Task 9b, `BookStore`'s deletion):
+// these assert `runMigrations` itself (id recompute, NanoID surrogate ids,
+// the `chapter_names`/`page_count` columns), not anything `BookStore` ever
+// did — they belong here with every other migration suite, not in a
+// book-seeding test file.
+describe('legacy id-recompute and page-count migrations', () => {
+  function makeMinimalEpubWithContent(bodyContent: string): Buffer {
+    const zip = new AdmZip();
+    zip.addFile(
+      'META-INF/container.xml',
+      Buffer.from(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+    );
+    zip.addFile(
+      'OEBPS/content.opf',
+      Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Test</dc:title></metadata>
+  <manifest>
+    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="ch1"/></spine>
+</package>`)
+    );
+    zip.addFile('OEBPS/ch1.xhtml', Buffer.from(`<html><body>${bodyContent}</body></html>`));
+    return zip.toBuffer();
+  }
+
+  const BOOKS_SCHEMA = `
+    CREATE TABLE books (
+      id TEXT PRIMARY KEY, filename TEXT NOT NULL UNIQUE, path TEXT NOT NULL,
+      title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+      series_index REAL NOT NULL DEFAULT 0, cover_data BLOB, cover_mime TEXT,
+      size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL
+    )
+  `;
+
+  let prisma: PrismaClient;
+  let booksRoot: string;
+  let booksDir: string;
+  let dbPath: string;
+
+  beforeEach(async () => {
+    booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
+    booksDir = path.join(booksRoot, 'alice');
+    fs.mkdirSync(booksDir, { recursive: true });
+    dbPath = path.join(
+      os.tmpdir(),
+      `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    prisma = createPrismaClient(`file:${dbPath}`);
+    await runMigrations(prisma, booksRoot);
+    await prisma.user.create({ data: { id: 'usr_test000000000000000', username: 'alice' } });
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+    fs.rmSync(booksRoot, { recursive: true });
+  });
+
+  it('migration v2: recomputes stale book ID to match corrected partial MD5', async () => {
+    const filePath = path.join(booksDir, 'migrate-v2.epub');
+    fs.writeFileSync(filePath, Buffer.alloc(2048, 'x'));
+    const correctId = partialMD5(filePath);
+
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES ('stale-id-from-old-algo', 'migrate-v2.epub', ${filePath}, 'Test', 2048, 0, 0)`;
+
+    await runMigrations(migPrisma, booksDir);
+
+    // The book ID is recomputed by data_v2 (before per-user distribution), so the
+    // single user's copy of the book carries the corrected id.
+    const rows = await migPrisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
+    expect(rows[0].id).toBe(correctId);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('migration v2: also updates matching progress records', async () => {
+    const filePath = path.join(booksDir, 'migrate-v2-prog.epub');
+    fs.writeFileSync(filePath, Buffer.alloc(2048, 'y'));
+    const correctId = partialMD5(filePath);
+    const staleId = 'stale-progress-id';
+
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (
+        username TEXT NOT NULL PRIMARY KEY,
+        key TEXT NOT NULL
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE progress (
+        username TEXT NOT NULL, document TEXT NOT NULL, progress TEXT NOT NULL,
+        percentage REAL NOT NULL, device TEXT NOT NULL, device_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL, PRIMARY KEY (username, document)
+      )
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES (${staleId}, 'migrate-v2-prog.epub', ${filePath}, 'Test', 2048, 0, 0)`;
+    await migPrisma.$executeRaw`INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp) VALUES ('alice', ${staleId}, 'epub://', 0.5, 'Kobo', 'dev1', 1000)`;
+
+    await runMigrations(migPrisma, booksDir);
+
+    const progRows = await migPrisma.$queryRaw<
+      Array<{ document: string }>
+    >`SELECT document FROM progress`;
+    expect(progRows[0].document).toBe(correctId);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('data migration: assigns NanoID surrogate ids to users and preserves progress with working FK cascade', async () => {
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE "users" (
+        "username" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE "progress" (
+        "username" TEXT NOT NULL,
+        "document" TEXT NOT NULL,
+        "progress" TEXT NOT NULL,
+        "percentage" REAL NOT NULL,
+        "device" TEXT NOT NULL,
+        "device_id" TEXT NOT NULL,
+        "timestamp" INTEGER NOT NULL,
+        PRIMARY KEY ("username", "document"),
+        CONSTRAINT "progress_username_fkey" FOREIGN KEY ("username") REFERENCES "users" ("username") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`
+      INSERT INTO progress (username, document, progress, percentage, device, device_id, timestamp)
+      VALUES ('alice', 'doc-1', 'epub://', 0.5, 'Kobo', 'dev1', 1000)
+    `;
+
+    await runMigrations(migPrisma, booksDir);
+
+    const users = await migPrisma.$queryRaw<Array<{ id: string; username: string }>>`
+      SELECT id, username FROM users
+    `;
+    expect(users).toHaveLength(1);
+    expect(users[0].id).toMatch(/^[A-Za-z0-9]{21}$/);
+
+    const progressRows = await migPrisma.$queryRaw<
+      Array<{ user_id: string; document: string; percentage: number }>
+    >`SELECT user_id, document, percentage FROM progress`;
+    expect(progressRows).toHaveLength(1);
+    expect(progressRows[0].user_id).toBe(users[0].id);
+    expect(progressRows[0].document).toBe('doc-1');
+    expect(progressRows[0].percentage).toBe(0.5);
+
+    // FK cascade still works post-migration: deleting the user removes their progress.
+    await migPrisma.$executeRaw`DELETE FROM users WHERE id = ${users[0].id}`;
+    const remaining = await migPrisma.$queryRaw<Array<{ document: string }>>`
+      SELECT document FROM progress
+    `;
+    expect(remaining).toHaveLength(0);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('migration v2: skips books whose files are missing', async () => {
+    const missingPath = path.join(booksDir, 'gone.epub');
+
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, filename, path, title, size, mtime, added_at) VALUES ('some-id', 'gone.epub', ${missingPath}, 'Gone', 100, 0, 0)`;
+
+    // Should not throw; the book with the missing file keeps its old ID
+    await runMigrations(migPrisma, booksDir);
+
+    const rows = await migPrisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM books`;
+    expect(rows[0].id).toBe('some-id');
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('migration v5: adds chapter_names column with NULL default', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('chapter_names');
+  });
+
+  it('data migration: backfills page_count for books with zero page count', async () => {
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    // Full modern schema (matching 0_baseline) so applyPendingMigrations records
+    // it as applied and the data_v8_page_count migration can run.
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+        publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+        series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
+        subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
+        size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL DEFAULT 0, chapter_count INTEGER NOT NULL DEFAULT 0,
+        chapter_spine_map TEXT NOT NULL DEFAULT '[]', chapter_names TEXT,
+        page_count INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+
+    const id = 'backfill-test';
+    const epubPath = path.join(booksDir, `${id}.epub`);
+    fs.writeFileSync(epubPath, makeMinimalEpubWithContent('A'.repeat(2048)));
+
+    await migPrisma.$executeRaw`INSERT INTO books (id, title) VALUES (${id}, 'Test Book')`;
+
+    await runMigrations(migPrisma, booksDir);
+
+    const rows = await migPrisma.$queryRaw<
+      Array<{ page_count: number }>
+    >`SELECT page_count FROM books WHERE id = ${id}`;
+    expect(rows[0].page_count).toBe(2);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('data migration: skips missing EPUB files and leaves page_count at 0', async () => {
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+        publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+        series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
+        subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
+        size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL DEFAULT 0, chapter_count INTEGER NOT NULL DEFAULT 0,
+        chapter_spine_map TEXT NOT NULL DEFAULT '[]', chapter_names TEXT,
+        page_count INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, title) VALUES ('missing-id', 'Gone')`;
+
+    await expect(runMigrations(migPrisma, booksDir)).resolves.not.toThrow();
+
+    const rows = await migPrisma.$queryRaw<
+      Array<{ page_count: number }>
+    >`SELECT page_count FROM books WHERE id = 'missing-id'`;
+    expect(rows[0].page_count).toBe(0);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it('data migration: does not overwrite existing non-zero page_count', async () => {
+    const migDbPath = path.join(
+      os.tmpdir(),
+      `migtest-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
+    );
+    const migPrisma = createPrismaClient(`file:${migDbPath}`);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', file_as TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+        publisher TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+        series_index REAL NOT NULL DEFAULT 0, identifiers TEXT NOT NULL DEFAULT '[]',
+        subjects TEXT NOT NULL DEFAULT '[]', cover_data BLOB, cover_mime TEXT,
+        size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+        added_at INTEGER NOT NULL DEFAULT 0, chapter_count INTEGER NOT NULL DEFAULT 0,
+        chapter_spine_map TEXT NOT NULL DEFAULT '[]', chapter_names TEXT,
+        page_count INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    await migPrisma.$executeRawUnsafe(`
+      CREATE TABLE users (username TEXT NOT NULL PRIMARY KEY, key TEXT NOT NULL)
+    `);
+    await migPrisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+    await migPrisma.$executeRaw`INSERT INTO books (id, title, page_count) VALUES ('pinned-id', 'Test', 99)`;
+
+    await runMigrations(migPrisma, booksDir);
+
+    const rows = await migPrisma.$queryRaw<
+      Array<{ page_count: number }>
+    >`SELECT page_count FROM books WHERE id = 'pinned-id'`;
+    expect(rows[0].page_count).toBe(99);
+
+    await migPrisma.$disconnect();
+    try {
+      fs.unlinkSync(migDbPath);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 });

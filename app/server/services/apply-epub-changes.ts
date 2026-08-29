@@ -5,13 +5,19 @@ import * as path from 'path';
 import type { PrismaClient } from '@prisma/client';
 
 import { Book, Owner } from '../types';
-import { BookStore } from './book-store';
 import { assertValidEpub, toValidationReport } from './epub-validator';
 import { buildUpdatedEpub, EpubChanges } from './epub-writer';
 import { saveValidation } from './validation';
 
 export interface ApplyEpubChangesDeps {
-  bookStore: BookStore;
+  /**
+   * Bound to a concrete `(prisma, booksRoot, editionsRoot)` by each caller —
+   * see `regen-chapters.ts`, `update-metadata.ts`, `resolve-pending-fix.ts`,
+   * `replace.ts`, and `routes/ui.ts` for the closures. Replaced `bookStore:
+   * BookStore` when the class was deleted (Task 9b); this is the one method
+   * of it this module ever called.
+   */
+  reimportBook: (owner: Owner, id: string) => Promise<Book | null>;
   prisma: PrismaClient;
   validationThreshold: Parameters<typeof assertValidEpub>[1];
 }
@@ -55,7 +61,7 @@ export async function replaceEpubBytes(
   // (e.g. saveValidation) must NOT roll the file back.
   let updated: Book | null;
   try {
-    updated = await deps.bookStore.reimportBook(owner, book.id);
+    updated = await deps.reimportBook(owner, book.id);
   } catch (err) {
     fs.writeFileSync(book.path, originalBytes);
     throw err;

@@ -5,6 +5,18 @@ import { createHarness, type Harness } from '../../../test-util';
 import { rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
+// Call-through by default (see `book-lifecycle.test.ts`'s identical pattern)
+// so every test but the ones below that explicitly override it still
+// exercises the real `reimportBook`. Replaces the old
+// `vi.spyOn(harness.stores.book, 'reimportBook')`, whose target vanished
+// when `BookStore` was deleted (Task 9b) — production code now calls
+// `reimportBook` directly instead of through `context.stores.book`.
+vi.mock('../../../../services/book-lifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/book-lifecycle')>();
+  return { ...actual, reimportBook: vi.fn(actual.reimportBook) };
+});
+
+import { reimportBook } from '../../../../services/book-lifecycle';
 
 let harness: Harness;
 
@@ -67,7 +79,7 @@ describe('Mutation.bookRegenChapters', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Never Validated', {
       valid: null,
     });
-    const spy = vi.spyOn(harness.stores.book, 'reimportBook');
+    const spy = vi.mocked(reimportBook);
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -85,7 +97,7 @@ describe('Mutation.bookRegenChapters', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Failed Validation', {
       valid: false,
     });
-    const spy = vi.spyOn(harness.stores.book, 'reimportBook');
+    const spy = vi.mocked(reimportBook);
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -152,9 +164,7 @@ describe('Mutation.bookRegenChapters', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice Book A');
     await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Alice Book B');
 
-    vi.spyOn(harness.stores.book, 'reimportBook').mockRejectedValueOnce(
-      new BookHashCollisionError(OTHER_BOOK_ID)
-    );
+    vi.mocked(reimportBook).mockRejectedValueOnce(new BookHashCollisionError(OTHER_BOOK_ID));
 
     // Admin-driven, deliberately — same rationale as update-metadata.test.ts's
     // identical case: an admin viewer has no library of its own, so a
@@ -196,7 +206,7 @@ describe('Mutation.bookRegenChapters', () => {
 
   it('surfaces the untyped re-import failure and leaves the row unchanged when the store returns no book', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched On Failure');
-    vi.spyOn(harness.stores.book, 'reimportBook').mockResolvedValueOnce(null);
+    vi.mocked(reimportBook).mockResolvedValueOnce(null);
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

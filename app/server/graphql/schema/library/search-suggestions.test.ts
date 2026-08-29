@@ -3,6 +3,19 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
+// Call-through by default (see `book-lifecycle.test.ts`'s identical
+// pattern) so every test but the one below that overrides it still
+// exercises the real `getSearchSuggestions`. Replaces the old
+// `vi.spyOn(harness.stores.book, 'getSearchSuggestions')`, whose target
+// vanished when `BookStore` was deleted (Task 9b) — `Library.searchSuggestions`
+// (`library/model.ts`) now calls `getSearchSuggestions` directly instead of
+// through `context.stores.book`.
+vi.mock('../../../services/search-suggestions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../services/search-suggestions')>();
+  return { ...actual, getSearchSuggestions: vi.fn(actual.getSearchSuggestions) };
+});
+
+import { getSearchSuggestions } from '../../../services/search-suggestions';
 
 let harness: Harness;
 const BOOK_ID = '4'.repeat(32);
@@ -72,7 +85,7 @@ describe('Library.searchSuggestions', () => {
 });
 
 describe('Suggestion.book', () => {
-  // Traced against `BookStore.getSearchSuggestions` (`book-store.ts`): only a
+  // Traced against `getSearchSuggestions` (`services/search-suggestions.ts`): only a
   // `BOOK`-typed group's `value` is the book's own content-hash id — this is
   // the one suggestion type `Suggestion.book` can resolve.
   it('resolves a BOOK-typed suggestion to the underlying Book', async () => {
@@ -149,9 +162,11 @@ describe('Suggestion.book', () => {
   // `getSearchSuggestions`, after the store's own query has already run but
   // before `Suggestion.book`'s (separate, later) field resolver does.
   it('resolves book null when the row is deleted between the store query and the edge resolve', async () => {
-    const original = harness.stores.book.getSearchSuggestions.bind(harness.stores.book);
-    vi.spyOn(harness.stores.book, 'getSearchSuggestions').mockImplementation(async (...args) => {
-      const response = await original(...args);
+    const actual = await vi.importActual<typeof import('../../../services/search-suggestions')>(
+      '../../../services/search-suggestions'
+    );
+    vi.mocked(getSearchSuggestions).mockImplementationOnce(async (...args) => {
+      const response = await actual.getSearchSuggestions(...args);
       await harness.prisma.book.delete({
         where: { userId_id: { userId: harness.aliceOwner.userId, id: BOOK_ID } },
       });

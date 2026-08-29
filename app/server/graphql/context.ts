@@ -1,6 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
 
-import type { BookStore } from '../services/book-store';
 import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ScanJobStore } from '../services/scan-job-store';
@@ -39,7 +38,15 @@ export type Viewer = {
 };
 
 export type Stores = {
-  book: BookStore;
+  /**
+   * `BookStore` (the class) was deleted in Task 9b: every method it once
+   * carried has been repointed to call the extracted module functions
+   * directly (`services/book-lifecycle.ts`, `services/search-suggestions.ts`,
+   * etc.) at each production call site, so nothing reaches this field any
+   * more. It stays typed as an empty object — not removed — because dropping
+   * it from `Stores` entirely is Task 9c's job, not this one's.
+   */
+  book: Record<string, never>;
   scanJob: ScanJobStore;
   thumbnail: ThumbnailQueue;
   /**

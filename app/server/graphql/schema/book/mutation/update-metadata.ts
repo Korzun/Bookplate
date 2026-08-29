@@ -8,6 +8,7 @@ import {
 } from '../../../../services/apply-epub-changes';
 import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { reimportBook } from '../../../../services/book-lifecycle';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
 import { stagingIdentityOf } from '../../../../services/replace-staging';
@@ -282,7 +283,7 @@ const buildChanges = (
  * `applyEpubChanges`'s store path can throw exactly two of the seven known
  * store errors, traced from `services/apply-epub-changes.ts`: `assertValidEpub`
  * throws `EpubValidationError` when the rewritten EPUB fails validation, and
- * `BookStore.reimportBook` throws `BookHashCollisionError` when the edited
+ * `reimportBook` throws `BookHashCollisionError` when the edited
  * content's new fingerprint collides with another book already in the
  * library. (`replaceEpubBytes` also has one path that throws a plain `Error`
  * — "Re-import returned no book after replace" — deliberately NOT one of the
@@ -408,7 +409,8 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       }
 
       const deps: ApplyEpubChangesDeps = {
-        bookStore: context.stores.book,
+        reimportBook: (o, i) =>
+          reimportBook(context.prisma, context.config.booksDir, context.editionsRoot, o, i),
         prisma: context.prisma,
         validationThreshold: context.config.validationThreshold,
       };

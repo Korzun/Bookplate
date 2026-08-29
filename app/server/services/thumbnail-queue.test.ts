@@ -6,9 +6,9 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
 import { getThumbnail, saveThumbnail } from './book-assets';
-import { BookStore } from './book-store';
 import { ThumbnailQueue } from './thumbnail-queue';
 
 vi.mock('../logger');
@@ -46,7 +46,6 @@ const mockResize = vi.fn(async (_buf: Buffer, _width: number) => Buffer.from('re
 let prisma: PrismaClient;
 let booksRoot: string;
 let booksDir: string;
-let bookStore: BookStore;
 let dbPath: string;
 let editionsRoot: string;
 
@@ -63,7 +62,6 @@ beforeEach(async () => {
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
   editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-queue-editions-'));
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
   mockResize.mockClear();
 });
 
@@ -80,7 +78,7 @@ afterEach(async () => {
 
 describe('enqueue + drainForTest', () => {
   it('generates thumbnails for each configured width', async () => {
-    await bookStore.addBook(OWNER, 'bk1', stage('bk1'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk1', stage('bk1'), FAKE_META);
     const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
     queue.enqueue(OWNER.userId, 'bk1');
     await queue.drainForTest();
@@ -95,7 +93,7 @@ describe('enqueue + drainForTest', () => {
   });
 
   it('skips books with no cover', async () => {
-    await bookStore.addBook(OWNER, 'bk2', stage('bk2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk2', stage('bk2'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -109,7 +107,7 @@ describe('enqueue + drainForTest', () => {
 
   it('logs and continues when resize throws', async () => {
     mockResize.mockRejectedValueOnce(new Error('sharp failed'));
-    await bookStore.addBook(OWNER, 'bk3', stage('bk3'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk3', stage('bk3'), FAKE_META);
     const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
     queue.enqueue(OWNER.userId, 'bk3');
     await expect(queue.drainForTest()).resolves.not.toThrow();
@@ -122,8 +120,8 @@ describe('enqueue + drainForTest', () => {
 
 describe('reconcile', () => {
   it('queues missing (bookId, width) pairs', async () => {
-    await bookStore.addBook(OWNER, 'bk4', stage('bk4'), FAKE_META);
-    await bookStore.addBook(OWNER, 'bk5', stage('bk5'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk4', stage('bk4'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk5', stage('bk5'), FAKE_META);
     await saveThumbnail(prisma, OWNER.userId, 'bk4', 60, Buffer.from('x'), 'image/jpeg'); // already exists
 
     const queue = new ThumbnailQueue(prisma, [60, 170], mockResize);
@@ -139,8 +137,8 @@ describe('reconcile', () => {
   });
 
   it('returns the number of unique books with missing thumbnails', async () => {
-    await bookStore.addBook(OWNER, 'bk_rc1', stage('bk_rc1'), FAKE_META);
-    await bookStore.addBook(OWNER, 'bk_rc2', stage('bk_rc2'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk_rc1', stage('bk_rc1'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk_rc2', stage('bk_rc2'), FAKE_META);
     // bk_rc1 already has an 86px thumbnail
     await saveThumbnail(prisma, OWNER.userId, 'bk_rc1', 86, Buffer.from('x'), 'image/jpeg');
 
@@ -154,7 +152,7 @@ describe('reconcile', () => {
 
 describe('start (prune + reconcile)', () => {
   it('prunes widths not in config before reconciling', async () => {
-    await bookStore.addBook(OWNER, 'bk6', stage('bk6'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk6', stage('bk6'), FAKE_META);
     await saveThumbnail(prisma, OWNER.userId, 'bk6', 300, Buffer.from('old'), 'image/jpeg'); // obsolete width
 
     const queue = new ThumbnailQueue(prisma, [60], mockResize);
@@ -168,7 +166,7 @@ describe('start (prune + reconcile)', () => {
   });
 
   it('start() called twice does not spawn a second loop', async () => {
-    await bookStore.addBook(OWNER, 'bk7', stage('bk7'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'bk7', stage('bk7'), FAKE_META);
     const queue = new ThumbnailQueue(prisma, [60], mockResize);
     await queue.start();
     await queue.start(); // second call should return early (running flag already set)

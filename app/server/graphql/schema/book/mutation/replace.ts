@@ -9,6 +9,7 @@ import {
 } from '../../../../services/apply-epub-changes';
 import { getBookById, getSubjects } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { reimportBook } from '../../../../services/book-lifecycle';
 import { applyAutoAndAccepted } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import { repairPackageDocument } from '../../../../services/epub-writer';
@@ -226,7 +227,8 @@ builder.mutationField('bookReplace', (t) =>
       const repairedBytes = repairBestEffort(staged.path, staged.originalName);
 
       const deps: ApplyEpubChangesDeps = {
-        bookStore: context.stores.book,
+        reimportBook: (o, i) =>
+          reimportBook(context.prisma, context.config.booksDir, context.editionsRoot, o, i),
         prisma: context.prisma,
         validationThreshold: context.config.validationThreshold,
       };

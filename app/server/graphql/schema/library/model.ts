@@ -2,6 +2,7 @@ import { getAuthors, getSubjects } from '../../../services/book-catalog';
 import { resolveBookId } from '../../../services/book-lineage';
 import { listBooksPage } from '../../../services/library-page';
 import { getUserProgressPage } from '../../../services/progress';
+import { getSearchSuggestions } from '../../../services/search-suggestions';
 import { getSeriesNextIndex } from '../../../services/series-meta';
 import type { BookListFilters, Owner } from '../../../types';
 import {
@@ -336,7 +337,7 @@ builder.node(model, {
       // to `{ groups: [] }`). Duplicating that check here would risk drifting
       // from the store's own definition of "blank".
       resolve: async (owner, args, context) => {
-        const response = await context.stores.book.getSearchSuggestions(owner, {
+        const response = await getSearchSuggestions(context.prisma, owner, {
           q: args.query,
           filter: {
             author: args.filter?.author ?? undefined,

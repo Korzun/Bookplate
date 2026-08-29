@@ -2,6 +2,7 @@ import { encodeGlobalID } from '@pothos/plugin-relay';
 
 import { getCover } from '../../../../services/book-assets';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { getStagingDir } from '../../../../services/book-paths';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { saveValidation } from '../../../../services/validation';
 import { createHarness, type Harness } from '../../../test-util';
@@ -9,6 +10,15 @@ import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/m
 import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
+// Call-through by default — see `regen-chapters.test.ts`'s identical note on
+// why this replaces `vi.spyOn(harness.stores.book, 'reimportBook')`.
+vi.mock('../../../../services/book-lifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/book-lifecycle')>();
+  return { ...actual, reimportBook: vi.fn(actual.reimportBook) };
+});
+
+import { reimportBook } from '../../../../services/book-lifecycle';
+
 // assertValidEpub: pass by default, so the happy-path edits don't need real
 // epubcheck to run against the minimal fixture EPUB. Individual tests override
 // with `mockRejectedValueOnce` to exercise the EpubValidationError branch.
@@ -330,9 +340,7 @@ describe('Mutation.bookUpdateMetadata', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice Book A');
     await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Alice Book B');
 
-    vi.spyOn(harness.stores.book, 'reimportBook').mockRejectedValueOnce(
-      new BookHashCollisionError(OTHER_BOOK_ID)
-    );
+    vi.mocked(reimportBook).mockRejectedValueOnce(new BookHashCollisionError(OTHER_BOOK_ID));
 
     // Admin-driven, deliberately: this is the exact shape of bug task 1's
     // ledger warns about (`BookHashCollisionError`'s owner re-derived from the
@@ -514,7 +522,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched Title');
       let now = 0;
       const shortLivedStaging = createReplaceStaging({
-        stagingDir: harness.stores.book.getStagingDir(),
+        stagingDir: getStagingDir(harness.config.booksDir),
         ttlMs: 1000,
         now: () => now,
       });

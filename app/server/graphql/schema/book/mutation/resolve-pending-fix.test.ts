@@ -5,6 +5,15 @@ import { createHarness, type Harness } from '../../../test-util';
 import { EMPTY_COUNTS, rawBookId, seedEditableBook } from './test-helpers';
 
 vi.mock('../../../../logger');
+// Call-through by default — see `regen-chapters.test.ts`'s identical note on
+// why this replaces `vi.spyOn(harness.stores.book, 'reimportBook')`.
+vi.mock('../../../../services/book-lifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/book-lifecycle')>();
+  return { ...actual, reimportBook: vi.fn(actual.reimportBook) };
+});
+
+import { reimportBook } from '../../../../services/book-lifecycle';
+
 // assertValidEpub: pass by default — see update-metadata.test.ts's identical
 // mock and rationale. Individual tests override with `mockRejectedValueOnce`.
 vi.mock('../../../../services/epub-validator', async (importOriginal) => {
@@ -426,7 +435,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     it('is a no-op for an advisory-only proposal (`to: null`): no EPUB rewrite, book id unchanged, row untouched', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Advisory Only');
       await seedPendingFix(BOOK_ID, { proposals: [ADVISORY_PROPOSAL] });
-      const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const reimportSpy = vi.mocked(reimportBook);
       const before = await pendingFixRowFor(BOOK_ID);
 
       const result = await harness.execute(MUTATION, {
@@ -486,7 +495,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     it('is a no-op and leaves the row untouched when the pending fix has no proposals and no undo', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'No Proposals');
       await seedPendingFix(BOOK_ID, {});
-      const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const reimportSpy = vi.mocked(reimportBook);
       const before = await pendingFixRowFor(BOOK_ID);
 
       const result = await harness.execute(MUTATION, {
@@ -516,7 +525,7 @@ describe('Mutation.bookResolvePendingFix', () => {
         { proposals: [], undo: { kind: 'apply', proposals: [], appliedFixes: [] } },
         Date.now() - TTL_MS - 1
       );
-      const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const reimportSpy = vi.mocked(reimportBook);
       const before = await pendingFixRowFor(BOOK_ID);
 
       const result = await harness.execute(MUTATION, {
@@ -533,7 +542,7 @@ describe('Mutation.bookResolvePendingFix', () => {
 
     it('is a no-op when no pending fix row exists at all', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Nothing To Accept');
-      const reimportSpy = vi.spyOn(harness.stores.book, 'reimportBook');
+      const reimportSpy = vi.mocked(reimportBook);
 
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,
@@ -608,9 +617,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Book A');
       await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Book B');
       await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
-      vi.spyOn(harness.stores.book, 'reimportBook').mockRejectedValueOnce(
-        new BookHashCollisionError(OTHER_BOOK_ID)
-      );
+      vi.mocked(reimportBook).mockRejectedValueOnce(new BookHashCollisionError(OTHER_BOOK_ID));
 
       const result = await harness.execute(MUTATION, {
         viewer: harness.aliceViewer,

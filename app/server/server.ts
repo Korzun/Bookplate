@@ -9,7 +9,6 @@ import { requestTimeout } from './middleware/timeout';
 import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
 import { createUiRouter } from './routes/ui';
-import { BookStore } from './services/book-store';
 import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { AppConfig } from './types';
@@ -18,7 +17,6 @@ const log = logger('Server');
 
 export function createServer(
   config: AppConfig,
-  bookStore: BookStore,
   thumbnailQueue: ThumbnailQueue,
   jwtSecret: Buffer,
   editionsRoot: string,
@@ -69,7 +67,7 @@ export function createServer(
   server.use('/sync', createKosyncRouter(prisma));
   server.use(
     '/',
-    createUiRouter(bookStore, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
+    createUiRouter(editionsRoot, config, thumbnailQueue, jwtSecret, prisma, replaceStaging)
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {

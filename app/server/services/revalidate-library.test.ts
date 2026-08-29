@@ -20,8 +20,8 @@ vi.mock('./epub-validator', async (importOriginal) => ({
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
+import { seedBook as seedBookRow } from '../test-support/seed-book';
 import type { Owner } from '../types';
-import { BookStore } from './book-store';
 import { validateEpubReport } from './epub-validator';
 import { revalidateLibrary } from './revalidate-library';
 
@@ -47,14 +47,13 @@ describe('revalidateLibrary', () => {
   let tmpDir: string;
   let booksDir: string;
   let prisma: PrismaClient;
-  let bookStore: BookStore;
   let editionsRoot: string;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   async function seedBook(id: string): Promise<void> {
     const staged = path.join(booksDir, `staged-${id}.epub`);
     fs.writeFileSync(staged, 'x');
-    await bookStore.addBook(owner, id, staged, FAKE_META);
+    await seedBookRow(prisma, { booksRoot: booksDir }, owner, id, staged, FAKE_META);
   }
 
   beforeEach(async () => {
@@ -74,7 +73,6 @@ describe('revalidateLibrary', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'reval-editions-'));
-    bookStore = new BookStore(booksDir, prisma, editionsRoot);
   });
 
   const readValidation = (bookId: string) =>
