@@ -1,4 +1,4 @@
-import type { DeviceSlugConflictError as StoreError } from '../../../services/device';
+import type { DeviceSlugConflictError as DomainError } from '../../../services/device';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
@@ -19,7 +19,7 @@ export type DeviceSlugConflictErrorShape = {
 };
 
 export const deviceSlugConflictError = (
-  error: StoreError,
+  error: DomainError,
   slug: string
 ): DeviceSlugConflictErrorShape => ({
   __typename: 'DeviceSlugConflictError',

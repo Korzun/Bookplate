@@ -1,4 +1,4 @@
-import type { DocumentAlreadyLinkedError as StoreError } from '../../../services/book-errors';
+import type { DocumentAlreadyLinkedError as DomainError } from '../../../services/book-errors';
 import { resolveBookId } from '../../../services/book-lineage';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
@@ -31,7 +31,7 @@ export type DocumentAlreadyLinkedErrorShape = {
 };
 
 export const documentAlreadyLinkedError = (
-  error: StoreError,
+  error: DomainError,
   owner: Owner
 ): DocumentAlreadyLinkedErrorShape => ({
   __typename: 'DocumentAlreadyLinkedError',
