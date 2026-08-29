@@ -429,7 +429,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       bytes: Buffer,
       name = 'cover.png',
       mime = 'image/png'
-    ): string => harness.stores.replaceStaging.stage(bytes, owner.userId, name, 'cover', mime);
+    ): string => harness.replaceStaging.stage(bytes, owner.userId, name, 'cover', mime);
 
     it('applies the staged cover: the stored cover BYTES actually change, and metadata lands in the same call', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
@@ -464,7 +464,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(cover!.mime).toBe('image/png');
       // Consumed on success — no longer resolvable.
       expect(
-        harness.stores.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
+        harness.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
       ).toBeNull();
     });
 
@@ -526,7 +526,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         ttlMs: 1000,
         now: () => now,
       });
-      harness.stores.replaceStaging = shortLivedStaging;
+      harness.replaceStaging = shortLivedStaging;
       const stagedCoverId = shortLivedStaging.stage(
         Buffer.from('expired-cover'),
         harness.aliceOwner.userId,
@@ -577,14 +577,14 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
       // Bob's own stage was never even reached — untouched.
       expect(
-        harness.stores.replaceStaging.resolve(bobsStagedCoverId, harness.bobOwner.userId, 'cover')
+        harness.replaceStaging.resolve(bobsStagedCoverId, harness.bobOwner.userId, 'cover')
       ).not.toBeNull();
     });
 
     it('kind-mismatch: a stagedUploadId staged as an EPUB (bookReplace’s flow) is rejected as stagedCoverId, indistinguishably from unknown', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched Title');
       // Staged via the EPUB path (default kind), NOT the cover path.
-      const epubStagedId = harness.stores.replaceStaging.stage(
+      const epubStagedId = harness.replaceStaging.stage(
         Buffer.from('not-a-cover-its-an-epub'),
         harness.aliceOwner.userId,
         'candidate.epub'
@@ -609,7 +609,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       // The EPUB-kind entry itself is untouched — still resolvable under its
       // real kind, proving the denial was about kind, not that the id burned.
       expect(
-        harness.stores.replaceStaging.resolve(epubStagedId, harness.aliceOwner.userId, 'epub')
+        harness.replaceStaging.resolve(epubStagedId, harness.aliceOwner.userId, 'epub')
       ).not.toBeNull();
     });
 
@@ -643,7 +643,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
       // NOT consumed — retryable without re-uploading the image.
       expect(
-        harness.stores.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
+        harness.replaceStaging.resolve(stagedCoverId, harness.aliceOwner.userId, 'cover')
       ).not.toBeNull();
     });
 
@@ -676,14 +676,14 @@ describe('Mutation.bookUpdateMetadata', () => {
     // "does not enqueue thumbnails when no cover is uploaded", `:2868`
     // "enqueues thumbnails when a new cover is uploaded") — this mutation's
     // own thumbnail-enqueue call (`update-metadata.ts`, cover-success branch)
-    // had zero coverage before this fix. `harness.stores.thumbnail` is a
+    // had zero coverage before this fix. `harness.thumbnails` is a
     // real, never-started `ThumbnailQueue` (`test-util.ts`'s doc comment),
     // so `enqueue` is inert and safe to spy on directly.
     describe('thumbnail enqueue on cover success (review I-1)', () => {
       it('enqueues thumbnail regeneration with (owner.userId, the NEW post-edit book id) — REST parity for ui.test.ts:2868', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
         const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
-        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+        const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
 
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
@@ -700,7 +700,7 @@ describe('Mutation.bookUpdateMetadata', () => {
 
       it('does NOT enqueue on a metadata-only edit (no stagedCoverId) — REST parity for ui.test.ts:2858', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
-        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+        const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
 
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
@@ -719,7 +719,7 @@ describe('Mutation.bookUpdateMetadata', () => {
       it('does NOT enqueue when the staged-cover write fails post-edit validation (nothing was actually applied)', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
         const stagedCoverId = stageCover(harness.aliceOwner, Buffer.from('cover-bytes'));
-        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+        const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
         (assertValidEpub as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
           new EpubValidationError(
             [{ id: 'RSC-005', severity: 'FATAL', message: 'unparseable' }],
@@ -743,7 +743,7 @@ describe('Mutation.bookUpdateMetadata', () => {
 
       it('does NOT enqueue when stagedCoverId is unknown (rejected before any write)', async () => {
         await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
-        const enqueueSpy = vi.spyOn(harness.stores.thumbnail, 'enqueue');
+        const enqueueSpy = vi.spyOn(harness.thumbnails, 'enqueue');
 
         const result = await harness.execute(MUTATION, {
           viewer: harness.aliceViewer,
@@ -764,7 +764,7 @@ describe('Mutation.bookUpdateMetadata', () => {
 
     describe('admin staging identity (Task 4)', () => {
       const stageCoverAs = (identity: string, bytes: Buffer, mime = 'image/png'): string =>
-        harness.stores.replaceStaging.stage(bytes, identity, 'cover.png', 'cover', mime);
+        harness.replaceStaging.stage(bytes, identity, 'cover.png', 'cover', mime);
 
       // The end-to-end that was impossible before Task 4: a config admin
       // (no library/userId of its own) stages a cover, then applies it to a
@@ -801,9 +801,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         expect(cover).not.toBeNull();
         expect(Buffer.from(cover!.data)).toEqual(coverBytes);
         // Consumed on success, same as any other caller's staged cover.
-        expect(
-          harness.stores.replaceStaging.resolve(stagedCoverId, ADMIN_STAGING_ID, 'cover')
-        ).toBeNull();
+        expect(harness.replaceStaging.resolve(stagedCoverId, ADMIN_STAGING_ID, 'cover')).toBeNull();
       });
 
       it('alice cannot consume an admin-staged cover, even against her own book', async () => {
@@ -827,7 +825,7 @@ describe('Mutation.bookUpdateMetadata', () => {
         expect(await getCover(harness.prisma, harness.aliceOwner.userId, BOOK_ID)).toBeNull();
         // The admin's own stage was never even reached — untouched.
         expect(
-          harness.stores.replaceStaging.resolve(adminStagedCoverId, ADMIN_STAGING_ID, 'cover')
+          harness.replaceStaging.resolve(adminStagedCoverId, ADMIN_STAGING_ID, 'cover')
         ).not.toBeNull();
       });
     });

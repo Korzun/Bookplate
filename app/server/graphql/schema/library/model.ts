@@ -570,7 +570,7 @@ builder.node(model, {
       type: scanStatus,
       nullable: true,
       resolve: (owner, _args, context): ScanStatusShape | null => {
-        const job = context.stores.scanJob.get(owner.userId);
+        const job = context.scanJobs.get(owner.userId);
         return job === undefined ? null : { owner, job };
       },
     }),

@@ -216,7 +216,9 @@ describe('root type authorization', () => {
     const context: Context = {
       viewer: null,
       prisma: harness.prisma,
-      stores: harness.stores,
+      scanJobs: harness.scanJobs,
+      thumbnails: harness.thumbnails,
+      replaceStaging: harness.replaceStaging,
       config: harness.config,
       loadOwner: createOwnerLoader(harness.prisma),
       loadProgress: createProgressLoader(harness.prisma),

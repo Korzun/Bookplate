@@ -21,7 +21,8 @@ vi.mock('../../../logger');
  * broken-URL bug this task fixes: REST's `resolveOwner`, `routes/ui.ts:150-
  * 171`, 400s an admin session with no `?user=`) would sail through every
  * other test in this file's siblings. This file is the one place both
- * transports run in the same process against the same `Stores`/`prisma`, so
+ * transports run in the same process against the same in-memory
+ * registries/`prisma`, so
  * a URL minted by GraphQL can be handed straight to `supertest` against the
  * REST router that actually serves it.
  */
@@ -42,7 +43,9 @@ beforeEach(async () => {
     '/graphql',
     createGraphqlHandler({
       prisma: harness.prisma,
-      stores: harness.stores,
+      scanJobs: harness.scanJobs,
+      thumbnails: harness.thumbnails,
+      replaceStaging: harness.replaceStaging,
       config: harness.config,
       jwtSecret,
       isProduction: false,
@@ -53,10 +56,10 @@ beforeEach(async () => {
     createUiRouter(
       harness.editionsRoot,
       harness.config,
-      harness.stores.thumbnail,
+      harness.thumbnails,
       jwtSecret,
       harness.prisma,
-      harness.stores.replaceStaging
+      harness.replaceStaging
     )
   );
 });

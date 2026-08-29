@@ -217,7 +217,7 @@ builder.mutationField('bookReplace', (t) =>
       const staged =
         stagingIdentity === null
           ? null
-          : context.stores.replaceStaging.resolve(
+          : context.replaceStaging.resolve(
               parsedInput.data.stagedUploadId,
               stagingIdentity,
               'epub'
@@ -251,11 +251,7 @@ builder.mutationField('bookReplace', (t) =>
         acceptedKeys: [...args.input.acceptedFixKeys],
       });
 
-      context.stores.replaceStaging.consume(
-        parsedInput.data.stagedUploadId,
-        stagingIdentity!,
-        'epub'
-      );
+      context.replaceStaging.consume(parsedInput.data.stagedUploadId, stagingIdentity!, 'epub');
 
       return {
         __typename: 'BookReplacePayload' as const,

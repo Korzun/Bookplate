@@ -158,7 +158,7 @@ builder.mutationField('libraryScan', (t) =>
       const owner = await context.loadOwner(args.input.userId.id);
       if (owner === null) return null;
 
-      const { scanJob, thumbnail } = context.stores;
+      const { scanJobs: scanJob, thumbnails: thumbnail } = context;
 
       // Read before start(), not via `isRunning` + a second `get()` cast: a
       // single read either has a running job (409) or doesn't (proceed to

@@ -37,25 +37,21 @@ export type Viewer = {
   mustChangePassword: boolean;
 };
 
-export type Stores = {
-  scanJob: ScanJobStore;
-  thumbnail: ThumbnailQueue;
+export type Context = {
+  viewer: Viewer | null;
+  prisma: PrismaClient;
+  scanJobs: ScanJobStore;
+  thumbnails: ThumbnailQueue;
   /**
    * The same instance `routes/ui.ts`'s `POST /api/books/replace-staging`
    * writes into — constructed once in `index.ts` and passed to both
-   * `createUiRouter` and `createGraphqlHandler`'s `stores`, never one
+   * `createUiRouter` and `createGraphqlHandler`'s context deps, never one
    * instance per transport. Two separate instances would each hold their own
    * empty in-memory registry, so a `stagedUploadId` minted by the REST route
    * would never resolve here — see `replace-staging.ts`'s doc comment for why
    * the registry is in-memory and per-process to begin with.
    */
   replaceStaging: ReplaceStaging;
-};
-
-export type Context = {
-  viewer: Viewer | null;
-  prisma: PrismaClient;
-  stores: Stores;
   /** `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical wiring. */
   editionsRoot: string;
   config: AppConfig;
@@ -70,7 +66,9 @@ export type Context = {
 
 export type ContextDeps = {
   prisma: PrismaClient;
-  stores: Stores;
+  scanJobs: ScanJobStore;
+  thumbnails: ThumbnailQueue;
+  replaceStaging: ReplaceStaging;
   editionsRoot: string;
   config: AppConfig;
   jwtSecret: Buffer;
@@ -106,7 +104,9 @@ export const createContext =
   ({ request }: { request: FetchRequest }): Context => ({
     viewer: viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined),
     prisma: deps.prisma,
-    stores: deps.stores,
+    scanJobs: deps.scanJobs,
+    thumbnails: deps.thumbnails,
+    replaceStaging: deps.replaceStaging,
     editionsRoot: deps.editionsRoot,
     config: deps.config,
     loadOwner: createOwnerLoader(deps.prisma),

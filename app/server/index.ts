@@ -51,17 +51,15 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const scanPubSub = createScanPubSub();
   const scanJobStore = new ScanJobStore(scanPubSub);
   // One instance shared by the REST staging route and the two GraphQL
-  // mutations that consume it — see `graphql/context.ts`'s `Stores.
+  // mutations that consume it — see `graphql/context.ts`'s `Context.
   // replaceStaging` doc comment for why a second instance would never see
   // the first one's staged files.
   const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
   const graphqlHandler = createGraphqlHandler({
     prisma,
-    stores: {
-      scanJob: scanJobStore,
-      thumbnail: thumbnailQueue,
-      replaceStaging,
-    },
+    scanJobs: scanJobStore,
+    thumbnails: thumbnailQueue,
+    replaceStaging,
     editionsRoot,
     config,
     jwtSecret,

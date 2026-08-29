@@ -39,7 +39,9 @@ const DOCUMENT = parse(`
 const contextFor = (viewer: Viewer | null): Context => ({
   viewer,
   prisma: harness.prisma,
-  stores: harness.stores,
+  scanJobs: harness.scanJobs,
+  thumbnails: harness.thumbnails,
+  replaceStaging: harness.replaceStaging,
   config: harness.config,
   loadOwner: createOwnerLoader(harness.prisma),
   loadProgress: createProgressLoader(harness.prisma),
@@ -86,7 +88,7 @@ describe('Subscription.scanProgress', () => {
 
     const startEvent = result.next();
     await settle(50);
-    const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
@@ -95,7 +97,7 @@ describe('Subscription.scanProgress', () => {
 
     const progressEvent = result.next();
     await settle(300);
-    harness.stores.scanJob.progress(harness.aliceOwner.userId, {
+    harness.scanJobs.progress(harness.aliceOwner.userId, {
       phase: 'importing',
       total: 2,
       processed: 1,
@@ -109,7 +111,7 @@ describe('Subscription.scanProgress', () => {
     expect(second.scanProgress.currentFile).toBe('a.epub');
 
     const terminalEvent = result.next();
-    harness.stores.scanJob.complete(harness.aliceOwner.userId, {
+    harness.scanJobs.complete(harness.aliceOwner.userId, {
       imported: ['a.epub'],
       removed: [],
     });
@@ -167,7 +169,7 @@ describe('Subscription.scanProgress', () => {
 
     const startEvent = result.next();
     await settle(50);
-    const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
@@ -202,13 +204,13 @@ describe('Subscription.scanProgress', () => {
     // Mirrors the old REST route's call shape exactly: `bookStore.scan(owner)`
     // with no `onProgress` third argument, so the only store calls a REST scan
     // ever made were `start` and (via the detached pipeline) `complete`/`fail`.
-    const started = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
     const terminalEvent = result.next();
-    harness.stores.scanJob.complete(harness.aliceOwner.userId, {
+    harness.scanJobs.complete(harness.aliceOwner.userId, {
       imported: ['found.epub'],
       removed: [],
     });

@@ -168,7 +168,7 @@ builder.mutationField('bookAnalyzeReplace', (t) =>
       const staged =
         stagingIdentity === null
           ? null
-          : context.stores.replaceStaging.resolve(
+          : context.replaceStaging.resolve(
               parsedInput.data.stagedUploadId,
               stagingIdentity,
               'epub'

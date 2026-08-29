@@ -71,7 +71,7 @@ const MUTATION = `
 // the store the same way REST's own client (and REST's own test suite) does.
 async function waitForScanSettled(h: Harness, userId: string): Promise<void> {
   for (let i = 0; i < 200; i++) {
-    const job = h.stores.scanJob.get(userId);
+    const job = h.scanJobs.get(userId);
     if (job && job.status !== 'running') return;
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -127,7 +127,7 @@ describe('Mutation.libraryScan', () => {
     // Victim-state assertion first (no job started for alice), same ordering
     // rationale `bookDelete.test.ts` documents: a probe that merely weakens
     // the auth guard must not slip past this expectation.
-    expect(harness.stores.scanJob.get(harness.aliceOwner.userId)).toBeUndefined();
+    expect(harness.scanJobs.get(harness.aliceOwner.userId)).toBeUndefined();
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     expect(result.data?.libraryScan ?? null).toBeNull();
   });
@@ -145,7 +145,7 @@ describe('Mutation.libraryScan', () => {
     };
     expect(data.__typename).toBe('LibraryScanPayload');
     expect(data.library.user.username).toBe('alice');
-    expect(harness.stores.scanJob.get(harness.aliceOwner.userId)).toBeDefined();
+    expect(harness.scanJobs.get(harness.aliceOwner.userId)).toBeDefined();
 
     await waitForScanSettled(harness, harness.aliceOwner.userId);
   });
@@ -162,7 +162,7 @@ describe('Mutation.libraryScan', () => {
   });
 
   it('returns ScanAlreadyRunningError with the in-flight job when a scan is already running', async () => {
-    const running = harness.stores.scanJob.start(harness.aliceOwner.userId);
+    const running = harness.scanJobs.start(harness.aliceOwner.userId);
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -176,11 +176,11 @@ describe('Mutation.libraryScan', () => {
       scanStatus: { id: running.jobId, state: 'RUNNING' },
     });
     // No second job was started — the tracked job is still the original one.
-    expect(harness.stores.scanJob.get(harness.aliceOwner.userId)?.jobId).toBe(running.jobId);
+    expect(harness.scanJobs.get(harness.aliceOwner.userId)?.jobId).toBe(running.jobId);
   });
 
   it('runs the scan to completion in the background: imports a book, validates it, and reconciles thumbnails', async () => {
-    const reconcileSpy = vi.spyOn(harness.stores.thumbnail, 'reconcile');
+    const reconcileSpy = vi.spyOn(harness.thumbnails, 'reconcile');
     const booksDir = path.join(harness.config.booksDir, 'alice');
     fs.mkdirSync(booksDir, { recursive: true });
     fs.writeFileSync(path.join(booksDir, 'found.epub'), makeMinimalEpub('Found By Scan'));
@@ -192,7 +192,7 @@ describe('Mutation.libraryScan', () => {
     expect(result.errors).toBeUndefined();
 
     await waitForScanSettled(harness, harness.aliceOwner.userId);
-    const job = harness.stores.scanJob.get(harness.aliceOwner.userId);
+    const job = harness.scanJobs.get(harness.aliceOwner.userId);
     expect(job?.status).toBe('completed');
     expect(job?.result?.imported).toEqual(['found.epub']);
     expect(job?.importedBookIds).toHaveLength(1);
