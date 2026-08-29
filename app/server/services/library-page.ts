@@ -112,10 +112,14 @@ export type LibraryPage = {
  * `library-page.test.ts`'s "fetches every book exactly once" test, which
  * pins this at exactly 1 regardless of how many series share the page.
  *
- * This function now does the one read the page actually needs — full,
- * unselected `book`/`series` rows, fetched only to determine the interleaved
- * order and the page boundary — and returns those same rows directly as each
- * item's `row`. There is no separate "ids now, hydrate later" step: the ids
+ * This function now does the one read the page actually needs — `book`/`series`
+ * rows fetched only to determine the interleaved order and the page boundary —
+ * and returns those same rows directly as each item's `row`. The two halves are
+ * not read the same way: the `Series` read carries no `select` (full, unselected
+ * rows), while the `Book` read carries `BOOK_SELECT` above, which drops
+ * `coverData`. See the comment at the `Promise.all` below for why the asymmetry
+ * is safe, and `library-entry/model.ts`'s `LibraryEntryRow` for what it means
+ * for the row types. There is no separate "ids now, hydrate later" step: the ids
  * (`bookId`/`seriesName`) are carried alongside `row` because the resolver
  * needs them for `t: 'b' | 's'` bookkeeping and cursor construction, not
  * because the rows themselves were dropped.
@@ -249,13 +253,12 @@ export async function listBooksPage(
   //
   // The `Series` read carries no `select`: the rows fetched here ARE the
   // rows `Library.entries` hands back as `Book`/`Series` GraphQL nodes (see
-  // this function's own doc comment) — the same "always fetch full,
-  // unselected rows" invariant `library-entry/model.ts`'s `LibraryEntryRow`
-  // doc comment documents for this connection, just performed here instead
-  // of a second time in the resolver. `sortKey` — the union `resolveType`'s
-  // discriminator (`library/model.ts`) — must never be pruned off this read,
-  // which is why it stays fully unselected rather than gaining a `select` of
-  // its own.
+  // this function's own doc comment) — read once here instead of a second
+  // time in the resolver. `sortKey` — the union `resolveType`'s discriminator
+  // (`library/model.ts`) — must never be pruned off this read, which is why
+  // it stays fully unselected rather than gaining a `select` of its own.
+  // `library-entry/model.ts`'s `LibraryEntryRow` doc comment records the
+  // resulting split: `Series` genuinely is a full row, `Book` no longer is.
   //
   // The `Book` read DOES carry a `select` (`BOOK_SELECT` above): that column
   // set cannot affect `resolveType` (`sortKey` only ever comes from the
