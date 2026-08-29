@@ -1,3 +1,5 @@
+import type { PrismaClient } from '@prisma/client';
+
 import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
@@ -195,6 +197,43 @@ const selectProposals = (
   const wanted = new Set(fixes.map(keyOf));
   return proposals.filter((p) => wanted.has(keyOf(p)));
 };
+
+/**
+ * Best-effort edit-lineage cleanup for the UNDO branch's `apply` case: the
+ * revert stands even if this throws, because the metadata is already back in
+ * the row and on disk by the time it runs — the same fire-and-forget
+ * tolerance REST's client had for its own `DELETE` (see the mutation's doc
+ * comment, UNDO's `apply` paragraph).
+ *
+ * The try/catch lives HERE, not in `resolve`'s own body — the same lift
+ * `device/mutation/purge-quietly.ts` and `book/mutation/replace.ts`'s
+ * `repairBestEffort` perform, and for the same reason: "resolver bodies: zero
+ * try/catch/throw" (`to-result.ts`) then holds literally, not just in spirit.
+ * Direct arguments rather than `purgeEditionsQuietly`'s `run` thunk because
+ * there is exactly one call site, which is also why `repairBestEffort` takes
+ * direct arguments; the thunk in `purge-quietly.ts` earns its indirection by
+ * serving three.
+ *
+ * Deliberately NOT a `toResult` site: `clearEditLineage` is a single raw
+ * `$executeRaw` DELETE that raises none of the seven known domain errors
+ * (`book/mutation/clear-edit-lineage.ts` traces the identical call), so an
+ * `err` branch would have nothing to discharge it — exactly the case
+ * `to-result.ts`'s doc comment says not to wrap.
+ *
+ * The swallow is silent, as it was when the UNDO action landed (`0d07d3ac`):
+ * this lift is a placement fix, not a re-litigation of what the catch does.
+ */
+async function clearEditLineageQuietly(
+  prisma: PrismaClient,
+  owner: Owner,
+  bookId: string
+): Promise<void> {
+  try {
+    await clearEditLineage(prisma, owner, bookId);
+  } catch {
+    // intentionally swallowed — see this function's doc comment
+  }
+}
 
 /**
  * Covers the client's upload-queue operations as ONE mutation with an
@@ -527,13 +566,9 @@ builder.mutationField('bookResolvePendingFix', (t) =>
           }
           revertedId = outcome.ok.id;
 
-          // Best-effort, exactly like REST's client: the revert stands even if
-          // lineage cleanup fails, because the metadata is already back.
-          try {
-            await clearEditLineage(context.prisma, owner, revertedId);
-          } catch {
-            // intentionally swallowed — see above
-          }
+          // Best-effort, exactly like REST's client: the revert stands even
+          // if lineage cleanup fails, because the metadata is already back.
+          await clearEditLineageQuietly(context.prisma, owner, revertedId);
         }
 
         await upsertPendingFix(context.prisma, owner, revertedId, row.fileName, row.fileSize, {
