@@ -324,4 +324,65 @@ describe('Library.entries', () => {
     const seriesEdge = edges.find((e) => e.node.__typename === 'Series');
     expect(seriesEdge?.node.books?.edges.map((e) => e.node)).toEqual([{ title: 'In Series' }]);
   });
+
+  // Resolver-level regression guard for the double read task 8 fixed
+  // (`services/library-page.ts`'s `listBooksPage`). The historical bug lived
+  // HERE, in this resolver — `services/library-page.test.ts`'s own
+  // "fetches every book exactly once" test only proves `listBooksPage` in
+  // isolation issues one read; it says nothing about whether this resolver
+  // adds a second one on top, which is exactly the shape the original bug
+  // took (the store read once, the resolver re-fetched by id/name anyway).
+  // A page mixing several series with standalones makes an N+1 unmistakable:
+  // if this resolver ever re-fetches book/series rows itself again, the
+  // series count multiplies the extra `book.findMany` calls rather than
+  // adding a flat one.
+  it('issues exactly one prisma.book.findMany and one prisma.series.findMany call per page', async () => {
+    for (const s of ['Dune', 'Foundation', 'Wheel of Time']) {
+      const seriesId = `s-${s.replace(/\s/g, '')}`;
+      await harness.prisma.series.create({
+        data: {
+          id: seriesId,
+          userId: harness.aliceOwner.userId,
+          name: s,
+          sortKey: s.toLowerCase(),
+          bookCount: 2,
+        },
+      });
+      for (let i = 1; i <= 2; i++) {
+        await harness.prisma.book.create({
+          data: {
+            userId: harness.aliceOwner.userId,
+            id: `${seriesId}-${i}`.padEnd(32, '0'),
+            title: `${s} ${i}`,
+            seriesId,
+            seriesIndex: i,
+            size: 1,
+            mtime: 1,
+            addedAt: 1,
+          },
+        });
+      }
+    }
+    for (const title of ['Alone A', 'Alone B']) {
+      await harness.prisma.book.create({
+        data: {
+          userId: harness.aliceOwner.userId,
+          id: title.replace(/\s/g, '').padEnd(32, '0'),
+          title,
+          size: 1,
+          mtime: 1,
+          addedAt: 1,
+        },
+      });
+    }
+
+    const bookSpy = vi.spyOn(harness.prisma.book, 'findMany');
+    const seriesSpy = vi.spyOn(harness.prisma.series, 'findMany');
+
+    const result = await harness.execute(ENTRIES, { viewer: harness.aliceViewer });
+
+    expect(result.errors).toBeUndefined();
+    expect(bookSpy).toHaveBeenCalledTimes(1);
+    expect(seriesSpy).toHaveBeenCalledTimes(1);
+  });
 });
