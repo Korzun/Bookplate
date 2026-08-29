@@ -1,11 +1,6 @@
-import { parse, subscribe } from 'graphql';
+import { parse, subscribe, type ExecutionResult } from 'graphql';
 
-import { createChapterSpineMapLoader } from '../../../chapter-spine-map-loader';
 import type { Context, Viewer } from '../../../context';
-import { createOwnerLoader } from '../../../owner';
-import { createPendingFixLoader } from '../../../pending-fix-loader';
-import { createProgressLoader } from '../../../progress-loader';
-import { createSeriesProgressLoader } from '../../../series-progress-loader';
 import { createHarness, type Harness } from '../../../test-util';
 import { schema } from '../../index';
 
@@ -36,19 +31,27 @@ const DOCUMENT = parse(`
   }
 `);
 
-const contextFor = (viewer: Viewer | null): Context => ({
-  viewer,
-  prisma: harness.prisma,
-  scanJobs: harness.scanJobs,
-  thumbnails: harness.thumbnails,
-  replaceStaging: harness.replaceStaging,
-  config: harness.config,
-  loadOwner: createOwnerLoader(harness.prisma),
-  loadProgress: createProgressLoader(harness.prisma),
-  loadPendingFix: createPendingFixLoader(harness.prisma),
-  loadChapterSpineMap: createChapterSpineMapLoader(harness.prisma),
-  loadSeriesProgress: createSeriesProgressLoader(harness.prisma),
-});
+// The harness's own builder — see `Harness.contextFor`. This used to be a
+// hand-rolled near-copy that had fallen three fields behind the real `Context`.
+const contextFor = (viewer: Viewer | null): Context => harness.contextFor(viewer);
+
+/**
+ * Narrows `subscribe()`'s `AsyncGenerator | ExecutionResult` return to the
+ * iterator. The obvious `if ('errors' in result) throw` guard does NOT narrow
+ * the negative branch: `ExecutionResult.errors` is OPTIONAL, so TypeScript
+ * must keep that member in the union even after the check, and every
+ * `.next()`/`.return()` below was an error once test files started being
+ * type-checked. Testing for the async-iterator symbol discriminates properly,
+ * and still throws the same diagnostic the old guard did.
+ */
+const asIterator = (
+  result: AsyncGenerator<ExecutionResult, void, void> | ExecutionResult
+): AsyncGenerator<ExecutionResult, void, void> => {
+  if (!(Symbol.asyncIterator in result)) {
+    throw new Error(`expected an async iterator, got errors: ${JSON.stringify(result.errors)}`);
+  }
+  return result;
+};
 
 type ScanProgressData = {
   scanProgress: {
@@ -61,8 +64,11 @@ type ScanProgressData = {
   };
 };
 
-const dataOf = (result: { value?: { data?: unknown } }): ScanProgressData =>
-  result.value?.data as ScanProgressData;
+// Takes the iterator result directly: `IteratorResult`'s return-case `value`
+// is `void`, so the looser `{ value?: { data?: unknown } }` this used to
+// declare does not accept what `stream.next()` actually hands back.
+const dataOf = (result: IteratorResult<ExecutionResult, void>): ScanProgressData =>
+  (result.value as ExecutionResult | undefined)?.data as ScanProgressData;
 
 // Real, not fake, timers throughout this file — `ScanJobRegistry.apply` reads
 // `Date.now()` directly (`services/scan-job-registry.ts`), and every wait here
@@ -82,11 +88,9 @@ describe('Subscription.scanProgress', () => {
       variableValues: { libraryId: aliceLibraryGlobalId },
       contextValue: contextFor(harness.aliceViewer),
     });
-    if ('errors' in result) {
-      throw new Error(`expected an async iterator, got errors: ${JSON.stringify(result.errors)}`);
-    }
+    const stream = asIterator(result);
 
-    const startEvent = result.next();
+    const startEvent = stream.next();
     await settle(50);
     const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
@@ -95,7 +99,7 @@ describe('Subscription.scanProgress', () => {
     expect(first.scanProgress.phase).toBe('IMPORTING');
     expect(first.scanProgress.total).toBe(0);
 
-    const progressEvent = result.next();
+    const progressEvent = stream.next();
     await settle(300);
     harness.scanJobs.progress(harness.aliceOwner.userId, {
       phase: 'importing',
@@ -110,7 +114,7 @@ describe('Subscription.scanProgress', () => {
     expect(second.scanProgress.processed).toBe(1);
     expect(second.scanProgress.currentFile).toBe('a.epub');
 
-    const terminalEvent = result.next();
+    const terminalEvent = stream.next();
     harness.scanJobs.complete(harness.aliceOwner.userId, {
       imported: ['a.epub'],
       removed: [],
@@ -119,7 +123,7 @@ describe('Subscription.scanProgress', () => {
     expect(third.scanProgress.state).toBe('COMPLETED');
     expect(third.scanProgress.id).toBe(started.jobId);
 
-    await result.return?.();
+    await stream.return();
   });
 
   /**
@@ -163,18 +167,16 @@ describe('Subscription.scanProgress', () => {
       variableValues: { libraryId: aliceLibraryGlobalId },
       contextValue: contextFor(harness.adminViewer),
     });
-    if ('errors' in result) {
-      throw new Error(`expected an async iterator, got errors: ${JSON.stringify(result.errors)}`);
-    }
+    const stream = asIterator(result);
 
-    const startEvent = result.next();
+    const startEvent = stream.next();
     await settle(50);
     const started = harness.scanJobs.start(harness.aliceOwner.userId);
     const first = dataOf(await startEvent);
     expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
-    await result.return?.();
+    await stream.return();
   });
 
   /**
@@ -195,11 +197,9 @@ describe('Subscription.scanProgress', () => {
       variableValues: { libraryId: aliceLibraryGlobalId },
       contextValue: contextFor(harness.aliceViewer),
     });
-    if ('errors' in result) {
-      throw new Error(`expected an async iterator, got errors: ${JSON.stringify(result.errors)}`);
-    }
+    const stream = asIterator(result);
 
-    const startEvent = result.next();
+    const startEvent = stream.next();
     await settle(50);
     // Mirrors the old REST route's call shape exactly: `bookStore.scan(owner)`
     // with no `onProgress` third argument, so the only registry calls a REST
@@ -209,7 +209,7 @@ describe('Subscription.scanProgress', () => {
     expect(first.scanProgress.id).toBe(started.jobId);
     expect(first.scanProgress.state).toBe('RUNNING');
 
-    const terminalEvent = result.next();
+    const terminalEvent = stream.next();
     harness.scanJobs.complete(harness.aliceOwner.userId, {
       imported: ['found.epub'],
       removed: [],
@@ -218,6 +218,6 @@ describe('Subscription.scanProgress', () => {
     expect(second.scanProgress.state).toBe('COMPLETED');
     expect(second.scanProgress.id).toBe(started.jobId);
 
-    await result.return?.();
+    await stream.return();
   });
 });

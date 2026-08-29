@@ -17,8 +17,16 @@ let server: http.Server;
 let baseUrl: string;
 let aliceLibraryGlobalId: string;
 
+// `AuthUser.userId` is optional (`string | undefined`) — absent for the
+// config admin, who has no DB row — not nullable, so a `null` caller has to
+// omit the key rather than pass it through.
 const tokenFor = (userId: string | null, username: string, isAdmin: boolean): string =>
-  signAccessToken(jwtSecret, { userId, username, isAdmin, mustChangePassword: false });
+  signAccessToken(jwtSecret, {
+    ...(userId === null ? {} : { userId }),
+    username,
+    isAdmin,
+    mustChangePassword: false,
+  });
 
 const SUBSCRIPTION = `
   subscription ($libraryId: ID!) {
@@ -35,6 +43,7 @@ beforeEach(async () => {
     '/graphql',
     createGraphqlHandler({
       prisma: harness.prisma,
+      editionsRoot: harness.editionsRoot,
       scanJobs: harness.scanJobs,
       thumbnails: harness.thumbnails,
       replaceStaging: harness.replaceStaging,
@@ -183,6 +192,7 @@ describe('scanProgress over SSE', () => {
       graphqlBodyLimit(100 * 1024),
       createGraphqlHandler({
         prisma: harness.prisma,
+        editionsRoot: harness.editionsRoot,
         scanJobs: harness.scanJobs,
         thumbnails: harness.thumbnails,
         replaceStaging: harness.replaceStaging,
