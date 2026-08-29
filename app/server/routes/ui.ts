@@ -11,6 +11,7 @@ import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
+import { getBookById, getSubjects } from '../services/book-catalog';
 import { BookAlreadyExistsError } from '../services/book-errors';
 import { BookStore } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
@@ -759,8 +760,8 @@ export function createUiRouter(
         const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
         const proposals: MetadataFix[] = [];
         try {
-          const librarySubjects = await bookStore.getSubjects(owner);
-          const created = await bookStore.getBookById(owner, id);
+          const librarySubjects = await getSubjects(prisma, owner);
+          const created = await getBookById(prisma, config.booksDir, owner, id);
           if (created) {
             const result = await applyAutoAndAccepted(
               { bookStore, prisma, validationThreshold: config.validationThreshold },
@@ -892,7 +893,7 @@ export function createUiRouter(
         res.status(404).json({ error: 'Book not found' });
         return;
       }
-      const book = await bookStore.getBookById(owner, bookId);
+      const book = await getBookById(prisma, config.booksDir, owner, bookId);
       if (!book) {
         log.warn(`Download attempted for unknown book ID: ${bookId}`);
         res.status(404).json({ error: 'Book not found' });

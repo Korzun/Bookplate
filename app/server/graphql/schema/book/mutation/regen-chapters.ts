@@ -1,3 +1,4 @@
+import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
@@ -134,7 +135,7 @@ builder.mutationField('bookRegenChapters', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       if (targetBook.valid !== true) {

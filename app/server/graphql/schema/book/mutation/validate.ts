@@ -1,3 +1,4 @@
+import { getBookById } from '../../../../services/book-catalog';
 import { revalidateBook } from '../../../../services/revalidate-library';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
@@ -151,7 +152,7 @@ builder.mutationField('bookValidate', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       await revalidateBook(

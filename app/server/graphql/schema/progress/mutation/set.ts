@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { getBookById } from '../../../../services/book-catalog';
 import { saveProgress } from '../../../../services/progress';
 import type { Owner } from '../../../../types';
 import { builder } from '../../builder';
@@ -184,7 +185,7 @@ const result = builder.unionType('ProgressSetResult', {
  * `saveProgress` (`services/progress.ts:27`) is an upsert — it
  * creates the row if absent, updates it otherwise — so this mirrors REST's
  * upsert semantics exactly: there is no "document must already exist"
- * precondition, and `BookStore.getBookById` below is consulted only to
+ * precondition, and `getBookById` (`services/book-catalog.ts`) below is consulted only to
  * synthesise a chapter-accurate CFI, never as an existence gate (REST
  * proceeds with an empty CFI when the book is unknown or the chapter is out
  * of range — see `routes/ui.ts:362-371` — and so does this resolver). Not
@@ -216,7 +217,12 @@ builder.mutationField('progressSet', (t) =>
       // Synthesise a minimal EPUB CFI so currentChapter persists through
       // Progress.currentChapter, exactly like REST's GET /api/my/progress —
       // see routes/ui.ts:361-371.
-      const book = await context.stores.book.getBookById(owner, parsed.data.document);
+      const book = await getBookById(
+        context.prisma,
+        context.config.booksDir,
+        owner,
+        parsed.data.document
+      );
       let progressCfi = '';
       if (
         book &&

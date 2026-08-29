@@ -92,7 +92,7 @@ describe('revalidateLibrary', () => {
     await seedBook('book1');
     await seedBook('book2');
     const summary = await revalidateLibrary(
-      { bookStore, prisma, validationThreshold: 'ERROR' },
+      { prisma, booksRoot: booksDir, validationThreshold: 'ERROR' },
       owner
     );
     expect(summary).toEqual({ validated: 2, failed: 0 });
@@ -106,7 +106,7 @@ describe('revalidateLibrary', () => {
     // Remove book1's on-disk file so fs.readFileSync throws for it.
     fs.rmSync(path.join(booksDir, 'alice', 'book1.epub'));
     const summary = await revalidateLibrary(
-      { bookStore, prisma, validationThreshold: 'ERROR' },
+      { prisma, booksRoot: booksDir, validationThreshold: 'ERROR' },
       owner
     );
     expect(summary).toEqual({ validated: 1, failed: 1 });

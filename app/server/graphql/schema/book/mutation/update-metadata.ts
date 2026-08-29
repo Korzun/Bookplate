@@ -6,6 +6,7 @@ import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
 } from '../../../../services/apply-epub-changes';
+import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { EpubValidationError } from '../../../../services/epub-validator';
 import type { EpubChanges } from '../../../../services/epub-writer';
@@ -382,7 +383,7 @@ builder.mutationField('bookUpdateMetadata', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       if (targetBook.valid !== true) {

@@ -7,7 +7,17 @@ import { Router, Request, Response, RequestHandler } from 'express';
 import { logger } from '../logger';
 import { opdsAuth } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
-import { BookStore } from '../services/book-store';
+import {
+  getAuthors,
+  getBookById,
+  getSubjects,
+  listBooks,
+  listBooksByAuthor,
+  listBooksBySeries,
+  listBooksBySubject,
+  listBooksByStatus,
+  listSeries,
+} from '../services/book-catalog';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
 import { asyncHandler } from '../utils/async-handler';
@@ -46,7 +56,7 @@ function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
 }
 
 export function createOpdsRouter(
-  bookStore: BookStore,
+  booksRoot: string,
   prisma: PrismaClient,
   thumbnailWidths: number[],
   libraryName: string = 'Bookplate',
@@ -136,7 +146,7 @@ export function createOpdsRouter(
       asyncHandler(async (req: Request, res: Response) => {
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
-        const books = await bookStore.listBooks(owner);
+        const books = await listBooks(prisma, booksRoot, owner);
         log.debug(`Books feed served (${books.length} books)`);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
@@ -158,7 +168,7 @@ export function createOpdsRouter(
       asyncHandler(async (req: Request, res: Response) => {
         const owner = req.opdsOwner!;
         const { feedBase } = feedContext(req);
-        const authors = await bookStore.getAuthors(owner);
+        const authors = await getAuthors(prisma, owner);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -189,7 +199,7 @@ export function createOpdsRouter(
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const author = req.params.author;
-        const books = await bookStore.listBooksByAuthor(owner, author);
+        const books = await listBooksByAuthor(prisma, booksRoot, owner, author);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -210,7 +220,7 @@ export function createOpdsRouter(
       asyncHandler(async (req: Request, res: Response) => {
         const owner = req.opdsOwner!;
         const { feedBase } = feedContext(req);
-        const seriesList = await bookStore.listSeries(owner);
+        const seriesList = await listSeries(prisma, owner);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -241,7 +251,7 @@ export function createOpdsRouter(
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const seriesId = req.params.seriesId;
-        const books = await bookStore.listBooksBySeries(owner, seriesId);
+        const books = await listBooksBySeries(prisma, booksRoot, owner, seriesId);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -262,7 +272,7 @@ export function createOpdsRouter(
       asyncHandler(async (req: Request, res: Response) => {
         const owner = req.opdsOwner!;
         const { feedBase } = feedContext(req);
-        const subjects = await bookStore.getSubjects(owner);
+        const subjects = await getSubjects(prisma, owner);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -293,7 +303,7 @@ export function createOpdsRouter(
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const subject = req.params.subject;
-        const books = await bookStore.listBooksBySubject(owner, subject);
+        const books = await listBooksBySubject(prisma, booksRoot, owner, subject);
         const now = new Date().toISOString();
         res.set('Content-Type', 'application/atom+xml;charset=utf-8');
         res.send(
@@ -360,7 +370,9 @@ export function createOpdsRouter(
         }
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
-        const books = await bookStore.listBooksByStatus(
+        const books = await listBooksByStatus(
+          prisma,
+          booksRoot,
           owner,
           status as 'not-started' | 'in-progress' | 'completed'
         );
@@ -387,7 +399,7 @@ export function createOpdsRouter(
     auth,
     asyncHandler(async (req: Request, res: Response) => {
       const owner = req.opdsOwner!;
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const book = await getBookById(prisma, booksRoot, owner, req.params.id);
       if (!book) {
         log.warn(`Download requested for unknown book ID: ${req.params.id}`);
         res.status(404).send('Not found');
@@ -412,7 +424,7 @@ export function createOpdsRouter(
         res.status(404).send('Not found');
         return;
       }
-      const book = await bookStore.getBookById(owner, req.params.id);
+      const book = await getBookById(prisma, booksRoot, owner, req.params.id);
       if (!book) {
         log.warn(`Device download requested for unknown book ID: ${req.params.id}`);
         res.status(404).send('Not found');

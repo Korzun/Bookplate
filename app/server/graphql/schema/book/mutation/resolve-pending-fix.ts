@@ -2,6 +2,7 @@ import {
   applyEpubChanges,
   type ApplyEpubChangesDeps,
 } from '../../../../services/apply-epub-changes';
+import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
 import { applySplit } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
@@ -420,7 +421,7 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
-      const targetBook = await context.stores.book.getBookById(owner, bookId);
+      const targetBook = await getBookById(context.prisma, context.config.booksDir, owner, bookId);
       if (targetBook === null) return null;
 
       if (args.input.action === 'clear') {

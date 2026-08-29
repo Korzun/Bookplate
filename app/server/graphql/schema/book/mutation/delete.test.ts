@@ -2,6 +2,7 @@ import * as fs from 'fs';
 
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { getBookById } from '../../../../services/book-catalog';
 import { createHarness, type Harness } from '../../../test-util';
 import { seedEditableBook } from './test-helpers';
 
@@ -44,7 +45,12 @@ const bookGlobalId = (userId: string, id: string): string =>
 describe('Mutation.bookDelete', () => {
   it('deletes the viewer’s own book — DB row and file both — and returns the deleted id', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Gone Soon');
-    const book = (await harness.stores.book.getBookById(harness.aliceOwner, BOOK_ID))!;
+    const book = (await getBookById(
+      harness.prisma,
+      harness.config.booksDir,
+      harness.aliceOwner,
+      BOOK_ID
+    ))!;
     expect(fs.existsSync(book.path)).toBe(true);
 
     const inputId = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);

@@ -30,6 +30,7 @@ vi.mock('./epub-validator', async (importOriginal) => {
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { Book, EpubMeta, Owner } from '../types';
+import { getBookById, listBooks } from './book-catalog';
 import { BookStore } from './book-store';
 import { applyAutoAndAccepted, analyzeEpub, fixKey, toFix } from './epub-import-pipeline';
 import { assertValidEpub, validateEpubReport } from './epub-validator';
@@ -123,7 +124,7 @@ describe('epub-import-pipeline', () => {
     const staged = path.join(booksDir, `staged-${randomUUID()}.epub`);
     fs.writeFileSync(staged, makeEpub({ title: FAKE_META.title, author: FAKE_META.author }));
     await bookStore.addBook(OWNER, id, staged, FAKE_META);
-    return (await bookStore.getBookById(OWNER, id))!;
+    return (await getBookById(prisma, booksDir, OWNER, id))!;
   }
 
   async function seedBookWithSubjects(id: string, subjects: string[]): Promise<Book> {
@@ -133,7 +134,7 @@ describe('epub-import-pipeline', () => {
       makeEpub({ title: FAKE_META.title, author: FAKE_META.author, subjects })
     );
     await bookStore.addBook(OWNER, id, staged, { ...FAKE_META, subjects });
-    return (await bookStore.getBookById(OWNER, id))!;
+    return (await getBookById(prisma, booksDir, OWNER, id))!;
   }
 
   describe('analyzeEpub', () => {
@@ -159,7 +160,7 @@ describe('epub-import-pipeline', () => {
       expect(proposal?.to).toBe('Guin, Ursula K. Le');
 
       // Read-only: no book created, staged file still present.
-      expect(await bookStore.listBooks(OWNER)).toHaveLength(0);
+      expect(await listBooks(prisma, booksDir, OWNER)).toHaveLength(0);
       expect(fs.existsSync(staged)).toBe(true);
     });
 
