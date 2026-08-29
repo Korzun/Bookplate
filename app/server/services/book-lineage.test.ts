@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner } from '../types';
 import { DocumentAlreadyLinkedError, DocumentIsBookError, SelfLinkError } from './book-errors';
+import { addBook, reimportBook } from './book-lifecycle';
 import {
   clearEditLineage,
   getBookLineage,
@@ -15,7 +16,6 @@ import {
   resolveBookId,
   unlinkDocument,
 } from './book-lineage';
-import { BookStore } from './book-store';
 
 vi.mock('../logger');
 // The vi.mock() factory below only sets these defaults once, at module load;
@@ -40,9 +40,9 @@ function stage(id: string, content: string | Buffer = 'x'): string {
 }
 
 // Direct SQL helper scoped to OWNER, keeping the per-user table shape in mind.
-// Duplicated from `book-store.test.ts` (still needed there for `deleteBook`'s
-// own cascade test) rather than shared, mirroring `stage`'s established
-// per-file duplication (task 4's `book-catalog.test.ts`).
+// Mirrors `stage`'s established per-file duplication (task 4's
+// `book-catalog.test.ts`) — `book-store.test.ts`'s own copy is gone with the
+// rest of that file (Task 9b).
 async function insertHistory(
   oldId: string,
   currentId: string,
@@ -85,12 +85,11 @@ const FAKE_META: EpubMeta = {
 let prisma: PrismaClient;
 let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
-// and use the owner-scoped BookStore only for setup (`addBook`/`reimportBook`)
-// — every read/write under test goes through the imported book-lineage
-// functions directly.
+// and use the imported `addBook`/`reimportBook` only for setup — every
+// read/write under test goes through the imported book-lineage functions
+// directly.
 let booksDir: string;
 let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 // Arms the mocked parseEpub/partialMD5 for exactly the next reimportBook
@@ -116,7 +115,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -135,8 +133,43 @@ afterEach(async () => {
 // below are the `resolveBookId` ones; the other 3 ('creates the
 // book_id_history table during migration', 'has a type column with default
 // value edit', 'rejects invalid type values via CHECK constraint') stayed in
-// `book-store.test.ts` — they assert on the table itself, not on any moved
-// function.
+// `book-store.test.ts` at the time — they assert on the table itself, not on
+// any moved function. `BookStore`'s deletion (Task 9b) brought them the rest
+// of the way here, since this is the only other module reading/writing that
+// table.
+describe('book_id_history table', () => {
+  it('creates the book_id_history table during migration', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM pragma_table_info('book_id_history')
+    `;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('old_id');
+    expect(names).toContain('current_id');
+  });
+
+  it('has a type column with default value edit', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM pragma_table_info('book_id_history')
+    `;
+    expect(cols.map((c) => c.name)).toContain('type');
+
+    await insertHistory('type-test-old', 'type-test-new');
+    const rows = await prisma.$queryRaw<Array<{ type: string }>>`
+      SELECT type FROM book_id_history WHERE old_id = 'type-test-old'
+    `;
+    expect(rows[0].type).toBe('edit');
+  });
+
+  it('rejects invalid type values via CHECK constraint', async () => {
+    await expect(
+      prisma.$executeRaw`
+        INSERT INTO book_id_history (user_id, old_id, current_id, timestamp, type)
+        VALUES (${OWNER.userId}, 'check-old', 'check-new', ${Date.now()}, 'invalid')
+      `
+    ).rejects.toThrow();
+  });
+});
+
 describe('resolveBookId', () => {
   it('resolveBookId returns the input unchanged when no history exists', async () => {
     expect(await resolveBookId(prisma, OWNER.userId, 'unknown-id')).toBe('unknown-id');
@@ -177,32 +210,32 @@ describe('resolveBookId', () => {
 describe('resolveBookId — lineage via reimportBook', () => {
   it('single hop: resolveBookId(old) returns new after reimport changes ID', async () => {
     const stagedPath = stage('lineage-a');
-    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'id-a', stagedPath, FAKE_META);
     armImporter('id-b');
-    await bookStore.reimportBook(OWNER, 'id-a');
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-b');
   });
 
   it('multi-hop: resolveBookId(original) returns latest after two reimports', async () => {
     const stagedPath = stage('lineage-multi');
-    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'id-a', stagedPath, FAKE_META);
     // First hop: id-a → id-b
     armImporter('id-b');
-    await bookStore.reimportBook(OWNER, 'id-a');
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
     // Write a file at id-b so reimportBook can stat it
     fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'epub-content');
     // Second hop: id-b → id-c (also flattens id-a → id-c)
     armImporter('id-c');
-    await bookStore.reimportBook(OWNER, 'id-b');
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-b');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-c');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-b')).toBe('id-c');
   });
 
   it('no history entry when ID does not change on reimport', async () => {
     const stagedPath = stage('lineage-noop');
-    await bookStore.addBook(OWNER, 'id-a', stagedPath, FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'id-a', stagedPath, FAKE_META);
     armImporter('id-a');
-    await bookStore.reimportBook(OWNER, 'id-a');
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
     expect(await resolveBookId(prisma, OWNER.userId, 'id-a')).toBe('id-a');
     const rows = await prisma.$queryRaw<Array<unknown>>`
       SELECT * FROM book_id_history WHERE old_id = 'id-a'
@@ -216,18 +249,18 @@ describe('resolveBookId — lineage via reimportBook', () => {
     });
 
     it('returns currentId with empty entries for a book with no history', async () => {
-      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+      await addBook(prisma, booksRoot, OWNER, 'id-a', stage('id-a'), FAKE_META);
       const result = await getBookLineage(prisma, OWNER, 'id-a');
       expect(result).toEqual({ currentId: 'id-a', entries: [] });
     });
 
     it('returns one entry after a single reimport that changes the ID', async () => {
       const before = Date.now();
-      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+      await addBook(prisma, booksRoot, OWNER, 'id-a', stage('id-a'), FAKE_META);
       const epubPath = path.join(booksDir, 'id-a.epub');
       fs.writeFileSync(epubPath, 'content-a');
       armImporter('id-b');
-      await bookStore.reimportBook(OWNER, 'id-a');
+      await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
       const after = Date.now();
 
       const result = await getBookLineage(prisma, OWNER, 'id-b');
@@ -241,13 +274,13 @@ describe('resolveBookId — lineage via reimportBook', () => {
     });
 
     it('entries are ordered newest-first', async () => {
-      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+      await addBook(prisma, booksRoot, OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
       armImporter('id-b');
-      await bookStore.reimportBook(OWNER, 'id-a');
+      await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
       fs.writeFileSync(path.join(booksDir, 'id-b.epub'), 'content-b');
       armImporter('id-c');
-      await bookStore.reimportBook(OWNER, 'id-b');
+      await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-b');
 
       const result = await getBookLineage(prisma, OWNER, 'id-c');
       expect(result!.entries).toHaveLength(2);
@@ -259,10 +292,10 @@ describe('resolveBookId — lineage via reimportBook', () => {
     });
 
     it('returns null when called with a stale (old) ID that has been reimported', async () => {
-      await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+      await addBook(prisma, booksRoot, OWNER, 'id-a', stage('id-a'), FAKE_META);
       fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content-a');
       armImporter('id-b');
-      await bookStore.reimportBook(OWNER, 'id-a');
+      await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
 
       // id-a is no longer a current book; getBookLineage should return null for it
       expect(await getBookLineage(prisma, OWNER, 'id-a')).toBeNull();
@@ -274,10 +307,10 @@ describe('resolveBookId — lineage via reimportBook', () => {
 
 describe('getBookLineage returns type on entries', () => {
   it('returns type edit for reimport-created entries', async () => {
-    await bookStore.addBook(OWNER, 'id-a', stage('id-a'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'id-a', stage('id-a'), FAKE_META);
     fs.writeFileSync(path.join(booksDir, 'id-a.epub'), 'content');
     armImporter('id-b');
-    await bookStore.reimportBook(OWNER, 'id-a');
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, 'id-a');
 
     const result = await getBookLineage(prisma, OWNER, 'id-b');
     expect(result!.entries[0].type).toBe('edit');
@@ -291,14 +324,14 @@ describe('linkDocument', () => {
   });
 
   it('throws SelfLinkError when documentId equals bookId', async () => {
-    await bookStore.addBook(OWNER, 'self-link', stage('self-link'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'self-link', stage('self-link'), FAKE_META);
     await expect(linkDocument(prisma, OWNER, 'self-link', 'self-link')).rejects.toThrow(
       SelfLinkError
     );
   });
 
   it('throws DocumentAlreadyLinkedError when documentId is already linked', async () => {
-    await bookStore.addBook(OWNER, 'target', stage('target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'target', stage('target'), FAKE_META);
     await insertHistory('already-linked', 'target', { type: 'merge' });
     await expect(linkDocument(prisma, OWNER, 'target', 'already-linked')).rejects.toThrow(
       DocumentAlreadyLinkedError
@@ -306,7 +339,7 @@ describe('linkDocument', () => {
   });
 
   it('inserts a merge entry and migrates progress', async () => {
-    await bookStore.addBook(OWNER, 'link-target', stage('link-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'link-target', stage('link-target'), FAKE_META);
     await prisma.progress.create({
       data: {
         userId: OWNER.userId,
@@ -341,7 +374,7 @@ describe('linkDocument', () => {
   });
 
   it('keeps newer progress when both orphan and target have records (newer-wins)', async () => {
-    await bookStore.addBook(OWNER, 'nw-target', stage('nw-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'nw-target', stage('nw-target'), FAKE_META);
     await prisma.progress.create({
       data: {
         userId: OWNER.userId,
@@ -374,7 +407,7 @@ describe('linkDocument', () => {
   });
 
   it('orphan progress wins when it is newer', async () => {
-    await bookStore.addBook(OWNER, 'ow-target', stage('ow-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'ow-target', stage('ow-target'), FAKE_META);
     await prisma.progress.create({
       data: {
         userId: OWNER.userId,
@@ -407,8 +440,15 @@ describe('linkDocument', () => {
   });
 
   it('throws DocumentIsBookError when documentId is an existing book', async () => {
-    await bookStore.addBook(OWNER, 'doc-is-book-target', stage('doc-is-book-target'), FAKE_META);
-    await bookStore.addBook(OWNER, 'doc-is-book-doc', stage('doc-is-book-doc'), FAKE_META);
+    await addBook(
+      prisma,
+      booksRoot,
+      OWNER,
+      'doc-is-book-target',
+      stage('doc-is-book-target'),
+      FAKE_META
+    );
+    await addBook(prisma, booksRoot, OWNER, 'doc-is-book-doc', stage('doc-is-book-doc'), FAKE_META);
     await expect(
       linkDocument(prisma, OWNER, 'doc-is-book-target', 'doc-is-book-doc')
     ).rejects.toThrow(DocumentIsBookError);
@@ -422,14 +462,14 @@ describe('unlinkDocument', () => {
   });
 
   it('returns edit_row when the row has type=edit', async () => {
-    await bookStore.addBook(OWNER, 'ul-target', stage('ul-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'ul-target', stage('ul-target'), FAKE_META);
     await insertHistory('ul-edit-doc', 'ul-target', { type: 'edit' });
     const result = await unlinkDocument(prisma, OWNER, 'ul-target', 'ul-edit-doc');
     expect(result).toBe('edit_row');
   });
 
   it('deletes the merge row and returns deleted', async () => {
-    await bookStore.addBook(OWNER, 'ul-target2', stage('ul-target2'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'ul-target2', stage('ul-target2'), FAKE_META);
     await insertHistory('ul-merge-doc', 'ul-target2', { type: 'merge' });
     const result = await unlinkDocument(prisma, OWNER, 'ul-target2', 'ul-merge-doc');
     expect(result).toBe('deleted');
@@ -441,7 +481,7 @@ describe('unlinkDocument', () => {
   });
 
   it('leaves progress records untouched when unlinking', async () => {
-    await bookStore.addBook(OWNER, 'ul-prog-target', stage('ul-prog-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'ul-prog-target', stage('ul-prog-target'), FAKE_META);
     await insertHistory('ul-prog-orphan', 'ul-prog-target', { type: 'merge' });
     await prisma.progress.create({
       data: {
@@ -467,7 +507,7 @@ describe('unlinkDocument', () => {
 
 describe('clearEditLineage', () => {
   it('deletes edit rows for the book/owner and leaves merge rows and other users', async () => {
-    await bookStore.addBook(OWNER, 'cel-head', stage('cel-head'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'cel-head', stage('cel-head'), FAKE_META);
     await insertHistory('cel-old-a', 'cel-head', { type: 'edit' });
     await insertHistory('cel-old-b', 'cel-head', { type: 'merge' });
     await prisma.$executeRaw`
@@ -490,7 +530,7 @@ describe('clearEditLineage', () => {
   });
 
   it('also deletes edit rows where the target id is the old_id (reverse direction)', async () => {
-    await bookStore.addBook(OWNER, 'cel-target', stage('cel-target'), FAKE_META);
+    await addBook(prisma, booksRoot, OWNER, 'cel-target', stage('cel-target'), FAKE_META);
     // This row's old_id — not current_id — matches the target, exercising the
     // `old_id = id` side of the OR predicate.
     await insertHistory('cel-target', 'cel-other-head', { type: 'edit' });

@@ -8,7 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
-import { BookStore } from '../services/book-store';
+import { getStagingDir } from '../services/book-paths';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging } from '../services/replace-staging';
 import { ScanJobStore } from '../services/scan-job-store';
@@ -36,6 +36,8 @@ export type Harness = {
   prisma: PrismaClient;
   stores: Stores;
   config: AppConfig;
+  /** `path.join(dataDir, 'editions')` — same value `Context.editionsRoot` carries. */
+  editionsRoot: string;
   /** A real user row created by the harness, for owner-scoped assertions. */
   aliceOwner: Owner;
   aliceViewer: Viewer;
@@ -94,9 +96,10 @@ export const createHarness = async (): Promise<Harness> => {
 
   const config = testConfig(booksDir, dataDir);
   const editionsRoot = path.join(dataDir, 'editions');
-  const book = new BookStore(booksDir, prisma, editionsRoot);
   const stores: Stores = {
-    book,
+    // No production code reaches this any more — see `Stores.book`'s doc
+    // comment in `context.ts` for why it's still here at all.
+    book: {},
     // Same real `ScanPubSub` a subscription resolver reads from
     // (`schema/library/subscription/scan-progress.ts`, via
     // `context.stores.scanJob.subscribe`) — not the class's own default,
@@ -111,7 +114,7 @@ export const createHarness = async (): Promise<Harness> => {
     // tests DO call `enqueue()` (via `bookUpdateMetadata`) and assert on it
     // with `vi.spyOn` — safe precisely because it's inert here.
     thumbnail: new ThumbnailQueue(prisma, config.thumbnailWidths),
-    replaceStaging: createReplaceStaging({ stagingDir: book.getStagingDir() }),
+    replaceStaging: createReplaceStaging({ stagingDir: getStagingDir(booksDir) }),
   };
 
   await createUser(prisma, 'alice', await hashLoginPassword('alicepass'));
@@ -286,6 +289,7 @@ export const createHarness = async (): Promise<Harness> => {
     prisma,
     stores,
     config,
+    editionsRoot,
     aliceOwner: { userId: aliceId, username: 'alice' },
     aliceViewer,
     aliceGlobalId,

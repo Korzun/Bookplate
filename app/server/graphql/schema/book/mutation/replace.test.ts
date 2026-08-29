@@ -3,6 +3,7 @@ import type { MockedFunction } from 'vitest';
 
 import { logger } from '../../../../logger';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { getStagingDir } from '../../../../services/book-paths';
 import * as epubWriterModule from '../../../../services/epub-writer';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
@@ -48,7 +49,14 @@ vi.mock('../../../../utils/metadata-issues', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../utils/metadata-issues')>();
   return { ...actual, detectMetadataIssues: vi.fn(actual.detectMetadataIssues) };
 });
+// Call-through by default — see `regen-chapters.test.ts`'s identical note on
+// why this replaces `vi.spyOn(harness.stores.book, 'reimportBook')`.
+vi.mock('../../../../services/book-lifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/book-lifecycle')>();
+  return { ...actual, reimportBook: vi.fn(actual.reimportBook) };
+});
 
+import { reimportBook } from '../../../../services/book-lifecycle';
 import { assertValidEpub, EpubValidationError } from '../../../../services/epub-validator';
 import { detectMetadataIssues } from '../../../../utils/metadata-issues';
 
@@ -197,7 +205,7 @@ describe('Mutation.bookReplace', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
     let now = 0;
     const shortLivedStaging = createReplaceStaging({
-      stagingDir: harness.stores.book.getStagingDir(),
+      stagingDir: getStagingDir(harness.config.booksDir),
       ttlMs: 1000,
       now: () => now,
     });
@@ -364,9 +372,7 @@ describe('Mutation.bookReplace', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Alice Book A');
     await seedEditableBook(harness, harness.aliceOwner, OTHER_BOOK_ID, 'Alice Book B');
     const stagedId = stageFor(harness.aliceOwner, 'Trigger Collision');
-    vi.spyOn(harness.stores.book, 'reimportBook').mockRejectedValueOnce(
-      new BookHashCollisionError(OTHER_BOOK_ID)
-    );
+    vi.mocked(reimportBook).mockRejectedValueOnce(new BookHashCollisionError(OTHER_BOOK_ID));
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,

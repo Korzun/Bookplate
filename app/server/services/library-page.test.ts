@@ -7,8 +7,8 @@ import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
 import { decodeCursor, encodeCursor } from '../graphql/schema/library/entries-cursor';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner, PageCursor } from '../types';
-import { BookStore } from './book-store';
 import { listBooksPage, type LibraryPageItem } from './library-page';
 
 vi.mock('../logger');
@@ -74,15 +74,12 @@ let booksRoot: string;
 // Per-user library folder (<booksRoot>/<OWNER.username>). Tests stage files here
 // and assert on-disk paths here, matching the owner-scoped BookStore.
 let booksDir: string;
-let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -94,7 +91,6 @@ beforeEach(async () => {
   // Still used to seed rows via `addBook` — `listBooksPage` itself is called
   // directly below, not through `BookStore`, matching how
   // `graphql/schema/library/model.ts` calls it (task 8).
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -114,8 +110,16 @@ describe('listBooksPage()', () => {
   });
 
   it('returns standalone books as display units', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Alpha', series: '' });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Beta', series: '' });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Alpha',
+      series: '',
+    });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Beta',
+      series: '',
+    });
     const result = await listBooksPage(prisma, OWNER, null, 20);
     expect(itemsShape(result.items)).toEqual([
       { type: 'standalone', bookId: 'b1' },
@@ -125,12 +129,12 @@ describe('listBooksPage()', () => {
   });
 
   it('returns a series as a single display unit', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Dune 2',
       series: 'Dune',
@@ -147,12 +151,12 @@ describe('listBooksPage()', () => {
   // resolved relation — `graphql/schema/library/entries.test.ts`'s "resolves
   // a nested relation" test exercises that path.)
   it('a series item carries the real Series row, not its member books', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'D1',
       series: 'Dune',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'D2',
       series: 'Dune',
@@ -166,13 +170,21 @@ describe('listBooksPage()', () => {
   });
 
   it('merges series and standalones in title/name order', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Apple', series: '' });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Apple',
+      series: '',
+    });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Cherry',
       series: 'Banana',
     });
-    await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Dates', series: '' });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b3', stage('b3'), {
+      ...FAKE_META,
+      title: 'Dates',
+      series: '',
+    });
     const result = await listBooksPage(prisma, OWNER, null, 20);
     expect(itemsShape(result.items)).toEqual([
       { type: 'standalone', bookId: 'b1' },
@@ -183,7 +195,7 @@ describe('listBooksPage()', () => {
 
   it('returns nextCursor when take is less than total display units', async () => {
     for (let i = 1; i <= 5; i++) {
-      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+      await seedBook(prisma, { booksRoot: booksRoot }, OWNER, `b${i}`, stage(`b${i}`), {
         ...FAKE_META,
         title: `Book ${String.fromCharCode(64 + i)}`,
         series: '',
@@ -196,7 +208,7 @@ describe('listBooksPage()', () => {
 
   it('advances the cursor to load the next page', async () => {
     for (let i = 1; i <= 4; i++) {
-      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+      await seedBook(prisma, { booksRoot: booksRoot }, OWNER, `b${i}`, stage(`b${i}`), {
         ...FAKE_META,
         title: `Book ${String.fromCharCode(64 + i)}`,
         series: '',
@@ -221,9 +233,21 @@ describe('listBooksPage()', () => {
   it('does not skip standalones with duplicate titles at a page boundary', async () => {
     // b1 and b2 share the same title; b3 is distinct. With take=1, the cursor
     // after b1 must land correctly on b2 rather than skipping to b3.
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Same', series: '' });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), { ...FAKE_META, title: 'Same', series: '' });
-    await bookStore.addBook(OWNER, 'b3', stage('b3'), { ...FAKE_META, title: 'Zzz', series: '' });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Same',
+      series: '',
+    });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
+      ...FAKE_META,
+      title: 'Same',
+      series: '',
+    });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b3', stage('b3'), {
+      ...FAKE_META,
+      title: 'Zzz',
+      series: '',
+    });
 
     const page1 = await listBooksPage(prisma, OWNER, null, 1);
     expect(page1.items).toHaveLength(1);
@@ -260,7 +284,7 @@ describe('listBooksPage()', () => {
 describe('listBooksPage() cursor compatibility with entries-cursor.ts', () => {
   it('nextCursor is byte-identical to encodeCursor() for the same last row', async () => {
     for (let i = 1; i <= 3; i++) {
-      await bookStore.addBook(OWNER, `b${i}`, stage(`b${i}`), {
+      await seedBook(prisma, { booksRoot: booksRoot }, OWNER, `b${i}`, stage(`b${i}`), {
         ...FAKE_META,
         title: `Book ${String.fromCharCode(64 + i)}`,
         series: '',
@@ -275,19 +299,23 @@ describe('listBooksPage() cursor compatibility with entries-cursor.ts', () => {
   });
 
   it('a cursor minted by encodeCursor() resumes listBooksPage at the same place as its own nextCursor', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b2', stage('s1b2'), {
       ...FAKE_META,
       title: 'Dune 2',
       series: 'Dune',
       seriesIndex: 2,
     });
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), { ...FAKE_META, title: 'Zzz', series: '' });
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
+      ...FAKE_META,
+      title: 'Zzz',
+      series: '',
+    });
 
     const page1 = await listBooksPage(prisma, OWNER, null, 1);
     expect(page1.items).toEqual([{ type: 'series', seriesName: 'Dune', row: page1.items[0].row }]);
@@ -329,7 +357,7 @@ describe('listBooksPage() query count', () => {
     // `listBooksPage` alone (N=3 series => N+1).
     for (const s of ['Dune', 'Foundation', 'Expanse']) {
       for (let i = 1; i <= 2; i++) {
-        await bookStore.addBook(OWNER, `${s}-${i}`, stage(`${s}-${i}`), {
+        await seedBook(prisma, { booksRoot: booksRoot }, OWNER, `${s}-${i}`, stage(`${s}-${i}`), {
           ...FAKE_META,
           title: `${s} ${i}`,
           series: s,
@@ -337,12 +365,12 @@ describe('listBooksPage() query count', () => {
         });
       }
     }
-    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'sa1', stage('sa1'), {
       ...FAKE_META,
       title: 'Alone A',
       series: '',
     });
-    await bookStore.addBook(OWNER, 'sa2', stage('sa2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'sa2', stage('sa2'), {
       ...FAKE_META,
       title: 'Alone B',
       series: '',
@@ -361,13 +389,13 @@ describe('listBooksPage() query count', () => {
 
 describe('listBooksPage with filters', () => {
   it('status=not-started returns standalone books with no progress', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
@@ -379,19 +407,19 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=in-progress returns standalone books with partial progress', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b3', stage('b3'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b3', stage('b3'), {
       ...FAKE_META,
       title: 'Gamma',
       series: '',
@@ -404,13 +432,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=completed returns standalone books with percentage >= 1', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
@@ -422,13 +450,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=not-started returns series where no member book has progress', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's2b1', stage('s2b1'), {
       ...FAKE_META,
       title: 'Foundation 1',
       series: 'Foundation',
@@ -440,19 +468,19 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=completed returns series where all member books have percentage >= 1', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b2', stage('s1b2'), {
       ...FAKE_META,
       title: 'Dune 2',
       series: 'Dune',
       seriesIndex: 2,
     });
-    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's2b1', stage('s2b1'), {
       ...FAKE_META,
       title: 'Foundation 1',
       series: 'Foundation',
@@ -466,19 +494,19 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=in-progress returns series with a book actively being read', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b2', stage('s1b2'), {
       ...FAKE_META,
       title: 'Dune 2',
       series: 'Dune',
       seriesIndex: 2,
     });
-    await bookStore.addBook(OWNER, 's1b3', stage('s1b3'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b3', stage('s1b3'), {
       ...FAKE_META,
       title: 'Dune 3',
       series: 'Dune',
@@ -492,13 +520,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('status=in-progress excludes series with only completed and unread books', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(OWNER, 's1b2', stage('s1b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b2', stage('s1b2'), {
       ...FAKE_META,
       title: 'Dune 2',
       series: 'Dune',
@@ -511,13 +539,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('seriesName + status combined: shows only the named series when completed', async () => {
-    await bookStore.addBook(OWNER, 'sa1', stage('sa1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'sa1', stage('sa1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
@@ -533,7 +561,7 @@ describe('listBooksPage with filters', () => {
   });
 
   it('no filters returns same result as calling without filters arg', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
@@ -545,14 +573,14 @@ describe('listBooksPage with filters', () => {
   });
 
   it('subjects filter returns only standalone books with that subject', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
       subjects: ['Fantasy'],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
@@ -564,14 +592,14 @@ describe('listBooksPage with filters', () => {
   });
 
   it('subjects filter does not match partial subject names', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
       subjects: ['Science'],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
@@ -583,14 +611,14 @@ describe('listBooksPage with filters', () => {
   });
 
   it('subjects filter handles subjects containing quote characters', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
       subjects: ['He said "Hi"'],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Beta',
       series: '',
@@ -602,14 +630,14 @@ describe('listBooksPage with filters', () => {
   });
 
   it('subjects filter returns series whose subject roll-up contains the subject', async () => {
-    await bookStore.addBook(OWNER, 's1b1', stage('s1b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1b1', stage('s1b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       seriesIndex: 1,
       subjects: ['Science Fiction'],
     });
-    await bookStore.addBook(OWNER, 's2b1', stage('s2b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's2b1', stage('s2b1'), {
       ...FAKE_META,
       title: 'Fellowship 1',
       series: 'Fellowship',
@@ -623,13 +651,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('entryType=series returns only series display units', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
@@ -640,13 +668,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('entryType=standalone returns only standalone display units', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
@@ -657,13 +685,13 @@ describe('listBooksPage with filters', () => {
   });
 
   it('no entryType filter returns both series and standalone display units', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Alpha',
       series: '',
       seriesIndex: 0,
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
@@ -682,12 +710,12 @@ describe('listBooksPage with filters', () => {
 
 describe('listBooksPage() — search filters', () => {
   it('filters standalones by query (title contains)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       series: '',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'A Memory Called Empire',
       series: '',
@@ -697,12 +725,12 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters series by query (name contains)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Foundation 1',
       series: 'Foundation',
@@ -716,7 +744,7 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters series by member book title (not just series name)', async () => {
-    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1', stage('s1'), {
       ...FAKE_META,
       title: 'The Fifth Season',
       series: 'Broken Earth',
@@ -730,12 +758,12 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('includes series member books as individual results when their title matches query', async () => {
-    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1', stage('s1'), {
       ...FAKE_META,
       title: "Abaddon's Gate",
       series: 'The Expanse',
     });
-    await bookStore.addBook(OWNER, 's2', stage('s2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's2', stage('s2'), {
       ...FAKE_META,
       title: 'Leviathan Wakes',
       series: 'The Expanse',
@@ -750,13 +778,13 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters standalones by author (contains, case-insensitive)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Book A',
       author: 'N.K. Jemisin',
       series: '',
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Book B',
       author: 'Arkady Martine',
@@ -767,13 +795,13 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters series by author field', async () => {
-    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1', stage('s1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
       author: 'Frank Herbert',
     });
-    await bookStore.addBook(OWNER, 's2', stage('s2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's2', stage('s2'), {
       ...FAKE_META,
       title: 'Foundation 1',
       series: 'Foundation',
@@ -784,12 +812,12 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters by seriesName: shows only the named series (no standalones)', async () => {
-    await bookStore.addBook(OWNER, 's1', stage('s1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 's1', stage('s1'), {
       ...FAKE_META,
       title: 'Dune 1',
       series: 'Dune',
     });
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Standalone',
       series: '',
@@ -799,19 +827,19 @@ describe('listBooksPage() — search filters', () => {
   });
 
   it('filters standalones by multiple subjects (AND)', async () => {
-    await bookStore.addBook(OWNER, 'b1', stage('b1'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b1', stage('b1'), {
       ...FAKE_META,
       title: 'Book A',
       series: '',
       subjects: ['Fantasy', 'Fiction'],
     });
-    await bookStore.addBook(OWNER, 'b2', stage('b2'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b2', stage('b2'), {
       ...FAKE_META,
       title: 'Book B',
       series: '',
       subjects: ['Fantasy'],
     });
-    await bookStore.addBook(OWNER, 'b3', stage('b3'), {
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'b3', stage('b3'), {
       ...FAKE_META,
       title: 'Book C',
       series: '',

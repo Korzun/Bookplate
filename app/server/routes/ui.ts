@@ -13,9 +13,8 @@ import { jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
 import { getBookById, getSubjects } from '../services/book-catalog';
 import { BookAlreadyExistsError } from '../services/book-errors';
-import { addBook } from '../services/book-lifecycle';
+import { addBook, reimportBook } from '../services/book-lifecycle';
 import { getStagingDir } from '../services/book-paths';
-import { BookStore } from '../services/book-store';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -305,7 +304,7 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
 }
 
 export function createUiRouter(
-  bookStore: BookStore,
+  editionsRoot: string,
   config: AppConfig,
   thumbnailQueue: ThumbnailQueue,
   jwtSecret: Buffer,
@@ -770,7 +769,11 @@ export function createUiRouter(
           const created = await getBookById(prisma, config.booksDir, owner, id);
           if (created) {
             const result = await applyAutoAndAccepted(
-              { bookStore, prisma, validationThreshold: config.validationThreshold },
+              {
+                reimportBook: (o, i) => reimportBook(prisma, config.booksDir, editionsRoot, o, i),
+                prisma,
+                validationThreshold: config.validationThreshold,
+              },
               owner,
               created,
               { originalName: file.originalname, librarySubjects, acceptedKeys: [] }

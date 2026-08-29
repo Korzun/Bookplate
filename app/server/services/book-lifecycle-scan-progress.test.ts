@@ -7,17 +7,17 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
-import { BookStore } from './book-store';
+import { scan } from './book-lifecycle';
 import type { ScanProgress } from './scan-events';
 
-// Dedicated coverage for BookStore.scan()'s onProgress hook — kept in its own
-// file rather than folded into book-lifecycle.test.ts (already the largest
-// suite in this task), following the same "new file, existing suite
-// unedited" split this file's predecessor (book-store-scan-progress.test.ts)
-// used against book-store.test.ts. Renamed/retargeted for task 7: `scan()`
-// now lives in `./book-lifecycle`, reached here (as before) through the
-// `BookStore` facade.
+// Dedicated coverage for `scan()`'s onProgress hook — kept in its own file
+// rather than folded into book-lifecycle.test.ts (already the largest suite
+// in this task), following the same "new file, existing suite unedited"
+// split this file's predecessor (book-store-scan-progress.test.ts) used
+// against book-store.test.ts. `scan()` lives in `./book-lifecycle`, called
+// directly here since `BookStore` (Task 9b) is gone.
 
 vi.mock('../logger');
 // `ScanImporter` is gone — `scan` now imports `parseEpub`/`partialMD5`
@@ -68,7 +68,6 @@ function armImporter(idFor?: (filePath: string) => string): void {
 let prisma: PrismaClient;
 let booksRoot: string;
 let booksDir: string;
-let bookStore: BookStore;
 let dbPath: string;
 let editionsRoot: string;
 
@@ -85,7 +84,6 @@ beforeEach(async () => {
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
   editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scan-progress-editions-'));
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -104,11 +102,11 @@ function collect(): { events: ScanProgress[]; onProgress: (p: ScanProgress) => v
   return { events, onProgress: (p) => events.push(p) };
 }
 
-describe('BookStore.scan() onProgress', () => {
+describe('scan() onProgress', () => {
   it('is never called when there is nothing on disk and nothing in the DB', async () => {
     armImporter();
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, onProgress);
+    await scan(prisma, booksRoot, OWNER, onProgress);
     expect(events).toEqual([]);
   });
 
@@ -116,7 +114,7 @@ describe('BookStore.scan() onProgress', () => {
     fs.writeFileSync(path.join(booksDir, 'new-book.epub'), 'content');
     armImporter();
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, onProgress);
+    await scan(prisma, booksRoot, OWNER, onProgress);
 
     const importing = events.filter((e) => e.phase === 'importing');
     expect(importing).toHaveLength(1);
@@ -135,11 +133,11 @@ describe('BookStore.scan() onProgress', () => {
     const id = 'dddd4444dddd4444dddd4444dddd4444';
     const filePath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(filePath, 'content');
-    await bookStore.addBook(OWNER, id, filePath, FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, id, filePath, FAKE_META);
 
     armImporter();
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, onProgress);
+    const result = await scan(prisma, booksRoot, OWNER, onProgress);
     expect(result.imported).toEqual([]);
 
     const importing = events.filter((e) => e.phase === 'importing');
@@ -163,7 +161,7 @@ describe('BookStore.scan() onProgress', () => {
       crypto.createHash('md5').update(filePath).digest('hex')
     );
     const { events, onProgress } = collect();
-    await bookStore.scan(OWNER, onProgress);
+    await scan(prisma, booksRoot, OWNER, onProgress);
 
     const importing = events.filter((e) => e.phase === 'importing');
     expect(importing).toHaveLength(1);
@@ -181,7 +179,7 @@ describe('BookStore.scan() onProgress', () => {
     const id = 'eeee5555eeee5555eeee5555eeee5555';
     const canonicalPath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(canonicalPath, 'canonical content');
-    await bookStore.addBook(OWNER, id, canonicalPath, FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, id, canonicalPath, FAKE_META);
 
     // A second, arbitrarily-named file whose importer-computed id collides
     // with the one already occupying the canonical path.
@@ -190,7 +188,7 @@ describe('BookStore.scan() onProgress', () => {
     armImporter(() => id);
 
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, onProgress);
+    const result = await scan(prisma, booksRoot, OWNER, onProgress);
     expect(result.imported).toEqual([]);
 
     const importing = events.filter(
@@ -212,7 +210,7 @@ describe('BookStore.scan() onProgress', () => {
     // recognised as already-imported, not re-added.
     const originalPath = path.join(booksDir, id + '.epub');
     fs.writeFileSync(originalPath, 'content');
-    await bookStore.addBook(OWNER, id, originalPath, FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, id, originalPath, FAKE_META);
     fs.unlinkSync(path.join(booksDir, id + '.epub'));
 
     const arbitraryPath = path.join(booksDir, 'arbitrary-name.epub');
@@ -220,7 +218,7 @@ describe('BookStore.scan() onProgress', () => {
     armImporter((filePath) => (filePath.includes('arbitrary') ? id : 'other'));
 
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, onProgress);
+    const result = await scan(prisma, booksRoot, OWNER, onProgress);
     expect(result.imported).toEqual([]);
     expect(fs.existsSync(path.join(booksDir, id + '.epub'))).toBe(true);
 
@@ -239,17 +237,17 @@ describe('BookStore.scan() onProgress', () => {
     for (const id of ['aaaa1111aaaa1111aaaa1111aaaa1111', 'bbbb2222bbbb2222bbbb2222bbbb2222']) {
       const p = path.join(booksDir, id + '.epub');
       fs.writeFileSync(p, 'x');
-      await bookStore.addBook(OWNER, id, p, FAKE_META);
+      await seedBook(prisma, { booksRoot }, OWNER, id, p, FAKE_META);
     }
     const staleId = 'cccc3333cccc3333cccc3333cccc3333';
     const stalePath = path.join(booksDir, staleId + '.epub');
     fs.writeFileSync(stalePath, 'x');
-    await bookStore.addBook(OWNER, staleId, stalePath, FAKE_META);
+    await seedBook(prisma, { booksRoot }, OWNER, staleId, stalePath, FAKE_META);
     fs.unlinkSync(path.join(booksDir, staleId + '.epub'));
 
     armImporter();
     const { events, onProgress } = collect();
-    const result = await bookStore.scan(OWNER, onProgress);
+    const result = await scan(prisma, booksRoot, OWNER, onProgress);
     expect(result.removed).toEqual([staleId + '.epub']);
 
     const pruning = events.filter((e) => e.phase === 'pruning');
@@ -266,7 +264,7 @@ describe('BookStore.scan() onProgress', () => {
   it('scan() behaves identically with no onProgress supplied (optional, existing callers unaffected)', async () => {
     fs.writeFileSync(path.join(booksDir, 'no-callback.epub'), 'content');
     armImporter();
-    const result = await bookStore.scan(OWNER);
+    const result = await scan(prisma, booksRoot, OWNER);
     expect(result.imported).toEqual(['no-callback.epub']);
   });
 });

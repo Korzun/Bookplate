@@ -6,8 +6,8 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
-import { BookStore } from './book-store';
 import { upsertPendingFix } from './pending-fix';
 
 vi.mock('../logger');
@@ -46,15 +46,12 @@ let booksRoot: string;
 // and use the owner-scoped BookStore only for setup (`addBook`) — every write
 // under test goes through the imported `upsertPendingFix` directly.
 let booksDir: string;
-let editionsRoot: string;
-let bookStore: BookStore;
 let dbPath: string;
 
 beforeEach(async () => {
   booksRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-'));
   booksDir = path.join(booksRoot, OWNER.username);
   fs.mkdirSync(booksDir, { recursive: true });
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'books-test-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -63,7 +60,6 @@ beforeEach(async () => {
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksRoot);
   await prisma.user.create({ data: { id: OWNER.userId, username: OWNER.username } });
-  bookStore = new BookStore(booksRoot, prisma, editionsRoot);
 });
 
 afterEach(async () => {
@@ -98,7 +94,7 @@ describe('PendingFix store', () => {
     prisma.pendingFix.findMany({ where: { userId: OWNER.userId } });
 
   beforeEach(async () => {
-    await bookStore.addBook(OWNER, 'abc123', stage('abc123'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksRoot }, OWNER, 'abc123', stage('abc123'), FAKE_META);
   });
 
   it('upsert writes a row carrying the serialized state', async () => {

@@ -1,6 +1,7 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 import type { MockedFunction } from 'vitest';
 
+import { getStagingDir } from '../../../../services/book-paths';
 import { ADMIN_STAGING_ID, createReplaceStaging } from '../../../../services/replace-staging';
 import { createHarness, type Harness } from '../../../test-util';
 import { stagedUploadNotFoundError } from '../../staged-upload-not-found-error/model';
@@ -209,7 +210,7 @@ describe('Mutation.bookAnalyzeReplace', () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Old Title');
     let now = 0;
     const shortLivedStaging = createReplaceStaging({
-      stagingDir: harness.stores.book.getStagingDir(),
+      stagingDir: getStagingDir(harness.config.booksDir),
       ttlMs: 1000,
       now: () => now,
     });

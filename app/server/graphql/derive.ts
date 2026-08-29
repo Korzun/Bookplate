@@ -2,9 +2,9 @@
  * Pure derivations over the columns SQLite stores as JSON strings.
  *
  * These are shared deliberately: the GraphQL read path reads Prisma rows
- * directly while OPDS reads through BookStore, and both must agree on what a
- * row means. Keeping the interpretation in one pure module is what stops the
- * two paths drifting.
+ * directly while OPDS reads through `services/book-catalog.ts`, and both must
+ * agree on what a row means. Keeping the interpretation in one pure module is
+ * what stops the two paths drifting.
  *
  * Every parser is total — malformed JSON degrades to an empty value rather
  * than throwing, so one bad row cannot fail an entire query.

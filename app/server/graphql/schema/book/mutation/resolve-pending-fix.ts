@@ -4,6 +4,7 @@ import {
 } from '../../../../services/apply-epub-changes';
 import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { reimportBook } from '../../../../services/book-lifecycle';
 import { clearEditLineage } from '../../../../services/book-lineage';
 import { applySplit } from '../../../../services/epub-import-pipeline';
 import { EpubValidationError } from '../../../../services/epub-validator';
@@ -458,7 +459,8 @@ builder.mutationField('bookResolvePendingFix', (t) =>
       // Hoisted so UNDO's `apply`-snapshot revert and ACCEPT can share one
       // instance — both reach the identical `applyEpubChanges` call.
       const deps: ApplyEpubChangesDeps = {
-        bookStore: context.stores.book,
+        reimportBook: (o, i) =>
+          reimportBook(context.prisma, context.config.booksDir, context.editionsRoot, o, i),
         prisma: context.prisma,
         validationThreshold: context.config.validationThreshold,
       };

@@ -8,6 +8,7 @@ import request from 'supertest';
 
 import { createUiRouter } from '../../../routes/ui';
 import { signAccessToken } from '../../../services/jwt';
+import { seedBook } from '../../../test-support/seed-book';
 import { createHarness, type Harness } from '../../test-util';
 import { createGraphqlHandler } from '../../yoga';
 
@@ -50,7 +51,7 @@ beforeEach(async () => {
   app.use(
     '/',
     createUiRouter(
-      harness.stores.book,
+      harness.editionsRoot,
       harness.config,
       harness.stores.thumbnail,
       jwtSecret,
@@ -69,25 +70,32 @@ const BOOK_ID = 'c'.repeat(32);
 const seedCover = async (): Promise<void> => {
   const stagedPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'url-it-')), 'staged.epub');
   fs.writeFileSync(stagedPath, 'not a real epub, addBook does not parse it');
-  await harness.stores.book.addBook(harness.aliceOwner, BOOK_ID, stagedPath, {
-    title: 'Cover Fetch Test',
-    titleSort: '',
-    authorSort: '',
-    publishDate: '',
-    author: '',
-    description: '',
-    publisher: '',
-    series: '',
-    seriesIndex: 0,
-    identifiers: [],
-    subjects: [],
-    coverData: Buffer.from('fake-jpeg-bytes'),
-    coverMime: 'image/jpeg',
-    chapterCount: 0,
-    chapterSpineMap: [],
-    chapterNames: [],
-    pageCount: 0,
-  });
+  await seedBook(
+    harness.prisma,
+    { booksRoot: harness.config.booksDir },
+    harness.aliceOwner,
+    BOOK_ID,
+    stagedPath,
+    {
+      title: 'Cover Fetch Test',
+      titleSort: '',
+      authorSort: '',
+      publishDate: '',
+      author: '',
+      description: '',
+      publisher: '',
+      series: '',
+      seriesIndex: 0,
+      identifiers: [],
+      subjects: [],
+      coverData: Buffer.from('fake-jpeg-bytes'),
+      coverMime: 'image/jpeg',
+      chapterCount: 0,
+      chapterSpineMap: [],
+      chapterNames: [],
+      pageCount: 0,
+    }
+  );
 };
 
 const coverUrlFor = async (token: string, viewerGid: string, gid: string): Promise<string> => {

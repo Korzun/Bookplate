@@ -25,6 +25,7 @@
     "**/*.test.ts",
     "**/test-util.ts",
     "**/cost-test-support.ts",
+    "**/test-support/**",
     "**/__mocks__/**",
     "vite.config.ts"
   ]

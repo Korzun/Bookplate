@@ -29,9 +29,11 @@ vi.mock('./epub-validator', async (importOriginal) => {
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
+import { seedBook as seedBookRow } from '../test-support/seed-book';
 import type { Book, EpubMeta, Owner } from '../types';
+import type { ApplyEpubChangesDeps } from './apply-epub-changes';
 import { getBookById, listBooks } from './book-catalog';
-import { BookStore } from './book-store';
+import { reimportBook } from './book-lifecycle';
 import { applyAutoAndAccepted, analyzeEpub, fixKey, toFix } from './epub-import-pipeline';
 import { assertValidEpub, validateEpubReport } from './epub-validator';
 
@@ -80,13 +82,8 @@ function makeEpub(opts: { title?: string; author?: string; subjects?: string[] }
 
 describe('epub-import-pipeline', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
-  let bookStore: BookStore;
   let editionsRoot: string;
-  let deps: {
-    bookStore: BookStore;
-    prisma: PrismaClient;
-    validationThreshold: 'ERROR';
-  };
+  let deps: ApplyEpubChangesDeps;
 
   beforeEach(async () => {
     // The vi.mock() factory above only sets these defaults once, at module
@@ -110,8 +107,12 @@ describe('epub-import-pipeline', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-editions-'));
-    bookStore = new BookStore(booksDir, prisma, editionsRoot);
-    deps = { bookStore, prisma, validationThreshold: 'ERROR' };
+    deps = {
+      reimportBook: (owner: Owner, id: string) =>
+        reimportBook(prisma, booksDir, editionsRoot, owner, id),
+      prisma,
+      validationThreshold: 'ERROR',
+    };
   });
 
   afterEach(async () => {
@@ -123,7 +124,7 @@ describe('epub-import-pipeline', () => {
   async function seedBook(id = 'book1'): Promise<Book> {
     const staged = path.join(booksDir, `staged-${randomUUID()}.epub`);
     fs.writeFileSync(staged, makeEpub({ title: FAKE_META.title, author: FAKE_META.author }));
-    await bookStore.addBook(OWNER, id, staged, FAKE_META);
+    await seedBookRow(prisma, { booksRoot: booksDir }, OWNER, id, staged, FAKE_META);
     return (await getBookById(prisma, booksDir, OWNER, id))!;
   }
 
@@ -133,7 +134,10 @@ describe('epub-import-pipeline', () => {
       staged,
       makeEpub({ title: FAKE_META.title, author: FAKE_META.author, subjects })
     );
-    await bookStore.addBook(OWNER, id, staged, { ...FAKE_META, subjects });
+    await seedBookRow(prisma, { booksRoot: booksDir }, OWNER, id, staged, {
+      ...FAKE_META,
+      subjects,
+    });
     return (await getBookById(prisma, booksDir, OWNER, id))!;
   }
 

@@ -8,7 +8,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { Owner } from '../types';
-import { BookStore } from './book-store';
+import { addBook, deleteBook } from './book-lifecycle';
 import type { ValidationReport } from './epub-validator';
 import { saveValidation } from './validation';
 
@@ -55,23 +55,22 @@ function report(valid: boolean): ValidationReport {
 describe('saveValidation', () => {
   let tmpDir: string;
   let prisma: PrismaClient;
-  let bookStore: BookStore;
+  let booksDir: string;
   let editionsRoot: string;
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-'));
-    const booksDir = path.join(tmpDir, 'books');
+    booksDir = path.join(tmpDir, 'books');
     fs.mkdirSync(booksDir, { recursive: true });
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     // seed a user + a book row (FK targets)
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-editions-'));
-    bookStore = new BookStore(booksDir, prisma, editionsRoot);
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, 'x');
-    await bookStore.addBook(owner, 'book1', staged, FAKE_META);
+    await addBook(prisma, booksDir, owner, 'book1', staged, FAKE_META);
   });
 
   afterEach(async () => {
@@ -112,7 +111,7 @@ describe('saveValidation', () => {
 
   it('cascades on book delete', async () => {
     await saveValidation(prisma, owner, 'book1', report(false));
-    await bookStore.deleteBook(owner, 'book1');
+    await deleteBook(prisma, booksDir, editionsRoot, owner, 'book1');
     expect(await readValidation('book1')).toBeNull();
   });
 });

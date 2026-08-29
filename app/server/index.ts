@@ -12,7 +12,6 @@ import { createServer } from './server';
 import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
-import { BookStore } from './services/book-store';
 import { createReplaceStaging } from './services/replace-staging';
 import { ScanJobStore } from './services/scan-job-store';
 import { ThumbnailQueue } from './services/thumbnail-queue';
@@ -39,7 +38,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   await runMigrations(prisma, config.booksDir);
 
   const editionsRoot = path.join(config.dataDir, 'editions');
-  const bookStore = new BookStore(config.booksDir, prisma, editionsRoot);
   const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
@@ -58,7 +56,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const graphqlHandler = createGraphqlHandler({
     prisma,
     stores: {
-      book: bookStore,
+      // No production code reaches this any more — see `Stores.book`'s doc
+      // comment in `graphql/context.ts` for why it's still here at all.
+      book: {},
       scanJob: scanJobStore,
       thumbnail: thumbnailQueue,
       replaceStaging,
@@ -77,7 +77,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   const server = createServer(
     config,
-    bookStore,
     thumbnailQueue,
     jwtSecret,
     editionsRoot,

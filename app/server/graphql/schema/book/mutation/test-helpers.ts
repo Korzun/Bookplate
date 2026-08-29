@@ -6,6 +6,7 @@ import AdmZip from 'adm-zip';
 
 import type { Severity } from '../../../../services/epub-validator';
 import { saveValidation } from '../../../../services/validation';
+import { seedBook } from '../../../../test-support/seed-book';
 import type { EpubMeta, Owner } from '../../../../types';
 import type { Harness } from '../../../test-util';
 import { parseCompoundId } from '../../node-scope';
@@ -74,7 +75,7 @@ const fakeMeta = (title: string): EpubMeta => ({
 /**
  * Seeds a real, on-disk, editable book: a real EPUB file (so `applyEpubChanges`'s
  * real `buildUpdatedEpub`/`reimportBook` round trip has real bytes to work
- * with), a real `Book` row (`BookStore.addBook`), and — unless `opts.valid` says
+ * with), a real `Book` row (`seedBook`/`addBook`), and — unless `opts.valid` says
  * otherwise — a `Validation` row marking it `valid: true`, mirroring what a real
  * scan does and satisfying `bookUpdateMetadata`'s REST-mirrored `book.valid !==
  * true` gate.
@@ -89,7 +90,14 @@ export async function seedEditableBook(
   const staged = path.join(harness.config.booksDir, `${owner.userId}-${id}-staged.epub`);
   fs.mkdirSync(path.dirname(staged), { recursive: true });
   fs.writeFileSync(staged, fixtureEpub(title));
-  await harness.stores.book.addBook(owner, id, staged, fakeMeta(title));
+  await seedBook(
+    harness.prisma,
+    { booksRoot: harness.config.booksDir },
+    owner,
+    id,
+    staged,
+    fakeMeta(title)
+  );
 
   // Not `opts.valid ?? true`: `??` treats an explicit `null` the same as
   // `undefined` and would silently replace it with `true`, defeating the

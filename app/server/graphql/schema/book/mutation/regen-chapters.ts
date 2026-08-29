@@ -1,5 +1,6 @@
 import { getBookById } from '../../../../services/book-catalog';
 import { BookHashCollisionError } from '../../../../services/book-errors';
+import { reimportBook } from '../../../../services/book-lifecycle';
 import type { Book, Owner } from '../../../../types';
 import { assertUnreachableStoreError, toResult } from '../../../to-result';
 import {
@@ -110,7 +111,7 @@ function assertReimportSucceeded(reimported: Book | null): asserts reimported is
  * message, same `book.valid !== true` test — see that type's doc comment for
  * why it isn't a reused `EpubValidationError`).
  *
- * `BookStore.reimportBook` is traced end to end (`book-store.ts`): it throws
+ * `reimportBook` is traced end to end (`book-lifecycle.ts`): it throws
  * `BookHashCollisionError` when the re-parsed content's new fingerprint
  * collides with another book already in the library — the one known store
  * error this path can raise. `expected` below is scoped to exactly that,
@@ -143,7 +144,14 @@ builder.mutationField('bookRegenChapters', (t) =>
       }
 
       const outcome = await toResult<Book | null, BookHashCollisionError>(
-        () => context.stores.book.reimportBook(owner, targetBook.id),
+        () =>
+          reimportBook(
+            context.prisma,
+            context.config.booksDir,
+            context.editionsRoot,
+            owner,
+            targetBook.id
+          ),
         [BookHashCollisionError]
       );
       if ('err' in outcome) {

@@ -22,11 +22,12 @@ vi.mock('./epub-validator', async (importOriginal) => {
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
+import { seedBook } from '../test-support/seed-book';
 import type { Owner } from '../types';
-import { replaceEpubBytes } from './apply-epub-changes';
+import { ApplyEpubChangesDeps, replaceEpubBytes } from './apply-epub-changes';
 import { getBookById } from './book-catalog';
 import { BookHashCollisionError } from './book-errors';
-import { BookStore } from './book-store';
+import { reimportBook } from './book-lifecycle';
 import { assertValidEpub, EpubValidationError } from './epub-validator';
 
 const OWNER: Owner = { userId: 'u1', username: 'alice' };
@@ -67,13 +68,8 @@ function epub(title: string): Buffer {
 
 describe('replaceEpubBytes', () => {
   let tmpDir: string, booksDir: string, prisma: PrismaClient;
-  let bookStore: BookStore;
   let editionsRoot: string;
-  let deps: {
-    bookStore: BookStore;
-    prisma: PrismaClient;
-    validationThreshold: 'ERROR';
-  };
+  let deps: ApplyEpubChangesDeps;
 
   beforeEach(async () => {
     // The vi.mock() factory above only sets this default once, at module
@@ -91,11 +87,19 @@ describe('replaceEpubBytes', () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
     editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'replace-editions-'));
-    bookStore = new BookStore(booksDir, prisma, editionsRoot);
-    deps = { bookStore, prisma, validationThreshold: 'ERROR' };
+    deps = {
+      // Call-through by default (`BookStore`'s deletion, Task 9b) — the one
+      // collision test below overrides it with `mockRejectedValueOnce`,
+      // replacing the old `vi.spyOn(bookStore, 'reimportBook')`.
+      reimportBook: vi.fn((owner: Owner, id: string) =>
+        reimportBook(prisma, booksDir, editionsRoot, owner, id)
+      ),
+      prisma,
+      validationThreshold: 'ERROR',
+    };
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, epub('Old'));
-    await bookStore.addBook(OWNER, 'oldid', staged, FAKE_META);
+    await seedBook(prisma, { booksRoot: booksDir }, OWNER, 'oldid', staged, FAKE_META);
   });
   afterEach(async () => {
     await prisma.$disconnect();
@@ -144,7 +148,7 @@ describe('replaceEpubBytes', () => {
   it('restores the original bytes when reimport throws a collision', async () => {
     const book = (await getBookById(prisma, booksDir, OWNER, 'oldid'))!;
     const before = fs.readFileSync(book.path);
-    vi.spyOn(bookStore, 'reimportBook').mockRejectedValueOnce(new BookHashCollisionError('dup'));
+    vi.mocked(deps.reimportBook).mockRejectedValueOnce(new BookHashCollisionError('dup'));
 
     await expect(replaceEpubBytes(deps, OWNER, book, epub('New'))).rejects.toBeInstanceOf(
       BookHashCollisionError

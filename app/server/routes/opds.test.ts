@@ -12,10 +12,10 @@ import request from 'supertest';
 import { runMigrations } from '../db/migrate';
 import { saveThumbnail } from '../services/book-assets';
 import { listSeries } from '../services/book-catalog';
-import { BookStore } from '../services/book-store';
 import { buildEdition } from '../services/edition-builder';
 import { assertValidEpub } from '../services/epub-validator';
 import { createUser } from '../services/user';
+import { seedBook } from '../test-support/seed-book';
 import { EpubMeta, Owner } from '../types';
 import { generateSlug } from '../utils/slug';
 import { createOpdsRouter } from './opds';
@@ -85,9 +85,7 @@ async function makeDevice(name: string, overrides: Partial<Prisma.DeviceCreateIn
 }
 
 let booksDir: string;
-let editionsRoot: string;
 let prisma: PrismaClient;
-let bookStore: BookStore;
 let app: express.Express;
 let dbPath: string;
 let alice: Owner;
@@ -101,7 +99,6 @@ function basicAuth(username: string, password: string) {
 
 beforeEach(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-opds-'));
-  editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-opds-editions-'));
   dbPath = path.join(
     os.tmpdir(),
     `test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`
@@ -109,7 +106,6 @@ beforeEach(async () => {
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
-  bookStore = new BookStore(booksDir, prisma, editionsRoot);
   // Register a test user with syncPassword 'secret' so OPDS Basic Auth works.
   await createUser(prisma, 'alice', null, 'secret');
   const aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
@@ -183,14 +179,17 @@ describe('GET /opds/books', () => {
   });
 
   it('includes an entry for each book', async () => {
-    await bookStore.addBook(alice, 'book1', stage('book1'), { ...FAKE_META, title: 'My Book' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'book1', stage('book1'), {
+      ...FAKE_META,
+      title: 'My Book',
+    });
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).toContain('My Book');
     expect(res.text).toContain('opds-spec.org/acquisition');
   });
 
   it('escapes special characters in titles', async () => {
-    await bookStore.addBook(alice, 'book2', stage('book2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'book2', stage('book2'), {
       ...FAKE_META,
       title: 'A & B <Test>',
     });
@@ -200,7 +199,7 @@ describe('GET /opds/books', () => {
   });
 
   it('includes author in book entry', async () => {
-    await bookStore.addBook(alice, 'book3', stage('book3'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'book3', stage('book3'), {
       ...FAKE_META,
       author: 'Test Author',
     });
@@ -209,7 +208,7 @@ describe('GET /opds/books', () => {
   });
 
   it('includes summary (description) in book entry', async () => {
-    await bookStore.addBook(alice, 'book4', stage('book4'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'book4', stage('book4'), {
       ...FAKE_META,
       description: 'A great book about things.',
     });
@@ -219,7 +218,7 @@ describe('GET /opds/books', () => {
 
   it('includes cover link when hasCover is true', async () => {
     const coverData = Buffer.from('fake-cover-data');
-    await bookStore.addBook(alice, 'bookcover', stage('bookcover'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'bookcover', stage('bookcover'), {
       ...FAKE_META,
       coverData,
       coverMime: 'image/jpeg',
@@ -232,7 +231,7 @@ describe('GET /opds/books', () => {
   });
 
   it('does not include cover link when hasCover is false', async () => {
-    await bookStore.addBook(alice, 'booknocover', stage('booknocover'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'booknocover', stage('booknocover'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -251,7 +250,14 @@ describe('GET /opds/books/:id/download', () => {
   });
 
   it('returns the file with correct content type', async () => {
-    await bookStore.addBook(alice, 'bookdl', stage('bookdl', 'epub-content'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      alice,
+      'bookdl',
+      stage('bookdl', 'epub-content'),
+      FAKE_META
+    );
     const res = await request(app)
       .get('/opds/books/bookdl/download')
       .set(basicAuth('alice', 'secret'));
@@ -260,13 +266,20 @@ describe('GET /opds/books/:id/download', () => {
   });
 
   it('uses the computed download name in Content-Disposition', async () => {
-    await bookStore.addBook(alice, 'lotr1', stage('lotr1', 'epub-content'), {
-      ...FAKE_META,
-      title: 'The Fellowship of the Ring',
-      author: 'J.R.R. Tolkien',
-      series: 'The Lord of the Rings',
-      seriesIndex: 1,
-    });
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      alice,
+      'lotr1',
+      stage('lotr1', 'epub-content'),
+      {
+        ...FAKE_META,
+        title: 'The Fellowship of the Ring',
+        author: 'J.R.R. Tolkien',
+        series: 'The Lord of the Rings',
+        seriesIndex: 1,
+      }
+    );
 
     const res = await request(app)
       .get('/opds/books/lotr1/download')
@@ -282,7 +295,14 @@ describe('GET /opds/books/:id/download', () => {
 describe('GET /opds/books/:id/devices/:slug/download', () => {
   it('serves a generated edition for a device download link', async () => {
     const bookId = 'devicedl1';
-    await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      alice,
+      bookId,
+      stage(bookId, 'epub-content'),
+      FAKE_META
+    );
 
     const device = await makeDevice('Kindle');
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
@@ -315,7 +335,14 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
 
   it('404s for an unknown device slug', async () => {
     const bookId = 'devicedl2';
-    await bookStore.addBook(alice, bookId, stage(bookId, 'epub-content'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      alice,
+      bookId,
+      stage(bookId, 'epub-content'),
+      FAKE_META
+    );
     // app built without device/edition stores
     const res = await request(app)
       .get(`/opds/books/${bookId}/devices/nope/download`)
@@ -325,7 +352,14 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
 
   it('403s on a device download for a user the device is not enabled for', async () => {
     const bookId = 'devicedl-forbidden';
-    await bookStore.addBook(bob, bookId, stage(bookId, 'epub-content'), FAKE_META);
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      bob,
+      bookId,
+      stage(bookId, 'epub-content'),
+      FAKE_META
+    );
     const device = await makeDevice('Kindle');
     // alice enabled, bob not
     await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
@@ -360,7 +394,7 @@ describe('GET /opds/books/:id/cover', () => {
   });
 
   it('returns 404 when book exists but has no cover', async () => {
-    await bookStore.addBook(alice, 'booknocover2', stage('booknocover2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'booknocover2', stage('booknocover2'), {
       ...FAKE_META,
       coverData: null,
       coverMime: null,
@@ -373,7 +407,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns cover image with correct content type', async () => {
     const coverData = Buffer.from('fake-jpeg-data');
-    await bookStore.addBook(alice, 'bookcoverimg', stage('bookcoverimg'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'bookcoverimg', stage('bookcoverimg'), {
       ...FAKE_META,
       coverData,
       coverMime: 'image/jpeg',
@@ -388,7 +422,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns full cover when book has one', async () => {
     const coverBuf = Buffer.from('opds-cover-data');
-    await bookStore.addBook(alice, 'opds1', stage('opds1'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opds1', stage('opds1'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -400,7 +434,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('returns thumbnail when ?width= matches', async () => {
     const thumbBuf = Buffer.from('opds-thumb');
-    await bookStore.addBook(alice, 'opds2', stage('opds2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opds2', stage('opds2'), {
       ...FAKE_META,
       coverData: Buffer.from('orig'),
       coverMime: 'image/jpeg',
@@ -415,7 +449,7 @@ describe('GET /opds/books/:id/cover', () => {
 
   it('falls back to full-size when thumbnail missing', async () => {
     const coverBuf = Buffer.from('fallback-cover');
-    await bookStore.addBook(alice, 'opds3', stage('opds3'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opds3', stage('opds3'), {
       ...FAKE_META,
       coverData: coverBuf,
       coverMime: 'image/jpeg',
@@ -428,7 +462,7 @@ describe('GET /opds/books/:id/cover', () => {
   });
 
   it('sets an immutable cache header and ETag when a version token is present', async () => {
-    await bookStore.addBook(alice, 'opdscache', stage('opdscache'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opdscache', stage('opdscache'), {
       ...FAKE_META,
       coverData: Buffer.from('opds-cacheable'),
       coverMime: 'image/jpeg',
@@ -444,11 +478,11 @@ describe('GET /opds/books/:id/cover', () => {
 
 describe('Cross-user library isolation', () => {
   it("alice's feed contains her book and not bob's book", async () => {
-    await bookStore.addBook(alice, 'alice-book', stage('alice-book'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'alice-book', stage('alice-book'), {
       ...FAKE_META,
       title: 'Alice Book',
     });
-    await bookStore.addBook(bob, 'bob-book', stage('bob-book'), {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'bob-book', stage('bob-book'), {
       ...FAKE_META,
       title: 'Bob Book',
     });
@@ -460,11 +494,11 @@ describe('Cross-user library isolation', () => {
   });
 
   it("bob's feed contains his book and not alice's book", async () => {
-    await bookStore.addBook(alice, 'alice-book2', stage('alice-book2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'alice-book2', stage('alice-book2'), {
       ...FAKE_META,
       title: 'Alice Book',
     });
-    await bookStore.addBook(bob, 'bob-book2', stage('bob-book2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'bob-book2', stage('bob-book2'), {
       ...FAKE_META,
       title: 'Bob Book',
     });
@@ -476,10 +510,17 @@ describe('Cross-user library isolation', () => {
   });
 
   it("alice cannot download bob's book — returns 404", async () => {
-    await bookStore.addBook(bob, 'bob-exclusive', stage('bob-exclusive', 'epub-content'), {
-      ...FAKE_META,
-      title: 'Bob Exclusive',
-    });
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      bob,
+      'bob-exclusive',
+      stage('bob-exclusive', 'epub-content'),
+      {
+        ...FAKE_META,
+        title: 'Bob Exclusive',
+      }
+    );
 
     const res = await request(app)
       .get('/opds/books/bob-exclusive/download')
@@ -490,7 +531,7 @@ describe('Cross-user library isolation', () => {
 
 describe('OPDS feed thumbnail link', () => {
   it('includes opds thumbnail link for books with covers', async () => {
-    await bookStore.addBook(alice, 'opds4', stage('opds4'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opds4', stage('opds4'), {
       ...FAKE_META,
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
@@ -501,14 +542,17 @@ describe('OPDS feed thumbnail link', () => {
   });
 
   it('does not include thumbnail link for books without covers', async () => {
-    await bookStore.addBook(alice, 'opds5', stage('opds5'), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'opds5', stage('opds5'), FAKE_META);
     const res = await request(app).get('/opds/books').set(basicAuth('alice', 'secret'));
     expect(res.text).not.toContain('opds-spec.org/image/thumbnail');
   });
 
   it('does not list per-device acquisition links in the base book feed', async () => {
     const bookId = 'opds-device1';
-    await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Device Book' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, bookId, stage(bookId), {
+      ...FAKE_META,
+      title: 'Device Book',
+    });
     await makeDevice('Kindle');
     // Real `buildEdition`/`assertValidEpub` — this test only lists the base
     // feed, never downloads a device edition, and is the file's designated
@@ -539,9 +583,18 @@ describe('OPDS feed thumbnail link', () => {
 
 describe('GET /opds/authors', () => {
   it('returns a navigation feed with one entry per distinct author', async () => {
-    await bookStore.addBook(alice, 'au1', stage('au1'), { ...FAKE_META, author: 'Jane Austen' });
-    await bookStore.addBook(alice, 'au2', stage('au2'), { ...FAKE_META, author: 'Jane Austen' });
-    await bookStore.addBook(alice, 'au3', stage('au3'), { ...FAKE_META, author: 'Leo Tolstoy' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au1', stage('au1'), {
+      ...FAKE_META,
+      author: 'Jane Austen',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au2', stage('au2'), {
+      ...FAKE_META,
+      author: 'Jane Austen',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au3', stage('au3'), {
+      ...FAKE_META,
+      author: 'Leo Tolstoy',
+    });
     const res = await request(app).get('/opds/authors').set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/atom\+xml/);
@@ -560,12 +613,12 @@ describe('GET /opds/authors', () => {
 
 describe('GET /opds/authors/:author', () => {
   it('returns an acquisition feed with books by the author', async () => {
-    await bookStore.addBook(alice, 'au4', stage('au4'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au4', stage('au4'), {
       ...FAKE_META,
       author: 'Ursula Le Guin',
       title: 'The Left Hand of Darkness',
     });
-    await bookStore.addBook(alice, 'au5', stage('au5'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au5', stage('au5'), {
       ...FAKE_META,
       author: 'Other',
       title: 'Other Book',
@@ -587,7 +640,7 @@ describe('GET /opds/authors/:author', () => {
   });
 
   it('escapes special characters in author names', async () => {
-    await bookStore.addBook(alice, 'au6', stage('au6'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au6', stage('au6'), {
       ...FAKE_META,
       author: 'Author & Co',
       title: 'Special Book',
@@ -600,12 +653,12 @@ describe('GET /opds/authors/:author', () => {
   });
 
   it("does not expose other users' books", async () => {
-    await bookStore.addBook(alice, 'au7', stage('au7'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'au7', stage('au7'), {
       ...FAKE_META,
       author: 'Shared Author',
       title: 'Alice Book',
     });
-    await bookStore.addBook(bob, 'au8', stage('au8'), {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'au8', stage('au8'), {
       ...FAKE_META,
       author: 'Shared Author',
       title: 'Bob Book',
@@ -620,12 +673,12 @@ describe('GET /opds/authors/:author', () => {
 
 describe('GET /opds/series', () => {
   it('returns a navigation feed with one entry per series', async () => {
-    await bookStore.addBook(alice, 'sr1', stage('sr1'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr1', stage('sr1'), {
       ...FAKE_META,
       series: 'Dune',
       seriesIndex: 1,
     });
-    await bookStore.addBook(alice, 'sr2', stage('sr2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr2', stage('sr2'), {
       ...FAKE_META,
       series: 'Foundation',
       seriesIndex: 1,
@@ -645,19 +698,19 @@ describe('GET /opds/series', () => {
 
 describe('GET /opds/series/:seriesId', () => {
   it('returns an acquisition feed with books for the series ordered by seriesIndex', async () => {
-    await bookStore.addBook(alice, 'sr3', stage('sr3'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr3', stage('sr3'), {
       ...FAKE_META,
       series: 'The Expanse',
       seriesIndex: 2,
       title: "Caliban's War",
     });
-    await bookStore.addBook(alice, 'sr4', stage('sr4'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr4', stage('sr4'), {
       ...FAKE_META,
       series: 'The Expanse',
       seriesIndex: 1,
       title: 'Leviathan Wakes',
     });
-    await bookStore.addBook(alice, 'sr5', stage('sr5'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr5', stage('sr5'), {
       ...FAKE_META,
       series: 'Other',
       seriesIndex: 1,
@@ -687,13 +740,13 @@ describe('GET /opds/series/:seriesId', () => {
   });
 
   it("does not expose other users' books", async () => {
-    await bookStore.addBook(alice, 'sr6', stage('sr6'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'sr6', stage('sr6'), {
       ...FAKE_META,
       series: 'Shared Series',
       seriesIndex: 1,
       title: 'Alice Book',
     });
-    await bookStore.addBook(bob, 'sr7', stage('sr7'), {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'sr7', stage('sr7'), {
       ...FAKE_META,
       series: 'Shared Series',
       seriesIndex: 1,
@@ -711,11 +764,11 @@ describe('GET /opds/series/:seriesId', () => {
 
 describe('GET /opds/subjects', () => {
   it('returns a navigation feed with one entry per distinct subject', async () => {
-    await bookStore.addBook(alice, 'su1', stage('su1'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su1', stage('su1'), {
       ...FAKE_META,
       subjects: ['Fantasy', 'Adventure'],
     });
-    await bookStore.addBook(alice, 'su2', stage('su2'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su2', stage('su2'), {
       ...FAKE_META,
       subjects: ['Fantasy', 'Science Fiction'],
     });
@@ -738,12 +791,12 @@ describe('GET /opds/subjects', () => {
 
 describe('GET /opds/subjects/:subject', () => {
   it('returns an acquisition feed with books tagged with the subject', async () => {
-    await bookStore.addBook(alice, 'su3', stage('su3'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su3', stage('su3'), {
       ...FAKE_META,
       title: 'Fantasy Book',
       subjects: ['Fantasy'],
     });
-    await bookStore.addBook(alice, 'su4', stage('su4'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su4', stage('su4'), {
       ...FAKE_META,
       title: 'Sci-Fi Book',
       subjects: ['Science Fiction'],
@@ -765,7 +818,7 @@ describe('GET /opds/subjects/:subject', () => {
   });
 
   it('handles URL-encoded subject names', async () => {
-    await bookStore.addBook(alice, 'su5', stage('su5'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su5', stage('su5'), {
       ...FAKE_META,
       title: 'Space Book',
       subjects: ['Science Fiction'],
@@ -778,12 +831,12 @@ describe('GET /opds/subjects/:subject', () => {
   });
 
   it("does not expose other users' books", async () => {
-    await bookStore.addBook(alice, 'su6', stage('su6'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'su6', stage('su6'), {
       ...FAKE_META,
       title: 'Alice Fantasy',
       subjects: ['Fantasy'],
     });
-    await bookStore.addBook(bob, 'su7', stage('su7'), {
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'su7', stage('su7'), {
       ...FAKE_META,
       title: 'Bob Fantasy',
       subjects: ['Fantasy'],
@@ -830,8 +883,14 @@ describe('GET /opds/status/:status', () => {
   }
 
   it('not-started returns books without any progress', async () => {
-    await bookStore.addBook(alice, 'st1', stage('st1'), { ...FAKE_META, title: 'Unread Book' });
-    await bookStore.addBook(alice, 'st2', stage('st2'), { ...FAKE_META, title: 'Started Book' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st1', stage('st1'), {
+      ...FAKE_META,
+      title: 'Unread Book',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st2', stage('st2'), {
+      ...FAKE_META,
+      title: 'Started Book',
+    });
     await setProgress(alice.userId, 'st2', 0.5);
     const res = await request(app)
       .get('/opds/status/not-started')
@@ -842,8 +901,14 @@ describe('GET /opds/status/:status', () => {
   });
 
   it('in-progress returns only partially read books', async () => {
-    await bookStore.addBook(alice, 'st3', stage('st3'), { ...FAKE_META, title: 'Reading Now' });
-    await bookStore.addBook(alice, 'st4', stage('st4'), { ...FAKE_META, title: 'Not Started' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st3', stage('st3'), {
+      ...FAKE_META,
+      title: 'Reading Now',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st4', stage('st4'), {
+      ...FAKE_META,
+      title: 'Not Started',
+    });
     await setProgress(alice.userId, 'st3', 0.4);
     const res = await request(app)
       .get('/opds/status/in-progress')
@@ -854,8 +919,14 @@ describe('GET /opds/status/:status', () => {
   });
 
   it('completed returns only fully read books', async () => {
-    await bookStore.addBook(alice, 'st5', stage('st5'), { ...FAKE_META, title: 'Finished' });
-    await bookStore.addBook(alice, 'st6', stage('st6'), { ...FAKE_META, title: 'Unfinished' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st5', stage('st5'), {
+      ...FAKE_META,
+      title: 'Finished',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st6', stage('st6'), {
+      ...FAKE_META,
+      title: 'Unfinished',
+    });
     await setProgress(alice.userId, 'st5', 1.0);
     await setProgress(alice.userId, 'st6', 0.8);
     const res = await request(app).get('/opds/status/completed').set(basicAuth('alice', 'secret'));
@@ -872,8 +943,14 @@ describe('GET /opds/status/:status', () => {
   });
 
   it("does not expose other users' books", async () => {
-    await bookStore.addBook(alice, 'st7', stage('st7'), { ...FAKE_META, title: 'Alice Book' });
-    await bookStore.addBook(bob, 'st8', stage('st8'), { ...FAKE_META, title: 'Bob Book' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'st7', stage('st7'), {
+      ...FAKE_META,
+      title: 'Alice Book',
+    });
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'st8', stage('st8'), {
+      ...FAKE_META,
+      title: 'Bob Book',
+    });
     await setProgress(alice.userId, 'st7', 1.0);
     await setProgress(bob.userId, 'st8', 1.0);
     const res = await request(app).get('/opds/status/completed').set(basicAuth('alice', 'secret'));
@@ -935,7 +1012,10 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
   it('book feed carries exactly one acquisition link = the device edition', async () => {
     const { app: a } = await deviceApp();
     const bookId = 'devcat1';
-    await bookStore.addBook(alice, bookId, stage(bookId), { ...FAKE_META, title: 'Cat Book' });
+    await seedBook(prisma, { booksRoot: booksDir }, alice, bookId, stage(bookId), {
+      ...FAKE_META,
+      title: 'Cat Book',
+    });
     const res = await request(a).get('/opds/device/kindle/books').set(basicAuth('alice', 'secret'));
     expect(res.status).toBe(200);
     expect(res.text).toContain(`/opds/books/${bookId}/devices/kindle/download`);
@@ -948,7 +1028,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
 
   it('device book feed cover links still point at the base catalog', async () => {
     const { app: a } = await deviceApp();
-    await bookStore.addBook(alice, 'devcover', stage('devcover'), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'devcover', stage('devcover'), {
       ...FAKE_META,
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
@@ -970,7 +1050,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
   it('404s for a download path under the device mount', async () => {
     const { app: a } = await deviceApp();
     const bookId = 'devdl404';
-    await bookStore.addBook(alice, bookId, stage(bookId), FAKE_META);
+    await seedBook(prisma, { booksRoot: booksDir }, alice, bookId, stage(bookId), FAKE_META);
     const res = await request(a)
       .get(`/opds/device/kindle/books/${bookId}/download`)
       .set(basicAuth('alice', 'secret'));
@@ -980,7 +1060,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
   it('404s for a cover path under the device mount', async () => {
     const { app: a } = await deviceApp();
     const bookId = 'devcover404';
-    await bookStore.addBook(alice, bookId, stage(bookId), {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, bookId, stage(bookId), {
       ...FAKE_META,
       coverData: Buffer.from('cover'),
       coverMime: 'image/jpeg',
