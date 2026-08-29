@@ -217,8 +217,10 @@ builder.mutationField('progressSet', (t) =>
       const owner: Owner = buildOwner(args.input.userId.id, context.viewer!);
 
       // Synthesise a minimal EPUB CFI so currentChapter persists through
-      // Progress.currentChapter, exactly like REST's GET /api/my/progress —
-      // see its `PUT /api/my/progress/:document` sibling, removed in e67b4ad9.
+      // Progress.currentChapter. REST did this same synthesis on the WRITE
+      // side, in `PUT /api/my/progress/:document` (removed in e67b4ad9), so
+      // that `GET /api/my/progress` could derive currentChapter back out of
+      // the stored CFI. It is the write side this mirrors, not the read.
       const book = await getBookById(
         context.prisma,
         context.config.booksDir,

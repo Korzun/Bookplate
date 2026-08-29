@@ -133,6 +133,13 @@ const result = builder.unionType('UserChangePasswordResult', {
  * by `userRegenerateSyncPassword`) is NOT in that exemption list, so that
  * mutation stays on the ordinary `authenticated` scope.
  *
+ * That third exemption is now inert, and deliberately left alone: `e67b4ad9`
+ * removed `PATCH /api/my/password`, so the path it names reaches no route (an
+ * unmatched `/api/*` gets the JSON 404 `79021b3d` added). Dropping the entry
+ * would turn that path's answer from 404 into 403 for a `mustChangePassword`
+ * caller — a behaviour change needing its own decision, not a doc fix. The
+ * precedent it records for THIS mutation is unaffected either way.
+ *
  * The 401 REST returned for a wrong `currentPassword` (`routes/ui.ts`, removed
  * in `e67b4ad9`, `validateUser` returning `false` — never a throw, see
  * `services/password.ts`) is modelled as the honest `IncorrectPasswordError`,
