@@ -1,5 +1,5 @@
 import type {
-  EpubValidationError as StoreError,
+  EpubValidationError as DomainError,
   ValidationMessage,
 } from '../../../services/epub-validator';
 import { builder } from '../builder';
@@ -24,7 +24,7 @@ export type EpubValidationErrorShape = {
   readonly messages: readonly ValidationMessage[];
 };
 
-export const epubValidationError = (error: StoreError): EpubValidationErrorShape => ({
+export const epubValidationError = (error: DomainError): EpubValidationErrorShape => ({
   __typename: 'EpubValidationError',
   message: error.message,
   messages: error.messages,

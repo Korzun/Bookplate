@@ -1,4 +1,4 @@
-import type { BookHashCollisionError as StoreError } from '../../../services/book-errors';
+import type { BookHashCollisionError as DomainError } from '../../../services/book-errors';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: `book/index.ts` now also side-effect-imports
 // `book/mutation/update-metadata.ts` (task 2), which reaches this file for its
@@ -11,7 +11,7 @@ import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
 /**
- * The store throws `BookHashCollisionError(collidingId)` — an id and nothing
+ * `reimportBook` throws `BookHashCollisionError(collidingId)` — an id and nothing
  * more. The graph upgrades it into the colliding `Book` itself (spec, §"Error
  * model": "so the UI can render 'this matches *Dune*' with a working link
  * instead of refetching to turn an id into a title").
@@ -32,7 +32,7 @@ export type BookHashCollisionErrorShape = {
 };
 
 export const bookHashCollisionError = (
-  error: StoreError,
+  error: DomainError,
   owner: Owner
 ): BookHashCollisionErrorShape => ({
   __typename: 'BookHashCollisionError',

@@ -1,4 +1,4 @@
-import type { SelfLinkError as StoreError } from '../../../services/book-errors';
+import type { SelfLinkError as DomainError } from '../../../services/book-errors';
 import { builder } from '../builder';
 import { model as userError } from '../user-error';
 
@@ -13,7 +13,7 @@ export type SelfLinkErrorShape = {
   readonly message: string;
 };
 
-export const selfLinkError = (error: StoreError): SelfLinkErrorShape => ({
+export const selfLinkError = (error: DomainError): SelfLinkErrorShape => ({
   __typename: 'SelfLinkError',
   message: error.message,
 });

@@ -1,4 +1,4 @@
-import type { DocumentIsBookError as StoreError } from '../../../services/book-errors';
+import type { DocumentIsBookError as DomainError } from '../../../services/book-errors';
 import type { Owner } from '../../../types';
 // `../book/model`, not `../book`: see `book-hash-collision-error/model.ts`'s
 // note — `book/index.ts` now also side-effect-imports `book/mutation/*.ts`
@@ -20,7 +20,10 @@ export type DocumentIsBookErrorShape = {
   readonly documentId: string;
 };
 
-export const documentIsBookError = (error: StoreError, owner: Owner): DocumentIsBookErrorShape => ({
+export const documentIsBookError = (
+  error: DomainError,
+  owner: Owner
+): DocumentIsBookErrorShape => ({
   __typename: 'DocumentIsBookError',
   message: error.message,
   owner,

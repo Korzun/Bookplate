@@ -18,7 +18,7 @@ import { EpubValidationError } from '../services/epub-validator';
  * an `Error` whose `name` merely reads "SelfLinkError" is not one, and must
  * not be presented to a client as a domain outcome.
  */
-const KNOWN_STORE_ERROR_CLASSES = [
+const KNOWN_DOMAIN_ERROR_CLASSES = [
   BookHashCollisionError,
   BookAlreadyExistsError,
   SelfLinkError,
@@ -42,7 +42,7 @@ export type MutationResult<T, E extends KnownDomainError = KnownDomainError> =
   | { err: E };
 
 export const isKnownDomainError = (value: unknown): value is KnownDomainError =>
-  KNOWN_STORE_ERROR_CLASSES.some((errorClass) => value instanceof errorClass);
+  KNOWN_DOMAIN_ERROR_CLASSES.some((errorClass) => value instanceof errorClass);
 
 /**
  * The single `try`/`catch` the spec allows a mutation, factored out of every
@@ -79,14 +79,14 @@ export const isKnownDomainError = (value: unknown): value is KnownDomainError =>
  *     makes `assertUnreachableDomainError` below compile only when the
  *     discharge is genuinely exhaustive over `E`.
  *
- * Omitting `expected` defaults to all seven (`KNOWN_STORE_ERROR_CLASSES`),
+ * Omitting `expected` defaults to all seven (`KNOWN_DOMAIN_ERROR_CLASSES`),
  * `E` defaults to the full `KnownDomainError` union, and every existing call
  * (there were none before task 2) keeps compiling and behaving identically —
  * this is additive.
  */
 export const toResult = async <T, E extends KnownDomainError = KnownDomainError>(
   run: () => Promise<T>,
-  expected: readonly (abstract new (...args: never[]) => E)[] = KNOWN_STORE_ERROR_CLASSES as never
+  expected: readonly (abstract new (...args: never[]) => E)[] = KNOWN_DOMAIN_ERROR_CLASSES as never
 ): Promise<MutationResult<T, E>> => {
   try {
     return { ok: await run() };
