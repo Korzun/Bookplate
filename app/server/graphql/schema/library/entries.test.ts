@@ -386,3 +386,140 @@ describe('Library.entries', () => {
     expect(seriesSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+// Task 5 (remove-stores phase 4): `listBooksPage`'s `prisma.book.findMany`
+// (`services/library-page.ts`) used to carry no `select` at all, so every
+// standalone row on a page — up to 20 — came back with `coverData`
+// (`prisma/schema.prisma`'s `Bytes?` cover blob), pulled out of SQLite and
+// thrown away, since no `Book` field resolver reads it. These two tests
+// prove the fix has both properties a query-count guard cannot: the blob is
+// actually gone from the query, AND nothing that used to resolve now
+// silently resolves `undefined` because a needed column was left out of the
+// trimmed `select` by mistake.
+describe('Library.entries — Book column selection', () => {
+  // Property 1: the blob is gone from the query itself, not merely unread
+  // off a row that still carries it. Asserting on the `select` object passed
+  // to `prisma.book.findMany`, not on the returned row, catches a select
+  // that fetches `coverData` anyway (e.g. a stray `coverData: true`) even if
+  // no field resolver happens to touch it.
+  it('selects the standalone book read without `coverData`, but still WITH a `select`', async () => {
+    const bookSpy = vi.spyOn(harness.prisma.book, 'findMany');
+
+    const result = await harness.execute(ENTRIES, { viewer: harness.aliceViewer });
+    expect(result.errors).toBeUndefined();
+
+    expect(bookSpy).toHaveBeenCalledTimes(1);
+    const { select } = bookSpy.mock.calls[0][0] as { select?: Record<string, unknown> };
+    // Not `undefined`: an unselected read (the pre-fix state) would also
+    // "not select coverData" by this narrow a check, so the guard has to
+    // pin down that a `select` is genuinely in force, not merely absent.
+    expect(select).toBeDefined();
+    expect(select).not.toHaveProperty('coverData');
+  });
+
+  // Property 2: every field the schema exposes on `Book` still resolves off
+  // the selected row — the failure mode a query-count test, or even
+  // property 1 above, would NOT catch: a `Book` field resolver silently
+  // seeing `undefined` for a column left out of the trimmed `select`. Covers
+  // every scalar/derived field in `graphql/schema/book/model.ts` that reads
+  // directly off the row (title/author/etc., the `parse*`-derived array
+  // fields, the epoch-to-`DateTime` fields, `hasCover`, and the
+  // `urlSuffix`-built REST URLs) plus the two plain `userId`/`id`-keyed
+  // fields with no extra fixture needed (`deviceEditionCount`,
+  // `hasActionablePendingFix`) and the `seriesRel` relation
+  // (`series`) — deliberately fetched through `Library.entries`, the one
+  // read path this task's `select` actually touches, not through
+  // `Library.book` (`t.prismaField`/`queryFromInfo`, a different read path
+  // entirely — see `book/model.test.ts`).
+  it('resolves every field the schema exposes on Book, sourced from the selected row', async () => {
+    const bookId = 'f'.repeat(32);
+    await harness.prisma.book.create({
+      data: {
+        userId: harness.aliceOwner.userId,
+        id: bookId,
+        title: 'Column Selection Probe',
+        titleSort: 'column selection probe',
+        author: 'A. Uthor',
+        authorSort: 'uthor, a.',
+        description: 'A book that exercises every Book field resolver.',
+        publisher: 'Selection Press',
+        publishDate: '2020-01-01',
+        seriesId: 's-1', // the "Expanse" series seeded in beforeEach
+        seriesIndex: 3,
+        identifiers: '[{"scheme":"ISBN","value":"9780000000000"}]',
+        subjects: '["Fantasy","Epic"]',
+        coverMime: 'image/jpeg',
+        coverData: Buffer.from('fake-cover-bytes'),
+        size: 424242,
+        mtime: 1_700_000_000_000,
+        addedAt: 1_700_000_000_000,
+        chapterCount: 3,
+        chapterSpineMap: '[0,3,7]',
+        chapterNames: '["One","Two","Three"]',
+        pageCount: 250,
+      },
+    });
+
+    const result = await harness.execute(
+      `{ viewer { library { entries(first: 10, filter: { query: "Column Selection Probe" }) {
+        edges { node { __typename ... on Book {
+          documentId title titleSort author authorSort description publisher publishDate
+          seriesIndex size pageCount chapterCount
+          subjects identifiers { scheme value } chapterSpineMap chapterNames
+          mtime addedAt
+          hasCover coverUrl downloadUrl thumbnailUrl(width: 150)
+          deviceEditionCount hasActionablePendingFix
+          series { name }
+        } } }
+      } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const edges = (
+      result.data as {
+        viewer: {
+          library: {
+            entries: { edges: { node: Record<string, unknown> & { __typename: string } }[] };
+          };
+        };
+      }
+    ).viewer.library.entries.edges;
+    // The filter's title match also pulls in the "Expanse" series itself
+    // (`queryExpandsToSeriesBooks`, `library-page.ts`: a title query with no
+    // `seriesName` filter also matches series whose member books match) —
+    // isolate the `Book` edge this test actually cares about.
+    const bookEdges = edges.filter((e) => e.node.__typename === 'Book');
+    expect(bookEdges).toHaveLength(1);
+    const book = bookEdges[0].node;
+
+    expect(book).toEqual({
+      __typename: 'Book',
+      documentId: bookId,
+      title: 'Column Selection Probe',
+      titleSort: 'column selection probe',
+      author: 'A. Uthor',
+      authorSort: 'uthor, a.',
+      description: 'A book that exercises every Book field resolver.',
+      publisher: 'Selection Press',
+      publishDate: '2020-01-01',
+      seriesIndex: 3,
+      size: 424242,
+      pageCount: 250,
+      chapterCount: 3,
+      subjects: ['Fantasy', 'Epic'],
+      identifiers: [{ scheme: 'ISBN', value: '9780000000000' }],
+      chapterSpineMap: [0, 3, 7],
+      chapterNames: ['One', 'Two', 'Three'],
+      mtime: '2023-11-14T22:13:20.000Z',
+      addedAt: '2023-11-14T22:13:20.000Z',
+      hasCover: true,
+      coverUrl: expect.stringContaining(bookId) as unknown as string,
+      downloadUrl: expect.stringContaining(bookId) as unknown as string,
+      thumbnailUrl: expect.stringContaining('150') as unknown as string,
+      deviceEditionCount: 0,
+      hasActionablePendingFix: false,
+      series: { name: 'Expanse' },
+    });
+  });
+});

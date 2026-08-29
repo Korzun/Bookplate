@@ -4,18 +4,89 @@ import { Owner, PageCursor, BookListFilters } from '../types';
 import { standaloneStatusWhere } from './book-catalog';
 
 /**
+ * Every `Book` column a GraphQL `Book` field resolver reads, directly or
+ * through a helper — `coverData` (the `Bytes?` cover blob) is the sole
+ * omission. Recovered from the pre-refactor `BOOK_SELECT`
+ * (`git show 363d33dc:app/server/services/book-store.ts`) rather than
+ * reconstructed by hand, then reconciled against a fresh read of every
+ * `Book` field resolver (`graphql/schema/book/model.ts`):
+ *
+ * - `userId` and `seriesId` were added — the old `BOOK_SELECT` fed a hand-
+ *   built `Book` DTO (`services/book-catalog.ts`'s `prismaBookToBook`) that
+ *   never carried either, but this read hands the row straight to Pothos.
+ *   `userId` is read directly by `coverUrl`/`downloadUrl`/`thumbnailUrl`
+ *   (via the shared `urlSuffix` helper), `pendingFix`/`hasActionablePendingFix`
+ *   (`context.loadPendingFix`), `progress` (`context.loadProgress`),
+ *   `lineage` (`context.loadOwner`), and `deviceEditionCount`
+ *   (`countForBook`) — and, together with `id`, is the compound primary key
+ *   (`@@id([userId, id])`) Pothos's relation fallback re-queries by for
+ *   `series`/`validation` below. `seriesId` is the FK column backing
+ *   `series: t.relation('seriesRel', ...)`.
+ * - `series` (the denormalized string column) was DROPPED — the old
+ *   `BOOK_SELECT` carried it for `prismaBookToBook`'s DTO, but no `Book`
+ *   field resolver here exposes it (`Book.series` is the `seriesRel`
+ *   relation, a distinct column).
+ * - The old `BOOK_SELECT`'s nested `validation: { select: { valid: true } }`
+ *   was DROPPED: `Book.validation` is `t.relation('validation', ...)` here,
+ *   not a hand-mapped field, so Pothos's own relation fallback (keyed on
+ *   `userId`/`id`, same mechanism as `series` above) fetches it — a select
+ *   on `validation.valid` alone would starve every OTHER `Validation` field
+ *   (`threshold`, `validatedAt`, `messageCounts`).
+ *
+ * Every other column is unchanged from the pre-refactor set: `id`, `title`,
+ * `titleSort`, `authorSort`, `publishDate`, `author`, `description`,
+ * `publisher`, `seriesIndex`, `identifiers`, `subjects`, `coverMime`,
+ * `size`, `mtime`, `addedAt`, `chapterCount`, `chapterSpineMap`,
+ * `chapterNames`, `pageCount` — each still read by a `Book` field resolver
+ * (`title`/`titleSort`/etc. via `t.exposeString`/`t.exposeInt`/`t.exposeFloat`;
+ * `subjects`/`identifiers`/`chapterSpineMap`/`chapterNames` via the `parse*`
+ * helpers in `graphql/derive.ts`; `coverMime` via `hasCover`; `mtime` via both
+ * `mtime` itself and every `urlSuffix`-built URL's cache-busting `v=`).
+ */
+const BOOK_SELECT = {
+  userId: true,
+  id: true,
+  title: true,
+  titleSort: true,
+  authorSort: true,
+  publishDate: true,
+  author: true,
+  description: true,
+  publisher: true,
+  seriesIndex: true,
+  seriesId: true,
+  identifiers: true,
+  subjects: true,
+  coverMime: true,
+  size: true,
+  mtime: true,
+  addedAt: true,
+  chapterCount: true,
+  chapterSpineMap: true,
+  chapterNames: true,
+  pageCount: true,
+} as const;
+
+/** The literal shape `prisma.book.findMany({ select: BOOK_SELECT, ... })` returns. */
+type SelectedBookRow = Prisma.BookGetPayload<{ select: typeof BOOK_SELECT }>;
+
+/**
  * One page of `Library.entries`, already in the interleaved series/standalone
  * display order — this ordering, not the id/name lookups, is why this stays a
  * function rather than being inlined into the resolver (see `listBooksPage`'s
  * own doc comment).
  *
- * `row` is the real, unselected Prisma row (never a synthetic DTO) — the same
- * invariant `graphql/schema/library-entry/model.ts`'s `LibraryEntryRow` already
- * documents for whatever `Library.entries` hands back. Returning it directly
- * (rather than just `bookId`/`seriesName`, as an earlier revision of this
- * contract did) is what lets the resolver build its `edges` from this single
- * read, with no second `book.findMany`/`series.findMany` to re-fetch rows this
- * function already has in hand.
+ * `row` is the real Prisma row (never a synthetic DTO) — the same invariant
+ * `graphql/schema/library-entry/model.ts`'s `LibraryEntryRow` already
+ * documents for whatever `Library.entries` hands back — but the `Book` half
+ * is typed here as the FULL `BookRow` (every column, including `coverData`)
+ * because that's the parent shape Pothos generated for `Book`'s GraphQL type
+ * from `prisma/schema.prisma`, and there is no Pothos-native way to declare a
+ * narrower one. The *runtime* object is narrower — selected via `BOOK_SELECT`
+ * above — so this type is a deliberate widening, not an accurate description
+ * of what's on the object; see the `SelectedBookRow`-to-`BookRow` cast at the
+ * `prisma.book.findMany` call below for exactly where that widening happens
+ * and why it's safe.
  */
 export type LibraryPageItem =
   | { type: 'series'; seriesName: string; row: SeriesRow }
@@ -176,12 +247,23 @@ export async function listBooksPage(
   // ordering the old client-side UI used (useBookList sorts by title). The OPDS path
   // (listBooks) sorts by fileAs || title, so the two orderings intentionally differ.
   //
-  // Neither read carries a `select`: the rows fetched here ARE the rows
-  // `Library.entries` hands back as `Book`/`Series` GraphQL nodes (see this
-  // function's own doc comment) — the same "always fetch full, unselected
-  // rows" invariant `library-entry/model.ts`'s `LibraryEntryRow` doc comment
-  // has always documented for this connection, just performed here instead of
-  // a second time in the resolver.
+  // The `Series` read carries no `select`: the rows fetched here ARE the
+  // rows `Library.entries` hands back as `Book`/`Series` GraphQL nodes (see
+  // this function's own doc comment) — the same "always fetch full,
+  // unselected rows" invariant `library-entry/model.ts`'s `LibraryEntryRow`
+  // doc comment documents for this connection, just performed here instead
+  // of a second time in the resolver. `sortKey` — the union `resolveType`'s
+  // discriminator (`library/model.ts`) — must never be pruned off this read,
+  // which is why it stays fully unselected rather than gaining a `select` of
+  // its own.
+  //
+  // The `Book` read DOES carry a `select` (`BOOK_SELECT` above): that column
+  // set cannot affect `resolveType` (`sortKey` only ever comes from the
+  // `Series` read above, never from this one), so trimming it is safe in a
+  // way a `select` on the `Series` read would not be — see `BOOK_SELECT`'s
+  // own doc comment for the column-by-column reconciliation, and
+  // `library/model.ts`'s comment on `Library.entries` for why this
+  // deferred-until-now.
   const [seriesRows, standaloneRows] = await Promise.all([
     includeSeries
       ? prisma.series.findMany({
@@ -191,11 +273,24 @@ export async function listBooksPage(
         })
       : Promise.resolve([] as SeriesRow[]),
     includeStandalones
-      ? prisma.book.findMany({
-          where: bookWhere,
-          orderBy: [{ title: 'asc' }, { id: 'asc' }],
-          take: fetchLimit,
-        })
+      ? prisma.book
+          .findMany({
+            where: bookWhere,
+            select: BOOK_SELECT,
+            orderBy: [{ title: 'asc' }, { id: 'asc' }],
+            take: fetchLimit,
+          })
+          // Widened from `SelectedBookRow` back to the full `BookRow` Pothos
+          // expects for `Book`'s GraphQL type (see `LibraryPageItem`'s doc
+          // comment) — this is where the type system's guarantee ends. From
+          // here on, the only thing standing between a `Book` field resolver
+          // and a silent `undefined` for an omitted column is `BOOK_SELECT`'s
+          // own reconciliation against every such resolver, plus
+          // `graphql/schema/library/entries.test.ts`'s "Book column
+          // selection" tests, which assert both that `coverData` is gone
+          // from the `select` and that every field the schema exposes on
+          // `Book` still resolves off a row fetched through it.
+          .then((rows: SelectedBookRow[]) => rows as unknown as BookRow[])
       : Promise.resolve([] as BookRow[]),
   ]);
 

@@ -18,11 +18,19 @@ import * as series from '../series/model';
  * The real Prisma row shapes `Library.entries` (library/model.ts)
  * resolves into — never a synthetic wrapper. The fetch itself lives in
  * `services/library-page.ts`'s `listBooksPage` (task 8 moved it there, out
- * of `library/model.ts`'s own resolver, to collapse a double read into one),
- * but the invariant is unchanged: its `prisma.book.findMany`/`series.findMany`
- * calls carry no `select`, so every column either table has — including
- * `sortKey`, which `isSeriesRow` below relies on — is guaranteed present on
- * whatever `Library.entries` hands back.
+ * of `library/model.ts`'s own resolver, to collapse a double read into one).
+ *
+ * Both halves are typed here as the FULL Prisma row — `Series` genuinely is
+ * one: it carries no `select` at all, so `sortKey` (which `isSeriesRow` below
+ * relies on) and every other column are always present. `Book` is NOT
+ * genuinely full any more: `listBooksPage`'s `prisma.book.findMany` now
+ * carries a `select` (`BOOK_SELECT`, `library-page.ts`) that drops
+ * `coverData`. `BookRow` stays the full Prisma type here anyway because
+ * that's the parent shape Pothos generated for `Book`'s GraphQL type — the
+ * narrower runtime object is deliberately widened back to it at the
+ * `prisma.book.findMany` call site (see that file's comment there), so this
+ * type remains accurate for everything downstream EXCEPT `coverData`, which
+ * no `Book` field resolver reads.
  */
 export type LibraryEntryRow = BookRow | SeriesRow;
 
