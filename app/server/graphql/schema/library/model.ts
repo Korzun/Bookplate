@@ -3,7 +3,7 @@ import { resolveBookId } from '../../../services/book-lineage';
 import { listBooksPage } from '../../../services/library-page';
 import { getUserProgressPage } from '../../../services/progress';
 import { getSearchSuggestions } from '../../../services/search-suggestions';
-import { getSeriesNextIndex } from '../../../services/series-meta';
+import { getSeriesNextIndex } from '../../../services/series-next-index';
 import type { BookListFilters, Owner } from '../../../types';
 import {
   clampProgressTake,
