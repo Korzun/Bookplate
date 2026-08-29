@@ -22,8 +22,18 @@ export type { ScanJob, ScanJobStatus, ScanResult } from './scan-events';
  * scans are user-triggered and cheap to re-run, so losing job state on restart
  * is acceptable. One job per user; starting a new one replaces any prior job.
  *
- * The class itself stays a class (spec's explicit exception for existing
- * store code) — but every state transition after `start()` folds through
+ * The class shape is not a leftover from the dissolved Stores layer: this
+ * registry never touched Prisma at all (the design spec's own Architecture
+ * note — "It never touched Prisma; being called a store is what put it in
+ * that bag" — is why `ScanJobStore` was RENAMED here rather than dissolved
+ * into functions). It stays a class on its own merits: it owns mutable
+ * in-process state (the per-user job `Map`) and the pubsub every transition
+ * publishes on, and both must be one shared instance for a scan started in
+ * one request to be observable from a subscription in another. A module of
+ * plain functions could only do that over module-level mutable state, which
+ * is strictly worse to inject and to isolate per test.
+ *
+ * Every state transition after `start()` folds through
  * `reduceScanJob` (`scan-events.ts`) rather than mutating a `ScanJob` in
  * place, so the state machine itself is tested as a pure function, not
  * through this `Map`-and-wall-clock holder. `start()` is NOT one of those
