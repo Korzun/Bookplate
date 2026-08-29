@@ -84,7 +84,7 @@ substantially on the plugins, and the genuine deviations are few.
 | file:line | hand-rolled | plugin feature | call |
 |---|---|---|---|
 | `schema/library/model.ts:90`, `:257` | `Library.entries`: `builder.connectionObject` + hand `{edges,pageInfo}` over `services/library-page.ts`'s keyset; per-edge cursors from `library/entries-cursor.ts` | `t.prismaConnection` | **KEEP** |
-| `schema/library/model.ts:95`, `:461` | `Library.progress`: same shape over `getUserProgressPage` + `utils/progress-pagination.ts` | `t.prismaConnection` | **KEEP shape, CONVERT body** (B-4) |
+| `schema/library/model.ts:95`, `:461` | `Library.progress`: same shape over `getUserProgressPage` + `utils/progress-pagination.ts` | `t.prismaConnection` | **CONVERTED** — see the ruling above; `getUserProgressPage` and `utils/progress-pagination.ts` are deleted |
 
 ## `Library.entries` — two independent blockers
 
@@ -537,14 +537,23 @@ model Progress { book Book? @relation(fields: [userId, document], references: [u
 **4.5x worse on both.** Same mechanism as the corrected F-2, now demonstrated on
 both hand-built connections: `@pothos/plugin-prisma` merges a field `select`
 only into a query it planned itself (`wrapResolve` needs a `getLoaderMapping`
-hit). `Library.entries` and `Library.progress` are BOTH hand-declared over
-`builder.connectionObject` — and **must** be, by invariant 2, so their SDL omits
-`last`/`before` — so neither is ever plugin-planned, and every `select`-carrying
-field on the rows they yield falls back to a per-row `ModelLoader` re-query.
+hit). `Library.entries` and `Library.progress` were BOTH hand-declared over
+`builder.connectionObject` at the time — so neither was ever plugin-planned, and
+every `select`-carrying field on the rows they yield fell back to a per-row
+`ModelLoader` re-query.
 
-C-4 (`Progress.currentChapter`) was not separately converted: it would reach
-`Book.chapterSpineMap` through the same relation on the same
-`Library.progress` path, so it inherits the identical fallback.
+> **The "and **must** be, by invariant 2" that stood in this paragraph is the
+> error.** It was true of `Library.entries` and only a decision for
+> `Library.progress`. Once that decision was reversed and the connection became
+> plugin-planned, `Progress.book`'s row in this table reads
+> `progress.findMany=1` = **1**. The 2 -> 9 measurement is still exactly what
+> `t.relation` costs on a hand-built connection; it was never a fact about the
+> relation.
+
+C-4 (`Progress.currentChapter`) was not separately converted at the time: it
+would have reached `Book.chapterSpineMap` through the same relation on the same
+`Library.progress` path, so it inherited the identical fallback. On the
+plugin-planned connection it is a field `select` and costs nothing.
 
 ### The general rule this established (superseded above — `Library.progress` is struck from it)
 
@@ -552,6 +561,11 @@ C-4 (`Progress.currentChapter`) was not separately converted: it would reach
 `Library.progress` can ever use plugin select-merging.** Invariant 2 makes both
 connections permanently hand-built, so a request-scoped batching loader is not a
 workaround there — it is the only mechanism that batches at all.
+
+*(As written above: strike `Library.progress` and "invariant 2 makes both
+permanently" from that sentence. What remains — `Library.entries`, for a
+structural reason — is correct and still governs every loader in the
+directory.)*
 
 That is the single unifying explanation for the whole of Category C, and it
 means those loaders are **permanent by design**, not debt awaiting a schema fix.
@@ -774,6 +788,7 @@ the single highest-value item in the audit and is not in the original scope.
 | ~~2~~ | ~~`Library.user` + two payload `user` fields → `t.prismaField`~~ — **DONE, `864c07cb`**. 2→1 query each | B-1/2/3 | `graphql/` | High | Low | none |
 | ~~3~~ | ~~Drop `getUserProgressPage`'s DTO; delete `Library.progress`'s second query~~ — **DONE, `fd2d9770`**. 2→1 query per page | B-4a | `graphql/` + `services/` | Medium | Medium | none |
 | ~~5~~ | ~~`Progress`↔`Book` relation; retire 3 loaders~~ — **ABANDONED, measured 2→9 queries.** See F-1 | F-1 | — | — | — | — |
+| ~~10~~ | ~~`Library.progress` → `t.prismaConnection`~~ — **DONE.** Reversed `e7f99557` by ruling, which unblocked slice 5's relation. 3→1 queries per page; 1 loader deleted, 1 narrowed; `getUserProgressPage` + `utils/progress-pagination.ts` deleted | A/F-1 | `graphql/` + `services/` + `prisma/` | High | Medium — SDL + cursor format | **`last`/`before` added** |
 | ~~4~~ | ~~Loaders → `graphql/loaders/` + shared factory~~ — **DONE, `6dc84688`**. 7 copies → 1, net −84 lines | F-5 | `graphql/` | High | Low | none |
 | ~~6~~ | ~~`book_id_history`/`device_editions` raw SQL → typed client~~ — **DONE, `6079942c`**. 9 statements converted, 2 documented keeps | E-1/E-2 | `services/` | Medium | Low | none |
 | 7 | `queryFromInfo` on `Library.progress` | B-4b | `graphql/` | Low | Low | none |
@@ -783,10 +798,14 @@ the single highest-value item in the audit and is not in the original scope.
 Slices 1–2 are independent of everything and of each other. Slice 5 depends on
 slice 4. Slices 7–9 are droppable.
 
-**Expected SDL impact across every slice: none.** Any diff from
-`npm run graphql:schema:check` is a failed conversion, not a snapshot to
-regenerate. **Expected cost-budget impact: none** — no field arity or connection
-bound changes. Both will be reported per slice regardless, per the brief.
+**Expected SDL impact across slices 1–9: none.** Any diff from
+`npm run graphql:schema:check` on those is a failed conversion, not a snapshot
+to regenerate. Slice 10 is the deliberate exception and the only one — it
+changes the SDL BY RULING, and its diff is two lines, quoted in full under
+Category A. **Expected cost-budget impact: none** throughout, and none observed
+(slice 10 measured both shipped progress operations at the same breadth and
+complexity before and after). Both are reported per slice regardless, per the
+brief.
 
 Each slice is one commit, green on `npm run lint`, `npm test`, and
 `npm run test:cost -w app/server` on its own.
@@ -797,12 +816,16 @@ Each slice is one commit, green on `npm run lint`, `npm test`, and
 
 The brief's invariant 2 reads: "`Library.entries` / `Library.progress` (and
 `Series.books`) are hand-declared over `connectionObject` specifically so the
-SDL omits `last`/`before`". The parenthetical does not match the code:
+SDL omits `last`/`before`". The parenthetical did not match the code even then:
 `Series.books` is `t.relatedConnection` (`series/model.ts:75`) and **does** offer
-`last`/`before`. Both `series/model.ts:62-74` and `validation/model.ts:66` call
-this asymmetry out explicitly and deliberately — backward pagination works over
-a real Prisma relation and does not over the two forward-only service cursors.
+`last`/`before`. Both `series/model.ts` and `validation/model.ts` call this
+asymmetry out explicitly and deliberately — backward pagination works over a
+real Prisma relation and did not over the two forward-only service cursors.
 
-Read as covering only `Library.entries`/`Library.progress`, the invariant holds
-and is honoured throughout. Flagged in case the parenthetical was meant to
-constrain something else.
+**Superseded for `Library.progress`.** The invariant described the code
+accurately, but it was a restatement of `e7f99557`'s decision, not a constraint
+the code imposed — and treating it as the latter is what made three loaders look
+permanent. It now covers `Library.entries` alone, where it is structural
+(a union node type over an interleaved two-table keyset). Any future invariant
+phrased as "X is hand-declared so the SDL omits Y" should say WHOSE decision Y
+was, for the same reason.

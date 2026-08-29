@@ -84,6 +84,27 @@ audit rates highest-value / lowest-risk first.
    (and `Series.books`) are hand-declared over `connectionObject` specifically
    so the SDL omits `last`/`before` — that omission was a deliberate breaking
    change (commit e7f99557), not an oversight.
+
+   > **CORRECTED, twice over, by the audit this brief produced** (see
+   > `2026-08-29-pothos-prisma-relay-audit.md`, Category A). Two claims in this
+   > invariant are false as stated:
+   >
+   > - **"its connections cannot become `t.prismaConnection` rooted on it"** —
+   >   they can. `t.prismaConnection` is a FIELD builder; it roots on the node
+   >   type, not on the parent, so a synthetic parent is no obstacle at all.
+   >   `Library.progress` is one today.
+   > - **`Series.books` is not hand-declared** — it is `t.relatedConnection` and
+   >   offers `last`/`before`, as do `Validation.messages` and now
+   >   `Library.progress`.
+   >
+   > What survives: `Library.entries` cannot be a `t.prismaConnection`, for a
+   > reason this invariant never gives — its node type is the union
+   > `LibraryEntry = Book | Series` over an interleaved two-table keyset, and
+   > `t.prismaConnection` binds to one model. And `e7f99557` was a deliberate
+   > decision, correctly recorded here; it was reversed for `Library.progress`
+   > by an explicit ruling, because stating it as an invariant had made two
+   > request-scoped loaders look permanent when they were a consequence of a
+   > choice.
 3. `@pothos/plugin-errors` and `@pothos/plugin-validation` were removed on
    purpose, with reasons in `builder.ts`. Do not re-add either.
 4. The ~30 `builder.objectRef` types are error and payload shapes — plain data
