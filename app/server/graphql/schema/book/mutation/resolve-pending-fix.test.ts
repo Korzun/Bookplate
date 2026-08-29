@@ -319,7 +319,7 @@ describe('Mutation.bookResolvePendingFix', () => {
     // deleted, with only the action changed, so this test still proves
     // `CLEAR` really is the old `DISMISS` behaviour, including the
     // GraphQL-response shape (`book.pendingFix` reading back null, not just
-    // the raw store row).
+    // the raw `PendingFix` row).
     it('discards a live pending fix without touching the book', async () => {
       await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched');
       await seedPendingFix(BOOK_ID, { proposals: [TITLE_PROPOSAL] });
@@ -486,7 +486,7 @@ describe('Mutation.bookResolvePendingFix', () => {
       ]);
     });
 
-    // No store write of any kind (M-7: this happens before the `valid`
+    // No database write of any kind (M-7: this happens before the `valid`
     // gate too, since there is nothing to write either way) — matches REST's
     // client, which does not issue a request when nothing survives its own
     // `p.to !== null` filter, and equally does not delete an

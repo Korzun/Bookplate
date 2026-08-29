@@ -150,8 +150,8 @@ const result = builder.unionType('UserChangePasswordResult', {
  * `toResult`: neither throws any of the seven known domain errors.
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a
- * plain function over `context.prisma` — no store instance to thread
- * through), mirrors REST's identical call on success (`routes/ui.ts:420`).
+ * plain function over `context.prisma` — no class instance to thread
+ * through `Context`), mirrors REST's identical call on success (`routes/ui.ts:420`).
  * REST also reissues tokens (`issueTokens`, `routes/ui.ts:421-426`) so the
  * client's existing cookies immediately carry `mustChangePassword: false` —
  * this resolver does NOT reproduce that half: yoga's context

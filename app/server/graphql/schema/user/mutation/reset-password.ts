@@ -73,8 +73,8 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * in its body can throw one of the seven known domain errors.
  *
  * `revokeAllForUsername`, imported directly from `services/token.ts` (a
- * plain function over `context.prisma` — no store instance to thread
- * through), mirrors REST's identical call right after a successful reset
+ * plain function over `context.prisma` — no class instance to thread
+ * through `Context`), mirrors REST's identical call right after a successful reset
  * (`routes/users.ts`, removed in Phase 0). Unlike REST's own
  * `/api/my/password` self-service flow (mirrored by `userChangePassword`),
  * there is no token *reissue* to mirror here: the admin calling this

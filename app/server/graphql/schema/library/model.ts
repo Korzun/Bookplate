@@ -191,8 +191,9 @@ builder.node(model, {
      * returns on a hit, so a LIVE id costs exactly what it did before and
      * only an id that resolves to nothing pays for the lookup. That ordering
      * is safe rather than merely cheap: a hit under `[owner.userId, localId]`
-     * is by construction the live row for that id, since the store refuses a
-     * content-hash collision (`BookHashCollisionError`) instead of letting
+     * is by construction the live row for that id, since the import path
+     * refuses a content-hash collision (`BookHashCollisionError`,
+     * `services/book-lifecycle.ts`) instead of letting
      * two of a user's books share one id, so no live row can be sitting
      * under an id that history also maps somewhere else. On the miss path,
      * `resolveBookId` is two indexed lookups that return early —
@@ -338,7 +339,7 @@ builder.node(model, {
             // what "there is content before this page" means here.
             hasPreviousPage: cursor !== null,
             startCursor: edges[0]?.cursor ?? null,
-            // The store's own cursor, not a recomputed one — see decodeCursor's
+            // `listBooksPage`'s own cursor, not a recomputed one — see decodeCursor's
             // doc comment for why this is the one place parity with REST must
             // be exact rather than merely equivalent.
             endCursor: page.nextCursor,
@@ -356,7 +357,7 @@ builder.node(model, {
       // Blank/whitespace `query` is not special-cased here — it's handled once,
       // inside `getSearchSuggestions` itself (`normalizeForSearch` short-circuits
       // to `{ groups: [] }`). Duplicating that check here would risk drifting
-      // from the store's own definition of "blank".
+      // from `getSearchSuggestions`'s own definition of "blank".
       resolve: async (owner, args, context) => {
         const response = await getSearchSuggestions(context.prisma, owner, {
           q: args.query,
@@ -445,7 +446,7 @@ builder.node(model, {
      * `prismaObject` pinned to the real row — and `currentChapter` needs the
      * `userId` the DTO drops. So `getUserProgressPage` decides the window and
      * the cursor, and a second query fetches the rows it named. `Library.entries`
-     * looks like the same shape (a store-owned cursor deciding a page) but is
+     * looks like the same shape (a service-owned cursor deciding a page) but is
      * NOT this same two-query split: `services/library-page.ts`'s
      * `listBooksPage` returns the real `Book`/`Series` rows themselves, not a
      * DTO missing a column, so that field reads them once and is done (task 8

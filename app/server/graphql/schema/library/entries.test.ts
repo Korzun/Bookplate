@@ -86,7 +86,7 @@ describe('Library.entries', () => {
     expect((result.data as EntriesData).viewer.library.entries.pageInfo.hasNextPage).toBe(false);
   });
 
-  it('paginates with the store cursor — after excludes items already returned', async () => {
+  it('paginates with the service cursor — after excludes items already returned', async () => {
     const first = await harness.execute(ENTRIES_PAGE, { viewer: harness.aliceViewer });
     expect(first.errors).toBeUndefined();
     const firstEntries = (first.data as EntriesData).viewer.library.entries;
@@ -117,7 +117,7 @@ describe('Library.entries', () => {
   });
 
   // The pagination test above walks `pageInfo.endCursor`, which is the
-  // store's own string forwarded untouched. The per-edge `cursor` values are
+  // `listBooksPage`'s own string forwarded untouched. The per-edge `cursor` values are
   // the ones this resolver mints itself (`encodeCursor`), and nothing
   // exercised them as an `after` value — so a mis-encoded edge cursor would
   // have shipped with a full green suite.

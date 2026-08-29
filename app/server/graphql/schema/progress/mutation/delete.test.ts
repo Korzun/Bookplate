@@ -122,7 +122,8 @@ describe('Mutation.progressDelete', () => {
     // Same answer a nonexistent row gives — a probe must not learn that bob has this document.
     expect(result.data?.progressDelete ?? null).toBeNull();
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
-    // Bob's row survives. There is no progress store — read Prisma directly,
+    // Bob's row survives. `services/progress.ts` has no single-row read for
+    // another user's document, so read Prisma directly,
     // as this test file already does for its other assertions.
     expect(
       await harness.prisma.progress.findFirst({

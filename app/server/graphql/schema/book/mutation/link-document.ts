@@ -48,8 +48,8 @@ const input = builder.inputType('BookLinkDocumentInput', {
  * `documentId` is trimmed and rejected when blank, mirroring REST's own
  * check byte-for-byte: `typeof documentId !== 'string' || !documentId.trim()`
  * → 400 `{ error: 'documentId is required' }` (`routes/ui.ts:867-871`). The
- * TRIMMED value is what gets passed to the store below, exactly like REST
- * passes `documentId.trim()` to `linkDocument`. `bookId` has no zod rule
+ * TRIMMED value is what gets passed to `linkDocument` below, exactly like
+ * REST passed `documentId.trim()` to it. `bookId` has no zod rule
  * here any more — it is no longer a plain string field at all, having been
  * absorbed into the `id` global ID's compound-key local part
  * (`InvalidInputError` for an empty `bookId` is unreachable now the same way
@@ -68,7 +68,7 @@ type BookLinkDocumentPayloadShape = {
 };
 
 /**
- * `book` is a fresh lookup, not a store-returned DTO — same reasoning as
+ * `book` is a fresh lookup, not a service-returned DTO — same reasoning as
  * `BookUpdateMetadataPayload.book` (`update-metadata.ts`'s doc comment):
  * `linkDocument` returns a bare `true`, not a `Book`, and `Book`'s field
  * resolvers need the raw Prisma row anyway. Linking never renames the book

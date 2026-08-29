@@ -343,7 +343,8 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       stage(bookId, 'epub-content'),
       FAKE_META
     );
-    // app built without device/edition stores
+    // `app` (line 117) is built without an `editionsRoot`, so it serves no
+    // device editions at all
     const res = await request(app)
       .get(`/opds/books/${bookId}/devices/nope/download`)
       .set(basicAuth('alice', 'secret'));

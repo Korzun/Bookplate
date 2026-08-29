@@ -81,7 +81,8 @@ const testConfig = (booksDir: string, dataDir: string): AppConfig => ({
 
 /**
  * Builds the same real stack the REST route tests use — temp SQLite, real
- * migrations, real stores, temp books directory — and executes operations
+ * migrations, the real `services/*` functions, temp books directory — and
+ * executes operations
  * against the built schema without going over HTTP.
  */
 export const createHarness = async (): Promise<Harness> => {

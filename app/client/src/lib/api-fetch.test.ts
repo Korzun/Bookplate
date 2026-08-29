@@ -182,7 +182,8 @@ describe('refreshAccessToken — two-tab refresh race (regression)', () => {
     setToken(nearExpiry);
 
     // Server consumes the rotating refresh token exactly once, mirroring
-    // tokenStore.consumeRefreshToken: the first presentation rotates to a new
+    // `consumeRefreshToken` (`app/server/services/token.ts`): the first
+    // presentation rotates to a new
     // token; any later presentation is a rejected replay (401).
     let consumed = false;
     fetchMock.mockImplementation(() => {

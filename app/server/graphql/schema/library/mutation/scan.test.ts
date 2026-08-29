@@ -68,7 +68,8 @@ const MUTATION = `
 // Same "poll a short interval" shape as `routes/ui.test.ts`'s `waitForScan` —
 // the mutation deliberately does not await the scan (fire-and-forget, mirrors
 // REST's 202), so a test that cares about the eventual outcome has to poll
-// the store the same way REST's own client (and REST's own test suite) does.
+// the scan-job registry the same way REST's own client (and REST's own test
+// suite) did.
 async function waitForScanSettled(h: Harness, userId: string): Promise<void> {
   for (let i = 0; i < 200; i++) {
     const job = h.scanJobs.get(userId);

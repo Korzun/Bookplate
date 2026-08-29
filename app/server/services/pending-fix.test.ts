@@ -89,7 +89,7 @@ const withProposal = () => ({
 // the row outright" (deleting an existing row) and "CLEAR on a book with no
 // pending-fix row succeeds as a no-op" (deleting when nothing exists, i.e.
 // the idempotency this test checked).
-describe('PendingFix store', () => {
+describe('PendingFix persistence', () => {
   const readPendingFixes = (): Promise<{ bookId: string; state: string }[]> =>
     prisma.pendingFix.findMany({ where: { userId: OWNER.userId } });
 

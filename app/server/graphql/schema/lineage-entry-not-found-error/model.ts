@@ -8,7 +8,7 @@ import { model as userError } from '../user-error';
  * `DELETE /api/books/:id/link/:documentId` (`routes/ui.ts`), whose 404 body
  * is `{ error: 'Lineage entry not found' }`.
  *
- * NOT a thrown store class: `unlinkDocument` returns a plain string
+ * NOT a thrown domain-error class: `unlinkDocument` returns a plain string
  * discriminator (`'deleted' | 'not_found' | 'edit_row'`), never an
  * exception, for this case — so, exactly like `BookNotValidatedError`
  * (`book-not-validated-error/model.ts`), this factory's message is a direct

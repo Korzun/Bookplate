@@ -147,7 +147,7 @@ describe('scanProgress over SSE', () => {
 
     // Same real-timer tolerance `scan-progress.test.ts` uses: give the
     // request time to reach the server, authenticate, and register the
-    // subscription's pubsub listener before the triggering store call fires.
+    // subscription's pubsub listener before the triggering registry call fires.
     await new Promise((resolve) => setTimeout(resolve, 100));
     const started = harness.scanJobs.start(harness.aliceOwner.userId);
 

@@ -8,7 +8,8 @@ vi.mock('../../../logger');
  * at all — a swapped `author`/`seriesName` (adjacent lines, both optional
  * strings) would return plausible suggestions and pass everything.
  *
- * Each field has a distinct, observable effect in the store, which is what
+ * Each field has a distinct, observable effect in `getSearchSuggestions`,
+ * which is what
  * makes a swap detectable here:
  *   - `author` set   -> the *author* group is omitted entirely, and the book
  *                       and subject groups narrow to that exact author.
@@ -40,7 +41,7 @@ beforeEach(async () => {
       id: '1'.repeat(32),
       title: 'Arcadia One',
       author: 'Arthur Clarke',
-      // The denormalized column the store's seriesName filter actually reads.
+      // The denormalized column the `seriesName` filter actually reads.
       series: 'Arcadia',
       seriesId: SERIES_ID,
       subjects: JSON.stringify(['Archaeology']),
@@ -147,7 +148,7 @@ describe('SearchSuggestionsFilter', () => {
     // Only the already-selected one goes; the other stays. A filter that was
     // dropped would return both, one that over-applied would return neither.
     expect(labels('SUBJECT')).toEqual(['Astronomy']);
-    // And it must not narrow the book group — activeSubjects is the store's
+    // And it must not narrow the book group — activeSubjects is the service's
     // "exclude from suggestions" list, not a filter on entries.
     expect(labels('BOOK').sort()).toEqual(['Arcadia One', 'Arrival']);
   });

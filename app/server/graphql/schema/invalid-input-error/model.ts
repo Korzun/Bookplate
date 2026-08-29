@@ -5,8 +5,8 @@ import { model as inputIssue, type InputIssueShape } from '../input-issue';
 import { model as userError } from '../user-error';
 
 /**
- * The one error type in this family that no store throws: it is produced by a
- * resolver's own zod parse of its input.
+ * The one error type in this family that is never a thrown `KnownDomainError`
+ * (`to-result.ts`): it is produced by a resolver's own zod parse of its input.
  *
  * WHY A UNION MEMBER RATHER THAN A DECLARATIVE VALIDATION PLUGIN'S ARG
  * OPTION: `@pothos/plugin-validation` (removed from this schema entirely as

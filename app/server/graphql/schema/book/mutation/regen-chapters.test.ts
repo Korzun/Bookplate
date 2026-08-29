@@ -204,7 +204,7 @@ describe('Mutation.bookRegenChapters', () => {
     expect(result.data?.bookRegenChapters).toBeNull();
   });
 
-  it('surfaces the untyped re-import failure and leaves the row unchanged when the store returns no book', async () => {
+  it('surfaces the untyped re-import failure and leaves the row unchanged when `reimportBook` returns no book', async () => {
     await seedEditableBook(harness, harness.aliceOwner, BOOK_ID, 'Untouched On Failure');
     vi.mocked(reimportBook).mockResolvedValueOnce(null);
 

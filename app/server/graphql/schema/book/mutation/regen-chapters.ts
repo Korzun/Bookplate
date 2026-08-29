@@ -36,12 +36,13 @@ type BookRegenChaptersPayloadShape = {
 
 /**
  * `book` is a fresh `t.prismaField` lookup keyed by the owner + the post-
- * regen id the store call reported, exactly like `BookUpdateMetadataPayload.
- * book` (see that file's doc comment for why: the store's `Book` DTO doesn't
- * match what `book/model.ts`'s field resolvers expect off their parent).
- * `reimportBook` can change the book's id (its content-hash fingerprint is
- * recomputed from the re-parsed file), so this must re-read by the id the
- * store call actually returned, never the input id.
+ * regen id `reimportBook` (`services/book-lifecycle.ts`) reported, exactly
+ * like `BookUpdateMetadataPayload.book` (see that file's doc comment for why:
+ * the `Book` DTO those service functions return doesn't match what
+ * `book/model.ts`'s field resolvers expect off their parent). `reimportBook`
+ * can change the book's id (its content-hash fingerprint is recomputed from
+ * the re-parsed file), so this must re-read by the id that call actually
+ * returned, never the input id.
  */
 const payload = builder
   .objectRef<BookRegenChaptersPayloadShape>('BookRegenChaptersPayload')

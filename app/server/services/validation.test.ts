@@ -60,14 +60,14 @@ describe('saveValidation', () => {
   const owner: Owner = { userId: 'u1', username: 'alice' };
 
   beforeEach(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-validation-'));
     booksDir = path.join(tmpDir, 'books');
     fs.mkdirSync(booksDir, { recursive: true });
     prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
     await runMigrations(prisma, booksDir);
     // seed a user + a book row (FK targets)
     await prisma.user.create({ data: { id: 'u1', username: 'alice', passwordHash: '' } as never });
-    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valstore-editions-'));
+    editionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-validation-editions-'));
     const staged = path.join(booksDir, 'staged.epub');
     fs.writeFileSync(staged, 'x');
     await addBook(prisma, booksDir, owner, 'book1', staged, FAKE_META);

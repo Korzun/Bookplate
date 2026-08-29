@@ -9,7 +9,7 @@ import { model as userError } from '../user-error';
  * (`routes/ui.ts`), whose 400 body is `{ error: 'Cannot unlink an organic
  * edit entry' }`.
  *
- * NOT a thrown store class, for the identical reason
+ * NOT a thrown domain-error class, for the identical reason
  * `LineageEntryNotFoundError` (`lineage-entry-not-found-error/model.ts`)
  * gives for its sibling `'not_found'` result — see that file's doc comment.
  */
