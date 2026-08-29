@@ -10,6 +10,20 @@ import { saveValidation } from './validation';
 
 const log = logger('revalidate-library');
 
+/**
+ * Task 9c, the "no DI, no deps object, no factory closure" convention vs.
+ * this interface: DELIBERATELY KEPT, same reasoning as `ApplyEpubChangesDeps`
+ * (`apply-epub-changes.ts`, this task's other instance of this decision) —
+ * see that file's doc comment for the full argument. `prisma`/`booksRoot`/
+ * `validationThreshold` is a `PrismaClient` plus the config a validation
+ * pass needs, not a swappable-behind-an-interface dependency: it travels
+ * unmodified from `revalidateLibrary` into `revalidateBook` below (via
+ * `Pick`, since `revalidateBook` needs only two of the three fields), and
+ * `revalidateLibrary`'s own one call site (`library/mutation/scan.ts`)
+ * constructs it fresh from the same three values every time. Flattening
+ * would just turn one 2-parameter object into 2-3 positional parameters
+ * repeated at both layers, for no clarity gain.
+ */
 export interface RevalidateDeps {
   prisma: PrismaClient;
   booksRoot: string;

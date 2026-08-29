@@ -9,6 +9,28 @@ import { assertValidEpub, toValidationReport } from './epub-validator';
 import { buildUpdatedEpub, EpubChanges } from './epub-writer';
 import { saveValidation } from './validation';
 
+/**
+ * Task 9c, the "no DI, no deps object, no factory closure" convention vs.
+ * this interface: DELIBERATELY KEPT, not flattened to positional parameters.
+ * The convention targets DI containers/factories that exist to make a
+ * dependency swappable behind an interface — that is not what this is.
+ * `reimportBook`/`prisma`/`validationThreshold` are a genuinely cohesive
+ * unit (a bound write path plus the config it needs) that travels together,
+ * unmodified, through THREE call layers: `routes/ui.ts` and
+ * `epub-import-pipeline.ts`'s `applyAutoAndAccepted` both construct/forward
+ * it into `applyEpubChanges`, which forwards it again into `replaceEpubBytes`
+ * below. Flattening would mean repeating the same 3-parameter group in every
+ * one of those signatures — `(reimportBook, prisma, validationThreshold,
+ * owner, book, changes)` at each layer — which is the "call signature nobody
+ * can read" case the spec warns flattening can produce, for no offsetting
+ * clarity gain (there are 5 call sites total: `regen-chapters.ts`,
+ * `update-metadata.ts`, `resolve-pending-fix.ts`, `replace.ts`, and
+ * `routes/ui.ts`, all constructing the identical shape). Contrast
+ * `Stores.book` (`graphql/context.ts`, removed this same task): that WAS a
+ * DI seam — an interface existing so a class instance could be swapped in —
+ * with no cohesion between its methods beyond "things a book might need".
+ * This interface has one job and every field earns its place doing it.
+ */
 export interface ApplyEpubChangesDeps {
   /**
    * Bound to a concrete `(prisma, booksRoot, editionsRoot)` by each caller —
