@@ -130,3 +130,30 @@ export const BookRequestDeleteDocument = graphql(`
     }
   }
 `);
+
+/**
+ * The admin's view of ONE user's requests. Rooted at `Query.user(id:)`, which
+ * is admin-only — correct here, since this list renders only for admins.
+ *
+ * `first: 20` is a LITERAL for the same pricing reason as the reader's list.
+ */
+export const UserRequestListDocument = graphql(`
+  query UserRequestList($userId: ID!, $after: String) {
+    user(id: $userId) {
+      id
+      bookRequests(first: 20, after: $after) {
+        edges {
+          cursor
+          node {
+            id
+            ...BookRequestRowFragment
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`);

@@ -36,12 +36,18 @@ beforeAll(() => {
  * sanctioned cast back to that masked type.
  */
 const user = (
-  overrides: Partial<{ id: string; username: string; progressCount: number }> = {}
+  overrides: Partial<{
+    id: string;
+    username: string;
+    progressCount: number;
+    pendingBookRequestCount: number;
+  }> = {}
 ): UserRowFragmentFragment => ({
   __typename: 'User',
   id: overrides.id ?? 'u1',
   username: overrides.username ?? 'alice',
   progressCount: overrides.progressCount ?? 3,
+  pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
 });
 
 // Writes the row into a REAL, normalized `InMemoryCache` (via `writeQuery`,
@@ -114,6 +120,20 @@ describe('UserRow', () => {
       <UserRow user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)} />
     );
     expect(screen.getByText('0 books synced')).toBeInTheDocument();
+  });
+
+  it('shows the pending-request badge when the count is greater than zero', () => {
+    renderWithApollo(
+      <UserRow user={makeFragmentData(user({ pendingBookRequestCount: 2 }), UserRowFragment)} />
+    );
+    expect(screen.getByText('2 pending')).toBeInTheDocument();
+  });
+
+  it('hides the pending-request badge when the count is zero', () => {
+    renderWithApollo(
+      <UserRow user={makeFragmentData(user({ pendingBookRequestCount: 0 }), UserRowFragment)} />
+    );
+    expect(screen.queryByText(/pending/)).not.toBeInTheDocument();
   });
 
   it('opens the confirm modal when Delete user is clicked, without sending a mutation', async () => {

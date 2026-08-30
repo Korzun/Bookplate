@@ -2,7 +2,12 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ProgressRowFragmentFragment, UserProgressListQuery } from '~/gql/graphql';
+import type {
+  ProgressRowFragmentFragment,
+  UserProgressListQuery,
+  UserRequestListQuery,
+} from '~/gql/graphql';
+import { UserRequestListDocument } from '~/graphql/book-request';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserProgressListDocument, UserRowContent } from './index';
@@ -118,6 +123,35 @@ const fetchMoreErrorMock = (after: string) => ({
   error: new Error('fetch more failed'),
 });
 
+// `UserRowContent` also mounts `UserRequestList` (Task 13), a SEPARATE
+// query rooted at the same `userId`. These tests are all about the
+// PROGRESS half of this component, so this mock is queued alongside every
+// progress mock below with an immediate empty result — otherwise
+// `UserRequestList`'s own unmocked query would leave it stuck in a
+// "Loading..." state that collides with the progress list's identical text
+// in tests that assert on it synchronously (e.g. the very first test
+// below).
+const requestListMock = (userId: string = USER_ID) => ({
+  request: {
+    query: UserRequestListDocument,
+    variables: { userId },
+  },
+  result: {
+    data: {
+      __typename: 'Query',
+      user: {
+        __typename: 'User',
+        id: userId,
+        bookRequests: {
+          __typename: 'UserBookRequestsConnection',
+          edges: [],
+          pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+        },
+      },
+    } satisfies UserRequestListQuery,
+  },
+});
+
 describe('UserRowContent', () => {
   it('shows a loading message while the first page is in flight', () => {
     renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
@@ -126,9 +160,13 @@ describe('UserRowContent', () => {
           hasNextPage: false,
           endCursor: null,
         }),
+        requestListMock(),
       ],
     });
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    // `UserRequestList` (Task 13) renders the SAME "Loading..." message for
+    // its own, still-unresolved first page at this same synchronous instant
+    // — so both loading states are present, not just the progress list's.
+    expect(screen.getAllByText('Loading...').length).toBeGreaterThan(0);
   });
 
   it('renders a row per progress entry once loaded', async () => {
@@ -141,6 +179,7 @@ describe('UserRowContent', () => {
           ],
           { hasNextPage: false, endCursor: 'c2' }
         ),
+        requestListMock(),
       ],
     });
 
@@ -150,7 +189,7 @@ describe('UserRowContent', () => {
 
   it('shows the empty message when there is no synced progress', async () => {
     renderWithApollo(<UserRowContent userId={USER_ID} username="alice" skip={false} />, {
-      mocks: [firstPageMock([], { hasNextPage: false, endCursor: null })],
+      mocks: [firstPageMock([], { hasNextPage: false, endCursor: null }), requestListMock()],
     });
 
     await waitFor(() => expect(screen.getByText('No progress synced')).toBeInTheDocument());
@@ -166,6 +205,7 @@ describe('UserRowContent', () => {
           },
           error: new Error('Network error'),
         },
+        requestListMock(),
       ],
     });
 
@@ -189,6 +229,7 @@ describe('UserRowContent', () => {
           hasNextPage: false,
           endCursor: 'c2',
         }),
+        requestListMock(),
       ],
     });
 
@@ -216,6 +257,7 @@ describe('UserRowContent', () => {
           endCursor: 'c1',
         }),
         fetchMoreErrorMock('c1'),
+        requestListMock(),
       ],
     });
 
@@ -238,6 +280,7 @@ describe('UserRowContent', () => {
           hasNextPage: false,
           endCursor: null,
         }),
+        requestListMock(),
       ],
     });
 
@@ -258,6 +301,7 @@ describe('UserRowContent', () => {
           hasNextPage: false,
           endCursor: null,
         }),
+        requestListMock(),
       ],
     });
 
@@ -329,6 +373,7 @@ describe('UserRowContent', () => {
             } satisfies UserProgressListQuery,
           },
         },
+        requestListMock(),
       ],
     });
 

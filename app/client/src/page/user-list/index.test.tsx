@@ -34,6 +34,7 @@ const aliceRow = {
       id: 'USER-1',
       username: 'alice',
       progressCount: 4,
+      pendingBookRequestCount: 0,
     },
     UserRowFragment
   ),

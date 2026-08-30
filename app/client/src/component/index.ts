@@ -37,5 +37,6 @@ export { UserChangePassword } from './user-change-password';
 export { UserList } from './user-list';
 export { UserProgressRow } from './user-progress-row';
 export { UserRegister } from './user-register';
+export { UserRequestList } from './user-request-list';
 export { UserRow } from './user-row';
 export { UserRowContent } from './user-row-content';
