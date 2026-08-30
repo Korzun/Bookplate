@@ -45,6 +45,15 @@
       "DuplicateBookRequestError",
       "InvalidInputError"
     ],
+    "BookRequestDeclineResult": [
+      "BookRequestDeclinePayload",
+      "BookRequestNotPendingError"
+    ],
+    "BookRequestFulfillResult": [
+      "BookRequestFulfillPayload",
+      "BookRequestNotPendingError",
+      "InvalidInputError"
+    ],
     "BookResolvePendingFixResult": [
       "BookHashCollisionError",
       "BookNotValidatedError",
