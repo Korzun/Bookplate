@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookEditFormFragment } from '~/component/book-edit-form';
 import { makeFragmentData } from '~/gql';
 import type {
+  BookRequestFulfillMutation,
+  BookRequestFulfillMutationVariables,
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
   LibraryEntriesQuery,
@@ -15,6 +17,7 @@ import type {
   UploadConfigQuery,
   ViewerBootstrapQuery,
 } from '~/gql/graphql';
+import { BookRequestFulfillDocument } from '~/graphql/book-request';
 import {
   BookResolvePendingFixDocument,
   LibraryPendingFixesDocument,
@@ -36,6 +39,10 @@ const BOOK_GID = 'Qm9vazox';
  * `resolve-pending-fix.ts`'s `upsertPendingFix(owner, outcome.ok.id, …)` and
  * `resolve-pending-fix.test.ts`'s "the row lives under the new id". */
 const ROTATED_BOOK_GID = 'Qm9vazoy';
+/** A `BookRequest` global id, in the same style as `BOOK_GID`/`ROTATED_BOOK_GID`
+ * — used by the Task 11 tests below, which drive an item bound to a request
+ * (`fulfillsRequestId`, captured at add time by `addFiles`) to `done`. */
+const REQUEST_GID = 'Qm9va1JlcXVlc3Q6MQ==';
 // Matches `page/library/index.tsx`'s own `PAGE_SIZE` constant (20) and its
 // `filter: undefined` when no filter is applied — the exact variables the
 // live grid reads `Library.entries` with. (Named `use-library-entries.ts`
@@ -381,6 +388,48 @@ const pendingFixesMockRows = (rows: ReturnType<typeof pendingFixRow>[]): Pending
     data: {
       __typename: 'Query',
       node: { __typename: 'Library', id: LIBRARY_ID, pendingFixes: rows },
+    },
+  },
+});
+
+/**
+ * A `BookRequestFulfillDocument` mock that COUNTS every request MockLink
+ * routes to it, keyed on the variables it was actually called with —
+ * `countingPendingFixesMock`'s own doc comment above explains why this has
+ * to be the VARIABLE MATCHER form (`request.variables` given a function,
+ * checked synchronously inside `MockLink.request()`) rather than a
+ * `result`-as-function counter, which only sees delivery, after MockLink's
+ * delay, and would let a `waitFor` on something else race past a call that
+ * hasn't landed yet.
+ *
+ * Always matches (`return true`) and always resolves the same successful
+ * payload — no test here needs to vary the response, only observe whether
+ * and how often the mutation fired, and with which variables.
+ */
+const fulfillMock = (
+  calls: BookRequestFulfillMutationVariables[]
+): MockedResponse<BookRequestFulfillMutation, BookRequestFulfillMutationVariables> => ({
+  request: {
+    query: BookRequestFulfillDocument,
+    variables: (variables) => {
+      calls.push(variables);
+      return true;
+    },
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookRequestFulfill: {
+        __typename: 'BookRequestFulfillPayload',
+        bookRequest: {
+          __typename: 'BookRequest',
+          id: REQUEST_GID,
+          status: 'FULFILLED',
+          resolvedAt: '2026-08-29T00:00:00.000Z',
+          book: { __typename: 'Book', id: BOOK_GID, title: 'Dune' },
+        },
+      },
     },
   },
 });
@@ -1202,6 +1251,118 @@ describe('useUploadQueueEngine', () => {
     });
 
     expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_GID}`]).toBeDefined();
+  });
+});
+
+// ── Fulfil a bound request once its upload lands (Task 11) ─────────────────
+//
+// `fulfillsRequestId` is captured at add time by `addFiles(files, options)`
+// (Task 10's `AddFileOptions.fulfillsRequestId`); nothing before Task 14
+// actually passes it from the UI, so these tests drive it directly through
+// `addFiles`'s options, the same way Task 10's own transport tests drive
+// `target` directly rather than through a real request-row caller.
+describe('useUploadQueueEngine — bookRequestFulfill on landing (Task 11)', () => {
+  it('fulfils the bound request once when the item lands', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')), {
+        fulfillsRequestId: REQUEST_GID,
+      });
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toEqual({ id: REQUEST_GID, bookId: BOOK_GID });
+  });
+
+  it('does not fire again on a re-render', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')), {
+        fulfillsRequestId: REQUEST_GID,
+      });
+    });
+    await completeTheUploadWith(BOOK_GID);
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    // Force `transport.items` to a NEW array reference — the effect's own
+    // dependency — without touching the landed item's status or ids.
+    // `dismissCompleted` on an id nothing matches calls `transport.dropItem`,
+    // whose `setItems(prev => prev.filter(...))` always returns a fresh array
+    // even though nothing is actually removed; `globalIdOf` resolving
+    // `undefined` for the bogus id also skips the `clearFixes` mutation, so
+    // this triggers a re-render/re-run of the fulfilment effect and nothing
+    // else. Done twice, matching the brief's two `rerender()` calls.
+    act(() => result.current!.dismissCompleted('does-not-exist'));
+    act(() => result.current!.dismissCompleted('does-not-exist'));
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it('does not fire for an item with no bound request', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')));
+    });
+    await completeTheUploadWith(BOOK_GID);
+
+    await waitFor(() => expect(result.current!.items[0]!.status).toBe('done'));
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not fire for a bound item that failed to upload', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    const { result } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+    ]);
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')), {
+        fulfillsRequestId: REQUEST_GID,
+      });
+    });
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    xhrInstances[0]!.status = 400;
+    xhrInstances[0]!.responseText = JSON.stringify({ error: 'Invalid EPUB' });
+    await act(async () => {
+      xhrInstances[0]!.onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(result.current!.items[0]!.status).toBe('error'));
+    expect(calls).toHaveLength(0);
   });
 });
 
