@@ -818,6 +818,7 @@ type User implements Node {
   id: ID!
   library: Library!
   mustChangePassword: Boolean!
+  pendingBookRequestCount: Int!
   progressCount: Int!
   username: String!
 }

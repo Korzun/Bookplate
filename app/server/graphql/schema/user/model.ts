@@ -53,6 +53,21 @@ export const model = builder.prismaNode('User', {
     // Prisma row this type is pinned to.
     progressCount: t.relationCount('progresses'),
 
+    /**
+     * How many requests this reader is still waiting on — the badge the admin's
+     * `/users` list renders per row.
+     *
+     * A FILTERED `t.relationCount`, which compiles to a `_count` select with a
+     * `where`, merged into whichever query already fetched this row. So
+     * `Viewer.users` stays one query however many users exist, exactly as
+     * `progressCount` above does — not a per-user `bookRequest.count()`, and
+     * not a rows-then-length read, which would pay the connection's cost
+     * multiplier to compute a number.
+     */
+    pendingBookRequestCount: t.relationCount('bookRequests', {
+      where: { status: 'pending' },
+    }),
+
     // `ownerOf`'s denial branch has no reachable case today: `Query.user` is
     // admin-gated and `Query.node` for `User` is `isOwnerOrAdmin`-gated, so the
     // only `User` object a non-admin viewer can ever hold here is their own.
