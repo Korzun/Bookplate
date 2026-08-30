@@ -4,6 +4,7 @@ import { Button } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
 import type { BookRequestStatus } from '~/gql/graphql';
 import { BookRequestRowFragment } from '~/graphql/book-request';
+import { path } from '~/router';
 
 import { Tag } from '../tag';
 import { useStyle } from './style';
@@ -42,6 +43,14 @@ interface BookRequestRowProps {
  * The second case renders "Added to your library" with no link — that is the
  * correct rendering, not an error state.
  *
+ * The fulfilled link goes through `path.book(id)` (`~/router`), not a
+ * hand-rolled `/book/${id}` template: the registered route is
+ * `${path.library()}/book/:bookId` (`router/component.tsx`), so a bare
+ * `/book/<id>` matches no route and falls through to the `*` catch-all,
+ * which redirects to the library. `path.book` also runs the id through
+ * `encodeURIComponent` — a Relay global id is base64 and can contain `+`
+ * or `/`, both of which need escaping in a URL path segment.
+ *
  * Delete is a plain callback prop, not an owned mutation: this row does not
  * know whether it is being withdrawn (PENDING) or cleared (resolved) in terms
  * of server semantics — both routes through the same owner-or-admin
@@ -69,7 +78,7 @@ export const BookRequestRow = ({
       {row.status === 'FULFILLED' && (
         <div className={styles.resolution}>
           {row.book ? (
-            <Link to={`/book/${row.book.id}`}>Added to your library — {row.book.title}</Link>
+            <Link to={path.book(row.book.id)}>Added to your library — {row.book.title}</Link>
           ) : (
             'Added to your library'
           )}

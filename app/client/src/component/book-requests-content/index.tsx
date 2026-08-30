@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
 import { Fragment, useCallback, useState } from 'react';
 
@@ -8,6 +8,7 @@ import type { BookRequestCreateMutation } from '~/gql/graphql';
 import {
   BookRequestCreateDocument,
   BookRequestDeleteDocument,
+  MyBookRequestCountDocument,
   MyBookRequestListDocument,
 } from '~/graphql/book-request';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
@@ -49,26 +50,39 @@ interface BookRequestsContentProps {
  * empty; the server defaults it to `''` when omitted, matching this
  * component's own empty-string default.
  *
- * **On success, the form clears and Apollo's own normalization updates the
- * cache** — `BookRequestCreateDocument` re-selects the full
- * `BookRequestRowFragment` on the returned `bookRequest`, so an ALREADY
- * cached `BookRequest:<id>` entity is fine, but there is no such entity yet
- * for a brand-new request. No `cache.modify` inserts the new edge into
- * `User.bookRequests` either: the connection's cursor order (newest
- * `createdAt`, `id asc` tiebreaker) is not reproducible client-side, so this
- * deliberately leaves the freshly-created row to show up on the next fetch
- * of this list (e.g. collapsing and re-expanding the card) rather than
- * risking a wrongly-ordered or duplicated optimistic insert.
+ * **On success, the form clears and this component imperatively refetches
+ * both `MyBookRequestListDocument` and `MyBookRequestCountDocument`** via
+ * `client.refetchQueries({ include: [...] })`. Plain normalization is NOT
+ * enough on its own: `BookRequestCreateDocument` re-selects the full
+ * `BookRequestRowFragment` on the returned `bookRequest`, which would keep
+ * an ALREADY-cached `BookRequest:<id>` entity in sync, but a brand-new
+ * request has no existing connection edge for normalization to attach to —
+ * Apollo cannot insert a new edge into an already-cached
+ * `relayStylePagination` connection on its own. No hand-rolled
+ * `cache.modify` insert either: the connection's cursor order (newest
+ * `createdAt`, `id asc` tiebreaker) is not reproducible client-side, so
+ * reproducing it optimistically risks a wrongly-ordered or duplicated
+ * row for no real gain — creating a request is a rare, interactive action
+ * over a small list, so a full refetch is cheap and simply correct.
+ * `refetchQueries({ include: [...] })` only refetches ACTIVE queries (a
+ * no-op if nothing is currently watching a given document), so this is
+ * harmless to call even when, say, `MyBookRequestCountDocument`'s only
+ * mount site (`BookRequests`) happens not to be on screen.
  *
- * **`onDelete` (passed to `BookRequestRow`) runs `BookRequestDeleteDocument`
- * and evicts the returned `deletedId`.** `bookRequestDelete` is NOT a union
- * (no failure a client renders differently — `null` covers both "gone" and
- * "not yours") so there is no `unwrapResult` call here, just a null check.
- * `cache.evict` on a `relayStylePagination`-held connection (see
+ * **`onDelete` (passed to `BookRequestRow`) runs `BookRequestDeleteDocument`,
+ * evicts the returned `deletedId` from the cache, and — on a genuine
+ * deletion — refetches the same two documents.** `bookRequestDelete` is NOT
+ * a union (no failure a client renders differently — `null` covers both
+ * "gone" and "not yours") so there is no `unwrapResult` call here, just a
+ * null check. `cache.evict` on a `relayStylePagination`-held connection (see
  * `provider/apollo/cache.ts`'s `User.bookRequests` typePolicy, added
- * alongside this component) makes `InMemoryCache` silently drop the
+ * alongside this component) already makes `InMemoryCache` silently drop the
  * now-dangling edge the next time the connection is read — the same
- * mechanism `useDeleteProgress` documents for `Library.progress`.
+ * mechanism `useDeleteProgress` documents for `Library.progress` — so the
+ * list refetch here is belt-and-suspenders. The COUNT refetch is not:
+ * `pendingBookRequestCount` is a server-computed `t.relationCount` with no
+ * client-visible increment/decrement, so without this refetch a withdrawn
+ * or cleared request would leave the card's subtitle stale.
  *
  * **Loading, first-page error, and empty states follow `MyProgressContent`'s
  * three-branch shape exactly** — but only for the LIST region below the
@@ -78,6 +92,7 @@ interface BookRequestsContentProps {
  */
 export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
   const styles = useStyle();
+  const client = useApolloClient();
   const [runCreate, { loading: creating }] = useMutation(BookRequestCreateDocument);
   const [runDelete] = useMutation(BookRequestDeleteDocument);
 
@@ -145,26 +160,36 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
         setTitle('');
         setAuthor('');
         setNote('');
+        await client.refetchQueries({
+          include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+        });
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Failed to submit request');
       }
     },
-    [title, author, note, runCreate]
+    [title, author, note, runCreate, client]
   );
 
   const handleDelete = useCallback(
     (id: string) => {
-      void runDelete({
-        variables: { id },
-        update: (cache, { data }) => {
-          const deletedId = data?.bookRequestDelete?.deletedId;
-          if (!deletedId) return;
-          cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
-          cache.gc();
-        },
-      });
+      void (async () => {
+        const { data } = await runDelete({
+          variables: { id },
+          update: (cache, { data: mutationData }) => {
+            const deletedId = mutationData?.bookRequestDelete?.deletedId;
+            if (!deletedId) return;
+            cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
+            cache.gc();
+          },
+        });
+        if (data?.bookRequestDelete?.deletedId) {
+          await client.refetchQueries({
+            include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+          });
+        }
+      })();
     },
-    [runDelete]
+    [runDelete, client]
   );
 
   let list: React.ReactNode;
