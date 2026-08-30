@@ -42,6 +42,7 @@ model Book {
   thumbnails      BookThumbnail[]
   pendingFix      PendingFix?
   validation      Validation?
+  bookRequests    BookRequest[]
   // The reading position for this book, if the owner has one. See `Progress
   // .book` below for why this relation carries no database foreign key.
   progress        Progress?
@@ -114,6 +115,48 @@ model ValidationMessage {
   @@map("validation_messages")
 }
 
+model BookRequest {
+  userId        String  @map("user_id")
+  id            String
+  title         String
+  author        String
+  note          String  @default("")
+  status        String  @default("pending")
+  declineReason String  @default("") @map("decline_reason")
+  dedupeKey     String  @map("dedupe_key")
+  createdAt     Float   @default(dbgenerated("strftime('%s','now') * 1000")) @map("created_at")
+  resolvedAt    Float?  @map("resolved_at")
+  bookUserId    String? @map("book_user_id")
+  bookId        String? @map("book_id")
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // `onUpdate: Cascade`, matching `PendingFix`: a book id is a content hash and
+  // rotates whenever the EPUB is rewritten (accepting a metadata fix does
+  // exactly that), so a fulfilled request would otherwise point at a dead id.
+  // `onDelete: SetNull`: a fulfilled request whose book is later deleted stays
+  // fulfilled but loses its link, and the reader's card renders "added to your
+  // library" without one rather than as an error.
+  book Book? @relation(fields: [bookUserId, bookId], references: [userId, id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@id([userId, id])
+  // EXISTS FOR THE CURSOR AND NOTHING ELSE — no query uses it as a lookup key.
+  // `User.bookRequests` is a `t.prismaConnection`, and the plugin paginates by
+  // SEEKING TO A ROW, which returns an empty page with `hasNextPage: false`
+  // when that row has been deleted. Deleting a request is a first-class action
+  // on both surfaces, so the resolver rebuilds a keyset predicate from the
+  // cursor instead, and every column the page sorts on has to be inside the
+  // cursor for that to work. `id` is the tiebreaker and is required, not
+  // cosmetic: `created_at` defaults to whole seconds scaled by 1000, so two
+  // requests made in the same second share a timestamp, and cursor pagination
+  // needs a total order or a page boundary can repeat or skip a row. Same
+  // device, same reason, as `@@unique([userId, timestamp, document])` on
+  // `Progress`.
+  @@unique([userId, createdAt, id])
+  @@index([userId, status])
+  @@index([userId, dedupeKey])
+  @@map("book_requests")
+}
+
 model BookThumbnail {
   userId String @map("user_id")
   bookId String @map("book_id")
@@ -138,6 +181,7 @@ model User {
   books              Book[]
   series             Series[]
   deviceAccess       DeviceUser[]
+  bookRequests       BookRequest[]
 
   @@map("users")
 }
