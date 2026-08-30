@@ -40,6 +40,23 @@ export const invalidInputError = (error: ZodError): InvalidInputErrorShape => ({
   })),
 });
 
+/**
+ * The same shape `invalidInputError` produces, for the resolvers that reject an
+ * argument WITHOUT a zod parse to reject it — `bookRequestFulfill`'s
+ * "that book is not in this reader's library", for instance, which is decided
+ * by a database read rather than by parsing.
+ *
+ * Deliberately not a hand-built `ZodError`: this project is on zod 4, whose
+ * issue type carries more than `{ code, path, message }`, so constructing one
+ * by hand to feed the parser-shaped factory would be fragile for no gain. The
+ * SDL shape is `{ path, message }` either way.
+ */
+export const invalidInputIssue = (path: string[], message: string): InvalidInputErrorShape => ({
+  __typename: 'InvalidInputError',
+  message: 'Invalid input',
+  issues: [{ path, message }],
+});
+
 export const model = builder.objectRef<InvalidInputErrorShape>('InvalidInputError').implement({
   description: 'The mutation input did not pass validation; nothing was changed.',
   interfaces: [userError],

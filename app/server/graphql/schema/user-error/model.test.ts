@@ -50,7 +50,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError and ScanAlreadyRunningError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, ScanAlreadyRunningError, BookRequestLimitExceededError, DuplicateBookRequestError and BookRequestNotPendingError', () => {
     // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
@@ -100,6 +100,19 @@ describe('UserError', () => {
     // ever called) — same "resolver-produced, not domain-error-thrown" shape as
     // `BookNotValidatedError` above. See
     // `scan-already-running-error/model.ts`.
+    //
+    // `BookRequestLimitExceededError`, `DuplicateBookRequestError` and
+    // `BookRequestNotPendingError` are a sixteenth, seventeenth and eighteenth
+    // member, added by the book-requests plan's task 7 for `bookRequestCreate`'s
+    // two failure outcomes (the cap and the duplicate) and reserved for task 8's
+    // `bookRequestFulfill`/`bookRequestDecline` double-resolve guard. None of
+    // the three is a thrown domain-error class: `createBookRequest` decides the
+    // cap and the duplicate with an explicit read inside its own transaction and
+    // RETURNS the outcome — same "resolver/service-produced, not
+    // domain-error-thrown" shape as the members above. See
+    // `book-request-limit-exceeded-error/model.ts`,
+    // `duplicate-book-request-error/model.ts` and
+    // `book-request-not-pending-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -107,9 +120,12 @@ describe('UserError', () => {
     ).toEqual([
       'BookHashCollisionError',
       'BookNotValidatedError',
+      'BookRequestLimitExceededError',
+      'BookRequestNotPendingError',
       'DeviceSlugConflictError',
       'DocumentAlreadyLinkedError',
       'DocumentIsBookError',
+      'DuplicateBookRequestError',
       'EditLineageEntryError',
       'EpubValidationError',
       'IncorrectPasswordError',
