@@ -6,7 +6,14 @@ import type { PrismaClient } from '@prisma/client';
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
-import { createBookRequest, dedupeKey, MAX_OPEN_BOOK_REQUESTS } from './book-request';
+import {
+  createBookRequest,
+  declineBookRequest,
+  dedupeKey,
+  deleteBookRequest,
+  fulfillBookRequest,
+  MAX_OPEN_BOOK_REQUESTS,
+} from './book-request';
 
 vi.mock('../logger');
 
@@ -118,5 +125,132 @@ describe('createBookRequest', () => {
     );
     const row = await prisma.bookRequest.findFirstOrThrow({ where: { userId: ALICE } });
     expect(row).toMatchObject({ title: 'Dune', author: 'Frank Herbert', note: 'please' });
+  });
+});
+
+const BOB = 'user-bob';
+const seedBook = async (userId: string, id: string) => {
+  await prisma.book.create({
+    data: { userId, id, title: 'Dune', size: 1, mtime: 0, addedAt: 0 },
+  });
+};
+const seedRequest = async (): Promise<string> => {
+  const outcome = await createBookRequest(prisma, input());
+  if (outcome.kind !== 'created') throw new Error('setup failed');
+  return outcome.id;
+};
+
+describe('fulfillBookRequest', () => {
+  it('marks the request fulfilled and links the book', async () => {
+    const id = await seedRequest();
+    await seedBook(ALICE, 'a'.repeat(32));
+
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      bookUserId: ALICE,
+      bookId: 'a'.repeat(32),
+    });
+
+    expect(outcome).toEqual({ kind: 'resolved' });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.status).toBe('fulfilled');
+    expect(row.bookId).toBe('a'.repeat(32));
+    expect(row.resolvedAt).not.toBeNull();
+  });
+
+  it('refuses a book from a different library', async () => {
+    const id = await seedRequest();
+    await prisma.user.create({ data: { id: BOB, username: 'bob' } });
+    await seedBook(BOB, 'b'.repeat(32));
+
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      bookUserId: BOB,
+      bookId: 'b'.repeat(32),
+    });
+
+    expect(outcome).toEqual({ kind: 'noSuchBook' });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.status).toBe('pending');
+  });
+
+  it('refuses a book that does not exist', async () => {
+    const id = await seedRequest();
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      bookUserId: ALICE,
+      bookId: 'c'.repeat(32),
+    });
+    expect(outcome).toEqual({ kind: 'noSuchBook' });
+  });
+
+  it('reports a missing request', async () => {
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id: 'no-such-request',
+      bookUserId: ALICE,
+      bookId: 'a'.repeat(32),
+    });
+    expect(outcome).toEqual({ kind: 'missing' });
+  });
+
+  it('refuses to resolve an already-resolved request', async () => {
+    const id = await seedRequest();
+    await seedBook(ALICE, 'a'.repeat(32));
+    await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      bookUserId: ALICE,
+      bookId: 'a'.repeat(32),
+    });
+
+    const again = await declineBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      reason: 'changed my mind',
+    });
+    expect(again).toEqual({ kind: 'notPending', status: 'fulfilled' });
+  });
+});
+
+describe('declineBookRequest', () => {
+  it('marks the request declined and records the reason', async () => {
+    const id = await seedRequest();
+    const outcome = await declineBookRequest(prisma, {
+      userId: ALICE,
+      id,
+      reason: "Can't find it",
+    });
+
+    expect(outcome).toEqual({ kind: 'resolved' });
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row).toMatchObject({ status: 'declined', declineReason: "Can't find it" });
+    expect(row.resolvedAt).not.toBeNull();
+  });
+
+  it('reports a missing request', async () => {
+    const outcome = await declineBookRequest(prisma, { userId: ALICE, id: 'nope', reason: '' });
+    expect(outcome).toEqual({ kind: 'missing' });
+  });
+});
+
+describe('deleteBookRequest', () => {
+  it('deletes the row and reports true', async () => {
+    const id = await seedRequest();
+    expect(await deleteBookRequest(prisma, { userId: ALICE, id })).toBe(true);
+    expect(await prisma.bookRequest.count()).toBe(0);
+  });
+
+  it('reports false for a row that is not there', async () => {
+    expect(await deleteBookRequest(prisma, { userId: ALICE, id: 'nope' })).toBe(false);
   });
 });
