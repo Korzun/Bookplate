@@ -4,6 +4,7 @@ export { Button } from './button';
 export { ChipsInput } from './chips-input';
 export { ConfirmModal } from './confirm-modal';
 export { FieldList } from './field-list';
+export { LinkExistingBookModal } from './link-existing-book-modal';
 export { LinkProgressModal } from './link-progress-modal';
 export { NumberInput } from './number-input';
 export { PageActionsBar } from './page-actions-bar';
