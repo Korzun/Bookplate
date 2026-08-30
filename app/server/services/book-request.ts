@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 
 import { PrismaClient } from '@prisma/client';
 
+import { isPrismaError } from './prisma-errors';
+
 /**
  * Stored lowercase; exposed through the `BookRequestStatus` GraphQL enum,
  * whose SCREAMING_CASE members map back onto these exact strings. The enum
@@ -91,4 +93,105 @@ export async function createBookRequest(
     });
     return { kind: 'created', id: created.id };
   });
+}
+
+export type ResolveOutcome =
+  | { kind: 'resolved' }
+  | { kind: 'missing' }
+  | { kind: 'notPending'; status: BookRequestStatus };
+
+export type FulfillOutcome = ResolveOutcome | { kind: 'noSuchBook' };
+
+/**
+ * Links a book to a pending request and closes it.
+ *
+ * IN A TRANSACTION, unlike `declineBookRequest`, and the asymmetry is
+ * deliberate: this one has to validate a SECOND row — the book — before it
+ * writes, so the read and the write have to be atomic together. Declining
+ * validates nothing else and gets a single guarded `updateMany` instead.
+ *
+ * `bookUserId !== args.userId` is `noSuchBook`, not a distinct outcome: an
+ * admin must not fulfil alice's request with a book off bob's shelf, and
+ * saying so in more detail would confirm that bob has that book.
+ */
+export async function fulfillBookRequest(
+  prisma: PrismaClient,
+  args: { userId: string; id: string; bookUserId: string; bookId: string }
+): Promise<FulfillOutcome> {
+  return prisma.$transaction(async (tx) => {
+    const request = await tx.bookRequest.findUnique({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+      select: { status: true },
+    });
+    if (request === null) return { kind: 'missing' };
+    if (request.status !== 'pending') {
+      return { kind: 'notPending', status: request.status as BookRequestStatus };
+    }
+
+    if (args.bookUserId !== args.userId) return { kind: 'noSuchBook' };
+    const book = await tx.book.findUnique({
+      where: { userId_id: { userId: args.bookUserId, id: args.bookId } },
+      select: { id: true },
+    });
+    if (book === null) return { kind: 'noSuchBook' };
+
+    await tx.bookRequest.update({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+      data: {
+        status: 'fulfilled',
+        resolvedAt: Date.now(),
+        bookUserId: args.bookUserId,
+        bookId: args.bookId,
+      },
+    });
+    return { kind: 'resolved' };
+  });
+}
+
+/**
+ * Closes a pending request as declined, with an optional reason.
+ *
+ * The `status: 'pending'` term in the `where` is what makes this atomic
+ * WITHOUT a transaction: the guard and the write are one statement, so two
+ * concurrent resolves cannot both see `pending`. The follow-up read only runs
+ * when nothing was updated, to tell "no such row" from "already resolved".
+ */
+export async function declineBookRequest(
+  prisma: PrismaClient,
+  args: { userId: string; id: string; reason: string }
+): Promise<ResolveOutcome> {
+  const updated = await prisma.bookRequest.updateMany({
+    where: { userId: args.userId, id: args.id, status: 'pending' },
+    data: { status: 'declined', declineReason: args.reason.trim(), resolvedAt: Date.now() },
+  });
+  if (updated.count === 1) return { kind: 'resolved' };
+
+  const existing = await prisma.bookRequest.findUnique({
+    where: { userId_id: { userId: args.userId, id: args.id } },
+    select: { status: true },
+  });
+  return existing === null
+    ? { kind: 'missing' }
+    : { kind: 'notPending', status: existing.status as BookRequestStatus };
+}
+
+/**
+ * Deletes a request whatever its status — the reader withdrawing a pending one
+ * and either party clearing a resolved one are the same operation. Returns
+ * `false` when there was no such row (`P2025`) rather than throwing, the same
+ * convention `deleteDevice` and `deleteUser` use.
+ */
+export async function deleteBookRequest(
+  prisma: PrismaClient,
+  args: { userId: string; id: string }
+): Promise<boolean> {
+  try {
+    await prisma.bookRequest.delete({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+    });
+    return true;
+  } catch (e) {
+    if (isPrismaError(e, 'P2025')) return false; // already deleted
+    throw e;
+  }
 }
