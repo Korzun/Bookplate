@@ -743,4 +743,44 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       )
     `);
   });
+
+  // Data migration: create the book_requests table. Runs after
+  // data_v11_per_user_libraries so the composite FK on (book_user_id, book_id)
+  // is valid. The Prisma DDL migration (20260830000000_add_book_requests) is a
+  // no-op; see its comment.
+  await runDataMigration(prisma, 'data_v18_book_requests', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "book_requests" (
+        "user_id" TEXT NOT NULL,
+        "id" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "author" TEXT NOT NULL,
+        "note" TEXT NOT NULL DEFAULT '',
+        "status" TEXT NOT NULL DEFAULT 'pending',
+        "decline_reason" TEXT NOT NULL DEFAULT '',
+        "dedupe_key" TEXT NOT NULL,
+        "created_at" REAL NOT NULL DEFAULT (strftime('%s','now') * 1000),
+        "resolved_at" REAL,
+        "book_user_id" TEXT,
+        "book_id" TEXT,
+        PRIMARY KEY ("user_id", "id"),
+        CONSTRAINT "book_requests_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "book_requests_book_fkey" FOREIGN KEY ("book_user_id", "book_id")
+          REFERENCES "books" ("user_id", "id") ON DELETE SET NULL ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "book_requests_user_id_created_at_id_key"
+         ON "book_requests" ("user_id", "created_at", "id")`
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "book_requests_user_id_status_idx"
+         ON "book_requests" ("user_id", "status")`
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "book_requests_user_id_dedupe_key_idx"
+         ON "book_requests" ("user_id", "dedupe_key")`
+    );
+  });
 }
