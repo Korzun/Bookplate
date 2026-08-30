@@ -177,6 +177,10 @@ type BookRequestDeclinePayload {
 
 union BookRequestDeclineResult = BookRequestDeclinePayload | BookRequestNotPendingError
 
+type BookRequestDeletePayload {
+  deletedId: ID!
+}
+
 type BookRequestFulfillPayload {
   bookRequest: BookRequest!
 }
@@ -623,6 +627,9 @@ type Mutation {
 
   """Turns down a request, optionally with a reason."""
   bookRequestDecline(id: ID!, reason: String): BookRequestDeclineResult
+
+  """Withdraws a pending request, or clears a resolved one."""
+  bookRequestDelete(id: ID!): BookRequestDeletePayload
 
   """Marks a request fulfilled by a book in that reader library."""
   bookRequestFulfill(bookId: ID!, id: ID!): BookRequestFulfillResult

@@ -1,33 +1,11 @@
-import { decodeGlobalID } from '@pothos/plugin-relay';
-
 import { declineBookRequest } from '../../../../services/book-request';
 import {
   bookRequestNotPendingError,
   model as bookRequestNotPendingErrorModel,
 } from '../../book-request-not-pending-error/model';
 import { builder } from '../../builder';
-import { parseCompoundId } from '../../node-scope';
+import { decodeCompoundGlobalId } from '../../node-scope';
 import { model as bookRequestModel } from '../model';
-
-/**
- * Same fix `fulfill.ts` needs for the same reason — see that file's doc
- * comment on this helper. `t.arg.id()` hands the resolver the raw base64
- * global id, not the pre-decoded local id `parseCompoundId` expects, so this
- * unwraps the `TypeName:` wrapper first.
- */
-const decodeCompoundGlobalId = (
-  raw: string,
-  typename: string
-): readonly [userId: string, id: string] | null => {
-  let decoded: { typename: string; id: string };
-  try {
-    decoded = decodeGlobalID(raw);
-  } catch {
-    return null;
-  }
-  if (decoded.typename !== typename) return null;
-  return parseCompoundId(decoded.id);
-};
 
 type BookRequestDeclinePayloadShape = {
   readonly __typename: 'BookRequestDeclinePayload';

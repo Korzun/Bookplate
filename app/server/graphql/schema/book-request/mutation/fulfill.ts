@@ -1,5 +1,3 @@
-import { decodeGlobalID } from '@pothos/plugin-relay';
-
 import { fulfillBookRequest } from '../../../../services/book-request';
 import {
   bookRequestNotPendingError,
@@ -10,34 +8,8 @@ import {
   invalidInputIssue,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
-import { parseCompoundId } from '../../node-scope';
+import { decodeCompoundGlobalId } from '../../node-scope';
 import { model as bookRequestModel } from '../model';
-
-/**
- * `t.arg.id()` (below) hands the resolver the RAW base64 global id, unlike
- * `prismaNode`'s own `findUnique` — the mechanism `parseCompoundId`'s doc
- * comment describes — which only ever runs after the relay plugin's Node
- * interface machinery has already stripped the `TypeName:` wrapper. A plain
- * arg gets no such treatment, so this mirrors `progress/mutation/delete.ts`'s
- * `decodeProgressId`: `decodeGlobalID` first (base64 + typename), then
- * `parseCompoundId` on what's left. Every failure mode — bad base64, wrong
- * typename, a local part that isn't the `[userId, id]` pair — collapses to
- * `null`, same convention `decodeProgressId` uses, so a malformed or
- * wrong-type id is indistinguishable from a well-formed one naming nothing.
- */
-const decodeCompoundGlobalId = (
-  raw: string,
-  typename: string
-): readonly [userId: string, id: string] | null => {
-  let decoded: { typename: string; id: string };
-  try {
-    decoded = decodeGlobalID(raw);
-  } catch {
-    return null;
-  }
-  if (decoded.typename !== typename) return null;
-  return parseCompoundId(decoded.id);
-};
 
 type BookRequestFulfillPayloadShape = {
   readonly __typename: 'BookRequestFulfillPayload';
