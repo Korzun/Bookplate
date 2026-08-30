@@ -60,12 +60,14 @@ export const UserListDocument = graphql(`
 
 /**
  * `user { … }` mirrors `UserListDocument`'s selection field-for-field
- * (`id`/`username`/`progressCount`/`library { id }`, spread via
- * `UserRowFragment` plus the sibling `library { id }` field there) so the
- * appended reference normalizes with every field that list read expects — a
- * partial selection here would leave `viewer.users`'s new entry resolving
- * `null`/missing fields the next time `UserList` reads it (same reasoning as
- * `DeviceCreateDocument`'s doc comment).
+ * (`id`/`username`/`progressCount`/`pendingBookRequestCount`/`library { id }`,
+ * spread via `UserRowFragment` plus the sibling `library { id }` field there)
+ * so the appended reference normalizes with every field that list read
+ * expects — a partial selection here would leave `viewer.users`'s new entry
+ * resolving `null`/missing fields the next time `UserList` reads it (same
+ * reasoning as `DeviceCreateDocument`'s doc comment). A brand-new user always
+ * has zero pending requests, but the FIELD still has to be selected — its
+ * value, not its presence, is what a fresh registration guarantees.
  *
  * `UsernameAlreadyExistsError` and `InvalidInputError` are both real,
  * reachable outcomes (a duplicate/reserved name; a rejected charset or
@@ -81,6 +83,7 @@ export const UserRegisterDocument = graphql(`
           id
           username
           progressCount
+          pendingBookRequestCount
           library {
             id
           }
