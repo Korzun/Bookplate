@@ -1,0 +1,13 @@
+-- This migration is intentionally a no-op.
+--
+-- The book_requests table has a composite foreign key to books(user_id, id),
+-- which only becomes a valid target once the data_v11_per_user_libraries data
+-- migration rebuilds "books" with a composite primary key. Creating the table
+-- here (during the plain DDL migration pass, which runs before any data
+-- migration) would raise SQLite's "foreign key mismatch" error for databases
+-- still on the pre-per-user-libraries schema.
+--
+-- The table is instead created by the data_v18_book_requests data migration in
+-- migrate.ts, which runs after data_v11_per_user_libraries — mirroring
+-- 20260725000000_add_pending_fixes and 20260726120000_add_validation_tables.
+SELECT 1;
