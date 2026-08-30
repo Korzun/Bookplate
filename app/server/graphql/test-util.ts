@@ -291,6 +291,35 @@ export const createHarness = async (): Promise<Harness> => {
         }
         return globalId;
       }
+      // Compound id (`userId_id`), like Book — so the global id is
+      // `JSON.stringify([userId, id])` as the local id, not a plain
+      // `encodeGlobalID('BookRequest', id)`. Read it back through the schema
+      // rather than hand-encoding, matching every other branch here.
+      case 'BookRequest': {
+        await prisma.bookRequest.create({
+          data: {
+            userId: aliceId,
+            id: 'seed-request-1',
+            title: 'Seed',
+            author: 'Seed Author',
+            dedupeKey: 'seed\0seed author',
+          },
+        });
+        const seeded = await execute(
+          `{ viewer { user { bookRequests(first: 1) { edges { node { id } } } } } }`,
+          { viewer: aliceViewer }
+        );
+        const data = seeded.data as {
+          viewer: { user: { bookRequests: { edges: { node: { id: string } }[] } } | null };
+        } | null;
+        const globalId = data?.viewer.user?.bookRequests.edges[0]?.node.id;
+        if (globalId === undefined) {
+          throw new Error(
+            'seedNodeFor("BookRequest") could not read back the seeded request global id'
+          );
+        }
+        return globalId;
+      }
       default:
         throw new Error(
           `seedNodeFor has no seeding branch for Node type "${typeName}" — add one in test-util.ts when that type is registered as a prismaNode.`

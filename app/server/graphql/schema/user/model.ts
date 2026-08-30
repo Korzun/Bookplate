@@ -1,4 +1,5 @@
 import type { Context } from '../../context';
+import { model as bookRequest, requestKeyset } from '../book-request/model';
 import { builder } from '../builder';
 // `../library/model`, not `../library`: `library/index.ts` now also
 // side-effect-imports `library/mutation/scan.ts` (task 8), which itself
@@ -9,6 +10,7 @@ import { builder } from '../builder';
 // spots — see `book-hash-collision-error/model.ts`'s identical note.
 import { model as library } from '../library/model';
 import { isOwnerOrAdmin, NO_MATCH_USER_ID } from '../node-scope';
+import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 
 // `Query.node(id:)` is a second door into every registered `Node` type, and it
 // bypasses `Query.user`'s `admin` scope entirely — that scope only guards the
@@ -62,5 +64,63 @@ export const model = builder.prismaNode('User', {
       authScopes: (parent) => ({ ownerOf: parent.id }),
       resolve: (parent) => ({ userId: parent.id, username: parent.username }),
     }),
+
+    /**
+     * This reader's book requests, newest first — the ONE field behind both
+     * surfaces. The reader reaches it as `viewer { user { bookRequests } }`
+     * (`Viewer.user` is already null for the config admin, which has no `User`
+     * row and cannot be a requester) and the admin as
+     * `user(id:) { bookRequests }` (`Query.user` is admin-gated). A separate
+     * `Viewer.bookRequests` would duplicate this field, its `CONNECTION_LIMITS`
+     * entry and its auth tests for no gain.
+     *
+     * `ownerOf` on the PARENT's id, exactly like `library` below it — ownership
+     * is decided once, from the row this type is pinned to, never from
+     * `context.viewer`: an admin reading `user(id:).bookRequests` must page the
+     * target user's rows, not their own.
+     *
+     * `t.prismaConnection`, not `t.relatedConnection`, and the `resolve` drops
+     * the plugin's `cursor`/`skip` — see `requestKeyset` for why. A
+     * `t.relatedConnection` could not carry that fix: its `resolve` is a
+     * FALLBACK ONLY, because on the normal path its rows arrive through the
+     * parent's merged `select`.
+     */
+    bookRequests: t.prismaConnection(
+      {
+        type: bookRequest,
+        description:
+          'Books this reader has asked the library admin for, newest first. ' +
+          'Paginates in both directions.',
+        authScopes: (parent) => ({ ownerOf: parent.id }),
+        cursor: 'userId_createdAt_id',
+        // Native maxSize/defaultSize bound the Prisma query itself, but by
+        // CLAMPING rather than rejecting, which pagination.ts's "reject, never
+        // clamp" ruling forbids. Kept as defense in depth on the SQL; the
+        // actual reject is in `resolve`.
+        maxSize: CONNECTION_LIMITS.userBookRequests.maxSize,
+        defaultSize: CONNECTION_LIMITS.userBookRequests.defaultSize,
+        resolve: (query, parent, args, context) => {
+          rejectOversizePage('User.bookRequests', args, CONNECTION_LIMITS.userBookRequests.maxSize);
+          // `cursor` and `skip` are DELIBERATELY DROPPED and `take` is
+          // deliberately kept — `resolvePrismaCursorConnection` slices the
+          // extra row off using its OWN copy of `take`, so changing it here
+          // corrupts `hasNextPage` rather than resizing the page.
+          const { cursor, skip: _skip, ...page } = query;
+          return context.prisma.bookRequest.findMany({
+            ...page,
+            where: {
+              userId: parent.id,
+              ...requestKeyset(cursor?.userId_createdAt_id, page.take),
+            },
+            // `id asc` is the tiebreaker and is required: `createdAt` is whole
+            // seconds scaled by 1000, so two requests made in the same second
+            // share one, and cursor pagination needs a total order.
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          });
+        },
+      },
+      { name: 'UserBookRequestsConnection' },
+      { name: 'UserBookRequestsConnectionEdge' }
+    ),
   }),
 });

@@ -94,6 +94,7 @@
     ],
     "Node": [
       "Book",
+      "BookRequest",
       "Library",
       "Series",
       "User"

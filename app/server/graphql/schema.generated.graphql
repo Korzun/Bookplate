@@ -147,6 +147,24 @@ type BookReplacePayload {
 
 union BookReplaceResult = BookHashCollisionError | BookReplacePayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
 
+type BookRequest implements Node {
+  author: String!
+  book: Book
+  createdAt: DateTime!
+  declineReason: String!
+  id: ID!
+  note: String!
+  resolvedAt: DateTime
+  status: BookRequestStatus!
+  title: String!
+}
+
+enum BookRequestStatus {
+  DECLINED
+  FULFILLED
+  PENDING
+}
+
 input BookResolvePendingFixInput {
   action: PendingFixResolution!
 
@@ -865,11 +883,25 @@ type UndoSnapshot {
 }
 
 type User implements Node {
+  """
+  Books this reader has asked the library admin for, newest first. Paginates in both directions.
+  """
+  bookRequests(after: String, before: String, first: Int, last: Int): UserBookRequestsConnection!
   id: ID!
   library: Library!
   mustChangePassword: Boolean!
   progressCount: Int!
   username: String!
+}
+
+type UserBookRequestsConnection {
+  edges: [UserBookRequestsConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type UserBookRequestsConnectionEdge {
+  cursor: String!
+  node: BookRequest!
 }
 
 input UserChangePasswordInput {
