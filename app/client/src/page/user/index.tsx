@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { useCallback } from 'react';
 
 import {
+  BookRequests,
   ConnectionUrls,
   MyProgress,
   Page,
@@ -77,6 +78,7 @@ export const UserPage = () => {
       <ThemeSetting />
       <ScanLibrarySetting />
       <SyncPassword />
+      <BookRequests />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
       <UserChangePassword />
       <MyProgress />

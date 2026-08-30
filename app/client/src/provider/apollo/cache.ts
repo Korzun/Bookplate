@@ -61,5 +61,12 @@ export const cacheConfig: InMemoryCacheConfig = {
     },
     Series: { fields: { books: relayStylePagination() } },
     Validation: { fields: { messages: relayStylePagination() } },
+    // `User.bookRequests` is a `t.prismaConnection`, same shape as
+    // `Library.progress` above (no filter args, so no `keyArgs` needed) —
+    // required for `usePaginatedConnection`'s `fetchMore` (`component/
+    // book-requests-content`) to APPEND a second page's edges onto the
+    // first rather than replace them: without a merge function here,
+    // `InMemoryCache` treats each distinct `after` as its own cache entry.
+    User: { fields: { bookRequests: relayStylePagination() } },
   },
 };
