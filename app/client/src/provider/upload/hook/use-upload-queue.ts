@@ -20,7 +20,7 @@ import { unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
-import type { TransportItem } from './use-upload-transport';
+import type { AddFileOptions, TransportItem } from './use-upload-transport';
 import { useUploadTransport } from './use-upload-transport';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
@@ -106,7 +106,7 @@ export type UploadItem = {
 
 export type UseUploadQueue = {
   items: UploadItem[];
-  addFiles: (files: FileList) => void;
+  addFiles: (files: FileList, options?: AddFileOptions) => void;
   applyFix: (itemId: string, fix: MetadataFix) => Promise<boolean>;
   applyAllProposals: (itemId: string) => Promise<boolean>;
   /** Async now (Task 8): resolves through `BookResolvePendingFixDocument`
@@ -432,16 +432,25 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // book's position in a sorted, filtered, paginated connection is the
   // server's to decide, so the only correct move is to drop the stored
   // connection and let the next read miss.
-  const onUploaded = useCallback(() => {
-    if (libraryId !== undefined) {
-      client.cache.evict({
-        id: client.cache.identify({ __typename: 'Library', id: libraryId }),
-        fieldName: 'entries',
-      });
-      client.cache.gc();
-    }
-    void refetch(); // the new book may have arrived with proposals
-  }, [client, libraryId, refetch]);
+  // `itemLibraryId` is the library the bytes ACTUALLY went to, captured on the
+  // item at add time — not `useCurrentLibraryId()`, which is the admin's global
+  // switcher selection and may have moved since. Falling back to it keeps every
+  // pre-existing call site (an upload with no explicit target) behaving exactly
+  // as before.
+  const onUploaded = useCallback(
+    (itemLibraryId: string | undefined) => {
+      const evictId = itemLibraryId ?? libraryId;
+      if (evictId !== undefined) {
+        client.cache.evict({
+          id: client.cache.identify({ __typename: 'Library', id: evictId }),
+          fieldName: 'entries',
+        });
+        client.cache.gc();
+      }
+      void refetch(); // the new book may have arrived with proposals
+    },
+    [client, libraryId, refetch]
+  );
   const transport = useUploadTransport(onUploaded);
   const { remapBookGlobalId } = transport;
 

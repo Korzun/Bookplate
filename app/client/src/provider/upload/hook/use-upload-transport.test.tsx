@@ -2,9 +2,17 @@ import type { MockedResponse } from '@apollo/client/testing';
 import { act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { UploadConfigQuery } from '~/gql/graphql';
+import { UserRowFragment } from '~/component/user-row';
+import { makeFragmentData } from '~/gql';
+import type { UploadConfigQuery, UserListQuery } from '~/gql/graphql';
 import { UploadConfigDocument } from '~/graphql/upload';
-import { renderHookWithApollo } from '~/test-utils';
+import { UserListDocument } from '~/graphql/user';
+import {
+  LibraryTargetProvider,
+  useLibraryTarget,
+  useWithTargetUser,
+} from '~/provider/library-target';
+import { renderHookWithApollo, renderWithApollo } from '~/test-utils';
 
 import { useUploadTransport } from './use-upload-transport';
 
@@ -60,6 +68,96 @@ async function renderTransport(onUploaded: () => void = () => {}, cap = 2) {
     expect(rendered.client.cache.readQuery({ query: UploadConfigDocument })).not.toBeNull();
   });
   return rendered;
+}
+
+// ── Admin switcher harness (Task 10) ────────────────────────────────────────
+// `useUploadTransport`'s fallback path reads `useWithTargetUser`, which
+// resolves the admin's LIBRARY SWITCHER selection (`useLibraryTarget`, backed
+// by a real `LibraryTargetProvider`) against `UserListDocument` — the same
+// machinery `provider/library-target/hook/use-with-target-user.test.tsx`
+// already mocks for this exact hook (its `user`/`userListMock` shape is
+// mirrored here, not reinvented). `renderTransport` above can't reach any of
+// this: it renders as a non-admin with no `LibraryTargetProvider` in the
+// tree, so the switcher is permanently unresolved. This is the smallest
+// extension needed — an admin-flavoured render plus a live switcher setter —
+// to express the four target-capture cases below.
+
+const targetUser = (username: string, libraryId: string) => ({
+  __typename: 'User' as const,
+  ...makeFragmentData(
+    { __typename: 'User' as const, id: username, username, progressCount: 0 },
+    UserRowFragment
+  ),
+  library: { __typename: 'Library' as const, id: libraryId },
+});
+
+const userListMock: MockedResponse<UserListQuery> = {
+  request: { query: UserListDocument },
+  maxUsageCount: Infinity,
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        users: [
+          targetUser('alice', 'LIB-ALICE'),
+          targetUser('bob', 'LIB-BOB'),
+          targetUser('carol', 'LIB-CAROL'),
+        ],
+      },
+    },
+  },
+};
+
+const LIBRARY_OF: Record<string, string> = {
+  alice: 'LIB-ALICE',
+  bob: 'LIB-BOB',
+  carol: 'LIB-CAROL',
+};
+
+/**
+ * Renders `useUploadTransport` as an admin inside a real
+ * `LibraryTargetProvider` + `UserListDocument` mock, and hands back a
+ * `setTargetUsername` that drives the switcher LIVE — the same
+ * `useLibraryTarget` setter `component/library-switcher` calls, not a mock of
+ * `useWithTargetUser` itself. Waits for both the upload-config query and
+ * `useWithTargetUser`'s own `.ready` before returning, so a test's first
+ * `setTargetUsername` call lands on a settled hook rather than racing
+ * `UserListDocument`'s realistic MockLink delay.
+ */
+async function renderTransportAsAdmin(
+  onUploaded: (libraryId: string | undefined) => void = () => {},
+  cap = 2
+) {
+  const result: { current?: ReturnType<typeof useUploadTransport> } = {};
+  const targetSetterRef: { current?: (id: string | undefined) => void } = {};
+  const readyRef: { current: boolean } = { current: false };
+
+  function Probe() {
+    result.current = useUploadTransport(onUploaded);
+    const [, setTargetLibraryId] = useLibraryTarget();
+    targetSetterRef.current = setTargetLibraryId;
+    readyRef.current = useWithTargetUser().ready;
+    return null;
+  }
+
+  const rendered = renderWithApollo(
+    <LibraryTargetProvider>
+      <Probe />
+    </LibraryTargetProvider>,
+    { mocks: [configMock(cap), userListMock], user: { username: 'admin', isAdmin: true } }
+  );
+
+  await waitFor(() => {
+    expect(rendered.client.cache.readQuery({ query: UploadConfigDocument })).not.toBeNull();
+    expect(readyRef.current).toBe(true);
+  });
+
+  const setTargetUsername = (username: string | undefined) => {
+    targetSetterRef.current!(username ? LIBRARY_OF[username] : undefined);
+  };
+
+  return { result, setTargetUsername, ...rendered };
 }
 
 beforeEach(() => {
@@ -375,5 +473,80 @@ describe('useUploadTransport', () => {
     });
 
     expect(xhrInstances[0].abort).not.toHaveBeenCalled();
+  });
+});
+
+// Task 10: the transport used to read the admin's global switcher selection
+// at SEND time, not add time — so an admin who queued files for one reader
+// and then switched libraries had the still-queued items upload into the
+// new target. `addFiles`'s `target` option (captured onto the item) fixes
+// that; these four cases pin the fix, the pre-existing fallback, and the
+// regression it closes.
+describe('useUploadTransport — per-item target (Task 10)', () => {
+  it('uploads to the target captured at add time, not the current switcher selection', async () => {
+    const { result, setTargetUsername } = await renderTransportAsAdmin();
+
+    // The switcher points at alice when the files are added.
+    act(() => setTargetUsername('alice'));
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'), {
+        target: { libraryId: 'lib-bob', username: 'bob' },
+      });
+    });
+    // The admin switches to a third library while the item is still queued.
+    act(() => setTargetUsername('carol'));
+
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    expect(xhrInstances[0].open).toHaveBeenCalledWith('POST', '/api/books/upload?user=bob');
+  });
+
+  it('falls back to the current switcher selection when no target is given', async () => {
+    const { result, setTargetUsername } = await renderTransportAsAdmin();
+
+    act(() => setTargetUsername('alice'));
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'));
+    });
+
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    expect(xhrInstances[0].open).toHaveBeenCalledWith('POST', '/api/books/upload?user=alice');
+  });
+
+  it('regression: a switcher change mid-queue does not retarget a queued item', async () => {
+    const { result, setTargetUsername } = await renderTransportAsAdmin();
+
+    act(() => setTargetUsername('alice'));
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'), {
+        target: { libraryId: 'lib-alice', username: 'alice' },
+      });
+    });
+    act(() => setTargetUsername('bob'));
+
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    expect(xhrInstances[0].open).toHaveBeenCalledWith('POST', '/api/books/upload?user=alice');
+  });
+
+  it('reports the item own library id when the upload completes', async () => {
+    const onUploaded = vi.fn();
+    const { result } = await renderTransportAsAdmin(onUploaded);
+
+    act(() => {
+      result.current!.addFiles(makeFileList('a.epub'), {
+        target: { libraryId: 'lib-bob', username: 'bob' },
+      });
+    });
+
+    await waitFor(() => expect(xhrInstances[0]?.open).toHaveBeenCalled());
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      results: [{ filename: 'a.epub', globalId: 'GLOBAL-1' }],
+    });
+    await act(async () => {
+      xhrInstances[0].onload?.(new Event('load'));
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).toHaveBeenCalledWith('lib-bob');
   });
 });
