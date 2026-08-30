@@ -171,6 +171,18 @@ type BookRequestCreatePayload {
 
 union BookRequestCreateResult = BookRequestCreatePayload | BookRequestLimitExceededError | DuplicateBookRequestError | InvalidInputError
 
+type BookRequestDeclinePayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestDeclineResult = BookRequestDeclinePayload | BookRequestNotPendingError
+
+type BookRequestFulfillPayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestFulfillResult = BookRequestFulfillPayload | BookRequestNotPendingError | InvalidInputError
+
 """The reader already has the maximum number of open requests."""
 type BookRequestLimitExceededError implements UserError {
   limit: Int!
@@ -608,6 +620,12 @@ type Mutation {
 
   """Asks the library admin for a book that is not in Bookplate."""
   bookRequestCreate(input: BookRequestCreateInput!): BookRequestCreateResult!
+
+  """Turns down a request, optionally with a reason."""
+  bookRequestDecline(id: ID!, reason: String): BookRequestDeclineResult
+
+  """Marks a request fulfilled by a book in that reader library."""
+  bookRequestFulfill(bookId: ID!, id: ID!): BookRequestFulfillResult
 
   """
   Resolves a book’s pending metadata-fix proposals: ACCEPT applies them (arming an undo), DISMISS clears them (arming an undo), UNDO reverts whichever of those two an armed undo snapshot recorded, or CLEAR deletes the pending-fix row outright. ACCEPT and DISMISS accept an optional `fixes` list to act on a named subset of the row’s proposals instead of all of them; omitting `fixes` means every proposal, which is this mutation’s original behaviour. UNDO and CLEAR ignore `fixes` — both always act on the whole row. Resolves to null when the book does not exist for the resolved owner.
