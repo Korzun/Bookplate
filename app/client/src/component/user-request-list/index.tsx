@@ -51,9 +51,16 @@ interface UserRequestListProps {
  * book-request.ts`): the cost model prices a variable page size at the
  * field's `maxSize`, not the value passed.
  *
- * Rows are `BookRequestRow` with `canResolve` — the actual resolve actions
- * (upload, link an existing book, decline) behind that flag are built in
- * Task 14; this component only wires the seam. `onDelete` runs
+ * Rows are `BookRequestRow` with `canResolve` and a `target` — the
+ * requesting reader's Library global id and username, off this SAME query's
+ * `user.library.id`/`user.username` (`UserRequestListDocument`, Task 14) —
+ * `undefined` until the first page resolves. `BookRequestRow`'s own upload
+ * control captures BOTH halves on the queue item at add time
+ * (`addFiles(files, { target, fulfillsRequestId })`), so the bytes land in
+ * THIS reader's library and the queue can close THIS request, whatever the
+ * admin's global library switcher currently points at — the same "root at
+ * the TARGET user, not the admin's own selection" shape `UserRowContent`
+ * already follows for `LinkProgressModal`'s `libraryId`. `onDelete` runs
  * `BookRequestDeleteDocument`, evicts the returned `deletedId` from the
  * cache (which already drops the now-dangling edge from this list's own
  * `relayStylePagination`-held connection — `provider/apollo/cache.ts`'s
@@ -78,20 +85,25 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
   const client = useApolloClient();
   const [runDelete] = useMutation(BookRequestDeleteDocument);
 
-  const { edges, loading, error, hasNextPage, loadMore, loadingMore } = usePaginatedConnection({
-    document: UserRequestListDocument,
-    variables: { userId },
-    skip,
-    select: (d) => d?.user?.bookRequests,
-    resetKey: `${userId}:${skip}`,
-    loadMoreErrorMessage: 'Failed to load more requests',
-  });
+  const { data, edges, loading, error, hasNextPage, loadMore, loadingMore } =
+    usePaginatedConnection({
+      document: UserRequestListDocument,
+      variables: { userId },
+      skip,
+      select: (d) => d?.user?.bookRequests,
+      resetKey: `${userId}:${skip}`,
+      loadMoreErrorMessage: 'Failed to load more requests',
+    });
   const rows = edges.map((edge) => edge.node);
+  const libraryId = data?.user?.library?.id;
+  const username = data?.user?.username;
+  const target =
+    libraryId !== undefined && username !== undefined ? { libraryId, username } : undefined;
 
   const handleDelete = useCallback(
     (id: string) => {
       void (async () => {
-        const { data } = await runDelete({
+        const { data: deleteData } = await runDelete({
           variables: { id },
           update: (cache, { data: mutationData }) => {
             const deletedId = mutationData?.bookRequestDelete?.deletedId;
@@ -100,7 +112,7 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
             cache.gc();
           },
         });
-        if (data?.bookRequestDelete?.deletedId) {
+        if (deleteData?.bookRequestDelete?.deletedId) {
           await client.refetchQueries({ include: [UserListDocument] });
         }
       })();
@@ -124,7 +136,13 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
   return (
     <Fragment>
       {rows.map((row) => (
-        <BookRequestRow key={row.id} request={row} canResolve onDelete={handleDelete} />
+        <BookRequestRow
+          key={row.id}
+          request={row}
+          canResolve
+          onDelete={handleDelete}
+          target={target}
+        />
       ))}
       {hasNextPage && (
         <Button type="link" onClick={loadMore} loading={loadingMore}>

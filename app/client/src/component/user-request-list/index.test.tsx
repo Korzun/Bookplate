@@ -1,6 +1,6 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 
 import type { BookRequestRowFragmentFragment, UserRequestListQuery } from '~/gql/graphql';
 import { UserRequestListDocument } from '~/graphql/book-request';
@@ -10,6 +10,19 @@ import { UserRequestList } from './index';
 
 let queryCallCount = 0;
 let capturedVariables: { userId?: string; after?: string | null } | undefined;
+
+// `BookRequestRow` (Task 14) mounts `ConfirmModal`/`LinkExistingBookModal`
+// unconditionally once `canResolve` is true — both `<dialog>`-backed
+// (`control/use-modal-dialog`). jsdom has no real `<dialog>` implementation;
+// same stub `link-progress-modal/index.test.tsx` installs.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  });
+});
 
 beforeEach(() => {
   queryCallCount = 0;
@@ -33,12 +46,15 @@ const requestRow = (
 
 const connection = (
   userId: string,
-  rows: BookRequestRowFragmentFragment[]
+  rows: BookRequestRowFragmentFragment[],
+  { libraryId = 'lib-1', username = 'reader' }: { libraryId?: string; username?: string } = {}
 ): UserRequestListQuery => ({
   __typename: 'Query',
   user: {
     __typename: 'User',
     id: userId,
+    username,
+    library: { __typename: 'Library', id: libraryId },
     bookRequests: {
       __typename: 'UserBookRequestsConnection',
       edges: rows.map((node, index) => ({
