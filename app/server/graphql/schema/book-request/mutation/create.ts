@@ -103,13 +103,6 @@ builder.mutationField('bookRequestCreate', (t) =>
     type: result,
     description: 'Asks the library admin for a book that is not in Bookplate.',
     args: { input: t.arg({ type: input, required: true }) },
-    // The config-based admin is authenticated but has NO row in `users`, so it
-    // cannot own a library row and cannot be a requester. That is an
-    // authorization fact, so it belongs in the scope layer rather than as a
-    // throw in the resolver body — this schema's resolvers contain no throws.
-    // ANDed with the type-level `authenticated: true` that
-    // `builder.mutationType` already declares, and it produces the existing
-    // 403 FORBIDDEN via `builder.ts`'s `unauthorizedError`.
     authScopes: (_parent, _args, context) => context.viewer?.userId != null,
     resolve: async (_parent, args, context) => {
       // Non-null by the `authScopes` above; this is the type narrowing, not a

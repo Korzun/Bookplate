@@ -82,7 +82,10 @@ interface BookRequestsContentProps {
  * list refetch here is belt-and-suspenders. The COUNT refetch is not:
  * `pendingBookRequestCount` is a server-computed `t.relationCount` with no
  * client-visible increment/decrement, so without this refetch a withdrawn
- * or cleared request would leave the card's subtitle stale.
+ * or cleared request would leave the card's subtitle stale. A REJECTED
+ * `runDelete` (e.g. a dropped connection) is caught into `deleteError` state
+ * and rendered above the list, the same house pattern `handleSubmit` above
+ * uses for `formError`.
  *
  * **Loading, first-page error, and empty states follow `MyProgressContent`'s
  * three-branch shape exactly** — but only for the LIST region below the
@@ -100,6 +103,7 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
   const [author, setAuthor] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [formError, setFormError] = useState<string | undefined>(undefined);
+  const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
   const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
     document: MyBookRequestListDocument,
@@ -172,20 +176,25 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
 
   const handleDelete = useCallback(
     (id: string) => {
+      setDeleteError(undefined);
       void (async () => {
-        const { data } = await runDelete({
-          variables: { id },
-          update: (cache, { data: mutationData }) => {
-            const deletedId = mutationData?.bookRequestDelete?.deletedId;
-            if (!deletedId) return;
-            cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
-            cache.gc();
-          },
-        });
-        if (data?.bookRequestDelete?.deletedId) {
-          await client.refetchQueries({
-            include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+        try {
+          const { data } = await runDelete({
+            variables: { id },
+            update: (cache, { data: mutationData }) => {
+              const deletedId = mutationData?.bookRequestDelete?.deletedId;
+              if (!deletedId) return;
+              cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
+              cache.gc();
+            },
           });
+          if (data?.bookRequestDelete?.deletedId) {
+            await client.refetchQueries({
+              include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+            });
+          }
+        } catch (err) {
+          setDeleteError(err instanceof Error ? err.message : 'Failed to delete request');
         }
       })();
     },
@@ -233,6 +242,7 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
           Request
         </Button>
       </form>
+      {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {list}
     </div>
   );

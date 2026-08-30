@@ -118,6 +118,42 @@ describe('createBookRequest', () => {
     expect(outcome.kind).toBe('created');
   });
 
+  // Spec §5: "that the count-dedupe-insert transaction cannot be raced past
+  // the cap". Seeds the cap boundary (one slot free) and fires two DISTINCT
+  // (non-dedupe-colliding) creates concurrently through `Promise.all` — if
+  // the count-then-insert were not one transaction, both calls could read the
+  // same pre-insert count and both squeeze through, landing 11 open rows.
+  //
+  // SQLite's own single-writer serialisation may make this race unobservable
+  // in practice — `$transaction` here is a real BEGIN/COMMIT, and better-
+  // sqlite3 already serialises writers, so this test may pass even WITHOUT
+  // the transaction, on this driver. It is kept anyway: it pins the
+  // transaction's presence (delete it and this test still exercises the exact
+  // scenario the spec calls out), and it is the assertion that would catch a
+  // regression on a driver that allows real interleaving.
+  it('cannot be raced past the cap', async () => {
+    for (let n = 0; n < MAX_OPEN_BOOK_REQUESTS - 1; n++) {
+      const outcome = await createBookRequest(prisma, input({ title: `Book ${n}` }));
+      expect(outcome.kind).toBe('created');
+    }
+    expect(await prisma.bookRequest.count()).toBe(MAX_OPEN_BOOK_REQUESTS - 1);
+
+    const [a, b] = await Promise.all([
+      createBookRequest(prisma, input({ title: 'Racer A' })),
+      createBookRequest(prisma, input({ title: 'Racer B' })),
+    ]);
+
+    const outcomes = [a, b];
+    const created = outcomes.filter((o) => o.kind === 'created');
+    const limited = outcomes.filter((o) => o.kind === 'limit');
+    expect(created).toHaveLength(1);
+    expect(limited).toHaveLength(1);
+
+    const openCount = await prisma.bookRequest.count({ where: { status: 'pending' } });
+    expect(openCount).toBe(MAX_OPEN_BOOK_REQUESTS);
+    expect(openCount).not.toBeGreaterThan(MAX_OPEN_BOOK_REQUESTS);
+  });
+
   it('trims the stored strings', async () => {
     await createBookRequest(
       prisma,

@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,6 +21,7 @@ import {
   BookRequestRowFragment,
 } from '~/graphql/book-request';
 import { LinkPickerBooksDocument } from '~/graphql/progress';
+import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import { UploadContext } from '~/provider/upload/context';
 import type {
@@ -104,6 +106,17 @@ type QueueItemOverride = {
   proposals?: unknown[];
 };
 
+/** Renders a live `UserListDocument` watcher so `client.refetchQueries`
+ * (only ever refetching ACTIVE queries) has something to refetch — same
+ * requirement `book-requests-content`'s own refetch tests solve by mounting
+ * `MyBookRequestListDocument` twice, except that document is not something
+ * `BookRequestRow` itself queries, so this test file needs a standalone
+ * watcher sibling instead. */
+const UserListWatcher = () => {
+  useQuery(UserListDocument);
+  return null;
+};
+
 const renderRow = (
   overrides: Parameters<typeof requestRow>[0] = {},
   props: {
@@ -112,11 +125,16 @@ const renderRow = (
     libraryId?: string;
     username?: string;
     queueItem?: QueueItemOverride;
+    queueItems?: QueueItemOverride[];
     /** Documents the scenario (auto-fulfil failed to close the request) —
      * the row itself derives "didn't close" purely from `queueItem.status`
      * and `request.status`, so this flag has no effect on the mocks below;
      * it exists only so this test's intent reads clearly at the call site. */
     fulfillFailed?: boolean;
+    /** Mounts `UserListWatcher` alongside the row and queues a counting
+     * `UserListDocument` mock — opt-in, only the refetch-assertion tests
+     * (finding 1 of the final review) need it. */
+    watchUserList?: boolean;
   } = {}
 ) => {
   const onDelete = props.onDelete ?? vi.fn();
@@ -129,6 +147,7 @@ const renderRow = (
 
   const fulfillCallsArr: { id: string; bookId: string }[] = [];
   const declineCallsArr: { id: string; reason?: string }[] = [];
+  let userListCallCount = 0;
 
   const mocks: MockedResponse[] = [
     {
@@ -175,6 +194,20 @@ const renderRow = (
     },
   ];
 
+  if (props.watchUserList) {
+    mocks.push({
+      request: {
+        query: UserListDocument,
+        variables: () => {
+          userListCallCount += 1;
+          return true;
+        },
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: { data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } } },
+    });
+  }
+
   if (props.libraryId !== undefined) {
     mocks.push({
       request: {
@@ -214,24 +247,22 @@ const renderRow = (
       ? { libraryId: props.libraryId ?? 'lib-default', username: props.username ?? 'reader' }
       : undefined;
 
-  const items: UploadItem[] = props.queueItem
-    ? [
-        {
-          id: 'item-1',
-          fileName: props.queueItem.fileName ?? 'dune.epub',
-          fileSize: 1000,
-          bytesUploaded: 1000,
-          fulfillsRequestId: request.id,
-          status: props.queueItem.status,
-          bookGlobalId: props.queueItem.bookGlobalId,
-          errorMessage: props.queueItem.errorMessage,
-          proposals: props.queueItem.proposals as MetadataFix[] | undefined,
-        },
-      ]
-    : [];
+  const overrideList = props.queueItems ?? (props.queueItem ? [props.queueItem] : []);
+  const items: UploadItem[] = overrideList.map((queueItem, index) => ({
+    id: `item-${index + 1}`,
+    fileName: queueItem.fileName ?? 'dune.epub',
+    fileSize: 1000,
+    bytesUploaded: 1000,
+    fulfillsRequestId: request.id,
+    status: queueItem.status,
+    bookGlobalId: queueItem.bookGlobalId,
+    errorMessage: queueItem.errorMessage,
+    proposals: queueItem.proposals as MetadataFix[] | undefined,
+  }));
 
   const rendered = renderWithApollo(
     <UploadContext.Provider value={queueValue(items, addFiles)}>
+      {props.watchUserList && <UserListWatcher />}
       <BookRequestRow
         request={makeFragmentData(request, BookRequestRowFragment)}
         canResolve={props.canResolve ?? false}
@@ -248,6 +279,7 @@ const renderRow = (
     onDelete,
     addFilesCalls: () => addFilesCallsArr,
     fulfillCalls: () => fulfillCallsArr,
+    userListCalls: () => userListCallCount,
     declineCalls: () => declineCallsArr,
   };
 };
@@ -374,6 +406,26 @@ describe('BookRequestRow resolve actions', () => {
     expect(fulfillCalls()[0]).toEqual({ id: 'QmVxOjE=', bookId: 'Qm9vazox' });
   });
 
+  // Finding 1 of the final review: `pendingBookRequestCount` is a
+  // server-computed `t.relationCount` with no client-visible decrement, so
+  // fulfilling from the picker has to refetch `UserListDocument` itself —
+  // exactly `user-request-list`'s own `handleDelete` pattern — or the "N
+  // pending" badge on the admin's user card reads stale after the row
+  // already shows Fulfilled.
+  it('refetches UserListDocument after fulfilling from the picker', async () => {
+    const { user, fulfillCalls, userListCalls } = renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==', watchUserList: true }
+    );
+
+    await user.click(screen.getByRole('button', { name: /link existing book/i }));
+    await user.click(await screen.findByRole('button', { name: /Dune/ }));
+    await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
+
+    // One for `UserListWatcher`'s own initial mount, one for the refetch.
+    await waitFor(() => expect(userListCalls()).toBe(2));
+  });
+
   it('declines with a reason', async () => {
     const { user, declineCalls } = renderRow(
       { id: 'QmVxOjE=', status: 'PENDING' },
@@ -388,11 +440,46 @@ describe('BookRequestRow resolve actions', () => {
     expect(declineCalls()[0]).toEqual({ id: 'QmVxOjE=', reason: "Couldn't find a copy" });
   });
 
+  // Same finding as the picker test above, for the decline path.
+  it('refetches UserListDocument after confirming a decline', async () => {
+    const { user, declineCalls, userListCalls } = renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      { canResolve: true, watchUserList: true }
+    );
+
+    await user.click(screen.getByRole('button', { name: /decline/i }));
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+    await waitFor(() => expect(declineCalls()).toHaveLength(1));
+
+    await waitFor(() => expect(userListCalls()).toBe(2));
+  });
+
   it('shows an upload error on the row', async () => {
     renderRow(
       { id: 'QmVxOjE=', status: 'PENDING' },
       { canResolve: true, queueItem: { status: 'error', errorMessage: 'Not an EPUB' } }
     );
     expect(await screen.findByText('Not an EPUB')).toBeInTheDocument();
+  });
+
+  // Finding 2 of the final review: `addFiles` APPENDS to the transport's item
+  // list, so a failed upload followed by a retry leaves BOTH items in
+  // `items`, both carrying this row's `fulfillsRequestId`. `items.find` would
+  // keep rendering the FIRST (failed) attempt forever, even once the SECOND
+  // attempt lands — this pins `findLast` instead.
+  it('tracks the most recent attempt after a retry, not the first failed one', () => {
+    renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      {
+        canResolve: true,
+        queueItems: [
+          { status: 'error', errorMessage: 'Not an EPUB' },
+          { status: 'done', bookGlobalId: 'Qm9vazox', fileName: 'dune-retry.epub' },
+        ],
+      }
+    );
+
+    expect(screen.queryByText('Not an EPUB')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /dune-retry\.epub/ })).toBeInTheDocument();
   });
 });
