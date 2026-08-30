@@ -103,6 +103,16 @@ export type UploadItem = {
   appliedFixes?: MetadataFix[];
   proposals?: MetadataFix[];
   undo?: UndoSnapshot;
+  /**
+   * The `BookRequest` global id this item fulfils, when it was added via
+   * `addFiles(files, { fulfillsRequestId })` — the admin's request row
+   * (`component/book-request-row`, Task 14). That row finds ITS live item by
+   * matching this against its own request's id; a plain (non-request)
+   * upload never sets it. Carried only on the LIVE (transport-joined) half
+   * of a merged row — see `mergeRow` below — a purely seeded row (a reload,
+   * no live transport counterpart) has no session-scoped binding to report.
+   */
+  fulfillsRequestId?: string;
 };
 
 export type UseUploadQueue = {
@@ -247,6 +257,7 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
     errorMessage: t.errorMessage,
     validation: t.validation,
     bookGlobalId: t.bookGlobalId,
+    fulfillsRequestId: t.fulfillsRequestId,
   };
   if (!r) {
     return everSeen

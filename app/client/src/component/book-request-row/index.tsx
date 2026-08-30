@@ -1,9 +1,21 @@
+import { useMutation } from '@apollo/client/react';
+import { type ChangeEvent, useCallback, useId, useState } from 'react';
 import { Link } from 'react-router';
 
-import { Button } from '~/control';
+import { Button, ConfirmModal, LinkExistingBookModal } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
-import type { BookRequestStatus } from '~/gql/graphql';
-import { BookRequestRowFragment } from '~/graphql/book-request';
+import type {
+  BookRequestDeclineMutation,
+  BookRequestFulfillMutation,
+  BookRequestStatus,
+} from '~/gql/graphql';
+import {
+  BookRequestDeclineDocument,
+  BookRequestFulfillDocument,
+  BookRequestRowFragment,
+} from '~/graphql/book-request';
+import { unwrapResult } from '~/provider/apollo';
+import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
 
 import { Tag } from '../tag';
@@ -15,27 +27,47 @@ const STATUS_LABEL: Record<BookRequestStatus, string> = {
   DECLINED: 'Declined',
 };
 
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer
+// from the call, so it is named explicitly here, extracted from the
+// generated union — same shape as `control/link-progress-modal`'s own note.
+type BookRequestFulfillPayload = Extract<
+  NonNullable<BookRequestFulfillMutation['bookRequestFulfill']>,
+  { __typename: 'BookRequestFulfillPayload' }
+>;
+type BookRequestDeclinePayload = Extract<
+  NonNullable<BookRequestDeclineMutation['bookRequestDecline']>,
+  { __typename: 'BookRequestDeclinePayload' }
+>;
+
 interface BookRequestRowProps {
   /** A masked `BookRequestRowFragment` ref, unmasked inside this component. */
   request: FragmentType<typeof BookRequestRowFragment>;
   /**
    * Whether to render the admin's resolve actions (upload, link an existing
    * book, decline). `false` on the reader's own card — a reader can withdraw a
-   * request but never resolve one. Task 14 fills these in behind this prop;
-   * this component leaves the seam but does not build them yet.
+   * request but never resolve one.
    */
   canResolve: boolean;
   /** Withdraw / clear. Both surfaces offer this; the server is owner-or-admin. */
   onDelete: (id: string) => void;
+  /**
+   * The owning reader's Library global id and username. Required whenever
+   * `canResolve` is true — both halves are what `addFiles` captures on the
+   * item so the bytes reach THIS reader's library whatever the global
+   * library-switcher says, and `LinkExistingBookModal` roots its picker at
+   * this exact library rather than the admin's own switcher selection.
+   */
+  target?: { libraryId: string; username: string };
 }
 
 /**
  * One request row, shared by the reader's own card (`component/
  * book-requests-content`, `canResolve={false}`) and the admin's per-user list
- * (Task 13, `canResolve={true}`). Fetch-free: `useFragment` is called exactly
- * once, unconditionally, in this component's own body, mirroring
- * `UserProgressRow`/`MyProgressRow` — the parent's `usePaginatedConnection`
- * read hands down a masked ref rather than unmasking centrally in a `.map()`.
+ * (`component/user-request-list`, `canResolve={true}`). Fetch-free: `useFragment`
+ * is called exactly once, unconditionally, in this component's own body,
+ * mirroring `UserProgressRow`/`MyProgressRow` — the parent's
+ * `usePaginatedConnection` read hands down a masked ref rather than unmasking
+ * centrally in a `.map()`.
  *
  * `book` on a FULFILLED request is nullable for two reasons that render
  * differently: not fulfilled yet (never reaches this branch), and the book it
@@ -55,17 +87,158 @@ interface BookRequestRowProps {
  * know whether it is being withdrawn (PENDING) or cleared (resolved) in terms
  * of server semantics — both routes through the same owner-or-admin
  * `bookRequestDelete` — so the mutation itself, and its cache eviction, live
- * on the content component that owns the list (`BookRequestsContent`).
+ * on the content component that owns the list (`BookRequestsContent`/
+ * `UserRequestList`).
+ *
+ * **Resolve actions (`canResolve && status === 'PENDING'`) — Approach B, end
+ * to end:**
+ *
+ * - **Upload EPUB**: a plain `<input type="file">`, calling
+ *   `addFiles(files, { target, fulfillsRequestId: row.id })`. Both halves of
+ *   `options` matter: `target` is what makes the bytes land in the
+ *   REQUESTING reader's library no matter what the admin's global library
+ *   switcher currently points at (`provider/upload/hook/use-upload-transport.ts`'s
+ *   `AddFileOptions.target`); `fulfillsRequestId` is what makes Task 11's
+ *   queue effect fire `bookRequestFulfill` once the item lands
+ *   (`provider/upload/hook/use-upload-queue.ts`). This row fires NO mutation
+ *   itself for that path — the queue owns it.
+ * - **Link existing book**: opens `LinkExistingBookModal` rooted at
+ *   `target.libraryId`, and runs `BookRequestFulfillDocument` directly with
+ *   the picked book's GLOBAL id the instant it is picked. This is both the
+ *   recovery path when auto-fulfil failed (see "didn't close" below) and the
+ *   route for an admin who uploaded the book before ever opening the
+ *   request.
+ * - **Decline**: a small reason prompt (`ConfirmModal` with a labelled
+ *   textarea), then `BookRequestDeclineDocument`. The reason is trimmed and
+ *   omitted from the variables entirely when empty — "optional" is what an
+ *   ABSENT `reason` argument means server-side
+ *   (`graphql/schema/book-request/mutation/decline.ts`'s `args.reason ?? ''`).
+ *
+ * **This row's own live queue item** is found by `fulfillsRequestId ===
+ * row.id` among `useUploadQueue().items` — at most one, since only THIS
+ * row's own upload control ever sets that id for this request. Rendered from
+ * it: a progress line while queued/uploading; `errorMessage`, or a summary of
+ * the EPUB `validation` failure, on `error`; on `done`, a link to the new
+ * book (`queueItem.bookGlobalId`) plus, when `proposals.length > 0`, a
+ * suggestion COUNT that links out to `/upload` for the full review.
+ *
+ * **Fix review deliberately does NOT live here** — see this migration's
+ * task-14 brief preamble. The upload queue's pending-fix merge
+ * (`use-upload-queue.ts`'s `byBook` join) is rooted on the ADMIN's global
+ * library switcher (`useCurrentLibraryId()`), so a book uploaded into
+ * bob's library while the switcher points at alice has no pending-fix row to
+ * merge against here — querying per-item to work around that would be a
+ * second, per-row round trip for every row on this list, just to reproduce
+ * what `/upload` already shows for free. So this row reads only the
+ * suggestion COUNT off `TransportItem.proposals` (via the merged
+ * `UploadItem`), which the transport already stores from the upload
+ * response, and links to `/upload` for the actual Apply/Dismiss controls.
+ *
+ * **"Uploaded, but the request didn't close."** renders beside Link existing
+ * book whenever the queue item landed (`status === 'done'`) but the request
+ * itself is still `PENDING` — the queue's own `bookRequestFulfill` call
+ * either failed, or has not round-tripped back into this row's props yet.
+ * Either way, Link existing book (pointed straight at the just-uploaded
+ * book) is the recovery path — no retry button re-fires the same fire-once
+ * queue effect from here.
  */
-export const BookRequestRow = ({
-  request,
-  canResolve: _canResolve,
-  onDelete,
-}: BookRequestRowProps) => {
+export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRequestRowProps) => {
   const styles = useStyle();
   const row = useFragment(BookRequestRowFragment, request);
+  const uploadInputId = useId();
+
+  const { items, addFiles } = useUploadQueue();
+  const queueItem = items.find((item) => item.fulfillsRequestId === row.id);
+
+  const [runFulfill] = useMutation(BookRequestFulfillDocument);
+  const [runDecline] = useMutation(BookRequestDeclineDocument);
+
+  const [isPickerOpen, setPickerOpen] = useState(false);
+  const [fulfillError, setFulfillError] = useState<string | undefined>();
+
+  const [isDeclineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
+  const [declining, setDeclining] = useState(false);
+  const [declineError, setDeclineError] = useState<string | undefined>();
 
   const handleDelete = () => onDelete(row.id);
+
+  const handleUploadChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files && files.length > 0) {
+        addFiles(files, { target, fulfillsRequestId: row.id });
+      }
+      event.target.value = '';
+    },
+    [addFiles, target, row.id]
+  );
+
+  const handleOpenPicker = useCallback(() => {
+    setFulfillError(undefined);
+    setPickerOpen(true);
+  }, []);
+  const handleClosePicker = useCallback(() => setPickerOpen(false), []);
+
+  const handlePick = useCallback(
+    async (bookGlobalId: string) => {
+      setPickerOpen(false);
+      setFulfillError(undefined);
+      try {
+        const { data } = await runFulfill({ variables: { id: row.id, bookId: bookGlobalId } });
+        const outcome = unwrapResult<BookRequestFulfillPayload>(
+          data?.bookRequestFulfill,
+          'BookRequestFulfillPayload'
+        );
+        if (outcome.status === 'missing') {
+          setFulfillError('Failed to link this book');
+        } else if (outcome.status === 'error') {
+          setFulfillError(outcome.message);
+        }
+      } catch (err) {
+        setFulfillError(err instanceof Error ? err.message : 'Failed to link this book');
+      }
+    },
+    [runFulfill, row.id]
+  );
+
+  const handleOpenDecline = useCallback(() => {
+    setDeclineReason('');
+    setDeclineError(undefined);
+    setDeclineOpen(true);
+  }, []);
+  const handleCancelDecline = useCallback(() => setDeclineOpen(false), []);
+
+  const handleConfirmDecline = useCallback(async () => {
+    setDeclining(true);
+    setDeclineError(undefined);
+    try {
+      const trimmed = declineReason.trim();
+      const { data } = await runDecline({
+        variables: { id: row.id, reason: trimmed === '' ? undefined : trimmed },
+      });
+      const outcome = unwrapResult<BookRequestDeclinePayload>(
+        data?.bookRequestDecline,
+        'BookRequestDeclinePayload'
+      );
+      if (outcome.status === 'missing') {
+        setDeclineError('Failed to decline request');
+        return;
+      }
+      if (outcome.status === 'error') {
+        setDeclineError(outcome.message);
+        return;
+      }
+      setDeclineOpen(false);
+    } catch (err) {
+      setDeclineError(err instanceof Error ? err.message : 'Failed to decline request');
+    } finally {
+      setDeclining(false);
+    }
+  }, [runDecline, row.id, declineReason]);
+
+  const suggestionCount = queueItem?.proposals?.length ?? 0;
+  const uploadedButNotClosed = queueItem?.status === 'done' && row.status === 'PENDING';
 
   return (
     <div className={styles.root}>
@@ -87,9 +260,85 @@ export const BookRequestRow = ({
       {row.status === 'DECLINED' && row.declineReason !== '' && (
         <div className={styles.resolution}>{row.declineReason}</div>
       )}
+
+      {(queueItem?.status === 'queued' || queueItem?.status === 'uploading') && (
+        <div className={styles.resolution}>Uploading…</div>
+      )}
+      {queueItem?.status === 'error' && (
+        <div className={styles.error}>
+          {queueItem.errorMessage ?? queueItem.validation?.messages[0]?.message ?? 'Upload failed'}
+        </div>
+      )}
+      {queueItem?.status === 'done' && queueItem.bookGlobalId && (
+        <div className={styles.resolution}>
+          <Link to={path.book(queueItem.bookGlobalId)}>Uploaded — {queueItem.fileName}</Link>
+          {suggestionCount > 0 && (
+            <span className={styles.suggestions}>
+              {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'} —{' '}
+              <Link to={path.upload()}>review in Upload</Link>
+            </span>
+          )}
+        </div>
+      )}
+      {fulfillError && <div className={styles.error}>{fulfillError}</div>}
+
+      {canResolve && row.status === 'PENDING' && (
+        <div className={styles.actions}>
+          <label htmlFor={uploadInputId} className={styles.uploadLabel}>
+            Upload EPUB
+          </label>
+          <input
+            id={uploadInputId}
+            className={styles.hiddenInput}
+            type="file"
+            accept=".epub"
+            onChange={handleUploadChange}
+          />
+          <Button type="default" onClick={handleOpenPicker}>
+            Link existing book
+          </Button>
+          {uploadedButNotClosed && (
+            <span className={styles.notClosed}>Uploaded, but the request didn&apos;t close.</span>
+          )}
+          <Button type="text" danger onClick={handleOpenDecline}>
+            Decline
+          </Button>
+        </div>
+      )}
+
       <Button type="link" danger onClick={handleDelete}>
         {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
       </Button>
+
+      {canResolve && row.status === 'PENDING' && target && (
+        <LinkExistingBookModal
+          isOpen={isPickerOpen}
+          libraryId={target.libraryId}
+          onPick={(bookGlobalId) => void handlePick(bookGlobalId)}
+          onClose={handleClosePicker}
+        />
+      )}
+
+      {canResolve && row.status === 'PENDING' && (
+        <ConfirmModal
+          isOpen={isDeclineOpen}
+          title="Decline request"
+          confirmText="Confirm"
+          loading={declining}
+          onCancel={handleCancelDecline}
+          onConfirm={() => void handleConfirmDecline()}
+        >
+          <label className={styles.reasonLabel}>
+            Reason (optional)
+            <textarea
+              className={styles.reasonInput}
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+            />
+          </label>
+          {declineError && <div className={styles.error}>{declineError}</div>}
+        </ConfirmModal>
+      )}
     </div>
   );
 };

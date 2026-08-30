@@ -142,6 +142,8 @@ const requestListMock = (userId: string = USER_ID) => ({
       user: {
         __typename: 'User',
         id: userId,
+        username: 'reader',
+        library: { __typename: 'Library', id: 'lib-1' },
         bookRequests: {
           __typename: 'UserBookRequestsConnection',
           edges: [],
