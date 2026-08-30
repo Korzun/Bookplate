@@ -1,4 +1,7 @@
 export { BookEditForm } from './book-edit-form';
+export { BookRequestRow } from './book-request-row';
+export { BookRequests } from './book-requests';
+export { BookRequestsContent } from './book-requests-content';
 export { BookRow, type BookRowProps } from './book-row';
 export { BookRowFromEntry } from './book-row/from-entry';
 export { BookRowFromSeriesBook } from './book-row/from-series-book';
