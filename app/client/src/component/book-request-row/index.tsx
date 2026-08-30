@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import { type ChangeEvent, useCallback, useId, useState } from 'react';
 import { Link } from 'react-router';
 
@@ -14,6 +14,7 @@ import {
   BookRequestFulfillDocument,
   BookRequestRowFragment,
 } from '~/graphql/book-request';
+import { UserListDocument } from '~/graphql/user';
 import { unwrapResult } from '~/provider/apollo';
 import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
@@ -114,10 +115,20 @@ interface BookRequestRowProps {
  *   ABSENT `reason` argument means server-side
  *   (`graphql/schema/book-request/mutation/decline.ts`'s `args.reason ?? ''`).
  *
+ * **Link and Decline both refetch `UserListDocument`** (`~/graphql/user`) on
+ * success — the same `pendingBookRequestCount` staleness `user-request-list`'s
+ * `handleDelete` already documents: that field is a server-computed
+ * `t.relationCount` with no client-visible decrement, so without the refetch
+ * the admin's "N pending" badge would read stale immediately after the
+ * feature's own headline action. The auto-fulfil path refetches too, from
+ * `use-upload-queue.ts`'s queue effect, for the same reason.
+ *
  * **This row's own live queue item** is found by `fulfillsRequestId ===
- * row.id` among `useUploadQueue().items` — at most one, since only THIS
- * row's own upload control ever sets that id for this request. Rendered from
- * it: a progress line while queued/uploading; `errorMessage`, or a summary of
+ * row.id` among `useUploadQueue().items`, searching from the END: `addFiles`
+ * APPENDS to the item list, so a retried upload leaves the FIRST attempt's
+ * item in the array too, and a forward `.find` would keep rendering its
+ * stale error forever. Rendered from the most recent match: a progress line
+ * while queued/uploading; `errorMessage`, or a summary of
  * the EPUB `validation` failure, on `error`; on `done`, a link to the new
  * book (`queueItem.bookGlobalId`) plus, when `proposals.length > 0`, a
  * suggestion COUNT that links out to `/upload` for the full review.
@@ -146,9 +157,21 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const styles = useStyle();
   const row = useFragment(BookRequestRowFragment, request);
   const uploadInputId = useId();
+  const client = useApolloClient();
 
   const { items, addFiles } = useUploadQueue();
-  const queueItem = items.find((item) => item.fulfillsRequestId === row.id);
+  // The LAST match, not the first: `addFiles` APPENDS to the queue's item
+  // list (`use-upload-transport.ts`'s `[...prev, ...newItems]`), so a failed
+  // upload followed by a retry leaves BOTH items in `items`, both carrying
+  // this same `fulfillsRequestId`. `.find` on the plain array would keep
+  // rendering the FIRST attempt's stale error forever; reversing first tracks
+  // whichever attempt is most recent. (`Array.prototype.findLast` would say
+  // this more directly, but this repo's `lib` target is ES2022, one short of
+  // ES2023's `findLast`.)
+  const queueItem = items
+    .slice()
+    .reverse()
+    .find((item) => item.fulfillsRequestId === row.id);
 
   const [runFulfill] = useMutation(BookRequestFulfillDocument);
   const [runDecline] = useMutation(BookRequestDeclineDocument);
@@ -194,12 +217,19 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
           setFulfillError('Failed to link this book');
         } else if (outcome.status === 'error') {
           setFulfillError(outcome.message);
+        } else {
+          // `pendingBookRequestCount` (`UserRowFragment`) is a server-computed
+          // `t.relationCount` with no client-visible decrement — same doc
+          // comment as `user-request-list`'s `handleDelete`. Without this
+          // refetch, resolving a request here leaves the admin's "N pending"
+          // badge stale until a full reload.
+          await client.refetchQueries({ include: [UserListDocument] });
         }
       } catch (err) {
         setFulfillError(err instanceof Error ? err.message : 'Failed to link this book');
       }
     },
-    [runFulfill, row.id]
+    [runFulfill, row.id, client]
   );
 
   const handleOpenDecline = useCallback(() => {
@@ -230,12 +260,14 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
         return;
       }
       setDeclineOpen(false);
+      // Same stale-badge reason `handlePick` refetches for above.
+      await client.refetchQueries({ include: [UserListDocument] });
     } catch (err) {
       setDeclineError(err instanceof Error ? err.message : 'Failed to decline request');
     } finally {
       setDeclining(false);
     }
-  }, [runDecline, row.id, declineReason]);
+  }, [runDecline, row.id, declineReason, client]);
 
   const suggestionCount = queueItem?.proposals?.length ?? 0;
   const uploadedButNotClosed = queueItem?.status === 'done' && row.status === 'PENDING';

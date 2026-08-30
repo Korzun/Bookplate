@@ -48,9 +48,11 @@ const result = builder.unionType('BookRequestFulfillResult', {
  * takes global ids and because the client half is forbidden from handling a raw
  * book id at all (`provider/upload`'s documented constraint).
  *
- * A NULL RESULT MEANS "no such request", and says nothing more. A book that is
- * not in the request owner's library is `InvalidInputError`, not a distinct
- * member: a more specific answer would confirm which library does have it.
+ * A NULL RESULT MEANS "no such request" — a missing OR malformed `id` — and
+ * says nothing more, matching `decline.ts` for the identical `id` argument. A
+ * malformed `bookId`, or a book that is not in the request owner's library, is
+ * `InvalidInputError`, not a distinct member: a more specific answer would
+ * confirm which library does have it.
  *
  * No `toResult`: `fulfillBookRequest` throws nothing — every outcome is a value
  * it decided inside its own transaction.
@@ -67,9 +69,11 @@ builder.mutationField('bookRequestFulfill', (t) =>
     authScopes: { admin: true },
     resolve: async (_parent, args, context) => {
       const request = decodeCompoundGlobalId(String(args.id), 'BookRequest');
+      if (request === null) return null;
+
       const book = decodeCompoundGlobalId(String(args.bookId), 'Book');
-      if (request === null || book === null) {
-        return invalidInputIssue(['id'], 'Malformed identifier');
+      if (book === null) {
+        return invalidInputIssue(['bookId'], 'Malformed identifier');
       }
 
       const [userId, requestId] = request;

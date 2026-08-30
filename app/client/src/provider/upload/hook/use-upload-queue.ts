@@ -15,6 +15,7 @@ import {
   MetadataFixFragment,
   PendingFixRowFragment,
 } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
 import { unwrapResult } from '~/provider/apollo';
@@ -496,9 +497,26 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       fulfilledRef.current.add(item.id);
       void fulfillRequest({
         variables: { id: item.fulfillsRequestId, bookId: item.bookGlobalId },
-      });
+      })
+        .then((result) => {
+          if (result.data?.bookRequestFulfill?.__typename !== 'BookRequestFulfillPayload') return;
+          // `pendingBookRequestCount` (`UserRowFragment`) is a server-computed
+          // `t.relationCount` with no client-visible decrement — same doc
+          // comment as `user-request-list`'s `handleDelete`. Without this
+          // refetch, an auto-fulfilled request leaves the admin's "N pending"
+          // badge stale until a full reload.
+          return client.refetchQueries({ include: [UserListDocument] });
+        })
+        .catch(() => {
+          // Apollo 4's `mutate` rejects on a network error. The deliberate
+          // user-facing recovery for a failed auto-fulfil is the request
+          // row's "Uploaded, but the request didn't close" state plus its
+          // "link an existing book" picker (Task 14) — NOT a retry from here
+          // (see the no-retry note above) — so swallowing the rejection here
+          // is intentional, not neglect.
+        });
     }
-  }, [transport.items, fulfillRequest]);
+  }, [transport.items, fulfillRequest, client]);
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,

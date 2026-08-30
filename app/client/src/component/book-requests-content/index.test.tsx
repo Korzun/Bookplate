@@ -270,4 +270,25 @@ describe('BookRequestsContent', () => {
 
     await waitFor(() => expect(queryCount()).toBe(2));
   });
+
+  // Finding 4 of the final review: `handleDelete` used to run `runDelete`
+  // with no `try`/`catch`, so a rejection (e.g. a dropped connection) was
+  // both a silent no-op for the user and an unhandled promise rejection.
+  // `handleSubmit`'s `formError` above is the house pattern this mirrors.
+  it('shows an error message when withdrawing fails', async () => {
+    const { user } = renderContent({
+      requests: [requestRow({ id: 'req-1', title: 'Dune' })],
+      extraMocks: [
+        {
+          request: { query: BookRequestDeleteDocument, variables: { id: 'req-1' } },
+          error: new Error('Network error'),
+        },
+      ],
+    });
+    await screen.findByText('Dune');
+
+    await user.click(screen.getByRole('button', { name: /withdraw/i }));
+
+    expect(await screen.findByText(/failed to delete request|network error/i)).toBeInTheDocument();
+  });
 });

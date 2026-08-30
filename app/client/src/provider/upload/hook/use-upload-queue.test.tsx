@@ -23,6 +23,7 @@ import {
   LibraryPendingFixesDocument,
   UploadConfigDocument,
 } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
@@ -1335,6 +1336,54 @@ describe('useUploadQueueEngine — bookRequestFulfill on landing (Task 11)', () 
 
     await waitFor(() => expect(result.current!.items[0]!.status).toBe('done'));
     expect(calls).toHaveLength(0);
+  });
+
+  // Finding 1 of the final review: `pendingBookRequestCount` (`UserRowFragment`)
+  // is a server-computed `t.relationCount` with no client-visible decrement,
+  // so this engine's own auto-fulfil has to refetch `UserListDocument` on
+  // success — same doc comment `component/user-request-list`'s
+  // `handleDelete` already carries — or the admin's "N pending" badge is
+  // stale the instant an upload auto-closes a request.
+  it('refetches UserListDocument once the auto-fulfil succeeds', async () => {
+    const calls: BookRequestFulfillMutationVariables[] = [];
+    let userListCalls = 0;
+    const { result, client } = renderEngine([
+      viewerBootstrapMock,
+      emptyPendingFixesMock,
+      configMock,
+      fulfillMock(calls),
+      {
+        request: {
+          query: UserListDocument,
+          variables: () => {
+            userListCalls += 1;
+            return true;
+          },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: { data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } } },
+      },
+    ]);
+
+    // Establishes an ACTIVE `UserListDocument` watch — `client.refetchQueries`
+    // only refetches active queries, and nothing else in this hook-only
+    // render mounts one.
+    const subscription = client
+      .watchQuery({ query: UserListDocument })
+      .subscribe({ next: () => {}, error: () => {} });
+    await waitFor(() => expect(userListCalls).toBe(1));
+
+    await waitFor(() => expect(result.current!.items).toHaveLength(0));
+    act(() => {
+      result.current!.addFiles(fileListOf(new File(['x'], 'dune.epub')), {
+        fulfillsRequestId: REQUEST_GID,
+      });
+    });
+    await completeTheUploadWith(BOOK_GID);
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    await waitFor(() => expect(userListCalls).toBe(2));
+    subscription.unsubscribe();
   });
 
   it('does not fire for a bound item that failed to upload', async () => {

@@ -1,6 +1,6 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
-import { Fragment, useCallback } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { BookRequestRow } from '~/component/book-request-row';
 import { Button } from '~/control';
@@ -78,12 +78,16 @@ interface UserRequestListProps {
  * first-page failure is `useQuery`'s own `error`, with `rows` empty (the
  * empty-error state). A `fetchMore` failure is caught locally and surfaced
  * through the same `error` field, with `rows` left untouched (existing rows
- * survive, offer a retry).
+ * survive, offer a retry). `handleDelete`'s own failure (a rejected
+ * `runDelete`, e.g. a dropped connection) is a THIRD, separate case: caught
+ * locally into `deleteError` state and rendered above the rows, mirroring
+ * `BookRequestsContent`'s `handleSubmit` pattern for the identical mutation.
  */
 export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
   const styles = useStyle();
   const client = useApolloClient();
   const [runDelete] = useMutation(BookRequestDeleteDocument);
+  const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
   const { data, edges, loading, error, hasNextPage, loadMore, loadingMore } =
     usePaginatedConnection({
@@ -102,18 +106,23 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
 
   const handleDelete = useCallback(
     (id: string) => {
+      setDeleteError(undefined);
       void (async () => {
-        const { data: deleteData } = await runDelete({
-          variables: { id },
-          update: (cache, { data: mutationData }) => {
-            const deletedId = mutationData?.bookRequestDelete?.deletedId;
-            if (!deletedId) return;
-            cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
-            cache.gc();
-          },
-        });
-        if (deleteData?.bookRequestDelete?.deletedId) {
-          await client.refetchQueries({ include: [UserListDocument] });
+        try {
+          const { data: deleteData } = await runDelete({
+            variables: { id },
+            update: (cache, { data: mutationData }) => {
+              const deletedId = mutationData?.bookRequestDelete?.deletedId;
+              if (!deletedId) return;
+              cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
+              cache.gc();
+            },
+          });
+          if (deleteData?.bookRequestDelete?.deletedId) {
+            await client.refetchQueries({ include: [UserListDocument] });
+          }
+        } catch (err) {
+          setDeleteError(err instanceof Error ? err.message : 'Failed to delete request');
         }
       })();
     },
@@ -135,6 +144,7 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
 
   return (
     <Fragment>
+      {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {rows.map((row) => (
         <BookRequestRow
           key={row.id}

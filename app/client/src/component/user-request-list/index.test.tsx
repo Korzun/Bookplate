@@ -1,9 +1,10 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 
 import type { BookRequestRowFragmentFragment, UserRequestListQuery } from '~/gql/graphql';
-import { UserRequestListDocument } from '~/graphql/book-request';
+import { BookRequestDeleteDocument, UserRequestListDocument } from '~/graphql/book-request';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRequestList } from './index';
@@ -90,15 +91,18 @@ const renderList = ({
   userId = 'VXNlcjoxMjM=',
   requests = [],
   skip = false,
+  extraMocks = [],
 }: {
   userId?: string;
   requests?: BookRequestRowFragmentFragment[];
   skip?: boolean;
+  extraMocks?: MockedResponse[];
 } = {}) => {
-  const mocks: MockedResponse[] = [listMock(userId, requests)];
+  const mocks: MockedResponse[] = [listMock(userId, requests), ...extraMocks];
   const rendered = renderWithApollo(<UserRequestList userId={userId} skip={skip} />, { mocks });
   return {
     ...rendered,
+    user: userEvent.setup(),
     queryCount: () => queryCallCount,
     variables: () => capturedVariables,
   };
@@ -123,5 +127,25 @@ describe('UserRequestList', () => {
   it('roots at the target user, not the viewer', async () => {
     const { variables } = renderList({ userId: 'VXNlcjphbGljZQ==', requests: [] });
     await waitFor(() => expect(variables()).toMatchObject({ userId: 'VXNlcjphbGljZQ==' }));
+  });
+
+  // Finding 4 of the final review: `handleDelete` used to run `runDelete`
+  // with no `try`/`catch`, so a rejection (e.g. a dropped connection) was
+  // both a silent no-op for the user and an unhandled promise rejection.
+  it('shows an error message when withdrawing fails', async () => {
+    const { user } = renderList({
+      requests: [requestRow({ id: 'req-1', title: 'Dune', status: 'PENDING' })],
+      extraMocks: [
+        {
+          request: { query: BookRequestDeleteDocument, variables: { id: 'req-1' } },
+          error: new Error('Network error'),
+        },
+      ],
+    });
+    await screen.findByText('Dune');
+
+    await user.click(screen.getByRole('button', { name: /withdraw/i }));
+
+    expect(await screen.findByText(/failed to delete request|network error/i)).toBeInTheDocument();
   });
 });

@@ -95,8 +95,9 @@ type Item = TransportItem & { file?: File };
  *
  * `onUploaded` fires once per successful upload, with the item's own
  * `targetLibraryId` (captured at add time, `undefined` when the item named
- * none) — the caller decides what to refetch/evict, and evicts THAT library
- * rather than whatever the global switcher points at now.
+ * none) passed straight through — this transport does no evicting itself. It
+ * is the CALLER (`use-upload-queue.ts`'s `onUploaded`) that evicts that
+ * library rather than whatever the global switcher points at now.
  */
 export const useUploadTransport = (
   onUploaded: (libraryId: string | undefined) => void
