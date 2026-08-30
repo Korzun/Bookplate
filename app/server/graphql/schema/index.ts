@@ -1,6 +1,8 @@
 import './book';
 import './book-hash-collision-error';
 import './book-not-validated-error';
+import './book-request';
+import './book-request-status';
 import './config';
 import './cover-fit';
 import './device';

@@ -183,6 +183,7 @@ export type MyProgressListQueryVariables = Exact<{
 
 export type MyProgressListQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, progress: { __typename: 'LibraryProgressConnection', edges: Array<{ __typename: 'LibraryProgressConnectionEdge', cursor: string, node: (
             { __typename: 'Progress', id: string }
             & { ' $fragmentRefs'?: { 'ProgressRowFragmentFragment': ProgressRowFragmentFragment } }
@@ -342,6 +343,7 @@ export type LibrarySubjectsQueryVariables = Exact<{
 
 export type LibrarySubjectsQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, subjects: Array<string> }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -354,6 +356,7 @@ export type SeriesNamesQueryVariables = Exact<{
 
 export type SeriesNamesQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, series: Array<{ __typename: 'Series', id: string, name: string }> }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -367,6 +370,7 @@ export type SeriesNextIndexQueryVariables = Exact<{
 
 export type SeriesNextIndexQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, seriesNextIndex: number }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -379,6 +383,7 @@ export type LibraryTargetResolveQueryVariables = Exact<{
 
 export type LibraryTargetResolveQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -432,6 +437,7 @@ export type LinkPickerBooksQueryVariables = Exact<{
 
 export type LinkPickerBooksQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, entries: { __typename: 'LibraryEntriesConnection', edges: Array<{ __typename: 'LibraryEntriesConnectionEdge', cursor: string, node:
             | { __typename: 'Book', id: string, title: string, author: string }
             | { __typename: 'Series' }
@@ -449,6 +455,7 @@ export type SearchSuggestionsQueryVariables = Exact<{
 
 export type SearchSuggestionsQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, searchSuggestions: Array<{ __typename: 'SuggestionGroup', type: SuggestionType, items: Array<{ __typename: 'Suggestion', label: string, value: string, matchStart: number, matchLength: number }> }> }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -474,6 +481,7 @@ export type LibraryPendingFixesQueryVariables = Exact<{
 
 export type LibraryPendingFixesQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, pendingFixes: Array<(
         { __typename: 'PendingFix' }
         & { ' $fragmentRefs'?: { 'PendingFixRowFragmentFragment': PendingFixRowFragmentFragment } }
@@ -606,6 +614,7 @@ export type BookEditQueryVariables = Exact<{
 
 export type BookEditQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, book: (
         { __typename: 'Book', id: string, hasActionablePendingFix: boolean, validation: { __typename: 'Validation', id: string, valid: boolean } | null }
         & { ' $fragmentRefs'?: { 'BookEditFormFragmentFragment': BookEditFormFragmentFragment } }
@@ -622,6 +631,7 @@ export type BookDetailQueryVariables = Exact<{
 
 export type BookDetailQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, book: { __typename: 'Book', id: string, documentId: string, title: string, author: string, description: string, publisher: string, publishDate: string, mtime: string, size: number, pageCount: number, chapterCount: number, subjects: Array<string>, seriesIndex: number, hasCover: boolean, coverUrl: string, deviceEditionCount: number, series: { __typename: 'Series', id: string, name: string } | null, progress: { __typename: 'Progress', id: string, percentage: number, currentChapter: number | null } | null, validation: { __typename: 'Validation', id: string, valid: boolean } | null } | null }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -635,6 +645,7 @@ export type BookChaptersQueryVariables = Exact<{
 
 export type BookChaptersQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, book: { __typename: 'Book', id: string, chapterNames: Array<string> | null, chapterSpineMap: Array<number> } | null }
     | { __typename: 'Series', id: string }
     | { __typename: 'User', id: string }
@@ -648,6 +659,7 @@ export type BookLineageQueryVariables = Exact<{
 
 export type BookLineageQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, book: { __typename: 'Book', id: string, addedAt: string, lineage: Array<(
           { __typename: 'LinkedDocument' }
           & { ' $fragmentRefs'?: { 'LineageEntryFragmentFragment': LineageEntryFragmentFragment } }
@@ -664,6 +676,7 @@ export type BookValidationQueryVariables = Exact<{
 
 export type BookValidationQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, book: { __typename: 'Book', id: string, validation: (
           { __typename: 'Validation' }
           & { ' $fragmentRefs'?: { 'ValidationFragmentFragment': ValidationFragmentFragment } }
@@ -690,6 +703,7 @@ export type LibraryEntriesQueryVariables = Exact<{
 
 export type LibraryEntriesQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, entries: { __typename: 'LibraryEntriesConnection', edges: Array<{ __typename: 'LibraryEntriesConnectionEdge', cursor: string, node:
             | (
               { __typename: 'Book' }
@@ -712,6 +726,7 @@ export type SeriesDetailQueryVariables = Exact<{
 
 export type SeriesDetailQuery = { __typename: 'Query', node:
     | { __typename: 'Book', id: string }
+    | { __typename: 'BookRequest', id: string }
     | { __typename: 'Library', id: string, seriesByName: { __typename: 'Series', id: string, name: string, author: string, publisher: string, totalPages: number, totalSize: number, subjects: Array<string>, progressPercentage: number | null, books: { __typename: 'SeriesBooksConnection', edges: Array<{ __typename: 'SeriesBooksConnectionEdge', node: (
               { __typename: 'Book', id: string }
               & { ' $fragmentRefs'?: { 'SeriesBookRowFragmentFragment': SeriesBookRowFragmentFragment } }
