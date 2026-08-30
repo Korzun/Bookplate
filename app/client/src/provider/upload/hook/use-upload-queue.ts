@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
-import { use, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useFragment } from '~/gql';
 import type {
@@ -8,6 +8,7 @@ import type {
   PendingFixRowFragmentFragment,
   UndoKind,
 } from '~/gql/graphql';
+import { BookRequestFulfillDocument } from '~/graphql/book-request';
 import {
   BookResolvePendingFixDocument,
   LibraryPendingFixesDocument,
@@ -453,6 +454,40 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   );
   const transport = useUploadTransport(onUploaded);
   const { remapBookGlobalId } = transport;
+
+  // ── Fulfil a bound request once its upload lands ──────────────────────────
+  //
+  // `fulfillsRequestId` is set only by `addFiles(files, { fulfillsRequestId
+  // })` — the admin's request row (Task 14) is the only caller that ever
+  // passes it, so an ordinary reader upload never reaches this mutation. No
+  // role check needed: the field's presence is the gate.
+  const [fulfillRequest] = useMutation(BookRequestFulfillDocument);
+
+  /**
+   * Item ids whose `bookRequestFulfill` has already been fired. Same guard
+   * `page/upload`'s `announcedRef` uses, and for the same reason: this effect
+   * runs on every render where `transport.items` changed, and a `done` item
+   * stays `done`. The id is added BEFORE the call is awaited, so a re-render
+   * while the mutation is in flight cannot fire a second one.
+   *
+   * Deliberately no retry on failure: the item is session state, so a closed
+   * tab would lose a client-side retry and strand the request with no way to
+   * close it but declining and re-requesting. Recovery is the request row's
+   * "link an existing book" picker (Task 14), not this effect.
+   */
+  const fulfilledRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const item of transport.items) {
+      if (item.status !== 'done') continue;
+      if (item.fulfillsRequestId === undefined || item.bookGlobalId === undefined) continue;
+      if (fulfilledRef.current.has(item.id)) continue;
+
+      fulfilledRef.current.add(item.id);
+      void fulfillRequest({
+        variables: { id: item.fulfillsRequestId, bookId: item.bookGlobalId },
+      });
+    }
+  }, [transport.items, fulfillRequest]);
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,
