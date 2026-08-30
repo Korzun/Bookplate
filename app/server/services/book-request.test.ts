@@ -6,11 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
-import {
-  createBookRequest,
-  dedupeKey,
-  MAX_OPEN_BOOK_REQUESTS,
-} from './book-request';
+import { createBookRequest, dedupeKey, MAX_OPEN_BOOK_REQUESTS } from './book-request';
 
 vi.mock('../logger');
 
@@ -67,7 +63,10 @@ describe('createBookRequest', () => {
 
   it('rejects a second OPEN request for the same title and author, case-insensitively', async () => {
     const first = await createBookRequest(prisma, input());
-    const second = await createBookRequest(prisma, input({ title: 'dune', author: 'FRANK HERBERT' }));
+    const second = await createBookRequest(
+      prisma,
+      input({ title: 'dune', author: 'FRANK HERBERT' })
+    );
 
     expect(second).toEqual({
       kind: 'duplicate',
@@ -113,7 +112,10 @@ describe('createBookRequest', () => {
   });
 
   it('trims the stored strings', async () => {
-    await createBookRequest(prisma, input({ title: '  Dune  ', author: ' Frank Herbert ', note: ' please ' }));
+    await createBookRequest(
+      prisma,
+      input({ title: '  Dune  ', author: ' Frank Herbert ', note: ' please ' })
+    );
     const row = await prisma.bookRequest.findFirstOrThrow({ where: { userId: ALICE } });
     expect(row).toMatchObject({ title: 'Dune', author: 'Frank Herbert', note: 'please' });
   });
