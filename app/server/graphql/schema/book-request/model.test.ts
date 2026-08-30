@@ -176,3 +176,33 @@ describe('User.bookRequests', () => {
     expect(data.viewer.user.bookRequests.edges.map((e) => e.node.title)).toEqual(['Book 3']);
   });
 });
+
+describe('User.pendingBookRequestCount', () => {
+  it('counts only pending requests', async () => {
+    await seed(harness.aliceOwner.userId, 3);
+    await harness.prisma.bookRequest.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: 'req-0' } },
+      data: { status: 'fulfilled' },
+    });
+
+    const result = await harness.execute('{ viewer { user { pendingBookRequestCount } } }', {
+      viewer: harness.aliceViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data as {
+      viewer: { user: { pendingBookRequestCount: number } };
+    };
+    expect(data.viewer.user.pendingBookRequestCount).toBe(2);
+  });
+
+  it('is zero for a reader with no requests', async () => {
+    const result = await harness.execute('{ viewer { user { pendingBookRequestCount } } }', {
+      viewer: harness.aliceViewer,
+    });
+    const data = result.data as {
+      viewer: { user: { pendingBookRequestCount: number } };
+    };
+    expect(data.viewer.user.pendingBookRequestCount).toBe(0);
+  });
+});
