@@ -275,6 +275,7 @@ const userListMock = (usernames: string[]): MockedResponse<UserListQuery> => ({
               id: `u${index}`,
               username,
               progressCount: 0,
+              pendingBookRequestCount: 0,
             },
             UserRowFragment
           ),

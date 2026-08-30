@@ -5,7 +5,9 @@ import { Button } from '~/control';
 import { graphql } from '~/gql';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 
+import { CardDivider } from '../card-divider';
 import { UserProgressRow } from '../user-progress-row';
+import { UserRequestList } from '../user-request-list';
 import { useStyle } from './style';
 
 /**
@@ -114,6 +116,16 @@ interface UserRowContentProps {
  * `error`, with `rows` empty (the empty-error state). A `fetchMore` failure
  * is caught locally and surfaced through the same `error` field, with
  * `rows` left untouched (existing rows survive, offer a retry).
+ *
+ * **`UserRequestList` (Task 13) is mounted here, above the progress rows,
+ * under its own `CardDivider` heading**, and receives the SAME `userId` and
+ * `skip` this component itself received — it does not derive either from
+ * this component's own query. It owns a SEPARATE document
+ * (`UserRequestListDocument`, `~/graphql/book-request`) that pages
+ * independently from `UserProgressListDocument`: see that document's own
+ * doc comment for why it, too, is declared on the component rather than
+ * `page/user-list`, and why it is a distinct document from this progress
+ * list rather than one broader query.
  */
 export const UserRowContent = ({ userId, username, skip }: UserRowContentProps) => {
   const styles = useStyle();
@@ -143,37 +155,48 @@ export const UserRowContent = ({ userId, username, skip }: UserRowContentProps) 
    */
   const libraryId = data?.user?.library?.id;
 
+  let progressContent: React.ReactNode;
   if (loading) {
-    return <div className={styles.message}>Loading...</div>;
-  }
-  // A first-page failure (no rows loaded yet) is the empty-error state. A
-  // `fetchMore` failure with existing rows falls through to the list below,
-  // which renders its own inline retry instead of replacing the rows.
-  if (error && rows.length === 0) {
-    return <div className={cx(styles.message, styles.error)}>Error loading user progress</div>;
-  }
-  if (rows.length === 0) {
-    return <div className={styles.message}>No progress synced</div>;
+    progressContent = <div className={styles.message}>Loading...</div>;
+  } else if (error && rows.length === 0) {
+    // A first-page failure (no rows loaded yet) is the empty-error state. A
+    // `fetchMore` failure with existing rows falls through to the list
+    // below, which renders its own inline retry instead of replacing the
+    // rows.
+    progressContent = (
+      <div className={cx(styles.message, styles.error)}>Error loading user progress</div>
+    );
+  } else if (rows.length === 0) {
+    progressContent = <div className={styles.message}>No progress synced</div>;
+  } else {
+    progressContent = (
+      <Fragment>
+        {rows.map((row) => (
+          <UserProgressRow key={row.id} progress={row} username={username} libraryId={libraryId} />
+        ))}
+        {hasNextPage && (
+          <Button type="link" onClick={loadMore} loading={loadingMore}>
+            Load more
+          </Button>
+        )}
+        {error && rows.length > 0 && (
+          <div className={cx(styles.message, styles.error)}>
+            Failed to load more progress
+            <Button type="link" onClick={loadMore}>
+              Retry
+            </Button>
+          </div>
+        )}
+      </Fragment>
+    );
   }
 
   return (
     <Fragment>
-      {rows.map((row) => (
-        <UserProgressRow key={row.id} progress={row} username={username} libraryId={libraryId} />
-      ))}
-      {hasNextPage && (
-        <Button type="link" onClick={loadMore} loading={loadingMore}>
-          Load more
-        </Button>
-      )}
-      {error && rows.length > 0 && (
-        <div className={cx(styles.message, styles.error)}>
-          Failed to load more progress
-          <Button type="link" onClick={loadMore}>
-            Retry
-          </Button>
-        </div>
-      )}
+      <CardDivider>Book requests</CardDivider>
+      <UserRequestList userId={userId} skip={skip} />
+      <CardDivider>Progress</CardDivider>
+      {progressContent}
     </Fragment>
   );
 };

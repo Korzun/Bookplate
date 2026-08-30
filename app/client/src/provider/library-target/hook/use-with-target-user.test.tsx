@@ -27,6 +27,7 @@ const user = (overrides: { id?: string; username?: string; libraryId?: string })
       id: overrides.id ?? 'u1',
       username: overrides.username ?? 'alice',
       progressCount: 0,
+      pendingBookRequestCount: 0,
     },
     UserRowFragment
   ),

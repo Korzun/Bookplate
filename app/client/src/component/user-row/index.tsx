@@ -9,6 +9,7 @@ import { UserDeleteDocument } from '~/graphql/user';
 import { AlertOctagonIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
 
+import { Tag } from '../tag';
 import { UserRowContent } from '../user-row-content';
 import { useStyle } from './style';
 
@@ -26,21 +27,27 @@ import { useStyle } from './style';
  * **`Viewer.users` carries a ×50 cost multiplier** — every field selected
  * here rides that multiplier, so this selection is kept deliberately
  * narrow: `id` (the User global ID every user mutation addresses),
- * `username` (display + list keying), `progressCount` (this subtitle).
- * `library { id }` also rides along on `UserListDocument`'s entry, but
- * lives as a sibling field on the DOCUMENT (`~/graphql/user`), not in this
- * fragment — `UserRow` never renders it. **Do NOT add a field here**
- * without checking `test:cost -w app/server` first: `viewer.users →
- * library.progress` is this project's worst-measured legitimate query
- * shape at 68.5% of the complexity budget, and this fragment is exactly
- * where a future field would naturally be added — a single unbounded
- * child (e.g. anything under `library`) can push that shape over budget.
+ * `username` (display + list keying), `progressCount` (this subtitle),
+ * `pendingBookRequestCount` (the header badge below). `library { id }` also
+ * rides along on `UserListDocument`'s entry, but lives as a sibling field on
+ * the DOCUMENT (`~/graphql/user`), not in this fragment — `UserRow` never
+ * renders it. **Do NOT add a field here** without checking `test:cost -w
+ * app/server` first: `viewer.users → library.progress` is this project's
+ * worst-measured legitimate query shape at 68.5% of the complexity budget,
+ * and this fragment is exactly where a future field would naturally be
+ * added — a single unbounded child (e.g. anything under `library`) can push
+ * that shape over budget. `pendingBookRequestCount` itself is a scalar
+ * `t.relationCount` (`app/server/graphql/schema/user/model.ts`), not an
+ * unbounded child, so it adds only breadth/complexity proportional to a
+ * plain field under the ×50 multiplier — measured before/after in this
+ * task's commit message.
  */
 export const UserRowFragment = graphql(`
   fragment UserRowFragment on User {
     id
     username
     progressCount
+    pendingBookRequestCount
   }
 `);
 
@@ -132,7 +139,16 @@ export const UserRow = ({ user }: UserRowProps) => {
       <Card
         isCollapsible
         defaultCollapsed
-        title={unmasked.username}
+        title={
+          <Fragment>
+            {unmasked.username}
+            {unmasked.pendingBookRequestCount > 0 && (
+              <span className={styles.badge}>
+                <Tag size="sm">{unmasked.pendingBookRequestCount} pending</Tag>
+              </span>
+            )}
+          </Fragment>
+        }
         subTitle={`${unmasked.progressCount} book${unmasked.progressCount === 1 ? '' : 's'} synced`}
         headerAction={
           <Fragment>
