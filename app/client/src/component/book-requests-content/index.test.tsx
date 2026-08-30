@@ -8,7 +8,11 @@ import type {
   BookRequestRowFragmentFragment,
   MyBookRequestListQuery,
 } from '~/gql/graphql';
-import { BookRequestCreateDocument, MyBookRequestListDocument } from '~/graphql/book-request';
+import {
+  BookRequestCreateDocument,
+  BookRequestDeleteDocument,
+  MyBookRequestListDocument,
+} from '~/graphql/book-request';
 import { renderWithApollo } from '~/test-utils';
 
 import { BookRequestsContent } from './index';
@@ -106,16 +110,41 @@ const createMock = (
   result: { data: { __typename: 'Mutation', bookRequestCreate: result } },
 });
 
+const deleteMock = (id: string, deletedId: string = id): MockedResponse => ({
+  request: { query: BookRequestDeleteDocument, variables: { id } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      bookRequestDelete: { __typename: 'BookRequestDeletePayload', deletedId },
+    },
+  },
+});
+
 const renderContent = ({
   requests = [],
   skip = false,
   createResult,
+  listMockCount = 1,
+  extraMocks = [],
 }: {
   requests?: BookRequestRowFragmentFragment[];
   skip?: boolean;
   createResult?: BookRequestCreateMutation['bookRequestCreate'];
+  /**
+   * How many times `MyBookRequestListDocument` is queued to resolve.
+   * `MockedResponse`s are single-use by default (`maxUsageCount: 1`), so a
+   * test that expects the post-mutation `client.refetchQueries` refetch to
+   * actually go out (rather than warn on an exhausted mock) queues 2.
+   */
+  listMockCount?: number;
+  /** Extra queued mocks — e.g. a `deleteMock(...)` for a withdraw/clear test. */
+  extraMocks?: MockedResponse[];
 } = {}) => {
-  const mocks: MockedResponse[] = [listMock(requests), createMock(createResult)];
+  const mocks: MockedResponse[] = [
+    ...Array.from({ length: listMockCount }, () => listMock(requests)),
+    createMock(createResult),
+    ...extraMocks,
+  ];
   const rendered = renderWithApollo(<BookRequestsContent skip={skip} />, { mocks });
   const user = userEvent.setup();
   return {
@@ -143,9 +172,18 @@ describe('BookRequestsContent', () => {
     expect(queryCount()).toBe(0);
   });
 
-  it('creates a request and clears the form', async () => {
-    const { user, createCalls, container } = renderContent({ requests: [] });
+  it('creates a request, clears the form, and refetches the list', async () => {
+    // `listMockCount: 2` — one for the initial mount, one for the refetch
+    // `client.refetchQueries` fires after a confirmed `BookRequestCreatePayload`
+    // (finding 2 of the task-12 review: plain normalization cannot insert a
+    // brand-new row into an already-cached connection, so this component
+    // refetches `MyBookRequestListDocument` explicitly instead).
+    const { user, createCalls, container, queryCount } = renderContent({
+      requests: [],
+      listMockCount: 2,
+    });
     await screen.findByText(/no requests yet/i);
+    expect(queryCount()).toBe(1);
 
     await user.type(titleInput(container), 'Dune');
     await user.type(authorInput(container), 'Frank Herbert');
@@ -154,6 +192,10 @@ describe('BookRequestsContent', () => {
     await waitFor(() => expect(createCalls()).toHaveLength(1));
     expect(createCalls()[0].input).toMatchObject({ title: 'Dune', author: 'Frank Herbert' });
     await waitFor(() => expect(titleInput(container)).toHaveValue(''));
+    // Proves the list query was RE-EXECUTED, not merely left to stale
+    // normalization: `listMock` is single-use, so a second invocation only
+    // resolves if this component actually issued a second network request.
+    await waitFor(() => expect(queryCount()).toBe(2));
   });
 
   it('will not submit without both title and author', async () => {
@@ -203,5 +245,29 @@ describe('BookRequestsContent', () => {
     const { container } = renderContent({ requests: [] });
     expect(await screen.findByText(/no requests yet/i)).toBeInTheDocument();
     expect(titleInput(container)).toBeInTheDocument();
+  });
+
+  // Finding 2 of the task-12 review, delete half: withdrawing/clearing a
+  // request changes `pendingBookRequestCount` too (a server-computed
+  // `t.relationCount`, not something a client-side cache eviction can
+  // decrement), so a successful delete refetches the list the same way a
+  // successful create does. `MyBookRequestCountDocument` itself is not
+  // mounted anywhere in this component-only render, so its own refetch is a
+  // harmless no-op here (`client.refetchQueries({ include: [...] })` only
+  // refetches ACTIVE queries) — covered instead by `BookRequests`'s own
+  // count-query wiring; this test pins the list-refetch half, which IS
+  // observable from this component alone.
+  it('refetches the list after withdrawing a request', async () => {
+    const { user, queryCount } = renderContent({
+      requests: [requestRow({ id: 'req-1', title: 'Dune' })],
+      listMockCount: 2,
+      extraMocks: [deleteMock('req-1')],
+    });
+    await screen.findByText('Dune');
+    expect(queryCount()).toBe(1);
+
+    await user.click(screen.getByRole('button', { name: /withdraw/i }));
+
+    await waitFor(() => expect(queryCount()).toBe(2));
   });
 });

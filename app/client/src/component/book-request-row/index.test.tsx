@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeFragmentData } from '~/gql';
 import type { BookRequestRowFragmentFragment, BookRequestStatus } from '~/gql/graphql';
 import { BookRequestRowFragment } from '~/graphql/book-request';
+import { path } from '~/router';
 import { renderWithProviders } from '~/test-utils';
 
 import { BookRequestRow } from './index';
@@ -65,9 +66,15 @@ describe('BookRequestRow', () => {
     expect(screen.getByText(/Pending/i)).toBeInTheDocument();
   });
 
-  it('links to the book once fulfilled', () => {
-    renderRow({ status: 'FULFILLED', book: { id: 'Qm9vazox', title: 'Dune' } });
-    expect(screen.getByRole('link', { name: /Dune/ })).toHaveAttribute('href', '/book/Qm9vazox');
+  it('links to the book once fulfilled, through path.book (not a hand-rolled /book/<id>)', () => {
+    // The id below carries `+` and `/` — legal bytes in a base64 Relay
+    // global id — specifically so this test can tell a correctly-encoded
+    // `path.book(id)` href apart from a naively-templated one: an
+    // un-encoded `/book/${id}` would produce a DIFFERENT (and broken) path
+    // segment for this id, not just a differently-prefixed one.
+    const bookId = 'Qm9vaz+ox/1==';
+    renderRow({ status: 'FULFILLED', book: { id: bookId, title: 'Dune' } });
+    expect(screen.getByRole('link', { name: /Dune/ })).toHaveAttribute('href', path.book(bookId));
   });
 
   it('says the book was added even when the link is gone', () => {
