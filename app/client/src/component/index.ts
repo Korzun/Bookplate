@@ -23,7 +23,6 @@ export { MyProgressContent } from './my-progress-content';
 export { MyProgressRow } from './my-progress-row';
 export { Page } from './page';
 export { ProgressIndicator } from './progress-indicator';
-export { ScanLibrarySetting } from './scan-library-setting';
 export { SeriesRow } from './series-row';
 export { SyncPassword } from './sync-password';
 export { Tag } from './tag';

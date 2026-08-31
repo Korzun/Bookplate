@@ -9,7 +9,7 @@ function renderToast(type: 'success' | 'error' | 'info') {
   return renderWithProviders(
     <Toast
       id={1}
-      message="Scanning library…"
+      message="Uploading…"
       type={type}
       isDismissing={false}
       duration={100000}
@@ -22,7 +22,7 @@ function renderToast(type: 'success' | 'error' | 'info') {
 describe('Toast', () => {
   it('renders an info toast with its message and an icon', () => {
     const { container } = renderToast('info');
-    expect(screen.getByRole('status')).toHaveTextContent('Scanning library…');
+    expect(screen.getByRole('status')).toHaveTextContent('Uploading…');
     expect(container.querySelector('svg')).toBeInTheDocument();
   });
 

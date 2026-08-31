@@ -81,26 +81,6 @@ export const builder = new SchemaBuilder<{
   defaultInputFieldRequiredness: true,
   defaultFieldNullability: false,
   scopeAuth: {
-    // Load-bearing for `Subscription.scanProgress`, the only subscription
-    // field in the schema. `@pothos/plugin-scope-auth`'s own README, §"Using
-    // with subscriptions": "when this is not set, auth checks are run when
-    // [an] event is resolved rather than when the subscription is created" —
-    // VERIFIED by reading `wrapSubscribe` in the plugin's source
-    // (`@pothos/plugin-scope-auth/lib/index.js`): it only inserts scope-check
-    // steps ahead of the field's own `subscribe` function when
-    // `authorizeOnSubscribe` is true; without it, `wrapSubscribe` returns the
-    // raw `subscribe` unwrapped, and only `wrapResolve` (run once per emitted
-    // event, not once at subscription time) would ever see the auth scope.
-    // Left unset, a cross-tenant `scanProgress` call would still establish a
-    // live subscription against another user's `ScanJobRegistry` topic — no data
-    // would leak (each event's `resolve` step would still deny it), but the
-    // subscribe-time rejection this schema's mutations/queries all give a
-    // caller immediately would not happen for this field. Setting it true
-    // makes `scanProgress`'s `ownerOf` scope run — and its `subscribe`
-    // function never invoked — before the client's subscription even opens,
-    // matching root-auth.test.ts's "refuses $operation.$name for a null
-    // viewer" walk, which asserts on the immediate result, not a later event.
-    authorizeOnSubscribe: true,
     authScopes: (context: Context) => ({
       // A viewer with a forced password change pending is treated as not
       // authenticated for every field but the change-password mutation, which
@@ -175,14 +155,3 @@ builder.queryType({ authScopes: { authenticated: true } });
 // GraphQL forbids an object type with no fields, so this cannot land alone;
 // `progress/mutation/delete.ts` is the field that carries it.
 builder.mutationType({ authScopes: { authenticated: true } });
-
-// Same rule again for `Subscription` — same "Pothos would otherwise
-// auto-create it unauthenticated on first use" reasoning as `mutationType`
-// above. Unlike `mutationType`, this doesn't need a companion field landing
-// in the same commit to avoid the "object type with no fields" problem:
-// `scanProgress` (`schema/library/subscription/scan-progress.ts`) is added in
-// this same task, so `Subscription` never exists fieldless at any point in
-// the built schema. `root-auth.test.ts`'s walk picks this root type up the
-// same generic way it already does `query`/`mutation`
-// (`schema.getSubscriptionType()`), with no test-file change needed.
-builder.subscriptionType({ authScopes: { authenticated: true } });

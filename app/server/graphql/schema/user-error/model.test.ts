@@ -50,7 +50,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError and ScanAlreadyRunningError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError and IncorrectPasswordError', () => {
     // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
@@ -94,12 +94,11 @@ describe('UserError', () => {
     // `username-already-exists-error/model.ts` and
     // `incorrect-password-error/model.ts`.
     //
-    // `ScanAlreadyRunningError` is a fifteenth member, added by task 8 for
-    // `libraryScan`'s REST-mirrored 409 (`POST /api/books/scan`'s
-    // `scanJobRegistry.isRunning` precondition check, before `bookStore.scan` is
-    // ever called) — same "resolver-produced, not domain-error-thrown" shape as
-    // `BookNotValidatedError` above. See
-    // `scan-already-running-error/model.ts`.
+    // `ScanAlreadyRunningError` was a fifteenth member, added by task 8 for
+    // `libraryScan`'s 409. It went when the library scan was removed from the
+    // interface: `libraryScan` was its only referencing union, so keeping it
+    // would have polluted Apollo's `possibleTypes` exactly as
+    // `BookAlreadyExistsError` did above.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -115,7 +114,6 @@ describe('UserError', () => {
       'IncorrectPasswordError',
       'InvalidInputError',
       'LineageEntryNotFoundError',
-      'ScanAlreadyRunningError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
       'UsernameAlreadyExistsError',

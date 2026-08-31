@@ -5,7 +5,6 @@ import packageJson from '../../package.json';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
-import { createScanPubSub } from './graphql/pubsub';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
@@ -13,7 +12,7 @@ import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
 import { createReplaceStaging } from './services/replace-staging';
-import { ScanJobRegistry } from './services/scan-job-registry';
+import { revalidateLibrary } from './services/revalidate-library';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
 
@@ -41,15 +40,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
-  // One pubsub instance, handed to `ScanJobRegistry` below, shared by every
-  // GraphQL scan resolver (`libraryScan`, `Subscription.scanProgress`,
-  // `Library.scanStatus`) so a scan started through `libraryScan` publishes
-  // onto the same per-user topic a GraphQL subscriber reads. REST's own
-  // `POST /api/books/scan` used to share this too, before that route (and
-  // `ScanJobRegistry`'s REST wiring) was removed along with the rest of the
-  // REST surface GraphQL replaced. See `graphql/pubsub.ts`'s doc comment.
-  const scanPubSub = createScanPubSub();
-  const scanJobRegistry = new ScanJobRegistry(scanPubSub);
   // One instance shared by the REST staging route and the two GraphQL
   // mutations that consume it — see `graphql/context.ts`'s `Context.
   // replaceStaging` doc comment for why a second instance would never see
@@ -57,7 +47,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
   const graphqlHandler = createGraphqlHandler({
     prisma,
-    scanJobs: scanJobRegistry,
     thumbnails: thumbnailQueue,
     replaceStaging,
     editionsRoot,
@@ -82,7 +71,19 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   });
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
-  // clean up stale DB entries.
+  // clean up stale DB entries, then re-validate the imported library.
+  //
+  // This is now the ONLY scan the app performs. It runs the same three-step
+  // pipeline the user-triggered `libraryScan` mutation used to run in its
+  // detached background block (scan → revalidateLibrary → thumbnail
+  // reconcile), so removing that mutation cost the app no behaviour, only the
+  // ability to start it on demand. `revalidateLibrary` and
+  // `ThumbnailQueue.reconcile` had no other production caller.
+  //
+  // `reconcile()` is library-wide, not per-owner, so it runs ONCE after the
+  // loop rather than once per user — the mutation only ever scanned a single
+  // owner, so its per-call placement inside the pipeline and this one outside
+  // the loop are the same thing.
   try {
     // Single-statement `findMany`, one production caller — inlined under
     // the placement rule. No unit test covers this directly (it runs only
@@ -98,17 +99,33 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     let scanned = 0;
     let imported = 0;
     let removed = 0;
+    let validated = 0;
+    let failedValidation = 0;
     for (const owner of owners) {
       // The config-based admin owns no library; a legacy DB row bearing its
       // username must not materialize one.
       if (owner.username === config.username) continue;
       fs.mkdirSync(path.join(config.booksDir, owner.username), { recursive: true });
       const scanResult = await scan(prisma, config.booksDir, owner);
+      const val = await revalidateLibrary(
+        {
+          prisma,
+          booksRoot: config.booksDir,
+          validationThreshold: config.validationThreshold,
+        },
+        owner
+      );
       scanned++;
       imported += scanResult.imported.length;
       removed += scanResult.removed.length;
+      validated += val.validated;
+      failedValidation += val.failed;
     }
-    log.info(`Startup scan (${scanned} user(s)): ${imported} imported, ${removed} removed`);
+    await thumbnailQueue.reconcile();
+    log.info(
+      `Startup scan (${scanned} user(s)): ${imported} imported, ${removed} removed, ` +
+        `${validated} validated (${failedValidation} failed)`
+    );
   } catch (err: unknown) {
     log.error(`Startup scan failed: ${err instanceof Error ? err.message : String(err)}`);
   }
