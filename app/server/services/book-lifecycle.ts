@@ -13,7 +13,6 @@ import { bookPath, getUserDir } from './book-paths';
 import { purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { isPrismaError } from './prisma-errors';
-import type { ScanProgress } from './scan-events';
 
 const log = logger('BookLifecycle');
 
@@ -488,8 +487,7 @@ async function removeStaleBook(prisma: PrismaClient, userId: string, id: string)
 export async function scan(
   prisma: PrismaClient,
   booksRoot: string,
-  owner: Owner,
-  onProgress?: (progress: ScanProgress) => void
+  owner: Owner
 ): Promise<{ imported: string[]; removed: string[] }> {
   const imported: string[] = [];
   const removed: string[] = [];
@@ -504,35 +502,13 @@ export async function scan(
   const diskFilenames: string[] = fs.existsSync(userDir)
     ? fs.readdirSync(userDir).filter((f) => path.extname(f).toLowerCase() === '.epub')
     : [];
-  const totalImporting = diskFilenames.length;
 
-  for (const [index, filename] of diskFilenames.entries()) {
-    const processed = index + 1;
-    // Reports the one outcome the branch below is about to take for this
-    // file, at the exact point the loop already decides it — no branch is
-    // added or reordered to make this possible. `bookId` is included only
-    // when the branch has one in hand (`undefined` is dropped, never sent
-    // as an explicit `bookId: undefined`).
-    const emit = (
-      outcome: 'imported' | 'renamed' | 'already-imported' | 'skipped',
-      bookId?: string
-    ): void => {
-      onProgress?.({
-        phase: 'importing',
-        total: totalImporting,
-        processed,
-        filename,
-        outcome,
-        ...(bookId !== undefined ? { bookId } : {}),
-      });
-    };
-
+  for (const filename of diskFilenames) {
     const filePath = path.join(userDir, filename);
     const stem = path.basename(filename, '.epub');
 
     // Fast path: file already at <id>.epub and that id is imported.
     if (/^[0-9a-f]{32}$/.test(stem) && dbIds.has(stem)) {
-      emit('already-imported', stem);
       continue;
     }
 
@@ -545,7 +521,6 @@ export async function scan(
       log.warn(
         `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
       );
-      emit('skipped');
       continue;
     }
 
@@ -553,7 +528,6 @@ export async function scan(
     if (filePath !== canonicalPath) {
       if (fs.existsSync(canonicalPath)) {
         log.warn(`scan: skipping "${filename}" — canonical path ${id}.epub already occupied`);
-        emit('skipped', id);
         continue;
       }
       fs.renameSync(filePath, canonicalPath);
@@ -561,7 +535,6 @@ export async function scan(
 
     if (dbIds.has(id)) {
       // Rename above was the only thing to do.
-      emit('renamed', id);
       continue;
     }
 
@@ -570,12 +543,10 @@ export async function scan(
       await addBook(prisma, booksRoot, owner, id, canonicalPath, { ...meta, title: titleFallback });
       dbIds.add(id);
       imported.push(filename);
-      emit('imported', id);
     } catch (err: unknown) {
       log.warn(
         `scan: skipping "${filename}" — ${err instanceof Error ? err.message : String(err)}`
       );
-      emit('skipped', id);
     }
   }
 
@@ -584,13 +555,11 @@ export async function scan(
     where: { userId: owner.userId },
     select: { id: true },
   });
-  const totalPruning = allIdRows.length;
-  for (const [index, { id }] of allIdRows.entries()) {
+  for (const { id } of allIdRows) {
     if (!fs.existsSync(bookPath(booksRoot, owner, id))) {
       await removeStaleBook(prisma, owner.userId, id);
       removed.push(id + '.epub');
     }
-    onProgress?.({ phase: 'pruning', total: totalPruning, processed: index + 1, bookId: id });
   }
 
   return { imported, removed };

@@ -2,7 +2,6 @@ import type { PrismaClient } from '@prisma/client';
 
 import { signAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
-import type { ScanJobRegistry } from '../services/scan-job-registry';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import { createContext, viewerFromHeader } from './context';
@@ -75,7 +74,6 @@ describe('viewerFromHeader', () => {
 
 describe('createContext', () => {
   const prisma = {} as PrismaClient;
-  const scanJobs = {} as ScanJobRegistry;
   const thumbnails = {} as ThumbnailQueue;
   const replaceStaging = {} as ReplaceStaging;
   const config = {} as AppConfig;
@@ -91,7 +89,6 @@ describe('createContext', () => {
     const context = createContext({
       prisma,
       editionsRoot,
-      scanJobs,
       thumbnails,
       replaceStaging,
       config,
@@ -104,7 +101,6 @@ describe('createContext', () => {
 
     expect(context.viewer?.username).toBe('alice');
     expect(context.prisma).toBe(prisma);
-    expect(context.scanJobs).toBe(scanJobs);
     expect(context.thumbnails).toBe(thumbnails);
     expect(context.replaceStaging).toBe(replaceStaging);
     expect(context.config).toBe(config);
@@ -118,7 +114,6 @@ describe('createContext', () => {
     const context = createContext({
       prisma,
       editionsRoot,
-      scanJobs,
       thumbnails,
       replaceStaging,
       config,

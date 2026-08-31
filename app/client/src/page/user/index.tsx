@@ -5,7 +5,6 @@ import {
   ConnectionUrls,
   MyProgress,
   Page,
-  ScanLibrarySetting,
   SyncPassword,
   ThemeSetting,
   UserChangePassword,
@@ -64,7 +63,6 @@ export const UserPage = () => {
     return (
       <Page>
         <ThemeSetting />
-        <ScanLibrarySetting />
         <Button loading={loggingOut} onClick={handleLogout} danger>
           Log out
         </Button>
@@ -75,7 +73,6 @@ export const UserPage = () => {
   return (
     <Page>
       <ThemeSetting />
-      <ScanLibrarySetting />
       <SyncPassword />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
       <UserChangePassword />

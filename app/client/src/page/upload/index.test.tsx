@@ -134,7 +134,7 @@ describe('UploadPage — manual apply does not trigger the auto-fix toast', () =
       </UploadProvider>
     );
 
-    // Let the initial config/scan-status fetches settle.
+    // Let the initial config fetch settle.
     await act(async () => {
       await Promise.resolve();
     });

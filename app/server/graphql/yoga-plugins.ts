@@ -144,8 +144,7 @@ const operationNameOf = (document: DocumentNode, requested: string | null | unde
  * `onValidate` hook below), envelop has not yet run `createContext` — the
  * `context` payload there is the bare yoga-internal context, where `viewer`
  * is `undefined` (the property doesn't exist yet), not `null` (the
- * post-`createContext` "no bearer token" value `onExecute`/`onSubscribe`
- * see). A strict `=== null` check left this throwing `Cannot read
+ * post-`createContext` "no bearer token" value `onExecute` sees). A strict `=== null` check left this throwing `Cannot read
  * properties of undefined (reading 'userId')` from INSIDE the validation
  * pipeline for every rejected query — caught the hard way, by running the
  * M-4 regression test against this exact bug.
@@ -156,8 +155,8 @@ const viewerIdOf = (context: Context): string =>
 /**
  * `viewerIdOf`'s counterpart for the `onValidate` hook specifically
  * (task-3 review N-3; final-review-wave disposition — narrower than first
- * recorded: ONLY `onValidate` was affected. `onExecute`/`onSubscribe`
- * already log the real viewer correctly, since `createContext` has run by
+ * recorded: ONLY `onValidate` was affected. `onExecute`
+ * already logs the real viewer correctly, since `createContext` has run by
  * then — reproduced: an authenticated alice's `onExecute` line already
  * carried her real `userId`). At `onValidate` time `context.viewer` doesn't
  * exist yet (see `viewerIdOf`'s own doc comment above), so `viewerIdOf`
@@ -208,20 +207,9 @@ const logOperation = (
  * Installed unconditionally, same reasoning as `useDepthLimit`: this is
  * operator visibility, not an information-disclosure guard.
  *
- * `onExecute` covers every query and mutation. For the schema's one
- * subscription field (`scanProgress`), `onSubscribe`'s `onSubscribeResult`
- * splits in two:
- *   - a subscribe-time auth denial (`authorizeOnSubscribe: true`,
- *     builder.ts's own doc comment) is a single `ExecutionResult`, not a
- *     live stream — logged immediately, exactly like a query, in the
- *     `!isAsyncIterable` branch below.
- *   - a LIVE stream (subscribe succeeded) logs exactly ONCE, at completion
- *     (`onEnd`) — never per emitted event. A single scan can publish dozens
- *     of progress events over its lifetime; a log line per event would be
- *     noise, not signal, and would turn one long-lived operation into an
- *     unbounded number of log lines for no operator benefit. `errorCount`
- *     for that one line accumulates every event that carried an error, and
- *     `durationMs` spans the whole subscription's lifetime, not one event.
+ * `onExecute` covers every query and mutation — which is the whole schema:
+ * the `Subscription` root type was removed along with `scanProgress`, its
+ * only field, so there is no `onSubscribe` hook here to pair with it.
  *
  * `onValidate` covers the stage BEFORE either of those: a query rejected by
  * `useDepthLimit` or `useSchemaConcealment` never reaches `onExecute` at all
@@ -234,16 +222,16 @@ const logOperation = (
  * Takes `jwtSecret` (final-review-wave, N-3 fix) so its `onValidate` line
  * can attribute a validation-stage rejection to the real authenticated
  * viewer via `viewerIdAtValidate`, instead of always reading `'anon'`.
- * `onExecute`/`onSubscribe` keep using `viewerIdOf` unchanged — `context`
- * there is already the fully-built post-`createContext` `Context`.
+ * `onExecute` keeps using `viewerIdOf` unchanged — `context` there is
+ * already the fully-built post-`createContext` `Context`.
  */
 export const useOperationLogging = (jwtSecret: Buffer): Plugin<Context> => ({
   onValidate: ({ context, params }) => {
     const start = Date.now();
     return ({ valid, result }) => {
       if (valid) return; // a clean validation logs nothing here — the
-      // eventual onExecute/onSubscribe call (if the operation goes on to
-      // run at all) is the one line for a successful operation.
+      // eventual onExecute call (if the operation goes on to run at all)
+      // is the one line for a successful operation.
       logOperation(
         operationNameOf(params.documentAST, undefined),
         viewerIdAtValidate(jwtSecret, context),
@@ -263,28 +251,6 @@ export const useOperationLogging = (jwtSecret: Buffer): Plugin<Context> => ({
           Date.now() - start,
           result.errors?.length ?? 0
         );
-      },
-    };
-  },
-  onSubscribe: ({ args }) => {
-    const start = Date.now();
-    const operationName = operationNameOf(args.document, args.operationName);
-    const viewerId = viewerIdOf(args.contextValue);
-    return {
-      onSubscribeResult: ({ result }) => {
-        if (!isAsyncIterable(result)) {
-          logOperation(operationName, viewerId, Date.now() - start, result.errors?.length ?? 0);
-          return;
-        }
-        let errorCount = 0;
-        return {
-          onNext: ({ result: eventResult }) => {
-            errorCount += eventResult.errors?.length ?? 0;
-          },
-          onEnd: () => {
-            logOperation(operationName, viewerId, Date.now() - start, errorCount);
-          },
-        };
       },
     };
   },
