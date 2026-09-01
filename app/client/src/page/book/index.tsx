@@ -50,8 +50,9 @@ import { useStyle } from './style';
 /**
  * `counts` on `ValidationFragment` is a LIST (`{ severity count }[]`) — the
  * server shape, one entry per severity that actually occurred. The modal
- * (`ValidationDetailModal`, still shared with `page/upload` and the replace
- * flow, both on the REST-shaped record until a later step) takes
+ * (`ValidationDetailModal`, still shared with `page/add`'s Upload view
+ * (`page/add/upload.tsx`, via `component/upload-item`) and the replace flow,
+ * both on the REST-shaped record until a later step) takes
  * `Record<Severity, number>`. `SeverityCounts`' own `orderSeverityCounts`
  * reads `counts[severity] ?? 0`, so a partial record — every severity NOT in
  * the list is simply absent here — is safe to hand it; the cast matches the
@@ -103,8 +104,8 @@ function toValidationCounts(
  * a client-side reconstruction. This closes the narrowing the doc comment
  * here used to describe — quoted subjects render monospaced again, and the
  * modal's `m.segments ?? [{ text: m.message }]` fallback is no longer the
- * live path for THIS caller (`page/upload` and the replace flow still build
- * `ValidationMessage`s without `segments`, by design — see the modal's own
+ * live path for THIS caller (`page/add`'s Upload view and the replace flow
+ * still build `ValidationMessage`s without `segments`, by design — see the modal's own
  * prop type; that fallback still matters for them).
  */
 function toValidationMessages(

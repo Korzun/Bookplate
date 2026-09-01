@@ -208,10 +208,19 @@ describe('UserRow', () => {
     // descendants' text — including "bob 2 pending" — so an unanchored
     // `/2 pending/i` matches both that header AND the badge itself (see
     // `clickConfirmDelete`'s identical note, above, for "Delete user").
+    // The collapsible `Card` header (the OTHER `role="button"` — its
+    // `aria-expanded` is how `Card` marks the toggle state) must stay
+    // collapsed: without the badge's own stop-propagation, this click would
+    // bubble to the header's `onClick={handleToggle}` and expand the card at
+    // the same time it navigates away from it.
+    const header = screen.getAllByRole('button').find((el) => el.hasAttribute('aria-expanded'));
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
     await userEventInstance.click(screen.getByRole('button', { name: /^2 pending$/i }));
 
     expect(mocks.setTargetLibraryId).toHaveBeenCalledWith('TGliOmJvYg==');
     expect(mocks.navigate).toHaveBeenCalledWith('/add/request');
+    expect(header).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('opens the confirm modal when Delete user is clicked, without sending a mutation', async () => {

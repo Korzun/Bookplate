@@ -1,5 +1,6 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
@@ -12,7 +13,7 @@ import type {
 } from '~/gql/graphql';
 import { MyBookRequestListDocument, UserRequestListDocument } from '~/graphql/book-request';
 import { UserListDocument } from '~/graphql/user';
-import { LibraryTargetProvider } from '~/provider/library-target';
+import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 import { renderWithApollo } from '~/test-utils';
 
 import { AddRequestView } from './request';
@@ -112,10 +113,17 @@ const userListMock = (users: ReturnType<typeof user>[]): MockedResponse<UserList
 // `component/user-request-list/index.test.tsx`'s own `connection` shape.
 // `variables` as a matcher function (always `true`) rather than an object —
 // `usePaginatedConnection` also sends `after`, which this test has no
-// opinion on.
+// opinion on. `username`/`libraryId` are overridable (defaulting to the
+// original hardcoded 'bob'/`TGliOmJvYg==`): this response's `user` normalizes
+// into the SAME cache entity `UserListDocument`'s own `viewer.users` entries
+// reference (both keyed by `User:<id>`), so a hardcoded username/library
+// would silently corrupt a DIFFERENT user's already-cached row when this
+// mock is used for more than one `userId` in the same test (as the
+// switcher-target test below does).
 const userRequestListMock = (
   userId: string,
-  rows: BookRequestRowFragmentFragment[]
+  rows: BookRequestRowFragmentFragment[],
+  { username = 'bob', libraryId = 'TGliOmJvYg==' }: { username?: string; libraryId?: string } = {}
 ): MockedResponse<UserRequestListQuery> => ({
   request: {
     query: UserRequestListDocument,
@@ -127,8 +135,8 @@ const userRequestListMock = (
       user: {
         __typename: 'User',
         id: userId,
-        username: 'bob',
-        library: { __typename: 'Library', id: 'TGliOmJvYg==' },
+        username,
+        library: { __typename: 'Library', id: libraryId },
         bookRequests: {
           __typename: 'UserBookRequestsConnection',
           edges: rows.map((node, index) => ({
@@ -211,7 +219,74 @@ describe('AddRequestView', () => {
   });
 
   it('renders nothing for an admin with no library selected', () => {
-    renderAddRequest({ isAdmin: true, targetLibraryId: undefined });
-    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    // Neither branch of `AddRequestView`/`UserRequestList` ever renders a
+    // `list` role (rows and the empty state are plain divs), so
+    // `queryByRole('list')` passes identically whether or not this guard
+    // exists. `AddRequestView`'s admin branch returns `null` outright here
+    // (`withTargetUser.userId === undefined`), so nothing at all mounts —
+    // in particular `UserRequestList` never mounts, so none of its own
+    // possible renders ("Loading…", "No requests yet", or a row) ever
+    // appear. Asserting the container has NO text content is what actually
+    // distinguishes this from the two tests above, both of which assert
+    // real text DOES appear.
+    const { container } = renderAddRequest({ isAdmin: true, targetLibraryId: undefined });
+    expect(container).toHaveTextContent('');
+  });
+
+  it("shows the newly-selected user's requests when the switcher's target changes", async () => {
+    // Spec §7: "changing the library changes whose requests appear, which is
+    // the one genuinely new behaviour in this design and the test most worth
+    // having." `renderAddRequest` above only ever mounts `AddRequestView` at
+    // a FIXED target, so this test mounts a small harness alongside it, both
+    // sharing one real `LibraryTargetProvider`, and drives the switch through
+    // the same `useLibraryTarget` setter the real `LibrarySwitcher` calls —
+    // proving the change actually reaches `UserRequestList` (its own
+    // `resetKey` of `userId:skip` is what re-fetches on a new `userId`), not
+    // just that `useWithTargetUser` recomputes in isolation.
+    const bobId = 'VXNlcjpib2I=';
+    const bobLibrary = 'TGliOmJvYg==';
+    const carolId = 'VXNlcjpjYXJvbA==';
+    const carolLibrary = 'TGliOmNhcm9s';
+
+    localStorage.setItem(STORAGE_KEY, bobLibrary);
+
+    const mocks: MockedResponse[] = [
+      userListMock([
+        user({ id: bobId, username: 'bob', libraryId: bobLibrary }),
+        user({ id: carolId, username: 'carol', libraryId: carolLibrary }),
+      ]),
+      userRequestListMock(bobId, [requestRow({ title: 'Dune' })], {
+        username: 'bob',
+        libraryId: bobLibrary,
+      }),
+      userRequestListMock(carolId, [requestRow({ title: 'Neuromancer' })], {
+        username: 'carol',
+        libraryId: carolLibrary,
+      }),
+    ];
+
+    function Harness() {
+      const [, setTargetLibraryId] = useLibraryTarget();
+      return (
+        <>
+          <button onClick={() => setTargetLibraryId(carolLibrary)}>Switch to carol</button>
+          <AddRequestView />
+        </>
+      );
+    }
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Harness />
+      </LibraryTargetProvider>,
+      { user: { username: 'reader', isAdmin: true }, mocks }
+    );
+
+    expect(await screen.findByText('Dune')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Switch to carol' }));
+
+    expect(await screen.findByText('Neuromancer')).toBeInTheDocument();
+    expect(screen.queryByText('Dune')).not.toBeInTheDocument();
   });
 });

@@ -77,7 +77,9 @@ export const AddPage = () => {
           ) : (
             <>
               <div className={styles.emptyStateTitle}>Select a library</div>
-              <div className={styles.emptyStateSubtitle}>Choose a user above to upload books</div>
+              <div className={styles.emptyStateSubtitle}>
+                Choose a user above to upload or request books
+              </div>
             </>
           )}
         </div>

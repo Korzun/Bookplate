@@ -2,7 +2,7 @@ import { graphql } from '~/gql';
 
 /**
  * A document read by more than one ROUTE (`page/user-list`, `page/library`,
- * `page/upload`) and by a kept PROVIDER (`provider/library-target`'s
+ * `page/add`) and by a kept PROVIDER (`provider/library-target`'s
  * `useWithTargetUser`) lives in a leaf module under `src/graphql/`, not in
  * whichever route happens to compose it — that is the general rule this
  * project settled on after `UserListDocument` briefly lived at
@@ -10,11 +10,18 @@ import { graphql } from '~/gql';
  * `component/index.ts -> device-form -> page/user-list -> component`, plus
  * made `provider/library-target` (explicitly kept, not dissolved) depend on
  * a page module and the whole component barrel it re-exports, a strict
- * regression from the pre-task-2 shape (`~/graphql/user`, a leaf). Six
+ * regression from the pre-task-2 shape (`~/graphql/user`, a leaf). Seven
  * readers as of this writing: `page/user-list` (composes `...UserRowFragment`
- * into it), `page/library`, `page/upload`, `component/library-switcher`,
- * `component/device-form`, and `provider/library-target`'s
- * `useWithTargetUser`.
+ * into it), `page/library`, `page/add` (`page/upload` before the `/add`
+ * rename), `component/library-switcher`, `component/device-form`,
+ * `provider/library-target`'s `useWithTargetUser`, and `component/nav` —
+ * mounted on EVERY admin page, the single most cost-relevant reader of this
+ * document: its own read (`skip: !isAdmin`, for the pending-request dot on
+ * the Add badge) DEDUPLICATES against `useWithTargetUser`'s already in-flight
+ * query through Apollo's normalized cache and default query deduplication —
+ * same document, no variables — rather than issuing a second request, since
+ * the upload provider that calls `useWithTargetUser` is mounted above the
+ * router on every admin page load.
  *
  * `...UserRowFragment` below is resolved by NAME against
  * `component/user-row`'s own `graphql(...)` definition — codegen matches
@@ -42,8 +49,9 @@ import { graphql } from '~/gql';
  * live data. There is deliberately no "null folds to empty" branch anywhere
  * this document is read. `skip: !isAdmin` is what stops the request before
  * the server ever gets to deny it — every non-admin visits `page/library`/
- * `page/upload` (the app's default landing pages) and `component/
- * device-form`, all of which read this same document unconditionally.
+ * `page/add` (the app's default landing pages), `component/device-form`, and
+ * `component/nav` (mounted on every page), all of which read this same
+ * document unconditionally.
  */
 export const UserListDocument = graphql(`
   query UserList {

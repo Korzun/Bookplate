@@ -11,40 +11,51 @@ import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { useStyle } from './style';
 
 interface UserRequestListProps {
-  /** The target user's Relay global id — `UserRow`'s own `userId` prop. */
+  /**
+   * The target user's Relay global id — `AddRequestView`'s own admin branch
+   * resolves it via `useWithTargetUser().userId`, which matches the
+   * (persistent, page-level) library switcher's selection against
+   * `UserListDocument`.
+   */
   userId: string;
   /**
-   * **What makes the collapsed card fetch nothing.** This component's own
-   * PARENT (`UserRowContent`) always passes `false` at its one production
-   * call site — `UserRow` never mounts `UserRowContent` (and, in turn, this
-   * component) while `Card` is collapsed. `skip` stays a required, EXPLICIT
-   * prop regardless — rather than defaulting to `false` internally — so this
-   * component's own tests can gate the query directly instead of depending on
-   * `Card`'s mount timing as an implicit contract. Mirrors `UserRowContent`'s
-   * identical prop for the identical reason.
+   * This component's own PARENT (`AddRequestView`, `page/add/request.tsx`)
+   * always passes `false` at its one production call site — this view is not
+   * even mounted until an admin reaches `/add/request` with a library
+   * selected, which is the lazy-mount gate a now-deleted `/users` card's
+   * collapsible `Card` used to provide. There is no `Card`/collapse gate here
+   * at all any more: the route itself is the gate. `skip` stays a required,
+   * EXPLICIT prop regardless — rather than defaulting to `false` internally —
+   * so this component's own tests can gate the query directly instead of
+   * depending on a parent's mount timing as an implicit contract. Mirrors
+   * `BookRequestsContent`'s identical prop for the identical reason.
    */
   skip: boolean;
 }
 
 /**
- * An admin's view of ANOTHER user's book requests — `UserRowContent`'s
- * request-list half, structurally a copy of its progress-list half (read
- * that component's own doc comment first): `usePaginatedConnection` over
- * `Query.user(id: $userId) { bookRequests }`, not `viewer.user.bookRequests`
- * — the target is a different user's requests, and `UserRow` already holds
- * their `userId`. `Query.user(id:)` is admin-only, which is correct here:
- * this list renders only for admins.
+ * An admin's view of ANOTHER user's book requests, mounted by the admin
+ * branch of `AddRequestView` (`page/add/request.tsx`) — structurally a copy
+ * of `UserRowContent`'s progress-list half (read that component's own doc
+ * comment first): `usePaginatedConnection` over `Query.user(id: $userId) {
+ * bookRequests }`, not `viewer.user.bookRequests` — the target is a
+ * different user's requests, and `AddRequestView` resolves their `userId` via
+ * `useWithTargetUser()`, which matches the (persistent, page-level) library
+ * switcher's selected Library global id against `UserListDocument`.
+ * `Query.user(id:)` is admin-only, which is correct here: this list renders
+ * only for admins.
  *
  * **A SEPARATE document from `UserProgressListDocument`** (`component/
  * user-row-content`) because the two lists page independently — a `Load
  * more` on one must not affect the other's cursor. Declared HERE, not on
  * `page/user-list`, for the SAME reason `UserProgressListDocument` is: this
- * component is a CHILD of `Card`'s `isCollapsible`/`defaultCollapsed` pair,
- * which does not render its children into the tree at all while collapsed —
- * so this component, and the query it owns, is never even MOUNTED until the
- * card is expanded. Hoisting it to `page/user-list` (a per-VIEWER route)
- * would fetch it for EVERY user on EVERY visit, under `Viewer.users`'s ×50
- * cost multiplier — a severe cost regression, not just an architectural one.
+ * component has NO `Card` collapse gate — that gate belonged to the deleted
+ * `/users` card mount. The gate now is the Upload/Request TOGGLE itself:
+ * `AddRequestView` is not even mounted until an admin switches to `/add/
+ * request`, so this component, and the query it owns, is never even MOUNTED
+ * until then. Hoisting it to `page/user-list` (a per-VIEWER route) would
+ * fetch it for EVERY user on EVERY visit, under `Viewer.users`'s ×50 cost
+ * multiplier — a severe cost regression, not just an architectural one.
  *
  * `first: 20` on `UserRequestListDocument` is a LITERAL, not a variable, for
  * the same pricing reason `MyBookRequestListDocument` gives (`graphql/
