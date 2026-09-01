@@ -307,7 +307,7 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
           {suggestionCount > 0 && (
             <span className={styles.suggestions}>
               {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'} —{' '}
-              <Link to={path.upload()}>review in Upload</Link>
+              <Link to={path.add()}>review in Upload</Link>
             </span>
           )}
         </div>

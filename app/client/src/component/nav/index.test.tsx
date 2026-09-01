@@ -155,10 +155,10 @@ describe('Nav', () => {
   it('marks the current route active in both layouts', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
-      initialEntries: ['/upload'],
+      initialEntries: ['/add'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
-    const uploadLinks = screen.getAllByRole('link', { name: 'Upload' });
+    const uploadLinks = screen.getAllByRole('link', { name: 'Add' });
     expect(uploadLinks).toHaveLength(2);
     expect(uploadLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 
