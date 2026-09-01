@@ -248,15 +248,12 @@ describe('BookRequestsContent', () => {
   });
 
   // Finding 2 of the task-12 review, delete half: withdrawing/clearing a
-  // request changes `pendingBookRequestCount` too (a server-computed
-  // `t.relationCount`, not something a client-side cache eviction can
-  // decrement), so a successful delete refetches the list the same way a
-  // successful create does. `MyBookRequestCountDocument` itself is not
-  // mounted anywhere in this component-only render, so its own refetch is a
-  // harmless no-op here (`client.refetchQueries({ include: [...] })` only
-  // refetches ACTIVE queries) — covered instead by `BookRequests`'s own
-  // count-query wiring; this test pins the list-refetch half, which IS
-  // observable from this component alone.
+  // request is not something a client-side cache eviction alone reflects
+  // everywhere it matters, so a successful delete refetches the list the
+  // same way a successful create does. (Task 6 of the add-page reorg
+  // dropped `MyBookRequestCountDocument` from this refetch entirely — the
+  // reader's collapsed `/user` card whose subtitle it fed no longer
+  // exists.) This test pins the list-refetch.
   it('refetches the list after withdrawing a request', async () => {
     const { user, queryCount } = renderContent({
       requests: [requestRow({ id: 'req-1', title: 'Dune' })],
