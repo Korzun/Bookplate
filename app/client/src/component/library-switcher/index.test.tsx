@@ -12,7 +12,12 @@ import { renderWithApollo } from '~/test-utils';
 
 import { LibrarySwitcher } from '.';
 
-const user = (overrides: { id?: string; username?: string; libraryId?: string }) => ({
+const user = (overrides: {
+  id?: string;
+  username?: string;
+  libraryId?: string;
+  pendingBookRequestCount?: number;
+}) => ({
   __typename: 'User' as const,
   ...makeFragmentData(
     {
@@ -20,7 +25,7 @@ const user = (overrides: { id?: string; username?: string; libraryId?: string })
       id: overrides.id ?? 'u1',
       username: overrides.username ?? 'alice',
       progressCount: 0,
-      pendingBookRequestCount: 0,
+      pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
     },
     UserRowFragment
   ),
@@ -186,5 +191,39 @@ describe('LibrarySwitcher', () => {
     // flips to -1. A still-loading or still-populated switcher is focusable.
     expect(screen.getByRole('button', { name: 'lib-ghost' })).toHaveAttribute('tabindex', '-1');
     expect(localStorage.getItem('library-target-id')).toBe('lib-ghost');
+  });
+
+  // The description text only renders inside the option list, which the
+  // `Select` control mounts through `Popover` (a portal) only while open —
+  // same wait-then-click pattern as the "stores the selected user's library
+  // id" case above.
+  it('shows a request count for users who have pending requests', async () => {
+    renderAsAdmin([
+      userListMock([user({ username: 'bob', libraryId: 'lib-bob', pendingBookRequestCount: 2 })]),
+    ]);
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    expect(await screen.findByText('2 requests')).toBeInTheDocument();
+  });
+
+  it('singularises a count of one', async () => {
+    renderAsAdmin([
+      userListMock([user({ username: 'bob', libraryId: 'lib-bob', pendingBookRequestCount: 1 })]),
+    ]);
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    expect(await screen.findByText('1 request')).toBeInTheDocument();
+  });
+
+  it('shows no count for a user with none, and keeps the label the bare username', async () => {
+    renderAsAdmin([
+      userListMock([
+        user({ username: 'alice', libraryId: 'lib-alice', pendingBookRequestCount: 0 }),
+      ]),
+    ]);
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    expect(await screen.findByText('alice')).toBeInTheDocument();
+    expect(screen.queryByText(/request/i)).not.toBeInTheDocument();
   });
 });
