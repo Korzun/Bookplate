@@ -1,4 +1,5 @@
 export { AddPage } from './add';
+export { AddRequestView } from './add/request';
 export { AddUploadView } from './add/upload';
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
