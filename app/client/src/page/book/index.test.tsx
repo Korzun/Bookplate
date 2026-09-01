@@ -719,7 +719,7 @@ describe('BookPage', () => {
   // `Button` (`~/control/button`) renders a `<div role="button">` with
   // `aria-disabled`, not a native `<button disabled>` — jest-dom's
   // `toBeDisabled`/`toBeEnabled` only recognize the latter, so this asserts
-  // on `aria-disabled` directly, the same convention `page/upload` and
+  // on `aria-disabled` directly, the same convention `page/add/upload` and
   // `component/upload-item`'s own tests use for this same component.
   it('blocks editing when the book has never been validated (validation: null)', async () => {
     await renderPage([bookMock({ validation: null })]);

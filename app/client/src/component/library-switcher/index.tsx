@@ -11,7 +11,7 @@ import { useLibraryTarget } from '~/provider/library-target';
 /**
  * `UserListDocument` is imported from the leaf module `~/graphql/user` (it
  * has multiple readers — see its own doc comment), not duplicated — no
- * `skip` gate here (unlike `page/library`/`page/upload`'s own reads of the
+ * `skip` gate here (unlike `page/library`/`page/add`'s own reads of the
  * same document): `AdminLibrarySwitcher` is itself only ever mounted for an
  * admin (`LibrarySwitcher` below returns `null` before rendering it), so the
  * query is never even constructed for a non-admin, let alone sent.

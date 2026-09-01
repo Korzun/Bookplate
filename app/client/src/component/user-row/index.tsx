@@ -168,7 +168,19 @@ export const UserRow = ({ user, libraryId }: UserRowProps) => {
           <Fragment>
             {unmasked.username}
             {unmasked.pendingBookRequestCount > 0 && (
-              <span className={styles.badge}>
+              // Stop-propagation shape mirrors `Card`'s own `headerAction`
+              // wrapper (`component/card/index.tsx`): this badge sits inside
+              // `Card`'s collapsible `title` region, which has its own
+              // `onClick={handleToggle}`/`onKeyDown` and no stop-propagation
+              // of its own. Without this, clicking the badge both expands the
+              // card AND navigates via `handleBadge` — firing
+              // `UserProgressListDocument` for a card unmounted a tick later,
+              // and nesting `role="button"` inside `role="button"`.
+              <span
+                className={styles.badge}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
                 <Tag size="sm" onClick={handleBadge}>
                   {unmasked.pendingBookRequestCount} pending
                 </Tag>

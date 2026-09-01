@@ -1855,17 +1855,17 @@ describe('SPA routes serve index.html', () => {
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
-  it('GET /upload returns 200 with HTML', async () => {
+  it('GET /add returns 200 with HTML', async () => {
     const token = await loginAdmin();
     const res = await request(app)
-      .get('/upload')
+      .get('/add')
       .set(...bearer(token));
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });
 
-  it('GET /upload serves the SPA without auth', async () => {
-    const res = await request(app).get('/upload');
+  it('GET /add serves the SPA without auth', async () => {
+    const res = await request(app).get('/add');
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
   });

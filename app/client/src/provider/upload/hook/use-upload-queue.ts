@@ -72,7 +72,8 @@ export type FixKey = { field: string; kind: string; from: string };
  * `true` (a typed error carries no payload to read it from).
  *
  * This type stays INTERNAL: `UseUploadQueue`'s public contract is still
- * boolean, so `page/upload` never sees a `FixOutcome`.
+ * boolean, so `page/add`'s Upload view (`AddUploadView`, `page/add/
+ * upload.tsx`) never sees a `FixOutcome`.
  */
 type FixOutcome = { ok: boolean; bookGlobalId?: string };
 
@@ -421,7 +422,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       } catch {
         // A network failure resolves `false` like a typed error does — the
         // public `UseUploadQueue` contract is a bare boolean, and
-        // `page/upload` turns it into a toast.
+        // `AddUploadView` (`page/add/upload.tsx`) turns it into a toast.
         return { ok: false };
       }
     },
@@ -477,10 +478,11 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
 
   /**
    * Item ids whose `bookRequestFulfill` has already been fired. Same guard
-   * `page/upload`'s `announcedRef` uses, and for the same reason: this effect
-   * runs on every render where `transport.items` changed, and a `done` item
-   * stays `done`. The id is added BEFORE the call is awaited, so a re-render
-   * while the mutation is in flight cannot fire a second one.
+   * `AddUploadView`'s (`page/add/upload.tsx`) `announcedRef` uses, and for the
+   * same reason: this effect runs on every render where `transport.items`
+   * changed, and a `done` item stays `done`. The id is added BEFORE the call
+   * is awaited, so a re-render while the mutation is in flight cannot fire a
+   * second one.
    *
    * Deliberately no retry on failure: the item is session state, so a closed
    * tab would lose a client-side retry and strand the request with no way to

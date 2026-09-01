@@ -190,7 +190,16 @@ describe('AddPage layout', () => {
 
   it('renders no switcher for a reader, and goes straight to the child view', () => {
     renderAddPage({ isAdmin: false });
-    expect(screen.queryByRole('button', { name: /select library/i })).not.toBeInTheDocument();
+    // Anchoring to the placeholder text alone (`/select library/i`) would
+    // still pass if the switcher rendered WITH a selection — its trigger's
+    // accessible name is the selected option's label then, not the
+    // placeholder. `LibrarySwitcher` returns `null` outright for a reader
+    // (`AdminLibrarySwitcher` never even mounts), and its `Select` trigger is
+    // the only `role="button"` element `AddPage`'s own chrome ever renders
+    // here (`AddToggle` is `role="radiogroup"`/`"radio"`, and no header
+    // actions are published yet) — so asserting zero buttons catches a
+    // switcher rendered in ANY state, not just the unselected one.
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
     expect(screen.getByTestId('add-outlet-child')).toBeInTheDocument();
   });
 
@@ -212,6 +221,28 @@ describe('AddPage layout', () => {
     const { user } = renderAddPageAt('/add', { isAdmin: false });
     await user.click(screen.getByRole('radio', { name: 'Request' }));
     expect(await screen.findByTestId('add-request-view')).toBeInTheDocument();
+  });
+
+  // Pins `AddOutletContext`'s doc comment ("Children MUST clear on unmount")
+  // from the OTHER direction: `page/add/upload.tsx`'s
+  // `useEffect(() => { setHeaderActions(headerActions); return () =>
+  // setHeaderActions(undefined); }, ...)` cleanup is what this test catches
+  // if deleted. `AddUploadView` always publishes 3 actions (`buildUploadActions`
+  // returns them unconditionally, disabled or not — see `page/add/actions.ts`),
+  // so its "Actions" trigger appears as soon as it mounts; without the
+  // unmount cleanup, switching to Request would leave `AddPage`'s
+  // `headerActions` state stale and the (now-irrelevant) Upload trigger stuck
+  // on screen.
+  it("clears the Upload view's header actions when navigating to Request", async () => {
+    const { user } = renderAddPageAt('/add', { isAdmin: false });
+    expect(await screen.findByRole('button', { name: /^actions$/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Request' }));
+    await screen.findByTestId('add-request-view');
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /^actions$/i })).not.toBeInTheDocument();
+    });
   });
 
   it('renders header actions a child publishes through the outlet context', async () => {
