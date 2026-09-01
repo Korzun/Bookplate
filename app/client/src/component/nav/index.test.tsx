@@ -195,9 +195,9 @@ describe('Nav', () => {
       initialEntries: ['/add'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
-    const uploadLinks = screen.getAllByRole('link', { name: 'Add' });
-    expect(uploadLinks).toHaveLength(2);
-    expect(uploadLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
+    const addLinks = screen.getAllByRole('link', { name: 'Add' });
+    expect(addLinks).toHaveLength(2);
+    expect(addLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 
     const libraryLinks = screen.getAllByRole('link', { name: 'Library' });
     expect(libraryLinks.every((link) => link.getAttribute('aria-current') === null)).toBe(true);
