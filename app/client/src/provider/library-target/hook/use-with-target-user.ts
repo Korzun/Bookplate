@@ -47,6 +47,17 @@ export type WithTargetUser = {
    * `LibraryTargetResolveDocument` branch (target resolves to nothing).
    */
   username: string | undefined;
+  /**
+   * The target user's Relay global id, off the SAME matched row `username`
+   * comes from — `undefined` in exactly the cases `username` already is (no
+   * stored selection, or a stored selection matching no user in the list).
+   * `UserRequestList` (`page/add/request.tsx`) needs a User global id where
+   * the switcher only holds a Library global id; this hook already performs
+   * exactly that lookup for `username`, so this is one more field off the
+   * same row rather than a second hook repeating the `UserListDocument`
+   * read and match for one value (rejected in the spec as `useTargetUser()`).
+   */
+  userId?: string;
 };
 
 /**
@@ -85,11 +96,12 @@ export const useWithTargetUser = (): WithTargetUser => {
   const unmaskedUsers = useFragment(UserRowFragment, userRefs);
   const matchIndex = userRefs.findIndex((ref) => ref.library.id === targetLibraryId);
   const targetUsername = matchIndex === -1 ? undefined : unmaskedUsers[matchIndex].username;
+  const targetUserId = matchIndex === -1 ? undefined : unmaskedUsers[matchIndex].id;
   const ready = !loading;
 
-  // A fresh function object every time `isAdmin`/`targetUsername`/`ready`
-  // changes — NOT a mutate-in-place `Object.assign` on a stable `useCallback`
-  // reference. The concrete caller this was written for,
+  // A fresh function object every time `isAdmin`/`targetUsername`/
+  // `targetUserId`/`ready` changes — NOT a mutate-in-place `Object.assign` on
+  // a stable `useCallback` reference. The concrete caller this was written for,
   // `use-fetch-book-list.ts`, is DELETED (end-of-project doc sweep); it
   // depended on THIS reference to decide whether to retry a fetch it had
   // deferred while `ready` was false. The reasoning outlives it: a mutation
@@ -106,6 +118,10 @@ export const useWithTargetUser = (): WithTargetUser => {
     }) as WithTargetUser;
     withTargetUser.ready = ready;
     withTargetUser.username = targetUsername;
+    // The target user's Relay global id, off the SAME matched row `username`
+    // comes from. `UserRequestList` needs a User id where the switcher only
+    // holds a Library id, and this hook already performs exactly that lookup.
+    withTargetUser.userId = targetUserId;
     return withTargetUser;
-  }, [isAdmin, targetUsername, ready]);
+  }, [isAdmin, targetUsername, targetUserId, ready]);
 };
