@@ -8,7 +8,6 @@ import type { BookRequestCreateMutation } from '~/gql/graphql';
 import {
   BookRequestCreateDocument,
   BookRequestDeleteDocument,
-  MyBookRequestCountDocument,
   MyBookRequestListDocument,
 } from '~/graphql/book-request';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
@@ -26,14 +25,15 @@ type BookRequestCreatePayload = Extract<
 
 interface BookRequestsContentProps {
   /**
-   * This component's own PARENT (`BookRequests`) always passes `false` at its
-   * one production call site — `BookRequests` never mounts this component
-   * while `Card` is collapsed (`Card` does not render its children into the
-   * tree at all while collapsed). `skip` stays a required, EXPLICIT prop
-   * regardless — rather than defaulting to `false` internally — so this
-   * component's own tests can gate the query directly instead of depending on
-   * `Card`'s mount timing as an implicit contract. Mirrors
-   * `MyProgressContent`'s identical prop for the identical reason.
+   * This component's own PARENT (`AddRequestView`, `page/add/request`) always
+   * passes `false` at its one production call site — this view is not even
+   * mounted until the reader switches to it, which is the lazy-mount gate a
+   * now-deleted `/user` card's collapsible `Card` used to provide. `skip`
+   * stays a required, EXPLICIT prop regardless — rather than defaulting to
+   * `false` internally — so this component's own tests can gate the query
+   * directly instead of depending on a parent's mount timing as an implicit
+   * contract. Mirrors `MyProgressContent`'s identical prop for the identical
+   * reason.
    */
   skip: boolean;
 }
@@ -51,27 +51,26 @@ interface BookRequestsContentProps {
  * component's own empty-string default.
  *
  * **On success, the form clears and this component imperatively refetches
- * both `MyBookRequestListDocument` and `MyBookRequestCountDocument`** via
- * `client.refetchQueries({ include: [...] })`. Plain normalization is NOT
- * enough on its own: `BookRequestCreateDocument` re-selects the full
- * `BookRequestRowFragment` on the returned `bookRequest`, which would keep
- * an ALREADY-cached `BookRequest:<id>` entity in sync, but a brand-new
- * request has no existing connection edge for normalization to attach to —
- * Apollo cannot insert a new edge into an already-cached
- * `relayStylePagination` connection on its own. No hand-rolled
- * `cache.modify` insert either: the connection's cursor order (newest
- * `createdAt`, `id asc` tiebreaker) is not reproducible client-side, so
- * reproducing it optimistically risks a wrongly-ordered or duplicated
- * row for no real gain — creating a request is a rare, interactive action
- * over a small list, so a full refetch is cheap and simply correct.
- * `refetchQueries({ include: [...] })` only refetches ACTIVE queries (a
- * no-op if nothing is currently watching a given document), so this is
- * harmless to call even when, say, `MyBookRequestCountDocument`'s only
- * mount site (`BookRequests`) happens not to be on screen.
+ * `MyBookRequestListDocument`** via `client.refetchQueries({ include: [...] })`.
+ * Plain normalization is NOT enough on its own: `BookRequestCreateDocument`
+ * re-selects the full `BookRequestRowFragment` on the returned
+ * `bookRequest`, which would keep an ALREADY-cached `BookRequest:<id>`
+ * entity in sync, but a brand-new request has no existing connection edge
+ * for normalization to attach to — Apollo cannot insert a new edge into an
+ * already-cached `relayStylePagination` connection on its own. No
+ * hand-rolled `cache.modify` insert either: the connection's cursor order
+ * (newest `createdAt`, `id asc` tiebreaker) is not reproducible
+ * client-side, so reproducing it optimistically risks a wrongly-ordered or
+ * duplicated row for no real gain — creating a request is a rare,
+ * interactive action over a small list, so a full refetch is cheap and
+ * simply correct. (Task 6 of the add-page reorg dropped
+ * `MyBookRequestCountDocument` from this refetch — the reader's collapsed
+ * `/user` card whose subtitle it fed no longer exists, and no other query
+ * this component touches needs it.)
  *
  * **`onDelete` (passed to `BookRequestRow`) runs `BookRequestDeleteDocument`,
  * evicts the returned `deletedId` from the cache, and — on a genuine
- * deletion — refetches the same two documents.** `bookRequestDelete` is NOT
+ * deletion — refetches the same document.** `bookRequestDelete` is NOT
  * a union (no failure a client renders differently — `null` covers both
  * "gone" and "not yours") so there is no `unwrapResult` call here, just a
  * null check. `cache.evict` on a `relayStylePagination`-held connection (see
@@ -79,13 +78,10 @@ interface BookRequestsContentProps {
  * alongside this component) already makes `InMemoryCache` silently drop the
  * now-dangling edge the next time the connection is read — the same
  * mechanism `useDeleteProgress` documents for `Library.progress` — so the
- * list refetch here is belt-and-suspenders. The COUNT refetch is not:
- * `pendingBookRequestCount` is a server-computed `t.relationCount` with no
- * client-visible increment/decrement, so without this refetch a withdrawn
- * or cleared request would leave the card's subtitle stale. A REJECTED
- * `runDelete` (e.g. a dropped connection) is caught into `deleteError` state
- * and rendered above the list, the same house pattern `handleSubmit` above
- * uses for `formError`.
+ * list refetch here is belt-and-suspenders. A REJECTED `runDelete` (e.g. a
+ * dropped connection) is caught into `deleteError` state and rendered above
+ * the list, the same house pattern `handleSubmit` above uses for
+ * `formError`.
  *
  * **Loading, first-page error, and empty states follow `MyProgressContent`'s
  * three-branch shape exactly** — but only for the LIST region below the
@@ -165,7 +161,7 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
         setAuthor('');
         setNote('');
         await client.refetchQueries({
-          include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+          include: [MyBookRequestListDocument],
         });
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Failed to submit request');
@@ -190,7 +186,7 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
           });
           if (data?.bookRequestDelete?.deletedId) {
             await client.refetchQueries({
-              include: [MyBookRequestListDocument, MyBookRequestCountDocument],
+              include: [MyBookRequestListDocument],
             });
           }
         } catch (err) {

@@ -7,7 +7,6 @@ import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 
 import { CardDivider } from '../card-divider';
 import { UserProgressRow } from '../user-progress-row';
-import { UserRequestList } from '../user-request-list';
 import { useStyle } from './style';
 
 /**
@@ -117,15 +116,11 @@ interface UserRowContentProps {
  * is caught locally and surfaced through the same `error` field, with
  * `rows` left untouched (existing rows survive, offer a retry).
  *
- * **`UserRequestList` (Task 13) is mounted here, above the progress rows,
- * under its own `CardDivider` heading**, and receives the SAME `userId` and
- * `skip` this component itself received — it does not derive either from
- * this component's own query. It owns a SEPARATE document
- * (`UserRequestListDocument`, `~/graphql/book-request`) that pages
- * independently from `UserProgressListDocument`: see that document's own
- * doc comment for why it, too, is declared on the component rather than
- * `page/user-list`, and why it is a distinct document from this progress
- * list rather than one broader query.
+ * **No longer mounts `UserRequestList`** (Task 6 of the add-page reorg
+ * removed it from here). Every request list — reader's and admin's alike —
+ * now lives on `/add/request` (`page/add/request`, `UserRequestList` and
+ * `BookRequestsContent`); this row keeps only the pending-request COUNT
+ * (`UserRow`'s badge, off `UserRowFragment`), which now navigates there.
  */
 export const UserRowContent = ({ userId, username, skip }: UserRowContentProps) => {
   const styles = useStyle();
@@ -193,8 +188,6 @@ export const UserRowContent = ({ userId, username, skip }: UserRowContentProps) 
 
   return (
     <Fragment>
-      <CardDivider>Book requests</CardDivider>
-      <UserRequestList userId={userId} skip={skip} />
       <CardDivider>Progress</CardDivider>
       {progressContent}
     </Fragment>

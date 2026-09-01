@@ -82,18 +82,6 @@ export const BookRequestRowFragment = graphql(`
   }
 `);
 
-/** The count subtitle on the reader's collapsed card — cheap, no rows. */
-export const MyBookRequestCountDocument = graphql(`
-  query MyBookRequestCount {
-    viewer {
-      user {
-        id
-        pendingBookRequestCount
-      }
-    }
-  }
-`);
-
 /**
  * The reader's own list. `first: 20` is a LITERAL, not a variable: the cost
  * model prices a variable page size at the field's `maxSize` (100), not the
