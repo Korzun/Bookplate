@@ -1,5 +1,7 @@
 import { BookRequestsContent } from '~/component/book-requests-content';
+import { UserRequestList } from '~/component/user-request-list';
 import { useIsAdmin } from '~/provider/auth';
+import { useWithTargetUser } from '~/provider/library-target';
 
 /**
  * The Request view. Branches on `isAdmin`, and each branch mounts a component
@@ -14,13 +16,32 @@ import { useIsAdmin } from '~/provider/auth';
  * The `data-testid="add-request-view"` wrapper exists for the toggle's own
  * navigation test (`page/add/index.test.tsx`): it needs a mount marker that
  * does not depend on `BookRequestsContent`'s query settling.
+ *
+ * The admin branch mounts `UserRequestList` scoped to whichever library the
+ * (persistent, page-level) switcher currently targets — `useWithTargetUser`
+ * resolves the switcher's Library global id to the matching User global id
+ * `UserRequestList` needs, off the same `UserListDocument` row it already
+ * matches to resolve `username` (see that hook's own doc comment). No wrapper
+ * `data-testid` here: `UserRequestList` renders its own rows/empty state,
+ * which is marker enough once mounted.
  */
 export const AddRequestView = () => {
   const [isAdmin] = useIsAdmin();
-  if (isAdmin) return null; // the admin branch lands in the next task
-  return (
-    <div data-testid="add-request-view">
-      <BookRequestsContent skip={false} />
-    </div>
-  );
+  const withTargetUser = useWithTargetUser();
+
+  if (!isAdmin) {
+    return (
+      <div data-testid="add-request-view">
+        <BookRequestsContent skip={false} />
+      </div>
+    );
+  }
+
+  // `AddPage`'s admin gate means an admin only reaches this view with a
+  // library selected, so `userId` is resolved in practice. The guard below is
+  // for the frame between a switcher change and the user list resolving.
+  const userId = withTargetUser.userId;
+  if (userId === undefined) return null;
+
+  return <UserRequestList userId={userId} skip={false} />;
 };
