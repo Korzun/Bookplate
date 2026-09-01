@@ -1,19 +1,54 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { useMemo, useState } from 'react';
+import { Outlet, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Page } from '~/component';
+import { type PageActionItem } from '~/control';
 import type {
   BookResolvePendingFixMutation,
   BookResolvePendingFixMutationVariables,
-  UserListQuery,
 } from '~/gql/graphql';
 import { BookResolvePendingFixDocument } from '~/graphql/upload';
-import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
 
-import { UploadPage } from './index';
+import { type AddOutletContext } from './index';
+import { AddUploadView } from './upload';
+
+/**
+ * A minimal stand-in for `AddPage` (`page/add/index.tsx`) — just the two
+ * things `AddUploadView` actually depends on: the `<Page>` wrapper that
+ * renders the header-actions menu it publishes into, and an `<Outlet>`
+ * carrying `AddOutletContext`. The real layout's admin gate/`LibrarySwitcher`
+ * are irrelevant to these tests (they test the Upload view's own queue
+ * mechanics), so this harness does not reproduce them — that coverage lives
+ * in `page/add/index.test.tsx` instead.
+ */
+function Harness() {
+  const [headerActions, setHeaderActions] = useState<PageActionItem[] | undefined>(undefined);
+  const context: AddOutletContext = useMemo(() => ({ setHeaderActions }), []);
+  return (
+    <Page headerActions={headerActions} actionsLabel="Actions">
+      <Outlet context={context} />
+    </Page>
+  );
+}
+
+function renderAddUploadView(options?: Parameters<typeof renderWithApollo>[1]) {
+  return renderWithApollo(
+    <UploadProvider>
+      <Routes>
+        <Route element={<Harness />}>
+          <Route index element={<AddUploadView />} />
+        </Route>
+      </Routes>
+    </UploadProvider>,
+    options
+  );
+}
 
 // ── XHR mock (same shape as use-upload-queue.test.tsx) ────────────────────────
 
@@ -120,19 +155,15 @@ afterEach(() => {
 // An item that uploads with no server auto-fixes must never be announced.
 // Previously it was never added to `announcedRef`, so a later *manual* Accept
 // (which moves a fix into appliedFixes) tripped the "Auto-fixed" effect and
-// fired a misleading toast. This mounts the real UploadPage wrapped in the
+// fired a misleading toast. This mounts the real AddUploadView wrapped in the
 // (lifted) UploadProvider — everything else uses its context's default
 // no-op value — and drives an upload + manual apply end-to-end.
 
-describe('UploadPage — manual apply does not trigger the auto-fix toast', () => {
+describe('AddUploadView — manual apply does not trigger the auto-fix toast', () => {
   it('shows no "Auto-fixed" toast for a manually-applied proposal', async () => {
     const fix = makeFix();
 
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>
-    );
+    renderAddUploadView();
 
     // Let the initial config/scan-status fetches settle.
     await act(async () => {
@@ -178,13 +209,9 @@ describe('UploadPage — manual apply does not trigger the auto-fix toast', () =
   });
 });
 
-describe('UploadPage — Clear finished', () => {
+describe('AddUploadView — Clear finished', () => {
   it('is disabled with an empty queue and clears a failed row when chosen', async () => {
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>
-    );
+    renderAddUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -227,11 +254,7 @@ describe('UploadPage — Clear finished', () => {
   });
 
   it('clears only the failed row, leaving an in-progress upload untouched', async () => {
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>
-    );
+    renderAddUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -282,15 +305,11 @@ describe('UploadPage — Clear finished', () => {
   });
 });
 
-describe('UploadPage — Accept all / Reject all', () => {
+describe('AddUploadView — Accept all / Reject all', () => {
   it('applies every pending proposal across the queue via the Actions menu', async () => {
     const fix = makeFix();
 
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>
-    );
+    renderAddUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -354,12 +373,7 @@ describe('UploadPage — Accept all / Reject all', () => {
     const fix = makeFix();
     let acceptCalls = 0;
 
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>,
-      { mocks: [acceptAllMock('GID-1', () => acceptCalls++)] }
-    );
+    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => acceptCalls++)] });
     await act(async () => {
       await Promise.resolve();
     });
@@ -431,12 +445,7 @@ describe('UploadPage — Accept all / Reject all', () => {
     // (see e.g. `page/book/index.test.tsx`'s "disables Regen chapters while a
     // regen is still in flight"). The disabling itself happens synchronously on click
     // (React state, not a network round trip), so no manual gate is needed.
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>,
-      { mocks: [acceptAllMock('GID-1', () => {}, 20)] }
-    );
+    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => {}, 20)] });
     await act(async () => {
       await Promise.resolve();
     });
@@ -500,77 +509,7 @@ describe('UploadPage — Accept all / Reject all', () => {
   });
 });
 
-// ── The `UserListDocument` admin gate ────────────────────────────────────────
-//
-// `UploadPage` reads `UserListDocument` behind `skip: !isAdmin`, and only
-// ever uses its LENGTH (the admin-only "No users registered" empty state).
-// Nothing a non-admin sees changes if that gate regresses — the request just
-// goes out, the server answers `users: null` + `FORBIDDEN` (`Viewer.users` is
-// admin-gated), and `errorPolicy: 'none'` discards the whole result. So the
-// gate is pinned by a REQUEST COUNTER rather than by rendered output.
-//
-// `request.variables` as a FUNCTION is MockLink's variable-matcher form: it
-// runs SYNCHRONOUSLY inside `MockLink.request()`'s `mocks.findIndex(...)`
-// (`@apollo/client/testing/core/mocking/mockLink.js`), in the same tick the
-// operation is issued, so the count is already non-zero before the first
-// `await` below and the assertion fails CLOSED. Counting on delivery (a
-// `result` function) would instead race MockLink's random 20-50ms
-// `realisticDelay`. A "queue no mock and let MockLink complain" test would
-// not work at all here: MockLink does not throw on an unmatched request, it
-// `console.warn`s and returns an asynchronously-erroring observable.
-const userListRequests = { count: 0 };
-
-const countingUserListMock = (): MockedResponse<UserListQuery> => ({
-  request: {
-    query: UserListDocument,
-    variables: function userListVariables() {
-      userListRequests.count += 1;
-      return true;
-    },
-  },
-  maxUsageCount: Infinity,
-  result: {
-    data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } },
-  },
-});
-
-describe('UploadPage — UserList admin gate', () => {
-  beforeEach(() => {
-    userListRequests.count = 0;
-  });
-
-  // Seen-to-fail: `skip: !isAdmin` -> `skip: false` in `./index.tsx` makes
-  // this 1.
-  it('does not issue the UserList query for a non-admin viewer', async () => {
-    // The mock IS queued (and the viewer defaults to non-admin). Queuing it
-    // is load-bearing: `MockLink.getMockedResponses()` keys by query, so with
-    // an empty `mocks` array the matcher function would never be consulted
-    // and the counter would read 0 even for a query that DID fire — a
-    // fail-open test.
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>,
-      { mocks: [countingUserListMock()] }
-    );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(userListRequests.count).toBe(0);
-  });
-
-  // The other side of the same gate, so the counter above is known to be
-  // wired to a query that CAN fire.
-  it('issues the UserList query once for an admin viewer', async () => {
-    renderWithApollo(
-      <UploadProvider>
-        <UploadPage />
-      </UploadProvider>,
-      { mocks: [countingUserListMock()], user: { username: 'admin', isAdmin: true } }
-    );
-
-    await waitFor(() => expect(userListRequests.count).toBe(1));
-  });
-});
+// The `UserListDocument` admin-gate coverage that used to live here moved to
+// `page/add/index.test.tsx`'s "AddPage — UserList admin gate" describe block:
+// the gate itself (`skip: !isAdmin`) moved out of the Upload view verbatim
+// into `AddPage`, and `AddUploadView` no longer reads that document at all.
