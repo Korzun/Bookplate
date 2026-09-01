@@ -65,10 +65,12 @@ export const Nav = () => {
       active: pathname.startsWith(path.library()),
     },
     {
-      to: path.upload(),
-      label: 'Upload',
+      to: path.add(),
+      label: 'Add',
       Icon: UploadIcon,
-      active: pathname === path.upload(),
+      // `startsWith`, not `===`: the tab must stay active on the `/add/request`
+      // child route Task 3 adds. Same reason the Library item uses it.
+      active: pathname.startsWith(path.add()),
       badge: uploadBadge,
     },
     ...(isAdmin

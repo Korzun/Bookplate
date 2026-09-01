@@ -10,7 +10,7 @@ import { NavMobile } from './index';
 const items = (activeLabel: string | null): NavItem[] =>
   [
     { to: '/library', label: 'Library', Icon: BookIcon },
-    { to: '/upload', label: 'Upload', Icon: UploadIcon },
+    { to: '/add', label: 'Add', Icon: UploadIcon },
     { to: '/user', label: 'Settings', Icon: SettingsIcon },
   ].map((item) => ({ ...item, active: item.label === activeLabel }));
 
@@ -38,13 +38,13 @@ describe('NavMobile', () => {
   it('renders a link for every item', () => {
     renderWithProviders(<NavMobile items={items('Library')} />);
     expect(linkFor('Library')).toHaveAttribute('href', '/library');
-    expect(linkFor('Upload')).toHaveAttribute('href', '/upload');
+    expect(linkFor('Add')).toHaveAttribute('href', '/add');
     expect(linkFor('Settings')).toHaveAttribute('href', '/user');
   });
 
   it('marks only the active item with aria-current', () => {
-    renderWithProviders(<NavMobile items={items('Upload')} />);
-    expect(linkFor('Upload')).toHaveAttribute('aria-current', 'page');
+    renderWithProviders(<NavMobile items={items('Add')} />);
+    expect(linkFor('Add')).toHaveAttribute('aria-current', 'page');
     expect(linkFor('Library')).not.toHaveAttribute('aria-current');
     expect(linkFor('Settings')).not.toHaveAttribute('aria-current');
   });
