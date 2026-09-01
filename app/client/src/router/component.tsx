@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import {
   AddPage,
+  AddRequestView,
   AddUploadView,
   BookEditPage,
   BookPage,
@@ -36,6 +37,7 @@ export const AppRouter = () => {
             <Route path={path.library()} element={<LibraryPage />} />
             <Route path={path.add()} element={<AddPage />}>
               <Route index element={<AddUploadView />} />
+              <Route path={path.ADD_REQUEST_SEGMENT} element={<AddRequestView />} />
             </Route>
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />

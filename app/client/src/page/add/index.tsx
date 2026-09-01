@@ -11,6 +11,7 @@ import { useLibraryTarget } from '~/provider/library-target';
 import { path } from '~/router';
 
 import { useStyle } from './style';
+import { AddToggle } from './toggle';
 
 export type AddOutletContext = {
   /** Set by a child view to publish its page header actions; pass `undefined`
@@ -87,6 +88,7 @@ export const AddPage = () => {
   return (
     <Page headerActions={headerActions} actionsLabel="Actions">
       <LibrarySwitcher />
+      <AddToggle />
       <Outlet context={context} />
     </Page>
   );

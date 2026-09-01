@@ -1,5 +1,6 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { useEffect } from 'react';
 import { Route, Routes, useOutletContext } from 'react-router';
@@ -9,9 +10,13 @@ import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
 import type { UserListQuery } from '~/gql/graphql';
 import { UserListDocument } from '~/graphql/user';
+import { UploadProvider } from '~/provider/upload';
+import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
 import { AddPage, type AddOutletContext } from './index';
+import { AddRequestView } from './request';
+import { AddUploadView } from './upload';
 
 // ── auth / library-target mocks ─────────────────────────────────────────────
 //
@@ -29,6 +34,16 @@ vi.mock('~/provider/auth', () => ({
 
 vi.mock('~/provider/library-target', () => ({
   useLibraryTarget: () => [targetLibraryIdValue, vi.fn()],
+  // `useCurrentLibraryId`/`useWithTargetUser` are only reached by
+  // `renderAddPageAt`'s tests below, which mount the REAL `AddUploadView` —
+  // its upload queue engine calls both (never `useLibraryTarget` directly,
+  // see `useCurrentLibraryId`'s own doc comment). `libraryId: undefined` is a
+  // safe stub: the pending-fixes query it gates is `skip`ped outright when
+  // `libraryId` is `undefined`. `useWithTargetUser`'s stub mirrors its real
+  // no-op behaviour for a non-admin (every test here uses `isAdmin: false`).
+  useCurrentLibraryId: () => ({ libraryId: targetLibraryIdValue, loading: false }),
+  useWithTargetUser: () =>
+    Object.assign((url: string) => url, { ready: true, username: undefined }),
 }));
 
 const DEFAULT_LIBRARY_ID = 'TGliOmJvYg==';
@@ -113,11 +128,43 @@ function renderAddPageWithChild(
   );
 }
 
+// Derived from the public `path` builders rather than hardcoded — the child
+// route's own path segment stays in step with `path.addRequest()` without
+// reaching into `router/path-internal.ts` (kept internal to `router/`).
+const ADD_REQUEST_ROUTE_SEGMENT = path.addRequest().slice(path.add().length + 1);
+
+/**
+ * Mounts the REAL `AddPage` + `AddUploadView`/`AddRequestView` route tree
+ * (mirrors `router/component.tsx`'s own nesting) at a given pathname, to
+ * exercise `AddToggle`'s pathname-derived value and its navigation. Wrapped
+ * in `UploadProvider` because the real `AddUploadView` (unlike the
+ * `add-outlet-child` stand-in the other tests here use) depends on it.
+ */
+function renderAddPageAt(initialPath: string, { isAdmin = false }: { isAdmin?: boolean } = {}) {
+  isAdminValue = isAdmin;
+  targetLibraryIdValue = undefined;
+  const rendered = renderWithApollo(
+    <UploadProvider>
+      <Routes>
+        <Route path={path.add()} element={<AddPage />}>
+          <Route index element={<AddUploadView />} />
+          <Route path={ADD_REQUEST_ROUTE_SEGMENT} element={<AddRequestView />} />
+        </Route>
+      </Routes>
+    </UploadProvider>,
+    { initialEntries: [initialPath] }
+  );
+  return { ...rendered, user: userEvent.setup() };
+}
+
 describe('AddPage layout', () => {
   it('shows the library switcher and no toggle for an admin with no library selected', async () => {
     renderAddPage({ isAdmin: true, targetLibraryId: undefined });
     expect(await screen.findByText(/select a library/i)).toBeInTheDocument();
-    // `AddToggle` (Task 3) does not exist yet — nothing renders a radiogroup.
+    // `AddToggle` renders `SegmentedControl`, whose root has a real ARIA
+    // `radiogroup` role (`control/segmented-control/index.tsx`) — this early
+    // return skips both the toggle and the `<Outlet />`, so nothing with
+    // that role should be on screen while no library is selected.
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
@@ -145,6 +192,26 @@ describe('AddPage layout', () => {
     renderAddPage({ isAdmin: false });
     expect(screen.queryByRole('button', { name: /select library/i })).not.toBeInTheDocument();
     expect(screen.getByTestId('add-outlet-child')).toBeInTheDocument();
+  });
+
+  // `AddToggle` derives its checked option from the pathname, not from local
+  // state — these three pin that: the two `/add` vs `/add/request` renders,
+  // and that clicking actually navigates rather than just flipping a local
+  // flag.
+  it('renders the toggle with Upload selected on /add', () => {
+    renderAddPageAt('/add', { isAdmin: false });
+    expect(screen.getByRole('radio', { name: 'Upload' })).toBeChecked();
+  });
+
+  it('renders the toggle with Request selected on /add/request', () => {
+    renderAddPageAt('/add/request', { isAdmin: false });
+    expect(screen.getByRole('radio', { name: 'Request' })).toBeChecked();
+  });
+
+  it('navigates when the toggle changes', async () => {
+    const { user } = renderAddPageAt('/add', { isAdmin: false });
+    await user.click(screen.getByRole('radio', { name: 'Request' }));
+    expect(await screen.findByTestId('add-request-view')).toBeInTheDocument();
   });
 
   it('renders header actions a child publishes through the outlet context', async () => {
