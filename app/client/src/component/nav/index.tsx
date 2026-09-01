@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react';
 import { useLocation } from 'react-router';
 
+import { UserRowFragment } from '~/component/user-row';
 import { useFragment } from '~/gql';
 import { LibraryPendingFixesDocument, PendingFixRowFragment } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import { BookIcon, DeviceIcon, SettingsIcon, UploadIcon, UsersIcon } from '~/icon';
 import { useIsAdmin } from '~/provider/auth';
 import { useCurrentLibraryId } from '~/provider/library-target';
@@ -55,7 +57,29 @@ export const Nav = () => {
   // answer it. That is why the badge keeps BOTH sources.
   const { items: queueItems } = useUploadQueue();
   const active = queueItems.some((i) => i.status === 'queued' || i.status === 'uploading');
-  const uploadBadge: NavItem['badge'] = count > 0 ? count : active ? 'dot' : undefined;
+
+  // Admin only. `useWithTargetUser` already has this query in flight app-wide
+  // for admins (the upload provider that calls it is mounted above the
+  // router), so Apollo serves this from the same normalized result rather
+  // than issuing a second request.
+  //
+  // ANY reader, not just the selected library: the switcher's per-user
+  // counts are only visible once you are already on /add, so a
+  // selected-library dot would leave an admin on /library with no signal
+  // that someone is waiting.
+  //
+  // A reader's OWN pending request sets nothing — it is a wait, not an
+  // action. The read itself is gated `skip: !isAdmin` for that reason.
+  const { data: userData } = useQuery(UserListDocument, { skip: !isAdmin });
+  const usersForRequests = useFragment(UserRowFragment, userData?.viewer.users ?? []);
+  const anyPendingRequests = usersForRequests.some((u) => u.pendingBookRequestCount > 0);
+
+  // The NUMBER still means "fixes awaiting a decision" and nothing else —
+  // only the dot arm gains a second trigger. Folding requests into `count`
+  // was tried and rejected: a conflated count tells a reader neither of its
+  // two populations.
+  const uploadBadge: NavItem['badge'] =
+    count > 0 ? count : active || anyPendingRequests ? 'dot' : undefined;
 
   const items: NavItem[] = [
     {

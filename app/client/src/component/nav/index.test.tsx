@@ -1,12 +1,20 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import type { LibraryPendingFixesQuery, LibraryPendingFixesQueryVariables } from '~/gql/graphql';
+import { UserRowFragment } from '~/component/user-row';
+import { makeFragmentData } from '~/gql';
+import type {
+  LibraryPendingFixesQuery,
+  LibraryPendingFixesQueryVariables,
+  UserListQuery,
+} from '~/gql/graphql';
+import { LibraryTargetResolveDocument } from '~/graphql/library';
 import { LibraryPendingFixesDocument } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
-import { useCurrentLibraryId } from '~/provider/library-target';
+import { LibraryTargetProvider, useCurrentLibraryId } from '~/provider/library-target';
 import { UploadContext } from '~/provider/upload/context';
 import type { UploadItem, UseUploadQueue } from '~/provider/upload/hook/use-upload-queue';
 import { renderWithApollo } from '~/test-utils';
@@ -103,6 +111,35 @@ const pendingFixesMock = (
 });
 
 const emptyPendingFixesMock: PendingFixesMock = pendingFixesMock([]);
+
+/** A `UserListDocument` row carrying a given pending-request count — mirrors
+ * `component/library-switcher/index.test.tsx`'s own `user`/`userListMock`
+ * builders, since the nav's request-dot read shares that document. */
+const userRow = (pendingBookRequestCount: number) => ({
+  __typename: 'User' as const,
+  ...makeFragmentData(
+    {
+      __typename: 'User' as const,
+      id: 'u1',
+      username: 'alice',
+      progressCount: 0,
+      pendingBookRequestCount,
+    },
+    UserRowFragment
+  ),
+  library: { __typename: 'Library' as const, id: 'lib-alice' },
+});
+
+const userListMock = (rows: ReturnType<typeof userRow>[]): MockedResponse<UserListQuery> => ({
+  request: { query: UserListDocument },
+  result: {
+    data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: rows } },
+  },
+});
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 const queueValue = (items: UploadItem[]): UseUploadQueue => ({
   items,
@@ -271,5 +308,85 @@ describe('Nav', () => {
 
     expect(requests).toBe(0);
     expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
+  });
+
+  // ── The admin request dot (Task 7) ──────────────────────────────────────
+  //
+  // Only the DOT arm of the badge gains a second trigger — the NUMBER still
+  // means "fixes awaiting a decision" and no request ever contributes to it.
+  // An earlier draft folded requests into the number and was rejected: a
+  // conflated count tells a reader neither of its two populations. Three of
+  // the four tests below exist specifically to pin that.
+
+  it('shows a dot for an admin when any reader has a pending request', async () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true), userListMock([userRow(2)])],
+    });
+
+    // No `LibraryTargetProvider` wraps this render, so `useCurrentLibraryId`
+    // resolves no target for the admin and the pending-fix read (`count`)
+    // skips entirely — this dot is the requests trigger alone.
+    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+  });
+
+  it('never folds requests into the badge number', async () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true), userListMock([userRow(3)])],
+    });
+
+    await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+    expect(screen.queryByText('3')).not.toBeInTheDocument();
+  });
+
+  it('keeps the number meaning pending fixes when both exist', async () => {
+    // Gives the admin a resolved library target so `count` (pending fixes)
+    // is non-zero alongside a non-zero request count — the number must win.
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/library'],
+        mocks: [
+          viewerBootstrapMock(true),
+          userListMock([userRow(3)]),
+          // Confirms the target resolves to a real Library so `useCurrentLibraryId`'s
+          // self-heal effect does not clear it out from under this test.
+          {
+            request: {
+              query: LibraryTargetResolveDocument,
+              variables: { libraryId: LIBRARY_ID },
+            },
+            result: {
+              data: { __typename: 'Query', node: { __typename: 'Library', id: LIBRARY_ID } },
+            },
+          },
+          pendingFixesMock([proposalRow('FIX-1'), proposalRow('FIX-2')]),
+        ],
+      }
+    );
+
+    await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(2));
+    expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
+  });
+
+  it('shows no request dot for a reader with their own pending request', () => {
+    // `Nav` never reads request data for a non-admin (`skip: !isAdmin`) — a
+    // reader's own pending request is a wait, not an action, so nothing here
+    // can set the dot for one.
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+
+    expect(screen.queryByTestId('nav-badge-dot')).not.toBeInTheDocument();
   });
 });
