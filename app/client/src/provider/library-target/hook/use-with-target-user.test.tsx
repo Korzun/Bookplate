@@ -209,4 +209,30 @@ describe('useWithTargetUser', () => {
     await waitFor(() => expect(result.current?.ready).toBe(true));
     expect(result.current?.('/api/books')).toBe('/api/books');
   });
+
+  // task-4 brief's fixture ids ('TGliOmFsaWNl', 'VXNlcjphbGljZQ==' — the real
+  // Relay global ids `Lib:alice`/`User:alice` would base64-decode to) are
+  // swapped here for this file's own existing 'LIB-ALICE'/'u1' convention —
+  // this hook matches `library.id` opaquely (see its own doc comment: no
+  // decoding), so any string id exercises the same match, and reusing the
+  // file's ids keeps this test consistent with every other one above.
+  it('exposes the target user global id alongside the username', async () => {
+    localStorage.setItem(STORAGE_KEY, 'LIB-ALICE');
+    const result = renderWithTargetUser(true, [
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
+    ]);
+
+    await waitFor(() => expect(result.current?.ready).toBe(true));
+    expect(result.current?.username).toBe('alice');
+    expect(result.current?.userId).toBe('u1');
+  });
+
+  it('leaves userId undefined when no library is targeted', async () => {
+    const result = renderWithTargetUser(true, [
+      userListMock([user({ id: 'u1', username: 'alice', libraryId: 'LIB-ALICE' })]),
+    ]);
+
+    await waitFor(() => expect(result.current?.ready).toBe(true));
+    expect(result.current?.userId).toBeUndefined();
+  });
 });
