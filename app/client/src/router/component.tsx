@@ -33,7 +33,7 @@ export const AppRouter = () => {
           {/* Nav-bearing routes share one persistent <Nav /> via NavLayout. */}
           <Route element={<NavLayout />}>
             <Route path={path.library()} element={<LibraryPage />} />
-            <Route path={path.upload()} element={<UploadPage />} />
+            <Route path={path.add()} element={<UploadPage />} />
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />
