@@ -39,6 +39,7 @@ const AdminLibrarySwitcher = () => {
       userRefs.map((ref, index) => ({
         username: unmaskedUsers[index].username,
         library: { id: ref.library.id },
+        pendingBookRequestCount: unmaskedUsers[index].pendingBookRequestCount,
       })),
     [userRefs, unmaskedUsers]
   );
@@ -58,7 +59,19 @@ const AdminLibrarySwitcher = () => {
   }, [loading, hasError, userList, targetLibraryId, setTargetLibraryId]);
 
   const options = useMemo(
-    () => userList.map((user) => ({ label: user.username, value: user.library.id })),
+    () =>
+      userList.map((user) => ({
+        label: user.username,
+        value: user.library.id,
+        // `description`, not an appended label: the option's NAME stays the
+        // username, and the count reads as secondary. A user with nothing
+        // pending gets no description, so the switcher looks exactly as it
+        // did for a library with nothing waiting.
+        description:
+          user.pendingBookRequestCount > 0
+            ? `${user.pendingBookRequestCount} request${user.pendingBookRequestCount === 1 ? '' : 's'}`
+            : undefined,
+      })),
     [userList]
   );
 
