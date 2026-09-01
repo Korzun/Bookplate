@@ -15,7 +15,6 @@
   "dependencies": {
     "@apollo/client": "^4.2.9",
     "classnames": "^2.5.1",
-    "graphql-sse": "^2.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-jss": "^10.10.0",

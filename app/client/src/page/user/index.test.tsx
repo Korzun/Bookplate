@@ -44,7 +44,11 @@ describe('UserPage', () => {
   it('renders the admin branch without the reader-only cards', () => {
     renderWithApollo(<UserPage />, { user: { username: 'admin', isAdmin: true } });
 
-    expect(screen.getByText('ScanLibrarySetting')).toBeInTheDocument();
+    // `ThemeSetting` is the positive control — without it this test would pass
+    // against a page that rendered nothing at all. It replaced
+    // `ScanLibrarySetting` here when main removed the library scan from the
+    // interface; the admin branch renders only the theme setting and Log out.
+    expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });

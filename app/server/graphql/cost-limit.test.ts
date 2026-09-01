@@ -293,11 +293,11 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     expect(complexity).toBeGreaterThan(3823); // still clears the legit complexity max
   });
 
-  // Tight, seen-to-fail-verified pins for the 4 remaining registered
-  // coordinates — NOT loose `>N` thresholds. `Viewer.devices`'s and
-  // `ScanResult.imported`'s fixtures also nest `Series.books` (a connection
-  // priced independently of I-4), so a loose ">10"-style assertion would
-  // pass whether or not THIS field's own multiplier fired.
+  // Tight, seen-to-fail-verified pins for the 3 remaining registered
+  // coordinates — NOT loose `>N` thresholds. `Viewer.devices`'s fixture also
+  // nests `Series.books` (a connection priced independently of I-4), so a
+  // loose ">10"-style assertion would pass whether or not THIS field's own
+  // multiplier fired.
   //
   // Round-3, M-8: `Device.enabledUsers` now shares `INSTANCE_USER_MULTIPLIER`
   // (50) with `Viewer.users`, not its own `INSTANCE_DEVICE_MULTIPLIER`
@@ -409,13 +409,6 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     expect(breadth).toBeLessThanOrEqual(41);
     expect(complexity).toBeLessThan(3823);
     expect({ breadth, complexity }).toEqual({ breadth: 40, complexity: 724 });
-  });
-
-  it('ScanResult.imported -> series.books is priced — reachable via Library.scanStatus.result', () => {
-    const { breadth, complexity } = costOf(
-      '{ viewer { library { scanStatus { result { imported { series { books(first: 100) { edges { node { id } } } } } } } } } }'
-    );
-    expect({ breadth, complexity }).toEqual({ breadth: 10, complexity: 30205 });
   });
 });
 

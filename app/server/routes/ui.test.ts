@@ -100,7 +100,6 @@ import {
   validateEpubReport,
   EpubValidationError,
 } from '../services/epub-validator';
-import { ScanJobRegistry } from '../services/scan-job-registry';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { detectMetadataIssues } from '../utils/metadata-issues';
 const mockAssertValid = assertValidEpub as MockedFunction<typeof assertValidEpub>;
@@ -133,7 +132,6 @@ let aliceId: string;
 // alice (her own library, no ?user= needed). Admin sessions must target a
 // library with ?user=<username>.
 let aliceOwner: Owner;
-let scanJobRegistry: ScanJobRegistry;
 
 const jwtSecret = crypto.randomBytes(32);
 
@@ -319,7 +317,6 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
   const contextValue: Context = {
     viewer,
     prisma,
-    scanJobs: scanJobRegistry,
     thumbnails: mockThumbnailQueue,
     replaceStaging,
     editionsRoot,
@@ -366,7 +363,6 @@ beforeEach(async () => {
   aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   aliceOwner = { userId: aliceId, username: 'alice' };
 
-  scanJobRegistry = new ScanJobRegistry();
   app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));

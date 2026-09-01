@@ -11,7 +11,7 @@ import introspection from '~/gql/possible-types';
  * Only two types need explicit key config (the root singletons below);
  * everything else — including `Progress`, keyed by its computed global ID —
  * normalizes on `id` with zero configuration. `Book`/`Library`/`Series`/`User`
- * are Nodes; `Device`/`PendingFix`/`Validation`/`ScanStatus`/`Progress` carry
+ * are Nodes; `Device`/`PendingFix`/`Validation`/`Progress` carry
  * a scalar `id` without implementing Node.
  *
  * NOTE on pagination: `Library.entries` is FORWARD-ONLY server-side — the

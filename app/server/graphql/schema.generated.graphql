@@ -469,7 +469,6 @@ type Library implements Node {
   The reading positions this library owner has synced, newest first. Paginates in both directions.
   """
   progress(after: String, before: String, first: Int, last: Int): LibraryProgressConnection!
-  scanStatus: ScanStatus
   searchSuggestions(filter: SearchSuggestionsFilter, query: String!): [SuggestionGroup!]!
   series: [Series!]!
   seriesByName(name: String!): Series
@@ -519,17 +518,6 @@ type LibraryProgressConnectionEdge {
   cursor: String!
   node: Progress!
 }
-
-input LibraryScanInput {
-  userId: ID!
-}
-
-type LibraryScanPayload {
-  library: Library!
-  scanStatus: ScanStatus!
-}
-
-union LibraryScanResult = LibraryScanPayload | ScanAlreadyRunningError
 
 """No lineage entry links this document id to this book."""
 type LineageEntryNotFoundError implements UserError {
@@ -678,11 +666,6 @@ type Mutation {
   deviceUpdate(input: DeviceUpdateInput!): DeviceUpdateResult
 
   """
-  Starts a library scan in the background. Resolves to null when the resolved owner does not exist.
-  """
-  libraryScan(input: LibraryScanInput!): LibraryScanResult
-
-  """
   Clears one stored reading position. Resolves to null when the user has no stored position for that document.
   """
   progressDelete(input: ProgressDeleteInput!): ProgressDeleteResult
@@ -813,54 +796,6 @@ type Query {
   viewer: Viewer!
 }
 
-"""
-A scan was already running for this library when this one was requested.
-"""
-type ScanAlreadyRunningError implements UserError {
-  message: String!
-  scanStatus: ScanStatus!
-}
-
-enum ScanPhase {
-  IMPORTING
-  PRUNING
-}
-
-"""The outcome of a completed scan."""
-type ScanResult {
-  """The books newly added to the library by this scan."""
-  imported: [Book!]!
-
-  """
-  The filenames this scan imported, as they were named on disk before the scan renamed each one to its canonical `<id>.epub` form. A name here may therefore no longer exist on disk, which is why this list is not necessarily 1:1 with `imported`'s ids.
-  """
-  importedFilenames: [String!]!
-
-  """
-  The `<id>.epub` names of DB rows pruned because their file was missing.
-  """
-  removed: [String!]!
-}
-
-enum ScanState {
-  COMPLETED
-  FAILED
-  RUNNING
-}
-
-"""The state of a library scan — in progress, completed, or failed."""
-type ScanStatus {
-  currentFile: String
-  error: String
-  id: ID!
-  phase: ScanPhase!
-  processed: Int!
-  result: ScanResult
-  startedAt: DateTime!
-  state: ScanState!
-  total: Int!
-}
-
 input SearchSuggestionsFilter {
   activeSubjects: [String!]
   author: String
@@ -900,13 +835,6 @@ The given staged-upload reference (stagedUploadId or stagedCoverId) does not res
 """
 type StagedUploadNotFoundError implements UserError {
   message: String!
-}
-
-type Subscription {
-  """
-  Streams live progress for a running or just-finished library scan, started via the `libraryScan` mutation. `Library.scanStatus` is the reconnect/current-state read for a client joining mid-scan.
-  """
-  scanProgress(libraryId: ID!): ScanStatus!
 }
 
 type Suggestion {

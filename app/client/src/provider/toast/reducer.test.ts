@@ -7,12 +7,12 @@ describe('toastReducer', () => {
     const state = toastReducer([], {
       type: 'add',
       id: 1,
-      message: 'Scanning library…',
+      message: 'Uploading…',
       toastType: 'info',
       maxToasts: 3,
     });
     expect(state).toHaveLength(1);
-    expect(state[0]).toMatchObject({ id: 1, message: 'Scanning library…', type: 'info' });
+    expect(state[0]).toMatchObject({ id: 1, message: 'Uploading…', type: 'info' });
   });
 
   it('preserves success and error types', () => {

@@ -2,7 +2,6 @@ import type { PrismaClient } from '@prisma/client';
 
 import { verifyAccessToken } from '../services/jwt';
 import type { ReplaceStaging } from '../services/replace-staging';
-import type { ScanJobRegistry } from '../services/scan-job-registry';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
 import {
@@ -45,7 +44,6 @@ export type Viewer = {
 export type Context = {
   viewer: Viewer | null;
   prisma: PrismaClient;
-  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   /**
    * The same instance `routes/ui.ts`'s `POST /api/books/replace-staging`
@@ -72,7 +70,6 @@ export type Context = {
 
 export type ContextDeps = {
   prisma: PrismaClient;
-  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   editionsRoot: string;
@@ -110,7 +107,6 @@ export const createContext =
   ({ request }: { request: FetchRequest }): Context => ({
     viewer: viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined),
     prisma: deps.prisma,
-    scanJobs: deps.scanJobs,
     thumbnails: deps.thumbnails,
     replaceStaging: deps.replaceStaging,
     editionsRoot: deps.editionsRoot,

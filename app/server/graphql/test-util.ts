@@ -11,7 +11,6 @@ import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
-import { ScanJobRegistry } from '../services/scan-job-registry';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import type { AppConfig, Owner } from '../types';
@@ -26,7 +25,6 @@ import {
   createSeriesProgressLoader,
   createValidationCountsLoader,
 } from './loaders';
-import { createScanPubSub } from './pubsub';
 import { schema } from './schema';
 
 export type ExecuteOptions = {
@@ -50,7 +48,6 @@ export type Harness = {
    */
   contextFor: (viewer: Viewer | null) => Context;
   prisma: PrismaClient;
-  scanJobs: ScanJobRegistry;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   config: AppConfig;
@@ -115,13 +112,6 @@ export const createHarness = async (): Promise<Harness> => {
 
   const config = testConfig(booksDir, dataDir);
   const editionsRoot = path.join(dataDir, 'editions');
-  // Same real `ScanPubSub` a subscription resolver reads from
-  // (`schema/library/subscription/scan-progress.ts`, via
-  // `context.scanJobs.subscribe`) — not the class's own default,
-  // throwaway instance, or a test starting/completing a job through this
-  // registry would never be observed by a `subscribe()` call against `schema`
-  // in the same test. Mirrors `index.ts`'s identical wiring.
-  const scanJobs = new ScanJobRegistry(createScanPubSub());
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
   // an in-memory array (`services/thumbnail-queue.ts`'s `enqueue`); nothing reads
@@ -172,7 +162,6 @@ export const createHarness = async (): Promise<Harness> => {
   const contextFor = (viewer: Viewer | null): Context => ({
     viewer,
     prisma,
-    scanJobs,
     thumbnails,
     replaceStaging,
     editionsRoot,
@@ -347,7 +336,6 @@ export const createHarness = async (): Promise<Harness> => {
   return {
     execute,
     prisma,
-    scanJobs,
     thumbnails,
     // Accessors, not a plain field: they read/write the same `let` binding
     // `execute()` closes over above, so a test that reassigns

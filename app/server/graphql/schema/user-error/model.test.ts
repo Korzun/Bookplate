@@ -50,7 +50,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, ScanAlreadyRunningError, BookRequestLimitExceededError, DuplicateBookRequestError and BookRequestNotPendingError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, BookRequestLimitExceededError, DuplicateBookRequestError and BookRequestNotPendingError', () => {
     // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
@@ -94,25 +94,27 @@ describe('UserError', () => {
     // `username-already-exists-error/model.ts` and
     // `incorrect-password-error/model.ts`.
     //
-    // `ScanAlreadyRunningError` is a fifteenth member, added by task 8 for
-    // `libraryScan`'s REST-mirrored 409 (`POST /api/books/scan`'s
-    // `scanJobRegistry.isRunning` precondition check, before `bookStore.scan` is
-    // ever called) — same "resolver-produced, not domain-error-thrown" shape as
-    // `BookNotValidatedError` above. See
-    // `scan-already-running-error/model.ts`.
+    // `ScanAlreadyRunningError` was a fifteenth member, added by task 8 for
+    // `libraryScan`'s 409. It went when the library scan was removed from the
+    // interface: `libraryScan` was its only referencing union, so keeping it
+    // would have polluted Apollo's `possibleTypes` exactly as
+    // `BookAlreadyExistsError` did above.
     //
     // `BookRequestLimitExceededError`, `DuplicateBookRequestError` and
-    // `BookRequestNotPendingError` are a sixteenth, seventeenth and eighteenth
-    // member, added by the book-requests plan's task 7 for `bookRequestCreate`'s
-    // two failure outcomes (the cap and the duplicate) and reserved for task 8's
-    // `bookRequestFulfill`/`bookRequestDecline` double-resolve guard. None of
-    // the three is a thrown domain-error class: `createBookRequest` decides the
-    // cap and the duplicate with an explicit read inside its own transaction and
-    // RETURNS the outcome — same "resolver/service-produced, not
-    // domain-error-thrown" shape as the members above. See
-    // `book-request-limit-exceeded-error/model.ts`,
+    // `BookRequestNotPendingError` are three further members, added by the
+    // book-requests plan for `bookRequestCreate`'s two failure outcomes (the
+    // cap and the duplicate) and for `bookRequestFulfill`/`bookRequestDecline`'s
+    // double-resolve guard. None of the three is a thrown domain-error class:
+    // `createBookRequest` decides the cap and the duplicate with an explicit
+    // read inside its own transaction and RETURNS the outcome — same
+    // "resolver/service-produced, not domain-error-thrown" shape as the members
+    // above. See `book-request-limit-exceeded-error/model.ts`,
     // `duplicate-book-request-error/model.ts` and
     // `book-request-not-pending-error/model.ts`.
+    //
+    // No ordinal is given for these three deliberately: the numbering above
+    // counts members that have since been removed, so a fixed position drifts
+    // every time one goes. The asserted list below is the real contract.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -131,7 +133,6 @@ describe('UserError', () => {
       'IncorrectPasswordError',
       'InvalidInputError',
       'LineageEntryNotFoundError',
-      'ScanAlreadyRunningError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
       'UsernameAlreadyExistsError',

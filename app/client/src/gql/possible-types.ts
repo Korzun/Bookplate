@@ -103,10 +103,6 @@
       "Book",
       "Series"
     ],
-    "LibraryScanResult": [
-      "LibraryScanPayload",
-      "ScanAlreadyRunningError"
-    ],
     "Node": [
       "Book",
       "BookRequest",
@@ -143,7 +139,6 @@
       "IncorrectPasswordError",
       "InvalidInputError",
       "LineageEntryNotFoundError",
-      "ScanAlreadyRunningError",
       "SelfLinkError",
       "StagedUploadNotFoundError",
       "UsernameAlreadyExistsError"

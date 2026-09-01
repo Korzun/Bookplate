@@ -1,5 +1,4 @@
 import express from 'express';
-import { parse } from 'graphql';
 import request from 'supertest';
 import type { Mock } from 'vitest';
 
@@ -7,7 +6,6 @@ import { logger } from '../logger';
 import { signAccessToken } from '../services/jwt';
 import { createHarness, type Harness } from './test-util';
 import { createGraphqlHandler } from './yoga';
-import { useOperationLogging } from './yoga-plugins';
 
 vi.mock('../logger');
 
@@ -55,7 +53,6 @@ beforeEach(async () => {
     createGraphqlHandler({
       prisma: harness.prisma,
       editionsRoot: harness.editionsRoot,
-      scanJobs: harness.scanJobs,
       thumbnails: harness.thumbnails,
       replaceStaging: harness.replaceStaging,
       config: harness.config,
@@ -229,97 +226,5 @@ describe('operation logging — over real HTTP', () => {
 
     const line = JSON.parse(spies.info.mock.calls[0]?.[0] as string) as Record<string, unknown>;
     expect(line['viewerId']).toBe('admin');
-  });
-});
-
-/**
- * Direct plugin-hook tests for the subscription half of `useOperationLogging`
- * (yoga-plugins.ts). Deliberately NOT driven over a real SSE connection —
- * unlike `scan-progress-sse.test.ts`'s HTTP-level tests, what's being pinned
- * here is specifically "one log line for the whole stream, not one per
- * event", which needs multiple published events on a controlled timeline to
- * demonstrate; racing an `AbortController` against yoga's own stream teardown
- * over a real socket would make that timeline non-deterministic. Calling the
- * plugin's own hooks directly, with a fake async-iterable stream, pins the
- * exact same behavior deterministically.
- */
-describe('operation logging — subscription hooks, called directly', () => {
-  const fakeContext = {
-    viewer: { userId: 'u1', username: 'alice', isAdmin: false, mustChangePassword: false },
-  };
-  const fakeArgs = {
-    // A REAL parsed document (not a stub) — `operationNameOf` (yoga-plugins.ts)
-    // reads the actual operation's `name` node off `args.document`, which a
-    // hand-built `{ definitions: [] }` stub cannot supply.
-    document: parse('subscription ScanProgress { x }'),
-    operationName: 'ScanProgress',
-    contextValue: fakeContext,
-  };
-
-  it('a subscribe-time denial (non-async-iterable result) logs immediately, once', () => {
-    const plugin = useOperationLogging(jwtSecret);
-    // `onSubscribe`'s declared return is `hookResult | Promise<hookResult>`;
-    // this plugin's is synchronous, so narrow past the Promise arm rather than
-    // reading `onSubscribeResult` straight off the union.
-    const hookResult = plugin.onSubscribe?.({
-      args: fakeArgs,
-    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0]);
-    if (!hookResult || hookResult instanceof Promise) {
-      throw new Error('expected a synchronous onSubscribe hook result');
-    }
-    const onSubscribeResult = hookResult.onSubscribeResult;
-    if (!onSubscribeResult) throw new Error('plugin did not return onSubscribeResult');
-
-    onSubscribeResult({
-      result: { errors: [{ message: 'Forbidden' }] },
-    } as unknown as Parameters<typeof onSubscribeResult>[0]);
-
-    expect(spies.warn).toHaveBeenCalledTimes(1);
-    const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
-    expect(line).toMatchObject({ operationName: 'ScanProgress', viewerId: 'u1', errorCount: 1 });
-  });
-
-  it('a live stream logs exactly once, at onEnd, aggregating every event — never per event', () => {
-    const plugin = useOperationLogging(jwtSecret);
-    // `onSubscribe`'s declared return is `hookResult | Promise<hookResult>`;
-    // this plugin's is synchronous, so narrow past the Promise arm rather than
-    // reading `onSubscribeResult` straight off the union.
-    const hookResult = plugin.onSubscribe?.({
-      args: fakeArgs,
-    } as Parameters<NonNullable<typeof plugin.onSubscribe>>[0]);
-    if (!hookResult || hookResult instanceof Promise) {
-      throw new Error('expected a synchronous onSubscribe hook result');
-    }
-    const onSubscribeResult = hookResult.onSubscribeResult;
-    if (!onSubscribeResult) throw new Error('plugin did not return onSubscribeResult');
-
-    const fakeStream = { [Symbol.asyncIterator]: () => ({}) };
-    const hooks = onSubscribeResult({
-      result: fakeStream,
-    } as unknown as Parameters<typeof onSubscribeResult>[0]);
-    if (!hooks?.onNext || !hooks.onEnd) throw new Error('expected onNext/onEnd for a live stream');
-
-    // Three published events, only one carrying an error — nothing should be
-    // logged for any of them individually.
-    hooks.onNext({
-      result: { data: { scanProgress: { state: 'RUNNING' } } },
-    } as unknown as Parameters<NonNullable<typeof hooks.onNext>>[0]);
-    hooks.onNext({ result: { errors: [{ message: 'transient' }] } } as unknown as Parameters<
-      NonNullable<typeof hooks.onNext>
-    >[0]);
-    hooks.onNext({ result: { data: { scanProgress: { state: 'DONE' } } } } as unknown as Parameters<
-      NonNullable<typeof hooks.onNext>
-    >[0]);
-    expect(spies.info).not.toHaveBeenCalled();
-    expect(spies.warn).not.toHaveBeenCalled();
-
-    hooks.onEnd();
-
-    // Exactly one line total (not three), and it is a warn because one of
-    // the three events carried an error.
-    expect(spies.info).not.toHaveBeenCalled();
-    expect(spies.warn).toHaveBeenCalledTimes(1);
-    const line = JSON.parse(spies.warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
-    expect(line).toMatchObject({ operationName: 'ScanProgress', viewerId: 'u1', errorCount: 1 });
   });
 });

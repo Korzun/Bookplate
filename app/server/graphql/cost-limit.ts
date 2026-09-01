@@ -66,12 +66,11 @@ import { CONNECTION_LIMITS } from './schema/pagination';
  * field EXCEPT: the four connections `CONNECTION_LIMITS` already bounds
  * (`Library.entries`, `Library.progress`, `Series.books`,
  * `Validation.messages`) and `Query.nodes(ids:)`, where it is the field's
- * effective page size / batch size; and (task-3-review round 2, I-4) seven
+ * effective page size / batch size; and (task-3-review round 2, I-4) six
  * plain, non-connection list fields whose element type reaches further
  * amplifiable content and whose cardinality has no code-enforced ceiling
  * (`Library.series`, `Library.pendingFixes`, `Viewer.users`,
- * `Viewer.devices`, `Device.enabledUsers`, `Book.lineage`,
- * `ScanResult.imported`) — see `multiplierFor` and
+ * `Viewer.devices`, `Device.enabledUsers`, `Book.lineage`) — see `multiplierFor` and
  * `UNBOUNDED_LIST_FIELD_LIMITS` below for both groups.
  *
  * Task 2's report is explicit about why this is NOT the plugin's own
@@ -183,17 +182,12 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  *    the imported `getBookLineage` (`services/book-lineage.ts`,
  *    `book/model.ts`); reaches
  *    `LinkedDocument.{oldBook,newBook}.series.books`.
- *  - `ScanResult.imported` — `findMany({where:{id:{in:importedBookIds}}})`;
- *    the `findMany` itself is bounded by `importedBookIds`, but that id
- *    list has no cap and scales with scan size (`scan-result/model.ts`);
- *    reaches `Book.series.books`. Reachable via `Library.scanStatus`,
- *    `libraryScan`'s mutation payload, and the `scanProgress` subscription.
  *  - `Library.searchSuggestions` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
  *  - `SuggestionGroup.items` — I-5. See `SUGGESTION_FIELD_LIMITS` below.
  *
  * **`UNBOUNDED_LIST_MULTIPLIER` (100, `CONNECTION_LIMITS.nodesBatch`) applies
- * ONLY to the three fields below that genuinely scale with LIBRARY or SCAN
- * size** (`Library.series`, `Library.pendingFixes`, `ScanResult.imported` —
+ * ONLY to the two fields below that genuinely scale with LIBRARY
+ * size** (`Library.series`, `Library.pendingFixes` —
  * plus `Query.nodes(ids:)`, priced separately), where "unbounded" is a real
  * property of the data (a library can plausibly hold thousands of series or
  * pending fixes) and no REST precedent or measured bound exists — the exact
@@ -410,10 +404,6 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
   // I-7: per-book re-import history, not library-scale — see the doc
   // comment above BOOK_LINEAGE_MULTIPLIER's declaration.
   'Book.lineage': { maxSize: BOOK_LINEAGE_MULTIPLIER, defaultSize: BOOK_LINEAGE_MULTIPLIER },
-  'ScanResult.imported': {
-    maxSize: UNBOUNDED_LIST_MULTIPLIER,
-    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
-  },
 };
 
 /**

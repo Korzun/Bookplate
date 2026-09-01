@@ -59,11 +59,12 @@ afterEach(async () => {
  * which Relay's decoder checks against the `for:` type the field declared
  * (`internalDecodeGlobalID`) — a schema-level `ID` scalar carries no trace of
  * that expected typename, so this generic walker cannot infer it from `type`
- * alone. Every `ID` arg before task 9 happened to want a `User` id
- * (`aliceGlobalId` alone was sufficient); `scanProgress(libraryId: ID!)`
- * wants a `Library` one instead, and got `"ID: User:… is not of type:
- * Library"` here until `ID_ARG_TYPE_NAMES` below was added — a real failure
- * this guard caught, not a hypothetical one.
+ * alone. Every top-level `ID` arg in the schema today wants a `User` id, so
+ * `aliceGlobalId` alone suffices for them; `ID_ARG_TYPE_NAMES` below is the
+ * declared exception point, kept because it was earned — `scanProgress(
+ * libraryId: ID!)` (removed with the library scan) got `"ID: User:… is not
+ * of type: Library"` here until it existed, a real failure this guard
+ * caught, not a hypothetical one.
  *
  * Book-relay-id task 1 added a second wrinkle: `bookValidate`'s nested
  * `input.id` field ALSO wants a `Book` id under the argument name `id`,
@@ -91,13 +92,12 @@ describe('root type authorization', () => {
   });
 
   // Per-argument-name override for which Node type's global id a TOP-LEVEL
-  // `ID` arg wants — see the describe-block doc comment. Every top-level `ID`
-  // arg in this schema takes a `User` id EXCEPT `scanProgress`'s `libraryId`;
-  // add a name here (not a type-based lookup — the schema's own `ID` scalar
-  // carries no typename) whenever a future field's arg needs a third kind.
-  const ID_ARG_TYPE_NAMES: Record<string, 'User' | 'Library'> = {
-    libraryId: 'Library',
-  };
+  // `ID` arg wants — see the describe-block doc comment. Empty today: every
+  // top-level `ID` arg in this schema takes a `User` id, since `scanProgress`'s
+  // `libraryId` (its one exception) went with the library scan. Add a name
+  // here (not a type-based lookup — the schema's own `ID` scalar carries no
+  // typename) whenever a future field's arg needs another kind.
+  const ID_ARG_TYPE_NAMES: Record<string, 'User' | 'Book'> = {};
 
   // Per-input-object-field override, keyed by `${InputTypeName}.${fieldName}`
   // rather than by bare field name: `id` alone is ambiguous once more than
@@ -211,20 +211,15 @@ describe('root type authorization', () => {
     // The harness's own builder — see `Harness.contextFor`.
     const context: Context = harness.contextFor(null);
 
-    // `seedNodeFor('Library')` inserts nothing (Library is 1:1 with the
-    // already-created `User` row — see that function's own doc comment) and
-    // just re-encodes alice's userId under the `Library` typename, so this is
-    // as cheap as the plain `aliceGlobalId` it sits beside.
-    const aliceLibraryGlobalId = await harness.seedNodeFor('Library');
-    // Unlike `Library`, `seedNodeFor('Book')` does insert a real row (Book's
-    // id is compound, not a re-encoding of an existing id) — still cheap
+    // `seedNodeFor('Book')` inserts a real row (Book's id is compound, not a
+    // re-encoding of an existing id) — still cheap
     // (one insert), and only paid once per test regardless of whether the
     // field under test actually has a `Book`-typed id anywhere in its args.
     const aliceBookGlobalId = await harness.seedNodeFor('Book');
     // Same `key` looked up in both maps, NOT a qualified-then-bare-name
     // fallback (see `placeholderLiteral`'s `key` doc comment for why that
     // reading is wrong): a top-level arg's bare key only ever matches
-    // `ID_ARG_TYPE_NAMES` (e.g. `libraryId` -> Library); a nested input
+    // `ID_ARG_TYPE_NAMES` (empty today); a nested input
     // field's qualified key only ever matches `INPUT_FIELD_ID_TYPE_NAMES`
     // (e.g. `BookValidateInput.id` -> Book). Anything neither map has an
     // entry for defaults to the `User` id every other `ID` arg/field in this
@@ -232,19 +227,24 @@ describe('root type authorization', () => {
     const idFor = (key: string): string => {
       const typeName = INPUT_FIELD_ID_TYPE_NAMES[key] ?? ID_ARG_TYPE_NAMES[key];
       if (typeName === 'Book') return aliceBookGlobalId;
-      if (typeName === 'Library') return aliceLibraryGlobalId;
       return harness.aliceGlobalId;
     };
 
     const document = parse(`${operation} { ${selectionFor(field, idFor)} }`);
 
-    // Subscription fields need `graphql`'s own `subscribe()`, not `execute()`
-    // — verified by running this walk against `scanProgress` before adding
-    // this branch, which failed (`expected undefined to be 'UNAUTHENTICATED'`):
-    // `builder.ts` sets `scopeAuth.authorizeOnSubscribe: true` (required for
-    // `Subscription.scanProgress`'s `ownerOf` check to run once, at
-    // subscribe-time, rather than once per emitted event — see that field's
-    // own doc comment), and `@pothos/plugin-scope-auth`'s `wrapResolve`
+    // The schema has no `Subscription` root type today — `scanProgress` was
+    // its only field and went with the library scan, so `roots` above drops
+    // that arm and this branch is currently unreachable. It is kept, not
+    // deleted, because `roots` is deliberately generic: a future subscription
+    // field would be walked automatically, and walking it with `execute()`
+    // would PASS FALSELY rather than fail loudly. What follows is the
+    // reasoning that earned the branch, verified against `scanProgress`
+    // before it was added (the walk failed with `expected undefined to be
+    // 'UNAUTHENTICATED'`):
+    // subscription fields need `graphql`'s own `subscribe()`, not `execute()`.
+    // `builder.ts` set `scopeAuth.authorizeOnSubscribe: true` (required for a
+    // subscription field's `ownerOf` check to run once, at subscribe-time,
+    // rather than once per emitted event), and `@pothos/plugin-scope-auth`'s `wrapResolve`
     // (`createResolveSteps`) deliberately SKIPS both the type- and
     // field-level scope steps whenever `authorizedOnSubscribe` is true — by
     // design, the check now lives entirely in `wrapSubscribe`. `execute()`

@@ -24,7 +24,6 @@ import { model as pendingFix } from '../pending-fix';
 // `../progress/model`, not `../progress` — see book/model.ts's note on the
 // same import for why an entity index must not be pulled in from a model file.
 import { model as progress } from '../progress/model';
-import { model as scanStatus, type ScanStatusShape } from '../scan-status/model';
 import { model as series } from '../series/model';
 import { model as suggestionGroup } from '../suggestion-group';
 // `../user/model`, not `../user`: `user/index.ts` also side-effect-imports
@@ -657,25 +656,6 @@ builder.node(model, {
         return rows.filter((row) =>
           isLivePendingFix(parsePendingFixState(row.state), row.updatedAt, now)
         );
-      },
-    }),
-
-    /**
-     * The reconnect/fallback read for a running or just-finished scan (spec
-     * §"Scan progress": "`library.scanStatus` stays as a query returning the
-     * same type... the fallback if Houdini's SSE support proves awkward in
-     * spec 2"). `nullable: true` because no scan has necessarily ever run for
-     * this library — `ScanJobRegistry.get` returns `undefined` in that case,
-     * unlike `scanProgress` (`subscription/scan-progress.ts`), whose `ScanStatus!`
-     * return type has no such "nothing yet" state to express (a subscription
-     * that has never seen an event simply hasn't yielded anything).
-     */
-    scanStatus: t.field({
-      type: scanStatus,
-      nullable: true,
-      resolve: (owner, _args, context): ScanStatusShape | null => {
-        const job = context.scanJobs.get(owner.userId);
-        return job === undefined ? null : { owner, job };
       },
     }),
   }),
