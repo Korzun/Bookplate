@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import {
+  AddPage,
+  AddUploadView,
   BookEditPage,
   BookPage,
   DeviceListPage,
@@ -8,7 +10,6 @@ import {
   LoginPage,
   PasswordResetPage,
   SeriesPage,
-  UploadPage,
   UserListPage,
   UserPage,
 } from '~/page';
@@ -33,7 +34,9 @@ export const AppRouter = () => {
           {/* Nav-bearing routes share one persistent <Nav /> via NavLayout. */}
           <Route element={<NavLayout />}>
             <Route path={path.library()} element={<LibraryPage />} />
-            <Route path={path.add()} element={<UploadPage />} />
+            <Route path={path.add()} element={<AddPage />}>
+              <Route index element={<AddUploadView />} />
+            </Route>
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />

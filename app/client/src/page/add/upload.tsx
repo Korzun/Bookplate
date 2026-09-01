@@ -1,36 +1,21 @@
-import { useQuery } from '@apollo/client/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useOutletContext } from 'react-router';
 
-import { Page, UploadItem, UploadZone } from '~/component';
-import { LibrarySwitcher } from '~/component/library-switcher';
-import { UserListDocument } from '~/graphql/user';
-import { useIsAdmin } from '~/provider/auth';
-import { useLibraryTarget } from '~/provider/library-target';
+import { UploadItem, UploadZone } from '~/component';
 import { useToast } from '~/provider/toast';
 import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { useUploadQueue } from '~/provider/upload';
-import { path } from '~/router';
 
 import { buildUploadActions } from './actions';
+import { type AddOutletContext } from './index';
 import { useStyle } from './style';
 
 const isDismissible = (i: UploadItemType) =>
   i.status === 'error' || (i.status === 'done' && (i.proposals?.length ?? 0) === 0);
 
-export const UploadPage = () => {
+export const AddUploadView = () => {
   const styles = useStyle();
-
-  const [isAdmin] = useIsAdmin();
-  const [targetLibraryId] = useLibraryTarget();
-  // `UserListDocument` is imported from `~/graphql/user` (a leaf module —
-  // this document has readers across multiple routes/providers, see its own
-  // doc comment) — this only needs the count (for the "No users registered"
-  // empty state), not any per-user field, so no fragment unmask is needed here.
-  const { data: userListData, loading: userListLoading } = useQuery(UserListDocument, {
-    skip: !isAdmin,
-  });
-  const userList = userListData?.viewer.users ?? [];
+  const { setHeaderActions } = useOutletContext<AddOutletContext>();
 
   const {
     items,
@@ -119,45 +104,35 @@ export const UploadPage = () => {
     }
   }, [items, dismissCompleted]);
 
-  if (isAdmin && !targetLibraryId) {
-    const noUsers = !userListLoading && userList.length === 0;
-    return (
-      <Page>
-        <LibrarySwitcher />
-        <div className={styles.emptyState}>
-          {noUsers ? (
-            <>
-              <div className={styles.emptyStateTitle}>No users registered</div>
-              <div className={styles.emptyStateSubtitle}>
-                Go to the{' '}
-                <Link className={styles.link} to={path.userList()}>
-                  Users
-                </Link>{' '}
-                page to register the first user
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={styles.emptyStateTitle}>Select a library</div>
-              <div className={styles.emptyStateSubtitle}>Choose a user above to upload books</div>
-            </>
-          )}
-        </div>
-      </Page>
-    );
-  }
-
-  const headerActions = buildUploadActions(
-    { hasDismissible, hasActionable, hasProposals },
-    {
-      onDismissAll: handleDismissAll,
-      onAcceptAll: () => void handleAcceptAll(),
-      onRejectAll: handleRejectAll,
-    }
+  // MEMOIZED, and that is load-bearing: `buildUploadActions` returns a fresh
+  // array every call, so an effect keyed on the array itself would publish new
+  // actions on every render and loop forever.
+  const headerActions = useMemo(
+    () =>
+      buildUploadActions(
+        { hasDismissible, hasActionable, hasProposals },
+        {
+          onDismissAll: handleDismissAll,
+          onAcceptAll: () => void handleAcceptAll(),
+          onRejectAll: handleRejectAll,
+        }
+      ),
+    [
+      hasDismissible,
+      hasActionable,
+      hasProposals,
+      handleDismissAll,
+      handleAcceptAll,
+      handleRejectAll,
+    ]
   );
+  useEffect(() => {
+    setHeaderActions(headerActions);
+    return () => setHeaderActions(undefined);
+  }, [headerActions, setHeaderActions]);
 
   return (
-    <Page headerActions={headerActions} actionsLabel="Actions">
+    <>
       <UploadZone addFiles={addFiles} />
       {items.length > 0 && (
         <div className={styles.queue}>
@@ -185,6 +160,6 @@ export const UploadPage = () => {
           ))}
         </div>
       )}
-    </Page>
+    </>
   );
 };
