@@ -1,4 +1,5 @@
 import type { Context } from '../../context';
+import { model as bookRequestStatus } from '../book-request-status/model';
 import { model as bookRequest, requestKeyset } from '../book-request/model';
 import { builder } from '../builder';
 // `../library/model`, not `../library`: `library/index.ts` now also
@@ -107,6 +108,19 @@ export const model = builder.prismaNode('User', {
           'Books this reader has asked the library admin for, newest first. ' +
           'Paginates in both directions.',
         authScopes: (parent) => ({ ownerOf: parent.id }),
+        // ADDITIVE and optional: the reader's own card passes nothing and still
+        // sees every status, including the resolved ones it renders as history.
+        // The admin's request view passes `PENDING`, because that view is a work
+        // queue — a resolved request is not waiting on them.
+        //
+        // It has to be a SERVER-side filter. A reader accumulates resolved
+        // requests against a cap of ten open ones, so a whole page can be
+        // resolved; a client-side filter would show the admin an empty list
+        // while requests were genuinely pending, with "Load more" the only way
+        // to reach them. Filtering here keeps the page size honest.
+        args: {
+          status: t.arg({ type: bookRequestStatus, required: false }),
+        },
         cursor: 'userId_createdAt_id',
         // Native maxSize/defaultSize bound the Prisma query itself, but by
         // CLAMPING rather than rejecting, which pagination.ts's "reject, never
@@ -125,6 +139,11 @@ export const model = builder.prismaNode('User', {
             ...page,
             where: {
               userId: parent.id,
+              // The enum's `value` IS the stored lowercase string (see
+              // `book-request-status/model.ts`), so it goes straight into the
+              // `where` with no translation. Omitted entirely when unset, which
+              // is what keeps the unfiltered read identical to before.
+              ...(args.status ? { status: args.status } : {}),
               ...requestKeyset(cursor?.userId_createdAt_id, page.take),
             },
             // `id asc` is the tiebreaker and is required: `createdAt` is whole

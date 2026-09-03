@@ -872,7 +872,7 @@ type User implements Node {
   """
   Books this reader has asked the library admin for, newest first. Paginates in both directions.
   """
-  bookRequests(after: String, before: String, first: Int, last: Int): UserBookRequestsConnection!
+  bookRequests(after: String, before: String, first: Int, last: Int, status: BookRequestStatus): UserBookRequestsConnection!
   id: ID!
   library: Library!
   mustChangePassword: Boolean!
