@@ -170,7 +170,13 @@ export const UserRequestListDocument = graphql(`
       library {
         id
       }
-      bookRequests(first: 20, after: $after) {
+      # \`status: PENDING\` is a LITERAL, not a variable: the admin's list is always
+      # a work queue, and a variable would advertise a variability that does not
+      # exist. It is a SERVER filter rather than a client-side one because a
+      # reader accumulates resolved requests against a cap of ten open ones — a
+      # page of 20 can be entirely resolved, and filtering after the fetch would
+      # show an empty list while requests were genuinely pending.
+      bookRequests(first: 20, after: $after, status: PENDING) {
         edges {
           cursor
           node {
