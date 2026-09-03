@@ -1,11 +1,9 @@
-import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment } from 'react';
 
 import { BookRequestRow } from '~/component/book-request-row';
 import { Button } from '~/control';
-import { BookRequestDeleteDocument, UserRequestListDocument } from '~/graphql/book-request';
-import { UserListDocument } from '~/graphql/user';
+import { UserRequestListDocument } from '~/graphql/book-request';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 
 import { useStyle } from './style';
@@ -96,9 +94,6 @@ interface UserRequestListProps {
  */
 export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
   const styles = useStyle();
-  const client = useApolloClient();
-  const [runDelete] = useMutation(BookRequestDeleteDocument);
-  const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
   const { data, edges, loading, error, hasNextPage, loadMore, loadingMore } =
     usePaginatedConnection({
@@ -115,31 +110,6 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
   const target =
     libraryId !== undefined && username !== undefined ? { libraryId, username } : undefined;
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      setDeleteError(undefined);
-      void (async () => {
-        try {
-          const { data: deleteData } = await runDelete({
-            variables: { id },
-            update: (cache, { data: mutationData }) => {
-              const deletedId = mutationData?.bookRequestDelete?.deletedId;
-              if (!deletedId) return;
-              cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
-              cache.gc();
-            },
-          });
-          if (deleteData?.bookRequestDelete?.deletedId) {
-            await client.refetchQueries({ include: [UserListDocument] });
-          }
-        } catch (err) {
-          setDeleteError(err instanceof Error ? err.message : 'Failed to delete request');
-        }
-      })();
-    },
-    [runDelete, client]
-  );
-
   if (loading) {
     return <div className={styles.message}>Loading...</div>;
   }
@@ -155,15 +125,8 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
 
   return (
     <Fragment>
-      {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {rows.map((row) => (
-        <BookRequestRow
-          key={row.id}
-          request={row}
-          canResolve
-          onDelete={handleDelete}
-          target={target}
-        />
+        <BookRequestRow key={row.id} request={row} canResolve target={target} />
       ))}
       {hasNextPage && (
         <Button type="link" onClick={loadMore} loading={loadingMore}>

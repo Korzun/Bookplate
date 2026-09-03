@@ -1,10 +1,11 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { print } from 'graphql';
 import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 
 import type { BookRequestRowFragmentFragment, UserRequestListQuery } from '~/gql/graphql';
-import { BookRequestDeleteDocument, UserRequestListDocument } from '~/graphql/book-request';
+import { UserRequestListDocument } from '~/graphql/book-request';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRequestList } from './index';
@@ -129,23 +130,40 @@ describe('UserRequestList', () => {
     await waitFor(() => expect(variables()).toMatchObject({ userId: 'VXNlcjphbGljZQ==' }));
   });
 
-  // Finding 4 of the final review: `handleDelete` used to run `runDelete`
-  // with no `try`/`catch`, so a rejection (e.g. a dropped connection) was
-  // both a silent no-op for the user and an unhandled promise rejection.
-  it('shows an error message when withdrawing fails', async () => {
-    const { user } = renderList({
+  // Replaces "shows an error message when withdrawing fails". That test
+  // covered the admin's own delete pipeline, which is gone: deleting a request
+  // belongs to the reader who submitted it, so this list renders no delete
+  // control and owns no delete mutation. The reader's equivalent failure path
+  // is still covered, in `component/book-requests-content`'s own suite.
+  it('offers the admin no way to delete a request', async () => {
+    renderList({
       requests: [requestRow({ id: 'req-1', title: 'Dune', status: 'PENDING' })],
-      extraMocks: [
-        {
-          request: { query: BookRequestDeleteDocument, variables: { id: 'req-1' } },
-          error: new Error('Network error'),
-        },
-      ],
     });
     await screen.findByText('Dune');
 
-    await user.click(screen.getByRole('button', { name: /withdraw/i }));
+    expect(screen.queryByRole('button', { name: /withdraw/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument();
+    // Positive control: the admin's own actions ARE rendered, so this cannot
+    // pass against a list that failed to render its rows at all.
+    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+  });
+});
 
-    expect(await screen.findByText(/failed to delete request|network error/i)).toBeInTheDocument();
+/**
+ * The admin's list is a work queue: a resolved request is not waiting on
+ * anyone, so it does not belong here. The filter is a SERVER argument rather
+ * than a client-side `.filter()` because a reader accumulates resolved
+ * requests against a cap of ten open ones — a page of 20 can be entirely
+ * resolved, and filtering after the fetch would show an empty list while
+ * requests were genuinely pending.
+ */
+describe('UserRequestList — pending only', () => {
+  it('asks the server for pending requests only', () => {
+    // A LITERAL in the document, not a variable: this list is always pending,
+    // and a variable would advertise a variability that does not exist. The
+    // filtering itself is the server's, pinned by
+    // `schema/book-request/model.test.ts`; what belongs here is the contract
+    // that this document asks for it at all.
+    expect(print(UserRequestListDocument)).toMatch(/bookRequests\([^)]*status:\s*PENDING/);
   });
 });

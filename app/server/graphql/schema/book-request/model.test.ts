@@ -206,3 +206,93 @@ describe('User.pendingBookRequestCount', () => {
     expect(data.viewer.user.pendingBookRequestCount).toBe(0);
   });
 });
+
+/**
+ * The admin's request view shows only what is still waiting on them, so
+ * `User.bookRequests` takes an optional status filter. It is ADDITIVE: the
+ * reader's own list passes nothing and still sees every status, including the
+ * resolved ones it renders as history.
+ *
+ * The filter has to be server-side. A reader accumulates resolved requests
+ * against a cap of ten open ones, so a page of 20 can be entirely resolved —
+ * a client-side filter would show the admin an empty list while requests were
+ * genuinely pending, and "Load more" would be the only way to find them.
+ */
+describe('User.bookRequests(status:)', () => {
+  const FILTERED = `
+    query Filtered($status: BookRequestStatus) {
+      viewer {
+        user {
+          bookRequests(first: 10, status: $status) {
+            edges { node { title status } }
+          }
+        }
+      }
+    }
+  `;
+
+  /** Three requests, of which only `Book 1` is left pending. */
+  const seedMixed = async (): Promise<void> => {
+    await seed(harness.aliceOwner.userId, 3);
+    await harness.prisma.bookRequest.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: 'req-0' } },
+      data: { status: 'fulfilled' },
+    });
+    await harness.prisma.bookRequest.update({
+      where: { userId_id: { userId: harness.aliceOwner.userId, id: 'req-2' } },
+      data: { status: 'declined' },
+    });
+  };
+
+  const titlesFrom = (result: unknown): string[] => {
+    const data = (
+      result as {
+        data: { viewer: { user: { bookRequests: { edges: { node: { title: string } }[] } } } };
+      }
+    ).data;
+    return data.viewer.user.bookRequests.edges.map((e) => e.node.title);
+  };
+
+  it('returns only pending requests when the filter is PENDING', async () => {
+    await seedMixed();
+
+    const result = await harness.execute(FILTERED, {
+      viewer: harness.aliceViewer,
+      variables: { status: 'PENDING' },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(titlesFrom(result)).toEqual(['Book 1']);
+  });
+
+  it('returns every status when no filter is given', async () => {
+    await seedMixed();
+
+    const result = await harness.execute(FILTERED, {
+      viewer: harness.aliceViewer,
+      variables: {},
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(titlesFrom(result).sort()).toEqual(['Book 0', 'Book 1', 'Book 2']);
+  });
+
+  it('filters an admin reading a target user requests, not just the viewer own', async () => {
+    await seedMixed();
+
+    const result = await harness.execute(
+      `query AdminFiltered($userId: ID!) {
+         user(id: $userId) {
+           bookRequests(first: 10, status: PENDING) { edges { node { title } } }
+         }
+       }`,
+      { viewer: harness.adminViewer, variables: { userId: harness.aliceGlobalId } }
+    );
+
+    expect(result.errors).toBeUndefined();
+    const data = result.data as {
+      user: { bookRequests: { edges: { node: { title: string } }[] } };
+    };
+    expect(data.user.bookRequests.edges.map((e) => e.node.title)).toEqual(['Book 1']);
+  });
+});

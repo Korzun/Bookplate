@@ -483,3 +483,48 @@ describe('BookRequestRow resolve actions', () => {
     expect(screen.getByRole('link', { name: /dune-retry\.epub/ })).toBeInTheDocument();
   });
 });
+
+/**
+ * Deleting a request belongs to the reader who submitted it. The admin
+ * RESOLVES — upload, link, decline — and never disposes of someone else's
+ * request, whether it is still pending or already answered.
+ *
+ * `canResolve` is the audience discriminator: it is `false` on exactly one
+ * call site (the reader's own list) and `true` on exactly one (the admin's),
+ * so `!canResolve` is "this is the requester's own view" by construction.
+ */
+describe('BookRequestRow — who may delete', () => {
+  it('offers Withdraw to the reader while the request is pending', () => {
+    renderRow({ status: 'PENDING' }, { canResolve: false });
+
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
+  it('offers Clear to the reader once the request is resolved', () => {
+    renderRow({ status: 'DECLINED' }, { canResolve: false });
+
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('offers the admin no Withdraw on a pending request', () => {
+    renderRow(
+      { status: 'PENDING' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==', username: 'bob' }
+    );
+
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+    // Positive control: the admin's own actions ARE there, so this test cannot
+    // pass against a row that rendered nothing at all.
+    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+  });
+
+  it('offers the admin no Clear on a resolved request', () => {
+    renderRow(
+      { status: 'FULFILLED' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==', username: 'bob' }
+    );
+
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+  });
+});

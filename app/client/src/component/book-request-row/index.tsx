@@ -19,6 +19,7 @@ import { unwrapResult } from '~/provider/apollo';
 import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
 
+import { Card } from '../card';
 import { Tag } from '../tag';
 import { useStyle } from './style';
 
@@ -49,8 +50,20 @@ interface BookRequestRowProps {
    * request but never resolve one.
    */
   canResolve: boolean;
-  /** Withdraw / clear. Both surfaces offer this; the server is owner-or-admin. */
-  onDelete: (id: string) => void;
+  /**
+   * Withdraw (pending) / clear (resolved). Offered ONLY on the reader's own
+   * view — deleting a request belongs to whoever submitted it. The admin
+   * resolves and never disposes. `bookRequestDelete` stays owner-or-admin
+   * server-side; the admin is simply not offered it here.
+   *
+   * OPTIONAL because the admin's call site (`component/user-request-list`,
+   * `canResolve`) has nothing to pass — it renders no delete control, so it
+   * owns no delete mutation. The reader's call site
+   * (`component/book-requests-content`, `canResolve={false}`) always passes it.
+   * The button below renders only when `!canResolve`, so the two travel
+   * together by construction.
+   */
+  onDelete?: (id: string) => void;
   /**
    * The owning reader's Library global id and username. Required whenever
    * `canResolve` is true — both halves are what `addFiles` captures on the
@@ -184,7 +197,7 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const [declining, setDeclining] = useState(false);
   const [declineError, setDeclineError] = useState<string | undefined>();
 
-  const handleDelete = () => onDelete(row.id);
+  const handleDelete = () => onDelete?.(row.id);
 
   const handleUploadChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -272,75 +285,98 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const suggestionCount = queueItem?.proposals?.length ?? 0;
   const uploadedButNotClosed = queueItem?.status === 'done' && row.status === 'PENDING';
 
-  return (
-    <div className={styles.root}>
-      <div className={styles.header}>
-        <span className={styles.title}>{row.title}</span>
-        <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
+  /**
+   * The card's action slot. `device-row` and `upload-item` place a discrete
+   * item's controls here the same way; this component follows that convention
+   * rather than trailing buttons under the body.
+   *
+   * The two audiences get disjoint sets, which is the whole point: the admin
+   * RESOLVES (upload / link / decline) and the reader DISPOSES (withdraw while
+   * pending, clear once answered). Neither ever sees the other's controls.
+   */
+  const headerActions = canResolve ? (
+    row.status === 'PENDING' ? (
+      <div className={styles.actions}>
+        <label htmlFor={uploadInputId} className={styles.uploadLabel}>
+          Upload EPUB
+        </label>
+        <input
+          id={uploadInputId}
+          className={styles.hiddenInput}
+          type="file"
+          accept=".epub"
+          onChange={handleUploadChange}
+        />
+        <Button type="default" onClick={handleOpenPicker}>
+          Link existing book
+        </Button>
+        <Button type="text" danger onClick={handleOpenDecline}>
+          Decline
+        </Button>
       </div>
-      <div className={styles.author}>by {row.author}</div>
-      {row.note !== '' && <div className={styles.note}>{row.note}</div>}
-      {row.status === 'FULFILLED' && (
-        <div className={styles.resolution}>
-          {row.book ? (
-            <Link to={path.book(row.book.id)}>Added to your library — {row.book.title}</Link>
-          ) : (
-            'Added to your library'
-          )}
-        </div>
-      )}
-      {row.status === 'DECLINED' && row.declineReason !== '' && (
-        <div className={styles.resolution}>{row.declineReason}</div>
-      )}
+    ) : undefined
+  ) : (
+    <Button type="link" danger onClick={handleDelete}>
+      {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
+    </Button>
+  );
 
-      {(queueItem?.status === 'queued' || queueItem?.status === 'uploading') && (
-        <div className={styles.resolution}>Uploading…</div>
-      )}
-      {queueItem?.status === 'error' && (
-        <div className={styles.error}>
-          {queueItem.errorMessage ?? queueItem.validation?.messages[0]?.message ?? 'Upload failed'}
-        </div>
-      )}
-      {queueItem?.status === 'done' && queueItem.bookGlobalId && (
-        <div className={styles.resolution}>
-          <Link to={path.book(queueItem.bookGlobalId)}>Uploaded — {queueItem.fileName}</Link>
-          {suggestionCount > 0 && (
-            <span className={styles.suggestions}>
-              {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'} —{' '}
-              <Link to={path.add()}>review in Upload</Link>
-            </span>
-          )}
-        </div>
-      )}
-      {fulfillError && <div className={styles.error}>{fulfillError}</div>}
+  return (
+    <>
+      <Card
+        size="small"
+        title={
+          <span className={styles.title}>
+            {row.title}
+            <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
+          </span>
+        }
+        subTitle={`by ${row.author}`}
+        headerAction={headerActions}
+      >
+        {row.note !== '' && <div className={styles.note}>{row.note}</div>}
+        {row.status === 'FULFILLED' && (
+          <div className={styles.resolution}>
+            {row.book ? (
+              <Link to={path.book(row.book.id)}>Added to your library — {row.book.title}</Link>
+            ) : (
+              'Added to your library'
+            )}
+          </div>
+        )}
+        {row.status === 'DECLINED' && row.declineReason !== '' && (
+          <div className={styles.resolution}>{row.declineReason}</div>
+        )}
 
-      {canResolve && row.status === 'PENDING' && (
-        <div className={styles.actions}>
-          <label htmlFor={uploadInputId} className={styles.uploadLabel}>
-            Upload EPUB
-          </label>
-          <input
-            id={uploadInputId}
-            className={styles.hiddenInput}
-            type="file"
-            accept=".epub"
-            onChange={handleUploadChange}
-          />
-          <Button type="default" onClick={handleOpenPicker}>
-            Link existing book
-          </Button>
-          {uploadedButNotClosed && (
-            <span className={styles.notClosed}>Uploaded, but the request didn&apos;t close.</span>
-          )}
-          <Button type="text" danger onClick={handleOpenDecline}>
-            Decline
-          </Button>
-        </div>
-      )}
-
-      <Button type="link" danger onClick={handleDelete}>
-        {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
-      </Button>
+        {(queueItem?.status === 'queued' || queueItem?.status === 'uploading') && (
+          <div className={styles.resolution}>Uploading…</div>
+        )}
+        {queueItem?.status === 'error' && (
+          <div className={styles.error}>
+            {queueItem.errorMessage ??
+              queueItem.validation?.messages[0]?.message ??
+              'Upload failed'}
+          </div>
+        )}
+        {queueItem?.status === 'done' && queueItem.bookGlobalId && (
+          <div className={styles.resolution}>
+            <Link to={path.book(queueItem.bookGlobalId)}>Uploaded — {queueItem.fileName}</Link>
+            {suggestionCount > 0 && (
+              <span className={styles.suggestions}>
+                {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'} —{' '}
+                <Link to={path.add()}>review in Upload</Link>
+              </span>
+            )}
+          </div>
+        )}
+        {/* A message, not an action, so it sits in the body rather than the
+            card's action slot — it reports what happened to an upload the
+            admin already started. */}
+        {uploadedButNotClosed && (
+          <div className={styles.notClosed}>Uploaded, but the request didn&apos;t close.</div>
+        )}
+        {fulfillError && <div className={styles.error}>{fulfillError}</div>}
+      </Card>
 
       {canResolve && row.status === 'PENDING' && target && (
         <LinkExistingBookModal
@@ -371,6 +407,6 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
           {declineError && <div className={styles.error}>{declineError}</div>}
         </ConfirmModal>
       )}
-    </div>
+    </>
   );
 };
