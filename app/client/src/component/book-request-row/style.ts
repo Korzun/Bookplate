@@ -1,17 +1,38 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
-  root: {
+  // The card body's top line: the request's identity on the left, its status on
+  // the right. `align-items: flex-start` so a wrapped title does not drag the
+  // badge down with it.
+  identity: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: theme.space.sm,
+  },
+  identityText: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.space.xxxs,
-    padding: `${theme.space.sm}px 0`,
-    borderBottom: `1px solid ${theme.color.border.default}`,
+    minWidth: 0,
   },
-  header: {
+  // The card footer: the dismissive action (decline, or the reader's withdraw)
+  // on the left, the resolving actions on the right. `space-between` carries
+  // that split even when only one side is present.
+  footerBar: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: theme.space.sm,
+    width: '100%',
+  },
+  footerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.space.sm,
+    marginLeft: 'auto',
   },
   title: {
     fontSize: theme.fontSize.md,
