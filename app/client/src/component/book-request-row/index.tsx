@@ -286,54 +286,58 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const uploadedButNotClosed = queueItem?.status === 'done' && row.status === 'PENDING';
 
   /**
-   * The card's action slot. `device-row` and `upload-item` place a discrete
-   * item's controls here the same way; this component follows that convention
-   * rather than trailing buttons under the body.
+   * The card's FOOTER, split left/right: the dismissive action on the left, the
+   * resolving actions on the right.
    *
-   * The two audiences get disjoint sets, which is the whole point: the admin
+   * The two audiences get disjoint sets, which is the whole point — the admin
    * RESOLVES (upload / link / decline) and the reader DISPOSES (withdraw while
-   * pending, clear once answered). Neither ever sees the other's controls.
+   * pending, clear once answered). Neither ever sees the other's controls, so
+   * the reader's single control takes the same left slot Decline occupies.
    */
-  const headerActions = canResolve ? (
+  const footer = canResolve ? (
     row.status === 'PENDING' ? (
-      <div className={styles.actions}>
-        <label htmlFor={uploadInputId} className={styles.uploadLabel}>
-          Upload EPUB
-        </label>
-        <input
-          id={uploadInputId}
-          className={styles.hiddenInput}
-          type="file"
-          accept=".epub"
-          onChange={handleUploadChange}
-        />
-        <Button type="default" onClick={handleOpenPicker}>
-          Link existing book
-        </Button>
+      <div className={styles.footerBar}>
         <Button type="text" danger onClick={handleOpenDecline}>
           Decline
         </Button>
+        <div className={styles.footerRight}>
+          <label htmlFor={uploadInputId} className={styles.uploadLabel}>
+            Upload EPUB
+          </label>
+          <input
+            id={uploadInputId}
+            className={styles.hiddenInput}
+            type="file"
+            accept=".epub"
+            onChange={handleUploadChange}
+          />
+          <Button type="default" onClick={handleOpenPicker}>
+            Link existing book
+          </Button>
+        </div>
       </div>
     ) : undefined
   ) : (
-    <Button type="link" danger onClick={handleDelete}>
-      {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
-    </Button>
+    <div className={styles.footerBar}>
+      <Button type="link" danger onClick={handleDelete}>
+        {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
+      </Button>
+    </div>
   );
 
   return (
     <>
-      <Card
-        size="small"
-        title={
-          <span className={styles.title}>
-            {row.title}
-            <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
-          </span>
-        }
-        subTitle={`by ${row.author}`}
-        headerAction={headerActions}
-      >
+      {/* No `title`, `subTitle` or `headerAction`: `Card` renders no header at
+          all when given none of them, which is what keeps the request's own
+          identity in the body where the rest of this list reads it. */}
+      <Card size="small" footer={footer}>
+        <div className={styles.identity}>
+          <div className={styles.identityText}>
+            <div className={styles.title}>{row.title}</div>
+            <div className={styles.author}>by {row.author}</div>
+          </div>
+          <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
+        </div>
         {row.note !== '' && <div className={styles.note}>{row.note}</div>}
         {row.status === 'FULFILLED' && (
           <div className={styles.resolution}>
@@ -370,8 +374,7 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
           </div>
         )}
         {/* A message, not an action, so it sits in the body rather than the
-            card's action slot — it reports what happened to an upload the
-            admin already started. */}
+            footer — it reports what happened to an upload already started. */}
         {uploadedButNotClosed && (
           <div className={styles.notClosed}>Uploaded, but the request didn&apos;t close.</div>
         )}
