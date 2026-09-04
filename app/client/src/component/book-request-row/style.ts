@@ -34,16 +34,19 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.sm,
     marginLeft: 'auto',
   },
+  // Typography lifted from the Book page's own book card (`page/book/style.ts`'s
+  // `title`/`author`) so a request reads like the book it is asking for. The
+  // page's `cursor`/`:hover` are deliberately NOT copied: there the author is a
+  // clickable filter link, here it is plain text.
   title: {
-    fontSize: theme.fontSize.md,
-    fontWeight: 600,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.color.text.primary,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
   author: {
-    fontSize: theme.fontSize.md,
-    color: theme.color.text.muted,
+    color: theme.color.text.secondary,
   },
   note: {
     fontSize: theme.fontSize.md,
@@ -60,21 +63,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.space.sm,
-  },
-  uploadLabel: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    backgroundColor: theme.color.bg.input,
-    border: `1px solid ${theme.color.border.default}`,
-    borderRadius: theme.radius.lg,
-    padding: `${theme.space.md} ${theme.space.xxl}`,
-    fontSize: '0.80rem',
-    color: theme.color.text.primary,
-    cursor: 'pointer',
-    '&:hover': {
-      borderColor: theme.color.brand.hover,
-      color: theme.color.brand.hover,
-    },
   },
   hiddenInput: {
     position: 'absolute',

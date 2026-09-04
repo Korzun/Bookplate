@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { type ChangeEvent, useCallback, useId, useState } from 'react';
+import { type ChangeEvent, useCallback, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Button, ConfirmModal, LinkExistingBookModal } from '~/control';
@@ -170,6 +170,10 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const styles = useStyle();
   const row = useFragment(BookRequestRowFragment, request);
   const uploadInputId = useId();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  // The primary Button opens the file dialog by clicking the hidden input, so
+  // the control can be a real Button rather than a label wearing button styles.
+  const handleUploadClick = useCallback(() => uploadInputRef.current?.click(), []);
   const client = useApolloClient();
 
   const { items, addFiles } = useUploadQueue();
@@ -297,29 +301,39 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
   const footer = canResolve ? (
     row.status === 'PENDING' ? (
       <div className={styles.footerBar}>
-        <Button type="text" danger onClick={handleOpenDecline}>
+        <Button type="default" radius="card" danger onClick={handleOpenDecline}>
           Decline
         </Button>
         <div className={styles.footerRight}>
-          <label htmlFor={uploadInputId} className={styles.uploadLabel}>
+          <Button type="default" radius="card" onClick={handleOpenPicker}>
+            Link existing book
+          </Button>
+          {/* A real primary `Button` rather than a `<label>` styled to look
+              like one: the label needed its own copy of the button's chrome,
+              which drifts. The file input stays, hidden, and the button clicks
+              it through a ref.
+              `aria-label` on the INPUT is what keeps it reachable as a form
+              control — `getByLabelText`/`user.upload` still address the input
+              directly, and the button's own text is not a label, so the two
+              never collide. */}
+          <Button type="primary" radius="card" onClick={handleUploadClick}>
             Upload EPUB
-          </label>
+          </Button>
           <input
+            ref={uploadInputRef}
             id={uploadInputId}
+            aria-label="Upload EPUB"
             className={styles.hiddenInput}
             type="file"
             accept=".epub"
             onChange={handleUploadChange}
           />
-          <Button type="default" onClick={handleOpenPicker}>
-            Link existing book
-          </Button>
         </div>
       </div>
     ) : undefined
   ) : (
     <div className={styles.footerBar}>
-      <Button type="link" danger onClick={handleDelete}>
+      <Button type="default" radius="card" danger onClick={handleDelete}>
         {row.status === 'PENDING' ? 'Withdraw' : 'Clear'}
       </Button>
     </div>
@@ -330,7 +344,7 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
       {/* No `title`, `subTitle` or `headerAction`: `Card` renders no header at
           all when given none of them, which is what keeps the request's own
           identity in the body where the rest of this list reads it. */}
-      <Card size="small" footer={footer}>
+      <Card footer={footer}>
         <div className={styles.identity}>
           <div className={styles.identityText}>
             <div className={styles.title}>{row.title}</div>

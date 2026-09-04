@@ -528,3 +528,26 @@ describe('BookRequestRow — who may delete', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The upload control is a real primary `Button` that opens the file dialog by
+ * clicking a hidden input through a ref, rather than a `<label>` wearing the
+ * button's chrome. The mechanism is invisible to the user but can break
+ * silently — a detached ref would leave a button that does nothing — so it is
+ * pinned here.
+ */
+describe('BookRequestRow — the upload control', () => {
+  it('opens the file dialog when the Upload button is clicked', async () => {
+    const { user } = renderRow(
+      { status: 'PENDING' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==', username: 'bob' }
+    );
+
+    const input = screen.getByLabelText(/upload epub/i);
+    const clickSpy = vi.spyOn(input, 'click');
+
+    await user.click(screen.getByRole('button', { name: 'Upload EPUB' }));
+
+    expect(clickSpy).toHaveBeenCalled();
+  });
+});
