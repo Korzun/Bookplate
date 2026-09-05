@@ -18,6 +18,7 @@ import { UserListDocument } from '~/graphql/user';
 import { unwrapResult } from '~/provider/apollo';
 import { useUploadQueue } from '~/provider/upload';
 import { path } from '~/router';
+import { relativeTime } from '~/utils';
 
 import { Card } from '../card';
 import { Tag } from '../tag';
@@ -350,7 +351,27 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
             <div className={styles.title}>{row.title}</div>
             <div className={styles.author}>by {row.author}</div>
           </div>
-          <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
+          <div className={styles.statusGroup}>
+            <Tag size="sm">{STATUS_LABEL[row.status]}</Tag>
+            {/* Only while PENDING: how long someone has been waiting is what
+                decides whether a request is overdue. Once it is resolved the
+                outcome is the news, not the wait.
+
+                `relativeTime` takes SECONDS (`~/utils`), while `createdAt`
+                arrives as an ISO string from the `DateTime` scalar — the same
+                conversion `MyProgressRow` and `UserProgressRow` do, so an age
+                reads identically wherever the app shows one.
+
+                Computed at render, so a card left open does not tick. That
+                matches the progress rows, and a timer per card would be a lot
+                of machinery for a figure whose whole point is to be
+                approximate. */}
+            {row.status === 'PENDING' && (
+              <span className={styles.elapsed}>
+                {relativeTime(Math.floor(new Date(row.createdAt).getTime() / 1000))}
+              </span>
+            )}
+          </div>
         </div>
         {row.note !== '' && <div className={styles.note}>{row.note}</div>}
         {row.status === 'FULFILLED' && (
