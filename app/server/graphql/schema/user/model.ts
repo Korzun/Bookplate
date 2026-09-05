@@ -1,4 +1,6 @@
 import type { Context } from '../../context';
+import { model as bookRequestStatus } from '../book-request-status/model';
+import { model as bookRequest, requestKeyset } from '../book-request/model';
 import { builder } from '../builder';
 // `../library/model`, not `../library`: `library/index.ts` now also
 // side-effect-imports `library/mutation/scan.ts` (task 8), which itself
@@ -9,6 +11,7 @@ import { builder } from '../builder';
 // spots — see `book-hash-collision-error/model.ts`'s identical note.
 import { model as library } from '../library/model';
 import { isOwnerOrAdmin, NO_MATCH_USER_ID } from '../node-scope';
+import { CONNECTION_LIMITS, rejectOversizePage } from '../pagination';
 
 // `Query.node(id:)` is a second door into every registered `Node` type, and it
 // bypasses `Query.user`'s `admin` scope entirely — that scope only guards the
@@ -51,6 +54,21 @@ export const model = builder.prismaNode('User', {
     // Prisma row this type is pinned to.
     progressCount: t.relationCount('progresses'),
 
+    /**
+     * How many requests this reader is still waiting on — the badge the admin's
+     * `/users` list renders per row.
+     *
+     * A FILTERED `t.relationCount`, which compiles to a `_count` select with a
+     * `where`, merged into whichever query already fetched this row. So
+     * `Viewer.users` stays one query however many users exist, exactly as
+     * `progressCount` above does — not a per-user `bookRequest.count()`, and
+     * not a rows-then-length read, which would pay the connection's cost
+     * multiplier to compute a number.
+     */
+    pendingBookRequestCount: t.relationCount('bookRequests', {
+      where: { status: 'pending' },
+    }),
+
     // `ownerOf`'s denial branch has no reachable case today: `Query.user` is
     // admin-gated and `Query.node` for `User` is `isOwnerOrAdmin`-gated, so the
     // only `User` object a non-admin viewer can ever hold here is their own.
@@ -62,5 +80,81 @@ export const model = builder.prismaNode('User', {
       authScopes: (parent) => ({ ownerOf: parent.id }),
       resolve: (parent) => ({ userId: parent.id, username: parent.username }),
     }),
+
+    /**
+     * This reader's book requests, newest first — the ONE field behind both
+     * surfaces. The reader reaches it as `viewer { user { bookRequests } }`
+     * (`Viewer.user` is already null for the config admin, which has no `User`
+     * row and cannot be a requester) and the admin as
+     * `user(id:) { bookRequests }` (`Query.user` is admin-gated). A separate
+     * `Viewer.bookRequests` would duplicate this field, its `CONNECTION_LIMITS`
+     * entry and its auth tests for no gain.
+     *
+     * `ownerOf` on the PARENT's id, exactly like `library` below it — ownership
+     * is decided once, from the row this type is pinned to, never from
+     * `context.viewer`: an admin reading `user(id:).bookRequests` must page the
+     * target user's rows, not their own.
+     *
+     * `t.prismaConnection`, not `t.relatedConnection`, and the `resolve` drops
+     * the plugin's `cursor`/`skip` — see `requestKeyset` for why. A
+     * `t.relatedConnection` could not carry that fix: its `resolve` is a
+     * FALLBACK ONLY, because on the normal path its rows arrive through the
+     * parent's merged `select`.
+     */
+    bookRequests: t.prismaConnection(
+      {
+        type: bookRequest,
+        description:
+          'Books this reader has asked the library admin for, newest first. ' +
+          'Paginates in both directions.',
+        authScopes: (parent) => ({ ownerOf: parent.id }),
+        // ADDITIVE and optional: the reader's own card passes nothing and still
+        // sees every status, including the resolved ones it renders as history.
+        // The admin's request view passes `PENDING`, because that view is a work
+        // queue — a resolved request is not waiting on them.
+        //
+        // It has to be a SERVER-side filter. A reader accumulates resolved
+        // requests against a cap of ten open ones, so a whole page can be
+        // resolved; a client-side filter would show the admin an empty list
+        // while requests were genuinely pending, with "Load more" the only way
+        // to reach them. Filtering here keeps the page size honest.
+        args: {
+          status: t.arg({ type: bookRequestStatus, required: false }),
+        },
+        cursor: 'userId_createdAt_id',
+        // Native maxSize/defaultSize bound the Prisma query itself, but by
+        // CLAMPING rather than rejecting, which pagination.ts's "reject, never
+        // clamp" ruling forbids. Kept as defense in depth on the SQL; the
+        // actual reject is in `resolve`.
+        maxSize: CONNECTION_LIMITS.userBookRequests.maxSize,
+        defaultSize: CONNECTION_LIMITS.userBookRequests.defaultSize,
+        resolve: (query, parent, args, context) => {
+          rejectOversizePage('User.bookRequests', args, CONNECTION_LIMITS.userBookRequests.maxSize);
+          // `cursor` and `skip` are DELIBERATELY DROPPED and `take` is
+          // deliberately kept — `resolvePrismaCursorConnection` slices the
+          // extra row off using its OWN copy of `take`, so changing it here
+          // corrupts `hasNextPage` rather than resizing the page.
+          const { cursor, skip: _skip, ...page } = query;
+          return context.prisma.bookRequest.findMany({
+            ...page,
+            where: {
+              userId: parent.id,
+              // The enum's `value` IS the stored lowercase string (see
+              // `book-request-status/model.ts`), so it goes straight into the
+              // `where` with no translation. Omitted entirely when unset, which
+              // is what keeps the unfiltered read identical to before.
+              ...(args.status ? { status: args.status } : {}),
+              ...requestKeyset(cursor?.userId_createdAt_id, page.take),
+            },
+            // `id asc` is the tiebreaker and is required: `createdAt` is whole
+            // seconds scaled by 1000, so two requests made in the same second
+            // share one, and cursor pagination needs a total order.
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          });
+        },
+      },
+      { name: 'UserBookRequestsConnection' },
+      { name: 'UserBookRequestsConnectionEdge' }
+    ),
   }),
 });

@@ -348,6 +348,40 @@ describe('data_v17_validation', () => {
   });
 });
 
+describe('data_v18_book_requests', () => {
+  let tmpDir: string;
+  let booksDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-req-'));
+    booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the book_requests table', async () => {
+    await runMigrations(prisma, booksDir);
+    const rows = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='book_requests'`
+    );
+    expect(rows.map((r) => r.name)).toEqual(['book_requests']);
+  });
+
+  it('enforces the compound unique that backs the cursor', async () => {
+    await runMigrations(prisma, booksDir);
+    const rows = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='book_requests'`
+    );
+    expect(rows.map((r) => r.name)).toContain('book_requests_user_id_created_at_id_key');
+  });
+});
+
 // Moved from `services/book-store.test.ts` (Task 9b, `BookStore`'s deletion):
 // these assert `runMigrations` itself (id recompute, NanoID surrogate ids,
 // the `chapter_names`/`page_count` columns), not anything `BookStore` ever

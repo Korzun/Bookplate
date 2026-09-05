@@ -26,11 +26,33 @@ export type TransportItem = {
   /** High-confidence fixes the server applied during upload (informational). */
   autoFixes?: MetadataFix[];
   proposals?: MetadataFix[];
+  /** Captured at add time — see `AddFileOptions.target`. */
+  targetUsername?: string;
+  /** Captured at add time, so `onUploaded` can evict the right library. */
+  targetLibraryId?: string;
+  /** See `AddFileOptions.fulfillsRequestId`. */
+  fulfillsRequestId?: string;
+};
+
+export type AddFileOptions = {
+  /**
+   * The library these bytes go to, captured AT ADD TIME. Without it the
+   * transport reads the admin's GLOBAL switcher selection at SEND time, so an
+   * admin who queues files for one reader and then switches libraries has the
+   * still-queued items upload into the new target. That is a real bug this
+   * option fixes, independent of book requests.
+   */
+  target?: { libraryId: string; username: string };
+  /**
+   * The `BookRequest` global id this upload fulfils, if it was started from a
+   * request row. The queue fires `bookRequestFulfill` once when the item lands.
+   */
+  fulfillsRequestId?: string;
 };
 
 export type UseUploadTransport = {
   items: TransportItem[];
-  addFiles: (files: FileList) => void;
+  addFiles: (files: FileList, options?: AddFileOptions) => void;
   /** Removes a row locally, by the session-counter `id` above — never a raw
    * book id, for the same reason `TransportItem.bookGlobalId` is the only
    * book identifier this module stores (see Global Constraints). Replaces
@@ -71,11 +93,15 @@ type Item = TransportItem & { file?: File };
  * state, server sync, fix operations) is server-owned now and does not
  * belong here.
  *
- * `onUploaded` fires once per successful upload, with no arguments — the
- * caller decides what to refetch/evict, and doesn't need to know which book
- * arrived.
+ * `onUploaded` fires once per successful upload, with the item's own
+ * `targetLibraryId` (captured at add time, `undefined` when the item named
+ * none) passed straight through — this transport does no evicting itself. It
+ * is the CALLER (`use-upload-queue.ts`'s `onUploaded`) that evicts that
+ * library rather than whatever the global switcher points at now.
  */
-export const useUploadTransport = (onUploaded: () => void): UseUploadTransport => {
+export const useUploadTransport = (
+  onUploaded: (libraryId: string | undefined) => void
+): UseUploadTransport => {
   const [items, setItems] = useState<Item[]>([]);
   // Replaces GET /api/config. Defaults to 3 while loading or on error,
   // exactly as the old REST fetch's `.catch()` did.
@@ -158,7 +184,7 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
                 : i
             )
           );
-          onUploadedRef.current();
+          onUploadedRef.current(item.targetLibraryId);
         } else {
           let errorMessage: string | undefined;
           let validation: ValidationFailure | undefined;
@@ -200,7 +226,14 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
           const token = await ensureFreshToken();
           // The XHR may have been aborted (unmount) while we awaited the refresh.
           if (xhrMapRef.current.get(item.id) !== xhr) return;
-          xhr.open('POST', withTargetUserRef.current('/api/books/upload'));
+          // `item.targetUsername` when the caller named one, else the global
+          // switcher. Read from the ITEM, not from the ref, so a switcher
+          // change while this item sat queued cannot retarget it.
+          const url =
+            item.targetUsername === undefined
+              ? withTargetUserRef.current('/api/books/upload')
+              : `/api/books/upload?user=${encodeURIComponent(item.targetUsername)}`;
+          xhr.open('POST', url);
           if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           const formData = new FormData();
           formData.append('files', item.file);
@@ -221,7 +254,7 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
     }
   }, [items, maxConcurrent]);
 
-  const addFiles = useCallback((files: FileList) => {
+  const addFiles = useCallback((files: FileList, options?: AddFileOptions) => {
     const newItems: Item[] = Array.from(files).map((file) => ({
       id: String(nextIdRef.current++),
       file,
@@ -229,6 +262,9 @@ export const useUploadTransport = (onUploaded: () => void): UseUploadTransport =
       fileSize: file.size,
       status: 'queued' as const,
       bytesUploaded: 0,
+      targetUsername: options?.target?.username,
+      targetLibraryId: options?.target?.libraryId,
+      fulfillsRequestId: options?.fulfillsRequestId,
     }));
     setItems((prev) => [...prev, ...newItems]);
   }, []);

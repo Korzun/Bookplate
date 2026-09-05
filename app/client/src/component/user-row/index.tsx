@@ -1,5 +1,6 @@
 import { useMutation } from '@apollo/client/react';
 import { Fragment, useCallback, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 import { Card } from '~/component/card';
 import { Button, ConfirmModal, ResetPasswordButton } from '~/control';
@@ -8,7 +9,10 @@ import type { UserDeleteMutation } from '~/gql/graphql';
 import { UserDeleteDocument } from '~/graphql/user';
 import { AlertOctagonIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
+import { useLibraryTarget } from '~/provider/library-target';
+import { path } from '~/router';
 
+import { Tag } from '../tag';
 import { UserRowContent } from '../user-row-content';
 import { useStyle } from './style';
 
@@ -26,21 +30,27 @@ import { useStyle } from './style';
  * **`Viewer.users` carries a ×50 cost multiplier** — every field selected
  * here rides that multiplier, so this selection is kept deliberately
  * narrow: `id` (the User global ID every user mutation addresses),
- * `username` (display + list keying), `progressCount` (this subtitle).
- * `library { id }` also rides along on `UserListDocument`'s entry, but
- * lives as a sibling field on the DOCUMENT (`~/graphql/user`), not in this
- * fragment — `UserRow` never renders it. **Do NOT add a field here**
- * without checking `test:cost -w app/server` first: `viewer.users →
- * library.progress` is this project's worst-measured legitimate query
- * shape at 68.5% of the complexity budget, and this fragment is exactly
- * where a future field would naturally be added — a single unbounded
- * child (e.g. anything under `library`) can push that shape over budget.
+ * `username` (display + list keying), `progressCount` (this subtitle),
+ * `pendingBookRequestCount` (the header badge below). `library { id }` also
+ * rides along on `UserListDocument`'s entry, but lives as a sibling field on
+ * the DOCUMENT (`~/graphql/user`), not in this fragment — `UserRow` never
+ * renders it. **Do NOT add a field here** without checking `test:cost -w
+ * app/server` first: `viewer.users → library.progress` is this project's
+ * worst-measured legitimate query shape at 68.5% of the complexity budget,
+ * and this fragment is exactly where a future field would naturally be
+ * added — a single unbounded child (e.g. anything under `library`) can push
+ * that shape over budget. `pendingBookRequestCount` itself is a scalar
+ * `t.relationCount` (`app/server/graphql/schema/user/model.ts`), not an
+ * unbounded child, so it adds only breadth/complexity proportional to a
+ * plain field under the ×50 multiplier — measured before/after in this
+ * task's commit message.
  */
 export const UserRowFragment = graphql(`
   fragment UserRowFragment on User {
     id
     username
     progressCount
+    pendingBookRequestCount
   }
 `);
 
@@ -54,6 +64,17 @@ type UserDeletePayload = Extract<
 
 interface UserRowProps {
   user: FragmentType<typeof UserRowFragment>;
+  /**
+   * The row's target user's Library global id — NOT selected on
+   * `UserRowFragment` itself (see that fragment's own doc comment for why).
+   * `UserListDocument` (`~/graphql/user`) selects `library { id }` as a
+   * SIBLING of the fragment spread; `UserList` (`component/user-list`)
+   * widens its own `users` prop to carry that sibling field through and
+   * passes it here. Used only by the pending-badge's `handleBadge` below —
+   * `UserRowContent`/`UserProgressRow` read a SEPARATE `library.id` off
+   * their own `UserProgressListDocument` query, not this prop.
+   */
+  libraryId: string;
 }
 
 /**
@@ -68,12 +89,23 @@ interface UserRowProps {
  * evicted, so a plain `cache.evict` is enough (no `cache.modify` list filter
  * needed alongside it, unlike `DeviceRow`'s optimistic delete).
  */
-export const UserRow = ({ user }: UserRowProps) => {
+export const UserRow = ({ user, libraryId }: UserRowProps) => {
   const styles = useStyle();
   const unmasked = useFragment(UserRowFragment, user);
   const [runDelete] = useMutation(UserDeleteDocument);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | undefined>();
+
+  const [, setTargetLibraryId] = useLibraryTarget();
+  const navigate = useNavigate();
+  const handleBadge = useCallback(() => {
+    // `/add` is scoped to one library and structurally cannot answer "who is
+    // waiting?" — this page can, which is why the count stays here and the
+    // badge is the way in. Selecting the library first is what makes the
+    // request view show THIS user's requests on arrival.
+    setTargetLibraryId(libraryId);
+    navigate(path.addRequest());
+  }, [libraryId, setTargetLibraryId, navigate]);
 
   const [showDeleteUserModal, setShowDeleteUserModal] = useState<boolean>(false);
   const handleDeleteUser = useCallback(() => {
@@ -132,7 +164,30 @@ export const UserRow = ({ user }: UserRowProps) => {
       <Card
         isCollapsible
         defaultCollapsed
-        title={unmasked.username}
+        title={
+          <Fragment>
+            {unmasked.username}
+            {unmasked.pendingBookRequestCount > 0 && (
+              // Stop-propagation shape mirrors `Card`'s own `headerAction`
+              // wrapper (`component/card/index.tsx`): this badge sits inside
+              // `Card`'s collapsible `title` region, which has its own
+              // `onClick={handleToggle}`/`onKeyDown` and no stop-propagation
+              // of its own. Without this, clicking the badge both expands the
+              // card AND navigates via `handleBadge` — firing
+              // `UserProgressListDocument` for a card unmounted a tick later,
+              // and nesting `role="button"` inside `role="button"`.
+              <span
+                className={styles.badge}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <Tag size="sm" onClick={handleBadge}>
+                  {unmasked.pendingBookRequestCount} pending
+                </Tag>
+              </span>
+            )}
+          </Fragment>
+        }
         subTitle={`${unmasked.progressCount} book${unmasked.progressCount === 1 ? '' : 's'} synced`}
         headerAction={
           <Fragment>

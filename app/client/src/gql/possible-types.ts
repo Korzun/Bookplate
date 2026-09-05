@@ -39,6 +39,21 @@
       "InvalidInputError",
       "StagedUploadNotFoundError"
     ],
+    "BookRequestCreateResult": [
+      "BookRequestCreatePayload",
+      "BookRequestLimitExceededError",
+      "DuplicateBookRequestError",
+      "InvalidInputError"
+    ],
+    "BookRequestDeclineResult": [
+      "BookRequestDeclinePayload",
+      "BookRequestNotPendingError"
+    ],
+    "BookRequestFulfillResult": [
+      "BookRequestFulfillPayload",
+      "BookRequestNotPendingError",
+      "InvalidInputError"
+    ],
     "BookResolvePendingFixResult": [
       "BookHashCollisionError",
       "BookNotValidatedError",
@@ -90,6 +105,7 @@
     ],
     "Node": [
       "Book",
+      "BookRequest",
       "Library",
       "Series",
       "User"
@@ -112,9 +128,12 @@
     "UserError": [
       "BookHashCollisionError",
       "BookNotValidatedError",
+      "BookRequestLimitExceededError",
+      "BookRequestNotPendingError",
       "DeviceSlugConflictError",
       "DocumentAlreadyLinkedError",
       "DocumentIsBookError",
+      "DuplicateBookRequestError",
       "EditLineageEntryError",
       "EpubValidationError",
       "IncorrectPasswordError",

@@ -2,7 +2,22 @@ import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The pending badge navigates via `useNavigate` and selects a library via
+// `useLibraryTarget`, both mocked here the same way `component/book-row/
+// from-entry.test.tsx` mocks `useNavigate` — `vi.hoisted` so the spies exist
+// before `vi.mock`'s factory runs. `~/provider/library-target` is a plain
+// factory (no `importOriginal()`), so this does not cross into the
+// circular-import cycle `test-utils.tsx`'s standing note warns about.
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), setTargetLibraryId: vi.fn() }));
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>();
+  return { ...actual, useNavigate: () => mocks.navigate };
+});
+vi.mock('~/provider/library-target', () => ({
+  useLibraryTarget: () => [undefined, mocks.setTargetLibraryId],
+}));
 
 import { makeFragmentData } from '~/gql';
 import type {
@@ -36,12 +51,25 @@ beforeAll(() => {
  * sanctioned cast back to that masked type.
  */
 const user = (
-  overrides: Partial<{ id: string; username: string; progressCount: number }> = {}
+  overrides: Partial<{
+    id: string;
+    username: string;
+    progressCount: number;
+    pendingBookRequestCount: number;
+  }> = {}
 ): UserRowFragmentFragment => ({
   __typename: 'User',
   id: overrides.id ?? 'u1',
   username: overrides.username ?? 'alice',
   progressCount: overrides.progressCount ?? 3,
+  pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
+});
+
+const LIBRARY_ID = 'lib-1';
+
+beforeEach(() => {
+  mocks.navigate.mockClear();
+  mocks.setTargetLibraryId.mockClear();
 });
 
 // Writes the row into a REAL, normalized `InMemoryCache` (via `writeQuery`,
@@ -102,7 +130,10 @@ const findDeleteDialog = (container: HTMLElement) =>
 describe('UserRow', () => {
   it('renders the username and progress subtitle from the fragment, collapsed by default', () => {
     renderWithApollo(
-      <UserRow user={makeFragmentData(user({ progressCount: 1 }), UserRowFragment)} />
+      <UserRow
+        user={makeFragmentData(user({ progressCount: 1 }), UserRowFragment)}
+        libraryId={LIBRARY_ID}
+      />
     );
 
     expect(screen.getAllByText('alice').length).toBeGreaterThanOrEqual(1);
@@ -111,14 +142,92 @@ describe('UserRow', () => {
 
   it('pluralizes the progress subtitle for zero and multiple books', () => {
     renderWithApollo(
-      <UserRow user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)} />
+      <UserRow
+        user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)}
+        libraryId={LIBRARY_ID}
+      />
     );
     expect(screen.getByText('0 books synced')).toBeInTheDocument();
   });
 
+  it('shows the pending-request badge when the count is greater than zero', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(user({ pendingBookRequestCount: 2 }), UserRowFragment)}
+        libraryId={LIBRARY_ID}
+      />
+    );
+    expect(screen.getByText('2 pending')).toBeInTheDocument();
+  });
+
+  it('hides the pending-request badge when the count is zero', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(user({ pendingBookRequestCount: 0 }), UserRowFragment)}
+        libraryId={LIBRARY_ID}
+      />
+    );
+    expect(screen.queryByText(/pending/)).not.toBeInTheDocument();
+  });
+
+  it('renders no badge when nothing is pending', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ username: 'alice', pendingBookRequestCount: 0 }),
+          UserRowFragment
+        )}
+        libraryId={LIBRARY_ID}
+      />
+    );
+    expect(screen.queryByRole('button', { name: /pending/i })).not.toBeInTheDocument();
+  });
+
+  // Task 6 (add-page reorg): the badge is now the entry point into
+  // `/add/request` — `Tag`'s own `onClick` prop is what turns it into a
+  // `role="button"` control (see `component/tag`), so `getByRole` finds it
+  // by its visible text. Selecting the row's library FIRST (before
+  // navigating) is what makes the request view land on THIS user's
+  // requests — `setTargetLibraryId` is asserted directly rather than only
+  // inferred from the navigation, since a wrong/missing selection would
+  // otherwise pass this test silently.
+  it('navigates to the request view when the pending badge is activated', async () => {
+    const userEventInstance = userEvent.setup();
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ username: 'bob', pendingBookRequestCount: 2 }),
+          UserRowFragment
+        )}
+        libraryId="TGliOmJvYg=="
+      />
+    );
+
+    // Anchored, not a bare substring match: the collapsible `Card` header is
+    // ITSELF a `role="button"` whose accessible name concatenates all of its
+    // descendants' text — including "bob 2 pending" — so an unanchored
+    // `/2 pending/i` matches both that header AND the badge itself (see
+    // `clickConfirmDelete`'s identical note, above, for "Delete user").
+    // The collapsible `Card` header (the OTHER `role="button"` — its
+    // `aria-expanded` is how `Card` marks the toggle state) must stay
+    // collapsed: without the badge's own stop-propagation, this click would
+    // bubble to the header's `onClick={handleToggle}` and expand the card at
+    // the same time it navigates away from it.
+    const header = screen.getAllByRole('button').find((el) => el.hasAttribute('aria-expanded'));
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^2 pending$/i }));
+
+    expect(mocks.setTargetLibraryId).toHaveBeenCalledWith('TGliOmJvYg==');
+    expect(mocks.navigate).toHaveBeenCalledWith('/add/request');
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('opens the confirm modal when Delete user is clicked, without sending a mutation', async () => {
     const userEventInstance = userEvent.setup();
-    renderWithApollo(<UserRow user={makeFragmentData(user(), UserRowFragment)} />);
+    renderWithApollo(
+      <UserRow user={makeFragmentData(user(), UserRowFragment)} libraryId={LIBRARY_ID} />
+    );
 
     await userEventInstance.click(screen.getByRole('button', { name: /^delete user$/i }));
     expect(screen.getByText(/delete user permanently\?/i)).toBeInTheDocument();
@@ -132,7 +241,7 @@ describe('UserRow', () => {
     const userEventInstance = userEvent.setup();
     const row = user({ id: 'u1' });
     const { client, container } = renderWithApollo(
-      <UserRow user={makeFragmentData(row, UserRowFragment)} />,
+      <UserRow user={makeFragmentData(row, UserRowFragment)} libraryId={LIBRARY_ID} />,
       { mocks: [deleteSuccessMock('u1')] }
     );
     seedUserEntity(client, row);
@@ -150,7 +259,7 @@ describe('UserRow', () => {
     const userEventInstance = userEvent.setup();
     const row = user({ id: 'u1' });
     const { client, container } = renderWithApollo(
-      <UserRow user={makeFragmentData(row, UserRowFragment)} />,
+      <UserRow user={makeFragmentData(row, UserRowFragment)} libraryId={LIBRARY_ID} />,
       { mocks: [deleteNetworkErrorMock('u1')] }
     );
     seedUserEntity(client, row);

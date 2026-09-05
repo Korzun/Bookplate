@@ -186,8 +186,20 @@ const disableSuccessMock = (
 // `UserListDocument` mock for every test now, not just the one that used to
 // swap in "the real hook".
 const fixedUsers = [
-  { id: 'u-alice', username: 'alice', progressCount: 0, library: { id: 'lib-alice' } },
-  { id: 'u-bob', username: 'bob', progressCount: 0, library: { id: 'lib-bob' } },
+  {
+    id: 'u-alice',
+    username: 'alice',
+    progressCount: 0,
+    pendingBookRequestCount: 0,
+    library: { id: 'lib-alice' },
+  },
+  {
+    id: 'u-bob',
+    username: 'bob',
+    progressCount: 0,
+    pendingBookRequestCount: 0,
+    library: { id: 'lib-bob' },
+  },
 ];
 
 type RenderFormOptions = Parameters<typeof renderWithApollo>[1];
@@ -237,6 +249,7 @@ const userListMock = (users: typeof fixedUsers = fixedUsers): MockedResponse<Use
               id: u.id,
               username: u.username,
               progressCount: u.progressCount,
+              pendingBookRequestCount: u.pendingBookRequestCount,
             },
             UserRowFragment
           ),

@@ -147,6 +147,64 @@ type BookReplacePayload {
 
 union BookReplaceResult = BookHashCollisionError | BookReplacePayload | EpubValidationError | InvalidInputError | StagedUploadNotFoundError
 
+type BookRequest implements Node {
+  author: String!
+  book: Book
+  createdAt: DateTime!
+  declineReason: String!
+  id: ID!
+  note: String!
+  resolvedAt: DateTime
+  status: BookRequestStatus!
+  title: String!
+}
+
+input BookRequestCreateInput {
+  author: String!
+  note: String
+  title: String!
+}
+
+type BookRequestCreatePayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestCreateResult = BookRequestCreatePayload | BookRequestLimitExceededError | DuplicateBookRequestError | InvalidInputError
+
+type BookRequestDeclinePayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestDeclineResult = BookRequestDeclinePayload | BookRequestNotPendingError
+
+type BookRequestDeletePayload {
+  deletedId: ID!
+}
+
+type BookRequestFulfillPayload {
+  bookRequest: BookRequest!
+}
+
+union BookRequestFulfillResult = BookRequestFulfillPayload | BookRequestNotPendingError | InvalidInputError
+
+"""The reader already has the maximum number of open requests."""
+type BookRequestLimitExceededError implements UserError {
+  limit: Int!
+  message: String!
+}
+
+"""The request was already resolved; nothing was changed."""
+type BookRequestNotPendingError implements UserError {
+  message: String!
+  status: BookRequestStatus!
+}
+
+enum BookRequestStatus {
+  DECLINED
+  FULFILLED
+  PENDING
+}
+
 input BookResolvePendingFixInput {
   action: PendingFixResolution!
 
@@ -322,6 +380,12 @@ This document id is an existing book — link through that book’s lineage inst
 """
 type DocumentIsBookError implements UserError {
   book: Book!
+  message: String!
+}
+
+"""An open request for this title and author already exists."""
+type DuplicateBookRequestError implements UserError {
+  existingRequestId: ID!
   message: String!
 }
 
@@ -545,6 +609,18 @@ type Mutation {
   Replaces a book’s EPUB file with a previously staged upload, applying auto-fixes and any accepted proposals. Resolves to null when the book does not exist for the resolved owner.
   """
   bookReplace(input: BookReplaceInput!): BookReplaceResult
+
+  """Asks the library admin for a book that is not in Bookplate."""
+  bookRequestCreate(input: BookRequestCreateInput!): BookRequestCreateResult!
+
+  """Turns down a request, optionally with a reason."""
+  bookRequestDecline(id: ID!, reason: String): BookRequestDeclineResult
+
+  """Withdraws a pending request, or clears a resolved one."""
+  bookRequestDelete(id: ID!): BookRequestDeletePayload
+
+  """Marks a request fulfilled by a book in that reader library."""
+  bookRequestFulfill(bookId: ID!, id: ID!): BookRequestFulfillResult
 
   """
   Resolves a book’s pending metadata-fix proposals: ACCEPT applies them (arming an undo), DISMISS clears them (arming an undo), UNDO reverts whichever of those two an armed undo snapshot recorded, or CLEAR deletes the pending-fix row outright. ACCEPT and DISMISS accept an optional `fixes` list to act on a named subset of the row’s proposals instead of all of them; omitting `fixes` means every proposal, which is this mutation’s original behaviour. UNDO and CLEAR ignore `fixes` — both always act on the whole row. Resolves to null when the book does not exist for the resolved owner.
@@ -793,11 +869,26 @@ type UndoSnapshot {
 }
 
 type User implements Node {
+  """
+  Books this reader has asked the library admin for, newest first. Paginates in both directions.
+  """
+  bookRequests(after: String, before: String, first: Int, last: Int, status: BookRequestStatus): UserBookRequestsConnection!
   id: ID!
   library: Library!
   mustChangePassword: Boolean!
+  pendingBookRequestCount: Int!
   progressCount: Int!
   username: String!
+}
+
+type UserBookRequestsConnection {
+  edges: [UserBookRequestsConnectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+type UserBookRequestsConnectionEdge {
+  cursor: String!
+  node: BookRequest!
 }
 
 input UserChangePasswordInput {

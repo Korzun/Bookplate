@@ -1,3 +1,6 @@
+export { AddPage } from './add';
+export { AddRequestView } from './add/request';
+export { AddUploadView } from './add/upload';
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
 export { DeviceListPage } from './device-list';
@@ -6,6 +9,5 @@ export { LoadingPage } from './loading';
 export { LoginPage } from './login';
 export { PasswordResetPage } from './password-reset';
 export { SeriesPage } from './series';
-export { UploadPage } from './upload';
 export { UserListPage } from './user-list';
 export { UserPage } from './user';

@@ -9,7 +9,7 @@ import { NavDesktop } from './index';
 
 const items: NavItem[] = [
   { to: '/library', label: 'Library', Icon: BookIcon, active: true },
-  { to: '/upload', label: 'Upload', Icon: UploadIcon, active: false },
+  { to: '/add', label: 'Add', Icon: UploadIcon, active: false },
   { to: '/user', label: 'Settings', Icon: SettingsIcon, active: false },
 ];
 
@@ -19,14 +19,14 @@ describe('NavDesktop', () => {
   it('renders a link for every item', () => {
     renderWithProviders(<NavDesktop items={items} />);
     expect(linkFor('Library')).toHaveAttribute('href', '/library');
-    expect(linkFor('Upload')).toHaveAttribute('href', '/upload');
+    expect(linkFor('Add')).toHaveAttribute('href', '/add');
     expect(linkFor('Settings')).toHaveAttribute('href', '/user');
   });
 
   it('marks only the active item with aria-current', () => {
     renderWithProviders(<NavDesktop items={items} />);
     expect(linkFor('Library')).toHaveAttribute('aria-current', 'page');
-    expect(linkFor('Upload')).not.toHaveAttribute('aria-current');
+    expect(linkFor('Add')).not.toHaveAttribute('aria-current');
     expect(linkFor('Settings')).not.toHaveAttribute('aria-current');
   });
 
@@ -37,7 +37,7 @@ describe('NavDesktop', () => {
 });
 
 function badgeItems(badge: NavItem['badge']): NavItem[] {
-  return [{ to: '/upload', label: 'Upload', Icon: UploadIcon, active: false, badge }];
+  return [{ to: '/add', label: 'Add', Icon: UploadIcon, active: false, badge }];
 }
 
 describe('NavDesktop badge', () => {

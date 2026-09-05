@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
-import { use, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useFragment } from '~/gql';
 import type {
@@ -8,19 +8,21 @@ import type {
   PendingFixRowFragmentFragment,
   UndoKind,
 } from '~/gql/graphql';
+import { BookRequestFulfillDocument } from '~/graphql/book-request';
 import {
   BookResolvePendingFixDocument,
   LibraryPendingFixesDocument,
   MetadataFixFragment,
   PendingFixRowFragment,
 } from '~/graphql/upload';
+import { UserListDocument } from '~/graphql/user';
 import type { MetadataFix } from '~/lib/book-types';
 import type { ValidationFailure } from '~/lib/severity';
 import { unwrapResult } from '~/provider/apollo';
 import { useCurrentLibraryId } from '~/provider/library-target';
 
 import { UploadContext } from '../context';
-import type { TransportItem } from './use-upload-transport';
+import type { AddFileOptions, TransportItem } from './use-upload-transport';
 import { useUploadTransport } from './use-upload-transport';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
@@ -70,7 +72,8 @@ export type FixKey = { field: string; kind: string; from: string };
  * `true` (a typed error carries no payload to read it from).
  *
  * This type stays INTERNAL: `UseUploadQueue`'s public contract is still
- * boolean, so `page/upload` never sees a `FixOutcome`.
+ * boolean, so `page/add`'s Upload view (`AddUploadView`, `page/add/
+ * upload.tsx`) never sees a `FixOutcome`.
  */
 type FixOutcome = { ok: boolean; bookGlobalId?: string };
 
@@ -102,11 +105,21 @@ export type UploadItem = {
   appliedFixes?: MetadataFix[];
   proposals?: MetadataFix[];
   undo?: UndoSnapshot;
+  /**
+   * The `BookRequest` global id this item fulfils, when it was added via
+   * `addFiles(files, { fulfillsRequestId })` — the admin's request row
+   * (`component/book-request-row`, Task 14). That row finds ITS live item by
+   * matching this against its own request's id; a plain (non-request)
+   * upload never sets it. Carried only on the LIVE (transport-joined) half
+   * of a merged row — see `mergeRow` below — a purely seeded row (a reload,
+   * no live transport counterpart) has no session-scoped binding to report.
+   */
+  fulfillsRequestId?: string;
 };
 
 export type UseUploadQueue = {
   items: UploadItem[];
-  addFiles: (files: FileList) => void;
+  addFiles: (files: FileList, options?: AddFileOptions) => void;
   applyFix: (itemId: string, fix: MetadataFix) => Promise<boolean>;
   applyAllProposals: (itemId: string) => Promise<boolean>;
   /** Async now (Task 8): resolves through `BookResolvePendingFixDocument`
@@ -246,6 +259,7 @@ const mergeRow = (t: TransportItem, r: ResolvedRow | undefined, everSeen: boolea
     errorMessage: t.errorMessage,
     validation: t.validation,
     bookGlobalId: t.bookGlobalId,
+    fulfillsRequestId: t.fulfillsRequestId,
   };
   if (!r) {
     return everSeen
@@ -408,7 +422,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       } catch {
         // A network failure resolves `false` like a typed error does — the
         // public `UseUploadQueue` contract is a bare boolean, and
-        // `page/upload` turns it into a toast.
+        // `AddUploadView` (`page/add/upload.tsx`) turns it into a toast.
         return { ok: false };
       }
     },
@@ -432,18 +446,79 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
   // book's position in a sorted, filtered, paginated connection is the
   // server's to decide, so the only correct move is to drop the stored
   // connection and let the next read miss.
-  const onUploaded = useCallback(() => {
-    if (libraryId !== undefined) {
-      client.cache.evict({
-        id: client.cache.identify({ __typename: 'Library', id: libraryId }),
-        fieldName: 'entries',
-      });
-      client.cache.gc();
-    }
-    void refetch(); // the new book may have arrived with proposals
-  }, [client, libraryId, refetch]);
+  // `itemLibraryId` is the library the bytes ACTUALLY went to, captured on the
+  // item at add time — not `useCurrentLibraryId()`, which is the admin's global
+  // switcher selection and may have moved since. Falling back to it keeps every
+  // pre-existing call site (an upload with no explicit target) behaving exactly
+  // as before.
+  const onUploaded = useCallback(
+    (itemLibraryId: string | undefined) => {
+      const evictId = itemLibraryId ?? libraryId;
+      if (evictId !== undefined) {
+        client.cache.evict({
+          id: client.cache.identify({ __typename: 'Library', id: evictId }),
+          fieldName: 'entries',
+        });
+        client.cache.gc();
+      }
+      void refetch(); // the new book may have arrived with proposals
+    },
+    [client, libraryId, refetch]
+  );
   const transport = useUploadTransport(onUploaded);
   const { remapBookGlobalId } = transport;
+
+  // ── Fulfil a bound request once its upload lands ──────────────────────────
+  //
+  // `fulfillsRequestId` is set only by `addFiles(files, { fulfillsRequestId
+  // })` — the admin's request row (Task 14) is the only caller that ever
+  // passes it, so an ordinary reader upload never reaches this mutation. No
+  // role check needed: the field's presence is the gate.
+  const [fulfillRequest] = useMutation(BookRequestFulfillDocument);
+
+  /**
+   * Item ids whose `bookRequestFulfill` has already been fired. Same guard
+   * `AddUploadView`'s (`page/add/upload.tsx`) `announcedRef` uses, and for the
+   * same reason: this effect runs on every render where `transport.items`
+   * changed, and a `done` item stays `done`. The id is added BEFORE the call
+   * is awaited, so a re-render while the mutation is in flight cannot fire a
+   * second one.
+   *
+   * Deliberately no retry on failure: the item is session state, so a closed
+   * tab would lose a client-side retry and strand the request with no way to
+   * close it but declining and re-requesting. Recovery is the request row's
+   * "link an existing book" picker (Task 14), not this effect.
+   */
+  const fulfilledRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const item of transport.items) {
+      if (item.status !== 'done') continue;
+      if (item.fulfillsRequestId === undefined || item.bookGlobalId === undefined) continue;
+      if (fulfilledRef.current.has(item.id)) continue;
+
+      fulfilledRef.current.add(item.id);
+      void fulfillRequest({
+        variables: { id: item.fulfillsRequestId, bookId: item.bookGlobalId },
+      })
+        .then((result) => {
+          if (result.data?.bookRequestFulfill?.__typename !== 'BookRequestFulfillPayload') return;
+          // `pendingBookRequestCount` (`UserRowFragment`) is a server-computed
+          // `t.relationCount` with no client-visible decrement — same doc
+          // comment as `user-request-list`'s `handleDelete`. Without this
+          // refetch, an auto-fulfilled request leaves the admin's "N pending"
+          // badge stale until a full reload.
+          return client.refetchQueries({ include: [UserListDocument] });
+        })
+        .catch(() => {
+          // Apollo 4's `mutate` rejects on a network error. The deliberate
+          // user-facing recovery for a failed auto-fulfil is the request
+          // row's "Uploaded, but the request didn't close" state plus its
+          // "link an existing book" picker (Task 14) — NOT a retry from here
+          // (see the no-retry note above) — so swallowing the rejection here
+          // is intentional, not neglect.
+        });
+    }
+  }, [transport.items, fulfillRequest, client]);
 
   const autoFixesFlat = useFragment(
     MetadataFixFragment,

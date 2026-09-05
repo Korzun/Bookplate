@@ -11,7 +11,7 @@ import { useLibraryTarget } from '~/provider/library-target';
 /**
  * `UserListDocument` is imported from the leaf module `~/graphql/user` (it
  * has multiple readers — see its own doc comment), not duplicated — no
- * `skip` gate here (unlike `page/library`/`page/upload`'s own reads of the
+ * `skip` gate here (unlike `page/library`/`page/add`'s own reads of the
  * same document): `AdminLibrarySwitcher` is itself only ever mounted for an
  * admin (`LibrarySwitcher` below returns `null` before rendering it), so the
  * query is never even constructed for a non-admin, let alone sent.
@@ -39,6 +39,7 @@ const AdminLibrarySwitcher = () => {
       userRefs.map((ref, index) => ({
         username: unmaskedUsers[index].username,
         library: { id: ref.library.id },
+        pendingBookRequestCount: unmaskedUsers[index].pendingBookRequestCount,
       })),
     [userRefs, unmaskedUsers]
   );
@@ -58,7 +59,19 @@ const AdminLibrarySwitcher = () => {
   }, [loading, hasError, userList, targetLibraryId, setTargetLibraryId]);
 
   const options = useMemo(
-    () => userList.map((user) => ({ label: user.username, value: user.library.id })),
+    () =>
+      userList.map((user) => ({
+        label: user.username,
+        value: user.library.id,
+        // `description`, not an appended label: the option's NAME stays the
+        // username, and the count reads as secondary. A user with nothing
+        // pending gets no description, so the switcher looks exactly as it
+        // did for a library with nothing waiting.
+        description:
+          user.pendingBookRequestCount > 0
+            ? `${user.pendingBookRequestCount} request${user.pendingBookRequestCount === 1 ? '' : 's'}`
+            : undefined,
+      })),
     [userList]
   );
 

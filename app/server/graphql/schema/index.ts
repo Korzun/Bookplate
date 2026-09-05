@@ -1,12 +1,17 @@
 import './book';
 import './book-hash-collision-error';
 import './book-not-validated-error';
+import './book-request';
+import './book-request-limit-exceeded-error';
+import './book-request-not-pending-error';
+import './book-request-status';
 import './config';
 import './cover-fit';
 import './device';
 import './device-slug-conflict-error';
 import './document-already-linked-error';
 import './document-is-book-error';
+import './duplicate-book-request-error';
 import './edit-lineage-entry-error';
 import './epub-validation-error';
 import './epub-validation-message';
