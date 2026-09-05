@@ -409,6 +409,12 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
           isOpen={isDeclineOpen}
           title="Decline request"
           confirmText="Confirm"
+          // Declining is the destructive half of this modal, so its confirm
+          // reads as such. `ConfirmModal` already renders that button
+          // `type="primary"` and forwards this prop to its `danger` —
+          // turning a request down is the one irreversible thing an admin
+          // does from this row.
+          danger
           loading={declining}
           onCancel={handleCancelDecline}
           onConfirm={() => void handleConfirmDecline()}
