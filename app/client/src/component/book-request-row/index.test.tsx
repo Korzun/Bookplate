@@ -50,6 +50,7 @@ const requestRow = (
     note: string;
     status: BookRequestStatus;
     declineReason: string;
+    createdAt: string;
     book: { id: string; title: string } | null;
   }> = {}
 ): BookRequestRowFragmentFragment => ({
@@ -60,7 +61,7 @@ const requestRow = (
   note: overrides.note ?? '',
   status: overrides.status ?? 'PENDING',
   declineReason: overrides.declineReason ?? '',
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: overrides.createdAt ?? '2026-01-01T00:00:00.000Z',
   resolvedAt: null,
   book:
     overrides.book !== undefined
@@ -549,5 +550,46 @@ describe('BookRequestRow — the upload control', () => {
     await user.click(screen.getByRole('button', { name: 'Upload EPUB' }));
 
     expect(clickSpy).toHaveBeenCalled();
+  });
+});
+
+/**
+ * How long a reader has been waiting is the fact that decides whether a pending
+ * request is overdue, so it sits beside the status badge. Once a request is
+ * resolved it stops mattering — the outcome is the news then, not the wait —
+ * so the resolved cards do not carry it.
+ *
+ * `relativeTime` (`~/utils`) is the same helper `MyProgressRow` and
+ * `UserProgressRow` already use, so "3d ago" reads identically wherever the app
+ * shows an age.
+ */
+describe('BookRequestRow — how long it has been waiting', () => {
+  const THREE_DAYS_AGO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  it('shows the elapsed time on a pending request', () => {
+    renderRow({ status: 'PENDING', createdAt: THREE_DAYS_AGO }, { canResolve: false });
+
+    expect(screen.getByText('3d ago')).toBeInTheDocument();
+  });
+
+  it('shows minutes for a request made moments ago', () => {
+    const twelveMinutesAgo = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+    renderRow({ status: 'PENDING', createdAt: twelveMinutesAgo }, { canResolve: false });
+
+    expect(screen.getByText('12m ago')).toBeInTheDocument();
+  });
+
+  it('does not show it once the request is fulfilled', () => {
+    renderRow({ status: 'FULFILLED', createdAt: THREE_DAYS_AGO }, { canResolve: false });
+
+    // Positive control: the card DID render, so this cannot pass vacuously.
+    expect(screen.getByText('Dune')).toBeInTheDocument();
+    expect(screen.queryByText('3d ago')).not.toBeInTheDocument();
+  });
+
+  it('does not show it once the request is declined', () => {
+    renderRow({ status: 'DECLINED', createdAt: THREE_DAYS_AGO }, { canResolve: false });
+
+    expect(screen.queryByText('3d ago')).not.toBeInTheDocument();
   });
 });
