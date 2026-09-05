@@ -10,6 +10,20 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
+  // The status column: the badge, and beneath it how long the request has been
+  // waiting. Right-aligned so both read against the card's right edge.
+  statusGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: theme.space.xxxs,
+    flexShrink: 0,
+  },
+  elapsed: {
+    fontSize: theme.fontSize.sm,
+    color: theme.color.text.muted,
+    whiteSpace: 'nowrap',
+  },
   identityText: {
     display: 'flex',
     flexDirection: 'column',
