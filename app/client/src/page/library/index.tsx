@@ -3,7 +3,6 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 
 import { BookRowFromEntry, Page, SearchBar, SeriesRow } from '~/component';
-import { LibrarySwitcher } from '~/component/library-switcher';
 import { graphql } from '~/gql';
 import type { LibraryEntriesQuery } from '~/gql/graphql';
 import { UserListDocument } from '~/graphql/user';
@@ -205,7 +204,6 @@ export const LibraryPage = () => {
     const noUsers = !userListLoading && userList.length === 0;
     return (
       <Page>
-        <LibrarySwitcher />
         <div className={style.emptyState}>
           {noUsers ? (
             <>
@@ -234,7 +232,6 @@ export const LibraryPage = () => {
   if (!loading && error !== undefined && edges.length === 0) {
     return (
       <Page>
-        <LibrarySwitcher />
         <div className={style.emptyState}>
           <div className={style.emptyStateTitle}>Failed to load library</div>
           <div className={style.emptyStateSubtitle}>{error}</div>
@@ -259,7 +256,6 @@ export const LibraryPage = () => {
 
   return (
     <Page>
-      <LibrarySwitcher />
       <SearchBar filter={bookListFilter} onChange={setBookListFilter} />
       {edges.length === 0 ? (
         <div className={style.emptyState}>

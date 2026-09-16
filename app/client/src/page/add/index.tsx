@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { Link, Outlet } from 'react-router';
 
 import { Page } from '~/component';
-import { LibrarySwitcher } from '~/component/library-switcher';
 import { type PageActionItem } from '~/control';
 import { UserListDocument } from '~/graphql/user';
 import { useIsAdmin } from '~/provider/auth';
@@ -23,10 +22,15 @@ export type AddOutletContext = {
  * The `/add` layout: everything the Upload and Request views share.
  *
  * `<Page>` lives HERE rather than in each view because the shared chrome has to
- * render inside `<main>` — `page/library` puts `<LibrarySwitcher />` as the
- * first child of `<Page>` for the same reason, and chrome outside `<main>`
- * would fall outside the page's layout container. A layout route renders above
- * its `<Outlet />`, so `<Page>` comes up with the chrome.
+ * render inside `<main>` — `page/library` puts its `<SearchBar />` as the first
+ * child of `<Page>` for the same reason, and chrome outside `<main>` would fall
+ * outside the page's layout container. A layout route renders above its
+ * `<Outlet />`, so `<Page>` comes up with the chrome.
+ *
+ * The library picker is NOT that kind of chrome and is deliberately not here:
+ * it is global, so it lives in `router/nav-layout`, above the nav and above
+ * every logged-in page. The "Choose a user above" copy in the gate below points
+ * at that one.
  *
  * The consequence is `headerActions`: they are the Upload view's, and they now
  * travel upward through `AddOutletContext`. A view publishes on mount and
@@ -61,7 +65,6 @@ export const AddPage = () => {
     const noUsers = !userListLoading && userList.length === 0;
     return (
       <Page>
-        <LibrarySwitcher />
         <div className={styles.emptyState}>
           {noUsers ? (
             <>
@@ -89,7 +92,6 @@ export const AddPage = () => {
 
   return (
     <Page headerActions={headerActions} actionsLabel="Actions">
-      <LibrarySwitcher />
       <AddToggle />
       <Outlet context={context} />
     </Page>
