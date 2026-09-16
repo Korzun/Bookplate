@@ -170,22 +170,25 @@ describe('AddPage layout', () => {
 
   it('tells an admin to register a user when there are none', async () => {
     renderAddPage({ isAdmin: true, targetLibraryId: undefined, users: [] });
-    // "No users registered" appears twice once the query settles: once as the
-    // empty-state title, and once as the (now-disabled) switcher's own
-    // placeholder — both are real, expected renderings of the same state, so
-    // this asserts on the count rather than picking one via `getByText`.
+    // Exactly ONCE, as the empty-state title. It used to appear twice, the
+    // second being the disabled switcher's own placeholder — the switcher is
+    // global now (`router/nav-layout`) and no longer rendered by this page, so
+    // a second occurrence here would mean it had crept back in.
     await waitFor(() => {
-      expect(screen.getAllByText(/no users registered/i).length).toBe(2);
+      expect(screen.getAllByText(/no users registered/i).length).toBe(1);
     });
   });
 
-  it('renders the switcher and the child view once a library is selected', async () => {
+  it('renders the child view once a library is selected, and owns no switcher', async () => {
     renderAddPage({ isAdmin: true, targetLibraryId: DEFAULT_LIBRARY_ID });
-    // `LibrarySwitcher`'s real `Select` trigger has no ARIA `combobox` role
-    // (see `control/select/index.tsx`) — its trigger is a `role="button"`
-    // element whose accessible name is the selected option's label.
-    expect(await screen.findByRole('button', { name: 'alice' })).toBeInTheDocument();
-    expect(screen.getByTestId('add-outlet-child')).toBeInTheDocument();
+
+    expect(await screen.findByTestId('add-outlet-child')).toBeInTheDocument();
+    // The picker is global chrome now, rendered once by `router/nav-layout`
+    // above the nav. This page must not render a second one. `LibrarySwitcher`'s
+    // `Select` trigger is a `role="button"` whose accessible name is the
+    // selected option's label (see `control/select/index.tsx`), so the selected
+    // user's name appearing as a button here would mean a duplicate picker.
+    expect(screen.queryByRole('button', { name: 'alice' })).not.toBeInTheDocument();
   });
 
   it('renders no switcher for a reader, and goes straight to the child view', () => {
