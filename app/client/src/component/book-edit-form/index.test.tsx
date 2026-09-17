@@ -113,7 +113,10 @@ const subjectsMock = (subjects: string[] = []): MockedResponse<LibrarySubjectsQu
   maxUsageCount: Number.POSITIVE_INFINITY,
 });
 
-const seriesNamesMock = (names: string[] = ['Dune']): MockedResponse<SeriesNamesQuery> => ({
+const seriesNamesMock = (
+  names: string[] = ['Dune'],
+  delay?: number
+): MockedResponse<SeriesNamesQuery> => ({
   request: {
     query: SeriesNamesDocument,
     variables: function seriesNamesVariables(vars) {
@@ -136,6 +139,7 @@ const seriesNamesMock = (names: string[] = ['Dune']): MockedResponse<SeriesNames
     },
   },
   maxUsageCount: Number.POSITIVE_INFINITY,
+  ...(delay === undefined ? {} : { delay }),
 });
 
 /** `delivered` flips when `MockLink` actually DELIVERS the response — used by
@@ -639,14 +643,24 @@ describe('cache coherence after a save', () => {
   it('does not send a second request while the first is still in flight', async () => {
     const user = userEvent.setup();
     renderWithApollo(<BookEditForm book={book()} />, {
-      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID }), {}, 40)],
+      // A window the test cannot lose a race against. This used to be 40ms,
+      // which meant "still in flight" was a BET that two `user.click` calls
+      // finish inside that timer — and under load they do not, which is how
+      // this test flaked. The mock now never delivers within the test, so the
+      // in-flight state is a fact. Nothing is lost by never resolving: saving
+      // and navigating to the new id is asserted by two other tests above.
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID }), {}, 100_000)],
     });
 
     const button = screen.getByRole('button', { name: /Sav/ });
     await user.click(button);
+    // The guard ITSELF, asserted rather than assumed: `Button` renders
+    // `disabled={disabled || busy}` in submit mode and `busy` folds in
+    // `useActionState`'s `isPending`. If this ever stops holding, the failure
+    // names the cause instead of showing up as a mystery second request.
+    expect(button).toBeDisabled();
     await user.click(button);
 
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith(path.book(NEW_BOOK_ID)));
     expect(counters.save).toBe(1);
   });
 });
@@ -760,7 +774,14 @@ describe('library reads', () => {
 
     it('fetches series names when the Series switch is turned on', async () => {
       const user = userEvent.setup();
-      renderWithApollo(<BookEditForm book={book({ series: null })} />, { mocks: baseMocks() });
+      renderWithApollo(<BookEditForm book={book({ series: null })} />, {
+        // An explicit, generous delay on the series read. `MockLink`'s default
+        // is a RANDOM 20-50ms, so the synchronous `Loading…` assertion below
+        // was racing delivery and lost under load. The response still lands —
+        // the `waitFor`s after it prove that — it just cannot land before the
+        // flash has been observed.
+        mocks: [subjectsMock(), seriesNamesMock(['Dune'], 500)],
+      });
 
       await screen.findByText('Edit Metadata — Original Title');
       await user.click(screen.getByRole('switch', { name: 'isSeries' }));
@@ -957,7 +978,12 @@ describe('series order auto-fill', () => {
   it('does not overwrite an Order typed while the next-index fetch is still in flight', async () => {
     const user = userEvent.setup();
     renderWithApollo(<BookEditForm book={book({ series: null, seriesIndex: 0 })} />, {
-      mocks: [...baseMocks(), nextIndexMock('Dune', 4, 60)],
+      // 1500ms, not 60. `openSeriesAndPick` plus a `user.type` had to finish
+      // inside the old window for the fetch to still be pending at the assertion
+      // below, which is not something real scheduling guarantees. The test still
+      // waits on actual delivery (`nextIndex.delivered`), so widening the window
+      // costs latency, not rigour.
+      mocks: [...baseMocks(), nextIndexMock('Dune', 4, 1500)],
     });
     await openSeriesAndPick(user, 'Dune');
 
@@ -969,7 +995,11 @@ describe('series order auto-fill', () => {
     // this the assertion below could run before the fetch resolved and pass
     // for the wrong reason. `nextIndex.delivered` flips inside the mock's own
     // `result` function, i.e. at delivery.
-    await waitFor(() => expect(nextIndex.delivered).toBe(1));
+    // The timeout must OUTLAST the mock's delay above — `waitFor` defaults to
+    // 1000ms, which a deliberately wide in-flight window would otherwise beat,
+    // turning one race into another. The two numbers are a pair: widen the
+    // delay and this has to follow.
+    await waitFor(() => expect(nextIndex.delivered).toBe(1), { timeout: 5000 });
     // One more microtask/macrotask turn so the `.then` that would clobber the
     // value has definitely run.
     await act(async () => {
