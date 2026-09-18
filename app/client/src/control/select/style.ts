@@ -38,8 +38,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   triggerWrapper: {
     position: 'relative',
   },
+  // `recipe.input` sets `radius.md`; the `background` modifier below overrides
+  // it for a select sitting directly on the page rather than inside a card.
+  // Applied to the TRIGGER, not `root` — the trigger is the element carrying
+  // the border and background, so it is the one with visible corners.
+  card: {},
+  background: {},
   trigger: {
     ...theme.recipe.input,
+    '&$background': { borderRadius: theme.radius.lg },
     // Shared single-line control height so inputs/select/chips line up on one row.
     height: theme.layout.controlHeight,
     display: 'flex',
