@@ -71,3 +71,42 @@ describe('NavMobile', () => {
     expect(collectCss()).toContain('prefers-reduced-motion: reduce');
   });
 });
+
+const badgeItems = (badge: NavItem['badge']): NavItem[] => [
+  { to: '/add', label: 'Add', Icon: UploadIcon, active: false, badge },
+];
+
+/**
+ * Same contract as `nav-desktop`: an app-style badge sits on the ICON's corner,
+ * which needs a wrapper holding the icon and the badge alone. Mobile previously
+ * anchored it to the whole nav ITEM at a fixed `top`/`right`, which drifts from
+ * the icon as the item's own geometry changes.
+ */
+describe('NavMobile badge placement', () => {
+  it('renders the count as a readable number, not a dot-sized box', () => {
+    renderWithProviders(<NavMobile items={badgeItems(4)} />);
+
+    // Mobile used to render the count through the DOT's style — an 8x8 box with
+    // no padding — so a number was squeezed into it. The count now gets the
+    // same pill the desktop nav uses.
+    const badge = screen.getByText('4');
+    expect(badge).toBeInTheDocument();
+    expect(badge).not.toHaveAttribute('data-testid', 'nav-badge-dot');
+  });
+
+  it('puts the count in a wrapper holding the icon and nothing else', () => {
+    renderWithProviders(<NavMobile items={badgeItems(4)} />);
+
+    const wrapper = screen.getByText('4').parentElement;
+    expect(wrapper?.querySelector('svg')).toBeTruthy();
+    expect(wrapper?.textContent).not.toContain('Add');
+  });
+
+  it('puts the dot in a wrapper holding the icon and nothing else', () => {
+    renderWithProviders(<NavMobile items={badgeItems('dot')} />);
+
+    const wrapper = screen.getByTestId('nav-badge-dot').parentElement;
+    expect(wrapper?.querySelector('svg')).toBeTruthy();
+    expect(wrapper?.textContent).not.toContain('Add');
+  });
+});

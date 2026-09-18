@@ -142,13 +142,41 @@ export const useStyle = createUseStyles((theme: Theme) => {
     layerItem: {
       ...tab,
     },
+    // The positioning context for the badge — the icon alone, not the whole
+    // item. The previous `top: 2px; right: 10px` was measured against the
+    // item's capsule, so it tracked the capsule's geometry rather than the
+    // icon's.
+    iconWrap: {
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // A real pill, matching `nav-desktop`. This style used to be shared with
+    // the dot below — an 8x8 box with no padding — so a numeric badge was
+    // squeezed into a dot and clipped.
     badge: {
       position: 'absolute',
-      top: '2px',
-      right: '10px',
-      minWidth: '8px',
+      top: '-6px',
+      right: '-8px',
+      minWidth: '16px',
+      height: '16px',
+      padding: `0 ${theme.space.xs}`,
+      boxSizing: 'border-box',
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.color.danger.default,
+      color: theme.color.bg.page,
+      fontSize: '0.65rem',
+      lineHeight: '16px',
+      textAlign: 'center',
+      pointerEvents: 'none',
+    },
+    badgeDot: {
+      position: 'absolute',
+      top: '-3px',
+      right: '-4px',
+      width: '8px',
       height: '8px',
-      padding: 0,
       borderRadius: theme.radius.pill,
       backgroundColor: theme.color.danger.default,
       pointerEvents: 'none',
