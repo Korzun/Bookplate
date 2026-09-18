@@ -78,6 +78,11 @@ const AdminLibrarySwitcher = () => {
   return (
     <Select
       name="library"
+      // The picker is global chrome sitting directly on the page, above the
+      // nav — not inside a card — so it takes the rounder page-level radius.
+      // Same axis the request card's footer buttons use in the other
+      // direction: in a card, squarer.
+      radius="background"
       value={targetLibraryId}
       onChange={setTargetLibraryId}
       options={options}

@@ -22,6 +22,15 @@ export type SelectProps = {
   onChange?: (value: string | undefined) => void;
   options: SelectOption[];
   placeholder?: string;
+  /**
+   * Corner radius of the trigger. Deliberately the same vocabulary `Button`'s
+   * own `radius` prop uses, so the two controls do not grow separate names for
+   * one idea: `'card'` (the default, `radius.md`) for a control sitting inside
+   * a card or form, `'background'` (`radius.lg`) for one sitting directly on
+   * the page. Only the two values this control actually needs — `Button` has
+   * four because it has the call sites for them.
+   */
+  radius?: 'background' | 'card';
   searchable?: boolean;
   value: string | undefined;
 };
@@ -54,6 +63,7 @@ export const Select = ({
   onChange = () => {},
   options,
   placeholder = 'Select…',
+  radius = 'card',
   searchable = true,
   value,
 }: SelectProps) => {
@@ -191,7 +201,7 @@ export const Select = ({
       )}
       <div ref={triggerWrapperRef} className={style.triggerWrapper}>
         {isOpen && searchable ? (
-          <div className={style.trigger}>
+          <div className={cx(style.trigger, style[radius])}>
             <input
               ref={inputRef}
               id={inputId}
@@ -220,7 +230,7 @@ export const Select = ({
           </div>
         ) : (
           <div
-            className={cx(style.trigger, {
+            className={cx(style.trigger, style[radius], {
               [style.loading]: loading,
               [style.disabled]: disabled,
               [style.open]: isOpen,
