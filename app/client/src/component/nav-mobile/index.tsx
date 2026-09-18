@@ -116,12 +116,18 @@ export const NavMobile = ({ items }: NavMobileProps) => {
         />
         {items.map(({ to, label, Icon, active, badge }) => (
           <Link key={to} className={styles.item} aria-current={active ? 'page' : undefined} to={to}>
-            <Icon height={14} width={14} />
+            {/* Same wrapper as `nav-desktop`: the badge belongs on the icon's
+                corner. This used to be anchored to the item at a fixed
+                `top`/`right`, which tracks the item's geometry rather than the
+                icon's. */}
+            <span className={styles.iconWrap}>
+              <Icon height={14} width={14} />
+              {typeof badge === 'number' && badge > 0 && (
+                <span className={styles.badge}>{badge}</span>
+              )}
+              {badge === 'dot' && <span className={styles.badgeDot} data-testid="nav-badge-dot" />}
+            </span>
             {label}
-            {typeof badge === 'number' && badge > 0 && (
-              <span className={styles.badge}>{badge}</span>
-            )}
-            {badge === 'dot' && <span className={styles.badge} data-testid="nav-badge-dot" />}
           </Link>
         ))}
         <div className={styles.grayLayer} aria-hidden="true">

@@ -53,24 +53,42 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     },
   },
   active: {},
+  // The positioning context for the badge. Wraps the icon alone, so the badge
+  // lands on the ICON's corner rather than the nav item's — which, with the
+  // label inside the item, would put it past the end of the text.
+  iconWrap: {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Both badge forms overhang the icon's top-right corner, the way a platform
+  // notification badge does. `pointerEvents: none` so the badge never eats a
+  // click meant for the tab beneath it.
   badge: {
+    position: 'absolute',
+    top: '-6px',
+    right: '-8px',
     minWidth: '16px',
     height: '16px',
     padding: `0 ${theme.space.xs}`,
-    marginLeft: theme.space.xs,
+    boxSizing: 'border-box',
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.danger.default,
     color: theme.color.bg.page,
     fontSize: '0.65rem',
     lineHeight: '16px',
     textAlign: 'center',
+    pointerEvents: 'none',
   },
   badgeDot: {
+    position: 'absolute',
+    top: '-3px',
+    right: '-4px',
     width: '8px',
     height: '8px',
-    marginLeft: theme.space.xs,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.danger.default,
-    display: 'inline-block',
+    pointerEvents: 'none',
   },
 }));

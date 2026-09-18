@@ -54,3 +54,32 @@ describe('NavDesktop badge', () => {
     expect(screen.queryByTestId('nav-badge-dot')).toBeNull();
   });
 });
+
+/**
+ * An app-style badge sits on the ICON's upper-right corner, which it can only
+ * do if it shares a positioned wrapper with the icon. Asserting the shared
+ * parent pins the structure the CSS depends on — a badge that drifted back out
+ * to the item level would still render, and a text-only assertion would not
+ * notice.
+ */
+describe('NavDesktop badge placement', () => {
+  it('puts the count in a wrapper holding the icon and nothing else', () => {
+    renderWithProviders(<NavDesktop items={badgeItems(3)} />);
+
+    const wrapper = screen.getByText('3').parentElement;
+    expect(wrapper?.querySelector('svg')).toBeTruthy();
+    // The LABEL must be outside that wrapper. Without this the assertion above
+    // passes against the old layout too, where the badge and the icon were
+    // merely both children of the whole nav item — which is not something a
+    // corner badge can be positioned against.
+    expect(wrapper?.textContent).not.toContain('Add');
+  });
+
+  it('puts the dot in a wrapper holding the icon and nothing else', () => {
+    renderWithProviders(<NavDesktop items={badgeItems('dot')} />);
+
+    const wrapper = screen.getByTestId('nav-badge-dot').parentElement;
+    expect(wrapper?.querySelector('svg')).toBeTruthy();
+    expect(wrapper?.textContent).not.toContain('Add');
+  });
+});
