@@ -23,14 +23,21 @@ export type SelectProps = {
   options: SelectOption[];
   placeholder?: string;
   /**
-   * Corner radius of the trigger. Deliberately the same vocabulary `Button`'s
-   * own `radius` prop uses, so the two controls do not grow separate names for
-   * one idea: `'card'` (the default, `radius.md`) for a control sitting inside
-   * a card or form, `'background'` (`radius.lg`) for one sitting directly on
-   * the page. Only the two values this control actually needs — `Button` has
-   * four because it has the call sites for them.
+   * Which surface this select sits on, which decides its corner radius AND its
+   * elevation together — they are one decision, not two.
+   *
+   * `'card'` (default) is the control as it has always looked: `radius.md`, no
+   * shadow, because the card around it already provides both.
+   *
+   * `'page'` matches `theme.recipe.card.shell` — `radius.lg` plus
+   * `shadow.cardStack` — so a select sitting directly on the page reads as its
+   * own raised surface alongside the cards it shares that page with, instead of
+   * a flat control missing the elevation everything around it has.
+   *
+   * Named for the surface rather than for `radius` (as `Button`'s own prop is),
+   * because here the radius is a consequence, not the choice.
    */
-  radius?: 'background' | 'card';
+  surface?: 'card' | 'page';
   searchable?: boolean;
   value: string | undefined;
 };
@@ -63,7 +70,7 @@ export const Select = ({
   onChange = () => {},
   options,
   placeholder = 'Select…',
-  radius = 'card',
+  surface = 'card',
   searchable = true,
   value,
 }: SelectProps) => {
@@ -193,7 +200,7 @@ export const Select = ({
   );
 
   return (
-    <div className={cx(style.root, style[layout])}>
+    <div className={cx(style.root, style[layout], style[surface])}>
       {label && (
         <label className={style.label} htmlFor={inputId}>
           {label}
@@ -201,7 +208,7 @@ export const Select = ({
       )}
       <div ref={triggerWrapperRef} className={style.triggerWrapper}>
         {isOpen && searchable ? (
-          <div className={cx(style.trigger, style[radius])}>
+          <div className={cx(style.trigger, style[surface])}>
             <input
               ref={inputRef}
               id={inputId}
@@ -230,7 +237,7 @@ export const Select = ({
           </div>
         ) : (
           <div
-            className={cx(style.trigger, style[radius], {
+            className={cx(style.trigger, style[surface], {
               [style.loading]: loading,
               [style.disabled]: disabled,
               [style.open]: isOpen,

@@ -79,10 +79,10 @@ const AdminLibrarySwitcher = () => {
     <Select
       name="library"
       // The picker is global chrome sitting directly on the page, above the
-      // nav — not inside a card — so it takes the rounder page-level radius.
-      // Same axis the request card's footer buttons use in the other
-      // direction: in a card, squarer.
-      radius="background"
+      // nav, so it gets the page surface: the same `radius.lg` and
+      // `shadow.cardStack` as `recipe.card.shell`, and so as every card it
+      // shares the page with. Inside a card it would take the default.
+      surface="page"
       value={targetLibraryId}
       onChange={setTargetLibraryId}
       options={options}

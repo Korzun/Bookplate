@@ -2,7 +2,14 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
+    // The outer panel, which carries a `bg.cardHeader` background in the
+    // `horizontal`/`vertical` layouts. With no label it is EXACTLY coincident
+    // with the trigger (`triggerWrapper` has `flexGrow: 1`), so its corners are
+    // what shows if they are rounder or squarer than the trigger's — rounding
+    // only the trigger left this poking out at the ends, reading as a shadow
+    // that had not followed the corners. Both take the surface modifier.
     borderRadius: theme.radius.md,
+    '&$page': { borderRadius: theme.radius.lg },
     '&$horizontal': {
       display: 'flex',
       flexDirection: 'row',
@@ -38,15 +45,24 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   triggerWrapper: {
     position: 'relative',
   },
-  // `recipe.input` sets `radius.md`; the `background` modifier below overrides
-  // it for a select sitting directly on the page rather than inside a card.
-  // Applied to the TRIGGER, not `root` — the trigger is the element carrying
-  // the border and background, so it is the one with visible corners.
+  // The two surfaces. `card` is the default and adds nothing — the control as
+  // it has always looked. `page` makes the select match `recipe.card.shell`
+  // (`radius.lg` + `shadow.cardStack`), so a select sitting directly on the
+  // page carries the same elevation as the cards beside it.
+  //
+  // BOTH `root` and `trigger` take the radius. `root` is exactly coincident
+  // with the trigger when there is no label (`triggerWrapper` has `flexGrow:1`),
+  // so leaving `root` at `radius.md` left its squarer corners poking out past
+  // the trigger's rounder ones — which reads as a shadow that has not followed
+  // the corners.
   card: {},
-  background: {},
+  page: {},
   trigger: {
     ...theme.recipe.input,
-    '&$background': { borderRadius: theme.radius.lg },
+    '&$page': {
+      borderRadius: theme.radius.lg,
+      boxShadow: theme.shadow.cardStack,
+    },
     // Shared single-line control height so inputs/select/chips line up on one row.
     height: theme.layout.controlHeight,
     display: 'flex',
