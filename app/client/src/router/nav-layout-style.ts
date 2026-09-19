@@ -2,14 +2,18 @@ import { scrollOffsetProperty } from '~/lib/use-scroll-offset-property';
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 // The band's full height, which the page below it has to know in order to keep
-// the fixed mobile controls off it. Derived from the tokens the band and the
-// `Select` inside it are actually built from — `space.xxl` above and below a
-// row that is `layout.controlHeight` of content plus `recipe.input`'s `space.md`
-// padding and 1px border on each side (nothing here sets `border-box`), plus
-// the band's own rule — rather than a measured constant, so it tracks a change
-// to the control instead of drifting silently from it.
+// the fixed mobile controls off it. Derived from the tokens the band is built
+// from rather than measured, so it tracks a change to the control instead of
+// drifting from it: `space.xxl` above and below the switcher row, plus the
+// band's own rule.
+//
+// The row is `layout.controlHeight` FLAT. `index.html` sets `box-sizing:
+// border-box` on everything, so the `Select` trigger's padding and border are
+// already inside that number — adding them again (which this did, for 18px too
+// many) puts the controls below a band that is shorter than the arithmetic
+// claims.
 const bandHeight = (theme: Theme) =>
-  `calc(env(safe-area-inset-top) + ${theme.space.xxl} * 2 + ${theme.layout.controlHeight} + ${theme.space.md} * 2 + 2px + 1px)`;
+  `calc(env(safe-area-inset-top) + ${theme.space.xxl} * 2 + ${theme.layout.controlHeight} + 1px)`;
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   // The band: full-bleed, carrying the rule that separates the global picker
@@ -37,10 +41,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // place, and when the band is not rendered — every non-admin — the
     // property is never set and the fallback position applies untouched.
     //
-    // The controls start exactly where the band ends, with no gap of their own
-    // — the band's `space.xxl` of bottom padding is already the breathing room
-    // above them, and adding the `space.lg` they hold from the left and right
-    // edges on top of it dropped them visibly too low.
+    // The controls sit one `space.xxl` below the band, mirroring the same
+    // `space.xxl` the band holds between the switcher row and its rule: picker,
+    // gap, rule, gap, control. (An earlier `space.lg` gap ON TOP of an
+    // overstated band height put them visibly too low.)
     //
     // Then they RIDE IT UP. The band scrolls away with the page while the
     // controls, being fixed, do not, and an offset for chrome that is no
@@ -51,7 +55,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // so they slide up, stop there, and from then on behave exactly as they do
     // for a reader.
     '& ~ *': {
-      '--floating-control-top': `max(${theme.layout.floatingControlTopBase}, calc(${bandHeight(theme)} - var(${scrollOffsetProperty}, 0px)))`,
+      '--floating-control-top': `max(${theme.layout.floatingControlTopBase}, calc(${bandHeight(theme)} + ${theme.space.xxl} - var(${scrollOffsetProperty}, 0px)))`,
     },
   },
   // The inner box mirrors `component/page`'s `<main>` — same max width, same
