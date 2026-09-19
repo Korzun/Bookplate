@@ -74,7 +74,7 @@ function renderAsAdmin(mocks: MockedResponse[] = []) {
 describe('LibrarySwitcher', () => {
   it('renders nothing for non-admin users, and issues no request', () => {
     renderAsUser();
-    expect(screen.queryByRole('button', { name: 'Select library…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Select user…' })).not.toBeInTheDocument();
   });
 
   it("stores the selected user's library id, not their username", async () => {
@@ -84,13 +84,13 @@ describe('LibrarySwitcher', () => {
         user({ id: 'u2', username: 'bob', libraryId: 'lib-bob' }),
       ]),
     ]);
-    // The trigger's accessible name is "Select library…" via a STATIC
+    // The trigger's accessible name is "Select user…" via a STATIC
     // `aria-label` even while its visible text still reads "Loading…" —
     // `Select.open()` itself is a no-op while `loading` is true, so this
     // must wait for the real loading text to clear before clicking, not
     // just for the (always-present) named button to exist.
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select user…' }));
     await userEvent.click(await screen.findByRole('option', { name: 'alice' }));
     expect(localStorage.getItem('library-target-id')).toBe('lib-alice');
   });
@@ -101,7 +101,7 @@ describe('LibrarySwitcher', () => {
 
     await waitFor(() => {
       expect(localStorage.getItem('library-target-id')).toBeNull();
-      expect(screen.getByRole('button', { name: 'Select library…' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Select user…' })).toBeInTheDocument();
     });
   });
 
@@ -202,7 +202,7 @@ describe('LibrarySwitcher', () => {
       userListMock([user({ username: 'bob', libraryId: 'lib-bob', pendingBookRequestCount: 2 })]),
     ]);
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select user…' }));
     expect(await screen.findByText('2 requests')).toBeInTheDocument();
   });
 
@@ -211,7 +211,7 @@ describe('LibrarySwitcher', () => {
       userListMock([user({ username: 'bob', libraryId: 'lib-bob', pendingBookRequestCount: 1 })]),
     ]);
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select user…' }));
     expect(await screen.findByText('1 request')).toBeInTheDocument();
   });
 
@@ -222,7 +222,7 @@ describe('LibrarySwitcher', () => {
       ]),
     ]);
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'Select library…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select user…' }));
     expect(await screen.findByText('alice')).toBeInTheDocument();
     expect(screen.queryByText(/request/i)).not.toBeInTheDocument();
   });
