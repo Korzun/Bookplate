@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -115,25 +115,35 @@ const emptyPendingFixesMock: PendingFixesMock = pendingFixesMock([]);
 /** A `UserListDocument` row carrying a given pending-request count — mirrors
  * `component/library-switcher/index.test.tsx`'s own `user`/`userListMock`
  * builders, since the nav's request-dot read shares that document. */
-const userRow = (pendingBookRequestCount: number) => ({
+const userRow = (pendingBookRequestCount: number, libraryId = 'lib-alice') => ({
   __typename: 'User' as const,
   ...makeFragmentData(
     {
       __typename: 'User' as const,
-      id: 'u1',
+      id: `u-${libraryId}`,
       username: 'alice',
-      progressCount: 0,
       pendingBookRequestCount,
     },
     UserRowFragment
   ),
-  library: { __typename: 'Library' as const, id: 'lib-alice' },
+  library: { __typename: 'Library' as const, id: libraryId },
 });
 
-const userListMock = (rows: ReturnType<typeof userRow>[]): MockedResponse<UserListQuery> => ({
+/**
+ * `onDeliver` fires when `MockLink` actually DELIVERS the response, not when
+ * the request is made. The dot tests below that assert ABSENCE need it: an
+ * absence assertion is true before the query resolves, so a bare `waitFor`
+ * would pass on its first poll and never observe a dot that appears a tick
+ * later. Same reason `book-edit-form`'s own suite tracks delivery.
+ */
+const userListMock = (
+  rows: ReturnType<typeof userRow>[],
+  onDeliver: () => void = () => {}
+): MockedResponse<UserListQuery> => ({
   request: { query: UserListDocument },
-  result: {
-    data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: rows } },
+  result: () => {
+    onDeliver();
+    return { data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: rows } } };
   },
 });
 
@@ -318,25 +328,95 @@ describe('Nav', () => {
   // conflated count tells a reader neither of its two populations. Three of
   // the four tests below exist specifically to pin that.
 
-  it('shows a dot for an admin when any reader has a pending request', async () => {
-    renderWithApollo(<Nav />, {
-      user: { username: 'admin', isAdmin: true },
-      initialEntries: ['/library'],
-      mocks: [viewerBootstrapMock(true), userListMock([userRow(2)])],
-    });
+  // The dot follows the SELECTED library, not every reader. It used to mean
+  // "someone, somewhere is waiting", which read as a call to action that led
+  // to a "Select a library" message — a prompt, not the thing being pointed
+  // at. The reasoning behind that earlier choice was that the switcher's
+  // per-user counts were only visible once you were already on `/add`; the
+  // picker is global chrome on every page now, so the overview lives there and
+  // the dot can mean the narrower, actionable thing.
+  it('shows a dot when the SELECTED library has a pending request', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
 
-    // No `LibraryTargetProvider` wraps this render, so `useCurrentLibraryId`
-    // resolves no target for the admin and the pending-fix read (`count`)
-    // skips entirely — this dot is the requests trigger alone.
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/library'],
+        mocks: [viewerBootstrapMock(true), userListMock([userRow(2, LIBRARY_ID)])],
+      }
+    );
+
     await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
   });
 
-  it('never folds requests into the badge number', async () => {
+  it('shows no dot when the waiting reader is NOT the selected library', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+    let delivered = false;
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/library'],
+        mocks: [
+          viewerBootstrapMock(true),
+          userListMock([userRow(2, 'lib-someone-else'), userRow(0, LIBRARY_ID)], () => {
+            delivered = true;
+          }),
+        ],
+      }
+    );
+
+    await waitFor(() => expect(delivered).toBe(true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
+  });
+
+  it('shows no dot when the admin has selected no library at all', async () => {
+    // The case that prompted this: a dot with nothing selected sent the admin
+    // to `/add`, which could only answer "Select a library".
+    let delivered = false;
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
-      mocks: [viewerBootstrapMock(true), userListMock([userRow(3)])],
+      mocks: [
+        viewerBootstrapMock(true),
+        userListMock([userRow(2)], () => {
+          delivered = true;
+        }),
+      ],
     });
+
+    await waitFor(() => expect(delivered).toBe(true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryAllByTestId('nav-badge-dot')).toHaveLength(0);
+  });
+
+  it('never folds requests into the badge number', async () => {
+    // Needs a SELECTED library, now that the dot follows the selection rather
+    // than any reader — otherwise there is no request-driven dot to check the
+    // number against, and this would pass for the wrong reason.
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/library'],
+        mocks: [viewerBootstrapMock(true), userListMock([userRow(3, LIBRARY_ID)])],
+      }
+    );
 
     await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
     expect(screen.queryByText('3')).not.toBeInTheDocument();

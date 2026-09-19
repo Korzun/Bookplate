@@ -63,23 +63,36 @@ export const Nav = () => {
   // router), so Apollo serves this from the same normalized result rather
   // than issuing a second request.
   //
-  // ANY reader, not just the selected library: the switcher's per-user
-  // counts are only visible once you are already on /add, so a
-  // selected-library dot would leave an admin on /library with no signal
-  // that someone is waiting.
+  // The SELECTED library only. This used to mean "any reader is waiting", on
+  // the reasoning that the switcher's per-user counts were visible only once
+  // you were already on `/add` — that reasoning expired when the picker became
+  // global chrome on every page (`router/nav-layout`). The overview lives
+  // there now, so the dot can mean the narrower, actionable thing: there is
+  // something waiting in the library you are actually working in.
+  //
+  // It matters because the dot reads as a call to action. Scoped to any
+  // reader, it sent an admin with nothing selected to `/add`, which could only
+  // answer "Select a library" — pointing at a prompt rather than at the work.
   //
   // A reader's OWN pending request sets nothing — it is a wait, not an
   // action. The read itself is gated `skip: !isAdmin` for that reason.
   const { data: userData } = useQuery(UserListDocument, { skip: !isAdmin });
-  const usersForRequests = useFragment(UserRowFragment, userData?.viewer.users ?? []);
-  const anyPendingRequests = usersForRequests.some((u) => u.pendingBookRequestCount > 0);
+  const userRefs = userData?.viewer.users ?? [];
+  const usersForRequests = useFragment(UserRowFragment, userRefs);
+  // Index-matched against the REFS, which carry `library { id }` as a sibling
+  // of the fragment spread — the same match `useWithTargetUser` and
+  // `component/library-switcher` already make, and the reason `library { id }`
+  // is not in `UserRowFragment` itself (its ×50 cost warning).
+  const selectedIndex = userRefs.findIndex((u) => u.library.id === libraryId);
+  const selectedHasPendingRequests =
+    selectedIndex !== -1 && usersForRequests[selectedIndex].pendingBookRequestCount > 0;
 
   // The NUMBER still means "fixes awaiting a decision" and nothing else —
   // only the dot arm gains a second trigger. Folding requests into `count`
   // was tried and rejected: a conflated count tells a reader neither of its
   // two populations.
   const uploadBadge: NavItem['badge'] =
-    count > 0 ? count : active || anyPendingRequests ? 'dot' : undefined;
+    count > 0 ? count : active || selectedHasPendingRequests ? 'dot' : undefined;
 
   const items: NavItem[] = [
     {
