@@ -1,11 +1,12 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { print } from 'graphql';
 import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 
+import type { PageActionItem } from '~/control';
 import type { BookRequestRowFragmentFragment, UserRequestListQuery } from '~/gql/graphql';
-import { UserRequestListDocument } from '~/graphql/book-request';
+import { BookRequestDeclineDocument, UserRequestListDocument } from '~/graphql/book-request';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRequestList } from './index';
@@ -26,9 +27,14 @@ beforeAll(() => {
   });
 });
 
+// Ids in the order the mutations actually fired, so "declines every one" is
+// pinned as a set AND an order rather than a count.
+let declined: string[] = [];
+
 beforeEach(() => {
   queryCallCount = 0;
   capturedVariables = undefined;
+  declined = [];
 });
 
 const requestRow = (
@@ -93,14 +99,19 @@ const renderList = ({
   requests = [],
   skip = false,
   extraMocks = [],
+  onHeaderActions,
 }: {
   userId?: string;
   requests?: BookRequestRowFragmentFragment[];
   skip?: boolean;
   extraMocks?: MockedResponse[];
+  onHeaderActions?: (actions: PageActionItem[] | undefined) => void;
 } = {}) => {
   const mocks: MockedResponse[] = [listMock(userId, requests), ...extraMocks];
-  const rendered = renderWithApollo(<UserRequestList userId={userId} skip={skip} />, { mocks });
+  const rendered = renderWithApollo(
+    <UserRequestList userId={userId} skip={skip} onHeaderActions={onHeaderActions} />,
+    { mocks }
+  );
   return {
     ...rendered,
     user: userEvent.setup(),
@@ -146,6 +157,127 @@ describe('UserRequestList', () => {
     // Positive control: the admin's own actions ARE rendered, so this cannot
     // pass against a list that failed to render its rows at all.
     expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * "Decline all", the page-header action this list publishes upward for
+ * `AddRequestView` to hand to `<Page>`. It lives HERE, not on the view,
+ * because the rows it acts on and the mutation it runs are both this
+ * component's — the view has neither.
+ *
+ * "All" is every row this list holds, and that is every pending request there
+ * is: the server caps a reader at ten OPEN requests
+ * (`MAX_OPEN_BOOK_REQUESTS`) and this document asks for twenty filtered to
+ * `PENDING`, so a second page cannot exist in practice.
+ */
+describe('UserRequestList — decline all', () => {
+  const declineMock = (id: string, reason?: string): MockedResponse => ({
+    request: {
+      query: BookRequestDeclineDocument,
+      variables: { id, reason },
+    },
+    result: () => {
+      declined.push(id);
+      return {
+        data: {
+          bookRequestDecline: {
+            __typename: 'BookRequestDeclinePayload' as const,
+            bookRequest: { ...requestRow({ id }), status: 'DECLINED' as const },
+          },
+        },
+      };
+    },
+  });
+
+  it('publishes the action once the requests have loaded', async () => {
+    const onHeaderActions = vi.fn();
+    renderList({
+      requests: [requestRow({ id: 'req-1' })],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+
+    const latest = onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+    expect(latest.map((action) => action.label)).toEqual(['Decline all']);
+    expect(latest[0].disabled).toBe(false);
+    // Turning down every request at once is the most destructive thing this
+    // page offers.
+    expect(latest[0].danger).toBe(true);
+  });
+
+  it('publishes the action DISABLED when there is nothing to decline', async () => {
+    const onHeaderActions = vi.fn();
+    renderList({ requests: [], onHeaderActions });
+    await screen.findByText(/no requests/i);
+
+    // Published, not withheld: the page holds the header row open either way
+    // (`component/page`), and an action that vanishes is harder to read than
+    // one that greys out.
+    const latest = onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+    expect(latest[0].label).toBe('Decline all');
+    expect(latest[0].disabled).toBe(true);
+  });
+
+  it('clears the published action when it unmounts', async () => {
+    const onHeaderActions = vi.fn();
+    const { unmount } = renderList({ requests: [requestRow()], onHeaderActions });
+    await screen.findByText('Dune');
+    // Positive control: `undefined` is also what "never published anything"
+    // looks like, so this has to see the action published FIRST.
+    expect(onHeaderActions.mock.calls.at(-1)?.[0]).toHaveLength(1);
+
+    unmount();
+
+    // `AddOutletContext`'s standing contract — a view that leaves its actions
+    // published leaves them on the OTHER view's header.
+    expect(onHeaderActions.mock.calls.at(-1)?.[0]).toBeUndefined();
+  });
+
+  it('declines every loaded request, with the one reason', async () => {
+    const onHeaderActions = vi.fn();
+    const { user } = renderList({
+      requests: [
+        requestRow({ id: 'req-1', title: 'Dune' }),
+        requestRow({ id: 'req-2', title: 'Emma' }),
+      ],
+      onHeaderActions,
+      extraMocks: [declineMock('req-1', 'no thanks'), declineMock('req-2', 'no thanks')],
+    });
+    await screen.findByText('Dune');
+
+    const latest = onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+    act(() => latest[0].onClick());
+
+    // Scoped to the OPEN dialog: every pending row mounts its own decline
+    // modal with its own "Reason (optional)" field, so an unscoped query here
+    // matches the batch's and the rows' alike.
+    const dialog = within(screen.getByRole('dialog'));
+    await user.type(dialog.getByLabelText(/reason/i), 'no thanks');
+    await user.click(screen.getByRole('button', { name: 'Decline all' }));
+
+    await waitFor(() => expect(declined).toEqual(['req-1', 'req-2']));
+  });
+
+  it('reports a failure instead of reporting success', async () => {
+    const onHeaderActions = vi.fn();
+    const { user } = renderList({
+      requests: [requestRow({ id: 'req-1' })],
+      onHeaderActions,
+      extraMocks: [
+        {
+          request: { query: BookRequestDeclineDocument, variables: { id: 'req-1' } },
+          error: new Error('network down'),
+        },
+      ],
+    });
+    await screen.findByText('Dune');
+
+    const latest = onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+    act(() => latest[0].onClick());
+    await user.click(screen.getByRole('button', { name: 'Decline all' }));
+
+    expect(await screen.findByText(/network down/i)).toBeInTheDocument();
   });
 });
 

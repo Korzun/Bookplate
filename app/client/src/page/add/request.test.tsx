@@ -1,9 +1,13 @@
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Outlet, Route, Routes } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { Page } from '~/component';
 import { UserRowFragment } from '~/component/user-row';
+import type { PageActionItem } from '~/control';
 import { makeFragmentData } from '~/gql';
 import type {
   BookRequestRowFragmentFragment,
@@ -16,7 +20,38 @@ import { UserListDocument } from '~/graphql/user';
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 import { renderWithApollo } from '~/test-utils';
 
+import type { AddOutletContext } from './index';
 import { AddRequestView } from './request';
+
+/**
+ * A minimal stand-in for `AddPage` — the two things this view depends on: the
+ * `<Page>` its published actions land in, and an `<Outlet>` carrying
+ * `AddOutletContext`. Same harness, for the same reason, as
+ * `page/add/upload.test.tsx`'s; the real layout's admin gate is covered in
+ * `page/add/index.test.tsx` instead.
+ *
+ * It renders a REAL `<Page>` rather than capturing the published actions, so
+ * "Decline all reaches the page header" is asserted through the trigger an
+ * admin actually clicks.
+ */
+function AddPageHarness() {
+  const [headerActions, setHeaderActions] = useState<PageActionItem[] | undefined>(undefined);
+  const context: AddOutletContext = useMemo(() => ({ setHeaderActions }), []);
+  return (
+    <Page headerActions={headerActions} actionsLabel="Actions">
+      <Outlet context={context} />
+    </Page>
+  );
+}
+
+/** Mounts `element` where `AddPage` mounts its `<Outlet />`. */
+const inAddPage = (element: ReactNode) => (
+  <Routes>
+    <Route element={<AddPageHarness />}>
+      <Route index element={element} />
+    </Route>
+  </Routes>
+);
 
 // `UserRequestList` (the admin branch) mounts `BookRequestRow` with
 // `canResolve`, which mounts `ConfirmModal`/`LinkExistingBookModal`
@@ -194,9 +229,7 @@ function renderAddRequest({
   }
 
   return renderWithApollo(
-    <LibraryTargetProvider>
-      <AddRequestView />
-    </LibraryTargetProvider>,
+    <LibraryTargetProvider>{inAddPage(<AddRequestView />)}</LibraryTargetProvider>,
     { user: { username: 'reader', isAdmin }, mocks }
   );
 }
@@ -216,6 +249,44 @@ describe('AddRequestView', () => {
       requests: [{ title: 'Neuromancer' }],
     });
     expect(await screen.findByText('Neuromancer')).toBeInTheDocument();
+  });
+
+  /**
+   * The end of the wire: `UserRequestList` builds the action, this view hands
+   * it to `AddOutletContext`, and `AddPage`'s `<Page>` renders it. Asserted
+   * through the trigger rather than through a captured callback, because the
+   * point of the change was that the Request view has an "Actions" button at
+   * all — the Upload view has one, and a header row that empties as you
+   * switch between them is what made the toggle jump.
+   */
+  it('puts "Decline all" in the page header for an admin', async () => {
+    // The SAME ids the admin test above uses. `userRequestListMock` answers
+    // with `user.library.id` of its own, and that writes the same normalized
+    // `User.library` field `UserListDocument` populated — give the two mocks
+    // different library ids and the second silently un-targets the switcher's
+    // selection, leaving this view rendering `null`.
+    renderAddRequest({
+      isAdmin: true,
+      targetLibraryId: 'TGliOmJvYg==',
+      targetUserId: 'VXNlcjpib2I=',
+      requests: [{ title: 'Dune' }],
+    });
+    await screen.findByText('Dune');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions' }));
+
+    expect(await screen.findByRole('menuitem', { name: 'Decline all' })).toBeInTheDocument();
+  });
+
+  it('gives the reader no actions of their own', async () => {
+    renderAddRequest({ isAdmin: false, requests: [{ title: 'Dune' }] });
+    await screen.findByText('Dune');
+
+    // Deliberate, and the one asymmetry left on this page: "Decline all" is
+    // the admin's, and the reader's equivalent would be withdrawing every
+    // request they have made, which is not a thing anyone has asked for. If
+    // that changes, this is the test that says so.
+    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
   });
 
   it('renders nothing for an admin with no library selected', () => {
@@ -275,12 +346,10 @@ describe('AddRequestView', () => {
       );
     }
 
-    renderWithApollo(
-      <LibraryTargetProvider>
-        <Harness />
-      </LibraryTargetProvider>,
-      { user: { username: 'reader', isAdmin: true }, mocks }
-    );
+    renderWithApollo(<LibraryTargetProvider>{inAddPage(<Harness />)}</LibraryTargetProvider>, {
+      user: { username: 'reader', isAdmin: true },
+      mocks,
+    });
 
     expect(await screen.findByText('Dune')).toBeInTheDocument();
 

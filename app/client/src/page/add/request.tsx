@@ -1,7 +1,11 @@
+import { useOutletContext } from 'react-router';
+
 import { BookRequestsContent } from '~/component/book-requests-content';
 import { UserRequestList } from '~/component/user-request-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useWithTargetUser } from '~/provider/library-target';
+
+import type { AddOutletContext } from './index';
 
 /**
  * The Request view. Branches on `isAdmin`, and each branch mounts a component
@@ -28,7 +32,16 @@ import { useWithTargetUser } from '~/provider/library-target';
 export const AddRequestView = () => {
   const [isAdmin] = useIsAdmin();
   const withTargetUser = useWithTargetUser();
+  // Handed straight through to `UserRequestList`, which owns both halves of
+  // the action it publishes — the rows and the mutation. This view is only the
+  // wire, exactly as `AddUploadView` is for its own queue actions.
+  const { setHeaderActions } = useOutletContext<AddOutletContext>();
 
+  // The reader's branch publishes NOTHING: "Decline all" is the admin's, and a
+  // reader's own equivalent would be withdrawing every request they have made,
+  // which nobody has asked for. Their header row is empty (held open by
+  // `component/page`), so the toggle beside it does not move — but it is the
+  // one view on this page with no actions.
   if (!isAdmin) {
     return (
       <div data-testid="add-request-view">
@@ -43,5 +56,5 @@ export const AddRequestView = () => {
   const userId = withTargetUser.userId;
   if (userId === undefined) return null;
 
-  return <UserRequestList userId={userId} skip={false} />;
+  return <UserRequestList userId={userId} skip={false} onHeaderActions={setHeaderActions} />;
 };
