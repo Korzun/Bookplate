@@ -4,11 +4,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
     ...theme.recipe.glass,
     position: 'fixed',
-    // One rule, both contexts (no iOS-unreliable display-mode query): a browser tab has
-    // no top safe-area inset, so env() ≈ 0 and this resolves to the fixed floor (room for
-    // the frosted shadow); in standalone the notch inset dominates and pushes the control
-    // below the status bar.
-    top: `max(${theme.space.xxxl}, calc(env(safe-area-inset-top) + ${theme.space.lg}))`,
+    // Shared with the page actions menu, and shared with the library-switcher band
+    // that pushes both of them clear of itself — see
+    // `theme.layout.floatingControlTop`.
+    top: theme.layout.floatingControlTop,
     left: theme.space.lg,
     zIndex: theme.zIndex.sticky,
     display: 'flex',
