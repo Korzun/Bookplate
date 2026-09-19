@@ -65,8 +65,6 @@ const user = (
   pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
 });
 
-const LIBRARY_ID = 'lib-1';
-
 beforeEach(() => {
   mocks.navigate.mockClear();
   mocks.setTargetLibraryId.mockClear();
@@ -130,10 +128,7 @@ const findDeleteDialog = (container: HTMLElement) =>
 describe('UserRow', () => {
   it('renders the username and progress subtitle from the fragment, collapsed by default', () => {
     renderWithApollo(
-      <UserRow
-        user={makeFragmentData(user({ progressCount: 1 }), UserRowFragment)}
-        libraryId={LIBRARY_ID}
-      />
+      <UserRow user={makeFragmentData(user({ progressCount: 1 }), UserRowFragment)} />
     );
 
     expect(screen.getAllByText('alice').length).toBeGreaterThanOrEqual(1);
@@ -142,92 +137,32 @@ describe('UserRow', () => {
 
   it('pluralizes the progress subtitle for zero and multiple books', () => {
     renderWithApollo(
-      <UserRow
-        user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)}
-        libraryId={LIBRARY_ID}
-      />
+      <UserRow user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)} />
     );
     expect(screen.getByText('0 books synced')).toBeInTheDocument();
   });
 
-  it('shows the pending-request badge when the count is greater than zero', () => {
+  // The pending-request badge is GONE. It existed as the entry point into
+  // `/add/request` back when the library picker lived on individual pages;
+  // the picker is global chrome on every page now, so the row no longer has
+  // to carry a way in. `pendingBookRequestCount` itself stays on the
+  // fragment — `component/library-switcher` shows it per option and
+  // `component/nav` derives its dot from it.
+  it('renders no pending-request badge, whatever the count', () => {
     renderWithApollo(
-      <UserRow
-        user={makeFragmentData(user({ pendingBookRequestCount: 2 }), UserRowFragment)}
-        libraryId={LIBRARY_ID}
-      />
-    );
-    expect(screen.getByText('2 pending')).toBeInTheDocument();
-  });
-
-  it('hides the pending-request badge when the count is zero', () => {
-    renderWithApollo(
-      <UserRow
-        user={makeFragmentData(user({ pendingBookRequestCount: 0 }), UserRowFragment)}
-        libraryId={LIBRARY_ID}
-      />
-    );
-    expect(screen.queryByText(/pending/)).not.toBeInTheDocument();
-  });
-
-  it('renders no badge when nothing is pending', () => {
-    renderWithApollo(
-      <UserRow
-        user={makeFragmentData(
-          user({ username: 'alice', pendingBookRequestCount: 0 }),
-          UserRowFragment
-        )}
-        libraryId={LIBRARY_ID}
-      />
-    );
-    expect(screen.queryByRole('button', { name: /pending/i })).not.toBeInTheDocument();
-  });
-
-  // Task 6 (add-page reorg): the badge is now the entry point into
-  // `/add/request` — `Tag`'s own `onClick` prop is what turns it into a
-  // `role="button"` control (see `component/tag`), so `getByRole` finds it
-  // by its visible text. Selecting the row's library FIRST (before
-  // navigating) is what makes the request view land on THIS user's
-  // requests — `setTargetLibraryId` is asserted directly rather than only
-  // inferred from the navigation, since a wrong/missing selection would
-  // otherwise pass this test silently.
-  it('navigates to the request view when the pending badge is activated', async () => {
-    const userEventInstance = userEvent.setup();
-    renderWithApollo(
-      <UserRow
-        user={makeFragmentData(
-          user({ username: 'bob', pendingBookRequestCount: 2 }),
-          UserRowFragment
-        )}
-        libraryId="TGliOmJvYg=="
-      />
+      <UserRow user={makeFragmentData(user({ pendingBookRequestCount: 2 }), UserRowFragment)} />
     );
 
-    // Anchored, not a bare substring match: the collapsible `Card` header is
-    // ITSELF a `role="button"` whose accessible name concatenates all of its
-    // descendants' text — including "bob 2 pending" — so an unanchored
-    // `/2 pending/i` matches both that header AND the badge itself (see
-    // `clickConfirmDelete`'s identical note, above, for "Delete user").
-    // The collapsible `Card` header (the OTHER `role="button"` — its
-    // `aria-expanded` is how `Card` marks the toggle state) must stay
-    // collapsed: without the badge's own stop-propagation, this click would
-    // bubble to the header's `onClick={handleToggle}` and expand the card at
-    // the same time it navigates away from it.
-    const header = screen.getAllByRole('button').find((el) => el.hasAttribute('aria-expanded'));
-    expect(header).toHaveAttribute('aria-expanded', 'false');
-
-    await userEventInstance.click(screen.getByRole('button', { name: /^2 pending$/i }));
-
-    expect(mocks.setTargetLibraryId).toHaveBeenCalledWith('TGliOmJvYg==');
-    expect(mocks.navigate).toHaveBeenCalledWith('/add/request');
-    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/pending/i)).not.toBeInTheDocument();
+    // Positive control: the row DID render, so this cannot pass vacuously.
+    // `getAllBy`, because the username appears in more than one place on the
+    // rendered row.
+    expect(screen.getAllByText('alice').length).toBeGreaterThan(0);
   });
 
   it('opens the confirm modal when Delete user is clicked, without sending a mutation', async () => {
     const userEventInstance = userEvent.setup();
-    renderWithApollo(
-      <UserRow user={makeFragmentData(user(), UserRowFragment)} libraryId={LIBRARY_ID} />
-    );
+    renderWithApollo(<UserRow user={makeFragmentData(user(), UserRowFragment)} />);
 
     await userEventInstance.click(screen.getByRole('button', { name: /^delete user$/i }));
     expect(screen.getByText(/delete user permanently\?/i)).toBeInTheDocument();
@@ -241,7 +176,7 @@ describe('UserRow', () => {
     const userEventInstance = userEvent.setup();
     const row = user({ id: 'u1' });
     const { client, container } = renderWithApollo(
-      <UserRow user={makeFragmentData(row, UserRowFragment)} libraryId={LIBRARY_ID} />,
+      <UserRow user={makeFragmentData(row, UserRowFragment)} />,
       { mocks: [deleteSuccessMock('u1')] }
     );
     seedUserEntity(client, row);
@@ -259,7 +194,7 @@ describe('UserRow', () => {
     const userEventInstance = userEvent.setup();
     const row = user({ id: 'u1' });
     const { client, container } = renderWithApollo(
-      <UserRow user={makeFragmentData(row, UserRowFragment)} libraryId={LIBRARY_ID} />,
+      <UserRow user={makeFragmentData(row, UserRowFragment)} />,
       { mocks: [deleteNetworkErrorMock('u1')] }
     );
     seedUserEntity(client, row);

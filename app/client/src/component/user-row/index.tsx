@@ -1,6 +1,5 @@
 import { useMutation } from '@apollo/client/react';
 import { Fragment, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
 
 import { Card } from '~/component/card';
 import { Button, ConfirmModal, ResetPasswordButton } from '~/control';
@@ -9,10 +8,7 @@ import type { UserDeleteMutation } from '~/gql/graphql';
 import { UserDeleteDocument } from '~/graphql/user';
 import { AlertOctagonIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
-import { useLibraryTarget } from '~/provider/library-target';
-import { path } from '~/router';
 
-import { Tag } from '../tag';
 import { UserRowContent } from '../user-row-content';
 import { useStyle } from './style';
 
@@ -64,17 +60,6 @@ type UserDeletePayload = Extract<
 
 interface UserRowProps {
   user: FragmentType<typeof UserRowFragment>;
-  /**
-   * The row's target user's Library global id — NOT selected on
-   * `UserRowFragment` itself (see that fragment's own doc comment for why).
-   * `UserListDocument` (`~/graphql/user`) selects `library { id }` as a
-   * SIBLING of the fragment spread; `UserList` (`component/user-list`)
-   * widens its own `users` prop to carry that sibling field through and
-   * passes it here. Used only by the pending-badge's `handleBadge` below —
-   * `UserRowContent`/`UserProgressRow` read a SEPARATE `library.id` off
-   * their own `UserProgressListDocument` query, not this prop.
-   */
-  libraryId: string;
 }
 
 /**
@@ -89,23 +74,12 @@ interface UserRowProps {
  * evicted, so a plain `cache.evict` is enough (no `cache.modify` list filter
  * needed alongside it, unlike `DeviceRow`'s optimistic delete).
  */
-export const UserRow = ({ user, libraryId }: UserRowProps) => {
+export const UserRow = ({ user }: UserRowProps) => {
   const styles = useStyle();
   const unmasked = useFragment(UserRowFragment, user);
   const [runDelete] = useMutation(UserDeleteDocument);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | undefined>();
-
-  const [, setTargetLibraryId] = useLibraryTarget();
-  const navigate = useNavigate();
-  const handleBadge = useCallback(() => {
-    // `/add` is scoped to one library and structurally cannot answer "who is
-    // waiting?" — this page can, which is why the count stays here and the
-    // badge is the way in. Selecting the library first is what makes the
-    // request view show THIS user's requests on arrival.
-    setTargetLibraryId(libraryId);
-    navigate(path.addRequest());
-  }, [libraryId, setTargetLibraryId, navigate]);
 
   const [showDeleteUserModal, setShowDeleteUserModal] = useState<boolean>(false);
   const handleDeleteUser = useCallback(() => {
@@ -164,30 +138,7 @@ export const UserRow = ({ user, libraryId }: UserRowProps) => {
       <Card
         isCollapsible
         defaultCollapsed
-        title={
-          <Fragment>
-            {unmasked.username}
-            {unmasked.pendingBookRequestCount > 0 && (
-              // Stop-propagation shape mirrors `Card`'s own `headerAction`
-              // wrapper (`component/card/index.tsx`): this badge sits inside
-              // `Card`'s collapsible `title` region, which has its own
-              // `onClick={handleToggle}`/`onKeyDown` and no stop-propagation
-              // of its own. Without this, clicking the badge both expands the
-              // card AND navigates via `handleBadge` — firing
-              // `UserProgressListDocument` for a card unmounted a tick later,
-              // and nesting `role="button"` inside `role="button"`.
-              <span
-                className={styles.badge}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <Tag size="sm" onClick={handleBadge}>
-                  {unmasked.pendingBookRequestCount} pending
-                </Tag>
-              </span>
-            )}
-          </Fragment>
-        }
+        title={unmasked.username}
         subTitle={`${unmasked.progressCount} book${unmasked.progressCount === 1 ? '' : 's'} synced`}
         headerAction={
           <Fragment>
