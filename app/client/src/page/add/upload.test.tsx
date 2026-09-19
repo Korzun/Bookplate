@@ -439,13 +439,14 @@ describe('AddUploadView — Accept all / Reject all', () => {
   it('disables per-upload Accept/Reject while Accept all is applying, then frees them on completion', async () => {
     const fix = makeFix();
 
-    // `delay: 20` keeps the mutation "in flight" for a beat — long enough to
-    // observe the locked state before it resolves — matching this codebase's
-    // established in-flight-delay idiom for exactly this kind of assertion
-    // (see e.g. `page/book/index.test.tsx`'s "disables Regen chapters while a
-    // regen is still in flight"). The disabling itself happens synchronously on click
-    // (React state, not a network round trip), so no manual gate is needed.
-    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => {}, 20)] });
+    // A window real scheduling cannot beat. This was 20ms, which made "still
+    // in flight" a BET that the assertions below run before the mutation
+    // resolves — and under load they do not, which is how this test flaked.
+    // Both halves are still asserted: the lock appears synchronously on click
+    // (React state, not a round trip) so the first `waitFor` finds it
+    // immediately, and the second one below waits the window out to see the
+    // lock lift, with a timeout that outlasts it.
+    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => {}, 1500)] });
     await act(async () => {
       await Promise.resolve();
     });
@@ -503,8 +504,15 @@ describe('AddUploadView — Accept all / Reject all', () => {
     // than disappearing — is a harness artifact, not what this test is
     // about. `dismissFix`/`applyFix` mock-driven end-to-end resolution is
     // covered by `use-upload-queue.test.tsx`'s own merge tests.)
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^accept$/i })).not.toHaveAttribute('aria-disabled')
+    // The timeout must OUTLAST the mock's delay above — `waitFor` defaults to
+    // 1000ms, which the deliberately wide in-flight window would otherwise
+    // beat, trading one race for another. The two numbers are a pair.
+    await waitFor(
+      () =>
+        expect(screen.getByRole('button', { name: /^accept$/i })).not.toHaveAttribute(
+          'aria-disabled'
+        ),
+      { timeout: 5000 }
     );
   });
 });
