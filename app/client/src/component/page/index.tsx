@@ -66,10 +66,10 @@ export const Page = ({
             up with, so it gets no row. */}
         {type === PageType.default && (
           <header className={styles.headerRow}>
+            {header}
             {hasHeaderActions && (
               <PageActionsBar items={headerActions} actionsLabel={actionsLabel} />
             )}
-            {header}
           </header>
         )}
         {children}

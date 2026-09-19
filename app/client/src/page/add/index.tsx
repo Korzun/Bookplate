@@ -92,8 +92,11 @@ export const AddPage = () => {
   }
 
   return (
-    <Page headerActions={headerActions} actionsLabel="Actions">
-      <AddToggle />
+    // The toggle is header chrome, not body content: in the header slot it
+    // shares the row with this page's actions — toggle left, "Actions" right —
+    // instead of sitting under them, which also stops the two views from
+    // starting at different heights.
+    <Page headerActions={headerActions} actionsLabel="Actions" header={<AddToggle />}>
       <Outlet context={context} />
     </Page>
   );

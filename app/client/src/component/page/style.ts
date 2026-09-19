@@ -41,12 +41,22 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   // giving back the consistency this buys.
   headerRow: {
     minHeight: '2.25rem',
+    // ONE ROW: the page's own header content leads, the actions bar trails.
+    // `/add` is the case that needs both — its Upload/Request toggle on the
+    // left, its "Actions" trigger on the right — and the bar's own internal
+    // spacer keeps that trigger hard right however much room it is given.
     display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    // Only relevant to a page that has both an actions bar and its own header
-    // content; nothing does today.
+    alignItems: 'center',
     gap: theme.space.md,
+    // Both slots share the leftover width rather than either one owning it:
+    // alone, the search bar or the actions bar takes the full row exactly as
+    // it did as a child of `<main>`; together, the toggle takes the space the
+    // actions do not need. `minWidth: 0` lets a wide child shrink instead of
+    // pushing the row past the content column.
+    '& > *': {
+      flexGrow: 1,
+      minWidth: 0,
+    },
     // Mobile reserves nothing: the actions live in the floating menu
     // (`PageActionsMenu`) rather than in this row, and screen height is too
     // dear to hold open a row for chrome that is not there. `contents` makes
@@ -55,6 +65,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // this row existed.
     [theme.breakpoint.mobile]: {
       display: 'contents',
+      // `contents` hands these children straight to `<main>`, whose flex
+      // direction is COLUMN — leaving `flexGrow` on would stretch a search bar
+      // down the whole page rather than across it.
+      '& > *': {
+        flexGrow: 0,
+      },
     },
   },
   // Mobile-only spacer so the fixed floating back/actions buttons don't overlap the
