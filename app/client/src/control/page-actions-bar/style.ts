@@ -5,11 +5,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     gap: theme.space.md,
     alignItems: 'center',
-    // Takes whatever width the page's own header content leaves, so `$spacer`
-    // below can hold the trailing actions hard right. Growing HERE rather than
-    // in `component/page`'s header row is what keeps that content at its
-    // natural size: it must not change width with the actions beside it.
-    flexGrow: 1,
     [theme.breakpoint.mobile]: {
       display: 'none',
     },
