@@ -54,14 +54,12 @@ const user = (
   overrides: Partial<{
     id: string;
     username: string;
-    progressCount: number;
     pendingBookRequestCount: number;
   }> = {}
 ): UserRowFragmentFragment => ({
   __typename: 'User',
   id: overrides.id ?? 'u1',
   username: overrides.username ?? 'alice',
-  progressCount: overrides.progressCount ?? 3,
   pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
 });
 
@@ -126,20 +124,17 @@ const findDeleteDialog = (container: HTMLElement) =>
   );
 
 describe('UserRow', () => {
-  it('renders the username and progress subtitle from the fragment, collapsed by default', () => {
+  it('renders the username, and no longer a progress subtitle', () => {
     renderWithApollo(
-      <UserRow user={makeFragmentData(user({ progressCount: 1 }), UserRowFragment)} />
+      <UserRow user={makeFragmentData(user({ username: 'alice' }), UserRowFragment)} />
     );
 
     expect(screen.getAllByText('alice').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('1 book synced')).toBeInTheDocument();
-  });
-
-  it('pluralizes the progress subtitle for zero and multiple books', () => {
-    renderWithApollo(
-      <UserRow user={makeFragmentData(user({ progressCount: 0 }), UserRowFragment)} />
-    );
-    expect(screen.getByText('0 books synced')).toBeInTheDocument();
+    // The "N books synced" subtitle is gone, and with it `progressCount` from
+    // the fragment — the row names who the user is, not how much they have
+    // read. `component/my-progress` still shows the viewer their own count,
+    // off its own document.
+    expect(screen.queryByText(/books? synced/i)).not.toBeInTheDocument();
   });
 
   // The pending-request badge is GONE. It existed as the entry point into

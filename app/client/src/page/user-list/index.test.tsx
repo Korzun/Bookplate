@@ -33,7 +33,6 @@ const aliceRow = {
       __typename: 'User' as const,
       id: 'USER-1',
       username: 'alice',
-      progressCount: 4,
       pendingBookRequestCount: 0,
     },
     UserRowFragment
@@ -88,7 +87,9 @@ describe('UserListPage', () => {
     });
 
     await waitFor(() => expect(screen.getAllByText('alice').length).toBeGreaterThanOrEqual(1));
-    expect(screen.getByText('4 books synced')).toBeInTheDocument();
+    // The row's "N books synced" subtitle is gone; the username is what this
+    // test pins about the composed query reaching the row.
+    expect(screen.queryByText(/books? synced/i)).not.toBeInTheDocument();
   });
 
   // `skip: !isAdmin` must stop the `UserList` query before the server ever
