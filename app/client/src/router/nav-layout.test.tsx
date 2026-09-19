@@ -78,7 +78,7 @@ describe('NavLayout — the global library picker', () => {
   it('renders the picker above the nav for an admin', async () => {
     renderLayout({ isAdmin: true });
 
-    const picker = await screen.findByRole('button', { name: 'Select library…' });
+    const picker = await screen.findByRole('button', { name: 'Select user…' });
     const nav = screen.getByTestId('nav');
     // The nav FOLLOWS the picker in document order, which is what "above the
     // navigation" means for the desktop header. Asserting the relationship
@@ -93,8 +93,19 @@ describe('NavLayout — the global library picker', () => {
     // Positive control: the layout DID render, so this cannot pass vacuously.
     expect(screen.getByTestId('nav')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Select library…' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Select user…' })).not.toBeInTheDocument()
     );
+  });
+
+  it('renders no separator band above the nav for a reader', async () => {
+    renderLayout({ isAdmin: false });
+
+    // Nothing at all before the nav. The band carries a visible rule, so an
+    // EMPTY wrapper is not good enough here — it would draw a line above a
+    // picker that is not there. `&:empty { display: none }` cannot be trusted
+    // for this either: jsdom applies no stylesheet, and more importantly the
+    // band has a child element, so it is never `:empty` in the first place.
+    expect(screen.getByTestId('nav').previousElementSibling).toBeNull();
   });
 
   it('still renders the routed page', async () => {

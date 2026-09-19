@@ -4,6 +4,7 @@ import { LibrarySwitcher } from '~/component/library-switcher';
 import { Nav } from '~/component/nav';
 import { TopFade } from '~/component/top-fade';
 import { isStandalone } from '~/lib/is-standalone';
+import { useIsAdmin } from '~/provider/auth';
 
 import { useStyle } from './nav-layout-style';
 
@@ -27,20 +28,31 @@ import { useStyle } from './nav-layout-style';
 //     page opt in by passing a prop — or render unconditionally, in which case
 //     it is not a slot at all.
 //
-// No `isAdmin` branch here: `LibrarySwitcher` returns `null` for a non-admin on
-// its own, and this layout sits inside `ProtectedRoute`, so "every logged-in
-// nav-bearing page, admins only" falls out without a condition.
+// This layout DOES branch on `isAdmin`, despite `LibrarySwitcher` already
+// returning `null` for a non-admin on its own. The two gates answer different
+// questions: the component's is "do I render a control", and this one is "does
+// the separator band exist at all". While the wrapper was invisible chrome an
+// empty one cost nothing; now that it carries a visible rule, an empty band
+// would draw a line above a picker that is not there. `&:empty` cannot express
+// it either — the band has a child, so it is never `:empty`.
 export const NavLayout = () => {
   const styles = useStyle();
+  const [isAdmin] = useIsAdmin();
 
   return (
     <>
-      {/* Constrained to the same width and gutter `component/page`'s `<main>`
-          uses, so the picker lines up with page content instead of floating
-          full-bleed across the viewport. */}
-      <div className={styles.switcher}>
-        <LibrarySwitcher />
-      </div>
+      {/* Two elements on purpose: the BAND spans the viewport and carries the
+          rule, so the picker reads as a band of global chrome above the page
+          rather than as content divided from other content; the inner box is
+          constrained to the same width and gutter `component/page`'s `<main>`
+          uses, so the picker itself still lines up with page content. */}
+      {isAdmin && (
+        <div className={styles.switcherBand}>
+          <div className={styles.switcher}>
+            <LibrarySwitcher />
+          </div>
+        </div>
+      )}
       <Nav />
       {/* The top status-bar fade is only relevant when installed (standalone); in a
           browser tab the OS status bar isn't drawn over the page. */}
