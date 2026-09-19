@@ -220,6 +220,21 @@ describe('AddPage layout', () => {
     expect(screen.getByRole('radio', { name: 'Request' })).toBeChecked();
   });
 
+  /**
+   * The toggle rides in the page's HEADER row, sharing it with this page's
+   * actions rather than sitting below them. Only the Upload view publishes
+   * actions, so as body content the toggle shifted every time the two views
+   * were switched between — the reserved row (`component/page`) fixes the
+   * height, and the slot is what puts the toggle IN it.
+   */
+  it('renders the toggle in the page header, beside the actions', () => {
+    const { container } = renderAddPageAt('/add', { isAdmin: false });
+
+    const header = container.querySelector('header');
+    expect(header).not.toBeNull();
+    expect(header).toContainElement(screen.getByRole('radiogroup'));
+  });
+
   it('navigates when the toggle changes', async () => {
     const { user } = renderAddPageAt('/add', { isAdmin: false });
     await user.click(screen.getByRole('radio', { name: 'Request' }));
