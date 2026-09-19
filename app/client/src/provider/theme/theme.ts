@@ -138,12 +138,14 @@ export interface Theme {
   // Intrinsic sizes of chrome that other elements must lay out around. These are
   // measured, not derived (the element's real height comes from its content), so
   // they need on-device tuning — keep the single source of truth here.
-  // `floatingControlTop` is the odd one out: a POSITION, not a size, and a
-  // `var()` rather than a constant — see its definition below.
+  // The two `floatingControlTop*` entries are the odd ones out: POSITIONS, not
+  // sizes, and one of them is a `var()` rather than a constant — see their
+  // definitions below.
   layout: {
     navHeightMobile: string;
     modalWidth: string;
     controlHeight: string;
+    floatingControlTopBase: string;
     floatingControlTop: string;
   };
   fontSize: {
@@ -393,23 +395,29 @@ function buildTheme(mode: ThemeMode): Theme {
   // modalWidth: one width for every dialog so modals read as a single system.
   // controlHeight: the shared single-line height for inputs/select/chips (~33px)
   // so form controls line up on one row. Single source of truth.
+  // Where the fixed mobile controls (back button, page actions menu) rest when
+  // there is nothing above them. One rule, both contexts (no iOS-unreliable
+  // display-mode query): a browser tab has no top safe-area inset, so env() ~ 0
+  // and this resolves to the fixed floor (room for the frosted shadow); in
+  // standalone the notch inset dominates and pushes the control below the
+  // status bar.
+  const floatingControlTopBase = `max(${space.xxxl}, calc(env(safe-area-inset-top) + ${space.lg}))`;
   const layout: Theme['layout'] = {
     navHeightMobile: '96px',
     modalWidth: '500px',
     controlHeight: '2.0625rem',
-    // Where the fixed mobile controls (back button, page actions menu) sit.
-    // Both used to spell this out identically; it moved here so a band ABOVE
-    // them can move them, which is what the `var()` is for. The fallback is
-    // the position they have always had, so a page with nothing above it is
-    // unchanged: one rule, both contexts (no iOS-unreliable display-mode
-    // query) — a browser tab has no top safe-area inset, so env() ~ 0 and this
-    // resolves to the fixed floor (room for the frosted shadow); in standalone
-    // the notch inset dominates and pushes the control below the status bar.
+    // Exposed so chrome that pushes those controls down can use it as the
+    // floor it must never push them BELOW — see `router/nav-layout-style`.
+    floatingControlTopBase,
+    // What the controls themselves use. Both spelled the position out
+    // identically before; it moved here so a band ABOVE them can move them,
+    // which is what the `var()` is for. Unset — every page with nothing above
+    // it — falls back to the resting position, unchanged.
     //
     // The one thing that sets `--floating-control-top` is the admin's library
     // switcher band (`router/nav-layout-style`), which is page-level chrome
     // these viewport-fixed controls would otherwise land on top of.
-    floatingControlTop: `var(--floating-control-top, max(${space.xxxl}, calc(env(safe-area-inset-top) + ${space.lg})))`,
+    floatingControlTop: `var(--floating-control-top, ${floatingControlTopBase})`,
   };
   const fontSize: Theme['fontSize'] = {
     xxs: '0.6rem',

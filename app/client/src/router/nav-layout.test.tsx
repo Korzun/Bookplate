@@ -108,6 +108,31 @@ describe('NavLayout — the global library picker', () => {
     expect(screen.getByTestId('nav').previousElementSibling).toBeNull();
   });
 
+  /**
+   * The band pushes the fixed mobile back / actions controls down so they do
+   * not land on top of it (`nav-layout-style`), and that offset is only right
+   * while the band is on screen — the page scrolls, the band goes with it, and
+   * the controls, being fixed, do not. `useScrollOffsetProperty` publishes how
+   * far the page has scrolled so the stylesheet can subtract it; this asserts
+   * the layout turns it on for exactly the case that has a band.
+   */
+  it('publishes the page scroll offset for an admin, who has a band above the page', async () => {
+    renderLayout({ isAdmin: true });
+    await screen.findByRole('button', { name: 'Select user…' });
+
+    expect(document.documentElement.style.getPropertyValue('--page-scroll-y')).toBe('0px');
+  });
+
+  it('publishes no scroll offset for a reader, who has no band', async () => {
+    renderLayout({ isAdmin: false });
+
+    // Positive control: absence proves nothing until the layout has rendered.
+    expect(screen.getByTestId('nav')).toBeInTheDocument();
+    // Unset, not `0px` — an unset property is what leaves the controls' own
+    // resting position standing.
+    expect(document.documentElement.style.getPropertyValue('--page-scroll-y')).toBe('');
+  });
+
   it('still renders the routed page', async () => {
     renderLayout({ isAdmin: true });
 
