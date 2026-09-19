@@ -230,7 +230,11 @@ function buildTheme(mode: ThemeMode): Theme {
       glassFallback: applyTransparency('#FFFFFF', 0.92),
       glassActive: applyTransparency('#FFFFFF', 0.55),
       selected: blue[100],
-      hover: '#f0f0f0',
+      // A translucent scrim, not an opaque grey: hover has to read on whatever
+      // surface it lands on. The old '#f0f0f0' was lighter than the modal
+      // footer (gray[100]) it was painted over, so hovering a text button
+      // there produced no visible change at all.
+      hover: applyTransparency('#000000', 0.07),
       success: '#f0fdf4',
       placeholder: '#d1d5db',
     },
@@ -309,7 +313,7 @@ function buildTheme(mode: ThemeMode): Theme {
       glassFallback: applyTransparency('#1C1C1E', 0.92),
       glassActive: applyTransparency('#2C2C2E', 0.55),
       selected: applyTransparency(blue[500], 0.24),
-      hover: applyTransparency('#FFFFFF', 0.08),
+      hover: applyTransparency('#FFFFFF', 0.12),
       success: applyTransparency('#22C55E', 0.14),
       placeholder: '#2A2B2F',
     },

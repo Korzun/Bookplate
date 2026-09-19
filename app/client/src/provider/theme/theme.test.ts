@@ -46,8 +46,11 @@ describe('semantic tokens replacing raw-scale refs (light)', () => {
 });
 
 describe('new semantic tokens — light values are byte-identical to replaced literals', () => {
-  it('bg.hover light equals #f0f0f0', () => {
-    expect(lightTheme.color.bg.hover).toBe('#f0f0f0');
+  it('bg.hover light is a translucent scrim, not an opaque grey', () => {
+    // Deliberately no longer the old '#f0f0f0' literal: an opaque grey lighter
+    // than the modal footer it sits on (gray[100]) made a text button's hover
+    // invisible there. A scrim darkens whatever surface it lands on.
+    expect(lightTheme.color.bg.hover).toBe('rgba(0, 0, 0, 0.07)');
   });
   it('bg.success light equals #f0fdf4', () => {
     expect(lightTheme.color.bg.success).toBe('#f0fdf4');
