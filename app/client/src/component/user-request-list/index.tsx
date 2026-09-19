@@ -1,10 +1,14 @@
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
-import { Fragment } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BookRequestRow } from '~/component/book-request-row';
-import { Button } from '~/control';
-import { UserRequestListDocument } from '~/graphql/book-request';
+import { Button, ConfirmModal, type PageActionItem } from '~/control';
+import type { BookRequestDeclineMutation } from '~/gql/graphql';
+import { BookRequestDeclineDocument, UserRequestListDocument } from '~/graphql/book-request';
+import { UserListDocument } from '~/graphql/user';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
+import { unwrapResult } from '~/provider/apollo';
 
 import { useStyle } from './style';
 
@@ -29,6 +33,21 @@ interface UserRequestListProps {
    * `BookRequestsContent`'s identical prop for the identical reason.
    */
   skip: boolean;
+  /**
+   * Publishes this list's page-header actions — "Decline all" — for the view
+   * above to hand to `<Page>` (`page/add/request.tsx` passes
+   * `AddOutletContext`'s `setHeaderActions` straight through).
+   *
+   * The action lives HERE rather than on that view because both halves of it
+   * are this component's: the rows it acts on, and the mutation it runs. The
+   * view has neither, and threading them upward to build the action there
+   * would mean exporting this list's state rather than its intent.
+   *
+   * Publishes `undefined` on unmount, which is `AddOutletContext`'s standing
+   * contract — a view that leaves its actions published leaves them on the
+   * other view's header.
+   */
+  onHeaderActions?: (actions: PageActionItem[] | undefined) => void;
 }
 
 /**
@@ -92,7 +111,15 @@ interface UserRequestListProps {
  * locally into `deleteError` state and rendered above the rows, mirroring
  * `BookRequestsContent`'s `handleSubmit` pattern for the identical mutation.
  */
-export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
+// `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
+// the call, so it is named explicitly — same shape as `book-request-row`'s own
+// copy of this note, for the same mutation.
+type BookRequestDeclinePayload = Extract<
+  NonNullable<BookRequestDeclineMutation['bookRequestDecline']>,
+  { __typename: 'BookRequestDeclinePayload' }
+>;
+
+export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestListProps) => {
   const styles = useStyle();
 
   const { data, edges, loading, error, hasNextPage, loadMore, loadingMore } =
@@ -105,10 +132,122 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
       loadMoreErrorMessage: 'Failed to load more requests',
     });
   const rows = edges.map((edge) => edge.node);
+  // `id` is a SIBLING of the fragment spread in `UserRequestListDocument`, not
+  // part of the masked fragment, so it reads without unmasking — the same
+  // reason the row `key` below can use it.
+  const ids = rows.map((row) => row.id);
   const libraryId = data?.user?.library?.id;
   const username = data?.user?.username;
   const target =
     libraryId !== undefined && username !== undefined ? { libraryId, username } : undefined;
+
+  const client = useApolloClient();
+  const [runDecline] = useMutation(BookRequestDeclineDocument);
+  const [isDeclineAllOpen, setDeclineAllOpen] = useState(false);
+  const [declineAllReason, setDeclineAllReason] = useState('');
+  const [decliningAll, setDecliningAll] = useState(false);
+  const [declineAllError, setDeclineAllError] = useState<string | undefined>();
+
+  const handleOpenDeclineAll = useCallback(() => {
+    setDeclineAllReason('');
+    setDeclineAllError(undefined);
+    setDeclineAllOpen(true);
+  }, []);
+  const handleCancelDeclineAll = useCallback(() => setDeclineAllOpen(false), []);
+
+  const handleConfirmDeclineAll = useCallback(async () => {
+    setDecliningAll(true);
+    setDeclineAllError(undefined);
+    try {
+      const trimmed = declineAllReason.trim();
+      // SEQUENTIAL, and it stops at the first failure. There are at most ten
+      // of these (the server's open-request cap), so the serial cost is not
+      // the point — a half-applied batch is. Stopping leaves the rest PENDING,
+      // which is the state the list already shows and the admin can retry from;
+      // carrying on past an error would leave them guessing which ones took.
+      for (const id of ids) {
+        const { data: declineData } = await runDecline({
+          variables: { id, reason: trimmed === '' ? undefined : trimmed },
+        });
+        const outcome = unwrapResult<BookRequestDeclinePayload>(
+          declineData?.bookRequestDecline,
+          'BookRequestDeclinePayload'
+        );
+        if (outcome.status === 'missing') {
+          setDeclineAllError('Failed to decline requests');
+          return;
+        }
+        if (outcome.status === 'error') {
+          setDeclineAllError(outcome.message);
+          return;
+        }
+      }
+      setDeclineAllOpen(false);
+      // The same stale-badge refetch every other resolve path runs, and for
+      // the same reason: `pendingBookRequestCount` is a server-computed
+      // `t.relationCount` with no client-visible decrement, so the "N pending"
+      // badge would otherwise survive the one action that empties the queue.
+      await client.refetchQueries({ include: [UserListDocument] });
+    } catch (err) {
+      setDeclineAllError(err instanceof Error ? err.message : 'Failed to decline requests');
+    } finally {
+      setDecliningAll(false);
+    }
+    // `ids` is a fresh array every render; `ids.join()` is the VALUE the batch
+    // actually depends on, so a re-render that changes nothing does not rebuild
+    // this callback (and, through the memo below, republish the actions).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids.join('\u0000'), declineAllReason, runDecline, client]);
+
+  // MEMOIZED for the reason `page/add/upload.tsx` spells out at its own copy of
+  // this effect: a fresh array every render would republish on every render and
+  // loop forever.
+  const headerActions = useMemo<PageActionItem[]>(
+    () => [
+      {
+        label: 'Decline all',
+        onClick: handleOpenDeclineAll,
+        // Published disabled rather than withheld: the header row is held open
+        // either way (`component/page`), and an action that greys out reads
+        // better than one that comes and goes.
+        disabled: ids.length === 0,
+        danger: true,
+      },
+    ],
+    [handleOpenDeclineAll, ids.length]
+  );
+  useEffect(() => {
+    onHeaderActions?.(headerActions);
+    return () => onHeaderActions?.(undefined);
+  }, [headerActions, onHeaderActions]);
+
+  // Rendered alongside every branch below, including the empty and error ones:
+  // it is `<dialog>`-backed and closed until asked for, and keeping it outside
+  // the row branch means an in-flight batch cannot be unmounted mid-way by the
+  // list re-rendering into another state.
+  const declineAllModal = (
+    <ConfirmModal
+      isOpen={isDeclineAllOpen}
+      title={ids.length === 1 ? 'Decline the request' : `Decline all ${ids.length} requests`}
+      confirmText="Decline all"
+      // Turning every request down at once is the most destructive thing this
+      // page offers; `ConfirmModal` forwards this to its confirm button.
+      danger
+      loading={decliningAll}
+      onCancel={handleCancelDeclineAll}
+      onConfirm={() => void handleConfirmDeclineAll()}
+    >
+      <label className={styles.reasonLabel}>
+        Reason (optional)
+        <textarea
+          className={styles.reasonInput}
+          value={declineAllReason}
+          onChange={(e) => setDeclineAllReason(e.target.value)}
+        />
+      </label>
+      {declineAllError && <div className={styles.error}>{declineAllError}</div>}
+    </ConfirmModal>
+  );
 
   if (loading) {
     return <div className={styles.message}>Loading...</div>;
@@ -125,6 +264,7 @@ export const UserRequestList = ({ userId, skip }: UserRequestListProps) => {
 
   return (
     <Fragment>
+      {declineAllModal}
       {rows.map((row) => (
         <BookRequestRow key={row.id} request={row} canResolve target={target} />
       ))}
