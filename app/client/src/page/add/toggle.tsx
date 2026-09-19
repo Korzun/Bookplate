@@ -23,6 +23,16 @@ export const AddToggle = () => {
     [navigate]
   );
   return (
-    <SegmentedControl name="Add mode" value={value} options={OPTIONS} onChange={handleChange} />
+    // `surface="page"`: this toggle sits in the page header row, next to the
+    // actions bar's own trigger and above the cards, all of which are
+    // `radius.lg`. The default (`card`) radius is for a control inside a card,
+    // which is where `component/theme-setting`'s copy of this control lives.
+    <SegmentedControl
+      name="Add mode"
+      value={value}
+      options={OPTIONS}
+      onChange={handleChange}
+      surface="page"
+    />
   );
 };

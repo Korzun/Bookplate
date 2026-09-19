@@ -5,6 +5,11 @@ export const useStyle = createUseStyles((theme: Theme) => {
   // The lens fills the track edge-to-edge (no padding gap) and shares the track's radius, so
   // at the ends the tile's rounded corner sits exactly on the track's — one edge, no double radii.
   const innerRadius = theme.radius.md;
+  // The `page` surface, in one place: the track, the lens and the segments all
+  // take it together, because the lens shares the track's radius by design (see
+  // the note above) — rounding one without the others is what produces the
+  // double-radius sliver at the ends.
+  const pageRadius = theme.radius.lg;
 
   return {
     // Equal-width columns: every segment is `1fr`, so the lens has a constant width
@@ -21,7 +26,20 @@ export const useStyle = createUseStyles((theme: Theme) => {
       userSelect: 'none',
       '-webkit-user-select': 'none',
       '&$disabled': { opacity: 0.5, cursor: 'not-allowed' },
+      '&$page': {
+        borderRadius: pageRadius,
+        '& $lens': { borderRadius: pageRadius },
+        '& $segment': { borderRadius: pageRadius },
+      },
     },
+    // The two surfaces, exactly as `control/select` names them: `card` is the
+    // default and adds nothing — the control as it has always looked, `radius.md`,
+    // the squarer corner that belongs inside a card (`component/theme-setting`
+    // sits in one). `page` matches what a control sitting DIRECTLY on the page
+    // is surrounded by — `recipe.card.shell`, the `page`-surface `Select`, the
+    // actions bar's own trigger — all of which are `radius.lg`.
+    card: {},
+    page: {},
     // The active highlight fills the full track height and one column, sliding one own-width
     // per step. Raised button-like tile: `input` surface, a hairline border, and the flat
     // `cardStack` stack-shadow (no blurred drop shadow). The recessed borderless `cardHeader`

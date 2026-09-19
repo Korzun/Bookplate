@@ -11,6 +11,19 @@ type SegmentedControlProps = {
   options: Option[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  /**
+   * Which surface this control sits on, which decides its corner radius —
+   * the same prop, the same two values and the same reasoning as
+   * `control/select`'s.
+   *
+   * `'card'` (default) is the control as it has always looked: `radius.md`,
+   * the squarer corner that belongs to a control inset in a card.
+   *
+   * `'page'` is `radius.lg`, what everything sitting directly on the page
+   * already uses, so the control reads as one of them rather than as a card
+   * control that escaped.
+   */
+  surface?: 'card' | 'page';
 };
 
 export const SegmentedControl = ({
@@ -19,6 +32,7 @@ export const SegmentedControl = ({
   options,
   onChange,
   disabled = false,
+  surface = 'card',
 }: SegmentedControlProps) => {
   const style = useStyle();
   const activeIndex = Math.max(
@@ -48,7 +62,7 @@ export const SegmentedControl = ({
       role="radiogroup"
       aria-label={name}
       aria-disabled={disabled}
-      className={cx(style.root, { [style.disabled]: disabled })}
+      className={cx(style.root, style[surface], { [style.disabled]: disabled })}
       style={rootStyle}
       onKeyDown={handleKeyDown}
     >
