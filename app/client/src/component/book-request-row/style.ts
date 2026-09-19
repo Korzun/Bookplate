@@ -112,6 +112,10 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     minHeight: '6rem',
     width: '100%',
     boxSizing: 'border-box',
-    resize: 'vertical',
+    // NOT resizable, matching `control/text-area`, the house textarea. This one
+    // lives inside a `<dialog>` that is sized to its content and centred: drag
+    // it taller and the modal grows past the bottom of the screen, with the
+    // confirm buttons out of reach and nothing to scroll.
+    resize: 'none',
   },
 }));
