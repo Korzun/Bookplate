@@ -86,7 +86,7 @@ const AdminLibrarySwitcher = () => {
       value={targetLibraryId}
       onChange={setTargetLibraryId}
       options={options}
-      placeholder={noUsers ? 'No users registered' : 'Select library…'}
+      placeholder={noUsers ? 'No users registered' : 'Select user…'}
       loading={loading}
       disabled={noUsers}
     />
