@@ -32,20 +32,21 @@ import type { AddOutletContext } from './index';
 export const AddRequestView = () => {
   const [isAdmin] = useIsAdmin();
   const withTargetUser = useWithTargetUser();
-  // Handed straight through to `UserRequestList`, which owns both halves of
-  // the action it publishes — the rows and the mutation. This view is only the
-  // wire, exactly as `AddUploadView` is for its own queue actions.
+  // Handed straight through to whichever list this view mounts: each owns both
+  // halves of the action it publishes — the rows and the mutation. This view is
+  // only the wire, exactly as `AddUploadView` is for its own queue actions.
   const { setHeaderActions } = useOutletContext<AddOutletContext>();
 
-  // The reader's branch publishes NOTHING: "Decline all" is the admin's, and a
-  // reader's own equivalent would be withdrawing every request they have made,
-  // which nobody has asked for. Their header row is empty (held open by
-  // `component/page`), so the toggle beside it does not move — but it is the
-  // one view on this page with no actions.
+  // Both branches publish, and they publish DIFFERENT actions, which is the
+  // point: the admin resolves other people's requests ("Decline all") and the
+  // reader disposes of their own once answered ("Clear resolved") — the same
+  // split `BookRequestRow` already makes per row. Either way this view has an
+  // Actions trigger, so the toggle beside it keeps its width across both of
+  // `/add`'s views for everyone.
   if (!isAdmin) {
     return (
       <div data-testid="add-request-view">
-        <BookRequestsContent skip={false} />
+        <BookRequestsContent skip={false} onHeaderActions={setHeaderActions} />
       </div>
     );
   }

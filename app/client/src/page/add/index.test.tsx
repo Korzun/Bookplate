@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { useEffect } from 'react';
 import { Route, Routes, useOutletContext } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UserRowFragment } from '~/component/user-row';
 import { makeFragmentData } from '~/gql';
@@ -45,6 +45,19 @@ vi.mock('~/provider/library-target', () => ({
   useWithTargetUser: () =>
     Object.assign((url: string) => url, { ready: true, username: undefined }),
 }));
+
+// The Request view mounts `BookRequestsContent`, which renders its "Clear
+// resolved" `ConfirmModal` unconditionally — `<dialog>`-backed
+// (`control/use-modal-dialog`), and jsdom has no real implementation. Same
+// stub `component/book-requests-content`'s own suite installs.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  });
+});
 
 const DEFAULT_LIBRARY_ID = 'TGliOmJvYg==';
 
@@ -258,9 +271,16 @@ describe('AddPage layout', () => {
     await user.click(screen.getByRole('radio', { name: 'Request' }));
     await screen.findByTestId('add-request-view');
 
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /^actions$/i })).not.toBeInTheDocument();
-    });
+    // The TRIGGER survives the switch now — both views publish actions, which
+    // is what keeps the toggle beside it from resizing — so the leak this
+    // guards against is no longer "a trigger that should have gone" but
+    // "Upload's items still in the menu". Opening it is the only way to tell
+    // the two apart.
+    await user.click(screen.getByRole('button', { name: /^actions$/i }));
+    expect(await screen.findByRole('menuitem', { name: 'Clear resolved' })).toBeInTheDocument();
+    for (const stale of ['Clear finished', 'Accept all', 'Reject all']) {
+      expect(screen.queryByRole('menuitem', { name: stale })).not.toBeInTheDocument();
+    }
   });
 
   it('renders header actions a child publishes through the outlet context', async () => {
