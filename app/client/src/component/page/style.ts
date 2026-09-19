@@ -48,13 +48,19 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.space.md,
-    // Both slots share the leftover width rather than either one owning it:
-    // alone, the search bar or the actions bar takes the full row exactly as
-    // it did as a child of `<main>`; together, the toggle takes the space the
-    // actions do not need. `minWidth: 0` lets a wide child shrink instead of
-    // pushing the row past the content column.
+    // The ACTIONS BAR takes the leftover width (it says so itself, in
+    // `control/page-actions-bar`, which is also where the spacer that holds
+    // its trigger hard right lives). Everything else in this row keeps its
+    // natural size — a page's own header content must NOT grow into the space
+    // the actions leave, or it would change width with them: `/add`'s toggle
+    // jumped between Upload and Request, one of which publishes actions and
+    // one of which does not. A header control that wants the full row asks for
+    // it on its own terms (`component/search-bar` sets `width: 100%`), which
+    // is a decision about that control, not about this row.
+    //
+    // `minWidth: 0` lets a wide child shrink rather than push the row past the
+    // content column.
     '& > *': {
-      flexGrow: 1,
       minWidth: 0,
     },
     // Mobile reserves nothing: the actions live in the floating menu
@@ -65,12 +71,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // this row existed.
     [theme.breakpoint.mobile]: {
       display: 'contents',
-      // `contents` hands these children straight to `<main>`, whose flex
-      // direction is COLUMN — leaving `flexGrow` on would stretch a search bar
-      // down the whole page rather than across it.
-      '& > *': {
-        flexGrow: 0,
-      },
     },
   },
   // Mobile-only spacer so the fixed floating back/actions buttons don't overlap the
