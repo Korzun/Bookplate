@@ -1,3 +1,4 @@
+import { scrollOffsetProperty } from '~/lib/use-scroll-offset-property';
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 // The band's full height, which the page below it has to know in order to keep
@@ -35,8 +36,22 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     // fall out of step: the band styles itself and offsets the page in one
     // place, and when the band is not rendered — every non-admin — the
     // property is never set and the fallback position applies untouched.
+    //
+    // The controls start exactly where the band ends, with no gap of their own
+    // — the band's `space.xxl` of bottom padding is already the breathing room
+    // above them, and adding the `space.lg` they hold from the left and right
+    // edges on top of it dropped them visibly too low.
+    //
+    // Then they RIDE IT UP. The band scrolls away with the page while the
+    // controls, being fixed, do not, and an offset for chrome that is no
+    // longer on screen just leaves them stranded low. Subtracting how far the
+    // page has scrolled (`useScrollOffsetProperty`, which is what puts that
+    // property on the document element) moves them with the band, and the
+    // `max()` floor is the position they hold when there is no band at all —
+    // so they slide up, stop there, and from then on behave exactly as they do
+    // for a reader.
     '& ~ *': {
-      '--floating-control-top': `calc(${bandHeight(theme)} + ${theme.space.lg})`,
+      '--floating-control-top': `max(${theme.layout.floatingControlTopBase}, calc(${bandHeight(theme)} - var(${scrollOffsetProperty}, 0px)))`,
     },
   },
   // The inner box mirrors `component/page`'s `<main>` — same max width, same
