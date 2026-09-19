@@ -1,13 +1,15 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
 import cx from 'classnames';
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BookRequestRow } from '~/component/book-request-row';
-import { Button, TextArea, TextInput } from '~/control';
+import { Button, ConfirmModal, TextArea, TextInput, type PageActionItem } from '~/control';
+import { useFragment } from '~/gql';
 import type { BookRequestCreateMutation } from '~/gql/graphql';
 import {
   BookRequestCreateDocument,
   BookRequestDeleteDocument,
+  BookRequestRowFragment,
   MyBookRequestListDocument,
 } from '~/graphql/book-request';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
@@ -36,6 +38,17 @@ interface BookRequestsContentProps {
    * reason.
    */
   skip: boolean;
+  /**
+   * Publishes this component's page-header actions — "Clear resolved" — for
+   * the view above to hand to `<Page>` (`page/add/request.tsx` passes
+   * `AddOutletContext`'s `setHeaderActions` straight through).
+   *
+   * Here rather than on that view for the same reason `UserRequestList`'s
+   * identical prop gives: the rows it acts on and the mutation it runs are
+   * both this component's. Publishes `undefined` on unmount, which is
+   * `AddOutletContext`'s standing contract.
+   */
+  onHeaderActions?: (actions: PageActionItem[] | undefined) => void;
 }
 
 /**
@@ -89,7 +102,7 @@ interface BookRequestsContentProps {
  * reader can compose a new request even while the list is loading, failed,
  * or empty.
  */
-export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
+export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsContentProps) => {
   const styles = useStyle();
   const client = useApolloClient();
   const [runCreate, { loading: creating }] = useMutation(BookRequestCreateDocument);
@@ -100,6 +113,8 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
   const [note, setNote] = useState<string>('');
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
+  const [isClearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const { edges, loading, loadingMore, error, hasNextPage, loadMore } = usePaginatedConnection({
     document: MyBookRequestListDocument,
@@ -110,6 +125,22 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
     loadMoreErrorMessage: 'Failed to load more requests',
   });
   const rows = edges.map((edge) => edge.node);
+  // ONE unconditional `useFragment` call over the whole array, in this
+  // component's own body — the shape `nav/index.tsx` and `useWithTargetUser`
+  // already use for `UserRowFragment`, and not the thing `page/library`'s note
+  // warns about: these rows are all `BookRequest`, so there is no
+  // heterogeneous iteration and no conditional hook. It is read for ONE fact,
+  // `status`, which the rows themselves need anyway. Selecting `status` a
+  // second time as a sibling of the spread would have put a scalar inside a
+  // 20-wide connection for the cost model to price, to learn what the document
+  // already fetches.
+  const unmasked = useFragment(BookRequestRowFragment, rows);
+  // RESOLVED, never pending: fulfilled or declined is answered, and clearing
+  // it drops history. A pending request is somebody's outstanding ask, and the
+  // reader has a per-row Withdraw for those.
+  const resolvedIds = rows
+    .filter((_, index) => unmasked[index].status !== 'PENDING')
+    .map((row) => row.id);
 
   const handleTitleChange = useCallback(
     (newValue: string | undefined) => setTitle(newValue ?? ''),
@@ -170,21 +201,33 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
     [title, author, note, runCreate, client]
   );
 
+  // The mutation and its cache eviction, once, for both the per-row Clear/
+  // Withdraw and the "Clear resolved" batch below — the eviction is the part
+  // that must not drift between them (see this component's doc comment for
+  // what it does to the held connection). Returns the id the server says it
+  // deleted, or `undefined` for the "gone, or never yours" null.
+  const deleteRequest = useCallback(
+    async (id: string) => {
+      const { data } = await runDelete({
+        variables: { id },
+        update: (cache, { data: mutationData }) => {
+          const deletedId = mutationData?.bookRequestDelete?.deletedId;
+          if (!deletedId) return;
+          cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
+          cache.gc();
+        },
+      });
+      return data?.bookRequestDelete?.deletedId ?? undefined;
+    },
+    [runDelete]
+  );
+
   const handleDelete = useCallback(
     (id: string) => {
       setDeleteError(undefined);
       void (async () => {
         try {
-          const { data } = await runDelete({
-            variables: { id },
-            update: (cache, { data: mutationData }) => {
-              const deletedId = mutationData?.bookRequestDelete?.deletedId;
-              if (!deletedId) return;
-              cache.evict({ id: cache.identify({ __typename: 'BookRequest', id: deletedId }) });
-              cache.gc();
-            },
-          });
-          if (data?.bookRequestDelete?.deletedId) {
+          if (await deleteRequest(id)) {
             await client.refetchQueries({
               include: [MyBookRequestListDocument],
             });
@@ -194,8 +237,61 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
         }
       })();
     },
-    [runDelete, client]
+    [deleteRequest, client]
   );
+
+  const handleOpenClear = useCallback(() => {
+    setDeleteError(undefined);
+    setClearOpen(true);
+  }, []);
+  const handleCancelClear = useCallback(() => setClearOpen(false), []);
+
+  const handleConfirmClear = useCallback(async () => {
+    setClearing(true);
+    setDeleteError(undefined);
+    try {
+      // SEQUENTIAL, stopping at the first failure, the same shape "Decline
+      // all" uses: what is left simply stays in the list, which is a state the
+      // reader can already read and retry from, rather than a half-applied
+      // batch whose shape they have to work out.
+      for (const id of resolvedIds) {
+        await deleteRequest(id);
+      }
+      setClearOpen(false);
+      await client.refetchQueries({ include: [MyBookRequestListDocument] });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to clear requests');
+    } finally {
+      setClearing(false);
+    }
+    // `resolvedIds` is a fresh array every render; its VALUE is what this
+    // depends on, so an unrelated re-render does not rebuild the callback and,
+    // through the memo below, republish the actions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedIds.join('\u0000'), deleteRequest, client]);
+
+  // MEMOIZED for the reason `page/add/upload.tsx` spells out at its own copy
+  // of this effect: a fresh array every render would republish every render.
+  const headerActions = useMemo<PageActionItem[]>(
+    () => [
+      {
+        label: 'Clear resolved',
+        onClick: handleOpenClear,
+        // Published disabled rather than withheld — an action that greys out
+        // reads better than one that comes and goes, and the trigger staying
+        // put is what keeps the toggle beside it still.
+        disabled: resolvedIds.length === 0,
+        // These rows go for good, exactly as the row's own Clear button (also
+        // `danger`) sends one.
+        danger: true,
+      },
+    ],
+    [handleOpenClear, resolvedIds.length]
+  );
+  useEffect(() => {
+    onHeaderActions?.(headerActions);
+    return () => onHeaderActions?.(undefined);
+  }, [headerActions, onHeaderActions]);
 
   let list: React.ReactNode;
   if (loading) {
@@ -240,6 +336,24 @@ export const BookRequestsContent = ({ skip }: BookRequestsContentProps) => {
       </form>
       {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {list}
+      {/* The per-row Clear fires straight away; a whole page of them asks
+          first. One request is a decision the reader can see the shape of —
+          "clear all nine" is not, and none of it comes back. */}
+      <ConfirmModal
+        isOpen={isClearOpen}
+        title={
+          resolvedIds.length === 1
+            ? 'Clear the resolved request'
+            : `Clear ${resolvedIds.length} resolved requests`
+        }
+        confirmText="Clear resolved"
+        danger
+        loading={clearing}
+        onCancel={handleCancelClear}
+        onConfirm={() => void handleConfirmClear()}
+      >
+        <div className={styles.message}>Requests you are still waiting on are not affected.</div>
+      </ConfirmModal>
     </div>
   );
 };

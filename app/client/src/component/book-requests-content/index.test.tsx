@@ -1,8 +1,9 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { PageActionItem } from '~/control';
 import type {
   BookRequestCreateMutation,
   BookRequestRowFragmentFragment,
@@ -31,10 +32,27 @@ const authorInput = (container: HTMLElement) =>
 
 let listCallCount = 0;
 let createCallLog: { input: unknown }[] = [];
+// Ids in the order they were actually deleted, so "clears every resolved one"
+// is pinned as a set AND an order, and "leaves the pending ones" as an absence
+// that something positive stands against.
+let deleted: string[] = [];
 
 beforeEach(() => {
   listCallCount = 0;
   createCallLog = [];
+  deleted = [];
+});
+
+// `ConfirmModal` is `<dialog>`-backed (`control/use-modal-dialog`) and jsdom
+// has no real implementation; the same stub `component/user-request-list`'s
+// suite installs, for the same reason.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  });
 });
 
 const requestRow = (
@@ -112,11 +130,14 @@ const createMock = (
 
 const deleteMock = (id: string, deletedId: string = id): MockedResponse => ({
   request: { query: BookRequestDeleteDocument, variables: { id } },
-  result: {
-    data: {
-      __typename: 'Mutation',
-      bookRequestDelete: { __typename: 'BookRequestDeletePayload', deletedId },
-    },
+  result: () => {
+    deleted.push(id);
+    return {
+      data: {
+        __typename: 'Mutation',
+        bookRequestDelete: { __typename: 'BookRequestDeletePayload', deletedId },
+      },
+    };
   },
 });
 
@@ -126,6 +147,7 @@ const renderContent = ({
   createResult,
   listMockCount = 1,
   extraMocks = [],
+  onHeaderActions,
 }: {
   requests?: BookRequestRowFragmentFragment[];
   skip?: boolean;
@@ -139,13 +161,17 @@ const renderContent = ({
   listMockCount?: number;
   /** Extra queued mocks — e.g. a `deleteMock(...)` for a withdraw/clear test. */
   extraMocks?: MockedResponse[];
+  onHeaderActions?: (actions: PageActionItem[] | undefined) => void;
 } = {}) => {
   const mocks: MockedResponse[] = [
     ...Array.from({ length: listMockCount }, () => listMock(requests)),
     createMock(createResult),
     ...extraMocks,
   ];
-  const rendered = renderWithApollo(<BookRequestsContent skip={skip} />, { mocks });
+  const rendered = renderWithApollo(
+    <BookRequestsContent skip={skip} onHeaderActions={onHeaderActions} />,
+    { mocks }
+  );
   const user = userEvent.setup();
   return {
     ...rendered,
@@ -287,5 +313,120 @@ describe('BookRequestsContent', () => {
     await user.click(screen.getByRole('button', { name: /withdraw/i }));
 
     expect(await screen.findByText(/failed to delete request|network error/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * "Clear resolved", the page-header action this component publishes upward for
+ * `AddRequestView` to hand to `<Page>` — the reader's counterpart to the
+ * admin's "Decline all" (`component/user-request-list`), and the same idea as
+ * the Upload view's "Clear finished" one toggle away.
+ *
+ * Resolved means FULFILLED or DECLINED: answered, and nothing but history.
+ * PENDING requests are somebody's outstanding ask and this never touches them.
+ */
+describe('BookRequestsContent — clear resolved', () => {
+  const latestActions = (onHeaderActions: ReturnType<typeof vi.fn>) =>
+    onHeaderActions.mock.calls.at(-1)?.[0] as PageActionItem[];
+
+  it('publishes the action once the list has loaded', async () => {
+    const onHeaderActions = vi.fn();
+    renderContent({
+      requests: [requestRow({ id: 'r1', status: 'FULFILLED' })],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+
+    const actions = latestActions(onHeaderActions);
+    expect(actions.map((action) => action.label)).toEqual(['Clear resolved']);
+    expect(actions[0].disabled).toBe(false);
+    // The rows go for good, so it carries the same weight the row's own
+    // Clear button does.
+    expect(actions[0].danger).toBe(true);
+  });
+
+  it('publishes it DISABLED when every request is still pending', async () => {
+    const onHeaderActions = vi.fn();
+    renderContent({ requests: [requestRow({ id: 'r1', status: 'PENDING' })], onHeaderActions });
+    await screen.findByText('Dune');
+
+    // Published, not withheld: the header row is held open either way
+    // (`component/page`), and the reader's Actions trigger staying put is what
+    // stops the Upload/Request toggle beside it from resizing.
+    expect(latestActions(onHeaderActions)[0].disabled).toBe(true);
+  });
+
+  it('clears the published action when it unmounts', async () => {
+    const onHeaderActions = vi.fn();
+    const { unmount } = renderContent({
+      requests: [requestRow({ id: 'r1', status: 'DECLINED' })],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+    // Positive control: `undefined` is also what "never published" looks like.
+    expect(latestActions(onHeaderActions)).toHaveLength(1);
+
+    unmount();
+
+    expect(onHeaderActions.mock.calls.at(-1)?.[0]).toBeUndefined();
+  });
+
+  it('asks before clearing anything', async () => {
+    const onHeaderActions = vi.fn();
+    const { user } = renderContent({
+      requests: [requestRow({ id: 'r1', status: 'FULFILLED' })],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+
+    act(() => latestActions(onHeaderActions)[0].onClick());
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // The per-row Clear fires immediately; a whole page of them does not.
+    expect(deleted).toEqual([]);
+  });
+
+  it('deletes every resolved request and leaves the pending ones', async () => {
+    const onHeaderActions = vi.fn();
+    const { user } = renderContent({
+      requests: [
+        requestRow({ id: 'r1', title: 'Dune', status: 'FULFILLED' }),
+        requestRow({ id: 'r2', title: 'Emma', status: 'PENDING' }),
+        requestRow({ id: 'r3', title: 'Solaris', status: 'DECLINED' }),
+      ],
+      listMockCount: 2,
+      extraMocks: [deleteMock('r1'), deleteMock('r3')],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+
+    act(() => latestActions(onHeaderActions)[0].onClick());
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear resolved' })
+    );
+
+    await waitFor(() => expect(deleted).toEqual(['r1', 'r3']));
+  });
+
+  it('reports a failure instead of reporting success', async () => {
+    const onHeaderActions = vi.fn();
+    const { user } = renderContent({
+      requests: [requestRow({ id: 'r1', status: 'FULFILLED' })],
+      extraMocks: [
+        {
+          request: { query: BookRequestDeleteDocument, variables: { id: 'r1' } },
+          error: new Error('network down'),
+        },
+      ],
+      onHeaderActions,
+    });
+    await screen.findByText('Dune');
+
+    act(() => latestActions(onHeaderActions)[0].onClick());
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear resolved' })
+    );
+
+    expect(await screen.findByText(/network down/i)).toBeInTheDocument();
   });
 });

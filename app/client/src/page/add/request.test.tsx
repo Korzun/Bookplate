@@ -278,15 +278,21 @@ describe('AddRequestView', () => {
     expect(await screen.findByRole('menuitem', { name: 'Decline all' })).toBeInTheDocument();
   });
 
-  it('gives the reader no actions of their own', async () => {
-    renderAddRequest({ isAdmin: false, requests: [{ title: 'Dune' }] });
+  it('puts "Clear resolved" in the page header for a reader', async () => {
+    renderAddRequest({
+      isAdmin: false,
+      requests: [{ title: 'Dune', status: 'FULFILLED' }],
+    });
     await screen.findByText('Dune');
 
-    // Deliberate, and the one asymmetry left on this page: "Decline all" is
-    // the admin's, and the reader's equivalent would be withdrawing every
-    // request they have made, which is not a thing anyone has asked for. If
-    // that changes, this is the test that says so.
-    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Actions' }));
+
+    // A DIFFERENT action from the admin's, which is the point — the reader
+    // disposes of their own answered requests, the admin resolves other
+    // people's. Both branches publish something, so the Actions trigger is on
+    // this view either way and the toggle beside it keeps its width.
+    expect(await screen.findByRole('menuitem', { name: 'Clear resolved' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Decline all' })).not.toBeInTheDocument();
   });
 
   it('renders nothing for an admin with no library selected', () => {
