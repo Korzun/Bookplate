@@ -64,7 +64,15 @@ vi.mock('~/component/library-switcher', () => ({
 // turns into a URL update) directions without needing the real component's
 // debounce/suggestion machinery.
 vi.mock('~/component', () => ({
-  Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  // The stand-in keeps `header` and `children` in SEPARATE slots, because
+  // which one this page hands its `SearchBar` to is the thing under test
+  // below — a stub that flattened them would pass either way.
+  Page: ({ children, header }: { children: ReactNode; header?: ReactNode }) => (
+    <div>
+      <header>{header}</header>
+      {children}
+    </div>
+  ),
   SearchBar: ({
     filter,
     onChange,
@@ -459,6 +467,21 @@ describe('LibraryPage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('location-search').textContent).toContain('q=dune')
     );
+  });
+
+  /**
+   * Every default page holds its header row open for actions, whether it has
+   * any or not (`component/page`). The library has none — it has the search
+   * bar — so passing it as a CHILD would leave the page everyone lands on
+   * first starting a whole row below every other page, which is the opposite
+   * of what the reserved row is for.
+   */
+  it('puts the search bar in the page header, where other pages put their actions', async () => {
+    renderLibraryPage([firstPageMock([], { hasNextPage: false, endCursor: null })]);
+
+    const header = await screen.findByTestId('search-bar');
+
+    expect(header.closest('header')).not.toBeNull();
   });
 
   it('renders rows from the connection, preserving edge order', async () => {

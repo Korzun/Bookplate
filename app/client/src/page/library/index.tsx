@@ -255,8 +255,12 @@ export const LibraryPage = () => {
     );
 
   return (
-    <Page>
-      <SearchBar filter={bookListFilter} onChange={setBookListFilter} />
+    // The search bar goes in the page HEADER slot, not in the body: every
+    // default page now holds that row open for its actions (`component/page`),
+    // so a search bar rendered as the first child would start the library —
+    // the page everyone lands on — a row lower than everything else. In the
+    // slot it sits exactly where another page's actions sit.
+    <Page header={<SearchBar filter={bookListFilter} onChange={setBookListFilter} />}>
       {edges.length === 0 ? (
         <div className={style.emptyState}>
           {loading ? (
