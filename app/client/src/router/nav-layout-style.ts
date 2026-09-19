@@ -1,14 +1,43 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
+// The band's full height, which the page below it has to know in order to keep
+// the fixed mobile controls off it. Derived from the tokens the band and the
+// `Select` inside it are actually built from — `space.xxl` above and below a
+// row that is `layout.controlHeight` of content plus `recipe.input`'s `space.md`
+// padding and 1px border on each side (nothing here sets `border-box`), plus
+// the band's own rule — rather than a measured constant, so it tracks a change
+// to the control instead of drifting silently from it.
+const bandHeight = (theme: Theme) =>
+  `calc(env(safe-area-inset-top) + ${theme.space.xxl} * 2 + ${theme.layout.controlHeight} + ${theme.space.md} * 2 + 2px + 1px)`;
+
 export const useStyle = createUseStyles((theme: Theme) => ({
   // The band: full-bleed, carrying the rule that separates the global picker
   // from the rest of the page. `border.section` is the token the page-level
   // section dividers already use (`page/book`, `page/series`), so this line
   // matches them in both themes rather than inventing a colour.
   switcherBand: {
-    paddingTop: theme.space.xxl,
+    // The notch inset belongs to whatever is topmost, and that is now this
+    // band rather than `component/page`'s `<main>` (which adds the same inset
+    // for the pages that have nothing above them). Without it the picker sits
+    // under the status bar in standalone, where `TopFade` blurs it.
+    paddingTop: `calc(env(safe-area-inset-top) + ${theme.space.xxl})`,
     paddingBottom: theme.space.xxl,
     borderBottom: `1px solid ${theme.color.border.section}`,
+    // The back button and the page actions menu are `position: fixed` against
+    // the VIEWPORT, so they know nothing about this band and would sit on top
+    // of it — which is exactly what the "…" trigger did once the picker became
+    // global chrome. They read their `top` from `--floating-control-top`
+    // (`theme.layout.floatingControlTop`), so telling them is a matter of
+    // setting it on everything that follows the band: `<main>` is a sibling of
+    // it, and a custom property inherits from there to the controls inside.
+    //
+    // A sibling selector rather than a class on a wrapper, because it cannot
+    // fall out of step: the band styles itself and offsets the page in one
+    // place, and when the band is not rendered — every non-admin — the
+    // property is never set and the fallback position applies untouched.
+    '& ~ *': {
+      '--floating-control-top': `calc(${bandHeight(theme)} + ${theme.space.lg})`,
+    },
   },
   // The inner box mirrors `component/page`'s `<main>` — same max width, same
   // horizontal gutter — so the picker sits on the page's own column even though
