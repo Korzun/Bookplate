@@ -2,13 +2,6 @@ import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
-    // Spans whatever box it is given. As a block child of `<main>` that was
-    // automatic; in `component/page`'s header row — a flex line, where an item
-    // sizes to its content unless it says otherwise — it has to be asked for.
-    // `border-box` because the 1px border below would otherwise put this 2px
-    // past the full width.
-    width: '100%',
-    boxSizing: 'border-box',
     background: theme.color.bg.input,
     border: `1px solid ${theme.color.border.default}`,
     borderRadius: theme.radius.lg,
