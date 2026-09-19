@@ -22,10 +22,11 @@ export type AddOutletContext = {
  * The `/add` layout: everything the Upload and Request views share.
  *
  * `<Page>` lives HERE rather than in each view because the shared chrome has to
- * render inside `<main>` — `page/library` puts its `<SearchBar />` as the first
- * child of `<Page>` for the same reason, and chrome outside `<main>` would fall
- * outside the page's layout container. A layout route renders above its
- * `<Outlet />`, so `<Page>` comes up with the chrome.
+ * render inside `<main>` — `page/library` hands its `<SearchBar />` to the same
+ * `<Page>` for the same reason (through the `header` slot, which is where that
+ * page's top chrome lines up with this one's actions) — and chrome outside
+ * `<main>` would fall outside the page's layout container. A layout route
+ * renders above its `<Outlet />`, so `<Page>` comes up with the chrome.
  *
  * The library picker is NOT that kind of chrome and is deliberately not here:
  * it is global, so it lives in `router/nav-layout`, above the nav and above
