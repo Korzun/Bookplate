@@ -42,8 +42,21 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '&:last-child': {
       borderBottom: 'none',
     },
+    // Hover is a neutral scrim, selection is the brand tint. Both used to be
+    // `brand.light`, so merely pointing at an unselected row made it look
+    // picked — and the Link button's enabled state, which follows the real
+    // selection, then disagreed with what the list appeared to say.
+    //
+    // Shaped like `control/select`'s option rule: `:hover` first, the selected
+    // modifier nested after it. `.bookItem:hover` and `.bookItem$selected`
+    // have equal specificity, so source order is what makes selection win
+    // while the pointer is on the row.
     '&:hover': {
+      backgroundColor: theme.color.bg.hover,
+    },
+    '&$bookItemSelected': {
       backgroundColor: theme.color.brand.light,
+      color: theme.color.brand.default,
     },
   },
   bookItemButton: {
@@ -58,10 +71,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     textAlign: 'left',
     cursor: 'pointer',
   },
-  bookItemSelected: {
-    backgroundColor: theme.color.brand.light,
-    color: theme.color.brand.default,
-  },
+  // Declared empty: the paint lives in `bookItem`'s `&$bookItemSelected`
+  // nesting above, which is what wins over the hover rule.
+  bookItemSelected: {},
   bookTitle: {
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.medium,
