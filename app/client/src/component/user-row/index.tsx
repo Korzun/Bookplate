@@ -18,16 +18,17 @@ import { useStyle } from './style';
  * imported there rather than declared there — this fragment stays
  * colocated on `UserRow` regardless of which module owns the document;
  * codegen resolves `...UserRowFragment` by NAME, not by JS import).
- * `progressCount` feeds the "N books synced" subtitle directly off the
- * fragment, so (unlike the deleted `useUser` hook this replaces) there is
- * no separate loading state to straddle: `UserRow` only ever mounts once
- * its own ref exists.
+ * The row reads everything it renders straight off this fragment, so (unlike
+ * the deleted `useUser` hook this replaces) there is no separate loading state
+ * to straddle: `UserRow` only ever mounts once its own ref exists.
  *
  * **`Viewer.users` carries a ×50 cost multiplier** — every field selected
  * here rides that multiplier, so this selection is kept deliberately
  * narrow: `id` (the User global ID every user mutation addresses),
- * `username` (display + list keying), `progressCount` (this subtitle),
- * `pendingBookRequestCount` (the header badge below). `library { id }` also
+ * `username` (display + list keying), and `pendingBookRequestCount` — which
+ * this row does NOT render: it is read by `component/library-switcher` (a
+ * per-option count) and `component/nav` (the Add tab's dot), both of which
+ * unmask this same fragment off `UserListDocument`. `library { id }` also
  * rides along on `UserListDocument`'s entry, but lives as a sibling field on
  * the DOCUMENT (`~/graphql/user`), not in this fragment — `UserRow` never
  * renders it. **Do NOT add a field here** without checking `test:cost -w
@@ -45,7 +46,6 @@ export const UserRowFragment = graphql(`
   fragment UserRowFragment on User {
     id
     username
-    progressCount
     pendingBookRequestCount
   }
 `);
@@ -139,7 +139,6 @@ export const UserRow = ({ user }: UserRowProps) => {
         isCollapsible
         defaultCollapsed
         title={unmasked.username}
-        subTitle={`${unmasked.progressCount} book${unmasked.progressCount === 1 ? '' : 's'} synced`}
         headerAction={
           <Fragment>
             <ResetPasswordButton userId={unmasked.id} username={unmasked.username} />

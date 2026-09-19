@@ -68,7 +68,7 @@ export const UserListDocument = graphql(`
 
 /**
  * `user { … }` mirrors `UserListDocument`'s selection field-for-field
- * (`id`/`username`/`progressCount`/`pendingBookRequestCount`/`library { id }`,
+ * (`id`/`username`/`pendingBookRequestCount`/`library { id }`,
  * spread via `UserRowFragment` plus the sibling `library { id }` field there)
  * so the appended reference normalizes with every field that list read
  * expects — a partial selection here would leave `viewer.users`'s new entry
@@ -90,7 +90,6 @@ export const UserRegisterDocument = graphql(`
         user {
           id
           username
-          progressCount
           pendingBookRequestCount
           library {
             id
