@@ -192,9 +192,17 @@ export const SyncPasswordDocument = graphql(`
  * id keeps the returned `User` well-formed for normalization (same reasoning
  * as `UserResetPasswordDocument`'s doc comment above).
  *
- * Single-member union — same reasoning as `UserResetPasswordResult`'s
- * identical note: the mutation's own `authScopes` pins `input.userId` to the
- * caller's own id, so there is no reachable error case to select.
+ * Two-member union as of the server's admin guard (G3, email-identity work):
+ * `UserRegenerateSyncPasswordResult` now also carries `InvalidInputError`,
+ * returned when the caller is the config admin, who has no sync credentials
+ * to regenerate. This document does not select fields on that member — only
+ * `__typename` — so nothing here needs to change to stay well-typed:
+ * `unwrapResult` (`use-regenerate-sync-password.ts`) already falls through to
+ * a generic message for any non-payload `__typename`. The mutation's own
+ * `authScopes` still pins `input.userId` to the caller's own id; the admin
+ * guard is a second, resolver-level check the caller of THIS document cannot
+ * reach any differently, since the admin never learns its own `User` global
+ * ID to submit here in the first place.
  */
 export const UserRegenerateSyncPasswordDocument = graphql(`
   mutation UserRegenerateSyncPassword($input: UserRegenerateSyncPasswordInput!) {

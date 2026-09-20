@@ -40,7 +40,7 @@ describe('Viewer.user', () => {
     expect((result.data as ViewerUserData).viewer.user?.username).toBe('bob');
   });
 
-  it('is null for the config-based admin, which has no user row', async () => {
+  it('is null for the config-based admin, whose token carries no sub', async () => {
     const result = await harness.execute('{ viewer { username user { username } } }', {
       viewer: harness.adminViewer,
     });

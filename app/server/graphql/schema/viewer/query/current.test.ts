@@ -22,7 +22,7 @@ describe('Query.viewer', () => {
     });
   });
 
-  it('returns the config admin, which has no user row', async () => {
+  it('returns the config admin, whose token carries no sub', async () => {
     const result = await harness.execute('{ viewer { username isAdmin } }', {
       viewer: harness.adminViewer,
     });

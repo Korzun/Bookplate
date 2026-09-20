@@ -33,7 +33,7 @@ type FetchRequest = globalThis.Request;
 
 /**
  * The authenticated identity behind a request. `userId` is null for the
- * config-based admin, which has no row in the users table.
+ * config-based admin, whose token carries no `sub`.
  */
 export type Viewer = {
   userId: string | null;

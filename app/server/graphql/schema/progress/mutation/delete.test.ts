@@ -160,10 +160,10 @@ describe('Mutation.progressDelete', () => {
   // I-2 (final whole-branch review): the ADMIN case is the one that matters
   // — `owner` here is the DECODED owner from the input id, not the caller,
   // so `user` must resolve to alice (whose progressCount just moved), never
-  // the admin (who has no `User` row at all — resolving the caller would
-  // throw `findUniqueOrThrow`, since a config-based admin has no matching
-  // row, giving this a clean failure signal rather than a silently wrong
-  // count).
+  // the admin (whose token carries no `sub` — resolving the caller would
+  // throw `findUniqueOrThrow`, since `viewer.userId` is null and there is no
+  // id to look up, giving this a clean failure signal rather than a silently
+  // wrong count).
   it('I-2: exposes the deleted row’s owner (not the admin caller) with the decremented progressCount', async () => {
     await seedProgress(harness.aliceOwner.userId, 'dune.epub');
     await seedProgress(harness.aliceOwner.userId, 'foundation.epub');
