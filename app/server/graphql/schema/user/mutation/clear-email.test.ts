@@ -55,6 +55,13 @@ describe('Mutation.userClearEmail', () => {
     });
 
     expect(result.errors).toBeUndefined();
+    // The payload's OWN values, not just the DB row — covers the
+    // `UserClearEmailPayload.user` field resolver, which re-reads by id
+    // rather than carrying a stale row forward.
+    expect(result.data?.userClearEmail).toMatchObject({
+      __typename: 'UserClearEmailPayload',
+      user: { email: null, emailVerifiedAt: null },
+    });
     const row = await harness.prisma.user.findUniqueOrThrow({ where: { id } });
     expect(row.email).toBeNull();
     expect(row.emailKey).toBeNull();
@@ -173,5 +180,41 @@ describe('Mutation.userClearEmail', () => {
     expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     const row = await harness.prisma.user.findUniqueOrThrow({ where: { id } });
     expect(row.email).toBe('bob@example.com');
+  });
+
+  /**
+   * Drives a genuine `P2025` deterministically: `context.loadOwner` resolves
+   * the target, then — inside a one-time `prisma.user.update` spy standing
+   * in for a concurrent `userDelete` landing on the same row between the
+   * lookup and the write — the row is actually deleted before the real
+   * `update` call is allowed through. Prisma itself throws the real
+   * "Record to update not found" error; nothing here manufactures one. This
+   * resolves the same way `userDelete`/`userResetPassword` resolve a
+   * mid-request disappearance: the ordinary "no such user" `null`, per the
+   * field's own description, not an internal error.
+   */
+  it('resolves to null, not an internal error, when the row is deleted between the lookup and the write', async () => {
+    harness = await createHarness();
+    const id = harness.aliceOwner.userId;
+    await setUserEmail(harness.prisma, id, 'ann@example.com');
+
+    const updateSpy = vi.spyOn(harness.prisma.user, 'update').mockImplementationOnce(((
+      ...args: Parameters<typeof harness.prisma.user.update>
+    ) =>
+      harness.prisma.user.delete({ where: { id } }).then(() =>
+        // The spy's one queued implementation is now consumed, so this
+        // recursive call falls through to the REAL `update` — which now
+        // throws Prisma's own P2025 against the row this just deleted.
+        harness.prisma.user.update(...args)
+      )) as unknown as typeof harness.prisma.user.update);
+
+    const result = await harness.execute(CLEAR_TYPENAME_ONLY, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', id) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userClearEmail).toBeNull();
+    updateSpy.mockRestore();
   });
 });
