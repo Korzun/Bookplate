@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ValidationThreshold } from '@korzun/epubcheck-ts';
 
 import { logger } from './logger';
-import { AppConfig } from './types';
+import { AppConfig, MailConfig } from './types';
 
 const log = logger('Config');
 
@@ -35,6 +35,11 @@ interface Options {
   thumbnail_widths: number[];
   validation_threshold: string;
   trust_proxy_hops: number;
+  email_cloudflare_account_id: string;
+  email_cloudflare_api_token: string;
+  email_from_address: string;
+  email_from_name: string;
+  public_url: string;
 }
 
 /**
@@ -75,6 +80,50 @@ function parseThreshold(raw: string): ValidationThreshold {
   }
 }
 
+/** Trimmed value, or `''` for anything blank/missing — the "unset" spelling everywhere below. */
+function trimmed(raw: string | undefined): string {
+  return (raw ?? '').trim();
+}
+
+/**
+ * Collapses a partial mail configuration to `null`. Account id, token and
+ * from-address are all required; `fromName` falls back to the library name so
+ * an operator setting the minimum still gets a sensible From display name.
+ */
+function parseMailConfig(
+  accountId: string,
+  apiToken: string,
+  from: string,
+  fromName: string,
+  libraryName: string
+): MailConfig | null {
+  if (!accountId || !apiToken || !from) return null;
+  return { accountId, apiToken, from, fromName: fromName || libraryName };
+}
+
+/**
+ * Accepts only an absolute http(s) origin, and returns it without a trailing
+ * slash so callers can concatenate a path unconditionally. Anything else is
+ * `null` WITH A WARNING rather than a throw: a malformed value degrades to
+ * code-only email, which works, instead of failing the whole boot or — far
+ * worse — emitting a link nobody can follow.
+ */
+function parsePublicUrl(raw: string): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    log.warn(`public_url "${raw}" is not an absolute URL, using code-only email`);
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    log.warn(`public_url "${raw}" is not http(s), using code-only email`);
+    return null;
+  }
+  return url.origin;
+}
+
 export function loadConfig(): AppConfig {
   const dataDir = process.env.DATA_DIR ?? '/data';
   const optionsPath = path.join(dataDir, 'options.json');
@@ -88,6 +137,11 @@ export function loadConfig(): AppConfig {
     thumbnail_widths: [88, 160],
     validation_threshold: 'Error',
     trust_proxy_hops: 0,
+    email_cloudflare_account_id: '',
+    email_cloudflare_api_token: '',
+    email_from_address: '',
+    email_from_name: '',
+    public_url: '',
   };
 
   if (fs.existsSync(optionsPath)) {
@@ -104,14 +158,23 @@ export function loadConfig(): AppConfig {
           : options.thumbnail_widths,
         validation_threshold: parsed.validation_threshold ?? options.validation_threshold,
         trust_proxy_hops: parsed.trust_proxy_hops ?? options.trust_proxy_hops,
+        email_cloudflare_account_id:
+          parsed.email_cloudflare_account_id ?? options.email_cloudflare_account_id,
+        email_cloudflare_api_token:
+          parsed.email_cloudflare_api_token ?? options.email_cloudflare_api_token,
+        email_from_address: parsed.email_from_address ?? options.email_from_address,
+        email_from_name: parsed.email_from_name ?? options.email_from_name,
+        public_url: parsed.public_url ?? options.public_url,
       };
     } catch {
       log.warn(`Could not parse ${optionsPath}, using defaults`);
     }
   }
 
+  const libraryName = (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'Bookplate';
+
   return {
-    libraryName: (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'Bookplate',
+    libraryName,
     username: process.env.ADMIN_USER ?? options.username,
     password: process.env.ADMIN_PASS ?? options.password,
     booksDir: process.env.BOOKS_DIR ?? resolveBooksDir(options.library_dir),
@@ -126,5 +189,13 @@ export function loadConfig(): AppConfig {
     // "env overrides options.json" convention validationThreshold uses
     // immediately above.
     trustProxyHops: parseTrustProxyHops(process.env.TRUST_PROXY_HOPS ?? options.trust_proxy_hops),
+    mail: parseMailConfig(
+      trimmed(process.env.CF_ACCOUNT_ID ?? options.email_cloudflare_account_id),
+      trimmed(process.env.CF_API_TOKEN ?? options.email_cloudflare_api_token),
+      trimmed(process.env.EMAIL_FROM ?? options.email_from_address),
+      trimmed(process.env.EMAIL_FROM_NAME ?? options.email_from_name),
+      libraryName
+    ),
+    publicUrl: parsePublicUrl(trimmed(process.env.PUBLIC_URL ?? options.public_url)),
   };
 }

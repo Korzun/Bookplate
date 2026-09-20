@@ -148,3 +148,59 @@ describe('loadConfig trustProxyHops', () => {
     expect(loadConfig().trustProxyHops).toBe(3);
   });
 });
+
+describe('mail config', () => {
+  it('is null when nothing is set', () => {
+    const config = loadConfig();
+    expect(config.mail ?? null).toBeNull();
+  });
+
+  it('is null when only some fields are set', () => {
+    process.env.CF_ACCOUNT_ID = 'acct';
+    process.env.CF_API_TOKEN = 'token';
+    // no EMAIL_FROM
+    expect(loadConfig().mail ?? null).toBeNull();
+  });
+
+  it('is populated when all three required fields are set', () => {
+    process.env.CF_ACCOUNT_ID = 'acct';
+    process.env.CF_API_TOKEN = 'token';
+    process.env.EMAIL_FROM = 'library@example.com';
+    expect(loadConfig().mail).toEqual({
+      accountId: 'acct',
+      apiToken: 'token',
+      from: 'library@example.com',
+      fromName: 'Bookplate',
+    });
+  });
+
+  it('defaults fromName to the library name', () => {
+    process.env.LIBRARY_NAME = 'My Books';
+    process.env.CF_ACCOUNT_ID = 'acct';
+    process.env.CF_API_TOKEN = 'token';
+    process.env.EMAIL_FROM = 'library@example.com';
+    expect(loadConfig().mail?.fromName).toBe('My Books');
+  });
+
+  it('treats whitespace-only values as unset', () => {
+    process.env.CF_ACCOUNT_ID = '  ';
+    process.env.CF_API_TOKEN = 'token';
+    process.env.EMAIL_FROM = 'library@example.com';
+    expect(loadConfig().mail ?? null).toBeNull();
+  });
+
+  it('accepts a well-formed public URL and strips a trailing slash', () => {
+    process.env.PUBLIC_URL = 'https://books.example.com/';
+    expect(loadConfig().publicUrl).toBe('https://books.example.com');
+  });
+
+  it('rejects a malformed public URL rather than emitting a broken link', () => {
+    process.env.PUBLIC_URL = 'books.example.com';
+    expect(loadConfig().publicUrl ?? null).toBeNull();
+  });
+
+  it('rejects a non-http scheme', () => {
+    process.env.PUBLIC_URL = 'javascript:alert(1)';
+    expect(loadConfig().publicUrl ?? null).toBeNull();
+  });
+});
