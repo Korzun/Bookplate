@@ -78,8 +78,11 @@ export function createCloudflareMailer(mail: MailConfig): Mailer {
       }
 
       if (!response.ok || body.success !== true) {
+        // `||`, not `??`: an empty `errors: []` joins to `''`, which is NOT
+        // nullish, so `??` never reaches its fallback — observed live as
+        // `WARN [Mailer] Send failed (500): ` with nothing after the colon.
         log.warn(
-          `Send failed (${response.status}): ${body.errors?.map((e) => e.message).join('; ') ?? 'no detail'}`
+          `Send failed (${response.status}): ${body.errors?.map((e) => e.message).join('; ') || 'no detail'}`
         );
         return { ok: false, reason: 'transient' };
       }
