@@ -417,7 +417,19 @@ describe('data_v19_user_email', () => {
     expect(tables).toHaveLength(1);
   });
 
-  it('enforces case-insensitive uniqueness through email_key', async () => {
+  it('names the unique index users_email_key_key, matching what @unique on emailKey derives', async () => {
+    await runMigrations(prisma, booksDir);
+    const rows = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='users'`
+    );
+    expect(rows.map((r) => r.name)).toContain('users_email_key_key');
+  });
+
+  it('enforces uniqueness on email_key', async () => {
+    // Both rows below carry the identical emailKey — this proves the
+    // users_email_key_key unique constraint, not case-insensitivity. The
+    // email -> emailKey lowercasing derivation doesn't exist until Task 6,
+    // so there is nothing case-insensitive to test yet.
     await runMigrations(prisma, booksDir);
     await prisma.user.create({
       data: { id: 'u1', username: 'ann', email: 'Ann@Example.com', emailKey: 'ann@example.com' },
@@ -436,11 +448,79 @@ describe('data_v19_user_email', () => {
     expect(await prisma.user.count()).toBe(2);
   });
 
-  it('is idempotent across a second run', async () => {
+  it('rejects a second email_tokens row for the same user and purpose', async () => {
     await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'ann' } });
+    await prisma.emailToken.create({
+      data: {
+        userId: 'u1',
+        purpose: 'verify',
+        tokenHash: 'hash-1',
+        email: 'ann@example.com',
+        expiresAt: 1000,
+        createdAt: 0,
+        sentAt: 0,
+      },
+    });
+    await expect(
+      prisma.emailToken.create({
+        data: {
+          userId: 'u1',
+          purpose: 'verify',
+          tokenHash: 'hash-2',
+          email: 'ann@example.com',
+          expiresAt: 2000,
+          createdAt: 500,
+          sentAt: 500,
+        },
+      })
+    ).rejects.toThrow();
+  });
+
+  it('deletes email_tokens rows for a user when that user is deleted (ON DELETE CASCADE)', async () => {
+    await runMigrations(prisma, booksDir);
+    // createPrismaClient's better-sqlite3 adapter enables PRAGMA foreign_keys by
+    // default, and runMigrations also turns it on explicitly, so this exercises
+    // the real cascade rather than merely asserting the DDL's intent.
+    const fk = await prisma.$queryRaw<Array<{ foreign_keys: bigint }>>`PRAGMA foreign_keys`;
+    expect(fk[0].foreign_keys).toBe(1n);
+
+    await prisma.user.create({ data: { id: 'u1', username: 'ann' } });
+    await prisma.emailToken.create({
+      data: {
+        userId: 'u1',
+        purpose: 'verify',
+        tokenHash: 'hash-1',
+        email: 'ann@example.com',
+        expiresAt: 1000,
+        createdAt: 0,
+        sentAt: 0,
+      },
+    });
+
+    await prisma.user.delete({ where: { id: 'u1' } });
+
+    expect(await prisma.emailToken.count()).toBe(0);
+  });
+
+  it('is idempotent across a second run, including re-entry after a partial failure', async () => {
+    await runMigrations(prisma, booksDir);
+
+    // Force the guarded body to run again — a body that throws halfway
+    // through leaves its name unrecorded (runDataMigration only records the
+    // name AFTER the body resolves), so the next boot re-enters it. Without
+    // this delete, `runMigrations` would just short-circuit on the recorded
+    // name and the PRAGMA/IF NOT EXISTS guards below would go untested.
+    await prisma.$executeRaw`
+      DELETE FROM _prisma_migrations WHERE migration_name = 'data_v19_user_email'
+    `;
     await expect(runMigrations(prisma, booksDir)).resolves.not.toThrow();
+
     const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(users)`;
     expect(cols.filter((c) => c.name === 'email')).toHaveLength(1);
+    expect(cols.filter((c) => c.name === 'email_key')).toHaveLength(1);
+    expect(cols.filter((c) => c.name === 'email_verified_at')).toHaveLength(1);
+    expect(cols.filter((c) => c.name === 'is_config_admin')).toHaveLength(1);
   });
 
   // The regression this migration exists to avoid: data_v10_user_surrogate_id
