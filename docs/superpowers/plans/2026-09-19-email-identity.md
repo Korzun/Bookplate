@@ -3596,9 +3596,15 @@ import { asyncHandler } from '../utils/async-handler';
 const log = logger('Password');
 
 /**
- * Matches the floor the forced-change mutation enforces. Keep the two in step —
- * a reset that accepts a weaker password than `userChangePassword` would be a
- * way around that rule.
+ * A NEW floor, introduced here and deliberately stricter than anything else in
+ * this codebase: `userChangePassword` enforces only `z.string().min(1)` and the
+ * client checks only non-empty-and-matching, so no password length rule exists
+ * today. This route is the one password entry point a stranger can reach without
+ * being signed in, and matching `min(1)` would let an email-driven reset set a
+ * one-character password.
+ *
+ * The asymmetry is intentional: reset refuses something the authenticated change
+ * path allows. Do NOT "fix" it by lowering this to 1.
  */
 const MIN_PASSWORD_LENGTH = 8;
 
