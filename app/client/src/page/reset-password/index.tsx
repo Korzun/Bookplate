@@ -53,6 +53,14 @@ export const ResetPasswordPage = () => {
         );
         return null;
       }
+      if (response.status === 404) {
+        // Mail is unconfigured on this install — same wording as the GraphQL
+        // side's EmailNotConfiguredError, and as the sibling forgot-password
+        // screen. Without this, a 404 fell into the generic branch below and
+        // misattributed a server misconfiguration to the user's own code.
+        setError('Email is not configured on this server. Ask the administrator to set it up.');
+        return null;
+      }
       // The server speaks ONE message for every rejected code — wrong, expired,
       // already used, unknown address. Show it verbatim rather than guessing at a
       // more specific cause the response deliberately does not carry.

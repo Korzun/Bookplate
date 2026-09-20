@@ -38,6 +38,19 @@ describe('ForgotPasswordPage', () => {
     expect(await screen.findByText(/42 seconds/)).toBeInTheDocument();
   });
 
+  it('shows a mail-not-configured message on 404, and does not claim a code is on its way', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    renderWithProviders(<ForgotPasswordPage />);
+    await user.type(screen.getByPlaceholderText('Email address'), 'a@b.co');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(await screen.findByText(/not configured on this server/i)).toBeInTheDocument();
+    // Pins the defect: a 404 used to fall through to the generic success
+    // branch, telling the user a code was coming when mail is not even set up.
+    expect(screen.queryByText(/reset code is on its way/i)).not.toBeInTheDocument();
+  });
+
   it('links onward to the code-entry screen', () => {
     renderWithProviders(<ForgotPasswordPage />);
     expect(screen.getByRole('link', { name: /have a code/i })).toHaveAttribute(
