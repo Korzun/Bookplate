@@ -69,8 +69,9 @@ function makeUser(overrides: { id?: string; username?: string; libraryId?: strin
         __typename: 'User' as const,
         id: overrides.id ?? 'u1',
         username: overrides.username ?? 'alice',
-        progressCount: 0,
         pendingBookRequestCount: 0,
+        email: null,
+        emailVerifiedAt: null,
       },
       UserRowFragment
     ),

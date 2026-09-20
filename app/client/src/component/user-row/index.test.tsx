@@ -21,11 +21,13 @@ vi.mock('~/provider/library-target', () => ({
 
 import { makeFragmentData } from '~/gql';
 import type {
+  UserClearEmailMutation,
+  UserClearEmailMutationVariables,
   UserDeleteMutation,
   UserDeleteMutationVariables,
   UserRowFragmentFragment,
 } from '~/gql/graphql';
-import { UserDeleteDocument } from '~/graphql/user';
+import { UserClearEmailDocument, UserDeleteDocument } from '~/graphql/user';
 import { UserListDocument } from '~/graphql/user';
 import { renderWithApollo } from '~/test-utils';
 
@@ -55,12 +57,16 @@ const user = (
     id: string;
     username: string;
     pendingBookRequestCount: number;
+    email: string | null;
+    emailVerifiedAt: string | null;
   }> = {}
 ): UserRowFragmentFragment => ({
   __typename: 'User',
   id: overrides.id ?? 'u1',
   username: overrides.username ?? 'alice',
   pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
+  email: overrides.email ?? null,
+  emailVerifiedAt: overrides.emailVerifiedAt ?? null,
 });
 
 beforeEach(() => {
@@ -102,6 +108,33 @@ const deleteNetworkErrorMock = (
 ): MockedResponse<UserDeleteMutation, UserDeleteMutationVariables> => ({
   request: { query: UserDeleteDocument, variables: { input: { userId } } },
   error: new Error('Network error'),
+});
+
+const clearEmailSuccessMock = (
+  userId: string
+): MockedResponse<UserClearEmailMutation, UserClearEmailMutationVariables> => ({
+  request: { query: UserClearEmailDocument, variables: { input: { userId } } },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      userClearEmail: {
+        __typename: 'UserClearEmailPayload',
+        user: { __typename: 'User', id: userId, email: null, emailVerifiedAt: null },
+      },
+    },
+  },
+});
+
+// The server resolves `userClearEmail` to a bare `null` both when the
+// target user has vanished AND when it is the (indistinguishable)
+// config-admin row — see `user/mutation/clear-email.ts`'s doc comment.
+// Neither case is an error the server described, so this must not read as
+// one, but it is also not a success: the row's address is unchanged.
+const clearEmailNullMock = (
+  userId: string
+): MockedResponse<UserClearEmailMutation, UserClearEmailMutationVariables> => ({
+  request: { query: UserClearEmailDocument, variables: { input: { userId } } },
+  result: { data: { __typename: 'Mutation', userClearEmail: null } },
 });
 
 // Anchored, not a bare substring match: the collapsible `Card` header is
@@ -200,5 +233,99 @@ describe('UserRow', () => {
     expect(findDeleteDialog(container)?.hasAttribute('open')).toBe(true);
     const extracted = client.cache.extract() as NormalizedCacheObject;
     expect(Object.keys(extracted)).toContain('User:u1');
+  });
+
+  it('shows a confirmed address', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ email: 'ann@example.com', emailVerifiedAt: new Date().toISOString() }),
+          UserRowFragment
+        )}
+      />
+    );
+
+    expect(screen.getByText('ann@example.com')).toBeInTheDocument();
+    expect(screen.getByText(/confirmed/i)).toBeInTheDocument();
+  });
+
+  it('marks an unconfirmed address as not confirmed', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ email: 'ann@example.com', emailVerifiedAt: null }),
+          UserRowFragment
+        )}
+      />
+    );
+
+    expect(screen.getByText(/not confirmed/i)).toBeInTheDocument();
+  });
+
+  it('offers no clear action when the user has no address', () => {
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(user({ email: null, emailVerifiedAt: null }), UserRowFragment)}
+      />
+    );
+
+    // Positive control: the row DID render, so this cannot pass vacuously.
+    expect(screen.getAllByText('alice').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /clear address/i })).toBeNull();
+  });
+
+  it('warns that the user will be asked to set a new address, then clears it', async () => {
+    const userEventInstance = userEvent.setup();
+    renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null }),
+          UserRowFragment
+        )}
+      />,
+      { mocks: [clearEmailSuccessMock('u1')] }
+    );
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
+    // The consequence must be stated before the operator confirms: clearing
+    // re-gates the user, because `mustSetEmail` is derived from `email ==
+    // null`.
+    expect(await screen.findByText(/asked to set (a new )?(an )?address/i)).toBeInTheDocument();
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear$/i }));
+    await waitFor(() => expect(screen.queryByText('ann@example.com')).toBeNull());
+  });
+
+  // The server's own union resolves to a bare `null` both when the user is
+  // gone AND when the target is the (indistinguishable) config-admin row —
+  // see `user/mutation/clear-email.ts`. Neither is an error the server
+  // described, so this must not render as one, but it is also not the
+  // success path: the address must still be showing afterward, and the
+  // modal must still be open (mirrors `handleDeleteUserConfirm`'s own
+  // "missing" branch, which never closes the modal either).
+  it('shows a message and keeps the modal open when the clear resolves to null', async () => {
+    const userEventInstance = userEvent.setup();
+    const { container } = renderWithApollo(
+      <UserRow
+        user={makeFragmentData(
+          user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null }),
+          UserRowFragment
+        )}
+      />,
+      { mocks: [clearEmailNullMock('u1')] }
+    );
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear$/i }));
+
+    expect(await screen.findByText(/could not clear/i)).toBeInTheDocument();
+    // Not the success path: the address is still there, and the confirm
+    // dialog is still open (a genuine payload is the only thing that closes
+    // it — see `handleClearEmailConfirm`).
+    expect(screen.getByText('ann@example.com')).toBeInTheDocument();
+    const dialog = Array.from(container.querySelectorAll('dialog')).find((d) =>
+      d.textContent?.includes('Clear this address?')
+    );
+    expect(dialog?.hasAttribute('open')).toBe(true);
   });
 });

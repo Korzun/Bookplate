@@ -19,6 +19,33 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   badge: {
     marginLeft: theme.space.sm,
   },
+  // The card's `title` now carries the username AND (when the user has one)
+  // their address, so it needs to be a flex row itself — mirrors
+  // `component/email-setting`'s own `pill`/`badgeConfirmed`/
+  // `badgeUnconfirmed` naming and tokens for the address + confirmed state.
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.md,
+    flexWrap: 'wrap',
+  },
+  addressPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.sm,
+  },
+  address: {
+    color: theme.color.text.faint,
+    fontSize: theme.fontSize.sm,
+  },
+  badgeConfirmed: {
+    color: theme.color.success,
+    fontSize: theme.fontSize.sm,
+  },
+  badgeUnconfirmed: {
+    color: theme.color.text.faint,
+    fontSize: theme.fontSize.sm,
+  },
   error: {
     color: theme.color.danger.default,
     fontSize: theme.fontSize.sm,

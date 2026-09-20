@@ -89,8 +89,9 @@ const targetUser = (username: string, libraryId: string) => ({
       __typename: 'User' as const,
       id: username,
       username,
-      progressCount: 0,
       pendingBookRequestCount: 0,
+      email: null,
+      emailVerifiedAt: null,
     },
     UserRowFragment
   ),

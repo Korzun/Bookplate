@@ -33,6 +33,8 @@ const registerSuccessMock = (
           id: 'u-new',
           username,
           pendingBookRequestCount: 0,
+          email: null,
+          emailVerifiedAt: null,
           library: { __typename: 'Library', id: 'lib-new' },
         },
         password,
