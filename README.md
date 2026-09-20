@@ -57,6 +57,11 @@ Add-on options (set in the **Configuration** tab):
 | `max_concurrent_uploads` | int    | `3`         | Maximum number of simultaneous uploads processed by the server.   |
 | `validation_threshold`   | list   | `Error`     | Strictness of EPUB upload validation. `Fatal` rejects only unreadable files; `Error` (default) also rejects structural errors; `Warning` and `Info` reject progressively more. |
 | `trust_proxy_hops`       | int    | `0`         | Reverse-proxy hops to trust when resolving a client's real IP for the login rate limiter (`POST /api/login`'s 10-attempts-per-minute-per-IP guard). Leave at `0` unless you sit behind a reverse proxy or **Cloudflare Tunnel** (see "Usage" below) — set to `1` for a single such hop. Trusting a hop you don't actually run behind lets a client bypass the limiter, so don't set this higher than your real proxy count. |
+| `email_cloudflare_account_id` | string | *(none)* | Cloudflare account ID for Email Sending. Required together with `email_cloudflare_api_token` and `email_from_address` — email stays switched off unless all three are set. |
+| `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
+| `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
+| `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Only adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it. |
 
 Example:
 
@@ -176,6 +181,11 @@ variables:
 | `PORT`          | `3000`         | HTTP listen port.                            |
 | `LOG_LEVEL`     | `info`         | Log verbosity.                               |
 | `TRUST_PROXY_HOPS` | `0`         | Same as the add-on's `trust_proxy_hops` option above — reverse-proxy hops to trust for the login rate limiter's client-IP resolution only. Overrides the add-on option if both are somehow set. Leave at `0` unless you run one; trusting a hop you don't control lets a client bypass the limiter. |
+| `CF_ACCOUNT_ID` | *(none)* | Same as the add-on's `email_cloudflare_account_id` option above. Required together with `CF_API_TOKEN` and `EMAIL_FROM` — email stays switched off unless all three are set. |
+| `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
+| `EMAIL_FROM`    | *(none)* | Same as the add-on's `email_from_address` option above. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
+| `EMAIL_FROM_NAME` | *(library name)* | Same as the add-on's `email_from_name` option above. Defaults to `LIBRARY_NAME` when unset. |
+| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional — only adds a clickable link beside the code that every verification/reset email already carries. |
 
 ## Release channels
 

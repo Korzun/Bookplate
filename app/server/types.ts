@@ -95,6 +95,20 @@ export type PageCursor = {
   id: string; // secondary tiebreaker: series id for series, book id for standalones
 };
 
+/**
+ * Cloudflare Email Service credentials. Present only when all three required
+ * fields are non-blank — `loadConfig` collapses any partial configuration to
+ * `null`, so "is mail configured?" is one check with one answer rather than
+ * three fields tested at every call site.
+ */
+export interface MailConfig {
+  accountId: string;
+  apiToken: string;
+  /** Must be on a domain verified for Email Sending in that Cloudflare account. */
+  from: string;
+  fromName: string;
+}
+
 export interface AppConfig {
   libraryName: string;
   username: string;
@@ -125,6 +139,20 @@ export interface AppConfig {
    * defeating the limiter entirely.
    */
   trustProxyHops?: number;
+  /**
+   * `null`/absent means email is switched off entirely: no set-email gate, no
+   * verification, no password reset by email, and no forgot-password affordance
+   * in the client. Optional rather than required for the same reason
+   * `trustProxyHops` is — every `AppConfig` literal in the test suite predates it.
+   */
+  mail?: MailConfig | null;
+  /**
+   * Absolute origin this instance is reachable at, used ONLY to add a clickable
+   * link beside the typed code in verification and reset emails. Absent means
+   * code-only delivery, which is fully functional. Never derived from a request
+   * header: a `Host`-derived link is the classic reset-link poisoning path.
+   */
+  publicUrl?: string | null;
 }
 
 export interface Device {
