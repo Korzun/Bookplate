@@ -7,6 +7,7 @@ export interface AuthContext {
   userId: string | undefined;
   isAdmin: boolean;
   mustChangePassword: boolean;
+  mustSetEmail: boolean;
   /** True only during the mount-time silent-refresh attempt. */
   loading: boolean;
 }
@@ -16,5 +17,6 @@ export const Context = createContext<AuthContext>({
   userId: undefined,
   isAdmin: false,
   mustChangePassword: false,
+  mustSetEmail: false,
   loading: true,
 });
