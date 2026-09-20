@@ -15,12 +15,12 @@ import { getStagingDir } from '../services/book-paths';
 import { markEmailVerified, setUserEmail } from '../services/email';
 import { hashEmailCode, RESET_TTL_MS } from '../services/email-token';
 import { signAccessToken } from '../services/jwt';
-import type { Mailer, MailMessage, SendResult } from '../services/mailer';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
-import { AppConfig, MailConfig } from '../types';
+import { createFakeMailer, MAIL_CONFIG, type FakeMailer } from '../test-support/mail';
+import { AppConfig } from '../types';
 import { createUiRouter } from './ui';
 
 vi.mock('../logger');
@@ -37,35 +37,10 @@ const config: AppConfig = {
   validationThreshold: 'ERROR',
 };
 
-const MAIL_CONFIG: MailConfig = {
-  accountId: 'acct',
-  apiToken: 'tok',
-  from: 'lib@example.com',
-  fromName: 'Bookplate',
-};
-
 const mockThumbnailQueue = {
   enqueue: vi.fn(),
   reconcile: vi.fn(),
 } as unknown as ThumbnailQueue;
-
-/**
- * A `Mailer` that never touches the network — same shape as `graphql/test-
- * util.ts`'s `FakeMailer` (not imported from there: that one isn't exported,
- * and this file's `PrismaClient`/`booksDir` are independent of that harness's).
- */
-type FakeMailer = Mailer & { sent: MailMessage[]; nextResult?: SendResult };
-
-function createFakeMailer(): FakeMailer {
-  return {
-    sent: [],
-    nextResult: undefined,
-    async send(message: MailMessage): Promise<SendResult> {
-      this.sent.push(message);
-      return this.nextResult ?? { ok: true };
-    },
-  };
-}
 
 let booksDir: string;
 let editionsRoot: string;

@@ -33,8 +33,9 @@ import {
 } from '../services/replace-staging';
 import { createUser, deleteUser } from '../services/user';
 import * as validationModule from '../services/validation';
+import { MAIL_CONFIG } from '../test-support/mail';
 import { seedBook } from '../test-support/seed-book';
-import { AppConfig, EpubMeta, MailConfig, Owner } from '../types';
+import { AppConfig, EpubMeta, Owner } from '../types';
 import { createIpRateLimit, createUiRouter } from './ui';
 
 vi.mock('../logger');
@@ -149,13 +150,6 @@ const config: AppConfig = {
   maxConcurrentUploads: 3,
   thumbnailWidths: [86, 160],
   validationThreshold: 'ERROR',
-};
-
-const MAIL_CONFIG: MailConfig = {
-  accountId: 'acct',
-  apiToken: 'tok',
-  from: 'lib@example.com',
-  fromName: 'Bookplate',
 };
 
 const mockThumbnailQueue = {

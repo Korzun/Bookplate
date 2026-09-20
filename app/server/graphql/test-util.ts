@@ -9,11 +9,11 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
-import type { Mailer, MailMessage, SendResult } from '../services/mailer';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
+import { createFakeMailer, MAIL_CONFIG, type FakeMailer } from '../test-support/mail';
 import type { AppConfig, MailConfig, Owner } from '../types';
 import type { Context, Viewer } from './context';
 import {
@@ -34,42 +34,12 @@ export type ExecuteOptions = {
   variables?: Record<string, unknown>;
 };
 
-/**
- * A `Mailer` that never touches the network: `send` records every message
- * it's given rather than delivering it, so a test can assert on
- * `sent` directly instead of stubbing an HTTP client. `nextResult` lets a
- * test simulate a delivery failure (`{ ok: false, reason: ... }`) for
- * exactly the next call — see `viewer/mutation/set-email.test.ts`'s "succeeds
- * even when the send fails" case, which is the reason this exists rather than
- * always resolving `{ ok: true }`.
- */
-export type FakeMailer = Mailer & {
-  sent: MailMessage[];
-  nextResult?: SendResult;
-};
-
-const createFakeMailer = (): FakeMailer => ({
-  sent: [],
-  nextResult: undefined,
-  async send(message: MailMessage): Promise<SendResult> {
-    this.sent.push(message);
-    return this.nextResult ?? { ok: true };
-  },
-});
-
-/**
- * A complete, valid `MailConfig` for tests that opt into a configured
- * install (`createHarness({ mail: MAIL_CONFIG })`). Field values are
- * arbitrary — nothing here ever reaches a real Cloudflare API, since
- * `Context.mailer` is always the `FakeMailer` above, never
- * `createMailer(mail)`'s real Cloudflare driver.
- */
-export const MAIL_CONFIG: MailConfig = {
-  accountId: 'test-account',
-  apiToken: 'test-token',
-  from: 'noreply@example.com',
-  fromName: 'Test Library',
-};
+// `FakeMailer` and `MAIL_CONFIG` live in `../test-support/mail` — shared with
+// `routes/ui.test.ts` and `routes/password.test.ts` rather than declared
+// separately in each. Re-exported here since downstream suites
+// (`viewer/mutation/*.test.ts`) already import `MAIL_CONFIG` from this
+// module.
+export { MAIL_CONFIG };
 
 export type CreateHarnessOptions = {
   /**
