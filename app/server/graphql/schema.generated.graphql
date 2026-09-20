@@ -689,7 +689,7 @@ type Mutation {
   userChangePassword(input: UserChangePasswordInput!): UserChangePasswordResult
 
   """
-  Clears a user's email address, its normalized key and its confirmed state, freeing the address for its rightful owner to claim. The account itself is untouched. Resolves to null when the user does not exist. The user will be asked to set an address again the next time they sign in, if mail is configured.
+  Clears a user's email address, its normalized key and its confirmed state, freeing the address for its rightful owner to claim. The account itself is untouched. Resolves to null when the user does not exist. The user will be asked to set an address again the next time their session refreshes — within one access-token lifetime, not only at their next sign-in — if mail is configured.
   """
   userClearEmail(input: UserClearEmailInput!): UserClearEmailResult
 

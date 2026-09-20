@@ -338,11 +338,25 @@ describe('viewerSetEmail', () => {
         viewer: carlViewer,
         variables: { input: { email: address } },
       });
-      return (result.data?.viewerSetEmail as { message?: string } | undefined)?.message;
+      return result.data?.viewerSetEmail as { __typename: string; message?: string } | undefined;
     };
+
+    const unconfirmed = await against('unconfirmed@example.com');
+    const confirmed = await against('confirmed@example.com');
+
+    // Prove the precondition BEFORE comparing: `against(...)?.message` alone
+    // is vacuous-safe — if a regression stopped `setUserEmail` from
+    // reporting `in_use` at all, both calls would return
+    // `ViewerSetEmailPayload` (no `message` field), both `.message` reads
+    // would be `undefined`, and `undefined === undefined` would pass this
+    // test while proving nothing about the uniformity property it exists to
+    // guard. Asserting the shape first closes that: only two genuine
+    // `EmailInUseError` results may reach the equality below.
+    expect(unconfirmed?.__typename).toBe('EmailInUseError');
+    expect(confirmed?.__typename).toBe('EmailInUseError');
 
     // Identical strings: a different message for a confirmed holder would
     // tell whoever probed the address something about another account.
-    expect(await against('unconfirmed@example.com')).toBe(await against('confirmed@example.com'));
+    expect(unconfirmed?.message).toBe(confirmed?.message);
   });
 });

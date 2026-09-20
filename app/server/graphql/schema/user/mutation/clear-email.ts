@@ -1,5 +1,6 @@
 import { isConfigAdminRow } from '../../../../services/admin-account';
 import { invalidateEmailTokens } from '../../../../services/email-token';
+import { isPrismaError } from '../../../../services/prisma-errors';
 import { builder } from '../../builder';
 import { model as userModel } from '../model';
 
@@ -59,10 +60,14 @@ const result = builder.unionType('UserClearEmailResult', { types: [payload] });
  * its rightful owner to claim, while leaving the account itself — its
  * password, its books, its progress — untouched.
  *
- * Admin-only, `authScopes: { admin: true }`, no `ownerOf` alternative: a
- * viewer clearing their OWN address already has `viewerSetEmail` (setting a
- * new one clears the old key) — this mutation exists for the cross-account
- * case only an operator can resolve.
+ * Admin-only, `authScopes: { admin: true }`, no `ownerOf` alternative: an
+ * owner has no self-service way to end up with no address at all —
+ * `viewerSetEmail`'s `setUserEmail` rejects anything that fails
+ * `isValidEmail`, so a viewer can only ever REPLACE their address, never
+ * null it — and that is deliberate: the `mustSetEmail` gate exists to keep
+ * every viewer reachable, and a self-clear would be a way around it. This
+ * mutation exists for the one case that gate cannot resolve on its own: a
+ * cross-account claim, which only an operator can undo.
  *
  * The config admin's row is not an ordinary account. Creating that row is
  * what made this mutation's cross-account write possible at all, so it
@@ -91,7 +96,8 @@ builder.mutationField('userClearEmail', (t) =>
       'state, freeing the address for its rightful owner to claim. The ' +
       'account itself is untouched. Resolves to null when the user does not ' +
       'exist. The user will be asked to set an address again the next time ' +
-      'they sign in, if mail is configured.',
+      'their session refreshes — within one access-token lifetime, not only ' +
+      'at their next sign-in — if mail is configured.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: { admin: true },
     resolve: async (_parent, args, context) => {
@@ -106,10 +112,22 @@ builder.mutationField('userClearEmail', (t) =>
       // absent.
       if (await isConfigAdminRow(context.prisma, owner.userId)) return null;
 
-      await context.prisma.user.update({
-        where: { id: owner.userId },
-        data: { email: null, emailKey: null, emailVerifiedAt: null },
-      });
+      // Unlike `userDelete`/`userResetPassword`'s services, this write is a
+      // plain `prisma.user.update` with no `P2025` catch of its own — a row
+      // that vanishes between `loadOwner` above and this call (e.g. a
+      // concurrent `userDelete` on the same target) throws instead of
+      // resolving. Caught here, narrowly, so that race still resolves to the
+      // ordinary "no such user" `null` this field's own description
+      // promises, rather than surfacing as an internal error.
+      try {
+        await context.prisma.user.update({
+          where: { id: owner.userId },
+          data: { email: null, emailKey: null, emailVerifiedAt: null },
+        });
+      } catch (e) {
+        if (isPrismaError(e, 'P2025')) return null;
+        throw e;
+      }
 
       // Both purposes: a verify code proves an address this row no longer
       // holds, and a reset code was sent to one. Neither may stay spendable.
