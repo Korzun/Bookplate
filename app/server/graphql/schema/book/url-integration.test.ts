@@ -131,6 +131,7 @@ describe('Book URL fields are REST-fetchable', () => {
       username: 'admin',
       isAdmin: true,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     const gid = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
 
@@ -155,6 +156,7 @@ describe('Book URL fields are REST-fetchable', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     const gid = bookGlobalId(harness.aliceOwner.userId, BOOK_ID);
 

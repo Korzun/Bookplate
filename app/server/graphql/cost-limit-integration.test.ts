@@ -80,6 +80,7 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
     const response = await request(app)
@@ -185,6 +186,7 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     const richGrid = `
       fragment BookCard on Book {

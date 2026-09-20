@@ -23,6 +23,7 @@ const aliceToken = () =>
     username: 'alice',
     isAdmin: false,
     mustChangePassword: false,
+    mustSetEmail: false,
   });
 
 beforeEach(async () => {

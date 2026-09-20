@@ -139,6 +139,7 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
   it('rejects a 101kb body with 413 and never calls the resolver', async () => {

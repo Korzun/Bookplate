@@ -28,6 +28,7 @@ describe('viewerFromHeader', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     expect(viewerFromHeader(secret, `Bearer ${token}`)).toBeNull();
   });
@@ -38,12 +39,14 @@ describe('viewerFromHeader', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     expect(viewerFromHeader(secret, `Bearer ${token}`)).toEqual({
       userId: 'user-1',
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
   });
 
@@ -52,12 +55,14 @@ describe('viewerFromHeader', () => {
       username: 'admin',
       isAdmin: true,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     expect(viewerFromHeader(secret, `Bearer ${token}`)).toEqual({
       userId: null,
       username: 'admin',
       isAdmin: true,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
   });
 
@@ -67,8 +72,20 @@ describe('viewerFromHeader', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: true,
+      mustSetEmail: false,
     });
     expect(viewerFromHeader(secret, `Bearer ${token}`)?.mustChangePassword).toBe(true);
+  });
+
+  it('preserves the mustSetEmail claim', () => {
+    const token = signAccessToken(secret, {
+      userId: 'user-1',
+      username: 'alice',
+      isAdmin: false,
+      mustChangePassword: false,
+      mustSetEmail: true,
+    });
+    expect(viewerFromHeader(secret, `Bearer ${token}`)?.mustSetEmail).toBe(true);
   });
 });
 
@@ -85,6 +102,7 @@ describe('createContext', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
     const context = createContext({
       prisma,

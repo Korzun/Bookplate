@@ -27,6 +27,16 @@ export const builder = new SchemaBuilder<{
      * on `authenticated` like everything else would strand them.
      */
     passwordChangeAllowed: boolean;
+    /**
+     * A signed-in viewer, ignoring an outstanding email address. Only
+     * `viewerSetEmail`, `viewerResendEmailVerification` and `viewerConfirmEmail`
+     * may use this; everything else stays on `authenticated`, which refuses a
+     * viewer who owes an address. The exemption is load-bearing for the same
+     * reason `passwordChangeAllowed`'s is: these three mutations are the only
+     * path out of the gate, so putting them on `authenticated` would strand the
+     * viewer.
+     */
+    emailSetupAllowed: boolean;
   };
   DefaultInputFieldRequiredness: true;
   // Pothos v4 defaults output fields to nullable unless told otherwise. Both
@@ -87,8 +97,14 @@ export const builder = new SchemaBuilder<{
       // uses `passwordChangeAllowed`. REST enforces the same rule through
       // `passwordChangeGate`; GraphQL is mounted outside that router, so the
       // control has to live here or it does not exist.
-      authenticated: context.viewer !== null && !context.viewer.mustChangePassword,
+      // `authenticated` refuses BOTH outstanding credentials-setup states, so
+      // every field in the schema is gated without restating either condition.
+      authenticated:
+        context.viewer !== null &&
+        !context.viewer.mustChangePassword &&
+        !context.viewer.mustSetEmail,
       passwordChangeAllowed: context.viewer !== null,
+      emailSetupAllowed: context.viewer !== null && !context.viewer.mustChangePassword,
       admin: context.viewer?.isAdmin === true,
       ownerOf: (userId: string) => isOwnerOrAdmin(context.viewer, userId),
     }),

@@ -100,7 +100,10 @@ export function passwordChangeGate(secret: Buffer) {
     if (
       !req.path.startsWith('/api/') ||
       req.path === '/api/login' ||
-      req.path.startsWith('/api/auth/')
+      req.path.startsWith('/api/auth/') ||
+      // The unauthenticated reset flow — a viewer with a pending forced change
+      // may legitimately be resetting their password by email.
+      req.path.startsWith('/api/password/')
     ) {
       next();
       return;
@@ -113,6 +116,43 @@ export function passwordChangeGate(secret: Buffer) {
     const user = verifyAccessToken(secret, header.slice(7));
     if (user?.mustChangePassword) {
       res.status(403).json({ error: 'Password change required' });
+      return;
+    }
+    next();
+  };
+}
+
+/**
+ * Blocks API access while an address is outstanding. A SIBLING of
+ * `passwordChangeGate`, not a branch inside it: each gate answers one question,
+ * and mounting them in order (password first) makes the precedence explicit
+ * rather than an `if`/`else` reading.
+ *
+ * Same shape as its sibling for the same reasons — it runs before route-level
+ * `jwtAuth`, so it verifies the token itself and lets a request WITHOUT a valid
+ * one pass through for `jwtAuth` to reject. `/api/password/*` is exempt
+ * alongside login and refresh: those routes are the unauthenticated reset flow
+ * and must stay reachable regardless of any token a caller happens to present.
+ */
+export function emailSetupGate(secret: Buffer) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (
+      !req.path.startsWith('/api/') ||
+      req.path === '/api/login' ||
+      req.path.startsWith('/api/auth/') ||
+      req.path.startsWith('/api/password/')
+    ) {
+      next();
+      return;
+    }
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      next();
+      return;
+    }
+    const user = verifyAccessToken(secret, header.slice(7));
+    if (user?.mustSetEmail) {
+      res.status(403).json({ error: 'Email required' });
       return;
     }
     next();

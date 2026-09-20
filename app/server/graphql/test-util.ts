@@ -141,18 +141,21 @@ export const createHarness = async (): Promise<Harness> => {
     username: 'alice',
     isAdmin: false,
     mustChangePassword: false,
+    mustSetEmail: false,
   };
   const bobViewer: Viewer = {
     userId: bobId,
     username: 'bob',
     isAdmin: false,
     mustChangePassword: false,
+    mustSetEmail: false,
   };
   const adminViewer: Viewer = {
     userId: null,
     username: 'admin',
     isAdmin: true,
     mustChangePassword: false,
+    mustSetEmail: false,
   };
 
   // Reads `replaceStaging` at call time, not at harness-construction time, so

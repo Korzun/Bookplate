@@ -136,6 +136,7 @@ describe('POST /graphql', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
     const response = await request(app)
@@ -169,6 +170,7 @@ describe('POST /graphql', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
     const response = await request(app)
@@ -222,6 +224,7 @@ describe('schema concealment', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
     const response = await request(buildApp(true))
