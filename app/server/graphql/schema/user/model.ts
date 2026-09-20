@@ -1,4 +1,5 @@
 import type { Context } from '../../context';
+import { epochToDate } from '../../derive';
 import { model as bookRequestStatus } from '../book-request-status/model';
 import { model as bookRequest, requestKeyset } from '../book-request/model';
 import { builder } from '../builder';
@@ -35,6 +36,36 @@ export const model = builder.prismaNode('User', {
   fields: (t) => ({
     username: t.exposeString('username'),
     mustChangePassword: t.exposeBoolean('mustChangePassword'),
+
+    /**
+     * Owner-or-admin, via the same `ownerOf` field scope `User.library` below
+     * uses. Declared at the field rather than left to the node's own
+     * `findUnique` redirect: the boundary is stated where a reader looks for
+     * it, and it does not silently widen if node reachability ever changes.
+     *
+     * The operator needs this to answer "who holds this address?", which
+     * nothing in the app could answer before — `viewerSetEmail` writes only the
+     * caller's own row, so a mistaken claim was previously both permanent and
+     * invisible.
+     */
+    email: t.exposeString('email', {
+      nullable: true,
+      authScopes: (parent) => ({ ownerOf: parent.id }),
+    }),
+
+    /**
+     * `Float` ms-epoch in the database, `DateTime` in the schema — so this is a
+     * resolver, not an expose, and a resolver on a Prisma-backed type only sees
+     * what it selects. `select: { … } as const` is the pattern
+     * `progress/model.ts`'s `currentChapter` uses for exactly this reason.
+     */
+    emailVerifiedAt: t.field({
+      type: 'DateTime',
+      nullable: true,
+      select: { emailVerifiedAt: true } as const,
+      authScopes: (parent) => ({ ownerOf: parent.id }),
+      resolve: (user) => (user.emailVerifiedAt === null ? null : epochToDate(user.emailVerifiedAt)),
+    }),
 
     // The "N books synced" figure the admin user list renders
     // (`app/client/src/component/user-row/index.tsx`), and the second half of
