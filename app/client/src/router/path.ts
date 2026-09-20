@@ -5,11 +5,13 @@ export const addRequest = () => pathInternal.addRequest();
 export const book = (bookId: string) => pathInternal.book(encodeURIComponent(bookId));
 export const bookEdit = (bookId: string) => pathInternal.bookEdit(encodeURIComponent(bookId));
 export const devices = () => pathInternal.devices();
+export const forgotPassword = () => pathInternal.forgotPassword();
 export const home = () => pathInternal.home();
 export const library = (options?: { subject?: string; author?: string }) =>
   pathInternal.library(options);
 export const series = (seriesName: string) => pathInternal.series(encodeURIComponent(seriesName));
 export const passwordReset = () => pathInternal.passwordReset();
+export const resetPasswordByEmail = () => pathInternal.resetPasswordByEmail();
 export const setEmail = () => pathInternal.setEmail();
 export const user = () => pathInternal.user();
 export const userList = () => pathInternal.userList();

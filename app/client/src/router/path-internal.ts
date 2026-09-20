@@ -8,6 +8,7 @@ export const addRequest = () => `${add()}/${ADD_REQUEST_SEGMENT}`;
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';
+export const forgotPassword = () => '/forgot-password';
 export const home = () => '/';
 export const library = (options?: { subject?: string; author?: string }) => {
   const params = new URLSearchParams();
@@ -18,6 +19,9 @@ export const library = (options?: { subject?: string; author?: string }) => {
 };
 export const login = () => '/login';
 export const passwordReset = () => '/password-reset';
+/** The EMAIL reset flow. `passwordReset()` above is the protected forced-change
+ *  screen and is a different thing — see the naming trap in the task brief. */
+export const resetPasswordByEmail = () => '/reset-password';
 export const series = (seriesName: string) => `/library/series/${seriesName}`;
 export const setEmail = () => '/set-email';
 export const user = () => '/user';

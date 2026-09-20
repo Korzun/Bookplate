@@ -1,15 +1,19 @@
 import { useActionState, useState } from 'react';
+import { Link } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { extractAccessToken, setToken } from '~/lib/token';
+import { useEmailEnabled } from '~/provider/config';
 import { useToast } from '~/provider/toast';
+import { path } from '~/router';
 
 import { useStyle } from './style';
 
 export const LoginPage = () => {
   const styles = useStyle();
   const showToast = useToast();
+  const emailEnabled = useEmailEnabled();
 
   const [username, setUsername] = useState<string | undefined>();
   const [password, setPassword] = useState<string | undefined>();
@@ -57,7 +61,7 @@ export const LoginPage = () => {
           <form className={styles.form} action={submitAction}>
             <div className={styles.inputContainer}>
               <TextInput
-                placeholder="Username"
+                placeholder={emailEnabled ? 'Username or email' : 'Username'}
                 name="username"
                 autoCapitalize="none"
                 onChange={setUsername}
@@ -74,6 +78,11 @@ export const LoginPage = () => {
             <Button submit loading={isPending} type="primary" radius="card">
               Sign In
             </Button>
+            {emailEnabled ? (
+              <Link className={styles.forgot} to={path.forgotPassword()}>
+                Forgot password?
+              </Link>
+            ) : null}
           </form>
         </Card>
       </div>

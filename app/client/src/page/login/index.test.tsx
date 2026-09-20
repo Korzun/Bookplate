@@ -1,10 +1,23 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ConfigContext } from '~/provider/config';
 import { renderWithProviders } from '~/test-utils';
 
 import { LoginPage } from './index';
+
+// `renderWithConfig` is not a shared test-utils helper (only this suite needs
+// email-config variance), so it is a thin local wrapper around
+// `renderWithProviders` rather than a new export from `~/test-utils`.
+function renderWithConfig(ui: ReactElement, { emailEnabled }: { emailEnabled: boolean }) {
+  return renderWithProviders(
+    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+      {ui}
+    </ConfigContext.Provider>
+  );
+}
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -89,5 +102,28 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByText(/too many attempts/i)).toBeInTheDocument();
+  });
+
+  it('offers a forgot-password link when email is enabled', () => {
+    renderWithConfig(<LoginPage />, { emailEnabled: true });
+    expect(screen.getByRole('link', { name: /forgot/i })).toHaveAttribute(
+      'href',
+      '/forgot-password'
+    );
+  });
+
+  it('offers no forgot-password link when email is disabled', () => {
+    renderWithConfig(<LoginPage />, { emailEnabled: false });
+    expect(screen.queryByRole('link', { name: /forgot/i })).toBeNull();
+  });
+
+  it('labels the identifier field for email when email is enabled', () => {
+    renderWithConfig(<LoginPage />, { emailEnabled: true });
+    expect(screen.getByPlaceholderText('Username or email')).toBeInTheDocument();
+  });
+
+  it('labels it Username when email is disabled', () => {
+    renderWithConfig(<LoginPage />, { emailEnabled: false });
+    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
   });
 });
