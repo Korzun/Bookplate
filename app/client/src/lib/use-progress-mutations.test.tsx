@@ -56,6 +56,8 @@ const viewerBootstrapMock = (
         username: userId ? 'alice' : 'admin',
         isAdmin: userId === null,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: userId ? { __typename: 'User', id: userId } : null,
         library: { __typename: 'Library', id: LIBRARY_ID },
       },

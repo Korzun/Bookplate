@@ -54,6 +54,8 @@ const viewerBootstrapMock = (userId: string | null): MockedResponse<ViewerBootst
         username: 'admin',
         isAdmin: userId === null,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: userId ? { __typename: 'User', id: userId } : null,
         library: null,
       },

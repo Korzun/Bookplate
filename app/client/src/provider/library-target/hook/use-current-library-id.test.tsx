@@ -24,6 +24,8 @@ const viewerMock = (
         username: isAdmin ? 'admin' : 'alice',
         isAdmin,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: isAdmin ? null : { __typename: 'User' as const, id: 'USER-1' },
         library,
       },

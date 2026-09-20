@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 
 import {
   ConnectionUrls,
+  EmailSetting,
   MyProgress,
   Page,
   SyncPassword,
@@ -11,6 +12,7 @@ import {
 } from '~/component';
 import { Button } from '~/control';
 import { graphql } from '~/gql';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { useIsAdmin, useLogout } from '~/provider/auth';
 
 /**
@@ -53,16 +55,31 @@ export const UserPageDocument = graphql(`
 export const UserPage = () => {
   const [isAdmin] = useIsAdmin();
   const { data } = useQuery(UserPageDocument, { skip: isAdmin });
+  // Not `skip: isAdmin` — unlike `UserPageDocument` above, this document is
+  // unconditionally active app-wide already (`useCurrentLibraryId`,
+  // `component/sync-password`), and the admin manages its own email address
+  // too (`Viewer.email`'s own doc comment).
+  const { data: viewerData } = useQuery(ViewerBootstrapDocument);
 
   const [logout, loggingOut] = useLogout();
   const handleLogout = useCallback(() => {
     logout();
   }, [logout]);
 
+  const emailSection = (
+    <EmailSetting
+      email={viewerData?.viewer.email ?? null}
+      emailVerifiedAt={
+        viewerData?.viewer.emailVerifiedAt ? new Date(viewerData.viewer.emailVerifiedAt) : null
+      }
+    />
+  );
+
   if (isAdmin) {
     return (
       <Page>
         <ThemeSetting />
+        {emailSection}
         <Button loading={loggingOut} onClick={handleLogout} danger>
           Log out
         </Button>
@@ -74,6 +91,7 @@ export const UserPage = () => {
     <Page>
       <ThemeSetting />
       <SyncPassword />
+      {emailSection}
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
       <UserChangePassword />
       <MyProgress />

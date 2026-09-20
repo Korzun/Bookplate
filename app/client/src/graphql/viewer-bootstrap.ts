@@ -11,6 +11,14 @@ import { graphql } from '~/gql';
  *
  * `library` and `user` are both null for the config-based admin, which owns no
  * library and whose token carries no `sub`.
+ *
+ * `email`/`emailVerifiedAt` (task 16) feed `component/email-setting`, mounted
+ * on `page/user`. This document is the natural place for them: unlike
+ * `page/user`'s own `UserPageDocument` (skipped entirely for an admin
+ * viewer, to spare the ×100 `Viewer.devices` cost multiplier), this one is
+ * unconditionally active for every viewer, admin included — and the admin
+ * manages its own address too (`Viewer.email`'s own doc comment,
+ * `graphql/schema/viewer/model.ts`).
  */
 export const ViewerBootstrapDocument = graphql(`
   query ViewerBootstrap {
@@ -18,6 +26,8 @@ export const ViewerBootstrapDocument = graphql(`
       username
       isAdmin
       mustChangePassword
+      email
+      emailVerifiedAt
       user {
         id
       }

@@ -28,6 +28,8 @@ const writeViewer = (client: ApolloClient) => {
         username: 'alice',
         isAdmin: false,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: { __typename: 'User', id: 'USER-1' },
         library: { __typename: 'Library', id: 'LIB-1' },
       },
