@@ -19,7 +19,7 @@ import { findUserByEmail } from '../services/email';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import { isMailConfigured } from '../services/mailer';
+import { isMailConfigured, type Mailer } from '../services/mailer';
 import { getMustChangePassword, validateUser } from '../services/password';
 import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
@@ -347,6 +347,13 @@ export type CreateUiRouterDeps = {
   jwtSecret: Buffer;
   prisma: PrismaClient;
   replaceStaging: ReplaceStaging;
+  /**
+   * The same instance `index.ts` passes into the GraphQL context — see
+   * `Context.mailer`'s doc comment. Not yet consumed by any handler in this
+   * file; threaded through now so the type carries it ahead of the REST
+   * password-reset-by-email routes that will (Task 12).
+   */
+  mailer: Mailer | null;
   /** Injectable clock for the login rate limiter; tests pass a fake. */
   loginRateLimitNow?: () => number;
 };

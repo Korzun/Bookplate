@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { verifyAccessToken } from '../services/jwt';
+import type { Mailer } from '../services/mailer';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
@@ -59,6 +60,13 @@ export type Context = {
   /** `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical wiring. */
   editionsRoot: string;
   config: AppConfig;
+  /**
+   * `null` when the install has no mail configuration. Constructed once in
+   * `index.ts` and shared with `routes/ui.ts`, never one instance per request —
+   * the Cloudflare driver latches its misconfiguration warning per instance, so a
+   * per-request mailer would log that line on every send.
+   */
+  mailer: Mailer | null;
   loadLineage: LineageLoader;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
@@ -76,6 +84,7 @@ export type ContextDeps = {
   editionsRoot: string;
   config: AppConfig;
   jwtSecret: Buffer;
+  mailer: Mailer | null;
 };
 
 /** Derives the viewer from an Authorization header. Pure. */
@@ -113,6 +122,7 @@ export const createContext =
     replaceStaging: deps.replaceStaging,
     editionsRoot: deps.editionsRoot,
     config: deps.config,
+    mailer: deps.mailer,
     loadLineage: createLineageLoader(deps.prisma),
     loadOwner: createOwnerLoader(deps.prisma),
     loadProgress: createProgressLoader(deps.prisma),

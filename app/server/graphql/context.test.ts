@@ -111,6 +111,7 @@ describe('createContext', () => {
       replaceStaging,
       config,
       jwtSecret: secret,
+      mailer: null,
     })({
       request: new Request('http://localhost/graphql', {
         headers: { authorization: `Bearer ${token}` },
@@ -136,6 +137,7 @@ describe('createContext', () => {
       replaceStaging,
       config,
       jwtSecret: secret,
+      mailer: null,
     })({
       request: new Request('http://localhost/graphql'),
     });

@@ -50,7 +50,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, BookRequestLimitExceededError, DuplicateBookRequestError and BookRequestNotPendingError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, BookRequestLimitExceededError, DuplicateBookRequestError, BookRequestNotPendingError, EmailInUseError and EmailNotConfiguredError', () => {
     // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
@@ -115,6 +115,16 @@ describe('UserError', () => {
     // No ordinal is given for these three deliberately: the numbering above
     // counts members that have since been removed, so a fixed position drifts
     // every time one goes. The asserted list below is the real contract.
+    //
+    // `EmailInUseError` and `EmailNotConfiguredError` are an eighteenth and
+    // nineteenth member, added by the email-identity plan's task 10 for
+    // `viewerSetEmail`'s unique-constraint collision (`setUserEmail`'s own
+    // `P2002` catch, `services/email.ts`) and for all three viewer email
+    // mutations' "this install has no mail configured" branch
+    // (`isMailConfigured`, `services/mailer.ts`) — neither is a thrown
+    // domain-error class, same "resolver/service-produced" shape as the
+    // members above. See `email-in-use-error/model.ts` and
+    // `email-not-configured-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -129,6 +139,8 @@ describe('UserError', () => {
       'DocumentIsBookError',
       'DuplicateBookRequestError',
       'EditLineageEntryError',
+      'EmailInUseError',
+      'EmailNotConfiguredError',
       'EpubValidationError',
       'IncorrectPasswordError',
       'InvalidInputError',

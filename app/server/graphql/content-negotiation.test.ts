@@ -33,6 +33,7 @@ beforeEach(async () => {
       thumbnails: harness.thumbnails,
       replaceStaging: harness.replaceStaging,
       config: harness.config,
+      mailer: harness.mailer,
       jwtSecret,
       isProduction: false,
     })

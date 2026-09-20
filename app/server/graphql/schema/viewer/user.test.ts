@@ -1,3 +1,5 @@
+import { ensureAdminUser } from '../../../services/admin-account';
+import { setUserEmail } from '../../../services/email';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -45,5 +47,24 @@ describe('Viewer.user', () => {
 
     expect(result.errors).toBeUndefined();
     expect((result.data as ViewerUserData).viewer.user ?? null).toBeNull();
+  });
+
+  it('exposes the address on Viewer itself, so the admin can read their own', async () => {
+    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    await setUserEmail(harness.prisma, adminId, 'boss@example.com');
+
+    const result = await harness.execute('{ viewer { email emailVerifiedAt user { id } } }', {
+      viewer: harness.adminViewer,
+    });
+
+    type ViewerEmailData = {
+      viewer: { email: string | null; emailVerifiedAt: string | null; user: unknown };
+    };
+    expect(result.errors).toBeUndefined();
+    expect((result.data as ViewerEmailData).viewer.email).toBe('boss@example.com');
+    expect((result.data as ViewerEmailData).viewer.emailVerifiedAt).toBeNull();
+    // Viewer.user stays null for the admin — which is exactly why email cannot
+    // live behind it.
+    expect((result.data as ViewerEmailData).viewer.user).toBeNull();
   });
 });

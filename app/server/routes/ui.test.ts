@@ -351,6 +351,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     replaceStaging,
     editionsRoot,
     config: { ...config, booksDir },
+    mailer: null,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -419,6 +420,7 @@ function buildApp(configOverrides: Partial<AppConfig> = {}): express.Express {
       jwtSecret,
       prisma,
       replaceStaging,
+      mailer: null,
     })
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
@@ -536,6 +538,7 @@ describe('POST /api/login', () => {
           jwtSecret,
           prisma,
           replaceStaging,
+          mailer: null,
           loginRateLimitNow: () => now,
         })
       );
@@ -581,6 +584,7 @@ describe('POST /api/login', () => {
           jwtSecret,
           prisma,
           replaceStaging,
+          mailer: null,
         })
       );
 

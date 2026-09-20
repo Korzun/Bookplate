@@ -11,6 +11,7 @@ import { requestTimeout } from './middleware/timeout';
 import { createKosyncRouter } from './routes/kosync';
 import { createOpdsRouter } from './routes/opds';
 import { createUiRouter } from './routes/ui';
+import type { Mailer } from './services/mailer';
 import type { ReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { AppConfig } from './types';
@@ -24,6 +25,7 @@ export type CreateServerDeps = {
   prisma: PrismaClient;
   graphqlHandler: RequestHandler;
   replaceStaging: ReplaceStaging;
+  mailer: Mailer | null;
 };
 
 export function createServer({
@@ -33,6 +35,7 @@ export function createServer({
   prisma,
   graphqlHandler,
   replaceStaging,
+  mailer,
 }: CreateServerDeps): express.Express {
   // `path.join(config.dataDir, 'editions')` — see `index.ts`'s identical
   // wiring and `graphql/context.ts`'s `Context.editionsRoot` doc comment.
@@ -84,7 +87,15 @@ export function createServer({
   server.use('/sync', createKosyncRouter(prisma));
   server.use(
     '/',
-    createUiRouter({ editionsRoot, config, thumbnailQueue, jwtSecret, prisma, replaceStaging })
+    createUiRouter({
+      editionsRoot,
+      config,
+      thumbnailQueue,
+      jwtSecret,
+      prisma,
+      replaceStaging,
+      mailer,
+    })
   );
 
   server.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {

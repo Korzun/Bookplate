@@ -9,11 +9,12 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
+import type { Mailer, MailMessage, SendResult } from '../services/mailer';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
-import type { AppConfig, Owner } from '../types';
+import type { AppConfig, MailConfig, Owner } from '../types';
 import type { Context, Viewer } from './context';
 import {
   createBookByDocumentLoader,
@@ -30,6 +31,54 @@ import { schema } from './schema';
 export type ExecuteOptions = {
   viewer?: Viewer | null;
   variables?: Record<string, unknown>;
+};
+
+/**
+ * A `Mailer` that never touches the network: `send` records every message
+ * it's given rather than delivering it, so a test can assert on
+ * `sent` directly instead of stubbing an HTTP client. `nextResult` lets a
+ * test simulate a delivery failure (`{ ok: false, reason: ... }`) for
+ * exactly the next call — see `viewer/mutation/set-email.test.ts`'s "succeeds
+ * even when the send fails" case, which is the reason this exists rather than
+ * always resolving `{ ok: true }`.
+ */
+export type FakeMailer = Mailer & {
+  sent: MailMessage[];
+  nextResult?: SendResult;
+};
+
+const createFakeMailer = (): FakeMailer => ({
+  sent: [],
+  nextResult: undefined,
+  async send(message: MailMessage): Promise<SendResult> {
+    this.sent.push(message);
+    return this.nextResult ?? { ok: true };
+  },
+});
+
+/**
+ * A complete, valid `MailConfig` for tests that opt into a configured
+ * install (`createHarness({ mail: MAIL_CONFIG })`). Field values are
+ * arbitrary — nothing here ever reaches a real Cloudflare API, since
+ * `Context.mailer` is always the `FakeMailer` above, never
+ * `createMailer(mail)`'s real Cloudflare driver.
+ */
+export const MAIL_CONFIG: MailConfig = {
+  accountId: 'test-account',
+  apiToken: 'test-token',
+  from: 'noreply@example.com',
+  fromName: 'Test Library',
+};
+
+export type CreateHarnessOptions = {
+  /**
+   * Passed through to `AppConfig.mail`. Omitted or `null` behaves like a real
+   * unconfigured install — `isMailConfigured` is false and `harness.mailer`
+   * (and `Context.mailer`) is `null`, exactly as `createMailer` would return
+   * for an unconfigured install. Pass `MAIL_CONFIG` (or a custom value) to
+   * get a `FakeMailer` wired into every context this harness builds.
+   */
+  mail?: MailConfig | null;
 };
 
 export type Harness = {
@@ -51,6 +100,12 @@ export type Harness = {
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
   config: AppConfig;
+  /**
+   * `null` unless `createHarness({ mail: ... })` was given a mail config —
+   * the same instance every context this harness builds carries as
+   * `Context.mailer`. Tests assert on `mailer.sent` / set `mailer.nextResult`.
+   */
+  mailer: FakeMailer | null;
   /** `path.join(dataDir, 'editions')` — same value `Context.editionsRoot` carries. */
   editionsRoot: string;
   /** A real user row created by the harness, for owner-scoped assertions. */
@@ -78,7 +133,7 @@ export type Harness = {
   cleanup: () => Promise<void>;
 };
 
-const testConfig = (booksDir: string, dataDir: string): AppConfig => ({
+const testConfig = (booksDir: string, dataDir: string, mail: MailConfig | null): AppConfig => ({
   libraryName: 'Test Library',
   username: 'admin',
   password: 'adminpass',
@@ -90,6 +145,7 @@ const testConfig = (booksDir: string, dataDir: string): AppConfig => ({
   // ValidationThreshold values are upper-cased: FATAL | ERROR | WARNING | INFO
   // (see @korzun/epubcheck-ts and ui.test.ts's use of the same literal).
   validationThreshold: 'ERROR',
+  mail,
 });
 
 /**
@@ -98,7 +154,9 @@ const testConfig = (booksDir: string, dataDir: string): AppConfig => ({
  * executes operations
  * against the built schema without going over HTTP.
  */
-export const createHarness = async (): Promise<Harness> => {
+export const createHarness = async (
+  harnessOptions: CreateHarnessOptions = {}
+): Promise<Harness> => {
   const booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-gql-'));
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bookplate-gql-data-'));
   const dbPath = path.join(
@@ -110,7 +168,13 @@ export const createHarness = async (): Promise<Harness> => {
   const prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
 
-  const config = testConfig(booksDir, dataDir);
+  const config = testConfig(booksDir, dataDir, harnessOptions.mail ?? null);
+  // One instance shared by every context this harness builds, exactly the way
+  // `index.ts` constructs `createMailer(config.mail)` once and never per
+  // request — see `Context.mailer`'s doc comment. `null` when no mail config
+  // was given, matching `createMailer` returning `null` for an unconfigured
+  // install.
+  const mailer: FakeMailer | null = config.mail ? createFakeMailer() : null;
   const editionsRoot = path.join(dataDir, 'editions');
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
@@ -169,6 +233,7 @@ export const createHarness = async (): Promise<Harness> => {
     replaceStaging,
     editionsRoot,
     config,
+    mailer,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -352,6 +417,7 @@ export const createHarness = async (): Promise<Harness> => {
       replaceStaging = value;
     },
     config,
+    mailer,
     editionsRoot,
     contextFor,
     aliceOwner: { userId: aliceId, username: 'alice' },
