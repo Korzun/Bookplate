@@ -289,8 +289,9 @@ reachable.
 all gated on `v.userId === null` and return `null` for the admin by design.
 Since the admin's token deliberately still carries no `sub`, an address hung off
 `Viewer.user` would be invisible to the one account that needs it most. The
-`username`-fallback resolution described above is what makes the `Viewer`-level
-fields work.
+`isConfigAdmin`-flag fallback resolution described above (corrected
+post-implementation review — see that section's note) is what makes the
+`Viewer`-level fields work.
 
 **G5 — The doc comments asserting the premise must be corrected.**
 `user/mutation/delete.ts` and `user/mutation/reset-password.ts` both argue at
@@ -360,7 +361,7 @@ Mirrors `mustChangePassword` in every respect:
 
 | Mutation | Behaviour |
 | --- | --- |
-| `viewerSetEmail(email)` | Validates and normalizes; writes `email` + `emailKey`; clears `emailVerifiedAt`; deletes outstanding tokens for that user; issues and sends a `verify` token. A `emailKey` collision returns an "already in use" error result, not a throw — the `P2002`-as-outcome convention `createUser` uses. |
+| `viewerSetEmail(email)` | Validates and normalizes; writes `email` + `emailKey`; clears `emailVerifiedAt`; deletes the outstanding **`reset`** token for that user (not `verify`); issues and sends a `verify` token. A `emailKey` collision returns an "already in use" error result, not a throw — the `P2002`-as-outcome convention `createUser` uses. |
 | `viewerResendEmailVerification` | Upserts the `verify` token (new code, previous invalidated), subject to the 60s cooldown and 5-sends-per-rolling-hour cap. |
 | `viewerConfirmEmail(code)` | Consumes the `verify` token for the viewer, checks `email` still matches the token's `email`, sets `emailVerifiedAt`. |
 
@@ -369,9 +370,17 @@ the address, a verified badge, and a resend affordance.
 
 **Resolving the acting row.** These mutations need a `userId` to key
 `EmailToken`, and the admin's token carries no `sub`. They therefore resolve the
-acting row by `userId` when the claim is present and by `username` otherwise —
-the admin's only path, and the reason `ensureAdminUser` must have run before any
-of them can succeed.
+acting row by `userId` when the claim is present and by the **`isConfigAdmin`
+flag** otherwise — the admin's only path, and the reason `ensureAdminUser`
+must have run before any of them can succeed. (Corrected post-implementation
+review, whole-branch fix wave: an earlier version of this spec said "by
+`username` otherwise", which is unsafe — `ensureAdminUser`'s rename can be
+blocked by a username collision, leaving the marked admin row under its OLD
+username while `config.username` now names an unrelated reader's row. A
+username-keyed lookup then resolves the admin's session to that reader's row,
+letting `viewerSetEmail`/`viewerConfirmEmail` write to and verify an account
+that isn't the admin's. The flag is the only field that keeps meaning "this is
+the admin row" across a blocked rename.)
 
 **After `viewerSetEmail` succeeds** the client mints a fresh access token via the
 refresh helper in `lib/api-fetch.ts`, so `mustSetEmail` clears immediately
