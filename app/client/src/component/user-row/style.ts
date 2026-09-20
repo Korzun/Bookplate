@@ -20,9 +20,15 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     marginLeft: theme.space.sm,
   },
   // The card's `title` now carries the username AND (when the user has one)
-  // their address, so it needs to be a flex row itself — mirrors
-  // `component/email-setting`'s own `pill`/`badgeConfirmed`/
-  // `badgeUnconfirmed` naming and tokens for the address + confirmed state.
+  // their address, so it needs to be a flex row itself. `badgeConfirmed`/
+  // `badgeUnconfirmed` below match `component/email-setting`'s own classes
+  // of the same name exactly (`theme.color.success` / `theme.color.text
+  // .faint`, `fontSize.sm`). `addressPill`/`address` do not mirror that
+  // file's `pill`/`address` — this is `addressPill` not `pill`, and the text
+  // uses `theme.color.text.faint` at `fontSize.sm` rather than
+  // `text.primary` at `fontSize.md` — deliberately toned down, since in this
+  // list row the address is secondary to the username, not the main content
+  // it is on `email-setting`'s own card.
   titleRow: {
     display: 'flex',
     alignItems: 'center',

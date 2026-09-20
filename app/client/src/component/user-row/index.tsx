@@ -34,7 +34,7 @@ import { useStyle } from './style';
  * the DOCUMENT (`~/graphql/user`), not in this fragment — `UserRow` never
  * renders it. **Do NOT add a field here** without checking `test:cost -w
  * app/server` first: `viewer.users → library.progress` is this project's
- * worst-measured legitimate query shape at 68.5% of the complexity budget,
+ * worst-measured legitimate query shape at 68.8% of the complexity budget,
  * and this fragment is exactly where a future field would naturally be
  * added — a single unbounded child (e.g. anything under `library`) can push
  * that shape over budget. `pendingBookRequestCount` itself is a scalar

@@ -252,11 +252,15 @@ const LEGIT_FIXTURES: readonly LegitAcceptFixture[] = [
     // ruling by RAISING COMPLEXITY_BUDGET off this and the other measured
     // legit anchors (INSTANCE_USER_MULTIPLIER=50 stays — the security
     // ceiling, shrinking it is the unsafe direction), not shrinking this
-    // fixture: at 33,000 this is 68.5%, under the 70% line, so it now takes
-    // the plain, always-enforced Headroom assertion below.
+    // fixture. `email`/`emailVerifiedAt` (email-address-ownership work,
+    // whole-branch review M-2) were added below: `UserRowFragment` now
+    // selects both off `Viewer.users`, so this "what the admin list can
+    // actually send" anchor was stale without them. At 33,000 this is 68.8%,
+    // still under the 70% line, so it still takes the plain, always-enforced
+    // Headroom assertion below.
     name: 'the admin user-list mirror (final-review.md, I-2) — a REAL, presently-reachable admin traversal, not a hypothetical',
     source:
-      '{ viewer { users { library { progress(first: 50) { edges { node { document percentage device timestamp } } pageInfo { hasNextPage endCursor } } } } } }',
+      '{ viewer { users { email emailVerifiedAt library { progress(first: 50) { edges { node { document percentage device timestamp } } pageInfo { hasNextPage endCursor } } } } } }',
   },
   {
     verdict: 'accept',

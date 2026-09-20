@@ -132,6 +132,18 @@ set an address again.
 Letting two accounts share an address; automatic or time-based release of claims;
 any change to what verification gates; any change to login-by-email.
 
+**A claim squatted by the config-admin row.** The config admin now has a `User` row
+(`services/admin-account.ts`) that can hold an address like any other, but `Viewer.users`
+filters it out (`NOT_CONFIG_ADMIN`) and `userClearEmail` refuses it, same as `userDelete`
+and `userResetPassword`. So if the operator's own address is what a claimant collides
+with, the admin list shows no holder for it — the one case where this spec's "who holds
+this?" promise does not hold. Both decisions stay as they are: config-admin
+unaddressability is consistent with the other admin-only mutations, and surfacing that
+row in the admin list would be a product decision, not a defect fix. The recovery path
+still exists and is not automatic: the operator sees their own address on
+`component/email-setting` and can replace it there, which frees the old key — they
+cannot null it, only replace it, same as any other viewer.
+
 ## Known traps
 
 1. `userClearEmail` writes another user's row — the first mutation to do so. It needs
