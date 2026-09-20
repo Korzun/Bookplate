@@ -43,6 +43,14 @@ const config: AppConfig = {
 let booksDir: string;
 let deps: StartupDeps;
 let listenCallback: (() => void) | undefined;
+// `startBookplate` registers real `process.on('SIGTERM'/'SIGINT', ...)`
+// listeners whose closures call `process.exit(0)` — snapshotting the
+// listener lists before each test lets afterEach remove only what this
+// test run added, without touching listeners vitest or the harness itself
+// installed (a bare `process.removeAllListeners('SIGTERM')` would strip
+// those too).
+let sigtermListenersBefore: NodeJS.SignalsListener[];
+let sigintListenersBefore: NodeJS.SignalsListener[];
 
 beforeEach(() => {
   // The vi.mock() factories above only set these defaults once, at module
@@ -54,6 +62,8 @@ beforeEach(() => {
 
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'startup-'));
   listenCallback = undefined;
+  sigtermListenersBefore = [...process.listeners('SIGTERM')];
+  sigintListenersBefore = [...process.listeners('SIGINT')];
 
   const prisma = {
     user: {
@@ -91,6 +101,12 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(booksDir, { recursive: true, force: true });
+  for (const listener of process.listeners('SIGTERM')) {
+    if (!sigtermListenersBefore.includes(listener)) process.removeListener('SIGTERM', listener);
+  }
+  for (const listener of process.listeners('SIGINT')) {
+    if (!sigintListenersBefore.includes(listener)) process.removeListener('SIGINT', listener);
+  }
 });
 
 describe('startBookplate', () => {
@@ -118,5 +134,16 @@ describe('startBookplate', () => {
 
     expect(deps.server.listen).toHaveBeenCalledWith(config.port, expect.any(Function));
     expect(listenCallback).toBeDefined();
+  });
+
+  it('lets the boot continue when the startup scan fails', async () => {
+    vi.mocked(scan).mockRejectedValue(new Error('scan boom'));
+
+    await expect(startBookplate(deps)).resolves.toBeUndefined();
+
+    // The assertion that matters: the boot actually completed (reached
+    // server.listen), not merely that the rejection didn't propagate out
+    // of startBookplate.
+    expect(deps.server.listen).toHaveBeenCalled();
   });
 });
