@@ -10,6 +10,7 @@ export const library = (options?: { subject?: string; author?: string }) =>
   pathInternal.library(options);
 export const series = (seriesName: string) => pathInternal.series(encodeURIComponent(seriesName));
 export const passwordReset = () => pathInternal.passwordReset();
+export const setEmail = () => pathInternal.setEmail();
 export const user = () => pathInternal.user();
 export const userList = () => pathInternal.userList();
 export const login = () => pathInternal.login();

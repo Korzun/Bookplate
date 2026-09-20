@@ -25,6 +25,7 @@ function renderWithAuth(authState: AuthContextType, initialEntries: string[]) {
               <Route path="/user" element={<div>user page</div>} />
               <Route path="/library" element={<div>library page</div>} />
               <Route path="/password-reset" element={<div>password reset page</div>} />
+              <Route path="/set-email" element={<div>set email page</div>} />
             </Route>
             <Route path="/login" element={<div>login page</div>} />
           </Routes>
@@ -131,5 +132,68 @@ describe('ProtectedRoute', () => {
       ['/password-reset']
     );
     expect(screen.getByText('home page')).toBeInTheDocument();
+  });
+
+  it('sends a viewer who owes an address to the set-email page', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: true,
+        loading: false,
+      },
+      ['/library']
+    );
+    expect(screen.getByText('set email page')).toBeInTheDocument();
+  });
+
+  // Ordering matters: a new account owes both, and choosing a password is the
+  // step that must come first. Mirrors the server, where passwordChangeGate is
+  // mounted ahead of emailSetupGate.
+  it('sends a viewer who owes a password change to the password page FIRST', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: true,
+        mustSetEmail: true,
+        loading: false,
+      },
+      ['/library']
+    );
+    expect(screen.getByText('password reset page')).toBeInTheDocument();
+  });
+
+  it('bounces a viewer off the set-email page once they have an address', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: false,
+        loading: false,
+      },
+      ['/set-email']
+    );
+    expect(screen.getByText('home page')).toBeInTheDocument();
+  });
+
+  it('leaves an ordinary viewer alone', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: false,
+        loading: false,
+      },
+      ['/library']
+    );
+    expect(screen.getByText('library page')).toBeInTheDocument();
   });
 });
