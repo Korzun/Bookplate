@@ -99,7 +99,7 @@ describe('Mutation.userRegenerateSyncPassword', () => {
    * is pinned here. The NEXT test is the one that isolates the new guard.
    */
   it('refuses the admin regenerating its own now-existing row (no sync credentials)', async () => {
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
@@ -131,7 +131,7 @@ describe('Mutation.userRegenerateSyncPassword', () => {
    * above unaffected either way.
    */
   it('refuses the admin even with a viewer whose userId matches its own row (defense in depth for G3)', async () => {
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
     const brokenInvariantAdminViewer: Viewer = { ...harness.adminViewer, userId: adminId };
 
     const result = await harness.execute(MUTATION, {
