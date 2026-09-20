@@ -135,6 +135,8 @@
       "DocumentIsBookError",
       "DuplicateBookRequestError",
       "EditLineageEntryError",
+      "EmailInUseError",
+      "EmailNotConfiguredError",
       "EpubValidationError",
       "IncorrectPasswordError",
       "InvalidInputError",
@@ -153,6 +155,21 @@
     ],
     "UserResetPasswordResult": [
       "UserResetPasswordPayload"
+    ],
+    "ViewerConfirmEmailResult": [
+      "InvalidInputError",
+      "ViewerConfirmEmailPayload"
+    ],
+    "ViewerResendEmailVerificationResult": [
+      "EmailNotConfiguredError",
+      "InvalidInputError",
+      "ViewerResendEmailVerificationPayload"
+    ],
+    "ViewerSetEmailResult": [
+      "EmailInUseError",
+      "EmailNotConfiguredError",
+      "InvalidInputError",
+      "ViewerSetEmailPayload"
     ]
   }
 };

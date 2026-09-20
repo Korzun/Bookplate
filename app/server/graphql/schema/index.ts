@@ -13,6 +13,8 @@ import './document-already-linked-error';
 import './document-is-book-error';
 import './duplicate-book-request-error';
 import './edit-lineage-entry-error';
+import './email-in-use-error';
+import './email-not-configured-error';
 import './epub-validation-error';
 import './epub-validation-message';
 import './identifier';

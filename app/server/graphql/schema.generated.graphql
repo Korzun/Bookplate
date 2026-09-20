@@ -396,6 +396,14 @@ type EditLineageEntryError implements UserError {
   message: String!
 }
 
+type EmailInUseError implements UserError {
+  message: String!
+}
+
+type EmailNotConfiguredError implements UserError {
+  message: String!
+}
+
 """
 The EPUB failed validation at the configured threshold and was rejected.
 """
@@ -697,6 +705,21 @@ type Mutation {
   Resets a user’s login password to a freshly generated one and forces a change on next login. Resolves to null when the user does not exist.
   """
   userResetPassword(input: UserResetPasswordInput!): UserResetPasswordResult
+
+  """
+  Confirms the viewer's email address with the code sent to it. Works even when mail is currently unconfigured — the code was already delivered.
+  """
+  viewerConfirmEmail(input: ViewerConfirmEmailInput!): ViewerConfirmEmailResult!
+
+  """
+  Sends a fresh verification code to the viewer's own email address. `InvalidInputError` covers every reason it cannot: no address on file, the address is already confirmed, or a resend cooldown/cap is in effect.
+  """
+  viewerResendEmailVerification: ViewerResendEmailVerificationResult!
+
+  """
+  Sets the viewer's email address and sends a verification code to it. Succeeds (with `delivered: false`) even if the send itself fails, because the address is already saved by then.
+  """
+  viewerSetEmail(input: ViewerSetEmailInput!): ViewerSetEmailResult!
 }
 
 interface Node {
@@ -1014,11 +1037,41 @@ enum ValidationThreshold {
 
 type Viewer {
   devices: [Device!]!
+  email: String
+  emailVerifiedAt: DateTime
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
+  mustSetEmail: Boolean!
   syncPassword: String
   user: User
   username: String!
   users: [User!]
 }
+
+input ViewerConfirmEmailInput {
+  code: String!
+}
+
+type ViewerConfirmEmailPayload {
+  email: String!
+}
+
+union ViewerConfirmEmailResult = InvalidInputError | ViewerConfirmEmailPayload
+
+type ViewerResendEmailVerificationPayload {
+  delivered: Boolean!
+}
+
+union ViewerResendEmailVerificationResult = EmailNotConfiguredError | InvalidInputError | ViewerResendEmailVerificationPayload
+
+input ViewerSetEmailInput {
+  email: String!
+}
+
+type ViewerSetEmailPayload {
+  delivered: Boolean!
+  email: String!
+}
+
+union ViewerSetEmailResult = EmailInUseError | EmailNotConfiguredError | InvalidInputError | ViewerSetEmailPayload

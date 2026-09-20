@@ -46,6 +46,7 @@ beforeEach(async () => {
       thumbnails: harness.thumbnails,
       replaceStaging: harness.replaceStaging,
       config: harness.config,
+      mailer: harness.mailer,
       jwtSecret,
       isProduction: false,
     })
@@ -59,6 +60,7 @@ beforeEach(async () => {
       jwtSecret,
       prisma: harness.prisma,
       replaceStaging: harness.replaceStaging,
+      mailer: harness.mailer,
     })
   );
 });

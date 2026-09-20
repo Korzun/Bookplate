@@ -1,6 +1,7 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
 import { getSyncPassword } from '../../../services/password';
 import type { Viewer } from '../../context';
+import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
@@ -11,6 +12,38 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     username: t.exposeString('username'),
     isAdmin: t.exposeBoolean('isAdmin'),
     mustChangePassword: t.exposeBoolean('mustChangePassword'),
+    mustSetEmail: t.exposeBoolean('mustSetEmail'),
+
+    /**
+     * ON `Viewer`, NOT behind `Viewer.user` — deliberately. `Viewer.user` resolves
+     * through `v.userId`, which is null for the config-based admin, so an address
+     * hung off it would be unreadable by the one account that cannot recover its
+     * password any other way. Resolved by username fallback, the same way
+     * `resolveViewerUserId` does for the mutations.
+     */
+    email: t.field({
+      type: 'String',
+      nullable: true,
+      resolve: async (v, _args, context) => {
+        const row = await context.prisma.user.findUnique({
+          where: { username: v.username },
+          select: { email: true },
+        });
+        return row?.email ?? null;
+      },
+    }),
+
+    emailVerifiedAt: t.field({
+      type: 'DateTime',
+      nullable: true,
+      resolve: async (v, _args, context) => {
+        const row = await context.prisma.user.findUnique({
+          where: { username: v.username },
+          select: { emailVerifiedAt: true },
+        });
+        return row?.emailVerifiedAt == null ? null : epochToDate(row.emailVerifiedAt);
+      },
+    }),
 
     library: t.field({
       type: library,

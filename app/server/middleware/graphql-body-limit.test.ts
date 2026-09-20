@@ -120,6 +120,7 @@ describe('graphqlBodyLimit + graphqlHandler (server.ts mount order)', () => {
         thumbnails: harness.thumbnails,
         replaceStaging: harness.replaceStaging,
         config: harness.config,
+        mailer: harness.mailer,
         jwtSecret,
         isProduction: false,
       })
@@ -199,6 +200,7 @@ describe('graphqlBodyLimit + graphqlHandler — chunked transfer-encoding bypass
         thumbnails: harness.thumbnails,
         replaceStaging: harness.replaceStaging,
         config: harness.config,
+        mailer: harness.mailer,
         jwtSecret,
         isProduction: true,
       })

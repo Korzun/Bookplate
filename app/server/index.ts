@@ -12,6 +12,7 @@ import { ensureAdminUser } from './services/admin-account';
 import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
+import { createMailer } from './services/mailer';
 import { createReplaceStaging } from './services/replace-staging';
 import { revalidateLibrary } from './services/revalidate-library';
 import { ThumbnailQueue } from './services/thumbnail-queue';
@@ -46,12 +47,18 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // replaceStaging` doc comment for why a second instance would never see
   // the first one's staged files.
   const replaceStaging = createReplaceStaging({ stagingDir: getStagingDir(config.booksDir) });
+  // One instance, constructed here and shared by GraphQL and `routes/ui.ts` —
+  // never one per request. The Cloudflare driver latches its misconfiguration
+  // warning per instance, so a per-request mailer would log that line on
+  // every send (see `Context.mailer`'s doc comment).
+  const mailer = createMailer(config.mail);
   const graphqlHandler = createGraphqlHandler({
     prisma,
     thumbnails: thumbnailQueue,
     replaceStaging,
     editionsRoot,
     config,
+    mailer,
     jwtSecret,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
     // the default and insecure mode must be opted into explicitly. Nothing in
@@ -69,6 +76,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     prisma,
     graphqlHandler,
     replaceStaging,
+    mailer,
   });
 
   // Before the startup scan: the scan skips the admin's username explicitly, and

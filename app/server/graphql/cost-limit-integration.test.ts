@@ -62,6 +62,7 @@ describe('useCostLimit — over real HTTP, real schema (Task 4: now enforces; st
         thumbnails: harness.thumbnails,
         replaceStaging: harness.replaceStaging,
         config: harness.config,
+        mailer: harness.mailer,
         jwtSecret,
         isProduction: false,
       })
