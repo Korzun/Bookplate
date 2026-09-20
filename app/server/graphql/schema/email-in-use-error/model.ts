@@ -15,9 +15,16 @@ export type EmailInUseErrorShape = {
   readonly message: string;
 };
 
+// The message is deliberately UNIFORM — it never says who holds the address
+// or whether they have confirmed it, because it is returned to whoever
+// probed the address, and that is operator-only information (see
+// `user/mutation/clear-email.ts`'s `userClearEmail` — the actual remedy this
+// copy points at). Pointing the reader at "your administrator" is new: now
+// that `userClearEmail` exists, a squatted address is no longer a dead end.
 export const emailInUseError = (): EmailInUseErrorShape => ({
   __typename: 'EmailInUseError',
-  message: 'That email address is already in use by another account.',
+  message:
+    'That email address is already in use by another account. Ask your administrator if you think it should be yours.',
 });
 
 export const model = builder

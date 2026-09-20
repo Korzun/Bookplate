@@ -1,6 +1,8 @@
 import { ensureAdminUser } from '../../../../services/admin-account';
-import { setUserEmail } from '../../../../services/email';
+import { markEmailVerified, setUserEmail } from '../../../../services/email';
 import { issueEmailToken } from '../../../../services/email-token';
+import { hashLoginPassword } from '../../../../services/password';
+import { createUser } from '../../../../services/user';
 import type { Viewer } from '../../../context';
 import { createHarness, MAIL_CONFIG, type Harness } from '../../../test-util';
 
@@ -298,5 +300,49 @@ describe('viewerSetEmail', () => {
     // taking over a reader's account.
     const readerRow = await harness.prisma.user.findUniqueOrThrow({ where: { id: readerId } });
     expect(readerRow.email).toBe('reader@example.com');
+  });
+
+  /**
+   * A security property, not a copy preference: `EmailInUseError.message` is
+   * returned to whoever probed the address, so it must never reveal whether
+   * the address it collided with belongs to a confirmed account or an
+   * unconfirmed one — either leak would tell a prober something about a
+   * different account. MUST be configured with mail — `viewerSetEmail`'s
+   * first statement returns `EmailNotConfiguredError` when it is not, which
+   * would make both messages trivially equal and this test vacuous. No
+   * cooldown applies to either call and carl needs no reset between them:
+   * `setUserEmail` runs before any token work, and an `in_use` outcome
+   * returns `emailInUseError()` immediately — `invalidateEmailTokens` and
+   * `issueEmailToken` sit below that return and are never reached on a
+   * collision.
+   */
+  it('says the same thing whether the holder has confirmed the address or not', async () => {
+    harness = await createHarness({ mail: MAIL_CONFIG });
+    await setUserEmail(harness.prisma, harness.aliceOwner.userId, 'unconfirmed@example.com');
+    await setUserEmail(harness.prisma, harness.bobOwner.userId, 'confirmed@example.com');
+    await markEmailVerified(harness.prisma, harness.bobOwner.userId);
+
+    await createUser(harness.prisma, 'carl', await hashLoginPassword('carlpass'));
+    const carlId = (await harness.prisma.user.findUniqueOrThrow({ where: { username: 'carl' } }))
+      .id;
+    const carlViewer: Viewer = {
+      userId: carlId,
+      username: 'carl',
+      isAdmin: false,
+      mustChangePassword: false,
+      mustSetEmail: false,
+    };
+
+    const against = async (address: string) => {
+      const result = await harness.execute(SET_EMAIL, {
+        viewer: carlViewer,
+        variables: { input: { email: address } },
+      });
+      return (result.data?.viewerSetEmail as { message?: string } | undefined)?.message;
+    };
+
+    // Identical strings: a different message for a confirmed holder would
+    // tell whoever probed the address something about another account.
+    expect(await against('unconfirmed@example.com')).toBe(await against('confirmed@example.com'));
   });
 });

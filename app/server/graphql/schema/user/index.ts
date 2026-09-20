@@ -1,6 +1,7 @@
 export { model } from './model';
 
 import './mutation/change-password';
+import './mutation/clear-email';
 import './mutation/delete';
 import './mutation/regenerate-sync-password';
 import './mutation/register';
