@@ -1,0 +1,12 @@
+-- This migration is intentionally a no-op.
+--
+-- The users email columns and the email_tokens table are created by the
+-- data_v19_user_email data migration in migrate.ts instead, because
+-- data_v10_user_surrogate_id REBUILDS "users" through a "users_new" table with
+-- an explicit column list. A column added here, during the plain DDL migration
+-- pass, would be silently dropped when v10 later runs on a database that has
+-- not reached it yet.
+--
+-- Same reason, same shape, as 20260725000000_add_pending_fixes,
+-- 20260726120000_add_validation_tables and 20260830000000_add_book_requests.
+SELECT 1;
