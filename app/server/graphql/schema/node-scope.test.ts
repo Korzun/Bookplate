@@ -14,9 +14,22 @@ const alice = {
   username: 'alice',
   isAdmin: false,
   mustChangePassword: false,
+  mustSetEmail: false,
 };
-const bob = { userId: 'user-bob', username: 'bob', isAdmin: false, mustChangePassword: false };
-const admin = { userId: null, username: 'admin', isAdmin: true, mustChangePassword: false };
+const bob = {
+  userId: 'user-bob',
+  username: 'bob',
+  isAdmin: false,
+  mustChangePassword: false,
+  mustSetEmail: false,
+};
+const admin = {
+  userId: null,
+  username: 'admin',
+  isAdmin: true,
+  mustChangePassword: false,
+  mustSetEmail: false,
+};
 
 const findUnique = ownerScopedFindUnique((userId: string, id: string) => ({
   userId_id: { userId, id },

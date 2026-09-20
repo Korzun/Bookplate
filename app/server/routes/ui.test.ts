@@ -34,7 +34,7 @@ import {
 import { createUser, deleteUser } from '../services/user';
 import * as validationModule from '../services/validation';
 import { seedBook } from '../test-support/seed-book';
-import { AppConfig, EpubMeta, Owner } from '../types';
+import { AppConfig, EpubMeta, MailConfig, Owner } from '../types';
 import { createLoginRateLimit, createUiRouter } from './ui';
 
 vi.mock('../logger');
@@ -148,6 +148,13 @@ const config: AppConfig = {
   maxConcurrentUploads: 3,
   thumbnailWidths: [86, 160],
   validationThreshold: 'ERROR',
+};
+
+const MAIL_CONFIG: MailConfig = {
+  accountId: 'acct',
+  apiToken: 'tok',
+  from: 'lib@example.com',
+  fromName: 'Bookplate',
 };
 
 const mockThumbnailQueue = {
@@ -386,15 +393,28 @@ beforeEach(async () => {
   aliceId = (await prisma.user.findUnique({ where: { username: 'alice' } }))!.id;
   aliceOwner = { userId: aliceId, username: 'alice' };
 
-  app = express();
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
-  app.use(cookieParser());
-  app.use(
+  app = buildApp();
+  (mockThumbnailQueue.enqueue as Mock).mockClear();
+  (mockThumbnailQueue.reconcile as Mock).mockClear();
+});
+
+/**
+ * Builds a fresh app against this test's `prisma`/`booksDir`, with an
+ * `AppConfig` override — the `mustSetEmail` suite below uses it to turn mail
+ * on (`{ mail: MAIL_CONFIG }`) for one app while every other test keeps the
+ * default `config.mail === null`. Extends the same construction the outer
+ * `beforeEach` uses rather than adding a parallel one.
+ */
+function buildApp(configOverrides: Partial<AppConfig> = {}): express.Express {
+  const testApp = express();
+  testApp.use(express.json());
+  testApp.use(express.urlencoded({ extended: false }));
+  testApp.use(cookieParser());
+  testApp.use(
     '/',
     createUiRouter({
       editionsRoot,
-      config: { ...config, booksDir },
+      config: { ...config, booksDir, ...configOverrides },
       thumbnailQueue: mockThumbnailQueue,
       jwtSecret,
       prisma,
@@ -402,14 +422,13 @@ beforeEach(async () => {
     })
   );
   // Terminal error middleware mirrors server.ts so unexpected throws → 500
-  app.use((_err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+  testApp.use((_err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
-  (mockThumbnailQueue.enqueue as Mock).mockClear();
-  (mockThumbnailQueue.reconcile as Mock).mockClear();
-});
+  return testApp;
+}
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -632,6 +651,51 @@ describe('login by email', () => {
       .post('/api/login')
       .send({ username: 'ann', password: 'reader-password' });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('mustSetEmail claim', () => {
+  it('is false when mail is unconfigured, even with no address', async () => {
+    // config.mail is null in this suite's default AppConfig literal.
+    await createReader('ann', 'pw');
+    const res = await request(app).post('/api/login').send({ username: 'ann', password: 'pw' });
+    expect(decode(res.body.accessToken).mustSetEmail).toBe(false);
+  });
+
+  it('is true when mail is configured and the account has no address', async () => {
+    const mailApp = buildApp({ mail: MAIL_CONFIG });
+    await createReader('ann', 'pw');
+    const res = await request(mailApp).post('/api/login').send({ username: 'ann', password: 'pw' });
+    expect(decode(res.body.accessToken).mustSetEmail).toBe(true);
+  });
+
+  it('is false once the account has an address', async () => {
+    const mailApp = buildApp({ mail: MAIL_CONFIG });
+    const id = await createReader('ann', 'pw');
+    await setUserEmail(prisma, id, 'ann@example.com');
+    const res = await request(mailApp).post('/api/login').send({ username: 'ann', password: 'pw' });
+    expect(decode(res.body.accessToken).mustSetEmail).toBe(false);
+  });
+
+  it('applies to the admin too', async () => {
+    const mailApp = buildApp({ mail: MAIL_CONFIG });
+    await ensureAdminUser(prisma, config.username);
+    const res = await request(mailApp)
+      .post('/api/login')
+      .send({ username: config.username, password: config.password });
+    expect(decode(res.body.accessToken).mustSetEmail).toBe(true);
+  });
+
+  it('is recomputed on refresh, so configuring mail turns the gate on', async () => {
+    const mailApp = buildApp({ mail: MAIL_CONFIG });
+    await createReader('ann', 'pw');
+    const login = await request(mailApp)
+      .post('/api/login')
+      .send({ username: 'ann', password: 'pw' });
+    const refresh = await request(mailApp)
+      .post('/api/auth/refresh')
+      .set('Cookie', login.headers['set-cookie']);
+    expect(decode(refresh.body.accessToken).mustSetEmail).toBe(true);
   });
 });
 
@@ -1017,6 +1081,7 @@ describe('POST /api/books/upload', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: false,
+      mustSetEmail: false,
     };
     const gqlResult = await gqlExecute(
       `{ viewer { library { book(id: "${result.globalId}") { id title } } } }`,

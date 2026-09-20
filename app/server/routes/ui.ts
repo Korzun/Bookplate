@@ -9,7 +9,7 @@ import multer from 'multer';
 
 import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
-import { jwtAuth, passwordChangeGate } from '../middleware/auth';
+import { emailSetupGate, jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
 import { getBookById, getSubjects } from '../services/book-catalog';
 import { BookAlreadyExistsError } from '../services/book-errors';
@@ -19,6 +19,7 @@ import { findUserByEmail } from '../services/email';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
+import { isMailConfigured } from '../services/mailer';
 import { getMustChangePassword, validateUser } from '../services/password';
 import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
@@ -37,6 +38,23 @@ import { asyncHandler } from '../utils/async-handler';
 const log = logger('UI');
 
 const ALLOWED_EXTENSIONS = new Set(['.epub']);
+
+/**
+ * `mustSetEmail`'s single source of truth, DERIVED rather than stored: an
+ * address is outstanding only when mail is configured, so flipping the add-on
+ * options cannot leave a stale flag behind in the database. Looked up by
+ * username because the config admin's token carries no `sub` and this must
+ * answer for them too.
+ */
+export async function computeMustSetEmail(
+  prisma: PrismaClient,
+  config: AppConfig,
+  username: string
+): Promise<boolean> {
+  if (!isMailConfigured(config)) return false;
+  const row = await prisma.user.findUnique({ where: { username }, select: { email: true } });
+  return row !== null && row.email === null;
+}
 
 /**
  * Shared multer `fileSize` caps (Task 4, pre-client-polish plan §5): EPUB
@@ -558,6 +576,7 @@ export function createUiRouter({
   });
 
   router.use(passwordChangeGate(jwtSecret));
+  router.use(emailSetupGate(jwtSecret));
 
   router.post(
     '/api/login',
@@ -590,7 +609,12 @@ export function createUiRouter({
       if (loginName === config.username && password === config.password) {
         log.info(`Admin "${loginName}" logged in`);
         await deleteExpired(prisma);
-        await issueTokens(res, { username: loginName, isAdmin: true, mustChangePassword: false });
+        await issueTokens(res, {
+          username: loginName,
+          isAdmin: true,
+          mustChangePassword: false,
+          mustSetEmail: await computeMustSetEmail(prisma, config, loginName),
+        });
         return;
       }
       // Single-statement `findUnique` with exactly one production caller —
@@ -625,6 +649,7 @@ export function createUiRouter({
           username: loginName,
           isAdmin: false,
           mustChangePassword: await getMustChangePassword(prisma, loginName),
+          mustSetEmail: await computeMustSetEmail(prisma, config, loginName),
         });
         return;
       }
@@ -656,6 +681,7 @@ export function createUiRouter({
           username: identity.username,
           isAdmin: true,
           mustChangePassword: false,
+          mustSetEmail: await computeMustSetEmail(prisma, config, identity.username),
         });
         return;
       }
@@ -677,6 +703,7 @@ export function createUiRouter({
         username: identity.username,
         isAdmin: false,
         mustChangePassword: await getMustChangePassword(prisma, identity.username),
+        mustSetEmail: await computeMustSetEmail(prisma, config, identity.username),
       });
     })
   );

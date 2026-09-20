@@ -39,6 +39,7 @@ export type Viewer = {
   username: string;
   isAdmin: boolean;
   mustChangePassword: boolean;
+  mustSetEmail: boolean;
 };
 
 export type Context = {
@@ -87,6 +88,7 @@ export const viewerFromHeader = (secret: Buffer, header: string | undefined): Vi
     username: user.username,
     isAdmin: user.isAdmin,
     mustChangePassword: user.mustChangePassword,
+    mustSetEmail: user.mustSetEmail,
   };
 };
 

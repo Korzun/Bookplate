@@ -41,6 +41,7 @@ const aliceToken = () =>
     username: 'alice',
     isAdmin: false,
     mustChangePassword: false,
+    mustSetEmail: false,
   });
 
 beforeEach(async () => {
@@ -217,6 +218,7 @@ describe('operation logging — over real HTTP', () => {
       username: 'admin',
       isAdmin: true,
       mustChangePassword: false,
+      mustSetEmail: false,
     });
 
     await request(app)
