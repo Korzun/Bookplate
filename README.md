@@ -113,9 +113,9 @@ Open the add-on in a browser and sign in with your account **username** and
 
 - **URL:** `http://<your-host>:3000/`
 - **Username / Password:** your account username and **login password** (the one
-  you use to sign in — *not* the sync password). Once you've added and confirmed
-  an email address (see below), you can enter that address instead of your
-  username here.
+  you use to sign in — *not* the sync password). Once you've added an email
+  address (see below), you can enter that address instead of your username
+  here — confirming it isn't required to sign in with it.
 
 The **admin** account (the `username` / `password` set in the add-on
 configuration) signs in the same way and can create reader users, reset
@@ -125,22 +125,28 @@ reader devices.
 
 #### Email login, verification, and password reset
 
-These only apply once the add-on's five `email_*`/`public_url` options are set
-(see the **Configuration** table above) — an install with no Cloudflare
-credentials configured works exactly as it always has, with no email address
-or extra screen anywhere.
+These only apply once the required `email_*` options are set (see the
+**Configuration** table above) — an install that has never had mail configured
+works exactly as it always has, with no email address or extra screen anywhere.
+(If mail is configured for a while, addresses get set, and the Cloudflare
+credentials are later removed, those addresses remain usable as sign-in
+identifiers even though the add-on no longer sends mail — only the
+set-address prompt below stops.)
 
 Once email is configured:
 
 - **Every account needs an address.** If yours doesn't have one yet, you're
   asked to add one right after you sign in, before you can do anything else.
   You can also add or change it later from your **settings page**.
-- **Addresses must be confirmed.** After you enter an address, a message with
-  a confirmation code is sent to it; enter the code to confirm. Until an
-  address is confirmed, it's used for nothing else — no other mail is sent to
-  it, and it can't be used to reset a password.
-- **Sign in with your address.** Once confirmed, you can type your email
-  address in the sign-in form's username field instead of your username.
+- **Addresses must be confirmed** — but confirmation unlocks *password reset*,
+  not sign-in. Your address works as a sign-in identifier as soon as it's set
+  (you still need your login password — an address alone never gets you in).
+  Confirming it, by entering the code sent to it, is what allows a password
+  reset to be sent to it later, and is what stops any other mail from going to
+  it in the meantime.
+- **Sign in with your address.** You can type your email address in the
+  sign-in form's username field instead of your username as soon as it's set —
+  confirmation isn't required for this.
 - **Forgot password** (linked from the sign-in page) sends a reset code to a
   **confirmed** address and lets you choose a new login password. It does
   **not** work for the admin account — the admin password is always the
