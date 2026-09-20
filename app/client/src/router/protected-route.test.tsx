@@ -207,6 +207,47 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('home page')).toBeInTheDocument();
   });
 
+  // I2 (important, whole-branch review): the verification email always links
+  // to `/set-email?code=...` (`services/mail-template.ts`), but changing an
+  // address from the settings card never sets `mustSetEmail` (only an
+  // outstanding, unset address does) — so a viewer who isn't gated used to be
+  // bounced home before ever seeing the code field, and the emailed link
+  // never worked for them. Falsifiable: dropping the `!hasEmailCode` /
+  // `?code=` check from `ProtectedRoute` makes this test see "home page"
+  // again instead of "set email page".
+  it('renders /set-email for a non-gated viewer whose URL carries a verification code', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: false,
+        loading: false,
+      },
+      ['/set-email?code=ABC12345']
+    );
+    expect(screen.getByText('set email page')).toBeInTheDocument();
+  });
+
+  // The password redirect still wins over a `?code=`, even for a non-gated
+  // set-email link — that ordering is load-bearing on three surfaces (this
+  // route, the server's gate mount order, and `emailSetupAllowed`).
+  it('still sends a viewer who owes a password change to /password-reset, code or not', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: true,
+        mustSetEmail: false,
+        loading: false,
+      },
+      ['/set-email?code=ABC12345']
+    );
+    expect(screen.getByText('password reset page')).toBeInTheDocument();
+  });
+
   it('leaves an ordinary viewer alone', () => {
     renderWithAuth(
       {
