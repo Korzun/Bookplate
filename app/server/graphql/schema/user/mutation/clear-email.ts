@@ -131,6 +131,17 @@ builder.mutationField('userClearEmail', (t) =>
 
       // Both purposes: a verify code proves an address this row no longer
       // holds, and a reset code was sent to one. Neither may stay spendable.
+      //
+      // This also deletes the `verify` row entirely, which resets the
+      // send-cap window `set-email.ts` goes to some lengths to preserve
+      // (`sendCount`/`sentAt`/`createdAt` live only on that row — see its
+      // `reset`-only call and comment). Accepted here: this path is
+      // admin-mediated, not user-reachable, so it costs one admin action per
+      // reset rather than being a bypass a user can trigger themselves. It
+      // is also belt-and-braces rather than the real security boundary —
+      // both consumption paths (`viewerConfirmEmail`, `/api/password/reset`)
+      // independently re-check the row's current address before honoring a
+      // token, so even a stale, uncapped token is harmless once cleared.
       await invalidateEmailTokens(context.prisma, owner.userId);
 
       return { __typename: 'UserClearEmailPayload' as const, userId: owner.userId };
