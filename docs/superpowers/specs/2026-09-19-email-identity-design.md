@@ -116,8 +116,8 @@ alongside the code). Three consequences, all wanted:
 - A guessed code is worthless without the matching account.
 - "Resend" is an upsert that invalidates the previous code, instead of leaving a
   pile of live ones.
-- `sentAt` / `sendCount` give a 60-second cooldown and a 5-sends-per-token cap
-  with no extra bookkeeping.
+- `sentAt` / `sendCount` give a 60-second cooldown and a 5-sends-per-rolling-hour
+  cap with no extra bookkeeping.
 
 Storing `email` means a reset token stops working the moment the account's
 address changes. Consumption is a single `DELETE ... RETURNING`, the same atomic
@@ -344,7 +344,7 @@ Mirrors `mustChangePassword` in every respect:
 | Mutation | Behaviour |
 | --- | --- |
 | `viewerSetEmail(email)` | Validates and normalizes; writes `email` + `emailKey`; clears `emailVerifiedAt`; deletes outstanding tokens for that user; issues and sends a `verify` token. A `emailKey` collision returns an "already in use" error result, not a throw — the `P2002`-as-outcome convention `createUser` uses. |
-| `viewerResendEmailVerification` | Upserts the `verify` token (new code, previous invalidated), subject to the 60s cooldown and 5-send cap. |
+| `viewerResendEmailVerification` | Upserts the `verify` token (new code, previous invalidated), subject to the 60s cooldown and 5-sends-per-rolling-hour cap. |
 | `viewerConfirmEmail(code)` | Consumes the `verify` token for the viewer, checks `email` still matches the token's `email`, sets `emailVerifiedAt`. |
 
 `Viewer` exposes `email` and `emailVerifiedAt` so the settings page can render
