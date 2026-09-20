@@ -86,6 +86,10 @@ export const ResetPasswordPage = () => {
             </>
           ) : (
             <form className={styles.form} action={submitAction}>
+              <p className={styles.lead}>
+                The administrator account&rsquo;s password is set in the add-on configuration, not
+                here.
+              </p>
               <TextInput
                 placeholder="Email address"
                 name="email"

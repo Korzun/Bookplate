@@ -9,6 +9,16 @@ import { ResetPasswordPage } from './index';
 describe('ResetPasswordPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  // Minor (whole-branch review): the spec promised this page's copy would
+  // name the add-on configuration as where the admin password is changed
+  // (`POST /api/password/reset` refuses the admin outright — see
+  // `routes/password.ts`), so the admin isn't left guessing why their code
+  // never works. Neither new page said it.
+  it('tells the admin where to change their password instead', () => {
+    renderWithProviders(<ResetPasswordPage />);
+    expect(screen.getByText(/add-on configuration/i)).toBeInTheDocument();
+  });
+
   it('submits the address, code and new password, then sends the user to log in', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
