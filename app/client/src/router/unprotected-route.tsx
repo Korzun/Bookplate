@@ -17,6 +17,13 @@ export const UnprotectedRoute = () => {
   // on the way back from `/login`, and the code must survive both hops for
   // the link to land anywhere useful.
   const from = location.state?.from;
-  const destination = from ? `${from.pathname}${from.search ?? ''}` : path.home();
+  // Guarded on `from?.pathname`, not just `from` (final touch-up, whole-branch
+  // review): `state` is untrusted history data, not a value this component
+  // controls end to end, and `from` existing without a `pathname` used to
+  // navigate to the literal string "undefined" instead of falling back home.
+  // Unreachable today — `ProtectedRoute` is the only writer and always passes
+  // a full `location` — but the previous, pathname-only expression already
+  // fell back home in that case, and this restores that safety net.
+  const destination = from?.pathname ? `${from.pathname}${from.search ?? ''}` : path.home();
   return username ? <Navigate to={destination} replace /> : <Outlet />;
 };

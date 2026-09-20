@@ -118,23 +118,34 @@ export const SetEmailPage = () => {
   // Minor (whole-branch review): the resend button used to fire-and-forget
   // (`onClick={() => void runResend()}`), so a cooldown, a send failure, or
   // even a real resend was invisible to the caller — "Resend code" appeared
-  // to do nothing. Mirrors `component/email-setting`'s own resend handler.
+  // to do nothing. Mirrors `component/email-setting`'s own resend handler,
+  // including its `try/catch`: without one, a network failure throws out of
+  // `runResend()` as an unhandled promise rejection and STILL shows no
+  // toast — the exact silent failure this handler exists to fix, and the
+  // failure mode most likely to hit it (final touch-up, whole-branch review).
   const handleResend = useCallback(async () => {
-    const { data } = await runResend();
-    const result = unwrapResult<ViewerResendEmailVerificationPayload>(
-      data?.viewerResendEmailVerification,
-      'ViewerResendEmailVerificationPayload'
-    );
-    if (result.status !== 'ok') {
-      showToast(result.status === 'error' ? result.message : 'Could not resend the code', 'error');
-      return;
+    try {
+      const { data } = await runResend();
+      const result = unwrapResult<ViewerResendEmailVerificationPayload>(
+        data?.viewerResendEmailVerification,
+        'ViewerResendEmailVerificationPayload'
+      );
+      if (result.status !== 'ok') {
+        showToast(
+          result.status === 'error' ? result.message : 'Could not resend the code',
+          'error'
+        );
+        return;
+      }
+      showToast(
+        result.payload.delivered
+          ? 'Check your inbox for the confirmation code'
+          : 'Could not send the email — try again shortly',
+        result.payload.delivered ? 'success' : 'error'
+      );
+    } catch {
+      showToast('Could not resend the code', 'error');
     }
-    showToast(
-      result.payload.delivered
-        ? 'Check your inbox for the confirmation code'
-        : 'Could not send the email — try again shortly',
-      result.payload.delivered ? 'success' : 'error'
-    );
   }, [runResend, showToast]);
 
   return (
