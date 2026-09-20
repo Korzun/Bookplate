@@ -628,7 +628,7 @@ export function createUiRouter({
         });
         return;
       }
-      log.warn(`Login failed for username "${loginName ?? ''}"`);
+      log.warn(`Login failed for username "${loginName}"`);
       res.sendStatus(401);
     })
   );
