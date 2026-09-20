@@ -54,10 +54,16 @@ export const model = builder.prismaNode('User', {
     }),
 
     /**
-     * `Float` ms-epoch in the database, `DateTime` in the schema — so this is a
-     * resolver, not an expose, and a resolver on a Prisma-backed type only sees
-     * what it selects. `select: { … } as const` is the pattern
-     * `progress/model.ts`'s `currentChapter` uses for exactly this reason.
+     * `Float` ms-epoch in the database, `DateTime` in the schema — that
+     * conversion is why this is a resolver rather than an `expose`.
+     *
+     * The `select: { … } as const` is belt-and-braces, not a requirement: this
+     * type registers no `select: true` fields, so `@pothos/plugin-prisma`
+     * already runs in include mode and every scalar column (including this
+     * one) is on the parent regardless. Kept explicit anyway, in case this
+     * type ever moves to select mode — unlike `progress/model.ts`'s
+     * `currentChapter`, whose `select` selects a *relation* and is genuinely
+     * load-bearing today.
      */
     emailVerifiedAt: t.field({
       type: 'DateTime',
