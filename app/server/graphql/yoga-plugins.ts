@@ -134,7 +134,7 @@ const operationNameOf = (document: DocumentNode, requested: string | null | unde
 
 /**
  * `'anon'` for a request with no viewer at all. The config-based admin's own
- * `userId` is null (it has no row in the users table — the same condition
+ * `userId` is null (its token carries no `sub` — the same condition
  * `Viewer.library`/`Viewer.user` branch on, viewer/model.ts), so an
  * authenticated admin session logs under its username instead of falling
  * through to `'anon'` — a real, identifiable session should never read as

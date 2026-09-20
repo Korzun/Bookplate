@@ -74,11 +74,14 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * union later would break every existing `userDelete { deletedId }`
  * selection; adding a member to an already-declared union does not. A
  * concrete future candidate already exists structurally: a "last admin"
- * precondition, were this schema ever to grow a per-row admin flag, would
- * need a member here. (REST's target-specific 403 for the reserved admin
- * username, once a candidate for the same reason, is no longer one — see the
- * note below: it is now an explicit guard in the resolver, folded into the
- * ordinary "no such user" `null` rather than a distinct error.) Task 6's
+ * precondition, were this schema ever to grow a flag that could make an
+ * ordinary row an admin too — unlike `isConfigAdmin`, which deliberately
+ * marks exactly the one config-based row and is not a promotable, per-row
+ * admin flag — would need a member here. (REST's target-specific 403 for
+ * the reserved admin username, once a candidate for the same reason, is no
+ * longer one — see the note below: it is now an explicit guard in the
+ * resolver, folded into the ordinary "no such user" `null` rather than a
+ * distinct error.) Task 6's
  * review adjudicated this ruling; every mutation in this schema returns
  * `<Name>Result`, even when the union has exactly one member today.
  *

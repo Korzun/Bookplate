@@ -264,12 +264,25 @@ result for such a row, so the row stays unaddressable rather than merely
 protected.
 
 **G3 — `ensureAdminUser` must set `syncPassword: null`, and
-`viewerRegenerateSyncPassword` must refuse the admin.** `createUser` generates a
-sync password by default; the admin must not get one, or they silently gain
-OPDS/KOSync access they do not have today (`authenticate` returns `false` for a
-`null` sync password, which is the only thing denying it now). The regenerate
-mutation resolves its target as `context.viewer!.username`, so it would also
-start succeeding for an admin where it previously found no row.
+`userRegenerateSyncPassword` (`user/mutation/regenerate-sync-password.ts`)
+must refuse the admin.** `createUser` generates a sync password by default;
+the admin must not get one, or they silently gain OPDS/KOSync access they do
+not have today (`authenticate` returns `false` for a `null` sync password,
+which is the only thing denying it now). The regenerate mutation resolves
+its target as `context.viewer!.username`, but — checked directly, not
+assumed — the admin was already unreachable through it before this row
+existed and remains so after: its own `authScopes`
+(`context.viewer.userId === args.input.userId.id`) can never pass for the
+admin, whose `viewer.userId` is structurally always `null` (the token
+carries no `sub`) against a required global ID, which never decodes to
+`null`. So no live vulnerability existed here. The guard added anyway is not
+a response to a reachable hole; it exists because that protection is
+incidental to the scope's own shape rather than a stated invariant — the
+same "protected by construction, not by an explicit check" pattern G2 exists
+to retire for `userDelete`/`userResetPassword`, applied here before a future
+change to this scope (e.g. adopting the more common `ownerOf` pattern used
+elsewhere in this schema, which has an admin-bypass branch) could make it
+reachable.
 
 **G4 — `Viewer.email` must be a field on `Viewer` itself, not reached through
 `Viewer.user`.** `Viewer.user`, `Viewer.library` and `Viewer.syncPassword` are

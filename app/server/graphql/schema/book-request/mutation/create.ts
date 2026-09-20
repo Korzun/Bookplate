@@ -84,11 +84,11 @@ const result = builder.unionType('BookRequestCreateResult', {
  * are enforced, not assumed.
  *
  * The field-level `authScopes` is a separate matter from "signed in": the
- * CONFIG-BASED ADMIN is authenticated but has no row in `users`, so it cannot
- * own a library row and cannot be a requester. That is an authorization fact,
- * so it belongs in the scope layer rather than a resolver-body check —
- * `Viewer.user` is null for the same viewer, and the reader card never
- * renders for an admin.
+ * CONFIG-BASED ADMIN is authenticated but its token carries no `sub`, so
+ * `viewer.userId` is null for it and it cannot own a library row or be a
+ * requester. That is an authorization fact, so it belongs in the scope layer
+ * rather than a resolver-body check — `Viewer.user` is null for the same
+ * viewer, and the reader card never renders for an admin.
  *
  * Input is parsed INSIDE the resolver, after auth, and `InvalidInputError` is
  * an ordinary union member — see `invalid-input-error/model.ts` for why this
