@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+  # Deliberately NO `branches:` filter, unlike `push` above: a stacked pull
+  # request targets the branch below it in the stack, not `main`, so a
+  # `branches: [main]` filter here silently gave every PR above the bottom of
+  # a stack zero checks — the work was reviewed and merged on the strength of
+  # local runs alone. Every PR gets the full suite regardless of its base.
+  #
+  # `concurrency` below needs no change to suit this: for `pull_request`,
+  # `github.ref` is `refs/pull/<n>/merge`, which is distinct per PR, so
+  # sibling PRs in one stack never cancel each other.
+  #
+  # Note the workflow FILE used for a `pull_request` run comes from the merge
+  # of base+head, so a PR only picks this up once the branch it targets
+  # contains it. The bottom PR of a stack (base `main`) gets it immediately;
+  # the ones above get it as the stack merges upward, or right away if `main`
+  # is merged into the branch beneath them.
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
