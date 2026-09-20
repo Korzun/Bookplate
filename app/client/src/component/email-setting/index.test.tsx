@@ -122,9 +122,22 @@ describe('EmailSetting', () => {
   });
 
   it('renders nothing at all when email is disabled on this server', () => {
-    renderWithConfig(<EmailSetting email={null} emailVerifiedAt={null} />, {
-      emailEnabled: false,
-    });
-    expect(screen.queryByText(/email/i)).toBeNull();
+    // A text query (`queryByText(/email/i)`) is weaker than the spec's own
+    // requirement: a future edit rendering an icon-only chip, a disabled
+    // affordance, or an empty bordered card would pass that assertion while
+    // still violating "render nothing at all". Wrapping in a marker `div`
+    // isolates exactly what `EmailSetting` itself contributes from the
+    // standing provider chrome `renderWithApollo` always mounts (`ToastProvider`
+    // renders its own toast-list `div` unconditionally, so `container.firstChild`
+    // is never literally `null` on this harness even when the component under
+    // test renders nothing) — `toBeEmptyDOMElement()` on the marker asserts the
+    // real property: zero DOM nodes contributed.
+    renderWithConfig(
+      <div data-testid="root">
+        <EmailSetting email={null} emailVerifiedAt={null} />
+      </div>,
+      { emailEnabled: false }
+    );
+    expect(screen.getByTestId('root')).toBeEmptyDOMElement();
   });
 });
