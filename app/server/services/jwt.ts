@@ -4,7 +4,7 @@ export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 
 /** Identity carried by a verified access token (attached to req.user). */
 export type AuthUser = {
-  /** Surrogate user ID. Absent for the config-based admin, who has no DB row. */
+  /** Surrogate user ID. Absent for the config-based admin, whose token deliberately carries no sub. */
   userId?: string;
   username: string;
   isAdmin: boolean;

@@ -123,7 +123,7 @@ const result = builder.unionType('UserChangePasswordResult', {
  * dead in the first place — see the schema-cleanup ledger, task 5). Pothos
  * does not accept both an `authScopes` object and an `authScopes` function on
  * one field, so the extra `viewer.userId !== null` check — refusing the
- * config admin, which owns no user row — is folded into the same function: it
+ * config admin, whose token deliberately carries no `sub` — is folded into the same function: it
  * returns the scope map only when that check also holds, `false` otherwise —
  * see `builder.ts`'s own comment on this exemption.
  *

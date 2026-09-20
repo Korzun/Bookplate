@@ -38,7 +38,7 @@ export const decodeClaims = (token: string): AuthClaims | null => {
     if (typeof payload !== 'object' || payload === null) return null;
     const p = payload as Record<string, unknown>;
     // Full claim contract required; sub stays optional because the
-    // config-based admin has no DB row and its tokens carry no sub.
+    // config-based admin's token deliberately carries no sub.
     if (
       typeof p.username !== 'string' ||
       typeof p.exp !== 'number' ||

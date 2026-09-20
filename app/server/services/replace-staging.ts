@@ -3,9 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * The staging-registry identity for the config-based admin (no row in the
- * `users` table — `Viewer.userId`/`AuthUser.userId` is `null`/`undefined` for
- * every admin session, see `graphql/context.ts`'s `Viewer` doc comment).
+ * The staging-registry identity for the config-based admin (whose token
+ * deliberately carries no `sub` — `Viewer.userId`/`AuthUser.userId` is
+ * `null`/`undefined` for every admin session, see `graphql/context.ts`'s
+ * `Viewer` doc comment).
  * There is exactly one config admin, so every admin session — REST or
  * GraphQL, any tab, any login — shares this one bucket in the registry.
  * Corrected (review M-1 — the mechanism, not the conclusion, was wrong):

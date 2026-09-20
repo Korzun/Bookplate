@@ -221,7 +221,7 @@ describe('Mutation.userChangePassword', () => {
   });
 
   /**
-   * The config admin owns no user row (`viewer.userId` is always null), so it
+   * The config admin's token deliberately carries no `sub` (`viewer.userId` is always null), so it
    * has no password of its own to change and REST 403s it outright
    * (`PATCH /api/my/password` in `routes/ui.ts`, removed in `e67b4ad9`).
    * Previously that fell out of the id comparison; now it is the explicit

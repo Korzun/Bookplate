@@ -69,7 +69,7 @@ describe('User.bookRequests', () => {
     ]);
   });
 
-  it('is null for the config admin, which has no User row', async () => {
+  it('is null for the config admin, whose token carries no sub', async () => {
     const result = await harness.execute(LIST, {
       viewer: harness.adminViewer,
       variables: { first: 10 },
