@@ -197,7 +197,7 @@ export const EmailSetting = ({ email, emailVerifiedAt }: EmailSettingProps) => {
   if (!emailEnabled) return null;
 
   const changeAction = [
-    <Button key="change" type="link" onClick={handleChangeClick} disabled={isEditing}>
+    <Button key="change" type="link" onClick={handleChangeClick}>
       Change
     </Button>,
   ];
