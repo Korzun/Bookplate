@@ -102,7 +102,9 @@ Each account has **two different passwords**, and they are not interchangeable:
 
 Your reader devices (OPDS, KOSync) authenticate with the **sync password** — the
 web UI login password will **not** work there. Likewise, signing in to the web UI
-uses your **login password**, not the sync password.
+uses your **login password**, not the sync password. Setting up email (below)
+does not change either of these: OPDS and KOSync keep using the sync password
+exactly as before.
 
 ### Connect to the Web UI
 
@@ -111,13 +113,42 @@ Open the add-on in a browser and sign in with your account **username** and
 
 - **URL:** `http://<your-host>:3000/`
 - **Username / Password:** your account username and **login password** (the one
-  you use to sign in — *not* the sync password).
+  you use to sign in — *not* the sync password). Once you've added and confirmed
+  an email address (see below), you can enter that address instead of your
+  username here.
 
 The **admin** account (the `username` / `password` set in the add-on
 configuration) signs in the same way and can create reader users, reset
 passwords, and manage the library from the admin panel. Once signed in, open your
 **settings page** to view your sync password and the OPDS / KOSync URLs for your
 reader devices.
+
+#### Email login, verification, and password reset
+
+These only apply once the add-on's five `email_*`/`public_url` options are set
+(see the **Configuration** table above) — an install with no Cloudflare
+credentials configured works exactly as it always has, with no email address
+or extra screen anywhere.
+
+Once email is configured:
+
+- **Every account needs an address.** If yours doesn't have one yet, you're
+  asked to add one right after you sign in, before you can do anything else.
+  You can also add or change it later from your **settings page**.
+- **Addresses must be confirmed.** After you enter an address, a message with
+  a confirmation code is sent to it; enter the code to confirm. Until an
+  address is confirmed, it's used for nothing else — no other mail is sent to
+  it, and it can't be used to reset a password.
+- **Sign in with your address.** Once confirmed, you can type your email
+  address in the sign-in form's username field instead of your username.
+- **Forgot password** (linked from the sign-in page) sends a reset code to a
+  **confirmed** address and lets you choose a new login password. It does
+  **not** work for the admin account — the admin password is always the
+  `password` add-on option, and is only changed there.
+- **What the emails contain:** every verification and password-reset email
+  always includes a plain code to type in. If you've also set `public_url`,
+  the same email additionally includes a clickable link that fills the code
+  in for you — `public_url` is optional and only adds that convenience.
 
 ### Connect to OPDS catalog
 
