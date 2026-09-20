@@ -25,6 +25,7 @@ import {
   createProgressLoader,
   createSeriesProgressLoader,
   createValidationCountsLoader,
+  createViewerRowLoader,
 } from './loaders';
 import { schema } from './schema';
 
@@ -242,6 +243,7 @@ export const createHarness = async (
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),
     loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),
+    loadViewerRow: createViewerRowLoader(prisma, viewer),
   });
 
   const execute = async (

@@ -6,7 +6,6 @@ import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
 import { model as user } from '../user/model';
-import { resolveViewerRow } from './resolve-row';
 
 export const model = builder.objectRef<Viewer>('Viewer').implement({
   fields: (t) => ({
@@ -27,24 +26,34 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * ON `Viewer`, NOT behind `Viewer.user` — deliberately. `Viewer.user` resolves
      * through `v.userId`, which is null for the config-based admin, so an address
      * hung off it would be unreadable by the one account that cannot recover its
-     * password any other way. Resolved through `resolveViewerRow` (I3,
-     * whole-branch review) — by `userId`, or by the `isConfigAdmin` flag for
-     * the admin — NOT by `v.username`: a username lookup can resolve to an
-     * unrelated row when `ensureAdminUser`'s rename is blocked by a collision
-     * (see that module's doc comment for the full scenario).
+     * password any other way. Resolved through `context.loadViewerRow()`
+     * (`loaders/viewer-row.ts`), which mirrors `resolveViewerRow`'s dispatch
+     * exactly (I3, whole-branch review) — by `userId`, or by the
+     * `isConfigAdmin` flag for the admin — NOT by `v.username`: a username
+     * lookup can resolve to an unrelated row when `ensureAdminUser`'s rename
+     * is blocked by a collision (see that module's doc comment for the full
+     * scenario).
+     *
+     * `email` and `emailVerifiedAt` share the loader's one memoized row
+     * fetch rather than each calling `resolveViewerRow` independently — the
+     * client's `ViewerBootstrapDocument` selects both on every app load, and
+     * that used to cost two round trips. See `loaders/viewer-row.ts`'s doc
+     * comment for why this is a read-path-only loader: the mutations that
+     * write this row (`viewerSetEmail`, `viewerConfirmEmail`) deliberately do
+     * NOT go through it, to avoid ever reading back their own write from a
+     * stale cache entry.
      */
     email: t.field({
       type: 'String',
       nullable: true,
-      resolve: async (_v, _args, context) =>
-        (await resolveViewerRow(context, { email: true }))?.email ?? null,
+      resolve: async (_v, _args, context) => (await context.loadViewerRow())?.email ?? null,
     }),
 
     emailVerifiedAt: t.field({
       type: 'DateTime',
       nullable: true,
       resolve: async (_v, _args, context) => {
-        const row = await resolveViewerRow(context, { emailVerifiedAt: true });
+        const row = await context.loadViewerRow();
         return row?.emailVerifiedAt == null ? null : epochToDate(row.emailVerifiedAt);
       },
     }),

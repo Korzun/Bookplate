@@ -14,6 +14,7 @@ import {
   createProgressLoader,
   createSeriesProgressLoader,
   createValidationCountsLoader,
+  createViewerRowLoader,
   type BookByDocumentLoader,
   type DeviceEditionCountLoader,
   type LineageLoader,
@@ -22,6 +23,7 @@ import {
   type ProgressLoader,
   type SeriesProgressLoader,
   type ValidationCountsLoader,
+  type ViewerRowLoader,
 } from './loaders';
 
 /**
@@ -75,6 +77,7 @@ export type Context = {
   loadValidationCounts: ValidationCountsLoader;
   loadBookByDocument: BookByDocumentLoader;
   loadDeviceEditionCount: DeviceEditionCountLoader;
+  loadViewerRow: ViewerRowLoader;
 };
 
 export type ContextDeps = {
@@ -115,20 +118,27 @@ export const requireViewer = (context: Context): Viewer => {
 
 export const createContext =
   (deps: ContextDeps) =>
-  ({ request }: { request: FetchRequest }): Context => ({
-    viewer: viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined),
-    prisma: deps.prisma,
-    thumbnails: deps.thumbnails,
-    replaceStaging: deps.replaceStaging,
-    editionsRoot: deps.editionsRoot,
-    config: deps.config,
-    mailer: deps.mailer,
-    loadLineage: createLineageLoader(deps.prisma),
-    loadOwner: createOwnerLoader(deps.prisma),
-    loadProgress: createProgressLoader(deps.prisma),
-    loadPendingFix: createPendingFixLoader(deps.prisma),
-    loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
-    loadValidationCounts: createValidationCountsLoader(deps.prisma),
-    loadBookByDocument: createBookByDocumentLoader(deps.prisma),
-    loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
-  });
+  ({ request }: { request: FetchRequest }): Context => {
+    const viewer = viewerFromHeader(
+      deps.jwtSecret,
+      request.headers.get('authorization') ?? undefined
+    );
+    return {
+      viewer,
+      prisma: deps.prisma,
+      thumbnails: deps.thumbnails,
+      replaceStaging: deps.replaceStaging,
+      editionsRoot: deps.editionsRoot,
+      config: deps.config,
+      mailer: deps.mailer,
+      loadLineage: createLineageLoader(deps.prisma),
+      loadOwner: createOwnerLoader(deps.prisma),
+      loadProgress: createProgressLoader(deps.prisma),
+      loadPendingFix: createPendingFixLoader(deps.prisma),
+      loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
+      loadValidationCounts: createValidationCountsLoader(deps.prisma),
+      loadBookByDocument: createBookByDocumentLoader(deps.prisma),
+      loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
+      loadViewerRow: createViewerRowLoader(deps.prisma, viewer),
+    };
+  };
