@@ -159,16 +159,28 @@ export function createPasswordRouter(deps: {
         return;
       }
 
-      // Ordered so every partial failure below is safe, not just the happy path:
-      // a failed revoke changes nothing yet (old password, old tokens, code still
-      // unspent — a retry works); a failed update leaves the old password live
-      // but with every refresh token already revoked, and the code is still
-      // spendable so a retry works; a failed invalidate is harmless because
-      // `consumeEmailToken` above already deleted the row (this call is
-      // belt-and-braces). The one order NOT to use is update-then-revoke: if the
-      // revoke then threw, the account would be left strictly worse than before
-      // the request — new password live, every pre-existing refresh token still
-      // valid, and a 500 telling the caller it failed, so they'd never retry.
+      // Ordered revoke -> update -> invalidate so no partial failure below can
+      // leave a NEW password live alongside STILL-VALID refresh tokens — the one
+      // inversion this order exists to rule out. Do not reorder these.
+      //
+      // The code above has already been consumed (`consumeEmailToken` deletes
+      // the row unconditionally, before any of this runs), so in every failure
+      // case below it is gone, not merely unspent: recovery is always a fresh
+      // `/forgot` request, never a resubmit of the same code.
+      //
+      //   - failed revoke: nothing below it ran — the account is exactly as it
+      //     was before this request (old password, old tokens).
+      //   - failed update: every refresh token is already revoked (a forced
+      //     logout) but the old password is still the live one — never a new
+      //     password with old tokens still valid.
+      //   - failed invalidate: harmless — everything that matters already
+      //     succeeded, and `invalidateEmailTokens` here is belt-and-braces only,
+      //     since `consumeEmailToken` already removed the row.
+      //
+      // The order NOT to use is update-then-revoke: if the revoke then threw,
+      // the account would be left strictly worse than before the request — new
+      // password live, every pre-existing refresh token still valid — with a 500
+      // telling the caller it failed.
       await revokeAllForUsername(prisma, account.username);
       // Same side effect `userChangePassword` has, for the same reason: a stolen
       // or stale refresh token must not outlive a password change.
