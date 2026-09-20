@@ -34,6 +34,7 @@ import {
 import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
+import { createPasswordRouter } from './password';
 
 const log = logger('UI');
 
@@ -155,10 +156,10 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
 // Final-review-wave T4: below this size, sweeping on every call is cheap
 // enough not to matter; gating the O(n) walk behind it means the common
 // case (a handful of active windows) never pays a per-request Map scan at
-// all — see `createLoginRateLimit`'s doc comment for the full trade-off.
+// all — see `createIpRateLimit`'s doc comment for the full trade-off.
 const LOGIN_RATE_LIMIT_SWEEP_THRESHOLD = 256;
 
-type LoginRateLimitWindow = { count: number; windowStart: number };
+type RateLimitWindow = { count: number; windowStart: number };
 
 /**
  * Resolves the client IP the login limiter should key on — used ONLY here,
@@ -212,6 +213,14 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
 }
 
 /**
+ * Generalized (Task 12) from a login-only limiter into this shared factory —
+ * see the closing paragraph for why. Every paragraph below through the
+ * `trustProxyHops` one documents the ORIGINAL, login-only build (Task 4) and
+ * its three subsequent fixes (I-1, I-2, T4); none of that documentation has
+ * been trimmed by the generalization, because the fixes it records apply
+ * exactly as written to every instance this factory now produces, not only
+ * the login one.
+ *
  * Fixed-window rate limiter for `POST /api/login` only (Task 4): 10 attempts
  * per minute per IP, 429 + `Retry-After` on the 11th. Deliberately NOT
  * applied to the OPDS (`routes/opds.ts`) or KOReader sync-password
@@ -234,7 +243,7 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
  * whose `windowStart` has aged out — the same iterate-and-delete mechanics
  * `replace-staging.ts`'s own `sweep()` uses, no timer either way, but NOT
  * the same trigger: that precedent sweeps only from `stage()` (new state
- * being written); this one sweeps from every gated `loginRateLimit` call
+ * being written); this one sweeps from every gated `ipRateLimit` call
  * (see the size gate below), including read-only-outcome ones (a request
  * that gets 429'd still triggers a sweep once gated) — unauthenticated
  * login attempts are the only "write" this function has, so every gated
@@ -250,7 +259,7 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
  * worth its own cost. Memory is still bounded exactly as I-1 fixed it: the
  * gate only changes WHEN the bulk walk runs, never removes it. THIS ip's own
  * window staleness is still checked separately, at O(1), in
- * `loginRateLimit` itself below — the gate must not weaken per-key
+ * `ipRateLimit` itself below — the gate must not weaken per-key
  * correctness for the common (small-map) case, only defer the whole-Map
  * reclamation.
  *
@@ -272,19 +281,34 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
  * `trustProxyHops` (review I-2) is forwarded to `resolveLoginClientIp` — see
  * that function's doc comment for the full contract; `0` (the default) keys
  * on the raw TCP peer, matching this function's pre-fix behavior exactly.
+ *
+ * `maxAttempts`/`windowMs`/`label` are parameters rather than module constants
+ * because a second caller exists: the password-reset routes want a tighter
+ * 5-per-minute window, and duplicating this function to get it would duplicate a
+ * body whose comments document three separate fixes. `label` appears in the
+ * rate-limit log line so the two instances are distinguishable.
  */
-export function createLoginRateLimit(now: () => number = Date.now, trustProxyHops = 0) {
-  const windows = new Map<string, LoginRateLimitWindow>();
+export function createIpRateLimit(options: {
+  now?: () => number;
+  trustProxyHops?: number;
+  maxAttempts: number;
+  windowMs: number;
+  label: string;
+}) {
+  const now = options.now ?? Date.now;
+  const trustProxyHops = options.trustProxyHops ?? 0;
+  const { maxAttempts, windowMs, label } = options;
+  const windows = new Map<string, RateLimitWindow>();
 
   function sweep(current: number): void {
     for (const [ip, window] of windows) {
-      if (current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
+      if (current - window.windowStart >= windowMs) {
         windows.delete(ip);
       }
     }
   }
 
-  function loginRateLimit(req: Request, res: Response, next: express.NextFunction): void {
+  function ipRateLimit(req: Request, res: Response, next: express.NextFunction): void {
     const current = now();
     if (windows.size > LOGIN_RATE_LIMIT_SWEEP_THRESHOLD) sweep(current);
     const ip = resolveLoginClientIp(req, trustProxyHops);
@@ -298,28 +322,26 @@ export function createLoginRateLimit(now: () => number = Date.now, trustProxyHop
     // sweep's job is now purely bulk memory reclamation for OTHER ips, not
     // this ip's own correctness.
     let window = windows.get(ip);
-    if (window === undefined || current - window.windowStart >= LOGIN_RATE_LIMIT_WINDOW_MS) {
+    if (window === undefined || current - window.windowStart >= windowMs) {
       window = { count: 0, windowStart: current };
       windows.set(ip, window);
     }
     window.count += 1;
 
-    if (window.count > LOGIN_RATE_LIMIT_MAX_ATTEMPTS) {
-      const retryAfterSeconds = Math.ceil(
-        (window.windowStart + LOGIN_RATE_LIMIT_WINDOW_MS - current) / 1000
-      );
-      log.warn(`Login rate limit exceeded for ${ip}`);
+    if (window.count > maxAttempts) {
+      const retryAfterSeconds = Math.ceil((window.windowStart + windowMs - current) / 1000);
+      log.warn(`${label} rate limit exceeded for ${ip}`);
       res
         .status(429)
         .set('Retry-After', String(Math.max(retryAfterSeconds, 1)))
-        .json({ error: 'Too many login attempts. Please try again later.' });
+        .json({ error: `Too many ${label.toLowerCase()} attempts. Please try again later.` });
       return;
     }
     next();
   }
 
-  loginRateLimit.size = (): number => windows.size;
-  return loginRateLimit;
+  ipRateLimit.size = (): number => windows.size;
+  return ipRateLimit;
 }
 
 /**
@@ -349,9 +371,8 @@ export type CreateUiRouterDeps = {
   replaceStaging: ReplaceStaging;
   /**
    * The same instance `index.ts` passes into the GraphQL context — see
-   * `Context.mailer`'s doc comment. Not yet consumed by any handler in this
-   * file; threaded through now so the type carries it ahead of the REST
-   * password-reset-by-email routes that will (Task 12).
+   * `Context.mailer`'s doc comment. Consumed here (Task 12) by
+   * `createPasswordRouter`, the REST password-reset-by-email routes.
    */
   mailer: Mailer | null;
   /** Injectable clock for the login rate limiter; tests pass a fake. */
@@ -365,12 +386,19 @@ export function createUiRouter({
   jwtSecret,
   prisma,
   replaceStaging,
+  mailer,
   loginRateLimitNow = Date.now,
 }: CreateUiRouterDeps): Router {
   const router = Router();
 
   const requireAuth = jwtAuth(jwtSecret);
-  const loginRateLimit = createLoginRateLimit(loginRateLimitNow, config.trustProxyHops ?? 0);
+  const loginRateLimit = createIpRateLimit({
+    now: loginRateLimitNow,
+    trustProxyHops: config.trustProxyHops ?? 0,
+    maxAttempts: LOGIN_RATE_LIMIT_MAX_ATTEMPTS,
+    windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
+    label: 'Login',
+  });
 
   const REFRESH_COOKIE = 'refresh_token';
   const REFRESH_COOKIE_PATH = '/api/auth';
@@ -579,8 +607,26 @@ export function createUiRouter({
   router.get('/login', serveSpa);
 
   router.get('/api/public-config', (_req: Request, res: Response) => {
-    res.json({ libraryName: config.libraryName });
+    // `emailEnabled` only — never any part of the credentials. This endpoint is
+    // unauthenticated, and the client needs exactly one bit: whether to offer the
+    // forgot-password link and the "username or email" affordance.
+    res.json({ libraryName: config.libraryName, emailEnabled: isMailConfigured(config) });
   });
+
+  // Mounted before both credential gates below, so their `/api/password/*`
+  // exemptions (`middleware/auth.ts`) are belt-and-braces rather than the only
+  // thing keeping these routes reachable by a caller who owes a password
+  // change or an address.
+  const passwordRateLimit = createIpRateLimit({
+    now: loginRateLimitNow,
+    trustProxyHops: config.trustProxyHops ?? 0,
+    // Tighter than login's 10: a legitimate user submits one forgot request and
+    // one reset, and the cost of a wrong guess here is a password, not a session.
+    maxAttempts: 5,
+    windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
+    label: 'Password reset',
+  });
+  router.use(createPasswordRouter({ prisma, config, mailer, rateLimit: passwordRateLimit }));
 
   router.use(passwordChangeGate(jwtSecret));
   router.use(emailSetupGate(jwtSecret));
