@@ -150,7 +150,7 @@ describe('viewerSetEmail', () => {
 
   it('works for the config admin, whose viewer has no userId', async () => {
     harness = await createHarness({ mail: MAIL_CONFIG });
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
 
     const result = await harness.execute(SET_EMAIL, {
       viewer: harness.adminViewer,
@@ -198,5 +198,105 @@ describe('viewerSetEmail', () => {
     });
 
     expect(await harness.prisma.emailToken.count({ where: { userId, purpose: 'reset' } })).toBe(0);
+  });
+
+  // I1 (important, whole-branch review): `viewerSetEmail` used to call
+  // `invalidateEmailTokens(prisma, userId)` with NO purpose, deleting the
+  // `verify` row outright — which is where `sentAt`/`sendCount` live. The next
+  // `issueEmailToken` then started a fresh row with `sendCount: 1`, so calling
+  // `viewerSetEmail` again bypassed BOTH the 60s cooldown and the
+  // 5-per-rolling-hour cap, unboundedly (no rate limiter sits on `/graphql`).
+  // An authenticated reader could point the operator's verified sending
+  // domain at any third party's inbox. The fix narrows the call to
+  // `purpose: 'reset'` only, so the outstanding `verify` row (and its
+  // `sentAt`/`sendCount`) survives an address change.
+  it('is throttled by the resend cooldown across an address change, and the old code stops working', async () => {
+    harness = await createHarness({ mail: MAIL_CONFIG });
+    const userId = harness.aliceOwner.userId;
+
+    const first = await harness.execute(SET_EMAIL, {
+      viewer: harness.aliceViewer,
+      variables: { input: { email: 'first@example.com' } },
+    });
+    expect(first.data?.viewerSetEmail).toMatchObject({ delivered: true });
+    expect(harness.mailer!.sent).toHaveLength(1);
+    const oldCode = /\b[0-9A-HJKMNP-TV-Z]{8}\b/.exec(harness.mailer!.sent[0].text)![0];
+
+    // Immediately calling it again with a DIFFERENT address must not reset the
+    // send budget — falsifiable: with the old, unscoped
+    // `invalidateEmailTokens(prisma, userId)` call, this second send goes
+    // through (`delivered: true`, two messages sent) instead of being
+    // throttled.
+    const second = await harness.execute(SET_EMAIL, {
+      viewer: harness.aliceViewer,
+      variables: { input: { email: 'second@example.com' } },
+    });
+    expect(second.data?.viewerSetEmail).toMatchObject({
+      __typename: 'ViewerSetEmailPayload',
+      email: 'second@example.com',
+      delivered: false,
+    });
+    expect(harness.mailer!.sent).toHaveLength(1);
+
+    // The address DID change (that write is unconditional), so the code from
+    // the first send must not confirm it — it was issued for the old address.
+    const confirmResult = await harness.execute(CONFIRM_EMAIL, {
+      viewer: harness.aliceViewer,
+      variables: { input: { code: oldCode } },
+    });
+    expect(confirmResult.data?.viewerConfirmEmail).toMatchObject({
+      __typename: 'InvalidInputError',
+    });
+    const row = await harness.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    expect(row.email).toBe('second@example.com');
+    expect(row.emailVerifiedAt).toBeNull();
+  });
+
+  // I3 (important, whole-branch review): if `ensureAdminUser`'s rename is ever
+  // blocked by a username collision (case 2 — still possible after this
+  // wave's C1 fix, which only closed case 3's adoption path), the marked
+  // admin row keeps its OLD username while `config.username` now names a
+  // READER's row. The admin's `viewer.username` is always `config.username`
+  // (set at login from the value it matched, not from the DB row), so a
+  // username-keyed lookup would resolve the admin's session to that reader's
+  // row — writing the admin's new address onto it. Resolving by the
+  // `isConfigAdmin` flag instead must not make that mistake.
+  it('resolves the admin row by the isConfigAdmin flag, not by username, after a blocked rename', async () => {
+    harness = await createHarness({ mail: MAIL_CONFIG });
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
+    // Simulate case 2's blocked rename: the admin row kept its OLD username...
+    await harness.prisma.user.update({ where: { id: adminId }, data: { username: 'old-admin' } });
+    // ...while a reader now occupies `config.username` ("admin", the value
+    // `harness.adminViewer.username` carries).
+    const readerId = 'reader-1';
+    await harness.prisma.user.create({
+      data: {
+        id: readerId,
+        username: 'admin',
+        email: 'reader@example.com',
+        emailKey: 'reader@example.com',
+      },
+    });
+
+    const emailResult = await harness.execute('{ viewer { email } }', {
+      viewer: harness.adminViewer,
+    });
+    expect(emailResult.errors).toBeUndefined();
+    // Falsifiable: a username-keyed lookup would return the reader's address
+    // here instead of null.
+    expect((emailResult.data as { viewer: { email: string | null } }).viewer.email).toBeNull();
+
+    const setResult = await harness.execute(SET_EMAIL, {
+      viewer: harness.adminViewer,
+      variables: { input: { email: 'boss@example.com' } },
+    });
+    expect(setResult.data?.viewerSetEmail).toMatchObject({ __typename: 'ViewerSetEmailPayload' });
+
+    const adminRow = await harness.prisma.user.findUniqueOrThrow({ where: { id: adminId } });
+    expect(adminRow.email).toBe('boss@example.com');
+    // Falsifiable: a username-keyed write would land here instead, silently
+    // taking over a reader's account.
+    const readerRow = await harness.prisma.user.findUniqueOrThrow({ where: { id: readerId } });
+    expect(readerRow.email).toBe('reader@example.com');
   });
 });

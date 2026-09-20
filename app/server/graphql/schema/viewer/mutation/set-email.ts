@@ -83,6 +83,18 @@ builder.mutationField('viewerSetEmail', (t) =>
     authScopes: { emailSetupAllowed: true },
     resolve: async (_root, args, context) => {
       if (!isMailConfigured(context.config)) return emailNotConfiguredError();
+      // Minor (whole-branch review): `isMailConfigured(context.config)` and
+      // `context.mailer` are two INDEPENDENTLY supplied deps (`index.ts`
+      // builds both from `config.mail`, but nothing enforces they can't
+      // drift) — asserting `context.mailer!` below let a wiring mistake
+      // surface as a bare `TypeError` instead of a clear one. `routes/
+      // password.ts`'s `requireMail` already checks both; this does the same.
+      const mailer = context.mailer;
+      if (mailer === null) {
+        throw new Error(
+          'Mailer misconfigured: isMailConfigured() reported true but context.mailer is null'
+        );
+      }
       const userId = await resolveViewerUserId(context);
       if (userId === null) return invalidInputIssue([], 'No such account');
 
@@ -93,10 +105,21 @@ builder.mutationField('viewerSetEmail', (t) =>
           : invalidInputIssue(['email'], 'Enter a valid email address');
       }
 
-      // Every outstanding token, both purposes: a verify code for the old
-      // address proves nothing about the new one, and a reset code sent to an
-      // address the account no longer has must not remain spendable.
-      await invalidateEmailTokens(context.prisma, userId);
+      // `reset` ONLY, not `verify` (I1, whole-branch review). A reset code sent
+      // to an address the account no longer has must not remain spendable —
+      // but the `verify` row is where `sentAt`/`createdAt`/`sendCount` live,
+      // and deleting it here let `issueEmailToken` below recreate it with
+      // `sendCount: 1`, bypassing both the 60s cooldown and the
+      // 5-per-rolling-hour cap on every call to this mutation (there is no
+      // rate limiter on `/graphql`). `issueEmailToken`'s upsert already
+      // invalidates whatever `verify` code was outstanding by overwriting its
+      // `tokenHash` and `email` in place — see that function's doc comment —
+      // so narrowing this call does not leave an old code valid for the new
+      // address. The accepted cost: the cap becomes five sends per hour PER
+      // USER across every address change, not five per address. That is the
+      // spec's intent — the cap exists to bound mail volume this install can
+      // generate, not to be reset by editing a field.
+      await invalidateEmailTokens(context.prisma, userId, 'reset');
 
       const trimmedEmail = args.input.email.trim();
       const issued = await issueEmailToken(context.prisma, {
@@ -111,7 +134,7 @@ builder.mutationField('viewerSetEmail', (t) =>
       const delivered =
         issued.ok &&
         (
-          await context.mailer!.send(
+          await mailer.send(
             verificationMessage({
               to: trimmedEmail,
               code: issued.code,

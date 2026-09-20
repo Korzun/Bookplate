@@ -49,6 +49,16 @@ builder.mutationField('viewerResendEmailVerification', (t) =>
     authScopes: { emailSetupAllowed: true },
     resolve: async (_root, _args, context) => {
       if (!isMailConfigured(context.config)) return emailNotConfiguredError();
+      // Minor (whole-branch review): see `viewerSetEmail`'s identical note —
+      // `isMailConfigured(context.config)` and `context.mailer` are two
+      // independently supplied deps, so asserting `context.mailer!` let a
+      // wiring mistake surface as a bare `TypeError` instead of a clear one.
+      const mailer = context.mailer;
+      if (mailer === null) {
+        throw new Error(
+          'Mailer misconfigured: isMailConfigured() reported true but context.mailer is null'
+        );
+      }
       const userId = await resolveViewerUserId(context);
       if (userId === null) return invalidInputIssue([], 'No such account');
 
@@ -72,7 +82,7 @@ builder.mutationField('viewerResendEmailVerification', (t) =>
         const seconds = Math.ceil(issued.retryAfterMs / 1000);
         return invalidInputIssue([], `Too many attempts — try again in ${seconds} seconds`);
       }
-      const sendResult = await context.mailer!.send(
+      const sendResult = await mailer.send(
         verificationMessage({
           to: row.email,
           code: issued.code,
