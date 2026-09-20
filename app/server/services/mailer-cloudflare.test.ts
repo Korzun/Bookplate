@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
 import { createCloudflareMailer } from './mailer-cloudflare';
 
@@ -15,6 +16,26 @@ const json = (status: number, body: unknown) => ({
   status,
   ok: status >= 200 && status < 300,
   json: () => Promise.resolve(body),
+});
+
+/**
+ * `services/mailer-cloudflare.ts` doesn't mock `../logger` (unlike its
+ * siblings) — nothing here asserts on a LOGGED MESSAGE, only on `SendResult`,
+ * so mocking the whole module would be one more thing to keep in sync for no
+ * test value. But every failure path this suite deliberately exercises
+ * (bounce, misconfigured, throttled, transient, network) calls the REAL
+ * `logger`, which writes straight to the real `process.stderr`/`stdout` (D5,
+ * whole-branch review) — seven lines of `WARN`/`ERROR [Mailer] ...` noise on
+ * every full test run. Silencing the SINK, not the logger module, keeps the
+ * "logs a misconfiguration only once" test below working unchanged: it
+ * asserts on `process.stderr.write` being called, which still happens against
+ * this spy — it just doesn't print.
+ */
+let stderrSpy: MockInstance;
+
+beforeEach(() => {
+  stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 });
 
 afterEach(() => {
@@ -78,6 +99,21 @@ describe('createCloudflareMailer', () => {
     });
   });
 
+  // Minor (whole-branch review): `body.errors?.map(...).join('; ') ?? 'no
+  // detail'` never fires its fallback for an empty `errors: []` — `[].join`
+  // is `''`, which is not nullish — so the log line read
+  // `WARN [Mailer] Send failed (500): ` with nothing after the colon.
+  // Falsifiable: reverting `||` to `??` below makes this see an empty string
+  // instead of 'no detail'.
+  it("logs 'no detail' for a failure with an empty errors array, not a blank message", async () => {
+    stubFetch(() => json(500, { success: false, errors: [] }));
+    await createCloudflareMailer(MAIL).send(MESSAGE);
+    const line = stderrSpy.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes('Send failed'));
+    expect(line).toContain('no detail');
+  });
+
   it('reports a network failure as transient rather than throwing', async () => {
     stubFetch(() => {
       throw new Error('ECONNREFUSED');
@@ -98,12 +134,15 @@ describe('createCloudflareMailer', () => {
 
   it('logs a misconfiguration only once per mailer instance', async () => {
     // `logger('Mailer').error` writes a line via `process.stderr.write`, not
-    // `console.error` (see app/server/logger.ts) — spy on the real sink.
-    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // `console.error` (see app/server/logger.ts) — the shared `stderrSpy`
+    // above is the real sink, already silenced; this test only reads its
+    // call log, it doesn't need its own spy.
     stubFetch(() => json(401, { success: false, errors: [] }));
     const mailer = createCloudflareMailer(MAIL);
     await mailer.send(MESSAGE);
     await mailer.send(MESSAGE);
-    expect(stderr.mock.calls.filter((c) => String(c[0]).includes('Email Sending'))).toHaveLength(1);
+    expect(stderrSpy.mock.calls.filter((c) => String(c[0]).includes('Email Sending'))).toHaveLength(
+      1
+    );
   });
 });
