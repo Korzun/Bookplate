@@ -11,16 +11,19 @@ import AdmZip from 'adm-zip';
 import cookieParser from 'cookie-parser';
 import express, { NextFunction, Request, Response } from 'express';
 import { graphql, type ExecutionResult } from 'graphql';
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import type { Mock, MockedFunction } from 'vitest';
 
 import { runMigrations } from '../db/migrate';
 import type { Context, Viewer } from '../graphql/context';
 import { schema } from '../graphql/schema';
+import { ensureAdminUser } from '../services/admin-account';
 import * as applyEpubChangesModule from '../services/apply-epub-changes';
 import { saveThumbnail } from '../services/book-assets';
 import { getBookById, listBooks } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
+import { setUserEmail } from '../services/email';
 import { verifyAccessToken } from '../services/jwt';
 import { hashLoginPassword, resetPassword } from '../services/password';
 import {
@@ -297,6 +300,26 @@ async function loginAlice(): Promise<string> {
 const bearer = (token: string): [string, string] => ['Authorization', `Bearer ${token}`];
 
 /**
+ * Creates an ordinary (non-admin) user with a login password set, optionally
+ * with an address attached — the login-by-email tests below need a user that
+ * can authenticate by either username or address.
+ */
+async function createReader(username: string, password: string, email?: string): Promise<string> {
+  await createUser(prisma, username, await hashLoginPassword(password));
+  const { id } = (await prisma.user.findUnique({ where: { username } }))!;
+  if (email !== undefined) {
+    await setUserEmail(prisma, id, email);
+  }
+  return id;
+}
+
+/** Decodes a JWT's raw claims without verifying — for asserting on `sub`,
+ * which `verifyAccessToken` folds into `userId` and so cannot show directly. */
+function decode(token: string): jwt.JwtPayload {
+  return jwt.decode(token) as jwt.JwtPayload;
+}
+
+/**
  * Executes a REAL GraphQL query against the exact same `prisma`/registries this
  * file's REST `app` uses — not a second, disconnected harness
  * (`graphql/test-util.ts`'s `createHarness()` builds its own isolated
@@ -563,6 +586,72 @@ describe('POST /api/login', () => {
         .set('Content-Type', 'application/x-www-form-urlencoded');
       expect(bRes.status).toBe(200);
     });
+  });
+});
+
+describe('login by email', () => {
+  it('accepts a reader’s address in place of their username', async () => {
+    await createReader('ann', 'reader-password', 'Ann@Example.com');
+
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'ann@EXAMPLE.com', password: 'reader-password' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+  });
+
+  it('accepts the admin’s own address', async () => {
+    const adminId = await ensureAdminUser(prisma, config.username);
+    await prisma.user.update({
+      where: { id: adminId },
+      data: { email: 'boss@example.com', emailKey: 'boss@example.com' },
+    });
+
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'boss@example.com', password: config.password });
+
+    expect(res.status).toBe(200);
+    // Still the config admin: admin claims, and no sub.
+    const claims = decode(res.body.accessToken);
+    expect(claims.isAdmin).toBe(true);
+    expect(claims.sub).toBeUndefined();
+  });
+
+  it('rejects an unknown address with the same 401 as an unknown username', async () => {
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'nobody@example.com', password: 'whatever' });
+    expect(res.status).toBe(401);
+  });
+
+  it('leaves a value with no @ to the username path', async () => {
+    await createReader('ann', 'reader-password');
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'ann', password: 'reader-password' });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('G1: the admin row must not change a failed admin login', () => {
+  it('returns 401, not 403, for a wrong admin password', async () => {
+    await ensureAdminUser(prisma, config.username);
+
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: config.username, password: 'not-the-admin-password' });
+
+    // 403 here would be "password not set" leaking that the admin row exists and
+    // has no hash — see the branch this test guards in routes/ui.ts.
+    expect(res.status).toBe(401);
+  });
+
+  it('still returns 403 for a reader whose password was never set', async () => {
+    await prisma.user.create({ data: { id: 'u2', username: 'bob', passwordHash: null } });
+    const res = await request(app).post('/api/login').send({ username: 'bob', password: 'x' });
+    expect(res.status).toBe(403);
   });
 });
 

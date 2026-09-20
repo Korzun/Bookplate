@@ -15,6 +15,7 @@ import { getBookById, getSubjects } from '../services/book-catalog';
 import { BookAlreadyExistsError } from '../services/book-errors';
 import { addBook, reimportBook } from '../services/book-lifecycle';
 import { getStagingDir } from '../services/book-paths';
+import { findUserByEmail } from '../services/email';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
@@ -567,10 +568,29 @@ export function createUiRouter({
         res.sendStatus(401);
         return;
       }
-      if (username === config.username && password === config.password) {
-        log.info(`Admin "${username}" logged in`);
+      // The field is named `username` for compatibility — REST's contract is
+      // unchanged — but it is an IDENTIFIER: an address when it contains an `@`,
+      // a username otherwise. Resolving to a username here means everything
+      // below, including the config-admin comparison and `validateUser`, keeps
+      // working on usernames alone and no branch had to be duplicated.
+      //
+      // `@`-detection rather than "try both": a username cannot contain `@`
+      // (`utils/username.ts`), so the two namespaces cannot collide and one
+      // lookup is always enough.
+      let loginName = username;
+      if (username.includes('@')) {
+        const byEmail = await findUserByEmail(prisma, username);
+        if (byEmail === null) {
+          log.warn('Login failed — no account for that email address');
+          res.sendStatus(401);
+          return;
+        }
+        loginName = byEmail.username;
+      }
+      if (loginName === config.username && password === config.password) {
+        log.info(`Admin "${loginName}" logged in`);
         await deleteExpired(prisma);
-        await issueTokens(res, { username, isAdmin: true, mustChangePassword: false });
+        await issueTokens(res, { username: loginName, isAdmin: true, mustChangePassword: false });
         return;
       }
       // Single-statement `findUnique` with exactly one production caller —
@@ -583,27 +603,32 @@ export function createUiRouter({
       // own 403 — that is a distinct condition from a wrong password, not
       // something to fold into the generic login failure.
       const loginUser = await prisma.user.findUnique({
-        where: { username },
-        select: { passwordHash: true },
+        where: { username: loginName },
+        select: { passwordHash: true, isConfigAdmin: true },
       });
-      if (loginUser !== null && !loginUser.passwordHash) {
-        log.warn(`Login failed for "${username}" — password not set`);
+      // `!isConfigAdmin` (G1): the admin row deliberately has NO passwordHash —
+      // the add-on options are its only credential (`services/admin-account.ts`).
+      // Without this, a wrong admin password would fall into this branch and
+      // answer 403 "password not set" instead of the generic 401, which both
+      // differs from every other failed login and confirms the username exists.
+      if (loginUser !== null && !loginUser.passwordHash && !loginUser.isConfigAdmin) {
+        log.warn(`Login failed for "${loginName}" — password not set`);
         res.sendStatus(403);
         return;
       }
-      const userId = await validateUser(prisma, username, password);
+      const userId = await validateUser(prisma, loginName, password);
       if (userId) {
-        log.info(`User "${username}" logged in`);
+        log.info(`User "${loginName}" logged in`);
         await deleteExpired(prisma);
         await issueTokens(res, {
           userId,
-          username,
+          username: loginName,
           isAdmin: false,
-          mustChangePassword: await getMustChangePassword(prisma, username),
+          mustChangePassword: await getMustChangePassword(prisma, loginName),
         });
         return;
       }
-      log.warn(`Login failed for username "${username ?? ''}"`);
+      log.warn(`Login failed for username "${loginName ?? ''}"`);
       res.sendStatus(401);
     })
   );
