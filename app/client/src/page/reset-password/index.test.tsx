@@ -67,4 +67,16 @@ describe('ResetPasswordPage', () => {
     await user.click(screen.getByRole('button', { name: /reset password/i }));
     expect(await screen.findByText(/not valid or has expired/i)).toBeInTheDocument();
   });
+
+  it('shows a mail-not-configured message on 404 rather than blaming the code', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    renderWithProviders(<ResetPasswordPage />);
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.type(screen.getByPlaceholderText('Reset code'), 'K7M2QX4P');
+    await user.type(screen.getByPlaceholderText('New password'), 'a-brand-new-password');
+    await user.type(screen.getByPlaceholderText('Confirm new password'), 'a-brand-new-password');
+    await user.click(screen.getByRole('button', { name: /reset password/i }));
+    expect(await screen.findByText(/not configured on this server/i)).toBeInTheDocument();
+  });
 });

@@ -36,6 +36,25 @@ export const ForgotPasswordPage = () => {
         );
         return null;
       }
+      if (response.status === 404) {
+        // Mail is unconfigured on this install — a GLOBAL condition
+        // (requireMail in routes/password.ts), not something that depends on
+        // the submitted address, so stating it plainly leaks nothing the
+        // already-public emailEnabled flag doesn't. Same wording as the
+        // GraphQL side's EmailNotConfiguredError, so both paths agree.
+        setError('Email is not configured on this server. Ask the administrator to set it up.');
+        return null;
+      }
+      if (response.status !== 204) {
+        // Anything else (a 5xx, a misconfigured proxy, ...) is NOT collapsed
+        // into the success message either: this endpoint is documented to
+        // answer only 204/429/404, so an unexpected status means the request
+        // did not actually complete, and telling the user a code "is on its
+        // way" would be exactly the same kind of false positive as the 404
+        // case above, just from a different cause.
+        setError('Something went wrong — please try again');
+        return null;
+      }
       setSent(true);
     } catch {
       setError('Network error — please try again');
