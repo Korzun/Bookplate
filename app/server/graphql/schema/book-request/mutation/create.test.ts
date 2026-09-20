@@ -116,7 +116,7 @@ describe('Mutation.bookRequestCreate', () => {
     expect(payload.limit).toBe(MAX_OPEN_BOOK_REQUESTS);
   });
 
-  it('refuses the config admin, which has no User row to own a request', async () => {
+  it('refuses the config admin, whose token carries no sub to own a request', async () => {
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
       variables: { input: validInput() },
