@@ -248,8 +248,9 @@ const userListMock = (users: typeof fixedUsers = fixedUsers): MockedResponse<Use
               __typename: 'User' as const,
               id: u.id,
               username: u.username,
-              progressCount: u.progressCount,
               pendingBookRequestCount: u.pendingBookRequestCount,
+              email: null,
+              emailVerifiedAt: null,
             },
             UserRowFragment
           ),

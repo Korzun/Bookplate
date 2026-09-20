@@ -4,8 +4,8 @@ import { Fragment, useCallback, useState } from 'react';
 import { Card } from '~/component/card';
 import { Button, ConfirmModal, ResetPasswordButton } from '~/control';
 import { graphql, useFragment, type FragmentType } from '~/gql';
-import type { UserDeleteMutation } from '~/gql/graphql';
-import { UserDeleteDocument } from '~/graphql/user';
+import type { UserClearEmailMutation, UserDeleteMutation } from '~/gql/graphql';
+import { UserClearEmailDocument, UserDeleteDocument } from '~/graphql/user';
 import { AlertOctagonIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
 
@@ -41,12 +41,22 @@ import { useStyle } from './style';
  * unbounded child, so it adds only breadth/complexity proportional to a
  * plain field under the ×50 multiplier — measured before/after in this
  * task's commit message.
+ *
+ * `email`/`emailVerifiedAt` (email-address-ownership work, task 3) are the
+ * same shape as `pendingBookRequestCount`: two more plain scalars, not
+ * unbounded children, so their cost rides the ×50 multiplier proportionally
+ * rather than compounding it — also measured before/after in this task's
+ * commit message. They are what lets the operator answer "who holds this
+ * address?" from the list itself, and what `userClearEmail` (below) needs
+ * to know it has something to clear.
  */
 export const UserRowFragment = graphql(`
   fragment UserRowFragment on User {
     id
     username
     pendingBookRequestCount
+    email
+    emailVerifiedAt
   }
 `);
 
@@ -56,6 +66,12 @@ export const UserRowFragment = graphql(`
 type UserDeletePayload = Extract<
   NonNullable<UserDeleteMutation['userDelete']>,
   { __typename: 'UserDeletePayload' }
+>;
+
+// Same reasoning as `UserDeletePayload` above.
+type UserClearEmailPayload = Extract<
+  NonNullable<UserClearEmailMutation['userClearEmail']>,
+  { __typename: 'UserClearEmailPayload' }
 >;
 
 interface UserRowProps {
@@ -80,6 +96,23 @@ export const UserRow = ({ user }: UserRowProps) => {
   const [runDelete] = useMutation(UserDeleteDocument);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | undefined>();
+
+  // Local overrides, applied on top of `unmasked` once `userClearEmail`
+  // succeeds — same "reflected twice" shape `component/email-setting` uses
+  // for its own address: `UserClearEmailDocument` selects the updated
+  // `user`, which normalizes `User:<id>` in Apollo's cache for the DURABLE
+  // copy, but codegen's `useFragment` (`~/gql`) is an identity cast, not a
+  // live cache subscription — this row does not re-render off a cache write
+  // by itself unless its PARENT re-queries and passes fresh props. The
+  // override makes the row correct immediately, in isolation, the same way
+  // it is correct once a wrapping `UserList` query eventually reflows.
+  // `undefined` means "no override, use the fragment's own value".
+  const [emailOverride, setEmailOverride] = useState<string | null | undefined>(undefined);
+  const [verifiedOverride, setVerifiedOverride] = useState<string | null | undefined>(undefined);
+  const displayEmail = emailOverride !== undefined ? emailOverride : unmasked.email;
+  const displayVerifiedAt =
+    verifiedOverride !== undefined ? verifiedOverride : unmasked.emailVerifiedAt;
+  const isConfirmed = displayVerifiedAt !== null;
 
   const [showDeleteUserModal, setShowDeleteUserModal] = useState<boolean>(false);
   const handleDeleteUser = useCallback(() => {
@@ -133,15 +166,85 @@ export const UserRow = ({ user }: UserRowProps) => {
     }
   }, [runDelete, unmasked.id]);
 
+  const [runClearEmail] = useMutation(UserClearEmailDocument);
+  const [clearing, setClearing] = useState<boolean>(false);
+  const [clearEmailErrorMessage, setClearEmailErrorMessage] = useState<string | undefined>();
+
+  const [showClearEmailModal, setShowClearEmailModal] = useState<boolean>(false);
+  const handleClearEmail = useCallback(() => {
+    setClearEmailErrorMessage(undefined);
+    setShowClearEmailModal(true);
+  }, []);
+  const handleClearEmailCancel = useCallback(() => {
+    setShowClearEmailModal(false);
+  }, []);
+  // Same shape as `handleDeleteUserConfirm` above: the modal stays OPEN and
+  // shows a message inline on failure, closing only after a genuine
+  // `UserClearEmailPayload`. Unlike delete, the mutation FIELD itself is
+  // also nullable — it resolves to a bare `null` both when the user is gone
+  // and when the target is the (indistinguishable) config-admin row. That
+  // is not a typed error the server described, so it is not rendered as
+  // one, but it is also not success: `unwrapResult`'s 'missing' status
+  // covers exactly this, the same way it does for `UserDeleteDocument`
+  // above.
+  const handleClearEmailConfirm = useCallback(async () => {
+    const userId = unmasked.id;
+    setClearing(true);
+    setClearEmailErrorMessage(undefined);
+    try {
+      const { data } = await runClearEmail({ variables: { input: { userId } } });
+
+      const result = unwrapResult<UserClearEmailPayload>(
+        data?.userClearEmail,
+        'UserClearEmailPayload'
+      );
+      if (result.status === 'missing') {
+        setClearEmailErrorMessage("Could not clear this user's address");
+        return;
+      }
+      if (result.status === 'error') {
+        setClearEmailErrorMessage(result.message);
+        return;
+      }
+
+      setEmailOverride(result.payload.user.email);
+      setVerifiedOverride(result.payload.user.emailVerifiedAt);
+      setShowClearEmailModal(false);
+    } catch (err) {
+      setClearEmailErrorMessage(
+        err instanceof Error ? err.message : "Could not clear this user's address"
+      );
+    } finally {
+      setClearing(false);
+    }
+  }, [runClearEmail, unmasked.id]);
+
   return (
     <Fragment>
       <Card
         isCollapsible
         defaultCollapsed
-        title={unmasked.username}
+        title={
+          <div className={styles.titleRow}>
+            <span>{unmasked.username}</span>
+            {displayEmail !== null && (
+              <span className={styles.addressPill}>
+                <span className={styles.address}>{displayEmail}</span>
+                <span className={isConfirmed ? styles.badgeConfirmed : styles.badgeUnconfirmed}>
+                  {isConfirmed ? 'Confirmed' : 'Not confirmed'}
+                </span>
+              </span>
+            )}
+          </div>
+        }
         headerAction={
           <Fragment>
             <ResetPasswordButton userId={unmasked.id} username={unmasked.username} />
+            {displayEmail !== null && (
+              <Button type="link" onClick={handleClearEmail} loading={clearing}>
+                Clear address
+              </Button>
+            )}
             <Button type="link" danger onClick={handleDeleteUser} loading={deleting}>
               Delete user
             </Button>
@@ -165,6 +268,21 @@ export const UserRow = ({ user }: UserRowProps) => {
         This action will delete <span className={styles.username}>{unmasked.username}</span>, all
         their reading progress, and <span className={styles.undone}>can not be undone</span>.
         {deleteErrorMessage && <p className={styles.error}>{deleteErrorMessage}</p>}
+      </ConfirmModal>
+      <ConfirmModal
+        isOpen={showClearEmailModal}
+        onCancel={handleClearEmailCancel}
+        onConfirm={() => void handleClearEmailConfirm()}
+        icon={AlertOctagonIcon}
+        danger
+        title="Clear this address?"
+        confirmText="Clear"
+        loading={clearing}
+      >
+        This will free <span className={styles.username}>{unmasked.username}</span>&apos;s address
+        for another account to claim. They will be asked to set an address again the next time their
+        session refreshes.
+        {clearEmailErrorMessage && <p className={styles.error}>{clearEmailErrorMessage}</p>}
       </ConfirmModal>
     </Fragment>
   );

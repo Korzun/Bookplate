@@ -125,6 +125,8 @@ const userRow = (pendingBookRequestCount: number, libraryId = 'lib-alice') => ({
       id: `u-${libraryId}`,
       username: 'alice',
       pendingBookRequestCount,
+      email: null,
+      emailVerifiedAt: null,
     },
     UserRowFragment
   ),

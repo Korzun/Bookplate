@@ -24,8 +24,9 @@ const user = (overrides: {
       __typename: 'User' as const,
       id: overrides.id ?? 'u1',
       username: overrides.username ?? 'alice',
-      progressCount: 0,
       pendingBookRequestCount: overrides.pendingBookRequestCount ?? 0,
+      email: null,
+      emailVerifiedAt: null,
     },
     UserRowFragment
   ),

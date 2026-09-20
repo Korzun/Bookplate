@@ -30,8 +30,9 @@ const userListMock = (): MockedResponse<UserListQuery> => ({
                 __typename: 'User' as const,
                 id: 'u1',
                 username: 'alice',
-                progressCount: 0,
                 pendingBookRequestCount: 0,
+                email: null,
+                emailVerifiedAt: null,
               },
               UserRowFragment
             ),

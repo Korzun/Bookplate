@@ -34,6 +34,8 @@ const aliceRow = {
       id: 'USER-1',
       username: 'alice',
       pendingBookRequestCount: 0,
+      email: null,
+      emailVerifiedAt: null,
     },
     UserRowFragment
   ),

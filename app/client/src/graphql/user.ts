@@ -68,14 +68,20 @@ export const UserListDocument = graphql(`
 
 /**
  * `user { … }` mirrors `UserListDocument`'s selection field-for-field
- * (`id`/`username`/`pendingBookRequestCount`/`library { id }`,
- * spread via `UserRowFragment` plus the sibling `library { id }` field there)
- * so the appended reference normalizes with every field that list read
- * expects — a partial selection here would leave `viewer.users`'s new entry
- * resolving `null`/missing fields the next time `UserList` reads it (same
- * reasoning as `DeviceCreateDocument`'s doc comment). A brand-new user always
- * has zero pending requests, but the FIELD still has to be selected — its
- * value, not its presence, is what a fresh registration guarantees.
+ * (`id`/`username`/`pendingBookRequestCount`/`email`/`emailVerifiedAt`/
+ * `library { id }`, spread via `UserRowFragment` plus the sibling
+ * `library { id }` field there) so the appended reference normalizes with
+ * every field that list read expects — a partial selection here would leave
+ * `viewer.users`'s new entry resolving `null`/missing fields the next time
+ * `UserList` reads it (same reasoning as `DeviceCreateDocument`'s doc
+ * comment) — and an INCOMPLETE entity is worse than a merely stale one: an
+ * `InMemoryCache` read of `UserListDocument` returns the new user's row as
+ * missing entirely (not just missing fields) once any field the query
+ * expects is absent from the entity, so a fresh registration would
+ * disappear from the admin's own list until a hard refetch. A brand-new
+ * user always has zero pending requests and no address yet, but the FIELDS
+ * still have to be selected — their value, not their presence, is what a
+ * fresh registration guarantees.
  *
  * `UsernameAlreadyExistsError` and `InvalidInputError` are both real,
  * reachable outcomes (a duplicate/reserved name; a rejected charset or
@@ -91,6 +97,8 @@ export const UserRegisterDocument = graphql(`
           id
           username
           pendingBookRequestCount
+          email
+          emailVerifiedAt
           library {
             id
           }
@@ -151,6 +159,47 @@ export const UserResetPasswordDocument = graphql(`
           id
         }
         password
+      }
+    }
+  }
+`);
+
+/**
+ * The admin remedy for a squatted address (`user/mutation/clear-email.ts`'s
+ * own doc comment has the full story): `email`/`emailKey`/`emailVerifiedAt`
+ * all clear to `null` on the target row, freeing the address for its
+ * rightful owner to claim.
+ *
+ * Unlike `UserDeleteDocument`, this selects the updated `user` (not just an
+ * id) — `id`/`email`/`emailVerifiedAt` mirror `UserRowFragment`'s own
+ * selection field-for-field, so Apollo's normalized cache updates the
+ * `User:<id>` entity in place from this response alone. No `update`
+ * function and no evict: the row still exists, only two of its fields
+ * changed.
+ *
+ * `UserClearEmailResult` is a one-member union for the same reason
+ * `UserDeleteResult`/`UserResetPasswordResult` are: `UserClearEmailInput`
+ * carries only a `User` global ID, already format-checked by the relay
+ * plugin before the resolver runs, so there is no string field left for a
+ * zod schema to reject and no reachable `InvalidInputError` case.
+ *
+ * The mutation FIELD itself is nullable — it resolves to a bare `null` both
+ * when the target user does not exist and when it is the config-admin row,
+ * deliberately indistinguishable (see that resolver's doc comment). There is
+ * no error member to select for that case; a caller reading `data?.
+ * userClearEmail` must treat `null` as "unchanged", not as a typed error and
+ * not as success.
+ */
+export const UserClearEmailDocument = graphql(`
+  mutation UserClearEmail($input: UserClearEmailInput!) {
+    userClearEmail(input: $input) {
+      __typename
+      ... on UserClearEmailPayload {
+        user {
+          id
+          email
+          emailVerifiedAt
+        }
       }
     }
   }
