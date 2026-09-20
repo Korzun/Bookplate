@@ -26,16 +26,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  inputContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.space.md,
-    marginBottom: theme.space.xxl,
-    minWidth: '400px',
-    [theme.breakpoint.mobile]: {
-      minWidth: 'auto',
-    },
-  },
   lead: {
     textAlign: 'center',
     color: theme.color.text.muted,

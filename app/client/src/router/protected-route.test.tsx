@@ -167,6 +167,31 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('password reset page')).toBeInTheDocument();
   });
 
+  // Regression test for the infinite-redirect loop this component's own
+  // history includes: without the `mustSetEmail` checks nested inside
+  // `if (!mustChangePassword)`, a viewer owing both, starting directly at
+  // /set-email, ping-pongs forever between /password-reset and /set-email
+  // (mustChangePassword sends them to /password-reset; re-rendered there,
+  // the un-nested mustSetEmail check fires because the pathname isn't
+  // /set-email, sending them right back). This is the exact cell that hung
+  // the test suite during development — do not "simplify" this test away as
+  // redundant with the /library-starting ordering test above; it pins the
+  // guard, not just the outcome.
+  it('sends a viewer who owes both, starting AT /set-email, to /password-reset (not stuck in a loop)', () => {
+    renderWithAuth(
+      {
+        ...baseState,
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: true,
+        mustSetEmail: true,
+        loading: false,
+      },
+      ['/set-email']
+    );
+    expect(screen.getByText('password reset page')).toBeInTheDocument();
+  });
+
   it('bounces a viewer off the set-email page once they have an address', () => {
     renderWithAuth(
       {
