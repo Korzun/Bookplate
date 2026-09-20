@@ -9,5 +9,6 @@ export { LoadingPage } from './loading';
 export { LoginPage } from './login';
 export { PasswordResetPage } from './password-reset';
 export { SeriesPage } from './series';
+export { SetEmailPage } from './set-email';
 export { UserListPage } from './user-list';
 export { UserPage } from './user';

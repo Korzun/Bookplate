@@ -19,5 +19,6 @@ export const library = (options?: { subject?: string; author?: string }) => {
 export const login = () => '/login';
 export const passwordReset = () => '/password-reset';
 export const series = (seriesName: string) => `/library/series/${seriesName}`;
+export const setEmail = () => '/set-email';
 export const user = () => '/user';
 export const userList = () => '/users';
