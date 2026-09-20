@@ -8,6 +8,7 @@ import { runMigrations } from './db/migrate';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
+import { ensureAdminUser } from './services/admin-account';
 import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
@@ -69,6 +70,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     graphqlHandler,
     replaceStaging,
   });
+
+  // Before the startup scan: the scan skips the admin's username explicitly, and
+  // every email flow needs this row to exist.
+  await ensureAdminUser(prisma, config.username);
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
   // clean up stale DB entries, then re-validate the imported library.

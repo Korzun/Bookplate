@@ -1,3 +1,4 @@
+import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
 import { getSyncPassword } from '../../../services/password';
 import type { Viewer } from '../../context';
 import { builder } from '../builder';
@@ -58,6 +59,13 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * `user/model.ts`) exposes the same `_count.progresses` that DTO
      * carried, so nothing from the REST payload is lost.
      *
+     * `where: NOT_CONFIG_ADMIN` — the config admin now HAS a row (it needs one
+     * to hold an email address; see `services/admin-account.ts`), but it is not
+     * a reader: it owns no library and has no sync credentials. Listing it here
+     * would show an empty phantom account in the admin panel. The predicate is
+     * imported rather than inlined so the day the admin becomes an ordinary
+     * user is a one-line change.
+     *
      * `nullable: true` (pre-client hardening spec, §4 "Nullability ruling"):
      * a scope denial on a NON-nullable list here would null-propagate all
      * the way up through `Viewer` (also non-null — `query/current.ts`) to
@@ -73,7 +81,11 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
       nullable: true,
       authScopes: { admin: true },
       resolve: (query, _viewer, _args, context) =>
-        context.prisma.user.findMany({ ...query, orderBy: { username: 'asc' } }),
+        context.prisma.user.findMany({
+          ...query,
+          where: NOT_CONFIG_ADMIN,
+          orderBy: { username: 'asc' },
+        }),
     }),
 
     /**

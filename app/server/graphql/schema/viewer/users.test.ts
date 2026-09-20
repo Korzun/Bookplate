@@ -1,3 +1,4 @@
+import { ensureAdminUser } from '../../../services/admin-account';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
@@ -106,5 +107,19 @@ describe('Viewer.users', () => {
     expect(
       (roundTrip.data as { node: { __typename: string; username: string } | null }).node
     ).toEqual({ __typename: 'User', username: 'alice' });
+  });
+
+  it('excludes the config admin row from the user list', async () => {
+    await ensureAdminUser(harness.prisma, 'admin');
+
+    const result = await harness.execute('{ viewer { users { username } } }', {
+      viewer: harness.adminViewer,
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect((result.data as UsersData).viewer.users.map((u) => u.username)).toEqual([
+      'alice',
+      'bob',
+    ]);
   });
 });
