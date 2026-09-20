@@ -6,10 +6,15 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   ViewerConfirmEmailMutation,
   ViewerConfirmEmailMutationVariables,
+  ViewerResendEmailVerificationMutation,
   ViewerSetEmailMutation,
   ViewerSetEmailMutationVariables,
 } from '~/gql/graphql';
-import { ViewerConfirmEmailDocument, ViewerSetEmailDocument } from '~/graphql/email';
+import {
+  ViewerConfirmEmailDocument,
+  ViewerResendEmailVerificationDocument,
+  ViewerSetEmailDocument,
+} from '~/graphql/email';
 import * as apiFetch from '~/lib/api-fetch';
 import { renderWithApollo } from '~/test-utils';
 
@@ -47,6 +52,23 @@ const confirmEmailMock = (
       viewerConfirmEmail: {
         __typename: 'ViewerConfirmEmailPayload',
         email: 'ann@example.com',
+      },
+    },
+  },
+});
+
+// `delivered: false`, deliberately — the initial `setEmailMock` above already
+// toasts a `delivered: true` "Check your inbox" message, which would make a
+// `delivered: true` resend indistinguishable from that leftover toast and
+// defeat the point of the test below.
+const resendMock = (): MockedResponse<ViewerResendEmailVerificationMutation> => ({
+  request: { query: ViewerResendEmailVerificationDocument },
+  result: {
+    data: {
+      __typename: 'Mutation',
+      viewerResendEmailVerification: {
+        __typename: 'ViewerResendEmailVerificationPayload',
+        delivered: false,
       },
     },
   },
@@ -108,6 +130,24 @@ describe('SetEmailPage', () => {
     await user.click(screen.getByRole('button', { name: /send/i }));
 
     expect(await screen.findByText(/already in use/i)).toBeInTheDocument();
+  });
+
+  // Minor (whole-branch review): `onClick={() => void runResend()}` discarded
+  // the mutation's result outright — no toast on success, cooldown or
+  // failure, so "Resend code" silently did nothing from the caller's point of
+  // view. Mirrors `component/email-setting`'s own resend handler, which
+  // already unwraps the result and toasts it.
+  it('shows a toast when resending the code, mirroring the settings card', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<SetEmailPage />, {
+      mocks: [setEmailMock('ann@example.com'), resendMock()],
+    });
+
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await user.click(await screen.findByRole('button', { name: /resend/i }));
+
+    expect(await screen.findByText(/could not send the email/i)).toBeInTheDocument();
   });
 
   it('prefills the code from the ?code= query parameter', async () => {

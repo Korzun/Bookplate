@@ -4,7 +4,11 @@ import { useSearchParams } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
-import type { ViewerConfirmEmailMutation, ViewerSetEmailMutation } from '~/gql/graphql';
+import type {
+  ViewerConfirmEmailMutation,
+  ViewerResendEmailVerificationMutation,
+  ViewerSetEmailMutation,
+} from '~/gql/graphql';
 import {
   ViewerConfirmEmailDocument,
   ViewerResendEmailVerificationDocument,
@@ -27,6 +31,10 @@ type ViewerSetEmailPayload = Extract<
 type ViewerConfirmEmailPayload = Extract<
   NonNullable<ViewerConfirmEmailMutation['viewerConfirmEmail']>,
   { __typename: 'ViewerConfirmEmailPayload' }
+>;
+type ViewerResendEmailVerificationPayload = Extract<
+  NonNullable<ViewerResendEmailVerificationMutation['viewerResendEmailVerification']>,
+  { __typename: 'ViewerResendEmailVerificationPayload' }
 >;
 
 /**
@@ -107,6 +115,28 @@ export const SetEmailPage = () => {
     return null;
   }, null);
 
+  // Minor (whole-branch review): the resend button used to fire-and-forget
+  // (`onClick={() => void runResend()}`), so a cooldown, a send failure, or
+  // even a real resend was invisible to the caller — "Resend code" appeared
+  // to do nothing. Mirrors `component/email-setting`'s own resend handler.
+  const handleResend = useCallback(async () => {
+    const { data } = await runResend();
+    const result = unwrapResult<ViewerResendEmailVerificationPayload>(
+      data?.viewerResendEmailVerification,
+      'ViewerResendEmailVerificationPayload'
+    );
+    if (result.status !== 'ok') {
+      showToast(result.status === 'error' ? result.message : 'Could not resend the code', 'error');
+      return;
+    }
+    showToast(
+      result.payload.delivered
+        ? 'Check your inbox for the confirmation code'
+        : 'Could not send the email — try again shortly',
+      result.payload.delivered ? 'success' : 'error'
+    );
+  }, [runResend, showToast]);
+
   return (
     <Page type="minimal">
       <div className={styles.root}>
@@ -143,7 +173,7 @@ export const SetEmailPage = () => {
               <Button submit loading={isConfirming} type="primary" radius="card">
                 Confirm
               </Button>
-              <Button type="text" onClick={() => void runResend()}>
+              <Button type="text" onClick={() => void handleResend()}>
                 Resend code
               </Button>
               <Button type="text" onClick={() => setStage('address')}>
