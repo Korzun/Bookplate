@@ -27,6 +27,16 @@ describe('verificationMessage', () => {
     expect(message.text).toContain('https://books.example.com/set-email?code=K7M2QX4P');
     expect(message.html).toContain('href="https://books.example.com/set-email?code=K7M2QX4P"');
   });
+
+  it('escapes the library name in the html part', () => {
+    const message = verificationMessage({
+      ...BASE,
+      libraryName: '<script>x</script>',
+      publicUrl: null,
+    });
+    expect(message.html).not.toContain('<script>');
+    expect(message.html).toContain('&lt;script&gt;');
+  });
 });
 
 describe('passwordResetMessage', () => {
@@ -39,6 +49,12 @@ describe('passwordResetMessage', () => {
     const message = passwordResetMessage({ ...BASE, publicUrl: null });
     expect(message.text.toLowerCase()).toContain('expire');
     expect(message.text.toLowerCase()).toContain("didn't request");
+  });
+
+  it('omits any link when no public URL is configured', () => {
+    const message = passwordResetMessage({ ...BASE, publicUrl: null });
+    expect(message.text).not.toContain('http');
+    expect(message.html).not.toContain('href');
   });
 
   it('escapes the library name in the html part', () => {
