@@ -1,3 +1,4 @@
+import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
 import type { Device } from '../../../types';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
@@ -79,6 +80,22 @@ export const model = builder.prismaObject('Device', {
      * no production caller), and the `deviceAccess.some` filter is the Prisma
      * equivalent of its `deviceUser.findMany({ where: { deviceId } })` join,
      * read from the User side so the rows are `User`s.
+     *
+     * `AND: [NOT_CONFIG_ADMIN, ...]` — this is the one user-listing surface
+     * that had never picked up the exclusion every other one applies. It is
+     * defence in depth, not a fix for a live bug: nothing today grants the
+     * admin a `DeviceUser` row, so this `where` cannot currently match it.
+     * But note what the predicate does and does NOT cover — this listing is
+     * JOIN-scoped (`deviceAccess.some`), not identity-scoped like
+     * `Viewer.users`. `NOT_CONFIG_ADMIN` only keeps the admin's row out of
+     * results that already match the join; it does nothing to stop the join
+     * itself from being created. If a future `deviceEnableUser`-style mutation
+     * (or any other write) ever puts a `DeviceUser` row under the admin's
+     * user id, this filter would silently hide it here while the row keeps
+     * existing — the real guard belongs on whatever mutation can create that
+     * row, the same way `user/mutation/delete.ts` and
+     * `user/mutation/reset-password.ts` guard their own writes with
+     * `isConfigAdminRow`.
      */
     // `nullable: true` (pre-client hardening spec, §4 "Nullability
     // ruling") — same reasoning as `Viewer.users` (viewer/model.ts): a
@@ -93,7 +110,9 @@ export const model = builder.prismaObject('Device', {
       resolve: (query, deviceRow, _args, context) =>
         context.prisma.user.findMany({
           ...query,
-          where: { deviceAccess: { some: { deviceId: deviceRow.id } } },
+          where: {
+            AND: [NOT_CONFIG_ADMIN, { deviceAccess: { some: { deviceId: deviceRow.id } } }],
+          },
           orderBy: { username: 'asc' },
         }),
     }),
