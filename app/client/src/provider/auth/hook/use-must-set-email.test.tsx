@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { Context, type AuthContext } from '../context';
-import { useMustChangePassword } from './use-must-change-password';
+import { useMustSetEmail } from './use-must-set-email';
 
 const baseState: AuthContext = {
   username: 'alice',
@@ -13,20 +13,18 @@ const baseState: AuthContext = {
   loading: false,
 };
 
-describe('useMustChangePassword', () => {
+describe('useMustSetEmail', () => {
   it('returns false by default', () => {
-    const { result } = renderHook(() => useMustChangePassword(), {
+    const { result } = renderHook(() => useMustSetEmail(), {
       wrapper: ({ children }) => <Context.Provider value={baseState}>{children}</Context.Provider>,
     });
     expect(result.current[0]).toBe(false);
   });
 
   it('returns true when the context flag is set', () => {
-    const { result } = renderHook(() => useMustChangePassword(), {
+    const { result } = renderHook(() => useMustSetEmail(), {
       wrapper: ({ children }) => (
-        <Context.Provider value={{ ...baseState, mustChangePassword: true }}>
-          {children}
-        </Context.Provider>
+        <Context.Provider value={{ ...baseState, mustSetEmail: true }}>{children}</Context.Provider>
       ),
     });
     expect(result.current[0]).toBe(true);

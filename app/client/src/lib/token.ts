@@ -6,6 +6,7 @@ export type AuthClaims = {
   username: string;
   isAdmin: boolean;
   mustChangePassword: boolean;
+  mustSetEmail: boolean;
   exp: number;
 };
 
@@ -51,6 +52,11 @@ export const decodeClaims = (token: string): AuthClaims | null => {
       username: p.username,
       isAdmin: p.isAdmin,
       mustChangePassword: p.mustChangePassword,
+      // NOT part of the required contract above, unlike `mustChangePassword`: a
+      // token issued before this claim existed must keep decoding, or an upgrade
+      // signs every active user out. `=== true` makes a missing claim false, which
+      // is the safe direction — the server gates independently.
+      mustSetEmail: p.mustSetEmail === true,
       exp: p.exp,
     };
   } catch {

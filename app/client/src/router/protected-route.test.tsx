@@ -11,6 +11,7 @@ import { ProtectedRoute } from './protected-route';
 
 const baseState = {
   userId: undefined,
+  mustSetEmail: false,
 };
 
 function renderWithAuth(authState: AuthContextType, initialEntries: string[]) {

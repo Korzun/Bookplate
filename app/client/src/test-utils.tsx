@@ -80,7 +80,12 @@ import { ToastProvider } from './provider/toast';
  */
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
-  user?: { username: string; isAdmin: boolean; mustChangePassword?: boolean };
+  user?: {
+    username: string;
+    isAdmin: boolean;
+    mustChangePassword?: boolean;
+    mustSetEmail?: boolean;
+  };
   initialEntries?: string[];
 }
 
@@ -97,6 +102,7 @@ export function renderWithProviders(
     userId: user.username ? 'test-user-id' : undefined,
     isAdmin: user.isAdmin,
     mustChangePassword: user.mustChangePassword ?? false,
+    mustSetEmail: user.mustSetEmail ?? false,
     loading: false,
   };
 

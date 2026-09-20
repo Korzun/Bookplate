@@ -50,8 +50,34 @@ describe('decodeClaims', () => {
       username: 'alice',
       isAdmin: false,
       mustChangePassword: true,
+      mustSetEmail: false,
       exp: 1760000900,
     });
+  });
+
+  it('reads mustSetEmail from a token that carries it', () => {
+    const token = makeJwt({
+      username: 'ann',
+      isAdmin: false,
+      mustChangePassword: false,
+      mustSetEmail: true,
+      exp: 1760000900,
+    });
+    expect(decodeClaims(token)?.mustSetEmail).toBe(true);
+  });
+
+  it('treats a token minted before the claim existed as not needing an email', () => {
+    // Tokens from the previous version survive in localStorage for up to 15
+    // minutes after an upgrade. Rejecting them here would log every signed-in
+    // user out; the server gates on database state regardless of the claim.
+    const token = makeJwt({
+      username: 'ann',
+      isAdmin: false,
+      mustChangePassword: false,
+      exp: 1760000900,
+    });
+    expect(decodeClaims(token)).not.toBeNull();
+    expect(decodeClaims(token)?.mustSetEmail).toBe(false);
   });
 
   it('omits userId when sub is absent (admin token)', () => {
@@ -112,6 +138,7 @@ describe('isExpired', () => {
     username: 'alice',
     isAdmin: false,
     mustChangePassword: false,
+    mustSetEmail: false,
     exp,
   });
 

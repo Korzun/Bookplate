@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useContext } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,7 @@ import { markLoggedOut } from '../../lib/logout';
 import { makeJwt } from '../../lib/test-jwt';
 import { setToken } from '../../lib/token';
 import { Context } from './context';
+import { useMustSetEmail } from './hook';
 import { AuthProvider } from './provider';
 
 const Probe = () => {
@@ -330,6 +331,23 @@ describe('AuthProvider', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/auth/refresh', { method: 'POST' })
     );
+  });
+});
+
+describe('useMustSetEmail', () => {
+  it('exposes mustSetEmail from the current token', async () => {
+    setToken(
+      makeJwt({
+        sub: 'u1',
+        username: 'ann',
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: true,
+        exp: futureExp(),
+      })
+    );
+    const { result } = renderHook(() => useMustSetEmail(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current[0]).toBe(true));
   });
 });
 

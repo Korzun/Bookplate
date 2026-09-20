@@ -120,6 +120,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       userId: valid ? claims.userId : undefined,
       isAdmin: valid ? claims.isAdmin : false,
       mustChangePassword: valid ? claims.mustChangePassword : false,
+      mustSetEmail: valid ? claims.mustSetEmail : false,
       loading,
     }),
     [claims, valid, loading]
