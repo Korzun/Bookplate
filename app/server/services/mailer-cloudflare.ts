@@ -25,13 +25,14 @@ const SEND_URL = (accountId: string): string =>
 // long when the caller's resend button is the retry path anyway.
 const SEND_TIMEOUT_MS = 10_000;
 
-// RFC 5322 `specials` this driver actually needs to defend against, minus
-// "." (handled separately below, only when leading/trailing) and plus ">" to
-// pair with "<". None of this is a security boundary — the value goes into a
-// JSON body and Cloudflare composes the message, so there is no header
-// injection to prevent here. This exists purely so a free-text display name
-// (the operator's `library_name` add-on option) doesn't produce a malformed
-// From header, e.g. `Smith, Bob <lib@example.com>` parsing as two mailboxes.
+// RFC 5322 `specials` (§3.2.3 lists "(" ")" "<" ">" "[" "]" ":" ";" "@" "\"
+// "," DQUOTE "."), minus "." — handled separately below, only when
+// leading/trailing. None of this is a security boundary — the value goes
+// into a JSON body and Cloudflare composes the message, so there is no
+// header injection to prevent here. This exists purely so a free-text
+// display name (the operator's `library_name` add-on option) doesn't
+// produce a malformed From header, e.g. `Smith, Bob <lib@example.com>`
+// parsing as two mailboxes.
 const RFC5322_SPECIALS = /[()<>[\]:;@\\,"]/;
 
 function isNonAscii(name: string): boolean {
