@@ -62,6 +62,30 @@ describe('Device.enabledUsers', () => {
     expect(devices.map((d) => d.enabledUsers.length)).toEqual([2, 0]);
   });
 
+  // Defence in depth, not a live-bug fix: nothing today grants the admin a
+  // `DeviceUser` row (the doc comment above explains why `NOT_CONFIG_ADMIN`
+  // alone doesn't guard against one ever being created). This test seeds
+  // that otherwise-unreachable row directly via Prisma to prove the listing
+  // excludes it if it ever existed, the same way every other user-listing
+  // surface does.
+  it('excludes the config admin even if a DeviceUser row named it', async () => {
+    const admin = await harness.prisma.user.create({
+      data: { id: 'admin-row', username: 'admin', isConfigAdmin: true },
+    });
+    await harness.prisma.deviceUser.create({
+      data: { deviceId: 'dev-1', userId: admin.id },
+    });
+
+    const result = await harness.execute(DEVICES, { viewer: harness.adminViewer });
+
+    expect(result.errors).toBeUndefined();
+    const devices = (result.data as DevicesData).viewer.devices;
+    expect(devices.find((d) => d.name === 'Device dev-1')?.enabledUsers).toEqual([
+      { username: 'alice' },
+      { username: 'bob' },
+    ]);
+  });
+
   // REST's `GET /api/devices/:id/users` carried `adminAuth`, unlike that
   // router's `GET /`, before Phase 0 removed both. The same split holds
   // here: `Viewer.devices` is open to every authenticated user and this
