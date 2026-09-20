@@ -179,6 +179,17 @@ describe('createCloudflareMailer', () => {
     it('quotes a name containing a comma', async () => {
       expect(await sendWithFromName('Smith, Bob')).toBe('"Smith, Bob" <lib@example.com>');
     });
+
+    // Pins the escape ORDER, not just that both characters get escaped:
+    // `\` must be escaped before `"`, otherwise the `\` inserted to escape
+    // an embedded `"` would itself get re-escaped by a subsequent `\`->`\\`
+    // pass, doubling it. Falsifiable: swapping the two `.replace()` calls in
+    // `quoteDisplayName` makes this fail (confirmed manually, then reverted).
+    it('quotes and escapes a name containing both a backslash and a quote', async () => {
+      expect(await sendWithFromName('Back\\slash "Quoted"')).toBe(
+        '"Back\\\\slash \\"Quoted\\"" <lib@example.com>'
+      );
+    });
   });
 
   it('logs a misconfiguration only once per mailer instance', async () => {
