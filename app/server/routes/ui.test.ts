@@ -97,6 +97,7 @@ import {
   createProgressLoader,
   createSeriesProgressLoader,
   createValidationCountsLoader,
+  createViewerRowLoader,
 } from '../graphql/loaders';
 import {
   assertValidEpub,
@@ -360,6 +361,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     loadValidationCounts: createValidationCountsLoader(prisma),
     loadBookByDocument: createBookByDocumentLoader(prisma),
     loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),
+    loadViewerRow: createViewerRowLoader(prisma, viewer),
   };
   return graphql({ schema, source, contextValue });
 }

@@ -28,3 +28,4 @@ export {
   type SeverityCount,
   type ValidationCountsLoader,
 } from './validation-counts';
+export { createViewerRowLoader, type ViewerRow, type ViewerRowLoader } from './viewer-row';
