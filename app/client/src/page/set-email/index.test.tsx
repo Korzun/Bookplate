@@ -74,6 +74,11 @@ const resendMock = (): MockedResponse<ViewerResendEmailVerificationMutation> => 
   },
 });
 
+const resendNetworkErrorMock = (): MockedResponse<ViewerResendEmailVerificationMutation> => ({
+  request: { query: ViewerResendEmailVerificationDocument },
+  error: new Error('network down'),
+});
+
 const emailInUseMock = (
   email: string
 ): MockedResponse<ViewerSetEmailMutation, ViewerSetEmailMutationVariables> => ({
@@ -148,6 +153,24 @@ describe('SetEmailPage', () => {
     await user.click(await screen.findByRole('button', { name: /resend/i }));
 
     expect(await screen.findByText(/could not send the email/i)).toBeInTheDocument();
+  });
+
+  // Final touch-up (whole-branch review): `handleResend` had no `try/catch`,
+  // unlike `component/email-setting`'s equivalent it mirrors — an Apollo
+  // throw on a network failure produced an unhandled promise rejection and
+  // STILL showed no toast, the exact silent failure the resend-toast minor
+  // above existed to fix.
+  it('shows an error toast when resending throws, rather than failing silently', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<SetEmailPage />, {
+      mocks: [setEmailMock('ann@example.com'), resendNetworkErrorMock()],
+    });
+
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await user.click(await screen.findByRole('button', { name: /resend/i }));
+
+    expect(await screen.findByText(/could not resend the code/i)).toBeInTheDocument();
   });
 
   it('prefills the code from the ?code= query parameter', async () => {
