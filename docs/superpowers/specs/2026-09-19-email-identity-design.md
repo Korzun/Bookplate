@@ -223,9 +223,21 @@ assumed:
 
 - **The admin's access token still carries no `sub`** (`AuthUser.userId` stays
   absent for them), so every existing path that reasons about ownership behaves
-  exactly as it does today. The row is reached by `username` lookup, which is
-  how `getMustChangePassword` already works. This row is identity-attached
-  data; it is not a promotion to a normal user.
+  exactly as it does today. The row is reached by the **`isConfigAdmin` flag**,
+  not by `username` lookup. (Corrected post-implementation review, whole-branch
+  fix wave: this section previously said "the row is reached by `username`
+  lookup, which is how `getMustChangePassword` already works" — that
+  `getMustChangePassword` analogy was never apt to begin with, since the admin
+  branch passes `mustChangePassword: false` as a literal rather than calling
+  that function, and the username-lookup prescription itself is unsafe:
+  `ensureAdminUser`'s rename can be blocked by a username collision, leaving
+  the marked admin row under its OLD username while `config.username` now
+  names an unrelated reader's row. Since the admin's `viewer.username` is
+  always `config.username` — set at login from the value it matched, not from
+  the DB row — a username-keyed lookup then silently resolves the admin's
+  session to that reader's row instead. See "Resolving the acting row" below,
+  corrected the same way.) This row is identity-attached data; it is not a
+  promotion to a normal user.
 - **User-listing surfaces exclude `isConfigAdmin: true`.** The admin has never
   had a row, so `viewer.users` and the admin panel would otherwise start
   listing the admin as a reader with an empty library.
@@ -432,8 +444,20 @@ dead end.
   gaining a label for the log line. This is the **only** adjacent refactoring
   in this spec, and it exists because the alternative is duplicating a function
   whose comments document three bugs already fixed in it.
-- **TTLs.** `verify` 24h, `reset` 1h. Outstanding tokens are invalidated on
-  address change and on password change.
+- **TTLs.** `verify` 24h, `reset` 1h. The outstanding **`reset`** token is
+  invalidated on address change and on password change — never `verify`.
+  (Corrected post-implementation review, whole-branch fix wave: this
+  previously said "outstanding tokens", unqualified, which is what
+  `viewerSetEmail` did before the fix — an unscoped
+  `invalidateEmailTokens(prisma, userId)` deletes the `verify` row too, and
+  that row is where `sentAt`/`createdAt`/`sendCount` live, so deleting it let
+  the next `issueEmailToken` recreate it with `sendCount: 1`, bypassing both
+  the 60s cooldown and the 5-per-rolling-hour cap on every call. `verify`
+  never needs deleting on its own: `issueEmailToken`'s upsert already replaces
+  its `tokenHash`/`email` in place whenever a new one is actually issued, so
+  the send budget survives while the old code stops working. Every
+  `invalidateEmailTokens` call site in this codebase now passes
+  `purpose: 'reset'` explicitly — see the Verification table above.)
 - **Enumeration.** `forgot` is a flat `204`; login failures stay a generic
   `401`; reset failures do not distinguish unknown from expired.
 - **Leakage.** Transport errors never reach the client beyond a generic
