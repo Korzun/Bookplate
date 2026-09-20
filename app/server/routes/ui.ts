@@ -43,17 +43,32 @@ const ALLOWED_EXTENSIONS = new Set(['.epub']);
 /**
  * `mustSetEmail`'s single source of truth, DERIVED rather than stored: an
  * address is outstanding only when mail is configured, so flipping the add-on
- * options cannot leave a stale flag behind in the database. Looked up by
- * username because the config admin's token carries no `sub` and this must
- * answer for them too.
+ * options cannot leave a stale flag behind in the database.
+ *
+ * Resolves the row by `isConfigAdmin` for the admin, by `username` for
+ * everyone else — NEVER by username for the admin (I3, whole-branch review).
+ * `viewer.username`/the login identifier for the admin is always
+ * `config.username`, which can outlive a rename: `ensureAdminUser`'s rename
+ * can be blocked by a username collision (`services/admin-account.ts`, case
+ * 2), leaving the marked admin row under its OLD username while
+ * `config.username` now names an unrelated reader's row. A username lookup
+ * here would then answer with THAT reader's `email` column instead of the
+ * admin's, which is wrong in both directions (a reader's set address would
+ * incorrectly clear the admin's gate, or vice versa).
  */
 export async function computeMustSetEmail(
   prisma: PrismaClient,
   config: AppConfig,
-  username: string
+  identity: { isConfigAdmin: true } | { username: string }
 ): Promise<boolean> {
   if (!isMailConfigured(config)) return false;
-  const row = await prisma.user.findUnique({ where: { username }, select: { email: true } });
+  const row =
+    'isConfigAdmin' in identity
+      ? await prisma.user.findFirst({ where: { isConfigAdmin: true }, select: { email: true } })
+      : await prisma.user.findUnique({
+          where: { username: identity.username },
+          select: { email: true },
+        });
   return row !== null && row.email === null;
 }
 
@@ -675,7 +690,9 @@ export function createUiRouter({
           username: loginName,
           isAdmin: true,
           mustChangePassword: false,
-          mustSetEmail: await computeMustSetEmail(prisma, config, loginName),
+          // By flag, not by `loginName` — see `computeMustSetEmail`'s doc
+          // comment for why a username lookup can answer for the wrong row.
+          mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
         });
         return;
       }
@@ -711,7 +728,7 @@ export function createUiRouter({
           username: loginName,
           isAdmin: false,
           mustChangePassword: await getMustChangePassword(prisma, loginName),
-          mustSetEmail: await computeMustSetEmail(prisma, config, loginName),
+          mustSetEmail: await computeMustSetEmail(prisma, config, { username: loginName }),
         });
         return;
       }
@@ -743,7 +760,9 @@ export function createUiRouter({
           username: identity.username,
           isAdmin: true,
           mustChangePassword: false,
-          mustSetEmail: await computeMustSetEmail(prisma, config, identity.username),
+          // By flag, not by `identity.username` — same reasoning as the login
+          // branch above.
+          mustSetEmail: await computeMustSetEmail(prisma, config, { isConfigAdmin: true }),
         });
         return;
       }
@@ -765,7 +784,7 @@ export function createUiRouter({
         username: identity.username,
         isAdmin: false,
         mustChangePassword: await getMustChangePassword(prisma, identity.username),
-        mustSetEmail: await computeMustSetEmail(prisma, config, identity.username),
+        mustSetEmail: await computeMustSetEmail(prisma, config, { username: identity.username }),
       });
     })
   );

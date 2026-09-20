@@ -1042,7 +1042,6 @@ type Viewer {
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
-  mustSetEmail: Boolean!
   syncPassword: String
   user: User
   username: String!
