@@ -35,7 +35,7 @@ import { createUser, deleteUser } from '../services/user';
 import * as validationModule from '../services/validation';
 import { seedBook } from '../test-support/seed-book';
 import { AppConfig, EpubMeta, MailConfig, Owner } from '../types';
-import { createLoginRateLimit, createUiRouter } from './ui';
+import { createIpRateLimit, createUiRouter } from './ui';
 
 vi.mock('../logger');
 // Wrap (not replace) the real implementation so every other upload test in
@@ -458,6 +458,24 @@ describe('GET /', () => {
   });
 });
 
+describe('GET /api/public-config', () => {
+  it('reports emailEnabled false when mail is unconfigured', async () => {
+    const res = await request(buildApp({ mail: null })).get('/api/public-config');
+    expect(res.body.emailEnabled).toBe(false);
+  });
+
+  it('reports emailEnabled true when it is', async () => {
+    const res = await request(buildApp({ mail: MAIL_CONFIG })).get('/api/public-config');
+    expect(res.body.emailEnabled).toBe(true);
+  });
+
+  it('never exposes the credentials', async () => {
+    const res = await request(buildApp({ mail: MAIL_CONFIG })).get('/api/public-config');
+    expect(JSON.stringify(res.body)).not.toContain(MAIL_CONFIG.apiToken);
+    expect(JSON.stringify(res.body)).not.toContain(MAIL_CONFIG.accountId);
+  });
+});
+
 describe('POST /api/login', () => {
   it('returns 200 on correct admin credentials', async () => {
     const res = await request(app)
@@ -566,7 +584,7 @@ describe('POST /api/login', () => {
 
     // I-2: proves config.trustProxyHops actually threads from AppConfig
     // through createUiRouter into the limiter (the unit-level tests below
-    // exercise resolveLoginClientIp/createLoginRateLimit directly, which
+    // exercise resolveLoginClientIp/createIpRateLimit directly, which
     // doesn't prove this wiring). All requests below share ONE real TCP
     // connection to the test app â€” X-Forwarded-For is the only thing that
     // varies, so distinct outcomes can only come from the header being read.
@@ -740,7 +758,12 @@ describe('G1: the admin row must not change a failed admin login', () => {
   });
 });
 
-describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ€™s direct-call tests)', () => {
+describe('createIpRateLimit (Task 4/12, unit-level â€” mirrors graphqlBodyLimitâ€™s direct-call tests)', () => {
+  // The login instance's fixed shape, used throughout so these tests keep
+  // asserting exactly the pre-generalization behaviour (10/minute, label
+  // 'Login') â€” only the call shape changed, from positional args to options.
+  const loginOptions = { maxAttempts: 10, windowMs: 60_000, label: 'Login' };
+
   function mockRes(): {
     res: Response;
     state: { status?: number; headers: Record<string, string>; body?: unknown };
@@ -777,7 +800,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
   }
 
   it('allows the first 10 attempts for one IP, denies the 11th with 429 + Retry-After', () => {
-    const limiter = createLoginRateLimit(() => 1_000);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000 });
     for (let i = 0; i < 10; i++) {
       const next = vi.fn();
       const { res, state } = mockRes();
@@ -796,7 +819,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
   });
 
   it('a different IP is unaffected by another IPâ€™s exhausted window', () => {
-    const limiter = createLoginRateLimit(() => 1_000);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000 });
     for (let i = 0; i < 11; i++) {
       const { res } = mockRes();
       limiter(fakeReq('1.2.3.4'), res, vi.fn());
@@ -812,7 +835,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
 
   it('admits again once the window has expired, via the injected clock alone', () => {
     let now = 0;
-    const limiter = createLoginRateLimit(() => now);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => now });
     for (let i = 0; i < 11; i++) {
       const { res } = mockRes();
       limiter(fakeReq('9.9.9.9'), res, vi.fn());
@@ -838,7 +861,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
   // keep the old window alive one tick too long and this test would redden.
   it('at exactly the window boundary (now === windowStart + 60000), a fresh window has already started', () => {
     let now = 0;
-    const limiter = createLoginRateLimit(() => now);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => now });
     for (let i = 0; i < 11; i++) {
       const { res } = mockRes();
       limiter(fakeReq('4.4.4.4'), res, vi.fn());
@@ -862,7 +885,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
   // see the next test for that boundary).
   it('sweeps expired entries out of the Map once past the size threshold, bounding memory (I-1)', () => {
     let now = 0;
-    const limiter = createLoginRateLimit(() => now);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => now });
     const seedCount = 300; // > LOGIN_RATE_LIMIT_SWEEP_THRESHOLD (256)
 
     for (let i = 0; i < seedCount; i++) {
@@ -887,7 +910,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
   // under the old unconditional-sweep behavior the test above used to pin).
   it('does not sweep below the size threshold, even with stale entries present', () => {
     let now = 0;
-    const limiter = createLoginRateLimit(() => now);
+    const limiter = createIpRateLimit({ ...loginOptions, now: () => now });
     const seedCount = 50; // well under LOGIN_RATE_LIMIT_SWEEP_THRESHOLD (256)
 
     for (let i = 0; i < seedCount; i++) {
@@ -905,7 +928,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
 
   describe('resolveLoginClientIp / trustProxyHops (I-2 â€” contained fix, no Express trust-proxy setting touched)', () => {
     it('direct-connection behavior is unchanged: with trustProxyHops unset (0), the TCP peer is used even if a header is present', () => {
-      const limiter = createLoginRateLimit(() => 1_000); // trustProxyHops defaults to 0
+      const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000 }); // trustProxyHops defaults to 0
       for (let i = 0; i < 10; i++) {
         const { res } = mockRes();
         limiter(fakeReq('203.0.113.9', 'attacker-forged-value'), res, vi.fn());
@@ -922,7 +945,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
     });
 
     it('a forged X-Forwarded-For does NOT influence the key when trustProxyHops is 0 â€” two different headers from the same peer share one window', () => {
-      const limiter = createLoginRateLimit(() => 1_000, 0);
+      const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000, trustProxyHops: 0 });
       const { res: res1, state: state1 } = mockRes();
       limiter(fakeReq('203.0.113.9', '1.1.1.1'), res1, vi.fn());
       const { res: res2, state: state2 } = mockRes();
@@ -941,7 +964,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
     });
 
     it('with trustProxyHops=1, two distinct clients behind the same one trusted proxy are limited INDEPENDENTLY', () => {
-      const limiter = createLoginRateLimit(() => 1_000, 1);
+      const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000, trustProxyHops: 1 });
       const proxyAddress = '10.10.10.10'; // the one trusted hop's own address
       for (let i = 0; i < 10; i++) {
         const { res } = mockRes();
@@ -960,7 +983,7 @@ describe('createLoginRateLimit (Task 4, unit-level â€” mirrors graphqlBodyLimitâ
     });
 
     it('with trustProxyHops=1, a missing X-Forwarded-For falls back to the direct peer (fail-safe, not a crash)', () => {
-      const limiter = createLoginRateLimit(() => 1_000, 1);
+      const limiter = createIpRateLimit({ ...loginOptions, now: () => 1_000, trustProxyHops: 1 });
       const { res, state } = mockRes();
       limiter(fakeReq('10.10.10.10'), res, vi.fn());
       expect(state.status).toBeUndefined();
