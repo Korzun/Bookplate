@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { ensureAdminUser } from '../../../../services/admin-account';
 import { createHarness, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
@@ -94,6 +95,26 @@ describe('Mutation.userDelete', () => {
     expect(
       await harness.prisma.user.findUnique({ where: { id: harness.aliceOwner.userId } })
     ).not.toBeNull();
+  });
+
+  /**
+   * G2: the config admin's row (`ensureAdminUser`, task 7) must be
+   * unaddressable, not merely refused with a distinct error — this resolves
+   * to the ordinary "no such user" `null` above, indistinguishable from an
+   * attacker-crafted global ID naming no row at all, and the row itself must
+   * survive.
+   */
+  it('refuses to delete the config admin row', async () => {
+    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', adminId) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userDelete).toBeNull();
+    expect(await harness.prisma.user.findUnique({ where: { id: adminId } })).not.toBeNull();
   });
 
   it('cascades to delete the user’s progress rows', async () => {

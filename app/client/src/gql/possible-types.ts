@@ -146,6 +146,7 @@
       "UsernameAlreadyExistsError"
     ],
     "UserRegenerateSyncPasswordResult": [
+      "InvalidInputError",
       "UserRegenerateSyncPasswordPayload"
     ],
     "UserRegisterResult": [

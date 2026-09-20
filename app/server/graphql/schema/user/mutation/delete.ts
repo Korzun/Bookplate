@@ -1,5 +1,6 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { isConfigAdminRow } from '../../../../services/admin-account';
 import { deleteUser } from '../../../../services/user';
 import { removeUserBooksDir } from '../../../../utils/user-books-dir';
 import { builder } from '../../builder';
@@ -72,34 +73,38 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * a breaking change. Changing a field's return type from an object to a
  * union later would break every existing `userDelete { deletedId }`
  * selection; adding a member to an already-declared union does not. A
- * concrete future candidate already exists structurally: REST's
- * target-specific 403 ("Cannot reset the built-in admin password") is only
- * unreachable today because the config admin happens to own no `User` row
- * (see the note below) — a per-row admin flag or a "last admin" precondition
- * would each need a member here. Task 6's review adjudicated this ruling;
- * every mutation in this schema returns `<Name>Result`, even when the union
- * has exactly one member today.
+ * concrete future candidate already exists structurally: a "last admin"
+ * precondition, were this schema ever to grow a per-row admin flag, would
+ * need a member here. (REST's target-specific 403 for the reserved admin
+ * username, once a candidate for the same reason, is no longer one — see the
+ * note below: it is now an explicit guard in the resolver, folded into the
+ * ordinary "no such user" `null` rather than a distinct error.) Task 6's
+ * review adjudicated this ruling; every mutation in this schema returns
+ * `<Name>Result`, even when the union has exactly one member today.
  *
  * Mirrored REST's `DELETE /api/users/:username`, removed in Phase 0 —
  * `router.use(adminAuth)` gated the whole router, so this is admin-only with
  * no `ownerOf` alternative, same as `userRegister`.
  *
  * Self-deletion / "last admin" (raised in the task brief) does not apply:
- * this app has exactly one admin, the config-file account, which has no row
- * in the `users` table (`Viewer.userId` is always `null` for it) — so it can
- * never be named by a `User` global ID at all, and can therefore never be
- * the target of this mutation, by construction. Every DB-backed `User` row
- * is an ordinary, non-admin account (the schema has no per-row admin flag —
- * `prisma/schema.prisma`'s `User` model), so "the caller deletes themselves"
- * is likewise impossible: only the config admin may call this mutation, and
- * the config admin has no `User` row to name as `userId`.
+ * every DB-backed `User` row that is NOT the config admin's is an ordinary,
+ * non-admin account (the schema has no per-row admin flag besides
+ * `isConfigAdmin` itself — `prisma/schema.prisma`'s `User` model), so "the
+ * caller deletes themselves" is impossible for any of them: only the config
+ * admin may call this mutation, and it never owns one of these ordinary rows.
  *
- * REST's one target-specific 403 — resetting/deleting the literal reserved
- * admin username — has no equivalent branch here for the identical reason:
- * there is no `User` global ID that could ever decode to the admin, so the
- * case REST special-cases can't arise; an attacker-crafted global ID
- * embedding some arbitrary string collapses into the ordinary "no such row"
- * `null` below, same as any other nonexistent id. Same kind of REST-shape
+ * The config admin DOES have a `users` row as of the email-identity work — it
+ * is where its address and (next spec) notification preferences live — but
+ * that row is identity-attached data, not an account this mutation may touch.
+ * The guard in the resolver refuses it explicitly, restoring what REST's
+ * target-specific 403 did and what this comment previously argued was
+ * unnecessary because no `User` global ID could name the admin. That argument
+ * no longer holds: the row exists and has an id. See
+ * `services/admin-account.ts`.
+ *
+ * The guard returns the ordinary "no such user" `null` rather than a distinct
+ * error, so the admin row stays indistinguishable from a nonexistent one —
+ * the same shape an attacker-crafted global ID gets. Same kind of REST-shape
  * divergence `bookDelete`'s doc comment records for "admin without a
  * target".
  *
@@ -130,6 +135,12 @@ builder.mutationField('userDelete', (t) =>
       const userId = args.input.userId.id;
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
+
+      // G2: the config admin's row is not a deletable account. Before this row
+      // existed, this mutation got the guarantee for free — see the doc comment
+      // above. Returning the ordinary "no such user" result rather than a distinct
+      // error keeps the row unaddressable instead of merely protected.
+      if (await isConfigAdminRow(context.prisma, owner.userId)) return null;
 
       const deleted = await deleteUser(context.prisma, context.editionsRoot, owner.username);
       if (!deleted) return null;

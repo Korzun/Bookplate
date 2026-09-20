@@ -1,5 +1,8 @@
 import { encodeGlobalID } from '@pothos/plugin-relay';
 
+import { ensureAdminUser } from '../../../../services/admin-account';
+import { setUserEmail } from '../../../../services/email';
+import { issueEmailToken } from '../../../../services/email-token';
 import { validateUser } from '../../../../services/password';
 import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import { createHarness, type Harness } from '../../../test-util';
@@ -99,5 +102,56 @@ describe('Mutation.userResetPassword', () => {
     expect(await validateUser(harness.prisma, 'alice', 'alicepass')).toBe(
       harness.aliceOwner.userId
     );
+  });
+
+  /**
+   * G2: the sharp guard. `resetPassword` writes a real argon2 hash, and
+   * `validateUser` authenticates ANY row that has one — so the load-bearing
+   * assertion here is the second one, not the first: a guard that returned
+   * the right result while still writing the hash would pass a
+   * refusal-only test and leave open exactly the second-credential
+   * vulnerability this task exists to close.
+   */
+  it('refuses to reset the config admin password, and writes no hash', async () => {
+    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', adminId) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userResetPassword).toBeNull();
+    expect(
+      (await harness.prisma.user.findUniqueOrThrow({ where: { id: adminId } })).passwordHash
+    ).toBeNull();
+  });
+
+  /**
+   * The spec requires outstanding tokens to die on ANY password change, not
+   * only on an address change (`viewer/mutation/set-email.ts` already covers
+   * that half). A code minted while the old password was live must not stay
+   * spendable once an admin has reset it — the same reasoning that already
+   * revokes every refresh token here.
+   */
+  it("invalidates bob's outstanding reset token on an admin-driven reset", async () => {
+    await setUserEmail(harness.prisma, harness.bobOwner.userId, 'bob@example.com');
+    await issueEmailToken(harness.prisma, {
+      userId: harness.bobOwner.userId,
+      purpose: 'reset',
+      email: 'bob@example.com',
+    });
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', harness.bobOwner.userId) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      await harness.prisma.emailToken.count({
+        where: { userId: harness.bobOwner.userId, purpose: 'reset' },
+      })
+    ).toBe(0);
   });
 });

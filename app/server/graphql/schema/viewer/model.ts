@@ -48,7 +48,8 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     library: t.field({
       type: library,
       nullable: true,
-      // Null for the config-based admin, which has no user row and owns no library.
+      // Null for the config-based admin, whose token carries no `sub` — v.userId
+      // is null for it, and it owns no library.
       resolve: (v, _args, context) => (v.userId === null ? null : context.loadOwner(v.userId)),
     }),
 
@@ -58,9 +59,15 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * node, so Houdini can share one cached `User` between `viewer { user }` and
      * `users`/`node(id:)`.
      *
-     * Null for the config-based admin, which has no row in the users table —
-     * `RefreshToken.userId` is nullable precisely for it. Same null condition and
-     * same reasoning as `Viewer.library` above.
+     * Null for the config-based admin, whose token carries no `sub` —
+     * `RefreshToken.userId` is nullable precisely for it, and `v.userId` here is
+     * always null in consequence. Same null condition and same reasoning as
+     * `Viewer.library` above.
+     *
+     * The admin now HAS a row (`services/admin-account.ts` — it holds its email
+     * address), but its token deliberately still carries no `sub`, so this field
+     * stays null for it and every ownership path is unchanged. That is exactly
+     * why `Viewer.email` is a field on `Viewer` and not reached through here.
      *
      * No scope beyond the builder default: this is by construction the viewer's
      * own row, exactly as `Viewer.library` is by construction the viewer's own
@@ -133,13 +140,13 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
      * and exposed on `Viewer` only. This field is the "only".
      *
      * REST's `403` for an admin becomes `null` rather than a `FORBIDDEN` error:
-     * the field is a property of a viewer that has a user row, and the
-     * config-based admin has none (its `viewer.userId` is null), exactly like
+     * the field is resolved through `v.userId`, and the config-based admin's
+     * token carries no `sub`, so `viewer.userId` is null for it exactly like
      * `Viewer.library`. Erroring would make `{ viewer { username syncPassword } }`
      * fail wholesale for an admin instead of answering the parts that apply.
      * `isAdmin` is the condition REST branches on and is what is reproduced here;
      * for this codebase it coincides with `userId === null`, since admin status
-     * comes only from the config-based account, which has no row.
+     * comes only from the config-based account, whose token names no row.
      *
      * NOTE — this read has a write side effect, inherited from
      * `services/password.ts`'s `getSyncPassword`: a user whose `sync_password` column is still
