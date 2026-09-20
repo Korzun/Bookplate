@@ -689,6 +689,11 @@ type Mutation {
   userChangePassword(input: UserChangePasswordInput!): UserChangePasswordResult
 
   """
+  Clears a user's email address, its normalized key and its confirmed state, freeing the address for its rightful owner to claim. The account itself is untouched. Resolves to null when the user does not exist. The user will be asked to set an address again the next time they sign in, if mail is configured.
+  """
+  userClearEmail(input: UserClearEmailInput!): UserClearEmailResult
+
+  """
   Deletes a user account — DB row and on-disk library folder both. Resolves to null when the user does not exist.
   """
   userDelete(input: UserDeleteInput!): UserDeleteResult
@@ -926,6 +931,16 @@ type UserChangePasswordPayload {
 }
 
 union UserChangePasswordResult = IncorrectPasswordError | InvalidInputError | UserChangePasswordPayload
+
+input UserClearEmailInput {
+  userId: ID!
+}
+
+type UserClearEmailPayload {
+  user: User!
+}
+
+union UserClearEmailResult = UserClearEmailPayload
 
 input UserDeleteInput {
   userId: ID!

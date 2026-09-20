@@ -122,6 +122,9 @@
       "InvalidInputError",
       "UserChangePasswordPayload"
     ],
+    "UserClearEmailResult": [
+      "UserClearEmailPayload"
+    ],
     "UserDeleteResult": [
       "UserDeletePayload"
     ],
