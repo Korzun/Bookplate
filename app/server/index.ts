@@ -8,7 +8,7 @@ import { runMigrations } from './db/migrate';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
-import { ensureAdminUser } from './services/admin-account';
+import { ensureAdminUser, NOT_CONFIG_ADMIN } from './services/admin-account';
 import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
 import { getStagingDir } from './services/book-paths';
@@ -79,8 +79,8 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     mailer,
   });
 
-  // Before the startup scan: the scan skips the admin's username explicitly, and
-  // every email flow needs this row to exist.
+  // Before the startup scan: the scan excludes the admin's row via
+  // `NOT_CONFIG_ADMIN` below, and every email flow needs this row to exist.
   await ensureAdminUser(prisma, config.username);
 
   // Startup scan: per user — create missing folders, import untracked EPUBs,
@@ -104,7 +104,14 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     // "lists every user ... ordered by username" test covers the identical
     // shape (`findMany` + `orderBy: { username: 'asc' }`) for the separate
     // `Viewer.users` resolver, which is the closest existing coverage.
+    // `where: NOT_CONFIG_ADMIN` — the config-based admin owns no library, and
+    // it must be excluded by the flag, not by name: `ensureAdminUser` refuses
+    // to adopt a non-admin row that happens to bear `config.username` (see its
+    // doc comment, case 3), so that username can legitimately belong to a real
+    // reader while the admin's own (differently-named) row exists separately.
+    // A name comparison here would silently skip that reader's library scan.
     const ownerRows = await prisma.user.findMany({
+      where: NOT_CONFIG_ADMIN,
       select: { id: true, username: true },
       orderBy: { username: 'asc' },
     });
@@ -115,9 +122,6 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     let validated = 0;
     let failedValidation = 0;
     for (const owner of owners) {
-      // The config-based admin owns no library; a legacy DB row bearing its
-      // username must not materialize one.
-      if (owner.username === config.username) continue;
       fs.mkdirSync(path.join(config.booksDir, owner.username), { recursive: true });
       const scanResult = await scan(prisma, config.booksDir, owner);
       const val = await revalidateLibrary(
