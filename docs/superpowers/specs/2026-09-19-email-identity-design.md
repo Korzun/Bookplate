@@ -229,6 +229,81 @@ assumed:
 Because the password lives in the options, **password reset refuses the config
 admin** (see below).
 
+### Guards the admin row requires
+
+The admin row is a small change with a wide blast radius, because several
+existing code paths are written against "the admin has no row" as a *structural*
+guarantee rather than a passing condition. Each of the following is a defect this
+spec introduces if it is not implemented alongside the row.
+
+**G1 — A wrong admin password would start returning `403` instead of `401`.**
+`/api/login` compares the config credential first, and on a mismatch falls
+through to `findUnique({ where: { username } })`. That lookup previously missed
+for the admin; now it finds their row, whose `passwordHash` is `null`, and hits
+the "password not set" `403` branch. Fix: that branch must skip
+`isConfigAdmin: true` rows and fall through to the generic `401`. Otherwise a
+mistyped admin password is reported differently from a mistyped reader password,
+which both changes behaviour and confirms to an unauthenticated caller that the
+admin username exists.
+
+**G2 — `userDelete` and `userResetPassword` must refuse `isConfigAdmin` rows.**
+REST had a target-specific `403` for the reserved admin username. Both
+mutations' doc comments record that the guard was dropped deliberately, because
+"the config admin has no `User` row and so no `User` global ID could ever name
+it — the REST case this guards against cannot arise". **The row invalidates that
+argument and re-opens exactly what REST guarded.** `userResetPassword` is the
+sharper of the two: it would write a real `passwordHash` onto the admin row, and
+since `validateUser` authenticates any row that has one, that becomes a second
+independent credential for the admin account which the add-on options do not
+govern and cannot rotate. Both mutations return the ordinary "no such user"
+result for such a row, so the row stays unaddressable rather than merely
+protected.
+
+**G3 — `ensureAdminUser` must set `syncPassword: null`, and
+`viewerRegenerateSyncPassword` must refuse the admin.** `createUser` generates a
+sync password by default; the admin must not get one, or they silently gain
+OPDS/KOSync access they do not have today (`authenticate` returns `false` for a
+`null` sync password, which is the only thing denying it now). The regenerate
+mutation resolves its target as `context.viewer!.username`, so it would also
+start succeeding for an admin where it previously found no row.
+
+**G4 — `Viewer.email` must be a field on `Viewer` itself, not reached through
+`Viewer.user`.** `Viewer.user`, `Viewer.library` and `Viewer.syncPassword` are
+all gated on `v.userId === null` and return `null` for the admin by design.
+Since the admin's token deliberately still carries no `sub`, an address hung off
+`Viewer.user` would be invisible to the one account that needs it most. The
+`username`-fallback resolution described above is what makes the `Viewer`-level
+fields work.
+
+**G5 — The doc comments asserting the premise must be corrected.**
+`user/mutation/delete.ts` and `user/mutation/reset-password.ts` both argue at
+length from "the config admin has no row"; `viewer/model.ts` states it three
+times. The comments in `viewer/model.ts` stay true (`userId` is still `null` for
+the admin) and need only a note that a row now exists but is not named by the
+token. The two mutation comments become actively wrong and must be rewritten to
+describe G2's explicit guard instead. Leaving them would hand the next reader
+false confidence in a protection that no longer holds by construction.
+
+### Anticipating a real admin account
+
+A future where the admin is an ordinary database user is plausible and is
+explicitly **out of scope** here, because it needs a first-run onboarding flow
+this app does not have: something that creates the admin account, sets its
+address and its password, and makes the add-on options a seed rather than the
+live credential. That flow is the prerequisite, not this spec.
+
+This design is shaped so that future is a small step rather than a rewrite:
+
+- The row already exists and already holds the identity data, so that change is
+  about the *credential source* and *visibility*, not about creating an account.
+- `passwordHash` stays `null` rather than mirroring the config password. The
+  column is empty and ready for the day options stop being authoritative, and
+  until then nothing can authenticate against it by accident.
+- **The `isConfigAdmin` exclusion lives in exactly one place** — a single
+  exported predicate/`where` fragment that every listing and every guard above
+  imports. Promoting the admin to a normal user is then a change at one call
+  site, not an audit of every query that happens to select users.
+
 ### Login by email
 
 `POST /api/login`'s contract is unchanged; its `username` field becomes an
@@ -357,6 +432,14 @@ TDD, vitest on both sides.
 - **Gate**: REST `403`; GraphQL scope refusal; `emailSetupAllowed` exempts only
   `viewerSetEmail`; ordering — a pending password change wins over set-email;
   the gate is inert when `config.mail` is null.
+- **Admin-row guards**, one test each: a wrong admin password returns `401`,
+  not `403` (G1); `userDelete` and `userResetPassword` return "no such user"
+  for the admin row, and in particular no `passwordHash` is ever written to it
+  (G2); the admin row has a `null` `syncPassword` and OPDS/KOSync auth still
+  refuses the admin, and `viewerRegenerateSyncPassword` refuses them (G3);
+  `Viewer.email` resolves for the admin while `Viewer.user` stays `null` (G4);
+  `ensureAdminUser` renames on an options username change, is idempotent across
+  restarts, and leaves the row alone on a collision.
 - **REST integration** (supertest): `forgot` returns `204` for unknown,
   unverified and admin alike; `reset` rotates the password, revokes refresh
   tokens and clears `mustChangePassword`; bad and expired codes rejected
@@ -385,7 +468,9 @@ TDD, vitest on both sides.
 
 ## Out of scope
 
-Notification preferences and triggers (Spec 2); web push; an SMTP driver;
+Notification preferences and triggers (Spec 2); web push; a first-run
+onboarding flow and the promotion of the admin to an ordinary database user
+(the two go together, and the onboarding flow is the blocker); an SMTP driver;
 inbound email; digests or scheduling; changing how `syncPassword` works for
 OPDS/KOSync; any change to the admin's credential source.
 
@@ -406,3 +491,8 @@ OPDS/KOSync; any change to the admin's credential source.
 6. `mustSetEmail` rides a 15-minute access token, so anything that clears it
    must force a refresh rather than wait the token out — that is why
    `viewerSetEmail`'s client path refreshes explicitly.
+7. **The admin row breaks a premise three files reason from.** `userDelete` and
+   `userResetPassword` dropped REST's admin-target guard on the grounds that the
+   admin has no row and so cannot be named; that is no longer true. See G1-G5.
+8. `createUser` generates a `syncPassword` by default — the admin row must not
+   get one, or it gains OPDS/KOSync access that nothing else is denying it.
