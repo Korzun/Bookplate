@@ -367,7 +367,10 @@ Add a test alongside it proving the uniformity, since that is a security propert
 
 ```ts
 it('says the same thing whether the holder has confirmed the address or not', async () => {
-  const harness = createHarness();
+  // MUST be configured with mail: viewerSetEmail's first statement returns
+  // EmailNotConfiguredError when it is not, which would make both messages
+  // trivially equal and this test vacuous.
+  const harness = createHarness({ mail: MAIL_CONFIG });
   const annId = await harness.createReader('ann');
   const bobId = await harness.createReader('bob');
   const carlId = await harness.createReader('carl');
@@ -390,7 +393,9 @@ it('says the same thing whether the holder has confirmed the address or not', as
 });
 ```
 
-`SET_EMAIL` is the `viewerSetEmail` mutation document; the existing `viewer/mutation/set-email.test.ts` has one to copy. Note the second call must clear carl's own address first or it will hit the cooldown rather than the collision — read `issueEmailToken`'s cooldown before writing this and adjust if needed.
+`SET_EMAIL` is the `viewerSetEmail` mutation document; the existing `viewer/mutation/set-email.test.ts` has one to copy, along with `MAIL_CONFIG` (now shared from `test-support/mail.ts`).
+
+No cooldown applies to either call, and you do not need to reset carl between them: `setUserEmail` runs before any token work, and an `in_use` outcome returns `emailInUseError()` immediately — `invalidateEmailTokens` and `issueEmailToken` sit below that return and are never reached on a collision. Verified against `set-email.ts` before this plan was written.
 
 Add a comment: the message is deliberately **uniform** — it never says who holds the address or whether they have confirmed it, because it is returned to whoever probed the address, and that is operator-only information.
 
