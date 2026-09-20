@@ -21,8 +21,8 @@ import { graphql } from '~/gql';
  *
  * `viewer.user`, not `Query.user(id:)` — the latter is admin-only and refuses a
  * non-admin even for their own id. `Viewer.user` is NULLABLE and is null for the
- * config-based admin, which has no `User` row (the same reason `viewer.library`
- * is null for it).
+ * config-based admin, whose token carries no `sub` (the same reason
+ * `viewer.library` is null for it).
  *
  * Measured (`npm run test:cost -w app/server`): breadth 7 (7.0%), complexity 7
  * (0.0%) of budget.

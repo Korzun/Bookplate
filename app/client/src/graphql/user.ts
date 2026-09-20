@@ -167,9 +167,9 @@ export const UserResetPasswordDocument = graphql(`
  * it — exactly matching REST's `GET /api/my/sync-password`.
  *
  * `syncPassword` is nullable and resolves to a clean `null` (no accompanying
- * error) for the config-based admin, which has no user row — the resolver
- * carries no `authScopes`, unlike `Viewer.users`/`Device.enabledUsers`. Render
- * that null as "not applicable to this account", not as a failure.
+ * error) for the config-based admin, whose token carries no `sub` — the
+ * resolver carries no `authScopes`, unlike `Viewer.users`/`Device.enabledUsers`.
+ * Render that null as "not applicable to this account", not as a failure.
  */
 export const SyncPasswordDocument = graphql(`
   query SyncPassword {

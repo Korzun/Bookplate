@@ -10,7 +10,7 @@ import { graphql } from '~/gql';
  * coupling the book-relay-id plan removed.
  *
  * `library` and `user` are both null for the config-based admin, which owns no
- * library and has no user row.
+ * library and whose token carries no `sub`.
  */
 export const ViewerBootstrapDocument = graphql(`
   query ViewerBootstrap {

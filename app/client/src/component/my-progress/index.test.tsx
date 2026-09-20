@@ -150,8 +150,8 @@ describe('MyProgress', () => {
     await waitFor(() => expect(screen.getByText('Dune')).toBeInTheDocument());
   });
 
-  // Brief-required: `Viewer.user` is null for the config-based admin, which
-  // has no `User` row (same reason `Viewer.library` is null for it, per
+  // Brief-required: `Viewer.user` is null for the config-based admin, whose
+  // token carries no `sub` (same reason `Viewer.library` is null for it, per
   // `graphql/progress.ts`'s doc comment) — mirrors what the REST screen
   // already did here (see this task's report for the trace): the REST-era
   // progress hook returned an ERROR ("User not logged in") whenever

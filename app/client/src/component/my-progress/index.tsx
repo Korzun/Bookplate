@@ -25,11 +25,11 @@ import { useStyle } from './style';
  * mechanism and for why `skip` is still an explicit, required prop despite
  * never varying here.
  *
- * `viewer.user` is NULLABLE and is `null` for the config-based admin, which
- * has no `User` row (`graphql/progress.ts`'s doc comment). This mirrors what
- * the REST screen already did here: REST's `useMyProgressList` returned an
- * ERROR ("User not logged in") whenever `username` was `undefined` — always
- * true for the admin — and the old `MyProgress` destructured only the
+ * `viewer.user` is NULLABLE and is `null` for the config-based admin, whose
+ * token carries no `sub` (`graphql/progress.ts`'s doc comment). This mirrors
+ * what the REST screen already did here: REST's `useMyProgressList` returned
+ * an ERROR ("User not logged in") whenever `username` was `undefined` —
+ * always true for the admin — and the old `MyProgress` destructured only the
  * data tuple element, so `progressList` stayed `undefined` and `subTitle`
  * fell through to its `undefined` branch. Rendering no subtitle here for
  * `progressCount === undefined` (loading OR admin) reaches the same
