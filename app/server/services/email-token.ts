@@ -14,7 +14,7 @@
  *
  * `now` is injected on every function (defaulting to `Date.now`) so expiry,
  * cooldown and window-rollover tests need no fake timers — the same shape
- * `createLoginRateLimit` and `ReplaceStagingDeps.now` use.
+ * `createIpRateLimit` and `ReplaceStagingDeps.now` use.
  */
 import * as crypto from 'crypto';
 
