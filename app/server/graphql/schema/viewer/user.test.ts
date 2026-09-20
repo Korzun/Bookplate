@@ -50,7 +50,7 @@ describe('Viewer.user', () => {
   });
 
   it('exposes the address on Viewer itself, so the admin can read their own', async () => {
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
     await setUserEmail(harness.prisma, adminId, 'boss@example.com');
 
     const result = await harness.execute('{ viewer { email emailVerifiedAt user { id } } }', {

@@ -42,7 +42,8 @@ const log = logger('AdminAccount');
 export const NOT_CONFIG_ADMIN = { isConfigAdmin: false } as const;
 
 /**
- * Upserts the admin row and returns its id. Four cases, in this order:
+ * Upserts the admin row and returns its id, or `null` when it refuses to act.
+ * Four cases, in this order:
  *
  *  1. A row already marked `isConfigAdmin` with the right username — nothing to do.
  *  2. A row already marked `isConfigAdmin` under a DIFFERENT username — the
@@ -51,14 +52,27 @@ export const NOT_CONFIG_ADMIN = { isConfigAdmin: false } as const;
  *     collision leaves the row untouched and warns; the alternative (creating a
  *     second admin row) would silently split the identity in two.
  *  3. No marked row, but an unmarked row already bears the admin username. This
- *     happens on legacy databases — `index.ts`'s startup scan already skips such
- *     a row ("a legacy DB row bearing its username must not materialize one").
- *     It is ADOPTED and its credentials are cleared, because from here on the
- *     options are the admin's only credential and leaving a usable hash on this
- *     row would create exactly the second credential invariant 1 forbids.
+ *     can happen on a legacy database, but it can just as easily be a REAL
+ *     user's row — a reader who happens to hold that username, or an operator
+ *     who changed `username` in the add-on options and upgraded in the same
+ *     step. Adopting it (as this used to) would destroy that user's argon2 hash
+ *     and sync password unrecoverably: excluded from every listing and refused
+ *     by `userDelete`/`userResetPassword` (both key off `isConfigAdmin`), the
+ *     row could never be repaired, re-credentialed or deleted afterward. This
+ *     is REFUSED, matching case 2's collision handling exactly — the two are
+ *     the same operator error (a username collides with the admin's), and only
+ *     the direction differed before. No row is created or modified; the caller
+ *     gets `null` and the admin has no row until the operator resolves the
+ *     collision (renaming whichever side is wrong) and restarts. Every email
+ *     flow that needs a row degrades to "no such account" in consequence — see
+ *     `resolveViewerUserId` and `computeMustSetEmail`, both of which already
+ *     handle a missing row for other reasons.
  *  4. Nothing at all — created.
  */
-export async function ensureAdminUser(prisma: PrismaClient, username: string): Promise<string> {
+export async function ensureAdminUser(
+  prisma: PrismaClient,
+  username: string
+): Promise<string | null> {
   const marked = await prisma.user.findFirst({ where: { isConfigAdmin: true } });
   if (marked !== null) {
     if (marked.username === username) return marked.id;
@@ -78,15 +92,19 @@ export async function ensureAdminUser(prisma: PrismaClient, username: string): P
 
   const legacy = await prisma.user.findUnique({ where: { username } });
   if (legacy !== null) {
-    await prisma.user.update({
-      where: { id: legacy.id },
-      data: { isConfigAdmin: true, passwordHash: null, syncPassword: null },
-    });
-    log.warn(
-      `Adopted the existing "${username}" row as the admin account and cleared its stored ` +
-        `credentials — the add-on options are the admin's only credential.`
+    // C1: do NOT adopt. This row may belong to a real user, and adopting it
+    // would clear its passwordHash/syncPassword irrecoverably — see the doc
+    // comment above (case 3). Refuse exactly as case 2 refuses a blocked
+    // rename: leave the row alone, create nothing, and tell the operator what
+    // to do about it.
+    log.error(
+      `A row already exists with username "${username}" but is not marked as the admin ` +
+        `account. Refusing to adopt it as the admin — doing so would permanently destroy its ` +
+        `password and sync password. The admin has no account row until this is resolved: ` +
+        `either rename that row (if it belongs to a real user) or change the "${username}" ` +
+        `add-on option to a username that does not collide, then restart.`
     );
-    return legacy.id;
+    return null;
   }
 
   const created = await prisma.user.create({

@@ -174,7 +174,7 @@ describe('POST /api/password/forgot', () => {
 
   it('returns 204 for the config admin, and sends nothing', async () => {
     const { app, mailer } = build({ mail: MAIL_CONFIG });
-    const adminId = await ensureAdminUser(prisma, 'admin');
+    const adminId = (await ensureAdminUser(prisma, 'admin'))!;
     await setUserEmail(prisma, adminId, 'boss@example.com');
     await markEmailVerified(prisma, adminId);
 
@@ -310,7 +310,7 @@ describe('POST /api/password/reset', () => {
 
   it('refuses to reset the config admin, and leaves the admin credential (the add-on options) untouched', async () => {
     const { app } = build({ mail: MAIL_CONFIG });
-    const adminId = await ensureAdminUser(prisma, config.username);
+    const adminId = (await ensureAdminUser(prisma, config.username))!;
     await setUserEmail(prisma, adminId, 'boss@example.com');
     await markEmailVerified(prisma, adminId);
 

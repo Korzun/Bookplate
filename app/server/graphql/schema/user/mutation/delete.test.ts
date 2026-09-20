@@ -105,7 +105,7 @@ describe('Mutation.userDelete', () => {
    * survive.
    */
   it('refuses to delete the config admin row', async () => {
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,

@@ -646,7 +646,7 @@ describe('login by email', () => {
   });
 
   it('accepts the admin’s own address', async () => {
-    const adminId = await ensureAdminUser(prisma, config.username);
+    const adminId = (await ensureAdminUser(prisma, config.username))!;
     await prisma.user.update({
       where: { id: adminId },
       data: { email: 'boss@example.com', emailKey: 'boss@example.com' },
@@ -744,7 +744,7 @@ describe('G1: the admin row must not change a failed admin login', () => {
   });
 
   it('returns 401, not 403, for a wrong admin password presented as the admin’s address', async () => {
-    const adminId = await ensureAdminUser(prisma, config.username);
+    const adminId = (await ensureAdminUser(prisma, config.username))!;
     await prisma.user.update({
       where: { id: adminId },
       data: { email: 'boss@example.com', emailKey: 'boss@example.com' },

@@ -113,7 +113,7 @@ describe('Mutation.userResetPassword', () => {
    * vulnerability this task exists to close.
    */
   it('refuses to reset the config admin password, and writes no hash', async () => {
-    const adminId = await ensureAdminUser(harness.prisma, 'admin');
+    const adminId = (await ensureAdminUser(harness.prisma, 'admin'))!;
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.adminViewer,
