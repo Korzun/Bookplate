@@ -6,41 +6,45 @@ import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
 import { model as user } from '../user/model';
+import { resolveViewerRow } from './resolve-row';
 
 export const model = builder.objectRef<Viewer>('Viewer').implement({
   fields: (t) => ({
     username: t.exposeString('username'),
     isAdmin: t.exposeBoolean('isAdmin'),
     mustChangePassword: t.exposeBoolean('mustChangePassword'),
-    mustSetEmail: t.exposeBoolean('mustSetEmail'),
+    // No `mustSetEmail` field here (D3, whole-branch review): it was exposed
+    // in the SDL but no client operation ever selected it — the client gates
+    // on the JWT claim instead (`AuthUser.mustSetEmail`, `lib/token.ts`).
+    // Removed rather than left inert, for the same reason two dead Pothos
+    // plugins were removed rather than left in this schema: dead GraphQL
+    // surface is a permanent public contract, and leaving it invites someone
+    // to re-add it later believing it already works. The JWT claim and
+    // `context.ts`'s `Viewer.mustSetEmail` are UNCHANGED — those are
+    // load-bearing (`ProtectedRoute`'s gate); only this exposed field goes.
 
     /**
      * ON `Viewer`, NOT behind `Viewer.user` — deliberately. `Viewer.user` resolves
      * through `v.userId`, which is null for the config-based admin, so an address
      * hung off it would be unreadable by the one account that cannot recover its
-     * password any other way. Resolved by username fallback, the same way
-     * `resolveViewerUserId` does for the mutations.
+     * password any other way. Resolved through `resolveViewerRow` (I3,
+     * whole-branch review) — by `userId`, or by the `isConfigAdmin` flag for
+     * the admin — NOT by `v.username`: a username lookup can resolve to an
+     * unrelated row when `ensureAdminUser`'s rename is blocked by a collision
+     * (see that module's doc comment for the full scenario).
      */
     email: t.field({
       type: 'String',
       nullable: true,
-      resolve: async (v, _args, context) => {
-        const row = await context.prisma.user.findUnique({
-          where: { username: v.username },
-          select: { email: true },
-        });
-        return row?.email ?? null;
-      },
+      resolve: async (_v, _args, context) =>
+        (await resolveViewerRow(context, { email: true }))?.email ?? null,
     }),
 
     emailVerifiedAt: t.field({
       type: 'DateTime',
       nullable: true,
-      resolve: async (v, _args, context) => {
-        const row = await context.prisma.user.findUnique({
-          where: { username: v.username },
-          select: { emailVerifiedAt: true },
-        });
+      resolve: async (_v, _args, context) => {
+        const row = await resolveViewerRow(context, { emailVerifiedAt: true });
         return row?.emailVerifiedAt == null ? null : epochToDate(row.emailVerifiedAt);
       },
     }),
