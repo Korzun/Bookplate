@@ -783,4 +783,53 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
          ON "book_requests" ("user_id", "dedupe_key")`
     );
   });
+
+  // Data migration: users email columns + the email_tokens table. Runs after
+  // data_v10_user_surrogate_id, which rebuilds "users" from an explicit column
+  // list and would drop anything the DDL pass added. The Prisma DDL migration
+  // (20260919000000_add_user_email) is a no-op; see its comment.
+  //
+  // The PRAGMA guards make each ALTER re-runnable: runDataMigration only records
+  // the name AFTER the body resolves, so a body that fails halfway runs again on
+  // the next boot and must tolerate its own partial work.
+  await runDataMigration(prisma, 'data_v19_user_email', async () => {
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(users)`;
+    const has = (name: string): boolean => cols.some((c) => c.name === name);
+
+    if (!has('email')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "users" ADD COLUMN "email" TEXT`);
+    }
+    if (!has('email_key')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "users" ADD COLUMN "email_key" TEXT`);
+    }
+    if (!has('email_verified_at')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "users" ADD COLUMN "email_verified_at" REAL`);
+    }
+    if (!has('is_config_admin')) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "users" ADD COLUMN "is_config_admin" BOOLEAN NOT NULL DEFAULT 0`
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key_key" ON "users" ("email_key")`
+    );
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "email_tokens" (
+        "user_id" TEXT NOT NULL,
+        "purpose" TEXT NOT NULL,
+        "token_hash" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "expires_at" REAL NOT NULL,
+        "created_at" REAL NOT NULL,
+        "sent_at" REAL NOT NULL,
+        "send_count" INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY ("user_id", "purpose"),
+        CONSTRAINT "email_tokens_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "email_tokens_expires_at_idx" ON "email_tokens" ("expires_at")`
+    );
+  });
 }

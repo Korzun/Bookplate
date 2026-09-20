@@ -175,6 +175,27 @@ model User {
   passwordHash       String?           @map("password_hash")
   syncPassword       String?           @map("sync_password")
   mustChangePassword Boolean           @default(false) @map("must_change_password")
+  // `emailKey` is `email` trimmed and lowercased, and is what EVERY lookup uses
+  // — login by address, forgot-password, uniqueness. Storing the derived key
+  // gets case-insensitive uniqueness from a plain `@unique`, where the
+  // alternative (a `lower(email)` expression index) is something Prisma cannot
+  // model and the client would not know about. Same derived-key convention as
+  // `Book.titleSort`, `Series.sortKey` and `BookRequest.dedupeKey`.
+  //
+  // Nullable although an address is REQUIRED: "required" is a policy enforced at
+  // the login boundary (see `mustSetEmail`), exactly as `mustChangePassword` is,
+  // and SQLite permits any number of NULLs in a unique index — which is what
+  // lets every pre-upgrade row coexist without a placeholder address.
+  //
+  // `isConfigAdmin` marks the row mirroring the add-on options admin. That row
+  // is identity-attached data ONLY: its token carries no `sub`, it is excluded
+  // from every user listing, and three mutations refuse it outright. See
+  // `services/admin-account.ts`.
+  email              String?
+  emailKey           String?           @unique @map("email_key")
+  emailVerifiedAt    Float?            @map("email_verified_at")
+  isConfigAdmin      Boolean           @default(false) @map("is_config_admin")
+  emailTokens        EmailToken[]
   progresses         Progress[]
   progressHistories  ProgressHistory[]
   refreshTokens      RefreshToken[]
@@ -272,6 +293,32 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+// One outstanding token per user per purpose — the primary key IS the identity,
+// not `tokenHash`, because every consumption path already knows which account it
+// acts on (confirm is authenticated; reset submits the address alongside the
+// code). Three consequences, all deliberate: a guessed code is worthless without
+// the matching account, "resend" is an upsert that invalidates the previous code
+// rather than accumulating live ones, and the send counters below need no
+// separate table.
+//
+// `email` records the address the code was sent to, so a reset token stops
+// working the moment the account's address changes.
+model EmailToken {
+  userId    String @map("user_id")
+  purpose   String
+  tokenHash String @map("token_hash")
+  email     String
+  expiresAt Float  @map("expires_at")
+  createdAt Float  @map("created_at")
+  sentAt    Float  @map("sent_at")
+  sendCount Int    @default(1) @map("send_count")
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, purpose])
+  @@index([expiresAt])
+  @@map("email_tokens")
 }
 
 model Setting {

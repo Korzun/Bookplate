@@ -382,6 +382,100 @@ describe('data_v18_book_requests', () => {
   });
 });
 
+describe('data_v19_user_email', () => {
+  let tmpDir: string;
+  let booksDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-email-'));
+    booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('adds the email columns to users', async () => {
+    await runMigrations(prisma, booksDir);
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(users)`;
+    const names = cols.map((c) => c.name);
+    expect(names).toContain('email');
+    expect(names).toContain('email_key');
+    expect(names).toContain('email_verified_at');
+    expect(names).toContain('is_config_admin');
+  });
+
+  it('creates the email_tokens table', async () => {
+    await runMigrations(prisma, booksDir);
+    const tables = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'email_tokens'
+    `;
+    expect(tables).toHaveLength(1);
+  });
+
+  it('enforces case-insensitive uniqueness through email_key', async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({
+      data: { id: 'u1', username: 'ann', email: 'Ann@Example.com', emailKey: 'ann@example.com' },
+    });
+    await expect(
+      prisma.user.create({
+        data: { id: 'u2', username: 'bob', email: 'ANN@example.com', emailKey: 'ann@example.com' },
+      })
+    ).rejects.toThrow();
+  });
+
+  it('permits many users with no address at all', async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'ann' } });
+    await prisma.user.create({ data: { id: 'u2', username: 'bob' } });
+    expect(await prisma.user.count()).toBe(2);
+  });
+
+  it('is idempotent across a second run', async () => {
+    await runMigrations(prisma, booksDir);
+    await expect(runMigrations(prisma, booksDir)).resolves.not.toThrow();
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(users)`;
+    expect(cols.filter((c) => c.name === 'email')).toHaveLength(1);
+  });
+
+  // The regression this migration exists to avoid: data_v10_user_surrogate_id
+  // rebuilds `users` from an explicit column list, so anything added during
+  // the DDL pass is dropped. Build a legacy-shaped database (pre-v10: no `id`
+  // column, `username` as the primary key — the same shape used by the
+  // "assigns NanoID surrogate ids" fixture above), run the whole migrator from
+  // scratch, and assert the columns survived the v10 rebuild.
+  it('keeps the columns on a database that starts pre-v10', async () => {
+    const BOOKS_SCHEMA = `
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY, filename TEXT NOT NULL UNIQUE, path TEXT NOT NULL,
+        title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+        series_index REAL NOT NULL DEFAULT 0, cover_data BLOB, cover_mime TEXT,
+        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL
+      )
+    `;
+    await prisma.$executeRawUnsafe(BOOKS_SCHEMA);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "users" (
+        "username" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL
+      )
+    `);
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+
+    await runMigrations(prisma, booksDir);
+
+    const cols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(users)`;
+    expect(cols.map((c) => c.name)).toContain('email');
+    expect(cols.map((c) => c.name)).toContain('email_key');
+  });
+});
+
 // Moved from `services/book-store.test.ts` (Task 9b, `BookStore`'s deletion):
 // these assert `runMigrations` itself (id recompute, NanoID surrogate ids,
 // the `chapter_names`/`page_count` columns), not anything `BookStore` ever
