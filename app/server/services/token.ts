@@ -7,6 +7,8 @@ import * as crypto from 'crypto';
 
 import { PrismaClient } from '@prisma/client';
 
+import { deleteExpiredEmailTokens } from './email-token';
+
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const JWT_SECRET_KEY = 'jwt_secret';
 
@@ -86,5 +88,10 @@ export async function revokeAllForUsername(prisma: PrismaClient, username: strin
 }
 
 export async function deleteExpired(prisma: PrismaClient): Promise<void> {
-  await prisma.refreshToken.deleteMany({ where: { expiresAt: { lte: Date.now() } } });
+  const now = Date.now();
+  await prisma.refreshToken.deleteMany({ where: { expiresAt: { lte: now } } });
+  // Email tokens ride the same sweep rather than getting a timer of their own:
+  // this already runs on every successful login, which is frequent enough for
+  // rows whose only cost is a few bytes.
+  await deleteExpiredEmailTokens(prisma, now);
 }

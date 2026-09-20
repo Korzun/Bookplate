@@ -147,6 +147,22 @@ describe('refresh tokens', () => {
     expect(await consumeRefreshToken(prisma, live)).toEqual({ username: 'alice', userId: aliceId });
   });
 
+  it('also removes expired email tokens', async () => {
+    await prisma.emailToken.create({
+      data: {
+        userId: aliceId,
+        purpose: 'reset',
+        tokenHash: 'h',
+        email: 'a@b.co',
+        expiresAt: Date.now() - 1,
+        createdAt: Date.now() - 2,
+        sentAt: Date.now() - 2,
+      },
+    });
+    await deleteExpired(prisma);
+    expect(await prisma.emailToken.count()).toBe(0);
+  });
+
   it('rows are cascade-deleted with the user', async () => {
     await createUser(prisma, 'carol', await hashLoginPassword('pw'));
     const carolId = (await prisma.user.findUnique({ where: { username: 'carol' } }))!.id;
