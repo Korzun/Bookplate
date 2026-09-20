@@ -1,3 +1,5 @@
+import { setUserEmail } from '../../../../services/email';
+import { issueEmailToken } from '../../../../services/email-token';
 import { validateUser } from '../../../../services/password';
 import { consumeRefreshToken, createRefreshToken } from '../../../../services/token';
 import type { Viewer } from '../../../context';
@@ -82,6 +84,29 @@ describe('Mutation.userChangePassword', () => {
     });
 
     expect(await consumeRefreshToken(harness.prisma, refreshToken)).toBeNull();
+  });
+
+  /**
+   * The spec requires outstanding tokens to die on ANY password change, not
+   * only on an address change (`viewer/mutation/set-email.ts` already covers
+   * that half). A code minted while the old password was live must not stay
+   * spendable after the user has chosen a new one — the same reasoning
+   * behind revoking every refresh token, which this mutation already does
+   * two lines above.
+   */
+  it('invalidates an outstanding reset token on a successful change', async () => {
+    const userId = harness.aliceOwner.userId;
+    await setUserEmail(harness.prisma, userId, 'alice@example.com');
+    await issueEmailToken(harness.prisma, { userId, purpose: 'reset', email: 'alice@example.com' });
+
+    await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: {
+        input: { currentPassword: 'alicepass', newPassword: 'newpass123' },
+      },
+    });
+
+    expect(await harness.prisma.emailToken.count({ where: { userId, purpose: 'reset' } })).toBe(0);
   });
 
   it("returns IncorrectPasswordError for a wrong current password, and leaves alice's password unchanged", async () => {

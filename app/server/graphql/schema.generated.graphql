@@ -951,7 +951,7 @@ type UserRegenerateSyncPasswordPayload {
   user: User!
 }
 
-union UserRegenerateSyncPasswordResult = UserRegenerateSyncPasswordPayload
+union UserRegenerateSyncPasswordResult = InvalidInputError | UserRegenerateSyncPasswordPayload
 
 input UserRegisterInput {
   username: String!

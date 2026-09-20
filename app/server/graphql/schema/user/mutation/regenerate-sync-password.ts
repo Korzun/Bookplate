@@ -1,5 +1,9 @@
 import { changeSyncPassword, generateSyncPassword } from '../../../../services/password';
 import { builder } from '../../builder';
+import {
+  invalidInputIssue,
+  model as invalidInputErrorModel,
+} from '../../invalid-input-error/model';
 import { model as userModel } from '../model';
 
 /**
@@ -33,20 +37,22 @@ const payload = builder
   });
 
 /**
- * No `resolveType`: the value carries its own `__typename` — see
+ * No `resolveType`: every member value carries its own `__typename` — see
  * `progress/mutation/delete.ts`'s identical note.
  */
-const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [payload] });
+const result = builder.unionType('UserRegenerateSyncPasswordResult', {
+  types: [payload, invalidInputErrorModel],
+});
 
 /**
- * Single-member union — same reasoning as `userDelete`/`userResetPassword`'s
- * identical note: `input` has exactly one field, a `User` global ID, already
+ * Two members, not the single-member shape `userDelete`/`userResetPassword`
+ * use: `input`'s one field, a `User` global ID, is still already
  * format-checked by the relay plugin before this resolver runs, so there is
- * no reachable `InvalidInputError` case. Still declared as a `<Name>Result`
- * union rather than a bare payload type — fabricates nothing, satisfies
- * Task 1's binding rule, keeps a future member non-breaking; see
- * `userDelete`'s doc comment for the full reasoning (task-6 review
- * adjudication).
+ * still no reachable validation failure arising from `input` ITSELF.
+ * `InvalidInputError` is here for G3 below — the admin refusal — not for a
+ * parse failure. Declared as a `<Name>Result` union either way, per Task 1's
+ * binding rule; see `userDelete`'s doc comment for the fuller reasoning
+ * (task-6 review adjudication).
  *
  * Mirrored REST's `POST /api/my/sync-password/regenerate` (`routes/ui.ts`,
  * that route since removed) — self-service, viewer-only: `req.user!.isAdmin`
@@ -71,6 +77,24 @@ const result = builder.unionType('UserRegenerateSyncPasswordResult', { types: [p
  * modelled as `null`, the same "no such row" convention every other mutation
  * in this schema uses; not wrapped in `toResult` since it throws none of the
  * seven known domain errors.
+ *
+ * **G3.** The admin has no sync credentials and must not acquire any —
+ * `authenticate` refusing a null `syncPassword` is the only thing keeping the
+ * admin out of OPDS and KOSync. Before the email-identity work, the admin had
+ * no `users` row at all, so `changeSyncPassword(prisma, 'admin', ...)` below
+ * simply found nothing to update; now that row exists (`services/admin-account.ts`),
+ * so the resolver carries an explicit `context.viewer!.isAdmin` check rather
+ * than leaning on that structural fact alone. In practice the `authScopes`
+ * function above already keeps the admin out of this resolver on every real
+ * request — its `viewer.userId` is always `null` (the token deliberately
+ * carries no `sub`), so it can never equal a real decoded `args.input.userId
+ * .id` — but that is exactly the kind of "protected by construction, not by an
+ * explicit check" argument G2's rewritten comments retire for `userDelete`/
+ * `userResetPassword`. The resolver-level guard here is the same discipline
+ * applied to this mutation: it does not rely on the scope's coincidence,
+ * and it is what still refuses the admin if that scope's shape ever changed
+ * (e.g. to the `ownerOf` pattern the test file's own "seen-to-fail" comment
+ * above warns has an admin-bypass branch).
  */
 builder.mutationField('userRegenerateSyncPassword', (t) =>
   t.field({
@@ -85,6 +109,12 @@ builder.mutationField('userRegenerateSyncPassword', (t) =>
     resolve: async (_parent, args, context) => {
       const userId = args.input.userId.id;
       const username = context.viewer!.username;
+
+      // G3: see the doc comment above. Explicit, not merely a restatement of
+      // the `authScopes` coincidence that already keeps the admin out today.
+      if (context.viewer!.isAdmin) {
+        return invalidInputIssue([], 'The administrator account has no sync password.');
+      }
 
       const syncPassword = generateSyncPassword();
       const changed = await changeSyncPassword(context.prisma, username, syncPassword);

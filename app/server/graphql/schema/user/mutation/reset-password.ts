@@ -1,3 +1,5 @@
+import { isConfigAdminRow } from '../../../../services/admin-account';
+import { invalidateEmailTokens } from '../../../../services/email-token';
 import { resetPassword } from '../../../../services/password';
 import { revokeAllForUsername } from '../../../../services/token';
 import { builder } from '../../builder';
@@ -59,13 +61,19 @@ const result = builder.unionType('UserResetPasswordResult', { types: [payload] }
  * `ownerOf` alternative.
  *
  * REST's target-specific 403 ("Cannot reset the built-in admin password",
- * checked BEFORE the store call, before Phase 0 removed that route) has no equivalent
- * branch here, for the same structural reason `userDelete`'s doc comment
- * gives in full: the config admin has no `User` row and so no `User` global
- * ID could ever name it — the REST case this guards against cannot arise
- * through this argument shape at all. Any global ID that doesn't resolve to
- * a real row (including one an attacker crafts to embed the reserved
- * username) collapses into the ordinary "no such user" `null` below.
+ * checked BEFORE the store call, before Phase 0 removed that route) DOES now
+ * have an equivalent branch here — the resolver's explicit `isConfigAdminRow`
+ * guard, added once the email-identity work gave the config admin a `users`
+ * row. This is the sharpest guard in the whole plan: without it,
+ * `resetPassword` below would write a real argon2 hash onto that row, and
+ * `validateUser` authenticates ANY row that has one — producing a second
+ * credential for the admin account that the add-on options neither govern
+ * nor can rotate or revoke. The guard resolves to the ordinary "no such
+ * user" `null`, same as any other global ID (including an attacker-crafted
+ * one) that doesn't resolve to a real, non-admin row — so the admin row
+ * stays indistinguishable from a nonexistent one rather than merely
+ * protected. See `services/admin-account.ts` and `userDelete`'s doc comment
+ * for the full reasoning behind that shape.
  *
  * `resetPassword` is NOT wrapped in `toResult`: traced end to end
  * (`services/password.ts`), its own `P2025` catch already converts
@@ -95,10 +103,22 @@ builder.mutationField('userResetPassword', (t) =>
       const owner = await context.loadOwner(userId);
       if (owner === null) return null;
 
+      // G2: refusing is not cosmetic here. `resetPassword` writes a real argon2
+      // hash, and `validateUser` authenticates ANY row that has one — so allowing
+      // this would mint a second admin credential that the add-on options cannot
+      // rotate or revoke. The admin's password is the options value, full stop.
+      if (await isConfigAdminRow(context.prisma, owner.userId)) return null;
+
       const password = await resetPassword(context.prisma, owner.username);
       if (password === null) return null;
 
       await revokeAllForUsername(context.prisma, owner.username);
+      // A reset code minted while the OLD password was still live must not stay
+      // spendable once the admin has forced a new one — same reasoning as the
+      // refresh-token revocation immediately above, and the same call
+      // `userChangePassword`/`viewerSetEmail` make on their own password/address
+      // changes.
+      await invalidateEmailTokens(context.prisma, owner.userId, 'reset');
 
       return { __typename: 'UserResetPasswordPayload' as const, userId: owner.userId, password };
     },

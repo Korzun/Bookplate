@@ -670,7 +670,10 @@ export type UserRegenerateSyncPasswordMutationVariables = Exact<{
 }>;
 
 
-export type UserRegenerateSyncPasswordMutation = { __typename: 'Mutation', userRegenerateSyncPassword: { __typename: 'UserRegenerateSyncPasswordPayload', syncPassword: string, user: { __typename: 'User', id: string } } | null };
+export type UserRegenerateSyncPasswordMutation = { __typename: 'Mutation', userRegenerateSyncPassword:
+    | { __typename: 'InvalidInputError' }
+    | { __typename: 'UserRegenerateSyncPasswordPayload', syncPassword: string, user: { __typename: 'User', id: string } }
+   | null };
 
 export type UserChangePasswordMutationVariables = Exact<{
   input: UserChangePasswordInput;

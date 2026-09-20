@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { invalidateEmailTokens } from '../../../../services/email-token';
 import { changePassword, hashLoginPassword, validateUser } from '../../../../services/password';
 import { revokeAllForUsername } from '../../../../services/token';
 import { builder } from '../../builder';
@@ -238,6 +239,12 @@ builder.mutationField('userChangePassword', (t) =>
       if (!changed) return null;
 
       await revokeAllForUsername(context.prisma, username);
+      // A reset code minted while the OLD password was still live must not stay
+      // spendable once the caller has chosen a new one — same reasoning as the
+      // refresh-token revocation immediately above, and the same call
+      // `userResetPassword`/`viewerSetEmail` make on their own password/address
+      // changes.
+      await invalidateEmailTokens(context.prisma, userId, 'reset');
 
       return { __typename: 'UserChangePasswordPayload' as const, userId };
     },
