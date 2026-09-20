@@ -18,6 +18,47 @@ const log = logger('Mailer');
 const SEND_URL = (accountId: string): string =>
   `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`;
 
+// Bounds the outbound dependency: this fetch is otherwise never aborted, so a
+// hung Cloudflare connection would leak its socket and promise well past any
+// caller's own deadline. 10s is generous for an API call and far shorter than
+// the app-wide 90s request timeout — there's no reason to hold a send that
+// long when the caller's resend button is the retry path anyway.
+const SEND_TIMEOUT_MS = 10_000;
+
+// RFC 5322 `specials` this driver actually needs to defend against, minus
+// "." (handled separately below, only when leading/trailing) and plus ">" to
+// pair with "<". None of this is a security boundary — the value goes into a
+// JSON body and Cloudflare composes the message, so there is no header
+// injection to prevent here. This exists purely so a free-text display name
+// (the operator's `library_name` add-on option) doesn't produce a malformed
+// From header, e.g. `Smith, Bob <lib@example.com>` parsing as two mailboxes.
+const RFC5322_SPECIALS = /[()<>[\]:;@\\,"]/;
+
+function isNonAscii(name: string): boolean {
+  // Not a regex range (e.g. `[^\x00-\x7F]`) because that pulls control
+  // characters (0x00-0x1F) into the pattern and trips oxlint's
+  // no-control-regex — codePointAt is just as direct here.
+  return Array.from(name).some((ch) => (ch.codePointAt(0) ?? 0) > 0x7f);
+}
+
+function needsQuoting(name: string): boolean {
+  return (
+    RFC5322_SPECIALS.test(name) || isNonAscii(name) || name.startsWith('.') || name.endsWith('.')
+  );
+}
+
+/**
+ * Wraps a From display-name in an RFC 5322 quoted-string when it contains a
+ * `specials` character, non-ASCII, or a leading/trailing dot — any of which
+ * would otherwise produce a malformed From header. A name needing no
+ * quoting passes through unchanged so the common case stays noise-free.
+ */
+function quoteDisplayName(name: string): string {
+  if (!needsQuoting(name)) return name;
+  const escaped = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
 type SendResponse = {
   success?: boolean;
   result?: { delivered?: string[]; permanent_bounces?: string[]; queued?: string[] };
@@ -43,13 +84,19 @@ export function createCloudflareMailer(mail: MailConfig): Mailer {
           },
           body: JSON.stringify({
             to: message.to,
-            from: `${mail.fromName} <${mail.from}>`,
+            from: `${quoteDisplayName(mail.fromName)} <${mail.from}>`,
             subject: message.subject,
             text: message.text,
             html: message.html,
           }),
+          signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
         });
       } catch (err) {
+        // Node's fetch rejects a signal-aborted request with a `DOMException`
+        // (name `TimeoutError` for `AbortSignal.timeout()`), which `instanceof
+        // Error` — verified against a live non-responding server — so a
+        // timeout lands here with everything else and needs no special
+        // handling: `transient` is exactly right, since a resend is the retry.
         log.warn(`Send failed (network): ${err instanceof Error ? err.message : String(err)}`);
         return { ok: false, reason: 'transient' };
       }

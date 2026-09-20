@@ -124,11 +124,60 @@ describe('createCloudflareMailer', () => {
     });
   });
 
+  // The outbound fetch must not be allowed to hang past a short bound: a
+  // resend button is the retry path, so there is no reason to hold the
+  // socket for anywhere near the app-wide 90s request timeout. Node's fetch
+  // rejects an `AbortSignal.timeout()`-aborted request with a `DOMException`
+  // named `TimeoutError` (verified against a live non-responding server),
+  // which `instanceof Error` — so it lands in the same network-error catch
+  // as any other fetch rejection, with no special-casing needed.
+  it('reports an aborted (timed-out) send as transient', async () => {
+    const fetchMock = stubFetch(() => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    });
+    expect(await createCloudflareMailer(MAIL).send(MESSAGE)).toEqual({
+      ok: false,
+      reason: 'transient',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('reports a 400 with a success:false body as transient, not a bad address', async () => {
     stubFetch(() => json(400, { success: false, errors: [{ code: 1, message: 'bad content' }] }));
     expect(await createCloudflareMailer(MAIL).send(MESSAGE)).toEqual({
       ok: false,
       reason: 'transient',
+    });
+  });
+
+  // Correctness, not security: the value goes into a JSON body and Cloudflare
+  // composes the message, so there is no header-injection risk here. This is
+  // purely about producing a valid From header when `fromName` (the
+  // operator's free-text `library_name` add-on option) contains characters
+  // RFC 5322 reserves as `specials`.
+  describe('From display-name quoting', () => {
+    const sendWithFromName = async (fromName: string) => {
+      const fetchMock = stubFetch(() => json(200, { success: true, result: { delivered: [] } }));
+      await createCloudflareMailer({ ...MAIL, fromName }).send(MESSAGE);
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      return (JSON.parse(init.body as string) as { from: string }).from;
+    };
+
+    it('passes a plain name through unchanged', async () => {
+      expect(await sendWithFromName('My Library')).toBe('My Library <lib@example.com>');
+    });
+
+    it('quotes and escapes a name containing "<"', async () => {
+      expect(await sendWithFromName('Bob <Evil>')).toBe('"Bob <Evil>" <lib@example.com>');
+    });
+
+    it('quotes and escapes a name containing a double quote', async () => {
+      expect(await sendWithFromName('Bob "The Man"')).toBe('"Bob \\"The Man\\"" <lib@example.com>');
+    });
+
+    it('quotes a name containing a comma', async () => {
+      expect(await sendWithFromName('Smith, Bob')).toBe('"Smith, Bob" <lib@example.com>');
     });
   });
 
