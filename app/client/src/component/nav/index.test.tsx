@@ -49,6 +49,8 @@ const viewerBootstrapMock = (isAdmin: boolean): MockedResponse => ({
         username: isAdmin ? 'admin' : 'reader',
         isAdmin,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: isAdmin ? null : { __typename: 'User', id: 'USER-1' },
         library: isAdmin ? null : { __typename: 'Library', id: LIBRARY_ID },
       },

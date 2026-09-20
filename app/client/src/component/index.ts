@@ -15,6 +15,7 @@ export { CoverStack } from './cover-stack';
 export { DeviceForm } from './device-form';
 export { DeviceList } from './device-list';
 export { DeviceRow } from './device-row';
+export { EmailSetting } from './email-setting';
 export { FixReview } from './fix-review';
 export { SearchBar } from './search-bar';
 export { Nav } from './nav';

@@ -27,6 +27,8 @@ const viewerBootstrapMock: MockedResponse<ViewerBootstrapQuery> = {
         username: 'u',
         isAdmin: false,
         mustChangePassword: false,
+        email: null,
+        emailVerifiedAt: null,
         user: { __typename: 'User', id: 'VXNlcjox' },
         library: { __typename: 'Library', id: LIBRARY_ID },
       },
