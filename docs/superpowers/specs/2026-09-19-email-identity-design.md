@@ -120,8 +120,12 @@ alongside the code). Three consequences, all wanted:
   cap with no extra bookkeeping.
 
 Storing `email` means a reset token stops working the moment the account's
-address changes. Consumption is a single `DELETE ... RETURNING`, the same atomic
-one-winner mechanic `consumeRefreshToken` uses.
+address changes. Consumption reads the row with `findUnique`, then deletes it
+with a `tokenHash`-guarded `deleteMany`; that guarded delete is the sole atomic
+gate, so of two concurrent presentations of the same code exactly one gets
+`count === 1` back — the same one-winner property `consumeRefreshToken` gets
+from its single `DELETE ... RETURNING`, reached here in two round trips instead
+of one.
 
 One token value serves both delivery routes: an 8-character Crockford-base32
 code (~40 bits), which the link carries as `?code=`.

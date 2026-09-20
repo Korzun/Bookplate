@@ -44,8 +44,9 @@ export const MAX_SENDS_PER_WINDOW = 5;
 /**
  * Crockford base32 minus the letters that are misread when a human retypes a
  * code from their phone: I and L (look like 1), O (looks like 0), U (looks like
- * V). 8 characters over 25 symbols is ~37 bits, which is far past guessable
- * given a code is bound to one account, expires, and sits behind an IP limiter.
+ * V). 8 characters over 32 symbols is exactly 40 bits, which is far past
+ * guessable given a code is bound to one account, expires, and sits behind an
+ * IP limiter.
  */
 const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_LENGTH = 8;

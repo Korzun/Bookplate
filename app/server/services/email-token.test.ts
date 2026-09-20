@@ -16,6 +16,7 @@ import {
   MAX_SENDS_PER_WINDOW,
   RESEND_COOLDOWN_MS,
   RESET_TTL_MS,
+  SEND_WINDOW_MS,
   VERIFY_TTL_MS,
 } from './email-token';
 
@@ -146,19 +147,33 @@ describe('issueEmailToken', () => {
     expect(capped).toMatchObject({ ok: false, reason: 'send_cap' });
   });
 
-  it('lets the window roll over', async () => {
+  it('lets the window roll over, restarting the count rather than resuming it', async () => {
     let now = T0;
     for (let i = 0; i < MAX_SENDS_PER_WINDOW; i++) {
       await issueEmailToken(prisma, { userId: 'u1', purpose: 'verify', email: 'a@b.co', now });
       now += RESEND_COOLDOWN_MS;
     }
+    const rolloverNow = T0 + SEND_WINDOW_MS + 1;
     const after = await issueEmailToken(prisma, {
       userId: 'u1',
       purpose: 'verify',
       email: 'a@b.co',
-      now: T0 + 60 * 60 * 1000 + 1,
+      now: rolloverNow,
     });
     expect(after.ok).toBe(true);
+    // A single `ok: true` here would also pass an implementation that resets
+    // `createdAt` on rollover but forgets to reset `sendCount` back to 1 —
+    // that mutant's `windowOpen` is false for THIS call regardless of what
+    // `sendCount` holds, so the cap check never runs. A second send, past the
+    // cooldown but still inside the freshly-started window, only succeeds if
+    // the count genuinely restarted at 1 rather than resuming at 5.
+    const second = await issueEmailToken(prisma, {
+      userId: 'u1',
+      purpose: 'verify',
+      email: 'a@b.co',
+      now: rolloverNow + RESEND_COOLDOWN_MS,
+    });
+    expect(second.ok).toBe(true);
   });
 
   it('keeps verify and reset tokens independent', async () => {
