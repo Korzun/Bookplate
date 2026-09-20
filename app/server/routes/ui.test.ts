@@ -653,6 +653,23 @@ describe('G1: the admin row must not change a failed admin login', () => {
     const res = await request(app).post('/api/login').send({ username: 'bob', password: 'x' });
     expect(res.status).toBe(403);
   });
+
+  it('returns 401, not 403, for a wrong admin password presented as the admin’s address', async () => {
+    const adminId = await ensureAdminUser(prisma, config.username);
+    await prisma.user.update({
+      where: { id: adminId },
+      data: { email: 'boss@example.com', emailKey: 'boss@example.com' },
+    });
+
+    const res = await request(app)
+      .post('/api/login')
+      .send({ username: 'boss@example.com', password: 'not-the-admin-password' });
+
+    // Same guard as the username-form case above, but reached via email
+    // resolution first — loginName ends up "admin" either way, and the same
+    // isConfigAdmin row must still fall through to the generic 401.
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('createLoginRateLimit (Task 4, unit-level — mirrors graphqlBodyLimit’s direct-call tests)', () => {
