@@ -20,22 +20,25 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   // A native <button> shrink-wraps its content even at `display: flex`, unlike
   // the div the Button renders outside submit mode. Making the form a column
-  // stretches the Sign In button back across the card, matching the fields.
+  // stretches the submit button back across the card, matching the fields.
   form: {
     display: 'flex',
     flexDirection: 'column',
-  },
-  inputContainer: {
-    display: 'flex',
-    flexDirection: 'column',
     gap: theme.space.md,
-    marginBottom: theme.space.xxl,
-    minWidth: '400px',
-    [theme.breakpoint.mobile]: {
-      minWidth: 'auto',
-    },
   },
-  forgot: {
+  lead: {
+    textAlign: 'center',
+    color: theme.color.text.muted,
+    fontSize: theme.fontSize.sm,
+    margin: `0 0 ${theme.space.xxl}`,
+  },
+  error: {
+    textAlign: 'center',
+    color: theme.color.danger.default,
+    fontSize: theme.fontSize.sm,
+    margin: 0,
+  },
+  link: {
     textAlign: 'center',
     fontSize: theme.fontSize.sm,
     marginTop: theme.space.md,
