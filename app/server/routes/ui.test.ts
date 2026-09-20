@@ -470,9 +470,12 @@ describe('GET /api/public-config', () => {
   });
 
   it('never exposes the credentials', async () => {
+    // An exact-shape assertion, not a substring search for the (3- and
+    // 4-character) sentinel values: this fails the moment ANYTHING new appears
+    // in this unauthenticated payload, not only if a future field happens to
+    // echo back one of today's particular credential values.
     const res = await request(buildApp({ mail: MAIL_CONFIG })).get('/api/public-config');
-    expect(JSON.stringify(res.body)).not.toContain(MAIL_CONFIG.apiToken);
-    expect(JSON.stringify(res.body)).not.toContain(MAIL_CONFIG.accountId);
+    expect(Object.keys(res.body).sort()).toEqual(['emailEnabled', 'libraryName']);
   });
 });
 

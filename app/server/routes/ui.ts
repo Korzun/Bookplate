@@ -156,7 +156,11 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 10;
 // Final-review-wave T4: below this size, sweeping on every call is cheap
 // enough not to matter; gating the O(n) walk behind it means the common
 // case (a handful of active windows) never pays a per-request Map scan at
-// all — see `createIpRateLimit`'s doc comment for the full trade-off.
+// all — see `createIpRateLimit`'s doc comment for the full trade-off. Despite
+// the `LOGIN_` name (kept from Task 4, before a second caller existed), this
+// threshold is shared: `createIpRateLimit` (Task 12) applies it to every
+// instance the factory produces, not only the login one — including the
+// password-reset limiter built alongside it in `createUiRouter`.
 const LOGIN_RATE_LIMIT_SWEEP_THRESHOLD = 256;
 
 type RateLimitWindow = { count: number; windowStart: number };
@@ -213,16 +217,17 @@ function resolveLoginClientIp(req: Request, trustProxyHops: number): string {
 }
 
 /**
- * Generalized (Task 12) from a login-only limiter into this shared factory —
- * see the closing paragraph for why. Every paragraph below through the
- * `trustProxyHops` one documents the ORIGINAL, login-only build (Task 4) and
- * its three subsequent fixes (I-1, I-2, T4); none of that documentation has
- * been trimmed by the generalization, because the fixes it records apply
- * exactly as written to every instance this factory now produces, not only
- * the login one.
- *
- * Fixed-window rate limiter for `POST /api/login` only (Task 4): 10 attempts
- * per minute per IP, 429 + `Retry-After` on the 11th. Deliberately NOT
+ * Fixed-window IP rate limiter. Each instance enforces its own configured
+ * `maxAttempts` per `windowMs` per IP, 429 + `Retry-After` once exceeded, and
+ * is labeled (see the closing paragraph) so its log line names which instance
+ * fired. Built for `POST /api/login` only (Task 4: 10 attempts per minute per
+ * IP) and generalized into this shared factory in Task 12, when the
+ * password-reset routes became a second caller — every paragraph below
+ * through the `trustProxyHops` one documents that ORIGINAL, login-specific
+ * build and its three subsequent fixes (I-1, I-2, T4); none of that
+ * documentation has been trimmed by the generalization, because the fixes it
+ * records apply exactly as written to every instance this factory now
+ * produces, not only the login one. Deliberately NOT
  * applied to the OPDS (`routes/opds.ts`) or KOReader sync-password
  * (`routes/kosync.ts`) auth endpoints — those are separate routers with
  * their own `opdsAuth`/`kosyncAuth` middleware (`middleware/auth.ts`), never
@@ -375,7 +380,11 @@ export type CreateUiRouterDeps = {
    * `createPasswordRouter`, the REST password-reset-by-email routes.
    */
   mailer: Mailer | null;
-  /** Injectable clock for the login rate limiter; tests pass a fake. */
+  /**
+   * Injectable clock, shared by both `createIpRateLimit` instances this router
+   * builds (login and, since Task 12, password reset) — one name kept from
+   * Task 4, before the second instance existed. Tests pass a fake.
+   */
   loginRateLimitNow?: () => number;
 };
 

@@ -159,6 +159,19 @@ export function createPasswordRouter(deps: {
         return;
       }
 
+      // Ordered so every partial failure below is safe, not just the happy path:
+      // a failed revoke changes nothing yet (old password, old tokens, code still
+      // unspent — a retry works); a failed update leaves the old password live
+      // but with every refresh token already revoked, and the code is still
+      // spendable so a retry works; a failed invalidate is harmless because
+      // `consumeEmailToken` above already deleted the row (this call is
+      // belt-and-braces). The one order NOT to use is update-then-revoke: if the
+      // revoke then threw, the account would be left strictly worse than before
+      // the request — new password live, every pre-existing refresh token still
+      // valid, and a 500 telling the caller it failed, so they'd never retry.
+      await revokeAllForUsername(prisma, account.username);
+      // Same side effect `userChangePassword` has, for the same reason: a stolen
+      // or stale refresh token must not outlive a password change.
       await prisma.user.update({
         where: { id: account.id },
         data: {
@@ -168,9 +181,6 @@ export function createPasswordRouter(deps: {
           mustChangePassword: false,
         },
       });
-      // Same side effect `userChangePassword` has, for the same reason: a stolen
-      // or stale refresh token must not outlive a password change.
-      await revokeAllForUsername(prisma, account.username);
       await invalidateEmailTokens(prisma, account.id, 'reset');
       log.info(`Password reset completed for "${account.username}"`);
       res.sendStatus(204);
