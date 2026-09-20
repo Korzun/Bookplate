@@ -8,6 +8,7 @@ import type { UserClearEmailMutation, UserDeleteMutation } from '~/gql/graphql';
 import { UserClearEmailDocument, UserDeleteDocument } from '~/graphql/user';
 import { AlertOctagonIcon } from '~/icon';
 import { unwrapResult } from '~/provider/apollo';
+import { useEmailEnabled } from '~/provider/config';
 
 import { UserRowContent } from '../user-row-content';
 import { useStyle } from './style';
@@ -92,27 +93,24 @@ interface UserRowProps {
  */
 export const UserRow = ({ user }: UserRowProps) => {
   const styles = useStyle();
+  const emailEnabled = useEmailEnabled();
   const unmasked = useFragment(UserRowFragment, user);
   const [runDelete] = useMutation(UserDeleteDocument);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | undefined>();
 
-  // Local overrides, applied on top of `unmasked` once `userClearEmail`
-  // succeeds — same "reflected twice" shape `component/email-setting` uses
-  // for its own address: `UserClearEmailDocument` selects the updated
-  // `user`, which normalizes `User:<id>` in Apollo's cache for the DURABLE
-  // copy, but codegen's `useFragment` (`~/gql`) is an identity cast, not a
-  // live cache subscription — this row does not re-render off a cache write
-  // by itself unless its PARENT re-queries and passes fresh props. The
-  // override makes the row correct immediately, in isolation, the same way
-  // it is correct once a wrapping `UserList` query eventually reflows.
-  // `undefined` means "no override, use the fragment's own value".
-  const [emailOverride, setEmailOverride] = useState<string | null | undefined>(undefined);
-  const [verifiedOverride, setVerifiedOverride] = useState<string | null | undefined>(undefined);
-  const displayEmail = emailOverride !== undefined ? emailOverride : unmasked.email;
-  const displayVerifiedAt =
-    verifiedOverride !== undefined ? verifiedOverride : unmasked.emailVerifiedAt;
-  const isConfirmed = displayVerifiedAt !== null;
+  // No local override for `email`/`emailVerifiedAt`: `UserClearEmailDocument`
+  // selects `user { id email emailVerifiedAt }`, which normalizes
+  // `User:<id>` in Apollo's cache in place, and every real mount of this row
+  // (`page/user-list` -> `component/user-list`) sits under an ACTIVE
+  // `useQuery(UserListDocument)` that watches that same entity — the cache
+  // write alone re-broadcasts fresh props down to this row in the same
+  // tick, no override needed. An override would additionally be a hazard,
+  // not just redundant: it would freeze at `null` for this row's whole
+  // mounted lifetime, hiding a LATER address the user sets for themselves
+  // (e.g. a background refetch landing after the clear) until the row
+  // unmounts. `isConfirmed` reads straight off the fragment.
+  const isConfirmed = unmasked.emailVerifiedAt !== null;
 
   const [showDeleteUserModal, setShowDeleteUserModal] = useState<boolean>(false);
   const handleDeleteUser = useCallback(() => {
@@ -207,8 +205,11 @@ export const UserRow = ({ user }: UserRowProps) => {
         return;
       }
 
-      setEmailOverride(result.payload.user.email);
-      setVerifiedOverride(result.payload.user.emailVerifiedAt);
+      // No cache write here beyond what Apollo already does with the
+      // response: `UserClearEmailDocument` selects `user { id email
+      // emailVerifiedAt }`, which normalizes `User:<id>` in place, and this
+      // row's own `unmasked.email`/`unmasked.emailVerifiedAt` read straight
+      // off that entity through whichever query is watching it.
       setShowClearEmailModal(false);
     } catch (err) {
       setClearEmailErrorMessage(
@@ -227,9 +228,9 @@ export const UserRow = ({ user }: UserRowProps) => {
         title={
           <div className={styles.titleRow}>
             <span>{unmasked.username}</span>
-            {displayEmail !== null && (
+            {unmasked.email !== null && (
               <span className={styles.addressPill}>
-                <span className={styles.address}>{displayEmail}</span>
+                <span className={styles.address}>{unmasked.email}</span>
                 <span className={isConfirmed ? styles.badgeConfirmed : styles.badgeUnconfirmed}>
                   {isConfirmed ? 'Confirmed' : 'Not confirmed'}
                 </span>
@@ -240,7 +241,7 @@ export const UserRow = ({ user }: UserRowProps) => {
         headerAction={
           <Fragment>
             <ResetPasswordButton userId={unmasked.id} username={unmasked.username} />
-            {displayEmail !== null && (
+            {unmasked.email !== null && (
               <Button type="link" onClick={handleClearEmail} loading={clearing}>
                 Clear address
               </Button>
@@ -280,8 +281,9 @@ export const UserRow = ({ user }: UserRowProps) => {
         loading={clearing}
       >
         This will free <span className={styles.username}>{unmasked.username}</span>&apos;s address
-        for another account to claim. They will be asked to set an address again the next time their
-        session refreshes.
+        for another account to claim.
+        {emailEnabled &&
+          ' They will be asked to set an address again the next time their session refreshes.'}
         {clearEmailErrorMessage && <p className={styles.error}>{clearEmailErrorMessage}</p>}
       </ConfirmModal>
     </Fragment>

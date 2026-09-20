@@ -2,6 +2,7 @@ import type { ApolloClient, NormalizedCacheObject } from '@apollo/client';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The pending badge navigates via `useNavigate` and selects a library via
@@ -19,16 +20,21 @@ vi.mock('~/provider/library-target', () => ({
   useLibraryTarget: () => [undefined, mocks.setTargetLibraryId],
 }));
 
+import { useQuery } from '@apollo/client/react';
+
+import { UserList } from '~/component/user-list';
 import { makeFragmentData } from '~/gql';
 import type {
   UserClearEmailMutation,
   UserClearEmailMutationVariables,
   UserDeleteMutation,
   UserDeleteMutationVariables,
+  UserListQuery,
   UserRowFragmentFragment,
 } from '~/gql/graphql';
 import { UserClearEmailDocument, UserDeleteDocument } from '~/graphql/user';
 import { UserListDocument } from '~/graphql/user';
+import { ConfigContext } from '~/provider/config';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRow, UserRowFragment } from './index';
@@ -137,6 +143,50 @@ const clearEmailNullMock = (
   result: { data: { __typename: 'Mutation', userClearEmail: null } },
 });
 
+// A REAL `UserListDocument` network mock, for the review-round-1 fix to
+// Minor 3: a standalone `<UserRow user={makeFragmentData(...)} />` render
+// (this file's usual style) never re-renders off a cache write by itself —
+// codegen's `useFragment` is an identity cast, not a subscription — so the
+// only way to prove the row updates off the cache ALONE (no local override
+// state) is to mount it under a real, active `useQuery(UserListDocument)`,
+// the same composition `page/user-list` -> `component/user-list` uses in
+// production.
+const userListMock = (row: UserRowFragmentFragment): MockedResponse<UserListQuery> => ({
+  request: { query: UserListDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        users: [{ ...row, library: { __typename: 'Library', id: 'lib-1' } }],
+      },
+    },
+  },
+});
+
+const UserListFromQuery = () => {
+  const { data, loading } = useQuery(UserListDocument);
+  return <UserList users={data?.viewer.users ?? []} loading={loading} />;
+};
+
+// `renderWithApollo` has no `emailEnabled` option of its own — mirrors
+// `component/email-setting/index.test.tsx`'s own `renderWithConfig`, the
+// established pattern for varying `useEmailEnabled()` in a test.
+function renderRow(
+  ui: ReactElement,
+  {
+    mocks: apolloMocks = [],
+    emailEnabled = true,
+  }: { mocks?: MockedResponse[]; emailEnabled?: boolean } = {}
+) {
+  return renderWithApollo(
+    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+      {ui}
+    </ConfigContext.Provider>,
+    { mocks: apolloMocks }
+  );
+}
+
 // Anchored, not a bare substring match: the collapsible `Card` header is
 // ITSELF a `role="button"` whose accessible name concatenates all of its
 // descendants' text — including "Delete user" — so an unanchored
@@ -235,6 +285,13 @@ describe('UserRow', () => {
     expect(Object.keys(extracted)).toContain('User:u1');
   });
 
+  // Exact-string matching, not `/confirmed/i`: that regex matches the
+  // substring "confirmed" inside "Not confirmed" too, so it cannot tell the
+  // two states apart — a badge that always rendered "Not confirmed" would
+  // have left this test green (review round 1, Important 1). The paired
+  // `queryByText` absence check is the other half of the same fix: it pins
+  // that the OPPOSITE label is not ALSO on screen, not just that the right
+  // one happens to be present somewhere.
   it('shows a confirmed address', () => {
     renderWithApollo(
       <UserRow
@@ -246,7 +303,8 @@ describe('UserRow', () => {
     );
 
     expect(screen.getByText('ann@example.com')).toBeInTheDocument();
-    expect(screen.getByText(/confirmed/i)).toBeInTheDocument();
+    expect(screen.getByText('Confirmed')).toBeInTheDocument();
+    expect(screen.queryByText(/not confirmed/i)).toBeNull();
   });
 
   it('marks an unconfirmed address as not confirmed', () => {
@@ -259,7 +317,8 @@ describe('UserRow', () => {
       />
     );
 
-    expect(screen.getByText(/not confirmed/i)).toBeInTheDocument();
+    expect(screen.getByText('Not confirmed')).toBeInTheDocument();
+    expect(screen.queryByText('Confirmed')).toBeNull();
   });
 
   it('offers no clear action when the user has no address', () => {
@@ -274,17 +333,21 @@ describe('UserRow', () => {
     expect(screen.queryByRole('button', { name: /clear address/i })).toBeNull();
   });
 
+  // Driven through the REAL `UserList` composition (`UserListFromQuery`, a
+  // real `useQuery(UserListDocument)` feeding `component/user-list`), not a
+  // standalone `<UserRow>` — this is the only way to prove the address
+  // disappears off the CACHE ALONE, with no local override state in the
+  // component (review round 1, Minor 3). Also carries the review's Minor 1
+  // fix: a positive control BEFORE the click, so "the address is gone
+  // afterward" means something rather than passing on a row that never
+  // rendered an address at all.
   it('warns that the user will be asked to set a new address, then clears it', async () => {
     const userEventInstance = userEvent.setup();
-    renderWithApollo(
-      <UserRow
-        user={makeFragmentData(
-          user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null }),
-          UserRowFragment
-        )}
-      />,
-      { mocks: [clearEmailSuccessMock('u1')] }
-    );
+    const row = user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null });
+    renderRow(<UserListFromQuery />, { mocks: [userListMock(row), clearEmailSuccessMock('u1')] });
+
+    // Positive control: the address is genuinely rendered before the click.
+    expect(await screen.findByText('ann@example.com')).toBeInTheDocument();
 
     await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
     // The consequence must be stated before the operator confirms: clearing
@@ -296,6 +359,75 @@ describe('UserRow', () => {
     await waitFor(() => expect(screen.queryByText('ann@example.com')).toBeNull());
   });
 
+  // `computeMustSetEmail` (`app/server/routes/ui.ts`) returns `false`
+  // outright when mail is not configured, so the re-gate promise in the
+  // confirm copy is conditioned on the same `useEmailEnabled()` signal
+  // `component/email-setting` already uses to decide whether to render at
+  // all (review round 1, Minor 2) — an install with no mail must not tell
+  // the operator something is going to happen that provably cannot.
+  it('does not promise a re-gate prompt when mail is not configured', async () => {
+    const userEventInstance = userEvent.setup();
+    renderRow(
+      <UserRow
+        user={makeFragmentData(
+          user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null }),
+          UserRowFragment
+        )}
+      />,
+      { emailEnabled: false }
+    );
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
+
+    // Positive control: the base sentence (the part that is always true)
+    // is still there — this is a narrower claim, not a blank modal.
+    expect(screen.getByText(/free .*'s address for another account to claim/i)).toBeInTheDocument();
+    expect(screen.queryByText(/asked to set (a new )?(an )?address/i)).toBeNull();
+  });
+
+  // Review round 1, Minor 3's actual hazard, not just the redundancy: a
+  // local override frozen at `null` would hide a LATER address the user
+  // sets for themselves. Simulates that by writing a fresh `UserList`
+  // result into the cache after the clear (as a background refetch would),
+  // the same way an upload-triggered refetch could land while the operator
+  // is still on `/users`.
+  it('reflects a later address re-set, with no stuck state left behind by the clear', async () => {
+    const userEventInstance = userEvent.setup();
+    const row = user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null });
+    const { client } = renderRow(<UserListFromQuery />, {
+      mocks: [userListMock(row), clearEmailSuccessMock('u1')],
+    });
+
+    expect(await screen.findByText('ann@example.com')).toBeInTheDocument();
+
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
+    await userEventInstance.click(screen.getByRole('button', { name: /^clear$/i }));
+    await waitFor(() => expect(screen.queryByText('ann@example.com')).toBeNull());
+
+    // A later refetch lands (Ann set a new address in the meantime) — the
+    // row must pick it up, not keep showing "no address" from the clear.
+    // Built via `user(...)` and spread whole, not by adding `email`/
+    // `emailVerifiedAt` keys directly onto `{ ...row }`: those two already
+    // exist on `row` via the spread, so writing them again as literal keys
+    // trips TypeScript's excess-property check against the fragment-masked
+    // `UserListDocument` shape (only DIRECTLY-written keys are checked;
+    // ones arriving through a spread are not) — the same reasoning
+    // `seedUserEntity` above already follows.
+    const resetRow = user({ id: 'u1', email: 'ann-new@example.com', emailVerifiedAt: null });
+    client.writeQuery({
+      query: UserListDocument,
+      data: {
+        __typename: 'Query',
+        viewer: {
+          __typename: 'Viewer',
+          users: [{ ...resetRow, library: { __typename: 'Library', id: 'lib-1' } }],
+        },
+      },
+    });
+
+    expect(await screen.findByText('ann-new@example.com')).toBeInTheDocument();
+  });
+
   // The server's own union resolves to a bare `null` both when the user is
   // gone AND when the target is the (indistinguishable) config-admin row —
   // see `user/mutation/clear-email.ts`. Neither is an error the server
@@ -305,7 +437,7 @@ describe('UserRow', () => {
   // "missing" branch, which never closes the modal either).
   it('shows a message and keeps the modal open when the clear resolves to null', async () => {
     const userEventInstance = userEvent.setup();
-    const { container } = renderWithApollo(
+    const { container } = renderRow(
       <UserRow
         user={makeFragmentData(
           user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null }),
