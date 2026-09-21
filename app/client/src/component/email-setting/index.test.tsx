@@ -111,12 +111,17 @@ describe('EmailSetting', () => {
 
   it('changes the address and warns that it needs confirming again', async () => {
     const user = userEvent.setup();
-    renderWithConfig(<EmailSetting email="old@example.com" emailVerifiedAt={new Date()} />, {
-      mocks: [setEmailMock('new@example.com')],
-    });
+    const { container } = renderWithConfig(
+      <EmailSetting email="old@example.com" emailVerifiedAt={new Date()} />,
+      { mocks: [setEmailMock('new@example.com')] }
+    );
     await user.click(screen.getByRole('button', { name: /change/i }));
-    await user.clear(screen.getByPlaceholderText('Email address'));
-    await user.type(screen.getByPlaceholderText('Email address'), 'new@example.com');
+    // Queried by `name` rather than placeholder: the edit field now carries a
+    // label instead, matching the change-password card's fields (whose own
+    // tests query the same way).
+    const emailInput = container.querySelector('input[name="email"]') as HTMLInputElement;
+    await user.clear(emailInput);
+    await user.type(emailInput, 'new@example.com');
     await user.click(screen.getByRole('button', { name: /save/i }));
     expect(await screen.findByText(/not confirmed/i)).toBeInTheDocument();
   });

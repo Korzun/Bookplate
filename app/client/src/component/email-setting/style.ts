@@ -30,9 +30,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     gap: theme.space.md,
     marginTop: theme.space.md,
   },
-  editRow: {
+  inputContainer: {
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
     gap: theme.space.md,
   },
 }));
