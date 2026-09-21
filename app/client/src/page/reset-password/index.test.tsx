@@ -6,17 +6,45 @@ import { renderWithProviders } from '~/test-utils';
 
 import { ResetPasswordPage } from './index';
 
-describe('ResetPasswordPage', () => {
-  afterEach(() => vi.unstubAllGlobals());
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('react-router', async (orig) => ({
+  ...(await orig<typeof import('react-router')>()),
+  useNavigate: () => routerMocks.navigate,
+}));
 
-  // Minor (whole-branch review): the spec promised this page's copy would
-  // name the add-on configuration as where the admin password is changed
-  // (`POST /api/password/reset` refuses the admin outright — see
-  // `routes/password.ts`), so the admin isn't left guessing why their code
-  // never works. Neither new page said it.
-  it('tells the admin where to change their password instead', () => {
+describe('ResetPasswordPage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    routerMocks.navigate.mockReset();
+  });
+
+  // The earlier copy here named the add-on configuration as the place the
+  // administrator's password is set. That tells an anonymous visitor how this
+  // install is deployed and that such an account exists, so the screen no
+  // longer says it — the address it refuses is the only signal left.
+  it('does not disclose where the administrator password is configured', () => {
     renderWithProviders(<ResetPasswordPage />);
-    expect(screen.getByText(/add-on configuration/i)).toBeInTheDocument();
+    expect(screen.queryByText(/add-on configuration/i)).toBeNull();
+  });
+
+  it('offers a back-to-sign-in button below the card', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ResetPasswordPage />);
+
+    const button = screen.getByRole('button', { name: /back to sign in/i });
+    expect(button.closest('form')).toBeNull();
+    await user.click(button);
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/login');
+  });
+
+  // The card is sized by its fields, exactly as the login card is, so the two
+  // screens do not visibly resize as the user moves between them.
+  it('sizes the card to the same width as the login card', () => {
+    const { container } = renderWithProviders(<ResetPasswordPage />);
+    // The width sits on the block wrapping the form, not the form itself, so
+    // the card keeps it once the form is replaced by a confirmation.
+    const content = (container.querySelector('form') as HTMLElement).parentElement as HTMLElement;
+    expect(getComputedStyle(content).minWidth).toBe('400px');
   });
 
   it('submits the address, code and new password, then sends the user to log in', async () => {
@@ -37,6 +65,10 @@ describe('ResetPasswordPage', () => {
       newPassword: 'a-brand-new-password',
     });
     expect(await screen.findByText(/password reset/i)).toBeInTheDocument();
+    // The card's own "Go to sign in" link is gone: the bottom button already
+    // says it, and two controls for one action read as two different actions.
+    expect(screen.queryByRole('link', { name: /sign in/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /back to sign in/i })).toBeInTheDocument();
   });
 
   it('will not submit when the two passwords differ', async () => {

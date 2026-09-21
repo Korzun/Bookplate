@@ -1,5 +1,5 @@
 import { useActionState, useState } from 'react';
-import { Link } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -15,6 +15,7 @@ import { useStyle } from './style';
  */
 export const ForgotPasswordPage = () => {
   const styles = useStyle();
+  const navigate = useNavigate();
   const [email, setEmail] = useState<string>('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,38 +67,45 @@ export const ForgotPasswordPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
-        <Card className={styles.card}>
-          {sent ? (
-            <p className={styles.lead}>
-              If that address has an account, a reset code is on its way.
-            </p>
-          ) : (
-            <form className={styles.form} action={submitAction}>
-              <p className={styles.lead}>
-                Enter your email address and we&rsquo;ll send you a reset code.
-              </p>
-              <TextInput
-                placeholder="Email address"
-                name="email"
-                autoCapitalize="none"
-                onChange={(value) => setEmail(value ?? '')}
-                value={email}
-              />
-              <Button submit loading={isPending} type="primary" radius="card">
-                Send reset code
-              </Button>
-              {error === null ? null : <p className={styles.error}>{error}</p>}
-            </form>
-          )}
-          {/* In BOTH states: a user who already has a code should not have to
-              submit the form to reach the next screen. */}
-          <Link className={styles.link} to={path.resetPasswordByEmail()}>
+        {/* The stack shrink-wraps to the card, sized by its field's min-width
+            to match the login card, so every button below lands card-wide. */}
+        <div className={styles.stack}>
+          <Card>
+            {/* The width lives on this wrapper rather than on the form, so the
+                card does not shrink to its confirmation copy once sent. */}
+            <div className={styles.content}>
+              {sent ? (
+                <p className={styles.lead}>
+                  If that address has an account, a reset code is on its way.
+                </p>
+              ) : (
+                <form className={styles.form} action={submitAction}>
+                  <TextInput
+                    placeholder="Email address"
+                    name="email"
+                    autoCapitalize="none"
+                    onChange={(value) => setEmail(value ?? '')}
+                    value={email}
+                  />
+                  <Button submit loading={isPending} type="primary" radius="card">
+                    Send reset code
+                  </Button>
+                  {error === null ? null : <p className={styles.error}>{error}</p>}
+                </form>
+              )}
+            </div>
+          </Card>
+          {/* Shown in BOTH states: a user who already has a code should not
+              have to submit the form to reach the next screen. Both buttons sit
+              on the page rather than in a card, so both take the page radius —
+              the Button default, hence no `radius` prop. */}
+          <Button type="default" onClick={() => void navigate(path.resetPasswordByEmail())}>
             I have a code
-          </Link>
-          <Link className={styles.link} to={path.login()}>
+          </Button>
+          <Button type="default" onClick={() => void navigate(path.login())}>
             Back to sign in
-          </Link>
-        </Card>
+          </Button>
+        </div>
       </div>
     </Page>
   );

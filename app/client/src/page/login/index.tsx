@@ -1,5 +1,5 @@
 import { useActionState, useState } from 'react';
-import { Link } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -12,6 +12,7 @@ import { useStyle } from './style';
 
 export const LoginPage = () => {
   const styles = useStyle();
+  const navigate = useNavigate();
   const showToast = useToast();
   const emailEnabled = useEmailEnabled();
 
@@ -57,34 +58,41 @@ export const LoginPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
-        <Card className={styles.card}>
-          <form className={styles.form} action={submitAction}>
-            <div className={styles.inputContainer}>
-              <TextInput
-                placeholder={emailEnabled ? 'Username or email' : 'Username'}
-                name="username"
-                autoCapitalize="none"
-                onChange={setUsername}
-                value={username}
-              />
-              <TextInput
-                placeholder="Password"
-                name="password"
-                onChange={setPassword}
-                password
-                value={password}
-              />
-            </div>
-            <Button submit loading={isPending} type="primary" radius="card">
-              Sign In
+        {/* The stack shrink-wraps to its widest child — the card, itself sized
+            by the fields' min-width — so the button below stretches to exactly
+            the card's width without that width being restated here. */}
+        <div className={styles.stack}>
+          <Card>
+            <form className={styles.form} action={submitAction}>
+              <div className={styles.inputContainer}>
+                <TextInput
+                  placeholder={emailEnabled ? 'Username or email' : 'Username'}
+                  name="username"
+                  autoCapitalize="none"
+                  onChange={setUsername}
+                  value={username}
+                />
+                <TextInput
+                  placeholder="Password"
+                  name="password"
+                  onChange={setPassword}
+                  password
+                  value={password}
+                />
+              </div>
+              <Button submit loading={isPending} type="primary" radius="card">
+                Sign In
+              </Button>
+            </form>
+          </Card>
+          {/* On the page rather than in a card, so it takes the page radius —
+              the Button default, hence no `radius` prop. */}
+          {emailEnabled ? (
+            <Button type="default" onClick={() => void navigate(path.forgotPassword())}>
+              Forgot password?
             </Button>
-            {emailEnabled ? (
-              <Link className={styles.forgot} to={path.forgotPassword()}>
-                Forgot password?
-              </Link>
-            ) : null}
-          </form>
-        </Card>
+          ) : null}
+        </div>
       </div>
     </Page>
   );

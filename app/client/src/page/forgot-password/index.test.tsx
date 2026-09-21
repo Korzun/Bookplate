@@ -6,8 +6,17 @@ import { renderWithProviders } from '~/test-utils';
 
 import { ForgotPasswordPage } from './index';
 
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('react-router', async (orig) => ({
+  ...(await orig<typeof import('react-router')>()),
+  useNavigate: () => routerMocks.navigate,
+}));
+
 describe('ForgotPasswordPage', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    routerMocks.navigate.mockReset();
+  });
 
   it('reports the same message whether or not the address exists', async () => {
     const user = userEvent.setup();
@@ -51,11 +60,40 @@ describe('ForgotPasswordPage', () => {
     expect(screen.queryByText(/reset code is on its way/i)).not.toBeInTheDocument();
   });
 
-  it('links onward to the code-entry screen', () => {
+  it('sends a user who already has a code onward to the code-entry screen', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<ForgotPasswordPage />);
-    expect(screen.getByRole('link', { name: /have a code/i })).toHaveAttribute(
-      'href',
-      '/reset-password'
-    );
+
+    const button = screen.getByRole('button', { name: /have a code/i });
+    // Lives in its own card, so it is never inside the address form.
+    expect(button.closest('form')).toBeNull();
+    await user.click(button);
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/reset-password');
+  });
+
+  it('offers a back-to-sign-in button below the cards', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ForgotPasswordPage />);
+
+    const button = screen.getByRole('button', { name: /back to sign in/i });
+    expect(button.closest('form')).toBeNull();
+    await user.click(button);
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/login');
+  });
+
+  // The "Send reset code" button already says what the form does.
+  it('does not explain the form in a lead paragraph', () => {
+    renderWithProviders(<ForgotPasswordPage />);
+    expect(screen.queryByText(/send you a reset code/i)).toBeNull();
+  });
+
+  // The card is sized by its fields, exactly as the login card is, so the two
+  // screens do not visibly resize as the user moves between them.
+  it('sizes the card to the same width as the login card', () => {
+    const { container } = renderWithProviders(<ForgotPasswordPage />);
+    // The width sits on the block wrapping the form, not the form itself, so
+    // the card keeps it once the form is replaced by a confirmation.
+    const content = (container.querySelector('form') as HTMLElement).parentElement as HTMLElement;
+    expect(getComputedStyle(content).minWidth).toBe('400px');
   });
 });
