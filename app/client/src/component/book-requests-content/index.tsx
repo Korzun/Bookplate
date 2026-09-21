@@ -15,6 +15,9 @@ import {
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { unwrapResult } from '~/provider/apollo';
 
+import { Card } from '../card';
+import { CardDivider } from '../card-divider';
+import { EmptyState } from '../empty-state';
 import { useStyle } from './style';
 
 // `unwrapResult`'s `TPayload` sits in a position TypeScript cannot infer from
@@ -100,7 +103,21 @@ interface BookRequestsContentProps {
  * three-branch shape exactly** — but only for the LIST region below the
  * form: the form itself is not gated on any of those three states, so a
  * reader can compose a new request even while the list is loading, failed,
- * or empty.
+ * or empty. Where `MyProgressContent` renders those three as plain lines,
+ * this one renders them as a centred `EmptyState`: that component is mounted
+ * inside a card on `/user`, where a left-aligned line is just another row of
+ * card content, and this one is mounted bare on a page, where the same line
+ * reads as stray text against the left edge.
+ *
+ * **This component brings its own `Card`** around the create form. Its view
+ * (`page/add/request.tsx`) deliberately adds none — the add-page reorg deleted
+ * the `/user` card that used to wrap this whole component, because the
+ * Upload/Request toggle replaced the lazy-mount gate it provided. That card
+ * was load-bearing twice, though, and the shell half of its job did not have a
+ * replacement: the fields went full-bleed and square-cornered straight onto
+ * the page background. The form owning its own card puts the shell where it
+ * survives wherever this component is mounted, and matches the house pattern
+ * for a create form on a page (`component/device-form`).
  */
 export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsContentProps) => {
   const styles = useStyle();
@@ -295,11 +312,13 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
 
   let list: React.ReactNode;
   if (loading) {
-    list = <div className={styles.message}>Loading...</div>;
+    list = <EmptyState title="Loading..." />;
   } else if (error && rows.length === 0) {
-    list = <div className={cx(styles.message, styles.error)}>Error loading requests</div>;
+    list = <EmptyState title="Error loading requests" danger />;
   } else if (rows.length === 0) {
-    list = <div className={styles.message}>No requests yet</div>;
+    list = (
+      <EmptyState title="No requests yet">Fill in the form above to ask for a book.</EmptyState>
+    );
   } else {
     list = (
       <Fragment>
@@ -325,15 +344,18 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
 
   return (
     <div className={styles.root}>
-      <form className={styles.form} onSubmit={handleSubmit}>
-        <TextInput name="title" label="Title" value={title} onChange={handleTitleChange} />
-        <TextInput name="author" label="Author" value={author} onChange={handleAuthorChange} />
-        <TextArea name="note" label="Note" value={note} onChange={handleNoteChange} />
-        {formError && <div className={cx(styles.message, styles.error)}>{formError}</div>}
-        <Button type="primary" radius="card" submit loading={creating}>
-          Request
-        </Button>
-      </form>
+      <Card title="New request">
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <TextInput name="title" label="Title" value={title} onChange={handleTitleChange} />
+          <TextInput name="author" label="Author" value={author} onChange={handleAuthorChange} />
+          <TextArea name="note" label="Note" value={note} onChange={handleNoteChange} />
+          {formError && <div className={cx(styles.message, styles.error)}>{formError}</div>}
+          <CardDivider />
+          <Button type="primary" radius="card" submit loading={creating}>
+            Request
+          </Button>
+        </form>
+      </Card>
       {deleteError && <div className={cx(styles.message, styles.error)}>{deleteError}</div>}
       {list}
       {/* The per-row Clear fires straight away; a whole page of them asks

@@ -170,11 +170,21 @@ announcement effect and its `announcedRef` — moves across unchanged.
 Branches on `isAdmin`, and each branch mounts a component that already exists:
 
 - **Reader:** `<BookRequestsContent skip={false} />` — the create form and their
-  own list. No `Card` wrapper: the toggle is the gate now, so the lazy-mount
-  reasoning that governed the `/user` card no longer applies. `skip` stays a
-  required prop of that component and is passed `false` here, for the reason its
-  own doc comment gives — its tests gate the query directly rather than
-  depending on a parent's mount timing.
+  own list. No `Card` wrapper *at this view*: the toggle is the gate now, so the
+  lazy-mount reasoning that governed the `/user` card no longer applies. `skip`
+  stays a required prop of that component and is passed `false` here, for the
+  reason its own doc comment gives — its tests gate the query directly rather
+  than depending on a parent's mount timing.
+
+  **Correction (2026-09-21).** As written, this shipped the form with no shell
+  at all: the `/user` card was load-bearing TWICE — the lazy-mount gate *and*
+  the visual shell (`theme.recipe.card.shell`) — and dropping it for the first
+  reason silently dropped the second, leaving the fields full-bleed and
+  square-cornered against the page background. `BookRequestsContent` now renders
+  its own `<Card title="New request">` around the form, which is the house
+  pattern for a create form on a page (`component/device-form`). The view above
+  it still adds none, so the sentence above holds where it meant to: the gate is
+  the toggle, and the shell belongs to the form.
 - **Admin:** `<UserRequestList userId={targetUserId} skip={false} />`, with the
   full Upload / Link / Decline row actions it already renders.
 

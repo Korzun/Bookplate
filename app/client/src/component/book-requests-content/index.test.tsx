@@ -429,4 +429,32 @@ describe('BookRequestsContent — clear resolved', () => {
 
     expect(await screen.findByText(/network down/i)).toBeInTheDocument();
   });
+
+  // ─── The shell (see this component's own note on why it has one) ───
+
+  it('shells the create form in a card with its own header', async () => {
+    const { container } = renderContent();
+
+    // `/add/request` renders this component BARE, straight under `<Page>` —
+    // there is no `Card` above it the way the deleted `/user` card used to
+    // provide, and without one the fields went full-bleed and square-cornered
+    // against the page background (the shipped bug). The card's header text is
+    // the cheapest honest marker that the shell is still there: it exists only
+    // because a `Card` renders it, and it goes away with the card.
+    const header = await screen.findByText('New request');
+    // ...and the fields are that same card's CONTENT, not a sibling of the
+    // card: walking up from the form (content row, then card root) has to
+    // reach the element the header sits in.
+    const card = titleInput(container).closest('form')?.parentElement?.parentElement;
+    expect(card).toContainElement(header);
+  });
+
+  it('centres the empty list under the form instead of leaving stray text', async () => {
+    renderContent({ requests: [] });
+
+    // The subtitle is what distinguishes the page-level `EmptyState` from the
+    // bare `<div>` this used to render: it only exists in the former.
+    expect(await screen.findByText(/no requests yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/fill in the form above/i)).toBeInTheDocument();
+  });
 });

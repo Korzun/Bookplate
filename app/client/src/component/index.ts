@@ -16,6 +16,7 @@ export { DeviceForm } from './device-form';
 export { DeviceList } from './device-list';
 export { DeviceRow } from './device-row';
 export { EmailSetting } from './email-setting';
+export { EmptyState } from './empty-state';
 export { FixReview } from './fix-review';
 export { SearchBar } from './search-bar';
 export { Nav } from './nav';
