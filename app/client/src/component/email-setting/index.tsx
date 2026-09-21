@@ -210,7 +210,7 @@ export const EmailSetting = ({ email, emailVerifiedAt }: EmailSettingProps) => {
   // nesting, so the two settings cards read the same way.
   const editFooter = (
     <Fragment>
-      <Button type="text" disabled={saving} onClick={handleCancelEdit}>
+      <Button type="text" radius="card" disabled={saving} onClick={handleCancelEdit}>
         Cancel
       </Button>
       <Button
@@ -285,7 +285,12 @@ export const EmailSetting = ({ email, emailVerifiedAt }: EmailSettingProps) => {
               >
                 Confirm
               </Button>
-              <Button type="text" disabled={confirming} onClick={() => void handleResend()}>
+              <Button
+                type="text"
+                radius="card"
+                disabled={confirming}
+                onClick={() => void handleResend()}
+              >
                 Resend
               </Button>
             </div>
