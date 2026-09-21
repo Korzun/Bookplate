@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useId, useState } from 'react';
 
 import { Card } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -67,6 +67,9 @@ export type EmailSettingProps = {
 export const EmailSetting = ({ email, emailVerifiedAt }: EmailSettingProps) => {
   const emailEnabled = useEmailEnabled();
   const styles = useStyle();
+  // Unique id ties the footer-slot submit button to this card's form by
+  // construction, robust against any future co-mounting.
+  const formId = useId();
   const client = useApolloClient();
   const showToast = useToast();
 
@@ -202,24 +205,47 @@ export const EmailSetting = ({ email, emailVerifiedAt }: EmailSettingProps) => {
     </Button>,
   ];
 
+  // Matches `component/user-change-password`: the submit button lives in the
+  // card footer, tied back to the form by a generated id rather than by DOM
+  // nesting, so the two settings cards read the same way.
+  const editFooter = (
+    <Fragment>
+      <Button type="text" disabled={saving} onClick={handleCancelEdit}>
+        Cancel
+      </Button>
+      <Button
+        submit
+        form={formId}
+        type="primary"
+        loading={saving}
+        radius="card"
+        disabled={pendingEmail.trim().length === 0}
+      >
+        Save
+      </Button>
+    </Fragment>
+  );
+
   return (
-    <Card title="Email address" headerAction={isEditing ? undefined : changeAction}>
+    <Card
+      title="Email address"
+      headerAction={isEditing ? undefined : changeAction}
+      footer={isEditing ? editFooter : undefined}
+    >
       {isEditing ? (
-        <div className={styles.editRow}>
-          <TextInput
-            placeholder="Email address"
-            name="email"
-            autoCapitalize="none"
-            value={pendingEmail}
-            onChange={handlePendingEmailChange}
-          />
-          <Button type="primary" loading={saving} onClick={() => void handleSave()} radius="card">
-            Save
-          </Button>
-          <Button type="text" disabled={saving} onClick={handleCancelEdit}>
-            Cancel
-          </Button>
-        </div>
+        <form id={formId} action={handleSave}>
+          <div className={styles.inputContainer}>
+            <TextInput
+              name="email"
+              autoCapitalize="none"
+              value={pendingEmail}
+              onChange={handlePendingEmailChange}
+              layout="horizontal"
+              label="Address"
+              autoComplete="off"
+            />
+          </div>
+        </form>
       ) : (
         <Fragment>
           <div className={styles.pill}>

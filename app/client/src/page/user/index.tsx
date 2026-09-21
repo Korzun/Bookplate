@@ -91,8 +91,8 @@ export const UserPage = () => {
     <Page>
       <ThemeSetting />
       <SyncPassword />
-      {emailSection}
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
+      {emailSection}
       <UserChangePassword />
       <MyProgress />
       <Button loading={loggingOut} onClick={handleLogout} danger>
