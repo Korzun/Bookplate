@@ -4,6 +4,12 @@ export const useStyle = createUseStyles((theme: Theme) => {
   // The track has no border of its own, so the lens (which does) is the only outlined edge.
   // The lens fills the track edge-to-edge (no padding gap) and shares the track's radius, so
   // at the ends the tile's rounded corner sits exactly on the track's — one edge, no double radii.
+  //
+  // Because the track is borderless, `bg.track` is the ONLY thing holding it apart from the
+  // surface underneath — which is why it is its own token rather than the `bg.cardHeader` it
+  // used to borrow. `cardHeader` reads on a card but is a single channel-step from `bg.page`
+  // in dark mode, so the `page`-surface copy of this control (the Add page's Upload/Request
+  // toggle) had no visible track at all.
   const innerRadius = theme.radius.md;
   // The `page` surface, in one place: the track, the lens and the segments all
   // take it together, because the lens shares the track's radius by design (see
@@ -21,7 +27,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       gridAutoFlow: 'column',
       gridAutoColumns: '1fr',
       padding: 0,
-      backgroundColor: theme.color.bg.cardHeader,
+      backgroundColor: theme.color.bg.track,
       borderRadius: theme.radius.md,
       userSelect: 'none',
       '-webkit-user-select': 'none',
@@ -41,10 +47,14 @@ export const useStyle = createUseStyles((theme: Theme) => {
     card: {},
     page: {},
     // The active highlight fills the full track height and one column, sliding one own-width
-    // per step. Raised button-like tile: `input` surface, a hairline border, and the flat
-    // `cardStack` stack-shadow (no blurred drop shadow). The recessed borderless `cardHeader`
-    // track makes the lighter tile read clearly, and the tile's border is the control's only
-    // outlined edge — no track border to double against.
+    // per step. Button-like tile: `input` surface, a hairline border, and the flat `cardStack`
+    // stack-shadow (no blurred drop shadow). The tile's border is the control's only outlined
+    // edge — no track border to double against.
+    //
+    // Which of the two is lighter flips between modes, and that is fine: light mode recesses
+    // the track below a white tile, dark mode raises the track above a dark-well tile, the way
+    // every other dark control here (`recipe.input`, the page-surface Select) is a dark well on
+    // a lighter page. What matters is the separation, which `bg.track` now guarantees in both.
     lens: {
       position: 'absolute',
       boxSizing: 'border-box',
