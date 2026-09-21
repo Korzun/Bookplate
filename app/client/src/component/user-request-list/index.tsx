@@ -10,6 +10,7 @@ import { UserListDocument } from '~/graphql/user';
 import { usePaginatedConnection } from '~/lib/use-paginated-connection';
 import { unwrapResult } from '~/provider/apollo';
 
+import { EmptyState } from '../empty-state';
 import { useStyle } from './style';
 
 interface UserRequestListProps {
@@ -249,17 +250,26 @@ export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestLi
     </ConfirmModal>
   );
 
+  // Centred page-level states, not the bare left-aligned lines this rendered
+  // while it lived inside a `Card` on `/users`: on `/add/request` it is mounted
+  // straight under `<Page>` with nothing around it. Same three branches, same
+  // copy — only the block they render in changed. `BookRequestsContent` does
+  // the same for the reader's half of this view.
   if (loading) {
-    return <div className={styles.message}>Loading...</div>;
+    return <EmptyState title="Loading..." />;
   }
   // A first-page failure (no rows loaded yet) is the empty-error state. A
   // `fetchMore` failure with existing rows falls through to the list below,
   // which renders its own inline retry instead of replacing the rows.
   if (error && rows.length === 0) {
-    return <div className={cx(styles.message, styles.error)}>Error loading requests</div>;
+    return <EmptyState title="Error loading requests" danger />;
   }
   if (rows.length === 0) {
-    return <div className={styles.message}>No requests yet</div>;
+    return (
+      <EmptyState title="No requests yet">
+        Requests from this library&rsquo;s reader show up here to fulfil or decline.
+      </EmptyState>
+    );
   }
 
   return (
