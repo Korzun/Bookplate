@@ -1,3 +1,8 @@
+## 0.9.1
+
+- refactor(client): move the email edit actions into the card footer
+- refactor(client): give the password-reset flow one shape across its pages
+
 ## 0.9.0
 
 - fix(replace): apply accepted subject-splits when re-importing
