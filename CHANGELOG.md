@@ -1,3 +1,29 @@
+## 0.9.0
+
+- fix(replace): apply accepted subject-splits when re-importing
+- Branding presentation: fix the HA banner, and recolour the icon system to ink-on-paper
+- fix(upload): don't let a bad /api/config response freeze the upload queue
+- Migrate the client from REST to GraphQL (Apollo), steps 0-10
+- Realign the client onto colocated fragments and lazy query splits
+- feat(server)!: drop `last`/`before` from Library.entries and Library.progress
+- fix: two pre-existing cache-coherence defects (regen handler, partial PendingFixState write)
+- refactor(server)!: drop the REST surface GraphQL replaced, and its dead stores
+- refactor(server)!: dissolve the Stores layer into services, and delete the 13 REST endpoints GraphQL replaced
+- refactor(server): collapse the router signatures, warn on a silent lineage-cleanup failure, and document the two BOOK_SELECT lists
+- build(server): type-check the test files, and fix the 15 hand-built contexts missing required fields that surfaced
+- refactor(auth): drop the dead /api/my/password exemption from passwordChangeGate
+- docs: track docs/ again, and save the book-requests discovery
+- perf(server): batch the four unbatched per-book reads; consolidate the loaders
+- perf(server)!: Library.progress → t.prismaConnection — 3 queries to 1 per page
+- Remove the library scan from the interface
+- Book requests, and the Add page
+- fix(client): make hover states visible in modals
+- ci: run the full suite on every pull request, not only those on main
+- feat: email login, address verification, and password reset
+- fix: bound the mail fetch, collapse a duplicate viewer query, and identify the admin by flag
+- feat: make an email address claim visible and clearable
+- docs: per-device OPDS catalogs design and implementation plan
+
 ## 0.8.2
 
 - Fix EPUB 2 metadata-write validation bugs (dc:title opf:file-as, NCX dtb:uid)
