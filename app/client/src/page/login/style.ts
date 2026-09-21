@@ -13,7 +13,13 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       padding: `0 ${theme.space.xxl}`,
     },
   },
-  card: {
+  // Holds the card and the secondary button below it. The root centres its
+  // children, so this column shrink-wraps to the card's own width and the
+  // stretched button beneath it lands exactly card-wide.
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.xxl,
     [theme.breakpoint.mobile]: {
       width: '100%',
     },
@@ -34,10 +40,5 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     [theme.breakpoint.mobile]: {
       minWidth: 'auto',
     },
-  },
-  forgot: {
-    textAlign: 'center',
-    fontSize: theme.fontSize.sm,
-    marginTop: theme.space.md,
   },
 }));

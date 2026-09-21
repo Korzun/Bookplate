@@ -8,6 +8,12 @@ import { renderWithProviders } from '~/test-utils';
 
 import { LoginPage } from './index';
 
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('react-router', async (orig) => ({
+  ...(await orig<typeof import('react-router')>()),
+  useNavigate: () => routerMocks.navigate,
+}));
+
 // `renderWithConfig` is not a shared test-utils helper (only this suite needs
 // email-config variance), so it is a thin local wrapper around
 // `renderWithProviders` rather than a new export from `~/test-utils`.
@@ -26,7 +32,10 @@ describe('LoginPage', () => {
       vi.fn(async () => new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }))
     );
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    routerMocks.navigate.mockReset();
+  });
 
   it('submits credentials when the form is submitted', async () => {
     const user = userEvent.setup();
@@ -104,17 +113,23 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/too many attempts/i)).toBeInTheDocument();
   });
 
-  it('offers a forgot-password link when email is enabled', () => {
+  // A default Button below the card, not a link inside the form: `Button` has
+  // no anchor mode, so it navigates through `useNavigate` the way every other
+  // button in the app does.
+  it('offers a forgot-password button that sends the user onward when email is enabled', async () => {
+    const user = userEvent.setup();
     renderWithConfig(<LoginPage />, { emailEnabled: true });
-    expect(screen.getByRole('link', { name: /forgot/i })).toHaveAttribute(
-      'href',
-      '/forgot-password'
-    );
+
+    const button = screen.getByRole('button', { name: /forgot/i });
+    // Outside the form, so it cannot be mistaken for a second submit control.
+    expect(button.closest('form')).toBeNull();
+    await user.click(button);
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/forgot-password');
   });
 
-  it('offers no forgot-password link when email is disabled', () => {
+  it('offers no forgot-password button when email is disabled', () => {
     renderWithConfig(<LoginPage />, { emailEnabled: false });
-    expect(screen.queryByRole('link', { name: /forgot/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /forgot/i })).toBeNull();
   });
 
   it('labels the identifier field for email when email is enabled', () => {

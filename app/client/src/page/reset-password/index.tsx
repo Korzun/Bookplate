@@ -1,5 +1,5 @@
 import { useActionState, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
@@ -9,6 +9,7 @@ import { useStyle } from './style';
 
 export const ResetPasswordPage = () => {
   const styles = useStyle();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState<string>('');
   // Prefilled when the user followed the link from their inbox.
@@ -76,58 +77,61 @@ export const ResetPasswordPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
-        <Card className={styles.card}>
-          {done ? (
-            <>
-              <p className={styles.lead}>Your password reset — sign in with your new password.</p>
-              <Link className={styles.link} to={path.login()}>
-                Go to sign in
-              </Link>
-            </>
-          ) : (
-            <form className={styles.form} action={submitAction}>
-              <p className={styles.lead}>
-                The administrator account&rsquo;s password is set in the add-on configuration, not
-                here.
-              </p>
-              <TextInput
-                placeholder="Email address"
-                name="email"
-                autoCapitalize="none"
-                onChange={(value) => setEmail(value ?? '')}
-                value={email}
-              />
-              <TextInput
-                placeholder="Reset code"
-                name="code"
-                autoCapitalize="characters"
-                onChange={(value) => setCode(value ?? '')}
-                value={code}
-              />
-              <TextInput
-                placeholder="New password"
-                name="newPassword"
-                password
-                onChange={(value) => setNewPassword(value ?? '')}
-                value={newPassword}
-              />
-              <TextInput
-                placeholder="Confirm new password"
-                name="confirmPassword"
-                password
-                onChange={(value) => setConfirmPassword(value ?? '')}
-                value={confirmPassword}
-              />
-              <Button submit loading={isPending} type="primary" radius="card">
-                Reset password
-              </Button>
-              {error === null ? null : <p className={styles.error}>{error}</p>}
-              <Link className={styles.link} to={path.login()}>
-                Back to sign in
-              </Link>
-            </form>
-          )}
-        </Card>
+        {/* The stack shrink-wraps to the card, itself sized by the field column
+            to match the login card, so the button below lands card-wide. */}
+        <div className={styles.stack}>
+          <Card>
+            {/* The width lives on this wrapper rather than on the form, so the
+                card does not shrink to its confirmation copy once done. */}
+            <div className={styles.content}>
+              {done ? (
+                <p className={styles.lead}>Your password reset — sign in with your new password.</p>
+              ) : (
+                <form className={styles.form} action={submitAction}>
+                  <TextInput
+                    placeholder="Email address"
+                    name="email"
+                    autoCapitalize="none"
+                    onChange={(value) => setEmail(value ?? '')}
+                    value={email}
+                  />
+                  <TextInput
+                    placeholder="Reset code"
+                    name="code"
+                    autoCapitalize="characters"
+                    onChange={(value) => setCode(value ?? '')}
+                    value={code}
+                  />
+                  <TextInput
+                    placeholder="New password"
+                    name="newPassword"
+                    password
+                    onChange={(value) => setNewPassword(value ?? '')}
+                    value={newPassword}
+                  />
+                  <TextInput
+                    placeholder="Confirm new password"
+                    name="confirmPassword"
+                    password
+                    onChange={(value) => setConfirmPassword(value ?? '')}
+                    value={confirmPassword}
+                  />
+                  <Button submit loading={isPending} type="primary" radius="card">
+                    Reset password
+                  </Button>
+                  {error === null ? null : <p className={styles.error}>{error}</p>}
+                </form>
+              )}
+            </div>
+          </Card>
+          {/* Shown in both states — after a successful reset it IS the onward
+              step, so the done state carries no second link of its own. On the
+              page rather than in a card, so it takes the page radius — the
+              Button default, hence no `radius` prop. */}
+          <Button type="default" onClick={() => void navigate(path.login())}>
+            Back to sign in
+          </Button>
+        </div>
       </div>
     </Page>
   );
