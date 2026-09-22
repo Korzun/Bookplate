@@ -31,8 +31,11 @@ export type NotificationEvent =
   | 'book_request.fulfilled'
   | 'book_request.declined';
 
-/** Web push adds a member here, a driver, and nothing else. */
-export type NotificationChannel = 'email';
+/**
+ * Email reaches one verified address; push reaches N subscribed browsers.
+ * Everything above `ChannelDriver` is blind to that difference.
+ */
+export type NotificationChannel = 'email' | 'push';
 
 /**
  * `'admin'` resolves to the `isConfigAdmin` row; `'subject'` to the user the
@@ -51,7 +54,7 @@ export const NOTIFICATION_EVENT_LIST: readonly NotificationEvent[] = Object.keys
   NOTIFICATION_EVENTS
 ) as NotificationEvent[];
 
-export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ['email'];
+export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ['email', 'push'];
 
 /**
  * Everything the three mails need, and nothing that has to be looked up again.

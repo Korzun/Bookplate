@@ -1,11 +1,10 @@
-import { isMailConfigured } from '../../../../services/mailer';
 import {
   listNotificationPreferences,
-  NOTIFICATION_CHANNELS,
   setNotificationPreference,
   type NotificationChannel,
   type NotificationEvent,
 } from '../../../../services/notification';
+import { configuredChannels } from '../../../../services/notification-channels';
 import { builder } from '../../builder';
 import { model as notificationChannelModel } from '../../notification-channel/model';
 import { model as notificationEventModel } from '../../notification-event/model';
@@ -68,7 +67,7 @@ builder.mutationField('viewerSetNotificationPreference', (t) =>
       const preferences = await listNotificationPreferences(context.prisma, {
         userId,
         role: context.viewer?.userId == null ? 'admin' : 'reader',
-        channels: isMailConfigured(context.config) ? NOTIFICATION_CHANNELS : [],
+        channels: configuredChannels(context.config),
       });
       return { __typename: 'ViewerSetNotificationPreferencePayload' as const, preferences };
     },

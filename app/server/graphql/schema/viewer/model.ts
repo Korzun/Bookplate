@@ -1,6 +1,6 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
-import { isMailConfigured } from '../../../services/mailer';
-import { listNotificationPreferences, NOTIFICATION_CHANNELS } from '../../../services/notification';
+import { listNotificationPreferences } from '../../../services/notification';
+import { configuredChannels } from '../../../services/notification-channels';
 import { getSyncPassword } from '../../../services/password';
 import type { Viewer } from '../../context';
 import { epochToDate } from '../../derive';
@@ -81,7 +81,7 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
         return listNotificationPreferences(context.prisma, {
           userId,
           role: context.viewer?.userId == null ? 'admin' : 'reader',
-          channels: isMailConfigured(context.config) ? NOTIFICATION_CHANNELS : [],
+          channels: configuredChannels(context.config),
         });
       },
     }),

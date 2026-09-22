@@ -736,6 +736,7 @@ interface Node {
 
 enum NotificationChannel {
   EMAIL
+  PUSH
 }
 
 enum NotificationEvent {

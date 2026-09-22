@@ -107,7 +107,13 @@ describe('NotificationQueue.drainOnce', () => {
 
   it('leaves a row whose nextAttemptAt is in the future alone', async () => {
     await enqueue();
-    await prisma.notificationOutbox.updateMany({ data: { nextAttemptAt: NOW + 1 } });
+    // Only the email row: the push row has no registered driver in this
+    // test's `queueWith`, so leaving it due lets drainOnce discard it the
+    // same pass, keeping `onlyRow()` meaningful for the email row under test.
+    await prisma.notificationOutbox.updateMany({
+      where: { channel: 'email' },
+      data: { nextAttemptAt: NOW + 1 },
+    });
     const driver = stubDriver();
 
     await queueWith(driver).drainOnce();
