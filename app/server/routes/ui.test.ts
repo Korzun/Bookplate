@@ -368,6 +368,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     config: { ...config, booksDir },
     mailer: null,
     notifications,
+    vapidPublicKey: 'test-vapid-public-key',
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),

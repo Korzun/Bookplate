@@ -3,14 +3,25 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { PrismaClient } from '@prisma/client';
+import webpush from 'web-push';
 
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { NotificationPayload, NotificationRecipient } from './notification';
-import { createPushChannelDriver, type PushSender } from './notification-channel-push';
+import { createPushChannelDriver, TTL_SECONDS, type PushSender } from './notification-channel-push';
 import { listPushSubscriptionRows, upsertPushSubscription } from './push-subscription';
 
 vi.mock('../logger');
+// Mocked so the ONE test below that drives the driver's default,
+// non-injected `send` closure (every other test in this file injects a fake
+// `send` and never touches this module) can assert on the real
+// `webpush.sendNotification` call — its argument shape and options — without
+// a network or a real push service.
+vi.mock('web-push', () => ({
+  default: {
+    sendNotification: vi.fn(),
+  },
+}));
 
 let tmpDir: string;
 let prisma: PrismaClient;
@@ -201,4 +212,69 @@ it('lets a success outrank a misconfiguration', async () => {
   // (same keys, same payload to every endpoint), so this pairing cannot really
   // happen — and ordering it here means a partial success is never buried.
   expect(await deliver(send)).toEqual({ ok: true });
+});
+
+describe('the default send (no injected `send`)', () => {
+  // Every `it` above injects a fake `send`, so the real closure — the one
+  // that actually calls `webpush.sendNotification` in production — was
+  // exercised by nothing until this. It closes that gap: is the option
+  // object right, and does `contact` round-trip as the VAPID subject.
+  const driverWithDefaultSend = () =>
+    createPushChannelDriver({
+      prisma,
+      vapid: VAPID,
+      contact: 'mailto:admin@example.com',
+      libraryName: 'Bookplate',
+      now: () => NOW,
+      // No `send` passed: the driver falls back to its own
+      // `webpush.sendNotification`-calling closure.
+    });
+
+  const deliverWithDefaultSend = () =>
+    driverWithDefaultSend().deliver({ recipient, event: 'book_request.fulfilled', payload });
+
+  beforeEach(() => {
+    vi.mocked(webpush.sendNotification).mockReset();
+  });
+
+  it('calls webpush.sendNotification with the subscription, TTL/urgency and VAPID details', async () => {
+    await subscribe('https://push.example/a');
+    vi.mocked(webpush.sendNotification).mockResolvedValue({
+      statusCode: 201,
+      body: '',
+      headers: {},
+    });
+
+    expect(await deliverWithDefaultSend()).toEqual({ ok: true });
+    expect(webpush.sendNotification).toHaveBeenCalledTimes(1);
+
+    const [subscriptionArg, , options] = vi.mocked(webpush.sendNotification).mock.calls[0]!;
+    expect(subscriptionArg).toEqual({
+      endpoint: 'https://push.example/a',
+      keys: { p256dh: 'key', auth: 'secret' },
+    });
+    expect(options).toMatchObject({
+      TTL: TTL_SECONDS,
+      urgency: 'normal',
+      vapidDetails: {
+        subject: 'mailto:admin@example.com',
+        publicKey: VAPID.publicKey,
+        privateKey: VAPID.privateKey,
+      },
+    });
+  });
+
+  it('normalizes a rejected 410 from webpush.sendNotification and prunes the subscription', async () => {
+    // `web-push` REJECTS for any non-2xx response rather than resolving with
+    // it — a `WebPushError` carrying `.statusCode` — so this is the shape
+    // production actually sees, not an edge case. The driver's own catch
+    // block must normalize it back into a resolved status and prune.
+    await subscribe('https://push.example/a');
+    vi.mocked(webpush.sendNotification).mockRejectedValue(
+      Object.assign(new Error('Gone'), { statusCode: 410 })
+    );
+
+    expect(await deliverWithDefaultSend()).toEqual({ ok: false, reason: 'no_destination' });
+    expect(await prisma.pushSubscription.count()).toBe(0);
+  });
 });

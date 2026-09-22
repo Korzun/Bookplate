@@ -85,6 +85,12 @@ export type Harness = {
    * identical instance, the same reason `mailer` above is exposed.
    */
   notifications: NotificationPoker;
+  /**
+   * The fixed value every context this harness builds carries as
+   * `Context.vapidPublicKey` — a real VAPID keypair is boot-time
+   * infrastructure this harness has no need to generate.
+   */
+  vapidPublicKey: string;
   /** How many times a resolver has poked the notification drain. */
   readonly pokes: number;
   /** `path.join(dataDir, 'editions')` — same value `Context.editionsRoot` carries. */
@@ -165,6 +171,10 @@ export const createHarness = async (
       pokes += 1;
     },
   };
+  // A real VAPID keypair is boot-time infrastructure (`getOrCreateVapidKeys`)
+  // this harness has no need to generate — every context just needs SOME
+  // string here, since nothing in the test suite validates it as a real key.
+  const vapidPublicKey = 'test-vapid-public-key';
   const editionsRoot = path.join(dataDir, 'editions');
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
@@ -225,6 +235,7 @@ export const createHarness = async (
     config,
     mailer,
     notifications,
+    vapidPublicKey,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -411,6 +422,7 @@ export const createHarness = async (
     config,
     mailer,
     notifications,
+    vapidPublicKey,
     get pokes() {
       return pokes;
     },
