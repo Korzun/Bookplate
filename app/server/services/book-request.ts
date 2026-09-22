@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { PrismaClient } from '@prisma/client';
 
+import { enqueueNotification } from './notification';
 import { isPrismaError } from './prisma-errors';
 
 /**
@@ -89,8 +90,29 @@ export async function createBookRequest(
         note: input.note.trim(),
         dedupeKey: key,
       },
-      select: { id: true },
+      select: { id: true, title: true, author: true, note: true },
     });
+
+    // IN THE TRANSACTION, deliberately: an outbox row that could be lost
+    // between this insert and the queue would defeat the durable outbox the
+    // spec is paying for. Only on the `created` path — a duplicate or a
+    // rejected cap is not an event.
+    const requester = await tx.user.findUnique({
+      where: { id: input.userId },
+      select: { username: true },
+    });
+    await enqueueNotification(tx, {
+      event: 'book_request.created',
+      subjectUserId: input.userId,
+      payload: {
+        requesterUsername: requester?.username ?? '',
+        title: created.title,
+        author: created.author,
+        note: created.note,
+        declineReason: '',
+      },
+    });
+
     return { kind: 'created', id: created.id };
   });
 }
@@ -121,7 +143,13 @@ export async function fulfillBookRequest(
   return prisma.$transaction(async (tx) => {
     const request = await tx.bookRequest.findUnique({
       where: { userId_id: { userId: args.userId, id: args.id } },
-      select: { status: true },
+      select: {
+        status: true,
+        title: true,
+        author: true,
+        note: true,
+        user: { select: { username: true } },
+      },
     });
     if (request === null) return { kind: 'missing' };
     if (request.status !== 'pending') {
@@ -144,6 +172,17 @@ export async function fulfillBookRequest(
         bookId: args.bookId,
       },
     });
+    await enqueueNotification(tx, {
+      event: 'book_request.fulfilled',
+      subjectUserId: args.userId,
+      payload: {
+        requesterUsername: request.user.username,
+        title: request.title,
+        author: request.author,
+        note: request.note,
+        declineReason: '',
+      },
+    });
     return { kind: 'resolved' };
   });
 }
@@ -151,28 +190,55 @@ export async function fulfillBookRequest(
 /**
  * Closes a pending request as declined, with an optional reason.
  *
- * The `status: 'pending'` term in the `where` is what makes this atomic
- * WITHOUT a transaction: the guard and the write are one statement, so two
- * concurrent resolves cannot both see `pending`. The follow-up read only runs
- * when nothing was updated, to tell "no such row" from "already resolved".
+ * IN A TRANSACTION — and it did not used to be. The `status: 'pending'` term in
+ * the `where` is still what makes the guard and the write one statement, so two
+ * concurrent resolves cannot both see `pending`; that reasoning is unchanged and
+ * is why this is an `updateMany` rather than a read-then-write. What the
+ * transaction adds is the OUTBOX ROW: a notification that could be lost between
+ * the status change and the queue would defeat the durable outbox (see
+ * `NotificationOutbox`), so the enqueue has to commit with the update that
+ * caused it. The follow-up read still only runs when nothing was updated, to
+ * tell "no such row" from "already resolved".
  */
 export async function declineBookRequest(
   prisma: PrismaClient,
   args: { userId: string; id: string; reason: string }
 ): Promise<ResolveOutcome> {
-  const updated = await prisma.bookRequest.updateMany({
-    where: { userId: args.userId, id: args.id, status: 'pending' },
-    data: { status: 'declined', declineReason: args.reason.trim(), resolvedAt: Date.now() },
-  });
-  if (updated.count === 1) return { kind: 'resolved' };
+  const reason = args.reason.trim();
 
-  const existing = await prisma.bookRequest.findUnique({
-    where: { userId_id: { userId: args.userId, id: args.id } },
-    select: { status: true },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.bookRequest.updateMany({
+      where: { userId: args.userId, id: args.id, status: 'pending' },
+      data: { status: 'declined', declineReason: reason, resolvedAt: Date.now() },
+    });
+
+    if (updated.count !== 1) {
+      const existing = await tx.bookRequest.findUnique({
+        where: { userId_id: { userId: args.userId, id: args.id } },
+        select: { status: true },
+      });
+      return existing === null
+        ? { kind: 'missing' }
+        : { kind: 'notPending', status: existing.status as BookRequestStatus };
+    }
+
+    const declined = await tx.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: args.userId, id: args.id } },
+      select: { title: true, author: true, note: true, user: { select: { username: true } } },
+    });
+    await enqueueNotification(tx, {
+      event: 'book_request.declined',
+      subjectUserId: args.userId,
+      payload: {
+        requesterUsername: declined.user.username,
+        title: declined.title,
+        author: declined.author,
+        note: declined.note,
+        declineReason: reason,
+      },
+    });
+    return { kind: 'resolved' };
   });
-  return existing === null
-    ? { kind: 'missing' }
-    : { kind: 'notPending', status: existing.status as BookRequestStatus };
 }
 
 /**

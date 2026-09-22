@@ -14,6 +14,7 @@ import {
   fulfillBookRequest,
   MAX_OPEN_BOOK_REQUESTS,
 } from './book-request';
+import { parsePayload } from './notification';
 
 vi.mock('../logger');
 
@@ -288,5 +289,110 @@ describe('deleteBookRequest', () => {
 
   it('reports false for a row that is not there', async () => {
     expect(await deleteBookRequest(prisma, { userId: ALICE, id: 'nope' })).toBe(false);
+  });
+});
+
+describe('notification enqueue', () => {
+  const ADMIN = 'user-admin';
+
+  const makeAdmin = () =>
+    prisma.user.create({ data: { id: ADMIN, username: 'admin', isConfigAdmin: true } });
+
+  const outbox = () => prisma.notificationOutbox.findMany({ orderBy: { createdAt: 'asc' } });
+
+  it('enqueues book_request.created to the admin, with the requester and the book', async () => {
+    await makeAdmin();
+
+    await createBookRequest(prisma, input({ note: 'the 1965 edition' }));
+
+    const rows = await outbox();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].userId).toBe(ADMIN);
+    expect(rows[0].event).toBe('book_request.created');
+    expect(parsePayload(rows[0].payload)).toEqual({
+      requesterUsername: 'alice',
+      title: 'Dune',
+      author: 'Frank Herbert',
+      note: 'the 1965 edition',
+      declineReason: '',
+    });
+  });
+
+  it('enqueues nothing for a duplicate', async () => {
+    await makeAdmin();
+    await createBookRequest(prisma, input());
+    await prisma.notificationOutbox.deleteMany();
+
+    const outcome = await createBookRequest(prisma, input());
+
+    expect(outcome.kind).toBe('duplicate');
+    expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+
+  it('enqueues nothing when the request is refused by the open-request cap', async () => {
+    await makeAdmin();
+    for (let i = 0; i < MAX_OPEN_BOOK_REQUESTS; i++) {
+      await createBookRequest(prisma, input({ title: `Book ${i}` }));
+    }
+    await prisma.notificationOutbox.deleteMany();
+
+    const outcome = await createBookRequest(prisma, input({ title: 'One too many' }));
+
+    expect(outcome.kind).toBe('limit');
+    expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+
+  it('enqueues book_request.fulfilled to the requester', async () => {
+    const created = await createBookRequest(prisma, input());
+    expect(created.kind).toBe('created');
+    await prisma.notificationOutbox.deleteMany();
+    // A book on alice's shelf to fulfil with.
+    await prisma.book.create({
+      data: { userId: ALICE, id: 'book-1', title: 'Dune', size: 1, mtime: 0, addedAt: 0 },
+    });
+
+    const outcome = await fulfillBookRequest(prisma, {
+      userId: ALICE,
+      id: created.kind === 'created' ? created.id : '',
+      bookUserId: ALICE,
+      bookId: 'book-1',
+    });
+
+    expect(outcome.kind).toBe('resolved');
+    const rows = await outbox();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: ALICE, event: 'book_request.fulfilled' });
+    expect(parsePayload(rows[0].payload).title).toBe('Dune');
+  });
+
+  it('enqueues book_request.declined to the requester, carrying the reason', async () => {
+    const created = await createBookRequest(prisma, input());
+    expect(created.kind).toBe('created');
+    await prisma.notificationOutbox.deleteMany();
+
+    const outcome = await declineBookRequest(prisma, {
+      userId: ALICE,
+      id: created.kind === 'created' ? created.id : '',
+      reason: '  already on the shelf  ',
+    });
+
+    expect(outcome.kind).toBe('resolved');
+    const rows = await outbox();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: ALICE, event: 'book_request.declined' });
+    expect(parsePayload(rows[0].payload).declineReason).toBe('already on the shelf');
+  });
+
+  it('enqueues nothing when a decline finds no pending request', async () => {
+    const created = await createBookRequest(prisma, input());
+    expect(created.kind).toBe('created');
+    const id = created.kind === 'created' ? created.id : '';
+    await declineBookRequest(prisma, { userId: ALICE, id, reason: '' });
+    await prisma.notificationOutbox.deleteMany();
+
+    const outcome = await declineBookRequest(prisma, { userId: ALICE, id, reason: '' });
+
+    expect(outcome.kind).toBe('notPending');
+    expect(await prisma.notificationOutbox.count()).toBe(0);
   });
 });
