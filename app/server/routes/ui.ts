@@ -34,6 +34,12 @@ import {
 import { saveValidation } from '../services/validation';
 import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
+import {
+  CLIENT_DIST_DIR,
+  CLIENT_INDEX_HTML,
+  CLIENT_NOT_BUILT_MESSAGE,
+  clientIndexExists,
+} from '../utils/client-dist';
 import { createPasswordRouter } from './password';
 
 const log = logger('UI');
@@ -624,8 +630,23 @@ export function createUiRouter({
 
   // ── Auth ──────────────────────────────────────────────
 
+  /**
+   * Serves the built SPA shell for every non-API GET — `/login` below and the
+   * catch-all at the bottom of this file.
+   *
+   * The existence check is not belt-and-braces. Running the API server with no
+   * client build is the everyday development case (vite serves the UI on
+   * :5173), and without the check `sendFile` hands express an ENOENT that the
+   * terminal error middleware renders as `{"error":"Internal server error"}` —
+   * a server bug's response to what is really a missing build step. See
+   * `utils/client-dist.ts` for the message and the path resolution behind it.
+   */
   const serveSpa = (_req: Request, res: Response): void => {
-    res.sendFile(path.join(__dirname, '../../../client/dist/index.html'));
+    if (!clientIndexExists()) {
+      res.status(503).type('text/plain').send(CLIENT_NOT_BUILT_MESSAGE);
+      return;
+    }
+    res.sendFile(CLIENT_INDEX_HTML);
   };
 
   router.get('/login', serveSpa);
@@ -806,7 +827,7 @@ export function createUiRouter({
   // Serves the built client's hashed bundles (/assets/*) plus root brand files
   // (favicon.ico, favicon.svg, apple-touch-icon, site.webmanifest, /png/*).
   // `index: false` so "/" falls through to the SPA catch-all below.
-  router.use(express.static(path.join(__dirname, '../../../client/dist'), { index: false }));
+  router.use(express.static(CLIENT_DIST_DIR, { index: false }));
 
   router.post(
     '/api/books/upload',
