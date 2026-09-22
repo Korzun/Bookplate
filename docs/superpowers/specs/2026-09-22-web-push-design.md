@@ -310,10 +310,18 @@ No `fetch` handler. A header comment records that offline precaching is the
 deferred follow-up and that adding it means adding a handler here, so the file
 is found rather than reinvented.
 
-**`routes/ui.ts` must serve `/sw.js` before its SPA catch-all.** A service
-worker served as `index.html` registers "successfully" and then does nothing,
-which presents as push being silently broken with no error anywhere. This is
-the single highest-value line in the implementation plan.
+**No server routing change is needed, and this was checked rather than
+assumed.** `routes/ui.ts` mounts `express.static(CLIENT_DIST_DIR, { index: false })`
+— explicitly unauthenticated, explicitly ahead of the `router.get('*', serveSpa)`
+catch-all — and Vite copies `public/` into the build root, which is already how
+`site.webmanifest` and `favicon.ico` are served. `/sw.js` lands in the same
+place and is served the same way.
+
+What this buys is worth naming, because the failure it avoids is invisible: a
+service worker served as `index.html` registers *successfully* and then never
+fires, presenting as push being silently broken with no error anywhere. The
+implementation's job here is to **verify** that `/sw.js` returns JavaScript,
+not to add a route.
 
 ### Registration and lifecycle
 
@@ -431,8 +439,11 @@ keeps working exactly as it does today.
 2. `runDataMigration` records the migration name only **after** its body
    resolves, so every statement must be `CREATE TABLE IF NOT EXISTS` /
    `CREATE INDEX IF NOT EXISTS`.
-3. `/sw.js` must be routed before `routes/ui.ts`'s SPA fallback. Served as
-   `index.html` it registers without error and never fires.
+3. `/sw.js` must be reached by `express.static` and not by `routes/ui.ts`'s
+   `router.get('*', serveSpa)` fallback. It already is — `public/` is copied to
+   the build root and static is mounted first — so this is a thing to assert in
+   a test, not to build. Served as `index.html` a worker registers without
+   error and never fires, which is why it is worth an explicit assertion.
 4. The service worker's scope is its serving path. At `/sw.js` the scope is
    `/`, which is what the manifest already declares; moving it into a
    subdirectory silently narrows the scope.
