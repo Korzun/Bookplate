@@ -8,7 +8,13 @@ import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { SendResult } from './mailer';
 import { enqueueNotification, type ChannelDriver, type NotificationPayload } from './notification';
-import { BACKOFF_MS, MAX_ATTEMPTS, NotificationQueue, RETENTION_MS } from './notification-queue';
+import {
+  BACKOFF_MS,
+  BATCH_SIZE,
+  MAX_ATTEMPTS,
+  NotificationQueue,
+  RETENTION_MS,
+} from './notification-queue';
 
 vi.mock('../logger');
 
@@ -259,6 +265,31 @@ describe('NotificationQueue.drainOnce', () => {
     expect(await prisma.notificationOutbox.count()).toBe(0);
   });
 
+  it('does not schedule a redelivery when a successful send fails to persist', async () => {
+    // Pins the fix for the duplicate-send defect: `driver.deliver()` succeeds
+    // (the mail is out) but the `sentAt` write that records it throws. The
+    // row must NOT come out of this looking like a failed delivery — no
+    // bumped `attempts`, no `nextAttemptAt` pushed into the future by
+    // `retry()` — because that would schedule a mail that already sent to go
+    // out again. (The row's `sentAt` itself is unavoidably still null here:
+    // that write is exactly what failed. What this test pins is that the
+    // catch path does not ALSO route the row through backoff on top of that.)
+    await enqueue();
+    const driver = stubDriver();
+
+    vi.spyOn(prisma.notificationOutbox, 'update').mockRejectedValueOnce(
+      new Error('db exploded persisting sentAt')
+    );
+
+    await queueWith(driver).drainOnce();
+
+    expect(driver.calls).toBe(1);
+    const row = await onlyRow();
+    expect(row.attempts).toBe(0);
+    expect(row.failedAt).toBeNull();
+    expect(row.nextAttemptAt).toBe(NOW);
+  });
+
   it('prunes settled rows older than the retention window and keeps fresh ones', async () => {
     await enqueue();
     await prisma.notificationOutbox.updateMany({ data: { sentAt: NOW - RETENTION_MS - 1 } });
@@ -299,5 +330,28 @@ describe('NotificationQueue lifecycle', () => {
 
   it('awaitIdle resolves immediately when nothing is running', async () => {
     await expect(queueWith(stubDriver()).awaitIdle()).resolves.toBeUndefined();
+  });
+
+  it('drains a backlog bigger than one batch in a single poke, not one BATCH_SIZE bite per tick', async () => {
+    const total = BATCH_SIZE * 2 + 5;
+    await prisma.notificationOutbox.createMany({
+      data: Array.from({ length: total }, (_, i) => ({
+        id: `row-${i}`,
+        userId: ALICE,
+        event: 'book_request.fulfilled',
+        channel: 'email',
+        payload: JSON.stringify(payload),
+        nextAttemptAt: NOW,
+        createdAt: NOW + i,
+      })),
+    });
+    const driver = stubDriver();
+    const queue = queueWith(driver);
+
+    queue.poke();
+    await queue.awaitIdle();
+
+    expect(driver.calls).toBe(total);
+    expect(await prisma.notificationOutbox.count({ where: { sentAt: NOW } })).toBe(total);
   });
 });
