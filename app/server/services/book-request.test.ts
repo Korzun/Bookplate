@@ -14,9 +14,24 @@ import {
   fulfillBookRequest,
   MAX_OPEN_BOOK_REQUESTS,
 } from './book-request';
-import { parsePayload } from './notification';
+import { enqueueNotification, parsePayload } from './notification';
 
 vi.mock('../logger');
+
+/**
+ * Partial mock: every other export of `./notification` (`parsePayload`,
+ * used above; `isNotificationEnabled`, etc, used inside the real
+ * `enqueueNotification`) stays real, and `enqueueNotification` itself is
+ * wrapped in a `vi.fn` that CALLS THROUGH to the real implementation by
+ * default — `vite.config.ts`'s `mockReset: true` restores a `vi.fn(impl)`
+ * factory back to `impl` before every test, which is exactly the call-through
+ * default the rest of this file's tests rely on. Only the dedicated
+ * "transactional enqueue" tests below override it with `mockRejectedValueOnce`.
+ */
+vi.mock('./notification', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./notification')>();
+  return { ...actual, enqueueNotification: vi.fn(actual.enqueueNotification) };
+});
 
 let tmpDir: string;
 let prisma: PrismaClient;
@@ -394,5 +409,60 @@ describe('notification enqueue', () => {
 
     expect(outcome.kind).toBe('notPending');
     expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+});
+
+/**
+ * Pins the enqueue's PLACEMENT inside each trigger's `$transaction`, not just
+ * its outcome. Every doc comment above `createBookRequest`, `fulfillBookRequest`,
+ * and `declineBookRequest` argues at length that the enqueue has to commit
+ * with the state change that caused it — but nothing above actually forces
+ * that enqueue to fail and checks that the state change failed with it. A
+ * resolver-level move of the call (e.g. "enqueue after the mutation returns,
+ * for tidiness") would pass every other test in this file and only show up
+ * here: with the enqueue outside the transaction, the state change would
+ * commit regardless of what `enqueueNotification` does.
+ */
+describe('transactional enqueue', () => {
+  it('rolls back createBookRequest entirely when enqueueNotification throws', async () => {
+    vi.mocked(enqueueNotification).mockRejectedValueOnce(new Error('enqueue boom'));
+
+    await expect(createBookRequest(prisma, input())).rejects.toThrow('enqueue boom');
+
+    // Not just "no outbox row": the INSERT that created the request itself
+    // must also be gone, which only happens if both writes shared one
+    // transaction.
+    expect(await prisma.bookRequest.count()).toBe(0);
+  });
+
+  it('rolls back fulfillBookRequest entirely when enqueueNotification throws', async () => {
+    const id = await seedRequest();
+    await seedBook(ALICE, 'a'.repeat(32));
+    vi.mocked(enqueueNotification).mockRejectedValueOnce(new Error('enqueue boom'));
+
+    await expect(
+      fulfillBookRequest(prisma, { userId: ALICE, id, bookUserId: ALICE, bookId: 'a'.repeat(32) })
+    ).rejects.toThrow('enqueue boom');
+
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.status).toBe('pending');
+    expect(row.bookId).toBeNull();
+  });
+
+  it('rolls back declineBookRequest entirely when enqueueNotification throws', async () => {
+    const id = await seedRequest();
+    vi.mocked(enqueueNotification).mockRejectedValueOnce(new Error('enqueue boom'));
+
+    await expect(declineBookRequest(prisma, { userId: ALICE, id, reason: 'nope' })).rejects.toThrow(
+      'enqueue boom'
+    );
+
+    const row = await prisma.bookRequest.findUniqueOrThrow({
+      where: { userId_id: { userId: ALICE, id } },
+    });
+    expect(row.status).toBe('pending');
+    expect(row.declineReason).toBe('');
   });
 });
