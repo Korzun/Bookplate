@@ -37,6 +37,22 @@ const stubServiceWorkerThatThrows = () => {
   vi.stubGlobal('isSecureContext', true);
 };
 
+/**
+ * Simulates a stuck push-service round trip: `getSubscription()` returns a
+ * promise that never settles. A `try`/`catch` alone cannot protect against
+ * this — only the race in `logout()` can — so this stub exists to prove that
+ * race actually bounds the wait rather than merely reading well in the code.
+ */
+const stubServiceWorkerThatHangs = () => {
+  const pushManager = { getSubscription: vi.fn(() => new Promise<never>(() => {})) };
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    serviceWorker: { register: vi.fn().mockResolvedValue({ pushManager }) },
+  });
+  vi.stubGlobal('PushManager', function PushManager() {});
+  vi.stubGlobal('isSecureContext', true);
+};
+
 beforeEach(() => {
   // Order matters: one test below stubs `sessionStorage` itself, so unstub
   // before `sessionStorage.clear()` reaches for it.
@@ -124,6 +140,32 @@ it('still logs out when unsubscribing fails', async () => {
   // be a browser that cannot log out.
   await expect(logout()).resolves.toBeUndefined();
 
+  expect(getToken()).toBeNull();
+  expect(assign).toHaveBeenCalledWith('/login');
+});
+
+it('does not hang forever when unsubscribing never settles', async () => {
+  stubServiceWorkerThatHangs();
+  setToken('t');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  const assign = vi.fn();
+  vi.stubGlobal('location', {
+    ...window.location,
+    set href(v: string) {
+      assign(v);
+    },
+  });
+  vi.useFakeTimers();
+
+  const pending = logout();
+  // Matches PUSH_TEARDOWN_TIMEOUT_MS in logout.ts (kept unexported — this
+  // value must move in lockstep with it, the same tradeoff
+  // password-result-modal/index.test.tsx makes with its 5000ms countdown).
+  await vi.advanceTimersByTimeAsync(2000);
+  await expect(pending).resolves.toBeUndefined();
+
+  vi.useRealTimers();
+  // The hang must not have prevented the rest of the teardown from running.
   expect(getToken()).toBeNull();
   expect(assign).toHaveBeenCalledWith('/login');
 });
