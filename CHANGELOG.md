@@ -1,7 +1,3 @@
-## 0.10.0
-
-- feat: web push notifications, a second channel alongside email — no configuration required, enabled per browser from the settings page
-
 ## 0.9.1
 
 - refactor(client): move the email edit actions into the card footer
