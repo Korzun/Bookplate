@@ -23,7 +23,7 @@ export const PushSubscriptionFragment = graphql(`
  * Spreads `PushSubscriptionFragment` rather than re-listing its fields:
  * unlike `graphql/notification.ts`'s `ViewerSetNotificationPreferenceDocument`
  * mutation (which selects concrete fields because `NotificationPreference`
- * has no `id` to normalize by), `PushSubscription` does have an `id`. Urql's
+ * has no `id` to normalize by), `PushSubscription` does have an `id`. Apollo's
  * cache normalizes the returned object by that id, so spreading the fragment
  * here actually buys the cache benefit that mutation's comment says its own
  * type can't get, and keeps this payload's shape in one place with the
