@@ -38,6 +38,16 @@ export type UsePushDevice = {
    */
   hint: string | null;
   toggle: (next: boolean) => Promise<void>;
+  /**
+   * Clears this browser's own bookkeeping — `subscribed` and the persisted
+   * subscription id — without touching the server row or the browser's own
+   * push subscription. For the device list's remove path (`NotificationSettings`),
+   * which already performs both of those itself (`unsubscribeFromPush` and
+   * the `viewerRemovePushSubscription` mutation) before calling this; a row
+   * removed while this hook still believed itself subscribed would
+   * otherwise be silently re-created by the next load's re-sync.
+   */
+  markUnsubscribed: () => void;
 };
 
 /**
@@ -201,6 +211,11 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
     [pushPublicKey, removeSubscription, showToast, syncPushSubscription]
   );
 
+  const markUnsubscribed = useCallback(() => {
+    localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+    setSubscribed(false);
+  }, []);
+
   let hint: string | null = null;
   if (support === 'insecure') hint = 'Push needs an HTTPS connection to this library.';
   else if (support === 'unsupported') hint = 'This browser does not support push notifications.';
@@ -208,5 +223,5 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
     hint = 'Notifications are blocked for this site in your browser settings.';
   }
 
-  return { subscribed, support, permission, hint, toggle };
+  return { subscribed, support, permission, hint, toggle, markUnsubscribed };
 }

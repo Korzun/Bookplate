@@ -9,7 +9,9 @@ import {
   NotificationPreferenceFragment,
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
-import { PushSubscriptionFragment } from '~/graphql/push';
+import { PushSubscriptionFragment, ViewerRemovePushSubscriptionDocument } from '~/graphql/push';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import { LOCAL_SUBSCRIPTION_ID, unsubscribeFromPush } from '~/lib/push';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -50,10 +52,9 @@ export type NotificationSettingsProps = {
    */
   pushPublicKey: string;
   /**
-   * This viewer's subscribed browsers. Wired through at this prop boundary
-   * (and at `page/user`'s callsite) now so Task 14's device list needs no
-   * second change here — not yet rendered by this component. Masked like
-   * `preferences`; unmask with `useFragment(PushSubscriptionFragment, ...)`.
+   * This viewer's subscribed browsers, rendered as the device list below the
+   * matrix. Masked like `preferences`; unmasked with
+   * `useFragment(PushSubscriptionFragment, ...)`.
    */
   pushSubscriptions: readonly FragmentType<typeof PushSubscriptionFragment>[];
 };
@@ -108,13 +109,16 @@ export const NotificationSettings = ({
   preferences,
   emailVerified,
   pushPublicKey,
+  pushSubscriptions,
 }: NotificationSettingsProps) => {
   const style = useStyle();
   const showToast = useToast();
   const client = useApolloClient();
   const rows = useFragment(NotificationPreferenceFragment, preferences);
+  const devices = useFragment(PushSubscriptionFragment, pushSubscriptions);
 
   const [setPreference] = useMutation(ViewerSetNotificationPreferenceDocument);
+  const [removeSubscription] = useMutation(ViewerRemovePushSubscriptionDocument);
 
   /**
    * Keyed by `rowKey`. A row present here has a mutation in flight and shows
@@ -125,7 +129,8 @@ export const NotificationSettings = ({
    */
   const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
 
-  const { subscribed, support, permission, hint, toggle } = usePushDevice(pushPublicKey);
+  const { subscribed, support, permission, hint, toggle, markUnsubscribed } =
+    usePushDevice(pushPublicKey);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -133,6 +138,44 @@ export const NotificationSettings = ({
       mountedRef.current = false;
     };
   }, []);
+
+  // "This device" is never the id the server returns rows keyed by — the
+  // endpoint itself is never exposed to the client (`PushSubscriptionFragment`'s
+  // own doc comment) — but the add mutation's OWN return value, kept in
+  // `localStorage` under this key ever since. A plain `localStorage.getItem`
+  // read, not hook state: it only needs to be current at REMOVE time, and
+  // reading it fresh here means a remove immediately after this browser's own
+  // subscribe (same render cycle notwithstanding) still sees the right value.
+  const localId = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
+
+  /**
+   * Removing THIS device must also unsubscribe the browser, not just delete
+   * the server row — otherwise the row would be silently re-created by the
+   * next load's re-sync (`usePushDevice`'s own load effect), which cannot
+   * tell "the reader removed this on purpose" apart from "this browser lost
+   * its subscription by accident" (the exact case it exists to repair).
+   * Removing another device must not touch this browser's own subscription
+   * at all, hence the `id === localId` guards on both ends.
+   *
+   * `client.refetchQueries` (not a cache eviction): removing an entity from
+   * an Apollo list requires updating whatever field held the array — a
+   * plain `cache.evict` orphans the object but leaves stale refs in
+   * `viewer.pushSubscriptions` behind, the same reasoning `syncPushSubscription`
+   * (`use-push-device.ts`) already uses for the add path.
+   */
+  const handleRemove = useCallback(
+    async (id: string) => {
+      try {
+        if (id === localId) await unsubscribeFromPush();
+        await removeSubscription({ variables: { id } });
+        if (id === localId) markUnsubscribed();
+        await client.refetchQueries({ include: [ViewerBootstrapDocument] });
+      } catch {
+        showToast('Could not remove that device', 'error');
+      }
+    },
+    [client, localId, markUnsubscribed, removeSubscription, showToast]
+  );
 
   const handleToggle = useCallback(
     async (event: NotificationEvent, channel: NotificationChannel, enabled: boolean) => {
@@ -215,6 +258,30 @@ export const NotificationSettings = ({
           );
         })}
       </div>
+      {devices.length > 0 && (
+        <ul className={style.deviceList}>
+          {devices.map((device) => (
+            <li key={device.id} className={style.device}>
+              <div>
+                <span className={style.deviceName}>{device.label}</span>
+                {device.id === localId && <span className={style.thisDevice}>this device</span>}
+                <span className={style.deviceMeta}>
+                  {device.lastSuccessAt === null
+                    ? 'Never received a notification'
+                    : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label={`Remove ${device.label}`}
+                onClick={() => void handleRemove(device.id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 };
