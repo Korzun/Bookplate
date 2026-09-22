@@ -3,6 +3,40 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { consumeLoggedOutMark, logout } from './logout';
 import { getToken, setToken } from './token';
 
+/**
+ * Global-stubbing approach matched to `lib/push.test.ts`: a fake
+ * `navigator.serviceWorker.register` resolving to a registration whose
+ * `pushManager.getSubscription` resolves to a subscription carrying the
+ * given `unsubscribe` mock.
+ */
+const stubServiceWorkerWithSubscription = ({ unsubscribe }: { unsubscribe: () => unknown }) => {
+  const subscription = { unsubscribe };
+  const pushManager = { getSubscription: vi.fn().mockResolvedValue(subscription) };
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    serviceWorker: { register: vi.fn().mockResolvedValue({ pushManager }) },
+  });
+  vi.stubGlobal('PushManager', function PushManager() {});
+  vi.stubGlobal('isSecureContext', true);
+};
+
+/**
+ * Simulates a browser whose push teardown itself fails, i.e. the case
+ * `logout()`'s `try`/`catch` around `unsubscribeFromPush()` exists for —
+ * `getSubscription` rejecting, not `register` throwing, because
+ * `registration()` already swallows a `register` failure by returning
+ * `null`, which would let `unsubscribeFromPush()` resolve rather than throw.
+ */
+const stubServiceWorkerThatThrows = () => {
+  const pushManager = { getSubscription: vi.fn().mockRejectedValue(new Error('sw broken')) };
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    serviceWorker: { register: vi.fn().mockResolvedValue({ pushManager }) },
+  });
+  vi.stubGlobal('PushManager', function PushManager() {});
+  vi.stubGlobal('isSecureContext', true);
+};
+
 beforeEach(() => {
   // Order matters: one test below stubs `sessionStorage` itself, so unstub
   // before `sessionStorage.clear()` reaches for it.
@@ -59,6 +93,39 @@ it('arms the one-shot mark so the next bootstrap refresh is skipped', async () =
 
 it('reports no mark when nothing armed it', () => {
   expect(consumeLoggedOutMark()).toBe(false);
+});
+
+it('unsubscribes this browser from push before clearing the session', async () => {
+  const unsubscribe = vi.fn().mockResolvedValue(true);
+  stubServiceWorkerWithSubscription({ unsubscribe });
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal('location', { ...window.location, set href(_v: string) {} });
+
+  await logout();
+
+  // Otherwise a shared browser keeps delivering the previous account's
+  // book-request notifications to whoever signs in next.
+  expect(unsubscribe).toHaveBeenCalled();
+});
+
+it('still logs out when unsubscribing fails', async () => {
+  stubServiceWorkerThatThrows();
+  setToken('t');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  const assign = vi.fn();
+  vi.stubGlobal('location', {
+    ...window.location,
+    set href(v: string) {
+      assign(v);
+    },
+  });
+
+  // Push teardown is best-effort; a browser that cannot unsubscribe must not
+  // be a browser that cannot log out.
+  await expect(logout()).resolves.toBeUndefined();
+
+  expect(getToken()).toBeNull();
+  expect(assign).toHaveBeenCalledWith('/login');
 });
 
 it('still clears the token and redirects when sessionStorage is blocked', async () => {

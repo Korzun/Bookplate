@@ -1,3 +1,4 @@
+import { LOCAL_SUBSCRIPTION_ID, unsubscribeFromPush } from './push';
 import { clearToken } from './token';
 
 const LOGGED_OUT_KEY = 'bookplate:logged-out';
@@ -32,6 +33,25 @@ export function consumeLoggedOutMark(): boolean {
  * `provider/auth/provider.tsx`'s bootstrap effect.
  */
 export async function logout(): Promise<void> {
+  // Best-effort, and deliberately first: a shared browser that stayed
+  // subscribed would keep showing the previous account's book-request
+  // notifications to whoever signs in next. Wrapped because push teardown
+  // failing must never be logout failing. Must run before the session
+  // teardown below — once the session cookie/token is gone, this browser has
+  // no authenticated way to do anything about its subscription.
+  //
+  // Deliberately does NOT call the remove mutation: the server-side row is
+  // left in place on purpose. Once the browser unsubscribes here, the
+  // endpoint is dead, so the next push to it returns 410 and the driver
+  // prunes the row automatically. Calling an authenticated mutation here
+  // would race the session teardown that is about to invalidate the token,
+  // which is worse than leaving a dead row for the driver to clean up.
+  try {
+    await unsubscribeFromPush();
+    localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+  } catch {
+    // Ignored on purpose; see above.
+  }
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch {
