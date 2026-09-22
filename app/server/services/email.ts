@@ -19,8 +19,8 @@ export function normalizeEmail(raw: string): string {
  * Deliberately conservative and deliberately not RFC 5322: one `@`, no spaces, a
  * dot-bearing domain, and a length bound. This is a typo filter, not an
  * authority on address syntax — Cloudflare's own bounce handling is what
- * ultimately decides whether an address exists, and a `bad_address` send result
- * reports that back. The length cap keeps an absurd value out of the database
+ * ultimately decides whether an address exists, and an `invalid_destination`
+ * send result reports that back. The length cap keeps an absurd value out of the database
  * and out of a log line.
  */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
