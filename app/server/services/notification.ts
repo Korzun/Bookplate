@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { logger } from '../logger';
+import type { SendResult } from './mailer';
 
 const log = logger('Notification');
 
@@ -71,6 +72,33 @@ export type NotificationPayload = {
  * point of the enqueue is that it commits with the state change that caused it.
  */
 export type NotificationDb = PrismaClient | Prisma.TransactionClient;
+
+/**
+ * What a driver needs to decide whether — and how — to reach a recipient on
+ * its channel. Shaped around the recipient rather than an address because web
+ * push resolves a user to N subscription endpoints and has no notion of a
+ * verified address at all; email's driver is the one that reads `email` and
+ * `emailVerifiedAt`, not this file.
+ */
+export type NotificationRecipient = {
+  userId: string;
+  email: string | null;
+  emailVerifiedAt: number | null;
+};
+
+/**
+ * The contract every channel implements — `services/notification-channel-
+ * email.ts` today, a web-push driver alongside it later. Declared here rather
+ * than in the email file so the drain (which "names no channel") can import
+ * it without importing anything email-shaped.
+ */
+export type ChannelDriver = {
+  deliver(args: {
+    recipient: NotificationRecipient;
+    event: NotificationEvent;
+    payload: NotificationPayload;
+  }): Promise<SendResult>;
+};
 
 export function parsePayload(json: string): NotificationPayload {
   const raw = JSON.parse(json) as Partial<NotificationPayload>;
