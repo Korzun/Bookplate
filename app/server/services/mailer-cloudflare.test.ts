@@ -71,7 +71,7 @@ describe('createCloudflareMailer', () => {
     );
     expect(await createCloudflareMailer(MAIL).send(MESSAGE)).toEqual({
       ok: false,
-      reason: 'bad_address',
+      reason: 'invalid_destination',
     });
   });
 

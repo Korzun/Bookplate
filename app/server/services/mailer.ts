@@ -21,13 +21,16 @@ export type MailMessage = {
 };
 
 /**
- * `bad_address` is a delivery verdict about the recipient, not a fault: it
- * arrives inside a `200` as a permanent bounce, and the caller should tell the
- * user their address is wrong. The other three are faults, distinguished
- * because each wants different handling — `misconfigured` is the operator's
- * problem, `throttled` and `transient` are worth retrying by hand.
+ * `invalid_destination` is a delivery verdict about the recipient, not a fault:
+ * for email it arrives inside a `200` as a permanent bounce, and the caller
+ * should tell the user their address is wrong. The name is channel-neutral
+ * deliberately — this union is the contract EVERY channel implements (spec 1),
+ * and a web-push `410 Gone` lands in exactly this slot. The other three are
+ * faults, distinguished because each wants different handling —
+ * `misconfigured` is the operator's problem, `throttled` and `transient` are
+ * worth retrying.
  */
-export type SendFailure = 'bad_address' | 'throttled' | 'misconfigured' | 'transient';
+export type SendFailure = 'invalid_destination' | 'throttled' | 'misconfigured' | 'transient';
 export type SendResult = { ok: true } | { ok: false; reason: SendFailure };
 
 export type Mailer = { send(message: MailMessage): Promise<SendResult> };

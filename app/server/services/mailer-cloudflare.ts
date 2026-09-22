@@ -136,7 +136,7 @@ export function createCloudflareMailer(mail: MailConfig): Mailer {
       }
       if (body.result?.permanent_bounces?.length) {
         log.warn('Send bounced permanently — recipient address rejected');
-        return { ok: false, reason: 'bad_address' };
+        return { ok: false, reason: 'invalid_destination' };
       }
       return { ok: true };
     },
