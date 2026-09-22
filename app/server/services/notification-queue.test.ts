@@ -159,6 +159,76 @@ describe('NotificationQueue.drainOnce', () => {
     expect(row.failedAt).toBe(NOW);
   });
 
+  it('reaches the last backoff tier before the row goes terminal', async () => {
+    await enqueue();
+    const driver = stubDriver();
+    driver.nextResult = { ok: false, reason: 'transient' };
+
+    // Drive the row through every tier of BACKOFF_MS, advancing the injected
+    // clock to each row's own nextAttemptAt so it comes due again. This pins
+    // the property the un-derived MAX_ATTEMPTS/BACKOFF_MS pair got wrong: the
+    // LAST tier (the 10-hour wait) must actually be reached, not just the
+    // first four.
+    let now = NOW;
+    for (let i = 0; i < BACKOFF_MS.length; i++) {
+      await queueWith(driver, now).drainOnce();
+      const row = await onlyRow();
+      expect(row.attempts).toBe(i + 1);
+      expect(row.failedAt).toBeNull();
+      expect(row.nextAttemptAt).toBe(now + BACKOFF_MS[i]);
+      now = row.nextAttemptAt;
+    }
+
+    // One more failure exhausts the cap, at the last tier's wait rather than
+    // stopping short of it.
+    await queueWith(driver, now).drainOnce();
+    const finalRow = await onlyRow();
+    expect(finalRow.attempts).toBe(MAX_ATTEMPTS);
+    expect(finalRow.failedAt).toBe(now);
+  });
+
+  it('isolates a row whose delivery throws so a healthy row behind it still delivers', async () => {
+    await enqueue();
+    // Created after the poison row (later createdAt) but already due (its
+    // own nextAttemptAt is NOW), so both are in the same `due` batch with the
+    // poison row first.
+    await prisma.notificationOutbox.create({
+      data: {
+        id: 'healthy',
+        userId: ALICE,
+        event: 'book_request.fulfilled',
+        channel: 'email',
+        payload: JSON.stringify(payload),
+        nextAttemptAt: NOW,
+        createdAt: NOW + 1,
+      },
+    });
+
+    let calls = 0;
+    const driver: ChannelDriver = {
+      async deliver() {
+        calls += 1;
+        if (calls === 1) throw new Error('boom: malformed payload');
+        return { ok: true };
+      },
+    };
+
+    await queueWith(driver).drainOnce();
+
+    const rows = await prisma.notificationOutbox.findMany({ orderBy: { createdAt: 'asc' } });
+    expect(rows).toHaveLength(2);
+    expect(calls).toBe(2);
+
+    const [poison, healthy] = rows;
+    expect(poison.attempts).toBe(1);
+    expect(poison.failedAt).toBeNull();
+    expect(poison.nextAttemptAt).toBe(NOW + BACKOFF_MS[0]);
+    expect(poison.lastError).toContain('boom: malformed payload');
+
+    expect(healthy.attempts).toBe(0);
+    expect(healthy.sentAt).toBe(NOW);
+  });
+
   it('discards a row whose channel has no driver', async () => {
     await enqueue();
 
