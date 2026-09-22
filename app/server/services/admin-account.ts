@@ -5,8 +5,8 @@
  * `config.password`) and has historically had NO row at all — `/api/login`
  * compares against the options before it touches Prisma, and
  * `RefreshToken.userId` is nullable precisely for it. That left nowhere to hang
- * an email address, a verification state, or (next spec) notification
- * preferences, which is the only reason this row exists.
+ * an email address, a verification state, or notification preferences, which
+ * is the only reason this row exists.
  *
  * THE ROW IS IDENTITY-ATTACHED DATA, NOT A PROMOTION. Three invariants keep it
  * that way, and each is load-bearing:

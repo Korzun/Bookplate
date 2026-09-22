@@ -1,7 +1,7 @@
 /**
  * The one channel interface. Everything above it — verification, password
- * reset, and (next spec) notifications — depends on `Mailer` and never on a
- * transport, so a second channel (SMTP, web push) is an additive driver plus a
+ * reset, and notifications — depends on `Mailer` and never on a transport, so
+ * a second channel (SMTP, web push) is an additive driver plus a
  * `createMailer` branch, with no change above this line.
  *
  * `createMailer` returning `null` for an unconfigured install is deliberate and
