@@ -52,6 +52,8 @@ const viewerBootstrapMock = (isAdmin: boolean): MockedResponse => ({
         email: null,
         emailVerifiedAt: null,
         notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: isAdmin ? null : { __typename: 'User', id: 'USER-1' },
         library: isAdmin ? null : { __typename: 'Library', id: LIBRARY_ID },
       },

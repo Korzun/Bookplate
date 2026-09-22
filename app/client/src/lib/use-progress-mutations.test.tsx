@@ -59,6 +59,8 @@ const viewerBootstrapMock = (
         email: null,
         emailVerifiedAt: null,
         notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: userId ? { __typename: 'User', id: userId } : null,
         library: { __typename: 'Library', id: LIBRARY_ID },
       },

@@ -25,6 +25,12 @@ import { graphql } from '~/gql';
  * above: the admin is the only recipient of `BOOK_REQUEST_CREATED`, so this
  * field has to be selected unconditionally here rather than on the
  * admin-skipped `UserPageDocument`.
+ *
+ * `pushPublicKey`/`pushSubscriptions` (task 12) feed the push settings card
+ * and device list, also mounted on `page/user` — same reasoning again: the
+ * admin is the only recipient of `BOOK_REQUEST_CREATED`, so these fields have
+ * to be selected unconditionally here rather than on the admin-skipped
+ * `UserPageDocument`.
  */
 export const ViewerBootstrapDocument = graphql(`
   query ViewerBootstrap {
@@ -36,6 +42,10 @@ export const ViewerBootstrapDocument = graphql(`
       emailVerifiedAt
       notificationPreferences {
         ...NotificationPreferenceFragment
+      }
+      pushPublicKey
+      pushSubscriptions {
+        ...PushSubscriptionFragment
       }
       user {
         id

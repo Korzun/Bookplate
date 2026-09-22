@@ -30,6 +30,8 @@ const viewerBootstrapMock: MockedResponse<ViewerBootstrapQuery> = {
         email: null,
         emailVerifiedAt: null,
         notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: { __typename: 'User', id: 'VXNlcjox' },
         library: { __typename: 'Library', id: LIBRARY_ID },
       },
