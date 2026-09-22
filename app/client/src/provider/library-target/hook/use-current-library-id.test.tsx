@@ -26,6 +26,7 @@ const viewerMock = (
         mustChangePassword: false,
         email: null,
         emailVerifiedAt: null,
+        notificationPreferences: [],
         user: isAdmin ? null : { __typename: 'User' as const, id: 'USER-1' },
         library,
       },

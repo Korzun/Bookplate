@@ -5,6 +5,7 @@ import {
   ConnectionUrls,
   EmailSetting,
   MyProgress,
+  NotificationSettings,
   Page,
   SyncPassword,
   ThemeSetting,
@@ -75,11 +76,22 @@ export const UserPage = () => {
     />
   );
 
+  // Mounted in BOTH branches below, like `emailSection`: the admin is the
+  // only recipient of `BOOK_REQUEST_CREATED`, so a card added to the reader
+  // branch alone would hide the one toggle the admin has.
+  const notificationSection = (
+    <NotificationSettings
+      preferences={viewerData?.viewer.notificationPreferences ?? []}
+      emailVerified={viewerData?.viewer.emailVerifiedAt != null}
+    />
+  );
+
   if (isAdmin) {
     return (
       <Page>
         <ThemeSetting />
         {emailSection}
+        {notificationSection}
         <Button loading={loggingOut} onClick={handleLogout} danger>
           Log out
         </Button>
@@ -93,6 +105,7 @@ export const UserPage = () => {
       <SyncPassword />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
       {emailSection}
+      {notificationSection}
       <UserChangePassword />
       <MyProgress />
       <Button loading={loggingOut} onClick={handleLogout} danger>

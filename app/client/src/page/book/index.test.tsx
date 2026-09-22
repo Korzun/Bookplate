@@ -325,6 +325,7 @@ const viewerBootstrapMock = (): MockedResponse => ({
         mustChangePassword: false,
         email: null,
         emailVerifiedAt: null,
+        notificationPreferences: [],
         user: { __typename: 'User', id: VIEWER_USER_ID },
         library: { __typename: 'Library', id: LIBRARY_ID },
       },

@@ -5,9 +5,10 @@ import { renderWithApollo } from '~/test-utils';
 
 import { UserPage } from './index';
 
-// `page/user` composes eight named exports from the `~/component` barrel
-// (`ConnectionUrls`, `EmailSetting`, `MyProgress`, `Page`, `ScanLibrarySetting`,
-// `SyncPassword`, `ThemeSetting`, `UserChangePassword`), each of which owns
+// `page/user` composes nine named exports from the `~/component` barrel
+// (`ConnectionUrls`, `EmailSetting`, `MyProgress`, `NotificationSettings`,
+// `Page`, `ScanLibrarySetting`, `SyncPassword`, `ThemeSetting`,
+// `UserChangePassword`), each of which owns
 // its own GraphQL document/mutation and, in `ScanLibrarySetting`'s case, a
 // scan-progress subscription. None of that is what this file tests — it
 // tests `UserPage`'s OWN composition (which cards mount for which role) —
@@ -20,6 +21,7 @@ vi.mock('~/component', () => ({
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
   MyProgress: () => <div>MyProgress</div>,
+  NotificationSettings: () => <div>NotificationSettings</div>,
   Page: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   ScanLibrarySetting: () => <div>ScanLibrarySetting</div>,
   SyncPassword: () => <div>SyncPassword</div>,

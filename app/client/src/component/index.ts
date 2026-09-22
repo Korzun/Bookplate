@@ -25,6 +25,7 @@ export { MetadataList, type Metadata } from './metadata-list';
 export { MyProgress } from './my-progress';
 export { MyProgressContent } from './my-progress-content';
 export { MyProgressRow } from './my-progress-row';
+export { NotificationSettings } from './notification-settings';
 export { Page } from './page';
 export { ProgressIndicator } from './progress-indicator';
 export { SeriesRow } from './series-row';

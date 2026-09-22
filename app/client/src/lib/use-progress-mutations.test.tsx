@@ -58,6 +58,7 @@ const viewerBootstrapMock = (
         mustChangePassword: false,
         email: null,
         emailVerifiedAt: null,
+        notificationPreferences: [],
         user: userId ? { __typename: 'User', id: userId } : null,
         library: { __typename: 'Library', id: LIBRARY_ID },
       },
