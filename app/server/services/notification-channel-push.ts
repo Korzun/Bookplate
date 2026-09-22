@@ -73,23 +73,38 @@ export function createPushChannelDriver(deps: {
   const send: PushSender =
     deps.send ??
     (async ({ subscription, body }) => {
-      const result = await webpush.sendNotification(
-        {
-          endpoint: subscription.endpoint,
-          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-        },
-        body,
-        {
-          TTL: TTL_SECONDS,
-          urgency: 'normal',
-          vapidDetails: {
-            subject: deps.contact,
-            publicKey: deps.vapid.publicKey,
-            privateKey: deps.vapid.privateKey,
+      try {
+        const result = await webpush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
-        }
-      );
-      return { statusCode: result.statusCode };
+          body,
+          {
+            TTL: TTL_SECONDS,
+            urgency: 'normal',
+            vapidDetails: {
+              subject: deps.contact,
+              publicKey: deps.vapid.publicKey,
+              privateKey: deps.vapid.privateKey,
+            },
+          }
+        );
+        return { statusCode: result.statusCode };
+      } catch (e) {
+        // `web-push` REJECTS for any non-2xx response (a `WebPushError`
+        // carrying `.statusCode`), rather than resolving with it — so this is
+        // the primary path for every 404/410/429/4xx/5xx in production, not
+        // an edge case. Normalizing it back into a resolved status here keeps
+        // `PushSender`'s contract honest: a caller-injected `send` and the
+        // driver's own `catch` (see `deliver`, below) only ever have to mean
+        // "a genuine fault", exactly what the `ECONNRESET` test models. A
+        // fault with no numeric status (a network failure, or one of
+        // `web-push`'s own pre-flight validation errors) still rejects.
+        const statusCode = (e as { statusCode?: number }).statusCode;
+        if (typeof statusCode === 'number') return { statusCode };
+        throw e;
+      }
     });
 
   return {

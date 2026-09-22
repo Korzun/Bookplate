@@ -153,6 +153,30 @@ it('classifies throttling and server errors as retryable', async () => {
   });
 });
 
+it('prunes a subscription when a thrown error carries statusCode 410', async () => {
+  // Drives the driver's own catch-block statusCode extraction directly: this
+  // is the shape a caller-injected `send` (or a future `web-push` version)
+  // could produce, and the driver must classify it exactly as it would a
+  // resolved 410 — not fall through to `transient` and leak the endpoint.
+  await subscribe('https://push.example/a');
+  const send = vi
+    .fn<PushSender>()
+    .mockRejectedValue(Object.assign(new Error('gone'), { statusCode: 410 }));
+
+  expect(await deliver(send)).toEqual({ ok: false, reason: 'no_destination' });
+  expect(await prisma.pushSubscription.count()).toBe(0);
+});
+
+it('does NOT delete a subscription when a thrown error carries statusCode 401', async () => {
+  await subscribe('https://push.example/a');
+  const send = vi
+    .fn<PushSender>()
+    .mockRejectedValue(Object.assign(new Error('bad request'), { statusCode: 401 }));
+
+  expect(await deliver(send)).toEqual({ ok: false, reason: 'misconfigured' });
+  expect(await prisma.pushSubscription.count()).toBe(1);
+});
+
 it('lets a transient failure outrank a success so the row retries', async () => {
   await subscribe('https://push.example/ok');
   await subscribe('https://push.example/flaky');
