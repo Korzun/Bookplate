@@ -153,6 +153,24 @@ const removeSubscriptionMock = (
   result: { data: { __typename: 'Mutation', viewerRemovePushSubscription: true } },
 });
 
+const addSubscriptionErrorMock = (): MockedResponse<
+  ViewerAddPushSubscriptionMutation,
+  ViewerAddPushSubscriptionMutationVariables
+> => ({
+  request: { query: ViewerAddPushSubscriptionDocument, variables: () => true },
+  error: new Error('network exploded'),
+});
+
+const removeSubscriptionErrorMock = (
+  id: string
+): MockedResponse<
+  ViewerRemovePushSubscriptionMutation,
+  ViewerRemovePushSubscriptionMutationVariables
+> => ({
+  request: { query: ViewerRemovePushSubscriptionDocument, variables: { id } },
+  error: new Error('network exploded'),
+});
+
 /**
  * The file's one render helper for the plain (non-mutation-racing) cases:
  * mounts `NotificationSettings` straight, with sensible defaults, over
@@ -485,6 +503,14 @@ describe('NotificationSettings', () => {
     const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
     expect(toggle).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText(/needs an https connection/i)).toBeInTheDocument();
+    // Pins the PUSH half of `channelDisabled` (`support !== 'supported'`),
+    // which nothing else in this file exercised: `channel === 'EMAIL' ? … :
+    // false` — i.e. never actually gating on `support` — would have passed
+    // every other test here.
+    expect(screen.getByRole('switch', { name: /added.*push/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
   });
 
   it('explains a blocked permission instead of offering a dead switch', () => {
@@ -494,6 +520,13 @@ describe('NotificationSettings', () => {
     renderCard({ preferences: [emailPref(), pushPref()] });
 
     expect(screen.getByText(/blocked for this site in your browser settings/i)).toBeInTheDocument();
+    // Without this, an implementation that showed the hint but left the
+    // switch itself live (spending the one remaining permission chance on a
+    // click that can only re-confirm `denied`) would still pass.
+    expect(screen.getByRole('switch', { name: /enable push on this device/i })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
   });
 
   it('renders a push column even when mail is unconfigured', () => {
@@ -573,8 +606,15 @@ describe('NotificationSettings', () => {
 
     await userEvent.click(toggle);
 
-    await waitFor(() => expect(toggle).toBeChecked());
-    expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-42');
+    // Waiting on the PERSISTED id, not just `toggle` being checked: the
+    // switch flips optimistically (`setSubscribed(true)`) before
+    // `syncPushSubscription`'s `addSubscription` call settles — same
+    // ordering the load effect uses — so asserting on `toggle` alone here
+    // would read `localStorage` before the mutation had actually landed.
+    await waitFor(() => {
+      expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-42');
+    });
+    expect(toggle).toBeChecked();
     // A first-time registration would otherwise never show up in Task 14's
     // device list: fragment normalization only refreshes an
     // already-cached entity, never appends a brand-new one.
@@ -582,7 +622,92 @@ describe('NotificationSettings', () => {
 
     await userEvent.click(toggle);
 
+    // Same reasoning in reverse: `setSubscribed(false)` also flips
+    // optimistically, before `localStorage.removeItem` runs.
+    await waitFor(() => {
+      expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull();
+    });
+    expect(toggle).not.toBeChecked();
+  });
+
+  it('reverts the device switch and toasts when enabling push fails', async () => {
+    stubSupportedBrowser();
+    vi.mocked(Notification.requestPermission).mockResolvedValue('granted');
+    stubBrowserThatCanSubscribe('https://push.example/device-add-fails');
+
+    renderCard({
+      preferences: [pushPref()],
+      mocks: [addSubscriptionErrorMock()],
+    });
+
+    const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
+    await userEvent.click(toggle);
+
+    // The switch is briefly checked optimistically (same ordering the load
+    // effect uses), then reverts once `addSubscription` rejects — it must
+    // not silently snap back with no explanation, which is what shipped
+    // before this fix (the rejection escaped as an unhandled rejection and
+    // `setSubscribed(true)` simply never ran).
     await waitFor(() => expect(toggle).not.toBeChecked());
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not update push/i);
     expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull();
+  });
+
+  it('reverts the device switch and toasts when disabling push fails', async () => {
+    stubSupportedBrowser();
+    vi.mocked(Notification.requestPermission).mockResolvedValue('granted');
+    stubBrowserThatCanSubscribe('https://push.example/device-remove-fails');
+
+    renderCard({
+      preferences: [pushPref()],
+      mocks: [addSubscriptionMock('sub-77'), removeSubscriptionErrorMock('sub-77')],
+    });
+
+    const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
+    await userEvent.click(toggle); // on — succeeds
+    // Wait for the id to actually land, not just the optimistic `checked` —
+    // the off-click below reads it synchronously from `localStorage`, and
+    // reading it before `syncPushSubscription` persisted it would skip the
+    // `removeSubscription` call entirely (no id to remove), silently
+    // sidestepping the very failure this test means to exercise.
+    await waitFor(() => {
+      expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-77');
+    });
+    expect(toggle).toBeChecked();
+
+    await userEvent.click(toggle); // off — `removeSubscription` rejects
+
+    // Reverts to "on": this is the WORSE of the two desyncs a failure here
+    // can cause if left unhandled — the reader would otherwise see "off"
+    // and believe push has stopped, when nothing was actually undone
+    // server-side.
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not update push/i);
+    expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-77');
+  });
+
+  it('shows the blocked-permission hint and disables the switch immediately after the user declines', async () => {
+    stubSupportedBrowser();
+    vi.mocked(Notification.requestPermission).mockResolvedValue('denied');
+
+    renderCard({ preferences: [pushPref()] });
+
+    const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
+    expect(toggle).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.queryByText(/blocked for this site/i)).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    // Without holding `permission` in state, `deviceHint()` and the
+    // switch's own `disabled` read the value from the LAST render — the
+    // one before this click — so a decline would silently do nothing: no
+    // hint, a still-live switch, and a second click that can only ask
+    // again for an answer that's already permanent.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/blocked for this site in your browser settings/i)
+      ).toBeInTheDocument();
+    });
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
   });
 });
