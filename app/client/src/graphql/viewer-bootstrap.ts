@@ -19,6 +19,12 @@ import { graphql } from '~/gql';
  * unconditionally active for every viewer, admin included — and the admin
  * manages its own address too (`Viewer.email`'s own doc comment,
  * `graphql/schema/viewer/model.ts`).
+ *
+ * `notificationPreferences` (task 10) feeds `component/notification-settings`,
+ * mounted on `page/user` right beside `EmailSetting` — same reasoning as
+ * above: the admin is the only recipient of `BOOK_REQUEST_CREATED`, so this
+ * field has to be selected unconditionally here rather than on the
+ * admin-skipped `UserPageDocument`.
  */
 export const ViewerBootstrapDocument = graphql(`
   query ViewerBootstrap {
@@ -28,6 +34,9 @@ export const ViewerBootstrapDocument = graphql(`
       mustChangePassword
       email
       emailVerifiedAt
+      notificationPreferences {
+        ...NotificationPreferenceFragment
+      }
       user {
         id
       }
