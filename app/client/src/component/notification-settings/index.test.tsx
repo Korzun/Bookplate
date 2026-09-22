@@ -1,3 +1,4 @@
+import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -6,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { makeFragmentData } from '~/gql';
 import type {
   NotificationPreferenceFragmentFragment,
+  ViewerBootstrapQuery,
   ViewerSetNotificationPreferenceMutation,
   ViewerSetNotificationPreferenceMutationVariables,
 } from '~/gql/graphql';
@@ -13,6 +15,7 @@ import {
   NotificationPreferenceFragment,
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
 import { renderWithApollo } from '~/test-utils';
 
 import { NotificationSettings } from './index';
@@ -38,6 +41,51 @@ const preferences = [
   preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: true }),
   preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
 ].map((row) => makeFragmentData(row, NotificationPreferenceFragment));
+
+const viewerBootstrapMock = (
+  notificationPreferences: NotificationPreferenceFragmentFragment[]
+): MockedResponse<ViewerBootstrapQuery> => ({
+  request: { query: ViewerBootstrapDocument },
+  result: {
+    data: {
+      __typename: 'Query',
+      viewer: {
+        __typename: 'Viewer',
+        username: 'alice',
+        isAdmin: false,
+        mustChangePassword: false,
+        email: 'alice@example.com',
+        emailVerifiedAt: '2024-01-01T00:00:00.000Z',
+        notificationPreferences,
+        user: { __typename: 'User', id: 'USER-1' },
+        library: { __typename: 'Library', id: 'LIB-1' },
+      },
+    },
+  },
+});
+
+/**
+ * Mirrors `page/user`'s own composition: reads `ViewerBootstrapDocument` and
+ * passes its `notificationPreferences` straight through as the `preferences`
+ * prop, exactly as `page/user/index.tsx`'s `notificationSection` does.
+ * `NotificationSettings` itself holds no state of its own for the list — a
+ * successful toggle writes the mutation's returned list onto the `Viewer`
+ * singleton via `cache.modify`, and THIS harness's `useQuery` is the active
+ * watcher that reacts to that write and re-renders with the fresh list, the
+ * same mechanism `page/user`'s own `useQuery(ViewerBootstrapDocument)` relies
+ * on in the real app. A test that instead fed `NotificationSettings` a fixed
+ * `preferences` prop and expected it to update on its own would be testing
+ * component-local state this component deliberately does not have.
+ */
+const Harness = () => {
+  const { data } = useQuery(ViewerBootstrapDocument);
+  return (
+    <NotificationSettings
+      preferences={data?.viewer.notificationPreferences ?? []}
+      emailVerified={data?.viewer.emailVerifiedAt != null}
+    />
+  );
+};
 
 describe('NotificationSettings', () => {
   it('renders nothing when the catalogue is empty', () => {
@@ -77,11 +125,19 @@ describe('NotificationSettings', () => {
     expect(screen.getByText(/confirm your email address/i)).toBeInTheDocument();
   });
 
-  it('sends the mutation when a toggle is flipped', async () => {
-    const mocks: MockedResponse<
-      ViewerSetNotificationPreferenceMutation,
-      ViewerSetNotificationPreferenceMutationVariables
-    >[] = [
+  it("reflects the mutation's returned state once the watching query updates — not local optimism", async () => {
+    const initial = [
+      preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: true }),
+      preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
+    ];
+    const mocks: [
+      MockedResponse<ViewerBootstrapQuery>,
+      MockedResponse<
+        ViewerSetNotificationPreferenceMutation,
+        ViewerSetNotificationPreferenceMutationVariables
+      >,
+    ] = [
+      viewerBootstrapMock(initial),
       {
         request: {
           query: ViewerSetNotificationPreferenceDocument,
@@ -101,10 +157,19 @@ describe('NotificationSettings', () => {
         },
       },
     ];
-    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, { mocks });
+    renderWithApollo(<Harness />, { mocks });
 
-    await userEvent.click(screen.getByRole('switch', { name: /added to my library/i }));
+    const fulfilled = await screen.findByRole('switch', { name: /added to my library/i });
+    expect(fulfilled).toBeChecked();
 
+    await userEvent.click(fulfilled);
+
+    // Not just "the mutation fired": this only passes if `cache.modify`'s
+    // write actually lands where `Harness`'s `useQuery(ViewerBootstrapDocument)`
+    // reads from, which is the same path `page/user` depends on in the real
+    // app — a stale local copy inside `NotificationSettings` would make this
+    // assertion pass for the wrong reason (or not distinguish itself from a
+    // component-local override at all).
     await waitFor(() => {
       expect(screen.getByRole('switch', { name: /added to my library/i })).not.toBeChecked();
     });

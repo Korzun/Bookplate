@@ -27,15 +27,14 @@ export const NotificationPreferenceFragment = graphql(`
  * refetching.
  *
  * Selects `event`/`channel`/`enabled` directly rather than spreading
- * `NotificationPreferenceFragment`: that fragment exists for the PROP
- * boundary into `component/notification-settings` (mirroring
- * `ConnectionUrlsFragment`'s own reasoning), and `NotificationPreference` has
- * no `id` field to normalize by, so spreading it here would buy no cache
- * benefit — only a masked reference the same component would immediately
- * have to unmask again. Fine detail, but see codegen's generated
- * `useFragment`: it is `' $fragmentRefs'`-masked at the TYPE level even
- * though masking is off at runtime, and it enforces React's hook-call rules
- * by name, so it cannot be invoked from inside the mutation's own callback.
+ * `NotificationPreferenceFragment`: `NotificationPreference` has no `id`
+ * field to normalize by, so spreading the fragment here would buy no cache
+ * benefit — only a masked reference the caller would immediately have to
+ * unmask again for no gain. That fragment exists for the PROP boundary into
+ * `component/notification-settings` instead (mirroring `ConnectionUrlsFragment`'s
+ * own reasoning), and this mutation's own concrete-field selection matches
+ * `graphql/email.ts`'s established shape for a mutation payload consumed
+ * only locally.
  */
 export const ViewerSetNotificationPreferenceDocument = graphql(`
   mutation ViewerSetNotificationPreference(

@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 
 import { Card } from '~/component';
 import { Switch } from '~/control';
@@ -38,26 +38,31 @@ export type NotificationSettingsProps = {
  * `page/user`'s notifications card. `preferences`/`emailVerified` are handed
  * down as props (`page/user` reads them off `ViewerBootstrapDocument`,
  * mirroring `component/email-setting`) rather than fetched here directly —
- * this component's own job is the toggle mutation and the state machine
- * around it, not the read.
+ * this component's own job is the toggle mutation, not the read, and it
+ * holds NO local copy of the list: each row's `checked` is `row.enabled`,
+ * full stop.
  *
- * A successful toggle is reflected TWICE: immediately, via local override
- * state keyed by `event:channel` (so a row updates without waiting on a
- * round trip — the same pattern `component/email-setting` uses), and
- * durably, via `cache.modify` on the `Viewer` singleton — the mutation
- * payload already carries the FULL, authoritative list, so this is a direct
- * write rather than a second network round trip (`component/sync-password`
- * takes the identical approach for `Viewer.syncPassword`).
+ * A successful toggle writes the mutation's returned list — the FULL,
+ * authoritative state, not just the changed row — onto `Viewer.notificationPreferences`
+ * via `cache.modify` (`component/sync-password` takes the identical approach
+ * for `Viewer.syncPassword`). That write is the only thing that changes: it
+ * relies on `page/user`'s own `useQuery(ViewerBootstrapDocument)` being an
+ * ACTIVE watched query, which reacts to the cache write and re-renders this
+ * component with a fresh `preferences` prop, the same way any other cache
+ * write (a mutation, a refetch, `EmailSetting`'s own `client.refetchQueries`)
+ * would. A local override mirroring the prop was tried and removed: once
+ * populated it never has a reason to be invalidated, so it silently wins
+ * over a LATER refetch that lands genuinely fresher data (e.g. `EmailSetting`
+ * refetching `ViewerBootstrapDocument` after a save) — two copies of the
+ * same state, one of them capable of going stale forever. One source of
+ * truth (the prop) is correct here specifically because the mutation payload
+ * already is the full list this component renders.
  */
 export const NotificationSettings = ({ preferences, emailVerified }: NotificationSettingsProps) => {
   const style = useStyle();
   const showToast = useToast();
   const client = useApolloClient();
   const rows = useFragment(NotificationPreferenceFragment, preferences);
-
-  // Local overrides, applied on top of the fetched rows once a mutation
-  // succeeds — absent means "no override, use the row's own `enabled`".
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
   const [setPreference] = useMutation(ViewerSetNotificationPreferenceDocument);
 
@@ -71,11 +76,6 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
           return;
         }
 
-        setOverrides((prev) => {
-          const next = { ...prev };
-          for (const row of updated) next[rowKey(row.event, row.channel)] = row.enabled;
-          return next;
-        });
         client.cache.modify({
           id: client.cache.identify({ __typename: 'Viewer' }),
           fields: { notificationPreferences: () => updated },
@@ -103,7 +103,7 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
               name={key}
               label={EVENT_LABEL[row.event]}
               layout="horizontal"
-              checked={overrides[key] ?? row.enabled}
+              checked={row.enabled}
               disabled={!emailVerified}
               onChange={(next) => void handleToggle(row.event, row.channel, next)}
             />
