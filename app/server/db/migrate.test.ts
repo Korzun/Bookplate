@@ -926,4 +926,40 @@ describe('legacy id-recompute and page-count migrations', () => {
       /* best-effort cleanup */
     }
   });
+
+  it('creates the notification tables and is idempotent', async () => {
+    await runMigrations(prisma, booksDir);
+    await runMigrations(prisma, booksDir);
+
+    const tables = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name IN ('notification_preferences', 'notification_outbox')
+      ORDER BY name
+    `;
+    expect(tables.map((t) => t.name)).toEqual(['notification_outbox', 'notification_preferences']);
+  });
+
+  it('cascades notification rows when their user is deleted', async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
+    await prisma.notificationPreference.create({
+      data: { userId: 'u1', event: 'book_request.created', channel: 'email', enabled: false },
+    });
+    await prisma.notificationOutbox.create({
+      data: {
+        id: 'o1',
+        userId: 'u1',
+        event: 'book_request.created',
+        channel: 'email',
+        payload: '{}',
+        nextAttemptAt: 0,
+        createdAt: 0,
+      },
+    });
+
+    await prisma.user.delete({ where: { id: 'u1' } });
+
+    expect(await prisma.notificationPreference.count()).toBe(0);
+    expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
 });

@@ -85,11 +85,11 @@ model PendingFix {
 }
 
 model Validation {
-  userId      String @map("user_id")
-  bookId      String @map("book_id")
+  userId      String  @map("user_id")
+  bookId      String  @map("book_id")
   valid       Boolean
   threshold   String
-  validatedAt Float  @map("validated_at")
+  validatedAt Float   @map("validated_at")
 
   book     Book                @relation(fields: [userId, bookId], references: [userId, id], onDelete: Cascade, onUpdate: Cascade)
   messages ValidationMessage[]
@@ -170,11 +170,11 @@ model BookThumbnail {
 }
 
 model User {
-  id                 String            @id
-  username           String            @unique
-  passwordHash       String?           @map("password_hash")
-  syncPassword       String?           @map("sync_password")
-  mustChangePassword Boolean           @default(false) @map("must_change_password")
+  id                      String                   @id
+  username                String                   @unique
+  passwordHash            String?                  @map("password_hash")
+  syncPassword            String?                  @map("sync_password")
+  mustChangePassword      Boolean                  @default(false) @map("must_change_password")
   // `emailKey` is `email` trimmed and lowercased, and is what EVERY lookup uses
   // — login by address, forgot-password, uniqueness. Storing the derived key
   // gets case-insensitive uniqueness from a plain `@unique`, where the
@@ -191,18 +191,20 @@ model User {
   // is identity-attached data ONLY: its token carries no `sub`, it is excluded
   // from every user listing, and three mutations refuse it outright. See
   // `services/admin-account.ts`.
-  email              String?
-  emailKey           String?           @unique @map("email_key")
-  emailVerifiedAt    Float?            @map("email_verified_at")
-  isConfigAdmin      Boolean           @default(false) @map("is_config_admin")
-  emailTokens        EmailToken[]
-  progresses         Progress[]
-  progressHistories  ProgressHistory[]
-  refreshTokens      RefreshToken[]
-  books              Book[]
-  series             Series[]
-  deviceAccess       DeviceUser[]
-  bookRequests       BookRequest[]
+  email                   String?
+  emailKey                String?                  @unique @map("email_key")
+  emailVerifiedAt         Float?                   @map("email_verified_at")
+  isConfigAdmin           Boolean                  @default(false) @map("is_config_admin")
+  emailTokens             EmailToken[]
+  progresses              Progress[]
+  progressHistories       ProgressHistory[]
+  refreshTokens           RefreshToken[]
+  books                   Book[]
+  series                  Series[]
+  deviceAccess            DeviceUser[]
+  bookRequests            BookRequest[]
+  notificationPreferences NotificationPreference[]
+  notificationOutbox      NotificationOutbox[]
 
   @@map("users")
 }
@@ -383,4 +385,65 @@ model DeviceUser {
   @@id([deviceId, userId])
   @@index([userId])
   @@map("device_users")
+}
+
+// The preference matrix promised by the email-identity spec. AN ABSENT ROW
+// MEANS ENABLED: rows record opt-outs, so the admin is notified of the first
+// book request without visiting settings and no existing account needs a
+// backfill. A row with `enabled: true` and no row at all are the same thing by
+// definition, which is what lets the mutation be a plain upsert with no delete
+// path.
+//
+// The composite primary key IS the identity. `channel` is in it although only
+// 'email' exists today — adding web push is then rows plus a driver, with no
+// migration of this model (see the spec's "What web push inherits").
+model NotificationPreference {
+  userId  String  @map("user_id")
+  event   String
+  channel String
+  enabled Boolean
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, event, channel])
+  @@map("notification_preferences")
+}
+
+// The durable queue. `userId` is the RECIPIENT, not the actor.
+//
+// There is deliberately NO `email` column: the address is read from the user
+// row at send time, so a row cannot outlive the address it names and a user who
+// fixes a typo before the drain runs still gets the mail at the corrected
+// address. It is also where the spec's rule — nothing is ever sent to an
+// unverified address — is actually checked.
+//
+// `payload` is JSON and is a SELF-CONTAINED SNAPSHOT that deliberately does not
+// reference the `BookRequest` row. Deleting a request is a first-class action on
+// both surfaces (the reader withdraws a pending one, either party clears a
+// resolved one), so the row may well be gone before the drain runs, and a mail
+// that re-read it would fail exactly when it mattered. It must never hold a
+// RENDERED message either — rendering happens per channel at drain time, which
+// is the invariant that keeps web push additive rather than a migration of
+// every queued row.
+//
+// `sentAt` and `failedAt` are mutually exclusive: null/null is pending, `sentAt`
+// is delivered, `failedAt` is permanently given up. Both are pruned 30 days
+// after they are set.
+model NotificationOutbox {
+  id            String  @id
+  userId        String  @map("user_id")
+  event         String
+  channel       String
+  payload       String
+  attempts      Int     @default(0)
+  nextAttemptAt Float   @map("next_attempt_at")
+  createdAt     Float   @map("created_at")
+  sentAt        Float?  @map("sent_at")
+  failedAt      Float?  @map("failed_at")
+  lastError     String? @map("last_error")
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Covers the drain's only query: pending rows (`sent_at` and `failed_at` both
+  // null) whose `next_attempt_at` has passed.
+  @@index([sentAt, failedAt, nextAttemptAt])
+  @@map("notification_outbox")
 }
