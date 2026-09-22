@@ -9,6 +9,21 @@ import {
   NotificationPreferenceFragment,
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
+import {
+  PushSubscriptionFragment,
+  ViewerAddPushSubscriptionDocument,
+  ViewerRemovePushSubscriptionDocument,
+} from '~/graphql/push';
+import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
+import {
+  LOCAL_SUBSCRIPTION_ID,
+  pushPermission,
+  pushSupport,
+  resyncSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+  type SubscribeResult,
+} from '~/lib/push';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -17,6 +32,12 @@ const EVENT_LABEL: Record<NotificationEvent, string> = {
   BOOK_REQUEST_CREATED: 'A reader requests a book',
   BOOK_REQUEST_FULFILLED: 'A book I requested is added to my library',
   BOOK_REQUEST_DECLINED: 'A book I requested is declined',
+};
+
+/** Distinguishes the two identically-labelled-by-event rows a second channel adds. */
+const CHANNEL_LABEL: Record<NotificationChannel, string> = {
+  EMAIL: 'Email',
+  PUSH: 'Push',
 };
 
 const rowKey = (event: NotificationEvent, channel: NotificationChannel) => `${event}:${channel}`;
@@ -32,6 +53,21 @@ export type NotificationSettingsProps = {
    */
   preferences: readonly FragmentType<typeof NotificationPreferenceFragment>[];
   emailVerified: boolean;
+  /**
+   * The VAPID public key this install signs push subscriptions with, handed
+   * to `subscribeToPush`/`resyncSubscription` (`~/lib/push`). `page/user`
+   * falls back to `''` before `ViewerBootstrapDocument` resolves; an empty
+   * key simply makes `subscribeToPush` fail, the same as any other failure
+   * that function already handles.
+   */
+  pushPublicKey: string;
+  /**
+   * This viewer's subscribed browsers. Wired through at this prop boundary
+   * (and at `page/user`'s callsite) now so Task 14's device list needs no
+   * second change here — not yet rendered by this component. Masked like
+   * `preferences`; unmask with `useFragment(PushSubscriptionFragment, ...)`.
+   */
+  pushSubscriptions: readonly FragmentType<typeof PushSubscriptionFragment>[];
 };
 
 /**
@@ -74,14 +110,26 @@ export type NotificationSettingsProps = {
  * singleton correct for when the reader comes back, and the toast is global
  * (`ToastProvider` wraps the whole app, not this card). Only the local
  * `pending` state has nowhere left to go, so only it is skipped.
+ *
+ * `subscribed` — whether THIS browser currently has an active push
+ * subscription — is separate local state for the same reason `pending` is:
+ * it describes something specific to this device that the server-supplied
+ * `preferences` prop (an EVENT×CHANNEL matrix, not a per-device fact) has no
+ * way to express.
  */
-export const NotificationSettings = ({ preferences, emailVerified }: NotificationSettingsProps) => {
+export const NotificationSettings = ({
+  preferences,
+  emailVerified,
+  pushPublicKey,
+}: NotificationSettingsProps) => {
   const style = useStyle();
   const showToast = useToast();
   const client = useApolloClient();
   const rows = useFragment(NotificationPreferenceFragment, preferences);
 
   const [setPreference] = useMutation(ViewerSetNotificationPreferenceDocument);
+  const [addSubscription] = useMutation(ViewerAddPushSubscriptionDocument);
+  const [removeSubscription] = useMutation(ViewerRemovePushSubscriptionDocument);
 
   /**
    * Keyed by `rowKey`. A row present here has a mutation in flight and shows
@@ -92,12 +140,70 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
    */
   const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
 
+  const [subscribed, setSubscribed] = useState(false);
+
+  const support = pushSupport();
+  const permission = pushPermission();
+
   const mountedRef = useRef(true);
   useEffect(() => {
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  /**
+   * Writes a (re)subscribed browser onto the server and syncs the local
+   * bookkeeping around it. Shared by the load-time resync effect below and
+   * `handleDeviceToggle`'s own click handler — both can hand this a freshly
+   * subscribed browser and both need the same two follow-ups done to it.
+   */
+  const syncPushSubscription = useCallback(
+    async (subscription: SubscribeResult) => {
+      const result = await addSubscription({ variables: subscription });
+      // `viewerAddPushSubscription` is masked at the TYPE level only — it's
+      // selected via a fragment spread in `graphql/push.ts` — so reading
+      // `.id` through a structural cast is exactly as safe as unmasking it
+      // would be, since masking has no RUNTIME effect in this codebase
+      // (`~/gql/fragment-masking.ts`'s own doc comment). `useFragment` isn't
+      // an option here: it would be called from this callback rather than
+      // the component's own render body, which `react-hooks/rules-of-hooks`
+      // (rightly, by its own lights) flags as a violation — see
+      // `lib/use-progress-mutations.ts`'s identical cast for the identical
+      // reason.
+      const added = result.data?.viewerAddPushSubscription as { id: string } | undefined;
+      if (added?.id != null) localStorage.setItem(LOCAL_SUBSCRIPTION_ID, added.id);
+      // A first-time registration otherwise never appears in the device
+      // list: fragment normalization only refreshes an ALREADY-cached
+      // entity, and Apollo will not append a brand-new one to an
+      // already-cached `viewer.pushSubscriptions` list on its own. `include`
+      // only refetches ACTIVE queries (`EmailSetting`'s own identical call),
+      // so this is a no-op wherever nothing has `ViewerBootstrapDocument`
+      // mounted and a real refetch wherever `page/user` does.
+      await client.refetchQueries({ include: [ViewerBootstrapDocument] });
+    },
+    [addSubscription, client]
+  );
+
+  useEffect(() => {
+    // Re-sync on load. `resyncSubscription`, not merely reading back an
+    // existing one, because a browser that EXPIRED its subscription while
+    // permission stayed 'granted' would otherwise silently stop receiving
+    // push forever with no error anywhere — see that function's own doc
+    // comment. It never prompts on its own: it only acts when permission is
+    // already 'granted', so this effect can never be the thing that shows
+    // the OS permission dialog on load (Global Constraints).
+    let cancelled = false;
+    void (async () => {
+      const existing = await resyncSubscription(pushPublicKey);
+      if (cancelled || existing === null) return;
+      setSubscribed(true);
+      await syncPushSubscription(existing);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pushPublicKey, syncPushSubscription]);
 
   const handleToggle = useCallback(
     async (event: NotificationEvent, channel: NotificationChannel, enabled: boolean) => {
@@ -134,12 +240,81 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
     [pending, setPreference, client, showToast]
   );
 
+  /**
+   * Per CHANNEL, not per card. An unverified address makes the email column
+   * a lie — nothing is ever sent to one — but says nothing about push, which
+   * has no notion of a verified anything. Disabling a working push toggle
+   * because of the address above it would be the same category of lie the
+   * email disabling exists to prevent.
+   */
+  const channelDisabled = (channel: NotificationChannel): boolean =>
+    channel === 'EMAIL' ? !emailVerified : support !== 'supported';
+
+  const handleDeviceToggle = useCallback(
+    async (next: boolean) => {
+      if (!next) {
+        const id = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
+        await unsubscribeFromPush();
+        if (id !== null) await removeSubscription({ variables: { id } });
+        localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+        setSubscribed(false);
+        return;
+      }
+      // Only ever from THIS click. `Notification.requestPermission()` may
+      // only be called from a user gesture, and `denied` is permanent until
+      // the user clears it in browser settings — there is exactly one
+      // chance to ask and it is spent here, never on load.
+      const granted = await Notification.requestPermission();
+      if (granted !== 'granted') return;
+
+      const subscription = await subscribeToPush(pushPublicKey);
+      if (subscription === null) {
+        showToast('Could not enable push notifications on this device.', 'error');
+        return;
+      }
+      await syncPushSubscription(subscription);
+      setSubscribed(true);
+    },
+    [pushPublicKey, removeSubscription, showToast, syncPushSubscription]
+  );
+
+  /**
+   * The one state the switch cannot express itself. `denied` is permanent
+   * until the user clears it in browser settings, and `insecure` is a
+   * property of the CONNECTION rather than the browser — saying "your
+   * browser does not support this" to someone on HTTP would simply be
+   * wrong.
+   */
+  const deviceHint = (): string | null => {
+    if (support === 'insecure') return 'Push needs an HTTPS connection to this library.';
+    if (support === 'unsupported') return 'This browser does not support push notifications.';
+    if (permission === 'denied') {
+      return 'Notifications are blocked for this site in your browser settings.';
+    }
+    return null;
+  };
+
   if (rows.length === 0) return null;
+
+  const hasEmailChannel = rows.some((row) => row.channel === 'EMAIL');
+  const hasPushChannel = rows.some((row) => row.channel === 'PUSH');
 
   return (
     <Card title="Notifications">
-      {!emailVerified && (
+      {hasEmailChannel && !emailVerified && (
         <p className={style.hint}>Confirm your email address above to start receiving these.</p>
+      )}
+      {hasPushChannel && (
+        <div className={style.deviceRow}>
+          <Switch
+            name="push-device"
+            checked={subscribed}
+            disabled={support !== 'supported' || permission === 'denied'}
+            onChange={(next) => void handleDeviceToggle(next)}
+            label="Enable push on this device"
+            description={deviceHint()}
+          />
+        </div>
       )}
       <div className={style.list}>
         {rows.map((row) => {
@@ -149,10 +324,10 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
             <Switch
               key={key}
               name={key}
-              label={EVENT_LABEL[row.event]}
+              label={`${EVENT_LABEL[row.event]} (${CHANNEL_LABEL[row.channel]})`}
               layout="horizontal"
               checked={checked}
-              disabled={!emailVerified}
+              disabled={channelDisabled(row.channel)}
               onChange={(next) => void handleToggle(row.event, row.channel, next)}
             />
           );

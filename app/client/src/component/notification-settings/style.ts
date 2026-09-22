@@ -12,4 +12,9 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
+  deviceRow: {
+    marginBottom: theme.space.md,
+    paddingBottom: theme.space.md,
+    borderBottom: `1px solid ${theme.color.border.default}`,
+  },
 }));
