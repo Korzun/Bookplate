@@ -111,3 +111,23 @@ it('records a delivery timestamp only when told to', async () => {
     lastSuccessAt: 5000,
   });
 });
+
+it("re-subscribing does not clear a device's delivery history", async () => {
+  // A device that keeps working across a re-sync has not stopped working: if
+  // the upsert ever reset lastSuccessAt, a healthy device would start reading
+  // "never received a notification" in the user's device list.
+  const { id } = await subscribe(ALICE);
+  await markPushSubscriptionDelivered(prisma, { id, now: 5000 });
+
+  await upsertPushSubscription(prisma, {
+    userId: ALICE,
+    endpoint: ENDPOINT,
+    p256dh: 'new-key',
+    auth: 'new-secret',
+    label: 'Chrome on macOS (updated)',
+    now: 9000,
+  });
+
+  const rows = await listPushSubscriptionRows(prisma, ALICE);
+  expect(rows[0]?.lastSuccessAt).toBe(5000);
+});
