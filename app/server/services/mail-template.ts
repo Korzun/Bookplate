@@ -1,16 +1,24 @@
 /**
- * Both messages, as data. Pure functions of their arguments — no config, no
- * clock, no I/O — so the tests read them directly and a caller cannot forget
- * to pass the library name.
+ * Every mail message this app sends, as data: the two code-bearing messages
+ * (`verificationMessage`, `passwordResetMessage`) and the three notices
+ * (`bookRequestedMessage`, `requestFulfilledMessage`, `requestDeclinedMessage`).
+ * All five are pure functions of their arguments — no config, no clock, no
+ * I/O — so the tests read them directly and a caller cannot forget to pass
+ * the library name.
  *
- * The code is the primary mechanism and appears unconditionally; the link is a
- * convenience that exists only when `publicUrl` is configured. A LAN-only
- * install is fully functional on codes alone, which is why the link is never
- * synthesised from a request header (see `AppConfig.publicUrl`).
+ * The two renderers behind them split on that same line. `render` is built
+ * around a CODE: it is the primary mechanism and appears unconditionally,
+ * with a link that is a convenience existing only when `publicUrl` is
+ * configured — a LAN-only install is fully functional on codes alone, which
+ * is why the link is never synthesised from a request header (see
+ * `AppConfig.publicUrl`). `notice` has no code at all — a notification is a
+ * short lead and a few labelled lines — but keeps the identical rule for its
+ * own link: present only when `publicUrl` is configured, never synthesised
+ * otherwise.
  *
- * `html` is deliberately plain and inline-styled: mail clients strip
- * stylesheets, and a verification email is four lines of text with one code in
- * it — there is nothing here worth a layout.
+ * `html` is deliberately plain and inline-styled, in both renderers: mail
+ * clients strip stylesheets, and none of these five messages is more than a
+ * few lines of text — there is nothing here worth a layout.
  */
 import type { MailMessage } from './mailer';
 import type { NotificationPayload } from './notification';
@@ -22,7 +30,13 @@ export type TemplateArgs = {
   publicUrl: string | null;
 };
 
-/** The library name is operator-supplied and interpolated into html. */
+/**
+ * The library name is operator-supplied and interpolated into html.
+ *
+ * Does NOT escape `'`: safe only because every attribute in both renderers
+ * below (`href`, `style`) is double-quoted. A future single-quoted attribute
+ * would need this function to escape it too.
+ */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

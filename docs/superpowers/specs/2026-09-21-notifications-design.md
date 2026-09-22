@@ -163,10 +163,12 @@ commit — one entry today. For each due row it:
 3. Sends, and classifies on the `SendFailure` union the mailer already returns.
    `invalid_destination` and `misconfigured` are terminal. `throttled` and
    `transient` increment `attempts` and set `nextAttemptAt` with exponential
-   backoff — 1m, 5m, 25m, 2h, 10h — to a cap of **5 attempts**, after which the
-   row is terminal. The schedule is deliberately long-tailed: the failures that
-   reach it are a throttled API or an install whose network came back, and
-   neither is fixed by retrying in seconds.
+   backoff — 1m, 5m, 25m, 2h, 10h — to a cap of **6 attempts** (one more than
+   the five waits, since N attempts have only N-1 gaps between them), after
+   which the row is terminal — a give-up horizon of roughly 12h31m of backoff.
+   The schedule is deliberately long-tailed: the failures that reach it are a
+   throttled API or an install whose network came back, and neither is fixed
+   by retrying in seconds.
 4. Prunes settled rows — `sentAt` or `failedAt` — older than 30 days.
 
 A missing driver (mail unconfigured) discards the row at a debug log level
