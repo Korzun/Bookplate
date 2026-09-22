@@ -2,10 +2,12 @@
  * The VAPID keypair, generated on first boot and kept in the settings table.
  *
  * Directly modelled on `getOrCreateJwtSecret` in `services/token.ts`, down to
- * the `upsert` with an empty `update`: on conflict the update is a no-op and
- * the upsert returns the FIRST writer's row, so two concurrent first boots
- * converge on one pair rather than each minting one and the second silently
- * invalidating the first's subscriptions.
+ * the single atomic upsert with an empty `update`: on conflict the update is a
+ * no-op and the upsert returns the FIRST writer's row. SQLite's unique-constraint
+ * conflict resolution guarantees exactly one writer's value ever wins, so two
+ * concurrent first boots converge on one keypair. The pair is stored in a single
+ * row as JSON to make the matched-pair invariant unrepresentable: the value is
+ * either fully consistent or missing entirely.
  *
  * NOTHING ROTATES THESE. Rotating a VAPID keypair invalidates every existing
  * subscription on every device at once — a support incident, not a maintenance
@@ -18,34 +20,26 @@
 import type { PrismaClient } from '@prisma/client';
 import webpush from 'web-push';
 
-const PUBLIC_KEY = 'vapid_public_key';
-const PRIVATE_KEY = 'vapid_private_key';
+const VAPID_KEYS = 'vapid_keys';
 
 export type VapidKeys = { publicKey: string; privateKey: string };
 
 export async function getOrCreateVapidKeys(prisma: PrismaClient): Promise<VapidKeys> {
-  const existing = await prisma.setting.findMany({
-    where: { key: { in: [PUBLIC_KEY, PRIVATE_KEY] } },
-  });
-  const found = new Map(existing.map((row) => [row.key, row.value]));
-  const publicKey = found.get(PUBLIC_KEY);
-  const privateKey = found.get(PRIVATE_KEY);
-  if (publicKey !== undefined && privateKey !== undefined) return { publicKey, privateKey };
+  const existing = await prisma.setting.findUnique({ where: { key: VAPID_KEYS } });
+  if (existing) {
+    return JSON.parse(existing.value);
+  }
 
   const generated = webpush.generateVAPIDKeys();
-  // Two upserts rather than one transaction: the pair is only ever written
-  // together and only ever at boot, and an empty `update` makes each one
-  // idempotent, so a racing boot that wrote the public key first cannot leave
-  // a half-pair behind — both rows converge on the same writer's values.
-  const storedPublic = await prisma.setting.upsert({
-    where: { key: PUBLIC_KEY },
-    create: { key: PUBLIC_KEY, value: generated.publicKey },
+  // One atomic upsert: on conflict the empty update is a no-op and upsert returns
+  // the first writer's row. SQLite's unique-constraint semantics guarantee exactly
+  // one writer's value ever wins, so concurrent first boots converge on one pair.
+  // Storing as JSON makes the matched-pair invariant unrepresentable — the value
+  // is either fully consistent or missing.
+  const row = await prisma.setting.upsert({
+    where: { key: VAPID_KEYS },
+    create: { key: VAPID_KEYS, value: JSON.stringify(generated) },
     update: {},
   });
-  const storedPrivate = await prisma.setting.upsert({
-    where: { key: PRIVATE_KEY },
-    create: { key: PRIVATE_KEY, value: generated.privateKey },
-    update: {},
-  });
-  return { publicKey: storedPublic.value, privateKey: storedPrivate.value };
+  return JSON.parse(row.value);
 }

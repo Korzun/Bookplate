@@ -46,7 +46,9 @@ it('converges on one pair when two first boots race', async () => {
 
   expect(a).toEqual(b);
   const rows = await prisma.setting.findMany({
-    where: { key: { in: ['vapid_public_key', 'vapid_private_key'] } },
+    where: { key: 'vapid_keys' },
   });
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(1);
+  const stored = JSON.parse(rows[0].value);
+  expect(stored).toEqual(a);
 });
