@@ -127,10 +127,10 @@ export type FulfillOutcome = ResolveOutcome | { kind: 'noSuchBook' };
 /**
  * Links a book to a pending request and closes it.
  *
- * IN A TRANSACTION, unlike `declineBookRequest`, and the asymmetry is
- * deliberate: this one has to validate a SECOND row — the book — before it
- * writes, so the read and the write have to be atomic together. Declining
- * validates nothing else and gets a single guarded `updateMany` instead.
+ * IN A TRANSACTION: this one has to validate a SECOND row — the book —
+ * before it writes, so that read and that write have to be atomic together.
+ * (`declineBookRequest` is transactional too now, but for a different
+ * reason — see its own doc comment.)
  *
  * `bookUserId !== args.userId` is `noSuchBook`, not a distinct outcome: an
  * admin must not fulfil alice's request with a book off bob's shelf, and
