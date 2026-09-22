@@ -9,24 +9,11 @@ import {
   NotificationPreferenceFragment,
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
-import {
-  PushSubscriptionFragment,
-  ViewerAddPushSubscriptionDocument,
-  ViewerRemovePushSubscriptionDocument,
-} from '~/graphql/push';
-import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
-import {
-  LOCAL_SUBSCRIPTION_ID,
-  pushPermission,
-  pushSupport,
-  resyncSubscription,
-  subscribeToPush,
-  unsubscribeFromPush,
-  type SubscribeResult,
-} from '~/lib/push';
+import { PushSubscriptionFragment } from '~/graphql/push';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
+import { usePushDevice } from './use-push-device';
 
 const EVENT_LABEL: Record<NotificationEvent, string> = {
   BOOK_REQUEST_CREATED: 'A reader requests a book',
@@ -55,7 +42,8 @@ export type NotificationSettingsProps = {
   emailVerified: boolean;
   /**
    * The VAPID public key this install signs push subscriptions with, handed
-   * to `subscribeToPush`/`resyncSubscription` (`~/lib/push`). `page/user`
+   * to `usePushDevice`, which passes it straight through to
+   * `subscribeToPush`/`resyncSubscription` (`~/lib/push`). `page/user`
    * falls back to `''` before `ViewerBootstrapDocument` resolves; an empty
    * key simply makes `subscribeToPush` fail, the same as any other failure
    * that function already handles.
@@ -111,11 +99,10 @@ export type NotificationSettingsProps = {
  * (`ToastProvider` wraps the whole app, not this card). Only the local
  * `pending` state has nowhere left to go, so only it is skipped.
  *
- * `subscribed` — whether THIS browser currently has an active push
- * subscription — is separate local state for the same reason `pending` is:
- * it describes something specific to this device that the server-supplied
- * `preferences` prop (an EVENT×CHANNEL matrix, not a per-device fact) has no
- * way to express.
+ * This device's own push subscription lifecycle — support/permission,
+ * whether IT is currently subscribed, and the switch that flips that — is a
+ * second, self-contained concern this component does not hold itself; see
+ * `usePushDevice`.
  */
 export const NotificationSettings = ({
   preferences,
@@ -128,8 +115,6 @@ export const NotificationSettings = ({
   const rows = useFragment(NotificationPreferenceFragment, preferences);
 
   const [setPreference] = useMutation(ViewerSetNotificationPreferenceDocument);
-  const [addSubscription] = useMutation(ViewerAddPushSubscriptionDocument);
-  const [removeSubscription] = useMutation(ViewerRemovePushSubscriptionDocument);
 
   /**
    * Keyed by `rowKey`. A row present here has a mutation in flight and shows
@@ -140,22 +125,7 @@ export const NotificationSettings = ({
    */
   const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
 
-  const [subscribed, setSubscribed] = useState(false);
-
-  const support = pushSupport();
-  /**
-   * State, not a plain `pushPermission()` call like `support` above:
-   * `support` describes the connection/browser, which cannot change during
-   * this component's lifetime, but permission CAN change — the one action
-   * that changes it, `Notification.requestPermission()`, happens inside
-   * `handleDeviceToggle` itself. Without this being state, declining or
-   * dismissing the prompt would leave `permission` reading its
-   * BEFORE-the-click value until some unrelated re-render happened to read
-   * it fresh — the device switch would stay live and `deviceHint()` would
-   * stay silent about a now-permanent `denied`, i.e. exactly the silent dead
-   * end this state exists to prevent.
-   */
-  const [permission, setPermission] = useState(() => pushPermission());
+  const { subscribed, support, permission, hint, toggle } = usePushDevice(pushPublicKey);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -163,80 +133,6 @@ export const NotificationSettings = ({
       mountedRef.current = false;
     };
   }, []);
-
-  /**
-   * Writes a (re)subscribed browser onto the server and syncs the local
-   * bookkeeping around it. Shared by the load-time resync effect below and
-   * `handleDeviceToggle`'s own click handler — both can hand this a freshly
-   * subscribed browser and both need the same two follow-ups done to it.
-   */
-  const syncPushSubscription = useCallback(
-    async (subscription: SubscribeResult) => {
-      const result = await addSubscription({ variables: subscription });
-      // `viewerAddPushSubscription` is masked at the TYPE level only — it's
-      // selected via a fragment spread in `graphql/push.ts` — so reading
-      // `.id` through a structural cast is exactly as safe as unmasking it
-      // would be, since masking has no RUNTIME effect in this codebase
-      // (`~/gql/fragment-masking.ts`'s own doc comment). `useFragment` isn't
-      // an option here: it would be called from this callback rather than
-      // the component's own render body, which `react-hooks/rules-of-hooks`
-      // (rightly, by its own lights) flags as a violation — see
-      // `lib/use-progress-mutations.ts`'s identical cast for the identical
-      // reason.
-      const added = result.data?.viewerAddPushSubscription as { id: string } | undefined;
-      if (added?.id != null) localStorage.setItem(LOCAL_SUBSCRIPTION_ID, added.id);
-      // A first-time registration otherwise never appears in the device
-      // list: fragment normalization only refreshes an ALREADY-cached
-      // entity, and Apollo will not append a brand-new one to an
-      // already-cached `viewer.pushSubscriptions` list on its own. `include`
-      // only refetches ACTIVE queries (`EmailSetting`'s own identical call),
-      // so this is a no-op wherever nothing has `ViewerBootstrapDocument`
-      // mounted and a real refetch wherever `page/user` does.
-      await client.refetchQueries({ include: [ViewerBootstrapDocument] });
-    },
-    [addSubscription, client]
-  );
-
-  useEffect(() => {
-    // `page/user` hands down `''` until `ViewerBootstrapDocument` resolves
-    // (this prop's own doc comment). Running anyway would register the
-    // worker and, for a browser with permission already granted but no
-    // subscription, call `subscribeToPush('')` — which cannot succeed — and
-    // then run the identical pair of calls again once the real key arrives
-    // and this effect re-fires on the `pushPublicKey` dependency below.
-    if (pushPublicKey === '') return;
-
-    // Re-sync on load. `resyncSubscription`, not merely reading back an
-    // existing one, because a browser that EXPIRED its subscription while
-    // permission stayed 'granted' would otherwise silently stop receiving
-    // push forever with no error anywhere — see that function's own doc
-    // comment. It never prompts on its own: it only acts when permission is
-    // already 'granted', so this effect can never be the thing that shows
-    // the OS permission dialog on load (Global Constraints).
-    let cancelled = false;
-    void (async () => {
-      const existing = await resyncSubscription(pushPublicKey);
-      if (cancelled || existing === null) return;
-      setSubscribed(true);
-      await syncPushSubscription(existing);
-    })().catch(() => {
-      // Best-effort and silent (no toast): this runs unattended on every
-      // load, not from anything the reader did, so there is nothing for
-      // them to act on right now — but it MUST be caught. An uncaught
-      // rejection here is an unhandled rejection at the top of an async
-      // IIFE, which in this repo's test runner produces an "all tests
-      // passed" run that still exits 1 (this file's own `mountedRef` test
-      // above records the identical failure mode for a different cause).
-      // Revert the optimistic `setSubscribed(true)` above: whatever
-      // failed, this browser cannot be relied on to be correctly
-      // registered with the server, so the switch should say so rather
-      // than show a subscription that may not exist.
-      if (!cancelled) setSubscribed(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pushPublicKey, syncPushSubscription]);
 
   const handleToggle = useCallback(
     async (event: NotificationEvent, channel: NotificationChannel, enabled: boolean) => {
@@ -283,75 +179,6 @@ export const NotificationSettings = ({
   const channelDisabled = (channel: NotificationChannel): boolean =>
     channel === 'EMAIL' ? !emailVerified : support !== 'supported';
 
-  const handleDeviceToggle = useCallback(
-    async (next: boolean) => {
-      if (!next) {
-        const id = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
-        // Optimistic, matching the "on" branch below and the load effect
-        // above: set first, revert in the `catch` — not left until after
-        // the round trip, which is what let a failed disable leave the
-        // switch showing "on" while the browser had already unsubscribed
-        // (the worse of the two desyncs a failure here can cause, since it
-        // tells the reader push still works when it may not).
-        setSubscribed(false);
-        try {
-          await unsubscribeFromPush();
-          if (id !== null) await removeSubscription({ variables: { id } });
-          localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
-        } catch {
-          setSubscribed(true);
-          showToast('Could not update push on this device.', 'error');
-        }
-        return;
-      }
-      // Only ever from THIS click. `Notification.requestPermission()` may
-      // only be called from a user gesture, and `denied` is permanent until
-      // the user clears it in browser settings — there is exactly one
-      // chance to ask and it is spent here, never on load.
-      const granted = await Notification.requestPermission();
-      setPermission(granted);
-      if (granted !== 'granted') return;
-
-      const subscription = await subscribeToPush(pushPublicKey);
-      if (subscription === null) {
-        showToast('Could not enable push notifications on this device.', 'error');
-        return;
-      }
-      // Optimistic, matching the load effect's own ordering — set before
-      // awaiting the mutation, revert in the `catch` — rather than only
-      // after `syncPushSubscription` resolves. `addSubscription`/
-      // `removeSubscription` reject on error like any other mutation in
-      // this file; without this `catch` that rejection escaped as an
-      // unhandled rejection, `setSubscribed(true)` below never ran, and the
-      // switch silently snapped back to "off" with no toast while the
-      // browser held a live subscription the server had no row for.
-      setSubscribed(true);
-      try {
-        await syncPushSubscription(subscription);
-      } catch {
-        setSubscribed(false);
-        showToast('Could not update push on this device.', 'error');
-      }
-    },
-    [pushPublicKey, removeSubscription, showToast, syncPushSubscription]
-  );
-
-  /**
-   * The one state the switch cannot express itself. `denied` is permanent
-   * until the user clears it in browser settings, and `insecure` is a
-   * property of the CONNECTION rather than the browser — saying "your
-   * browser does not support this" to someone on HTTP would simply be
-   * wrong.
-   */
-  const deviceHint = (): string | null => {
-    if (support === 'insecure') return 'Push needs an HTTPS connection to this library.';
-    if (support === 'unsupported') return 'This browser does not support push notifications.';
-    if (permission === 'denied') {
-      return 'Notifications are blocked for this site in your browser settings.';
-    }
-    return null;
-  };
-
   if (rows.length === 0) return null;
 
   const hasEmailChannel = rows.some((row) => row.channel === 'EMAIL');
@@ -366,9 +193,9 @@ export const NotificationSettings = ({
           name="push-device"
           checked={subscribed}
           disabled={support !== 'supported' || permission === 'denied'}
-          onChange={(next) => void handleDeviceToggle(next)}
+          onChange={(next) => void toggle(next)}
           label="Enable push on this device"
-          description={deviceHint()}
+          description={hint}
         />
       </div>
       <div className={style.list}>
