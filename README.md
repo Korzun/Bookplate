@@ -156,6 +156,27 @@ Once email is configured:
   the same email additionally includes a clickable link that fills the code
   in for you — `public_url` is optional and only adds that convenience.
 
+#### Push notifications
+
+A second notification channel, alongside email, with no add-on option to set —
+the keypair it needs generates itself on first run.
+
+- **Requires HTTPS.** Browsers only expose the Push API in a secure context, so
+  an install reached over plain HTTP (e.g. `http://homeassistant.local:3000`)
+  cannot use push at all. This is a browser rule, not a Bookplate limitation,
+  and there is no workaround for it — put the instance behind HTTPS (a reverse
+  proxy or a Cloudflare Tunnel) if you want push notifications.
+- **On iPhone and iPad, add Bookplate to the Home Screen first.** iOS only
+  permits push from an installed PWA, not from Safari itself.
+- **Enabled per browser.** Turn it on from your **settings page**, once per
+  browser you want notified — the same page lists every browser currently
+  subscribed and lets you remove any of them.
+- **Worth knowing:** the push service that actually delivers the message
+  (Google's, Mozilla's, or Apple's, depending on your browser) relays an
+  encrypted payload it cannot read — but it does see that a message went to
+  your device and when. That's inherent to how Web Push works everywhere, not
+  specific to this implementation.
+
 ### Connect to OPDS catalog
 
 In KOReader: **File browser → top menu → search icon (🔍) → OPDS catalog → `+`**,
