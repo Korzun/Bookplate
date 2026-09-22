@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card } from '~/component';
 import { Switch } from '~/control';
@@ -65,6 +65,15 @@ export type NotificationSettingsProps = {
  * prop and the cleared `pending` entry agree, and on error the switch reverts
  * to the server's last known value. A row with an entry in `pending` also
  * cannot fire a second mutation until the first settles.
+ *
+ * `mountedRef` guards only the `setPending` clear in `handleToggle`'s
+ * `finally`, not the `cache.modify` write or the error toast above it: a
+ * reader can toggle a row and navigate off the account page before the
+ * mutation settles (unmounting this component), and when it settles later
+ * both of those should still happen — the cache write keeps the Viewer
+ * singleton correct for when the reader comes back, and the toast is global
+ * (`ToastProvider` wraps the whole app, not this card). Only the local
+ * `pending` state has nowhere left to go, so only it is skipped.
  */
 export const NotificationSettings = ({ preferences, emailVerified }: NotificationSettingsProps) => {
   const style = useStyle();
@@ -82,6 +91,13 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
    * is scoped to the one row in flight rather than a copy of the whole list.
    */
   const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleToggle = useCallback(
     async (event: NotificationEvent, channel: NotificationChannel, enabled: boolean) => {
@@ -104,10 +120,15 @@ export const NotificationSettings = ({ preferences, emailVerified }: Notificatio
       } catch {
         showToast('Could not save that preference', 'error');
       } finally {
-        setPending((prev) => {
-          const { [key]: _settled, ...rest } = prev;
-          return rest;
-        });
+        // Skip if this component has already unmounted (e.g. the reader
+        // navigated off the account page before this settled) — see the
+        // `mountedRef` note on `pending`'s own doc comment above.
+        if (mountedRef.current) {
+          setPending((prev) => {
+            const { [key]: _settled, ...rest } = prev;
+            return rest;
+          });
+        }
       }
     },
     [pending, setPreference, client, showToast]
