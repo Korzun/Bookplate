@@ -767,6 +767,15 @@ describe('NotificationSettings', () => {
 
   it('removes another device from the list', async () => {
     stubSupportedBrowser();
+    // Proves the browser-unsubscribe guard, not just the `localStorage`
+    // guard: `handleRemove`'s `if (id === localId) await unsubscribeFromPush()`
+    // is a SEPARATE `if` from the one that clears local bookkeeping. A
+    // regression that dropped only the id check on the unsubscribe call
+    // (leaving the bookkeeping guard intact) would still pass the
+    // `localStorage` assertion below while silently unsubscribing the
+    // browser the user is sitting at — this spy is the sibling test's own
+    // proxy for "`unsubscribeFromPush` ran", asserted here as its negative.
+    const registerSpy = vi.mocked(navigator.serviceWorker.register);
     // THIS browser's own subscription — set before the click below, so the
     // "must not touch" assertion afterwards proves something (a fresh,
     // never-set `null` would trivially still read `null` no matter what the
@@ -800,6 +809,9 @@ describe('NotificationSettings', () => {
     // Removing a device that ISN'T this browser must not touch this
     // browser's own local subscription bookkeeping.
     expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-99');
+    // ...nor its actual push subscription. This is the assertion that
+    // catches the regression the comment above describes.
+    expect(registerSpy).not.toHaveBeenCalled();
   });
 
   it('removing this device also unsubscribes the browser, not just the server row', async () => {
@@ -840,5 +852,31 @@ describe('NotificationSettings', () => {
     // would silently re-create the row this click just removed.
     await waitFor(() => expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull());
     expect(refetchSpy).toHaveBeenCalledWith({ include: [ViewerBootstrapDocument] });
+  });
+
+  it('toasts when removing a device fails', async () => {
+    stubSupportedBrowser();
+    const removeMock = removeSubscriptionErrorMock('sub-2');
+
+    renderCard({
+      preferences: [pushPref()],
+      pushSubscriptions: [
+        pushSubscription({
+          id: 'sub-2',
+          label: 'Safari on iOS',
+          createdAt: 1500,
+          lastSuccessAt: null,
+        }),
+      ],
+      mocks: [removeMock],
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /remove safari on ios/i }));
+
+    // `handleRemove`'s `catch` has no revert (unlike `toggle`'s own
+    // branches) — its own comment explains why that's deliberate here. This
+    // test only pins the one thing that IS required: the failure is
+    // surfaced, not silently swallowed.
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not remove that device/i);
   });
 });

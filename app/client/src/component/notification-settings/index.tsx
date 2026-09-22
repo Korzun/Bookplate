@@ -171,6 +171,18 @@ export const NotificationSettings = ({
         if (id === localId) markUnsubscribed();
         await client.refetchQueries({ include: [ViewerBootstrapDocument] });
       } catch {
+        // Deliberately NOT a revert, unlike `toggle`'s own branches
+        // (`usePushDevice`): if `unsubscribeFromPush()` above succeeded and
+        // THEN `removeSubscription` rejected, the browser is genuinely
+        // unsubscribed while `subscribed`/`localId` still claim otherwise,
+        // until the next load's re-sync corrects it. That is the identical
+        // double-failure shape `toggle`'s own OFF branch already accepts —
+        // it too calls `unsubscribeFromPush()` before its mutation and, on
+        // that mutation rejecting, reverts to "subscribed" rather than
+        // reconciling with a browser that may already be unsubscribed (see
+        // its own comment). Same trade-off, same self-healing-on-reload —
+        // not a gap to close here. Do not "fix" this into a revert without
+        // re-reading that comment first.
         showToast('Could not remove that device', 'error');
       }
     },
