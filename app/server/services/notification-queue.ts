@@ -34,7 +34,13 @@ const log = logger('NotificationQueue');
  * `n` times waits `BACKOFF_MS[n - 1]`.
  */
 export const BACKOFF_MS: readonly number[] = [60_000, 300_000, 1_500_000, 7_200_000, 36_000_000];
-export const MAX_ATTEMPTS = 5;
+/**
+ * One more than the number of waits: N attempts have N-1 gaps between them.
+ * DERIVED rather than written out, because the two were originally both 5 and
+ * that silently made the last tier unreachable — the schedule the comment above
+ * describes was not the schedule the code ran.
+ */
+export const MAX_ATTEMPTS = BACKOFF_MS.length + 1;
 export const TICK_MS = 60_000;
 export const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -124,59 +130,77 @@ export class NotificationQueue implements NotificationPoker {
     });
 
     for (const row of due) {
-      const driver = this.drivers[row.channel as NotificationChannel];
-      if (driver === undefined) {
-        // An install that never configured this channel. Discarded rather than
-        // recorded as a failure, so a LAN-only install generates no error noise
-        // and the table stays bounded.
-        log.debug(`No driver for channel ${row.channel}; discarding ${row.id}`);
-        await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
-        continue;
-      }
+      try {
+        const driver = this.drivers[row.channel as NotificationChannel];
+        if (driver === undefined) {
+          // An install that never configured this channel. Discarded rather than
+          // recorded as a failure, so a LAN-only install generates no error noise
+          // and the table stays bounded.
+          log.debug(`No driver for channel ${row.channel}; discarding ${row.id}`);
+          await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
+          continue;
+        }
 
-      const recipient = await this.loadRecipient(row.userId);
-      if (recipient === null) {
-        log.debug(`Recipient ${row.userId} is gone; discarding ${row.id}`);
-        await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
-        continue;
-      }
+        const recipient = await this.loadRecipient(row.userId);
+        if (recipient === null) {
+          log.debug(`Recipient ${row.userId} is gone; discarding ${row.id}`);
+          await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
+          continue;
+        }
 
-      const result = await driver.deliver({
-        recipient,
-        event: row.event as NotificationEvent,
-        payload: parsePayload(row.payload),
-      });
-
-      if (result.ok) {
-        await this.prisma.notificationOutbox.update({
-          where: { id: row.id },
-          data: { sentAt: now, lastError: null },
+        const result = await driver.deliver({
+          recipient,
+          event: row.event as NotificationEvent,
+          payload: parsePayload(row.payload),
         });
-        continue;
-      }
 
-      if (TERMINAL.includes(result.reason)) {
-        await this.prisma.notificationOutbox.update({
-          where: { id: row.id },
-          data: { failedAt: now, lastError: `terminal: ${result.reason}` },
-        });
-        continue;
-      }
+        if (result.ok) {
+          await this.prisma.notificationOutbox.update({
+            where: { id: row.id },
+            data: { sentAt: now, lastError: null },
+          });
+          continue;
+        }
 
-      const attempts = row.attempts + 1;
-      const exhausted = attempts >= MAX_ATTEMPTS;
-      await this.prisma.notificationOutbox.update({
-        where: { id: row.id },
-        data: {
-          attempts,
-          lastError: `${result.reason} (attempt ${attempts})`,
-          failedAt: exhausted ? now : null,
-          nextAttemptAt: exhausted
-            ? row.nextAttemptAt
-            : now + (BACKOFF_MS[attempts - 1] ?? BACKOFF_MS[BACKOFF_MS.length - 1]),
-        },
-      });
+        if (TERMINAL.includes(result.reason)) {
+          await this.prisma.notificationOutbox.update({
+            where: { id: row.id },
+            data: { failedAt: now, lastError: `terminal: ${result.reason}` },
+          });
+          continue;
+        }
+
+        await this.retry(row, now, result.reason);
+      } catch (e) {
+        // A thrown error (a malformed payload's JSON.parse, a driver that
+        // threw instead of resolving) is not distinguishable from a transient
+        // fault from here, so it gets the same retry-then-bury treatment. The
+        // alternative — leaving the row untouched — wedges every row behind
+        // it forever, since `due` is ordered oldest-first and a row that never
+        // buries itself is first again on every subsequent pass.
+        log.warn(`Notification delivery threw for ${row.id}: ${String(e)}`);
+        await this.retry(row, now, String(e));
+      }
     }
+  }
+
+  /** Backs a row off on the published schedule, or buries it at the cap. */
+  private async retry(
+    row: { id: string; attempts: number; nextAttemptAt: number },
+    now: number,
+    reason: string
+  ): Promise<void> {
+    const attempts = row.attempts + 1;
+    const exhausted = attempts >= MAX_ATTEMPTS;
+    await this.prisma.notificationOutbox.update({
+      where: { id: row.id },
+      data: {
+        attempts,
+        lastError: `${reason} (attempt ${attempts})`,
+        failedAt: exhausted ? now : null,
+        nextAttemptAt: exhausted ? row.nextAttemptAt : now + BACKOFF_MS[attempts - 1],
+      },
+    });
   }
 
   private async loadRecipient(userId: string): Promise<NotificationRecipient | null> {
