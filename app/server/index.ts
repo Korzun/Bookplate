@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import packageJson from '../../package.json';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -14,8 +13,7 @@ import { createReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
 import { startBookplate } from './startup';
-
-const version: string = packageJson.version;
+import { APP_VERSION } from './utils/app-version';
 
 const log = logger('Server');
 
@@ -76,7 +74,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     mailer,
   });
 
-  await startBookplate({ prisma, config, version, thumbnailQueue, server });
+  await startBookplate({ prisma, config, version: APP_VERSION, thumbnailQueue, server });
 })().catch((err) => {
   console.error('Fatal startup error:', err);
   process.exit(1);
