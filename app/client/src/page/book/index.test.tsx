@@ -1416,11 +1416,16 @@ describe('BookPage', () => {
     // alone would write `Book:<new-id>` and leave the pre-regen entity, with
     // its stale chapter data, in the cache forever.
     it('evicts the old Book entity when the payload reports a different id (hash changed)', async () => {
-      const { client } = await openBookAnd(
-        [bookMock(), regenMock(NEW_BOOK_ID)],
-        /^regen chapters$/i
-      );
+      // `openBookAnd`'s steps are inlined so the pre-state is asserted BEFORE
+      // the menu click, for the same reason as the sibling test below: called
+      // through the helper, the regen has already fired by the time control
+      // returns, so `toBeDefined()` was asserting "the eviction has not
+      // happened yet" — which the mutation won under full-suite load.
+      const { client } = await renderPage([bookMock(), regenMock(NEW_BOOK_ID)]);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
       expect((client.cache.extract() as NormalizedCacheObject)[`Book:${BOOK_ID}`]).toBeDefined();
+
+      await selectMenuItem(/^regen chapters$/i);
 
       await waitFor(() => {
         const extracted = client.cache.extract() as NormalizedCacheObject;
@@ -1445,11 +1450,18 @@ describe('BookPage', () => {
      * request time (see the lazy-split note above), so this fails closed.
      */
     it('evicts the Book entity and refetches the detail read when the id is UNCHANGED', async () => {
-      await openBookAnd(
-        [{ ...bookMock(), maxUsageCount: Infinity }, regenMock(BOOK_ID)],
-        /^regen chapters$/i
-      );
+      // `openBookAnd`'s steps are inlined here ONLY so the baseline count is
+      // asserted BEFORE the menu click. Called through the helper, the click
+      // has already happened by the time control returns, so
+      // `toBe(1)` was asserting "the refetch has not fired yet" — a race the
+      // refetch won under full-suite load, failing with a count of 2. Split
+      // this way the baseline is a fact, not a bet, and the refetch is still
+      // awaited rather than assumed.
+      await renderPage([{ ...bookMock(), maxUsageCount: Infinity }, regenMock(BOOK_ID)]);
+      await screen.findByRole('heading', { name: 'A Wizard of Earthsea' });
       expect(bookDetailCounter.requests).toBe(1);
+
+      await selectMenuItem(/^regen chapters$/i);
 
       await waitFor(() => expect(bookDetailCounter.requests).toBe(2));
     });

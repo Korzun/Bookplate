@@ -1,5 +1,4 @@
-import { ApolloClient, ApolloLink, InMemoryCache, Observable } from '@apollo/client';
-import { ApolloProvider, useQuery } from '@apollo/client/react';
+import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,8 +17,7 @@ import {
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
-import { cacheConfig } from '~/provider/apollo';
-import { renderWithApollo, renderWithProviders } from '~/test-utils';
+import { renderWithApollo, renderWithControlledLink } from '~/test-utils';
 
 import { NotificationSettings } from './index';
 
@@ -93,60 +91,14 @@ const Harness = () => {
 type MutationOutcome = { data: ViewerSetNotificationPreferenceMutation } | { error: Error };
 
 /**
- * Renders through a link this test file fully controls, in place of
- * `renderWithApollo`'s `MockLink` — every request this link sees is held
- * open until the test calls the returned `release`, and `requestCount` is
- * incremented synchronously the instant a request is ISSUED (Apollo invokes
- * a link's request handler synchronously from `client.mutate()`, before any
- * microtask), not when it settles.
- *
- * This exists because `MockedResponse`'s `delay` is a REAL `setTimeout`: an
- * earlier version of the three tests below used `delay: 20` and asserted the
- * switch immediately after `await userEvent.click(...)`, betting that 20ms
- * of wall-clock time would not elapse first. Under a loaded full-suite run
- * that bet lost often enough to flake two different ways — the assertion
- * sometimes read the ALREADY-SETTLED value (the mock winning the race), and
- * on other runs the 20ms timer fired and ran `handleToggle`'s `finally`
- * AFTER a later test's `cleanup()` had already unmounted this component,
- * surfacing as an unhandled error with an all-green test count. A `release`
- * that only ever fires when THIS test calls it removes both: the mock
- * cannot settle before an assertion the test hasn't reached yet, and nothing
- * is left resolving in the background once the test function returns.
- *
- * Composed from `renderWithProviders` (Toast/Theme/Auth/Router) rather than
- * `renderWithApollo`, because the latter hard-codes `new MockLink(mocks)` —
- * fixed per-mock `delay`, no notion of "held open until told otherwise".
+ * The shared `renderWithControlledLink` (see `~/test-utils`) with this file's
+ * mutation type applied — the machinery it replaced (a hand-rolled link that
+ * holds every request open until the test releases it) now lives there,
+ * because two other test files needed exactly the same thing to de-race
+ * assertions on in-flight state.
  */
-function renderWithControlledMutation(ui: ReactElement) {
-  let deliver: ((outcome: MutationOutcome) => void) | null = null;
-  const requestCount = { current: 0 };
-
-  const link = new ApolloLink(
-    () =>
-      new Observable((observer) => {
-        requestCount.current += 1;
-        deliver = (outcome) => {
-          if ('error' in outcome) {
-            observer.error(outcome.error);
-          } else {
-            observer.next({ data: outcome.data });
-            observer.complete();
-          }
-        };
-      })
-  );
-  const client = new ApolloClient({ link, cache: new InMemoryCache(cacheConfig) });
-
-  return {
-    client,
-    requestCount,
-    release: (outcome: MutationOutcome) => {
-      if (deliver === null) throw new Error('release() called before any request was issued');
-      deliver(outcome);
-    },
-    ...renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>),
-  };
-}
+const renderWithControlledMutation = (ui: ReactElement) =>
+  renderWithControlledLink<ViewerSetNotificationPreferenceMutation>(ui);
 
 const setPreferenceSuccess = (): MutationOutcome => ({
   data: {
