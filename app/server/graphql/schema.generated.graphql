@@ -725,10 +725,30 @@ type Mutation {
   Sets the viewer's email address and sends a verification code to it. Succeeds (with `delivered: false`) even if the send itself fails, because the address is already saved by then.
   """
   viewerSetEmail(input: ViewerSetEmailInput!): ViewerSetEmailResult!
+
+  """Turns one notification on or off for the viewer's own account."""
+  viewerSetNotificationPreference(channel: NotificationChannel!, enabled: Boolean!, event: NotificationEvent!): ViewerSetNotificationPreferencePayload
 }
 
 interface Node {
   id: ID!
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationEvent {
+  BOOK_REQUEST_CREATED
+  BOOK_REQUEST_DECLINED
+  BOOK_REQUEST_FULFILLED
+}
+
+"""Whether one notification event reaches this account on one channel."""
+type NotificationPreference {
+  channel: NotificationChannel!
+  enabled: Boolean!
+  event: NotificationEvent!
 }
 
 type PageInfo {
@@ -1059,6 +1079,7 @@ type Viewer {
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
+  notificationPreferences: [NotificationPreference!]!
   syncPassword: String
   user: User
   username: String!
@@ -1091,3 +1112,7 @@ type ViewerSetEmailPayload {
 }
 
 union ViewerSetEmailResult = EmailInUseError | EmailNotConfiguredError | InvalidInputError | ViewerSetEmailPayload
+
+type ViewerSetNotificationPreferencePayload {
+  notificationPreferences: [NotificationPreference!]!
+}
