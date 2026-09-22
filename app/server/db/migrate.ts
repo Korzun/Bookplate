@@ -832,4 +832,43 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       `CREATE INDEX IF NOT EXISTS "email_tokens_expires_at_idx" ON "email_tokens" ("expires_at")`
     );
   });
+
+  // Data migration: the notification preference matrix and the outbox. Runs
+  // after data_v10_user_surrogate_id, which rebuilds "users" from an explicit
+  // column list — both tables carry a foreign key to it. The Prisma DDL
+  // migration (20260921000000_add_notifications) is a no-op; see its comment.
+  await runDataMigration(prisma, 'data_v20_notifications', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "notification_preferences" (
+        "user_id" TEXT NOT NULL,
+        "event" TEXT NOT NULL,
+        "channel" TEXT NOT NULL,
+        "enabled" BOOLEAN NOT NULL,
+        PRIMARY KEY ("user_id", "event", "channel"),
+        CONSTRAINT "notification_preferences_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "notification_outbox" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "event" TEXT NOT NULL,
+        "channel" TEXT NOT NULL,
+        "payload" TEXT NOT NULL,
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "next_attempt_at" REAL NOT NULL,
+        "created_at" REAL NOT NULL,
+        "sent_at" REAL,
+        "failed_at" REAL,
+        "last_error" TEXT,
+        CONSTRAINT "notification_outbox_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "notification_outbox_sent_at_failed_at_next_attempt_at_idx"
+         ON "notification_outbox" ("sent_at", "failed_at", "next_attempt_at")`
+    );
+  });
 }
