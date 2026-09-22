@@ -25,6 +25,7 @@ import { getBookById, listBooks } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
 import { setUserEmail } from '../services/email';
 import { verifyAccessToken } from '../services/jwt';
+import type { NotificationPoker } from '../services/notification-queue';
 import { hashLoginPassword, resetPassword } from '../services/password';
 import {
   ADMIN_STAGING_ID,
@@ -170,6 +171,11 @@ const mockThumbnailQueue = {
   enqueue: vi.fn(),
   reconcile: vi.fn(),
 } as unknown as ThumbnailQueue;
+
+// This suite never asserts on notification pokes — it exercises REST routes,
+// not the book-request mutations — so a no-op stub is enough to satisfy
+// `Context.notifications`.
+const notifications: NotificationPoker = { poke: () => {} };
 
 const FAKE_META: EpubMeta = {
   title: 'Test Book',
@@ -361,6 +367,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     editionsRoot,
     config: { ...config, booksDir },
     mailer: null,
+    notifications,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),

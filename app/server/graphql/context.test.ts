@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { signAccessToken } from '../services/jwt';
+import type { NotificationPoker } from '../services/notification-queue';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
@@ -95,6 +96,7 @@ describe('createContext', () => {
   const replaceStaging = {} as ReplaceStaging;
   const config = {} as AppConfig;
   const editionsRoot = '/tmp/editions';
+  const notifications: NotificationPoker = { poke: () => {} };
 
   it('derives the viewer from the request Authorization header', () => {
     const token = signAccessToken(secret, {
@@ -112,6 +114,7 @@ describe('createContext', () => {
       config,
       jwtSecret: secret,
       mailer: null,
+      notifications,
     })({
       request: new Request('http://localhost/graphql', {
         headers: { authorization: `Bearer ${token}` },
@@ -138,6 +141,7 @@ describe('createContext', () => {
       config,
       jwtSecret: secret,
       mailer: null,
+      notifications,
     })({
       request: new Request('http://localhost/graphql'),
     });

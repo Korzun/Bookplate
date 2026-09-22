@@ -135,4 +135,32 @@ describe('Mutation.bookRequestCreate', () => {
     expect(result.errors).toBeDefined();
     expect(await harness.prisma.bookRequest.count()).toBe(0);
   });
+
+  it('pokes the notification queue after a successful create', async () => {
+    const result = await harness.execute(
+      `mutation {
+         bookRequestCreate(input: { title: "Dune", author: "Frank Herbert" }) {
+           __typename
+         }
+       }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(harness.pokes).toBe(1);
+  });
+
+  it('does not poke when the input is rejected', async () => {
+    const result = await harness.execute(
+      `mutation {
+         bookRequestCreate(input: { title: "   ", author: "Frank Herbert" }) {
+           __typename
+         }
+       }`,
+      { viewer: harness.aliceViewer }
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(harness.pokes).toBe(0);
+  });
 });

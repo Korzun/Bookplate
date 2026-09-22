@@ -62,6 +62,7 @@ builder.mutationField('bookRequestDecline', (t) =>
 
       switch (outcome.kind) {
         case 'resolved':
+          context.notifications.poke();
           return { __typename: 'BookRequestDeclinePayload' as const, userId, requestId };
         case 'missing':
           return null;

@@ -29,6 +29,7 @@ const buildApp = (isProduction: boolean): express.Express => {
       replaceStaging: harness.replaceStaging,
       config: harness.config,
       mailer: harness.mailer,
+      notifications: harness.notifications,
       jwtSecret,
       isProduction,
     })
