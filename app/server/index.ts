@@ -9,6 +9,8 @@ import { logger } from './logger';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { createMailer } from './services/mailer';
+import { createEmailChannelDriver } from './services/notification-channel-email';
+import { NotificationQueue } from './services/notification-queue';
 import { createReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
@@ -47,6 +49,24 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // warning per instance, so a per-request mailer would log that line on
   // every send (see `Context.mailer`'s doc comment).
   const mailer = createMailer(config.mail);
+  // One queue, started once. The email driver exists only when mail is
+  // configured; with no driver the drain discards the rows it finds, which is
+  // how a LAN-only install stays bounded without the services needing to know
+  // whether mail exists (see `enqueueNotification`).
+  const notificationQueue = new NotificationQueue({
+    prisma,
+    drivers:
+      mailer === null
+        ? {}
+        : {
+            email: createEmailChannelDriver({
+              mailer,
+              libraryName: config.libraryName,
+              publicUrl: config.publicUrl ?? null,
+            }),
+          },
+  });
+  notificationQueue.start();
   const graphqlHandler = createGraphqlHandler({
     prisma,
     thumbnails: thumbnailQueue,
@@ -54,6 +74,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     editionsRoot,
     config,
     mailer,
+    notifications: notificationQueue,
     jwtSecret,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
     // the default and insecure mode must be opted into explicitly. Nothing in

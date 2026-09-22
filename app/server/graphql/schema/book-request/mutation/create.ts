@@ -125,6 +125,7 @@ builder.mutationField('bookRequestCreate', (t) =>
 
       switch (outcome.kind) {
         case 'created':
+          context.notifications.poke();
           return { __typename: 'BookRequestCreatePayload' as const, userId, requestId: outcome.id };
         case 'limit':
           return bookRequestLimitExceededError(outcome.limit);

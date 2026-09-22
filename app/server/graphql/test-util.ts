@@ -9,6 +9,7 @@ import { graphql, type ExecutionResult } from 'graphql';
 
 import { runMigrations } from '../db/migrate';
 import { getStagingDir } from '../services/book-paths';
+import type { NotificationPoker } from '../services/notification-queue';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -77,6 +78,15 @@ export type Harness = {
    * `Context.mailer`. Tests assert on `mailer.sent` / set `mailer.nextResult`.
    */
   mailer: FakeMailer | null;
+  /**
+   * The same recording poker every context this harness builds carries as
+   * `Context.notifications` — exposed so a test wiring `createGraphqlHandler`
+   * deps directly (rather than going through `contextFor`) can pass the
+   * identical instance, the same reason `mailer` above is exposed.
+   */
+  notifications: NotificationPoker;
+  /** How many times a resolver has poked the notification drain. */
+  readonly pokes: number;
   /** `path.join(dataDir, 'editions')` — same value `Context.editionsRoot` carries. */
   editionsRoot: string;
   /** A real user row created by the harness, for owner-scoped assertions. */
@@ -146,6 +156,15 @@ export const createHarness = async (
   // was given, matching `createMailer` returning `null` for an unconfigured
   // install.
   const mailer: FakeMailer | null = config.mail ? createFakeMailer() : null;
+  // A recording poker, so a test can assert the resolver hinted the drain
+  // without constructing a real queue. Counting rather than spying keeps the
+  // assertion readable — see `book-request/mutation/create.test.ts`.
+  let pokes = 0;
+  const notifications: NotificationPoker = {
+    poke: () => {
+      pokes += 1;
+    },
+  };
   const editionsRoot = path.join(dataDir, 'editions');
   // Constructed but never started: start() would leave a timer running past
   // the test. `enqueue()` itself is inert either way — it only pushes onto
@@ -205,6 +224,7 @@ export const createHarness = async (
     editionsRoot,
     config,
     mailer,
+    notifications,
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -390,6 +410,10 @@ export const createHarness = async (
     },
     config,
     mailer,
+    notifications,
+    get pokes() {
+      return pokes;
+    },
     editionsRoot,
     contextFor,
     aliceOwner: { userId: aliceId, username: 'alice' },
