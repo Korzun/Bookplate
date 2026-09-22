@@ -1,11 +1,15 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
+import { isMailConfigured } from '../../../services/mailer';
+import { listNotificationPreferences, NOTIFICATION_CHANNELS } from '../../../services/notification';
 import { getSyncPassword } from '../../../services/password';
 import type { Viewer } from '../../context';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
+import { model as notificationPreferenceModel } from '../notification-preference/model';
 import { model as user } from '../user/model';
+import { resolveViewerUserId } from './mutation/resolve-user-id';
 
 export const model = builder.objectRef<Viewer>('Viewer').implement({
   fields: (t) => ({
@@ -55,6 +59,30 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
       resolve: async (_v, _args, context) => {
         const row = await context.loadViewerRow();
         return row?.emailVerifiedAt == null ? null : epochToDate(row.emailVerifiedAt);
+      },
+    }),
+
+    /**
+     * The viewer's own catalogue, with defaults merged over stored rows and
+     * filtered to the events this viewer is ever a recipient of — the admin
+     * sees only `BOOK_REQUEST_CREATED`, a reader only the two outcomes. The
+     * audience rules live in `services/notification.ts`; a client that
+     * reconstructed them would be a second place for them to drift.
+     *
+     * Empty when no channel is configured, which is how the settings card knows
+     * not to render on a LAN-only install rather than testing the mail config
+     * a second time.
+     */
+    notificationPreferences: t.field({
+      type: [notificationPreferenceModel],
+      resolve: async (_v, _args, context) => {
+        const userId = await resolveViewerUserId(context);
+        if (userId === null) return [];
+        return listNotificationPreferences(context.prisma, {
+          userId,
+          role: context.viewer?.userId == null ? 'admin' : 'reader',
+          channels: isMailConfigured(context.config) ? NOTIFICATION_CHANNELS : [],
+        });
       },
     }),
 
