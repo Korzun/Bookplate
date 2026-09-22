@@ -22,15 +22,27 @@ export type MailMessage = {
 
 /**
  * `invalid_destination` is a delivery verdict about the recipient, not a fault:
- * for email it arrives inside a `200` as a permanent bounce, and the caller
- * should tell the user their address is wrong. The name is channel-neutral
- * deliberately — this union is the contract EVERY channel implements (spec 1),
- * and a web-push `410 Gone` lands in exactly this slot. The other three are
- * faults, distinguished because each wants different handling —
- * `misconfigured` is the operator's problem, `throttled` and `transient` are
- * worth retrying.
+ * for email it arrives inside a `200` as a permanent bounce; a web-push
+ * `410 Gone` lands in the same slot. The caller should tell the user that
+ * destination is wrong. `misconfigured` is the operator's problem;
+ * `throttled` and `transient` are worth retrying.
+ *
+ * `no_destination` is the odd one out and is NOT a failure to report: it means
+ * the recipient has nothing to deliver to on this channel at all — a user who
+ * has never subscribed a browser to push. It exists because push is
+ * enabled-by-default under the absent-row rule, so without it every
+ * notification for such a user would bank a permanently-failed outbox row that
+ * the pruner keeps for 30 days, plus a log line each. `NotificationQueue`
+ * deletes these rows the way it deletes a row with no driver. The email driver
+ * never returns it: an unset or unverified address is a REFUSAL worth
+ * recording (`invalid_destination`), not an absence.
  */
-export type SendFailure = 'invalid_destination' | 'throttled' | 'misconfigured' | 'transient';
+export type SendFailure =
+  | 'invalid_destination'
+  | 'throttled'
+  | 'misconfigured'
+  | 'transient'
+  | 'no_destination';
 export type SendResult = { ok: true } | { ok: false; reason: SendFailure };
 
 export type Mailer = { send(message: MailMessage): Promise<SendResult> };
