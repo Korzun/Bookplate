@@ -2,7 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { makeFragmentData } from '~/gql';
 import type {
@@ -125,7 +125,7 @@ describe('NotificationSettings', () => {
     expect(screen.getByText(/confirm your email address/i)).toBeInTheDocument();
   });
 
-  it("reflects the mutation's returned state once the watching query updates — not local optimism", async () => {
+  it("reflects the mutation's returned state once the watching query updates, agreeing with the row's own optimistic value", async () => {
     const initial = [
       preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: true }),
       preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
@@ -167,11 +167,109 @@ describe('NotificationSettings', () => {
     // Not just "the mutation fired": this only passes if `cache.modify`'s
     // write actually lands where `Harness`'s `useQuery(ViewerBootstrapDocument)`
     // reads from, which is the same path `page/user` depends on in the real
-    // app — a stale local copy inside `NotificationSettings` would make this
-    // assertion pass for the wrong reason (or not distinguish itself from a
-    // component-local override at all).
+    // app — a stale local copy of the LIST inside `NotificationSettings`
+    // would make this assertion pass for the wrong reason. (The row's own
+    // brief `pending` optimism, covered separately below, already shows this
+    // value before the mutation resolves; this test's `waitFor` proves the
+    // cache write independently arrives at the same state once it does.)
     await waitFor(() => {
       expect(screen.getByRole('switch', { name: /added to my library/i })).not.toBeChecked();
     });
+  });
+
+  it('shows the optimistic value immediately, before the mutation resolves', async () => {
+    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
+      mocks: [
+        {
+          request: {
+            query: ViewerSetNotificationPreferenceDocument,
+            variables: { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: false },
+          },
+          result: {
+            data: {
+              __typename: 'Mutation',
+              viewerSetNotificationPreference: {
+                __typename: 'ViewerSetNotificationPreferencePayload',
+                notificationPreferences: [
+                  preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: false }),
+                  preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
+                ],
+              },
+            },
+          },
+          delay: 20,
+        },
+      ],
+    });
+
+    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    expect(fulfilled).toBeChecked();
+
+    await userEvent.click(fulfilled);
+
+    // The delayed mock has not resolved yet — this only reads true if the
+    // click itself (not the eventual mutation response) is what flipped it.
+    expect(fulfilled).not.toBeChecked();
+
+    // And it stays that way once the mutation actually lands: the pending
+    // value and the fresh state agree, so there is no visible flicker back.
+    await waitFor(() => expect(fulfilled).not.toBeChecked());
+  });
+
+  it('reverts to the prior value and toasts when the mutation errors', async () => {
+    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
+      mocks: [
+        {
+          request: {
+            query: ViewerSetNotificationPreferenceDocument,
+            variables: { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: false },
+          },
+          error: new Error('network exploded'),
+          delay: 20,
+        },
+      ],
+    });
+
+    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    await userEvent.click(fulfilled);
+
+    expect(fulfilled).not.toBeChecked(); // optimistic, ahead of the rejection
+
+    await waitFor(() => expect(fulfilled).toBeChecked()); // reverted once it rejects
+    expect(await screen.findByRole('status')).toHaveTextContent('Could not save that preference');
+  });
+
+  it('ignores a second click on a row while its own mutation is still in flight', async () => {
+    const matcher = vi.fn(() => true);
+    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
+      mocks: [
+        {
+          request: { query: ViewerSetNotificationPreferenceDocument, variables: matcher },
+          result: {
+            data: {
+              __typename: 'Mutation',
+              viewerSetNotificationPreference: {
+                __typename: 'ViewerSetNotificationPreferencePayload',
+                notificationPreferences: [
+                  preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: false }),
+                  preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
+                ],
+              },
+            },
+          },
+          delay: 20,
+        },
+      ],
+    });
+
+    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    await userEvent.click(fulfilled);
+    // A second click while the row's own mutation is still in flight must not
+    // fire a second mutation — MockLink only has ONE queued response for this
+    // row; the assertion below would also fail closed (never satisfied) if the
+    // guard were missing and a second call went out with no mock left for it.
+    await userEvent.click(fulfilled);
+
+    await waitFor(() => expect(matcher).toHaveBeenCalledTimes(1));
   });
 });
