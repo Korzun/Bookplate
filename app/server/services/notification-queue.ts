@@ -12,6 +12,27 @@
  *
  * `now` is injected so the backoff arithmetic is asserted directly rather than
  * through fake timers.
+ *
+ * Two limits this durability story does NOT cover, both worth stating
+ * plainly rather than leaving for a reader to discover the hard way:
+ *
+ *  1. **One draining process, assumed, not enforced.** A row is neither
+ *     claimed nor leased before delivery — `drainOnce` just reads whatever is
+ *     due and sends it. Two processes pointed at the same SQLite file would
+ *     each pick up the same due rows and double-send every one of them. The
+ *     shipped topology is a single add-on container, which is what makes
+ *     that acceptable; scaling the drain out to more than one process would
+ *     need a claim (e.g. an `UPDATE ... RETURNING` that marks rows as taken)
+ *     first.
+ *  2. **AT-LEAST-ONCE delivery, not exactly-once.** A crash between a
+ *     successful `driver.deliver()` and the `sentAt` write that records it
+ *     leaves the row looking undelivered, so it is retried and the recipient
+ *     gets a duplicate mail (see `drainOnce`'s handling of that case). What
+ *     the outbox actually buys is that NEITHER of these failure modes can
+ *     LOSE a notification: a missed or rolled-back `sentAt` write leaves the
+ *     row pending rather than gone, and it is picked up again on the next
+ *     pass. Not losing the message is the property this table exists to buy;
+ *     an occasional duplicate is the cost, not a bug.
  */
 import type { PrismaClient } from '@prisma/client';
 
@@ -45,7 +66,7 @@ export const TICK_MS = 60_000;
 export const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** How many rows one pass will move, so a large backlog cannot monopolise a tick. */
-const BATCH_SIZE = 20;
+export const BATCH_SIZE = 20;
 
 /** No amount of retrying fixes either of these. */
 const TERMINAL: readonly SendFailure[] = ['invalid_destination', 'misconfigured'];
@@ -92,7 +113,13 @@ export class NotificationQueue implements NotificationPoker {
     this.timer = null;
   }
 
-  /** Runs a pass, or notes that another one is owed if a pass is already running. */
+  /**
+   * Runs a pass, or notes that another one is owed if a pass is already
+   * running. Keeps passing again — not just when another poke arrived while
+   * this one ran, but also while the last batch came back full — so a
+   * backlog bigger than `BATCH_SIZE` drains in one `poke()` instead of one
+   * `BATCH_SIZE`-sized bite per `TICK_MS`.
+   */
   poke(): void {
     if (this.running) {
       this.pending = true;
@@ -101,10 +128,11 @@ export class NotificationQueue implements NotificationPoker {
     this.running = true;
     this.current = (async () => {
       try {
+        let full = false;
         do {
           this.pending = false;
-          await this.drainOnce();
-        } while (this.pending);
+          full = (await this.drainOnce()) === BATCH_SIZE;
+        } while (this.pending || full);
       } catch (e) {
         log.warn(`Notification drain failed: ${String(e)}`);
       } finally {
@@ -118,8 +146,13 @@ export class NotificationQueue implements NotificationPoker {
     await this.current;
   }
 
-  /** One pass. Exported behaviour rather than private so tests drive it directly. */
-  async drainOnce(): Promise<void> {
+  /**
+   * One pass. Exported behaviour rather than private so tests drive it
+   * directly. Returns how many rows it found due, which is what `poke` uses
+   * to tell a drained-dry batch from one that filled `BATCH_SIZE` and likely
+   * has more waiting behind it.
+   */
+  async drainOnce(): Promise<number> {
     const now = this.now();
     await this.prune(now);
 
@@ -130,12 +163,28 @@ export class NotificationQueue implements NotificationPoker {
     });
 
     for (const row of due) {
+      // Set the instant delivery is confirmed, so the catch block below can
+      // tell "the send itself failed" from "the send succeeded but a
+      // persistence write after it threw" — see its comment.
+      let delivered = false;
       try {
         const driver = this.drivers[row.channel as NotificationChannel];
         if (driver === undefined) {
           // An install that never configured this channel. Discarded rather than
           // recorded as a failure, so a LAN-only install generates no error noise
           // and the table stays bounded.
+          //
+          // This branch cannot tell that case apart from a TRANSIENT one: an
+          // operator who clears a bad mail token and restarts also makes
+          // `createMailer` return `null` until it is reconfigured, so the boot
+          // poke discards every notification queued while mail was broken,
+          // the same as it would for a LAN-only install that never intends to
+          // configure mail at all. The two are indistinguishable at runtime
+          // from inside this loop; discarding is still the right call because
+          // it is what keeps a permanently-unconfigured install bounded, and
+          // a few notifications lost across a misconfiguration-and-restart is
+          // an acceptable price for not growing an unbounded backlog behind a
+          // channel nobody may ever fix.
           log.debug(`No driver for channel ${row.channel}; discarding ${row.id}`);
           await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
           continue;
@@ -155,6 +204,7 @@ export class NotificationQueue implements NotificationPoker {
         });
 
         if (result.ok) {
+          delivered = true;
           await this.prisma.notificationOutbox.update({
             where: { id: row.id },
             data: { sentAt: now, lastError: null },
@@ -172,6 +222,19 @@ export class NotificationQueue implements NotificationPoker {
 
         await this.retry(row, now, result.reason);
       } catch (e) {
+        if (delivered) {
+          // `driver.deliver()` already succeeded — this row's mail is out —
+          // and the throw happened while persisting THAT fact (the `sentAt`
+          // update above). Routing it through `retry()` would leave the row
+          // pending with a future `nextAttemptAt`, scheduling a mail that
+          // already sent to go out a second time. Log and leave the row as
+          // it is instead: the header explains why this can only duplicate a
+          // send, never lose one.
+          log.warn(
+            `Failed to persist delivery for ${row.id} after a successful send: ${String(e)}`
+          );
+          continue;
+        }
         // A thrown error (a malformed payload's JSON.parse, a driver that
         // threw instead of resolving) is not distinguishable from a transient
         // fault from here, so it gets the same retry-then-bury treatment. The
@@ -182,6 +245,8 @@ export class NotificationQueue implements NotificationPoker {
         await this.retry(row, now, String(e));
       }
     }
+
+    return due.length;
   }
 
   /** Backs a row off on the published schedule, or buries it at the cap. */
