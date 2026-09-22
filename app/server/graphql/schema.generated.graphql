@@ -711,10 +711,16 @@ type Mutation {
   """
   userResetPassword(input: UserResetPasswordInput!): UserResetPasswordResult
 
+  """Registers the calling browser to receive push notifications."""
+  viewerAddPushSubscription(auth: String!, endpoint: String!, label: String!, p256dh: String!): PushSubscription
+
   """
   Confirms the viewer's email address with the code sent to it. Works even when mail is currently unconfigured — the code was already delivered.
   """
   viewerConfirmEmail(input: ViewerConfirmEmailInput!): ViewerConfirmEmailResult!
+
+  """Removes one of the viewer's subscribed browsers."""
+  viewerRemovePushSubscription(id: ID!): Boolean!
 
   """
   Sends a fresh verification code to the viewer's own email address. `InvalidInputError` covers every reason it cannot: no address on file, the address is already confirmed, or a resend cooldown/cap is in effect.
@@ -836,6 +842,18 @@ type ProgressSetPayload {
 }
 
 union ProgressSetResult = InvalidInputError | ProgressSetPayload
+
+"""One browser subscribed to push notifications for this account."""
+type PushSubscription {
+  createdAt: Float!
+  id: ID!
+  label: String!
+
+  """
+  When a notification last reached this browser. Null means it has never received one.
+  """
+  lastSuccessAt: Float
+}
 
 type Query {
   config: Config!
@@ -1081,6 +1099,8 @@ type Viewer {
   library: Library
   mustChangePassword: Boolean!
   notificationPreferences: [NotificationPreference!]!
+  pushPublicKey: String!
+  pushSubscriptions: [PushSubscription!]!
   syncPassword: String
   user: User
   username: String!
