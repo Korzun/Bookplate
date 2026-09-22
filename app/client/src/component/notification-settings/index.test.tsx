@@ -1,8 +1,10 @@
-import { useQuery } from '@apollo/client/react';
+import { ApolloClient, ApolloLink, InMemoryCache, Observable } from '@apollo/client';
+import { ApolloProvider, useQuery } from '@apollo/client/react';
 import type { MockedResponse } from '@apollo/client/testing';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import type { ReactElement } from 'react';
+import { describe, expect, it } from 'vitest';
 
 import { makeFragmentData } from '~/gql';
 import type {
@@ -16,7 +18,8 @@ import {
   ViewerSetNotificationPreferenceDocument,
 } from '~/graphql/notification';
 import { ViewerBootstrapDocument } from '~/graphql/viewer-bootstrap';
-import { renderWithApollo } from '~/test-utils';
+import { cacheConfig } from '~/provider/apollo';
+import { renderWithApollo, renderWithProviders } from '~/test-utils';
 
 import { NotificationSettings } from './index';
 
@@ -86,6 +89,77 @@ const Harness = () => {
     />
   );
 };
+
+type MutationOutcome = { data: ViewerSetNotificationPreferenceMutation } | { error: Error };
+
+/**
+ * Renders through a link this test file fully controls, in place of
+ * `renderWithApollo`'s `MockLink` — every request this link sees is held
+ * open until the test calls the returned `release`, and `requestCount` is
+ * incremented synchronously the instant a request is ISSUED (Apollo invokes
+ * a link's request handler synchronously from `client.mutate()`, before any
+ * microtask), not when it settles.
+ *
+ * This exists because `MockedResponse`'s `delay` is a REAL `setTimeout`: an
+ * earlier version of the three tests below used `delay: 20` and asserted the
+ * switch immediately after `await userEvent.click(...)`, betting that 20ms
+ * of wall-clock time would not elapse first. Under a loaded full-suite run
+ * that bet lost often enough to flake two different ways — the assertion
+ * sometimes read the ALREADY-SETTLED value (the mock winning the race), and
+ * on other runs the 20ms timer fired and ran `handleToggle`'s `finally`
+ * AFTER a later test's `cleanup()` had already unmounted this component,
+ * surfacing as an unhandled error with an all-green test count. A `release`
+ * that only ever fires when THIS test calls it removes both: the mock
+ * cannot settle before an assertion the test hasn't reached yet, and nothing
+ * is left resolving in the background once the test function returns.
+ *
+ * Composed from `renderWithProviders` (Toast/Theme/Auth/Router) rather than
+ * `renderWithApollo`, because the latter hard-codes `new MockLink(mocks)` —
+ * fixed per-mock `delay`, no notion of "held open until told otherwise".
+ */
+function renderWithControlledMutation(ui: ReactElement) {
+  let deliver: ((outcome: MutationOutcome) => void) | null = null;
+  const requestCount = { current: 0 };
+
+  const link = new ApolloLink(
+    () =>
+      new Observable((observer) => {
+        requestCount.current += 1;
+        deliver = (outcome) => {
+          if ('error' in outcome) {
+            observer.error(outcome.error);
+          } else {
+            observer.next({ data: outcome.data });
+            observer.complete();
+          }
+        };
+      })
+  );
+  const client = new ApolloClient({ link, cache: new InMemoryCache(cacheConfig) });
+
+  return {
+    client,
+    requestCount,
+    release: (outcome: MutationOutcome) => {
+      if (deliver === null) throw new Error('release() called before any request was issued');
+      deliver(outcome);
+    },
+    ...renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>),
+  };
+}
+
+const setPreferenceSuccess = (): MutationOutcome => ({
+  data: {
+    __typename: 'Mutation',
+    viewerSetNotificationPreference: {
+      __typename: 'ViewerSetNotificationPreferencePayload',
+      notificationPreferences: [
+        preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: false }),
+        preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
+      ],
+    },
+  },
+});
 
 describe('NotificationSettings', () => {
   it('renders nothing when the catalogue is empty', () => {
@@ -177,99 +251,96 @@ describe('NotificationSettings', () => {
     });
   });
 
-  it('shows the optimistic value immediately, before the mutation resolves', async () => {
-    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
-      mocks: [
-        {
-          request: {
-            query: ViewerSetNotificationPreferenceDocument,
-            variables: { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: false },
-          },
-          result: {
-            data: {
-              __typename: 'Mutation',
-              viewerSetNotificationPreference: {
-                __typename: 'ViewerSetNotificationPreferencePayload',
-                notificationPreferences: [
-                  preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: false }),
-                  preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
-                ],
-              },
-            },
-          },
-          delay: 20,
-        },
-      ],
-    });
+  it('shows the optimistic value immediately, and the mutation genuinely has not settled yet', async () => {
+    const { release } = renderWithControlledMutation(
+      <NotificationSettings preferences={preferences} emailVerified />
+    );
 
     const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
     expect(fulfilled).toBeChecked();
 
     await userEvent.click(fulfilled);
 
-    // The delayed mock has not resolved yet — this only reads true if the
-    // click itself (not the eventual mutation response) is what flipped it.
+    // The mutation is HELD OPEN by `renderWithControlledMutation` — it
+    // cannot have settled, by construction, not merely "probably hasn't
+    // yet" — so this only reads false if the click itself flipped it.
     expect(fulfilled).not.toBeChecked();
 
-    // And it stays that way once the mutation actually lands: the pending
-    // value and the fresh state agree, so there is no visible flicker back.
+    // An explicit release point, not a sleep: only now does the mutation
+    // resolve, and the optimistic value must survive that unchanged (the
+    // pending value and the fresh state agree, so there's no flicker back).
+    release(setPreferenceSuccess());
+
     await waitFor(() => expect(fulfilled).not.toBeChecked());
   });
 
   it('reverts to the prior value and toasts when the mutation errors', async () => {
-    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
-      mocks: [
-        {
-          request: {
-            query: ViewerSetNotificationPreferenceDocument,
-            variables: { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: false },
-          },
-          error: new Error('network exploded'),
-          delay: 20,
-        },
-      ],
-    });
+    const { release } = renderWithControlledMutation(
+      <NotificationSettings preferences={preferences} emailVerified />
+    );
 
     const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
     await userEvent.click(fulfilled);
 
-    expect(fulfilled).not.toBeChecked(); // optimistic, ahead of the rejection
+    // Held open, so this is provably ahead of the rejection below, not a
+    // race against it.
+    expect(fulfilled).not.toBeChecked();
+
+    release({ error: new Error('network exploded') });
 
     await waitFor(() => expect(fulfilled).toBeChecked()); // reverted once it rejects
     expect(await screen.findByRole('status')).toHaveTextContent('Could not save that preference');
   });
 
   it('ignores a second click on a row while its own mutation is still in flight', async () => {
-    const matcher = vi.fn(() => true);
-    renderWithApollo(<NotificationSettings preferences={preferences} emailVerified />, {
-      mocks: [
-        {
-          request: { query: ViewerSetNotificationPreferenceDocument, variables: matcher },
-          result: {
-            data: {
-              __typename: 'Mutation',
-              viewerSetNotificationPreference: {
-                __typename: 'ViewerSetNotificationPreferencePayload',
-                notificationPreferences: [
-                  preference({ event: 'BOOK_REQUEST_FULFILLED', enabled: false }),
-                  preference({ event: 'BOOK_REQUEST_DECLINED', enabled: false }),
-                ],
-              },
-            },
-          },
-          delay: 20,
-        },
-      ],
-    });
+    const { release, requestCount } = renderWithControlledMutation(
+      <NotificationSettings preferences={preferences} emailVerified />
+    );
 
     const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
     await userEvent.click(fulfilled);
-    // A second click while the row's own mutation is still in flight must not
-    // fire a second mutation — MockLink only has ONE queued response for this
-    // row; the assertion below would also fail closed (never satisfied) if the
-    // guard were missing and a second call went out with no mock left for it.
+    // A second click while the first request is HELD OPEN — deterministically
+    // "still in flight", not merely "probably still in flight" — must not
+    // issue a second request. `requestCount` is incremented synchronously by
+    // the link the instant a request is issued, so this reads the true count
+    // rather than one raced against a timer.
+    await userEvent.click(fulfilled);
+    expect(requestCount.current).toBe(1);
+
+    release(setPreferenceSuccess());
+
+    await waitFor(() => expect(fulfilled).not.toBeChecked());
+    expect(requestCount.current).toBe(1); // still just the one, after settling too
+  });
+
+  it('settling after unmount does not throw — pinning the mountedRef guard', async () => {
+    // Mirrors a reader toggling a preference and navigating off the account
+    // page before the mutation round-trips: `page/user` (and this component
+    // with it) unmounts while `handleToggle`'s `await setPreference(...)` is
+    // still in flight. Nothing aborts that call, so its `finally` still runs
+    // once `release` settles it below, against an already-unmounted tree.
+    //
+    // React 19 already treats a `setState` call on an unmounted component as
+    // a no-op (no warning, no throw), so `mountedRef` doesn't change anything
+    // OBSERVABLE here — it exists to skip needless work once there's nowhere
+    // left for it to land, not to prevent a crash React itself already
+    // prevents. This test pins that the continuation stays harmless: if a
+    // regression ever made it throw, that throw would surface exactly the
+    // way the fix-wave's own bug did — an "all tests passed" run that still
+    // exits 1 on an unhandled error.
+    const { release, unmount } = renderWithControlledMutation(
+      <NotificationSettings preferences={preferences} emailVerified />
+    );
+
+    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
     await userEvent.click(fulfilled);
 
-    await waitFor(() => expect(matcher).toHaveBeenCalledTimes(1));
+    unmount();
+    release(setPreferenceSuccess());
+
+    // Flush the microtask queue so `handleToggle`'s post-`await` continuation
+    // (its `finally` included) has definitely run before the test ends.
+    await Promise.resolve();
+    await Promise.resolve();
   });
 });
