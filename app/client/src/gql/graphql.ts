@@ -108,7 +108,8 @@ export type MetadataFixKeyInput = {
 };
 
 export type NotificationChannel =
-  | 'EMAIL';
+  | 'EMAIL'
+  | 'PUSH';
 
 export type NotificationEvent =
   | 'BOOK_REQUEST_CREATED'
