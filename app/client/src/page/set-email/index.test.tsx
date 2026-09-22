@@ -173,6 +173,21 @@ describe('SetEmailPage', () => {
     expect(await screen.findByText(/could not resend the code/i)).toBeInTheDocument();
   });
 
+  // "Use a different address" now sits on the page below the card rather than
+  // inside the code form, so it is no longer a descendant of the <form> that
+  // drives the confirm action — this covers that it still switches stages.
+  it('goes back to the address stage from the button below the card', async () => {
+    const user = userEvent.setup();
+    renderWithApollo(<SetEmailPage />, { mocks: [setEmailMock('ann@example.com')] });
+
+    await user.type(screen.getByPlaceholderText('Email address'), 'ann@example.com');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await user.click(await screen.findByRole('button', { name: /different address/i }));
+
+    expect(await screen.findByPlaceholderText('Email address')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Confirmation code')).not.toBeInTheDocument();
+  });
+
   it('prefills the code from the ?code= query parameter', async () => {
     renderWithApollo(<SetEmailPage />, {
       mocks: [],
