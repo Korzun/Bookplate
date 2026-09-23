@@ -57,8 +57,22 @@ function body(parts: readonly string[]): string {
  * at-least-once, and this is the lever that makes that cost invisible on this
  * channel. Deliberately NOT the outbox row id, which is unique per delivery
  * and would collapse nothing.
+ *
+ * `book_request.created` also folds in `payload.requesterUsername`. This
+ * event alone fans out to the ADMIN for every reader's request, so
+ * `event:title` collapsed two DIFFERENT readers requesting the same book onto
+ * ONE notification, silently dropping the second reader's ask — the admin
+ * never learned about it. Including the requester still collapses a genuine
+ * REDELIVERY: the outbox retries the exact same payload byte-for-byte, so a
+ * redelivered `book_request.created` carries the identical
+ * `requesterUsername` and produces the identical tag, exactly as before.
+ * `fulfilled`/`declined` are per-subject (one specific reader's own request)
+ * and left alone — there is no cross-reader collision to fix there.
  */
 function tagFor(event: NotificationEvent, payload: NotificationPayload): string {
+  if (event === 'book_request.created') {
+    return `${event}:${payload.title}:${payload.requesterUsername}`;
+  }
   return `${event}:${payload.title}`;
 }
 

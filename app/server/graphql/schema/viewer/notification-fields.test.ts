@@ -97,7 +97,7 @@ describe('viewerSetNotificationPreference', () => {
         channel: EMAIL
         enabled: $enabled
       ) {
-        notificationPreferences { event enabled }
+        notificationPreferences { event channel enabled }
       }
     }
   `;
@@ -108,13 +108,18 @@ describe('viewerSetNotificationPreference', () => {
     const result = await harness.execute(MUTATION, { variables: { enabled: false } });
 
     expect(result.errors).toBeUndefined();
+    // `channel` selected and asserted BY VALUE, not merely `{event, enabled}`
+    // read off array position: the mutation's own args ask to mute
+    // `BOOK_REQUEST_DECLINED`/`EMAIL` specifically, and this is what catches
+    // an implementation that muted the wrong channel (PUSH instead of EMAIL)
+    // while still returning a same-shaped, same-length list.
     expect(result.data).toEqual({
       viewerSetNotificationPreference: {
         notificationPreferences: [
-          { event: 'BOOK_REQUEST_FULFILLED', enabled: true },
-          { event: 'BOOK_REQUEST_FULFILLED', enabled: true },
-          { event: 'BOOK_REQUEST_DECLINED', enabled: false },
-          { event: 'BOOK_REQUEST_DECLINED', enabled: true },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH', enabled: true },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'EMAIL', enabled: false },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH', enabled: true },
         ],
       },
     });
