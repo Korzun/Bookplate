@@ -185,7 +185,22 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
       // chance to ask and it is spent here, never on load.
       const granted = await Notification.requestPermission();
       setPermission(granted);
-      if (granted !== 'granted') return;
+      if (granted !== 'granted') {
+        // `denied` is permanent and earns the standing hint below, which
+        // `setPermission` has just made appear. `default` means the prompt was
+        // DISMISSED rather than answered — and it is also the pristine
+        // never-asked state, so it cannot have a standing hint without
+        // accusing a fresh install of having refused something. That left the
+        // dismissal case with no trace anywhere: no hint, no console line, no
+        // state change, the switch simply staying off. Reported from real use
+        // as "I can't enable it and I don't get an error". A toast is the
+        // right shape precisely because it belongs to the ACTION, not to the
+        // state.
+        if (granted !== 'denied') {
+          showToast('Notifications were not allowed. You can try again.', 'error');
+        }
+        return;
+      }
 
       const subscription = await subscribeToPush(pushPublicKey);
       if (subscription === null) {

@@ -37,6 +37,36 @@ const installServiceWorker = (
   return pushManager;
 };
 
+/**
+ * Both catches in `push.ts` return `null` so the settings card can never throw
+ * — but a bare `catch {}` there once hid a `SecurityError: Script .../sw.js
+ * load failed` for an entire debugging session, because the only symptom
+ * anywhere was a generic toast. These two tests pin that the reason survives.
+ */
+it('logs, rather than discards, a service-worker registration failure', async () => {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  installServiceWorker(fakeSubscription());
+  const boom = new Error('Script load failed');
+  vi.mocked(navigator.serviceWorker.register).mockRejectedValue(boom);
+
+  expect(await subscribeToPush(KEY)).toBeNull();
+
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining('registration failed'), boom);
+  spy.mockRestore();
+});
+
+it('logs, rather than discards, a subscribe failure', async () => {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const pushManager = installServiceWorker(fakeSubscription());
+  const boom = new Error('NotAllowedError');
+  pushManager.subscribe.mockRejectedValue(boom);
+
+  expect(await subscribeToPush(KEY)).toBeNull();
+
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining('subscribe failed'), boom);
+  spy.mockRestore();
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   // `localStorage` persists across tests in this file the same way

@@ -116,7 +116,15 @@ async function registration(): Promise<ServiceWorkerRegistration | null> {
   if (pushSupport() !== 'supported') return null;
   try {
     return await navigator.serviceWorker.register(SW_PATH);
-  } catch {
+  } catch (err) {
+    // Still swallowed — every export here must be safe to call on a browser
+    // that has none of these APIs (see the header) — but no longer DISCARDED.
+    // This catch hid a `SecurityError: Script .../sw.js load failed` through a
+    // whole debugging session: the dev container was serving `/sw.js` as
+    // `text/html`, the browser refused to register it, and the only symptom
+    // anywhere was a generic toast. DEV-only and prefixed, matching
+    // `lib/use-authorized-src.ts`.
+    if (import.meta.env.DEV) console.error('[push] service worker registration failed', err);
     return null;
   }
 }
@@ -139,7 +147,13 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<Subscribe
       applicationServerKey: fromBase64Url(vapidPublicKey),
     });
     return describeSubscription(subscription);
-  } catch {
+  } catch (err) {
+    // Same reasoning as `registration()`: swallowed for the caller's sake,
+    // logged so the reason is not lost. The realistic causes all look
+    // identical to the user without this — a rejected `applicationServerKey`,
+    // a browser that requires a user gesture here, or a push service the
+    // install cannot reach.
+    if (import.meta.env.DEV) console.error('[push] pushManager.subscribe failed', err);
     return null;
   }
 }

@@ -754,6 +754,37 @@ describe('NotificationSettings', () => {
     }
   );
 
+  it.each([
+    ['dismissed', 'default' as const],
+    ['denied', 'denied' as const],
+  ])('does not leave a %s permission prompt silent', async (_label, answer) => {
+    stubSupportedBrowser();
+    vi.mocked(Notification.requestPermission).mockResolvedValue(answer);
+    stubBrowserThatCanSubscribe('https://push.example/never-used');
+
+    renderCard({ preferences: [pushPref()] });
+
+    const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
+    await userEvent.click(toggle);
+
+    // The switch must not latch on for an answer that was not `granted`, and
+    // nothing may be stored.
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull();
+
+    // The failure must be VISIBLE. `denied` earns the standing hint (permanent
+    // state); `default` means the prompt was dismissed, which is also the
+    // pristine never-asked state and so cannot carry a standing hint — it gets
+    // a toast instead, tied to the action. Before this, a dismissal produced
+    // no hint, no toast and no console line: the click looked like the feature
+    // was simply broken.
+    if (answer === 'denied') {
+      expect(await screen.findByText(/blocked for this site/i)).toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole('status')).toHaveTextContent(/were not allowed/i);
+    }
+  });
+
   it('reverts the device switch and toasts when enabling push fails', async () => {
     stubSupportedBrowser();
     vi.mocked(Notification.requestPermission).mockResolvedValue('granted');
