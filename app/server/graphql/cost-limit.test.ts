@@ -410,6 +410,25 @@ describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach 
     expect(complexity).toBeLessThan(3823);
     expect({ breadth, complexity }).toEqual({ breadth: 40, complexity: 724 });
   });
+
+  // I-3, 3c (final-review.md fix wave): `Viewer.pushSubscriptions` is a
+  // composite-element list field this map's "full inventory" paragraph
+  // predates. It is deliberately NOT registered above — `cost-limit.ts`'s own
+  // doc comment on this point, right above the map, has the full reasoning —
+  // because `PushSubscription` is leaf-terminating (all four of its own
+  // fields are scalars), the same class as `Book.identifiers` and the other
+  // ten fields the file already excludes for having nothing further to
+  // multiply. This pins that it costs the plain, UNMULTIPLIED rate, so a
+  // future edit that adds a multiplier entry for it (plausible-looking,
+  // wrong for this field) changes a committed number instead of silently
+  // inflating the cost of every `ViewerBootstrapDocument` load.
+  it('Viewer.pushSubscriptions costs the plain per-field rate — leaf-terminating, so a multiplier would protect nothing', () => {
+    const { breadth, complexity } = costOf(
+      '{ viewer { pushSubscriptions { id label createdAt lastSuccessAt } } }'
+    );
+    // 4 leaves = 4; pushSubscriptions (mult 1, unregistered) = 1+1*4=5; viewer{pushSubscriptions}=1+5=6.
+    expect({ breadth, complexity }).toEqual({ breadth: 6, complexity: 6 });
+  });
 });
 
 /**

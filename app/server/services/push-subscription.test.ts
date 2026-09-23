@@ -12,6 +12,7 @@ import {
   listPushSubscriptionRows,
   listPushSubscriptionsForUser,
   markPushSubscriptionDelivered,
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
   upsertPushSubscription,
 } from './push-subscription';
 
@@ -23,8 +24,16 @@ const ALICE = 'user-alice';
 const BOB = 'user-bob';
 const ENDPOINT = 'https://push.example/endpoint-1';
 
-const subscribe = (userId: string, endpoint = ENDPOINT, label = 'Chrome on macOS') =>
-  upsertPushSubscription(prisma, {
+/**
+ * Every OTHER test in this file expects the subscribe to succeed (well under
+ * `MAX_PUSH_SUBSCRIPTIONS_PER_USER`), so this asserts that instead of letting
+ * callers destructure a possibly-`null` result — a genuine `null` here means
+ * the test itself hit the cap unexpectedly, which is a test bug worth failing
+ * loudly on rather than a `TypeError` on the destructure. The cap's OWN tests,
+ * below, call `upsertPushSubscription` directly to observe the `null`.
+ */
+const subscribe = async (userId: string, endpoint = ENDPOINT, label = 'Chrome on macOS') => {
+  const result = await upsertPushSubscription(prisma, {
     userId,
     endpoint,
     p256dh: 'key',
@@ -32,6 +41,9 @@ const subscribe = (userId: string, endpoint = ENDPOINT, label = 'Chrome on macOS
     label,
     now: 1000,
   });
+  if (result === null) throw new Error('expected upsertPushSubscription to succeed');
+  return result;
+};
 
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'push-sub-'));
@@ -130,4 +142,69 @@ it("re-subscribing does not clear a device's delivery history", async () => {
 
   const rows = await listPushSubscriptionRows(prisma, ALICE);
   expect(rows[0]?.lastSuccessAt).toBe(5000);
+});
+
+describe('the per-user cap (I-3, 3b)', () => {
+  it('refuses a NEW device once the user is already at MAX_PUSH_SUBSCRIPTIONS_PER_USER', async () => {
+    for (let i = 0; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscribe(ALICE, `https://push.example/device-${i}`);
+    }
+    expect(await prisma.pushSubscription.count()).toBe(MAX_PUSH_SUBSCRIPTIONS_PER_USER);
+
+    // Refused, not evicting the oldest: a silent eviction would stop
+    // notifying a device its owner never touched and never asked to remove.
+    const result = await upsertPushSubscription(prisma, {
+      userId: ALICE,
+      endpoint: 'https://push.example/one-too-many',
+      p256dh: 'key',
+      auth: 'secret',
+      label: 'Chrome',
+      now: 2000,
+    });
+
+    expect(result).toBeNull();
+    expect(await prisma.pushSubscription.count()).toBe(MAX_PUSH_SUBSCRIPTIONS_PER_USER);
+  });
+
+  it('still allows re-subscribing an ALREADY-known endpoint at the cap — re-subscribing is not a new device', async () => {
+    for (let i = 0; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscribe(ALICE, `https://push.example/device-${i}`);
+    }
+
+    // Same endpoint as `device-0`, fresh keys — the exact shape a browser's
+    // routine re-sync produces (`upsertPushSubscription`'s own doc comment).
+    const result = await upsertPushSubscription(prisma, {
+      userId: ALICE,
+      endpoint: 'https://push.example/device-0',
+      p256dh: 'rotated-key',
+      auth: 'rotated-secret',
+      label: 'Chrome (rotated)',
+      now: 2000,
+    });
+
+    expect(result).not.toBeNull();
+    expect(await prisma.pushSubscription.count()).toBe(MAX_PUSH_SUBSCRIPTIONS_PER_USER);
+    const rows = await listPushSubscriptionsForUser(prisma, ALICE);
+    expect(rows.find((r) => r.endpoint === 'https://push.example/device-0')).toMatchObject({
+      p256dh: 'rotated-key',
+      auth: 'rotated-secret',
+    });
+  });
+
+  it("does not count toward a DIFFERENT user's cap", async () => {
+    for (let i = 0; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscribe(ALICE, `https://push.example/alice-${i}`);
+    }
+
+    const result = await upsertPushSubscription(prisma, {
+      userId: BOB,
+      endpoint: 'https://push.example/bob-0',
+      p256dh: 'key',
+      auth: 'secret',
+      label: 'Chrome',
+      now: 2000,
+    });
+
+    expect(result).not.toBeNull();
+  });
 });

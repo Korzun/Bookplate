@@ -382,6 +382,28 @@ const INSTANCE_DEVICE_MULTIPLIER = 100;
 const INSTANCE_USER_MULTIPLIER = 50;
 const BOOK_LINEAGE_MULTIPLIER = 20;
 
+/**
+ * `Viewer.pushSubscriptions: [PushSubscription!]!` (`viewer/model.ts`) is a
+ * plain, uncapped-at-the-schema-level `findMany` — a composite-element list
+ * field the "full inventory" paragraph above predates (push notifications
+ * shipped after that count was taken) — but it is deliberately NOT added to
+ * the map below. `PushSubscription` (`push-subscription/model.ts`) exposes
+ * only `id`/`label`/`createdAt`/`lastSuccessAt`, all scalars: its reachability
+ * closure contains zero further list fields, so it is the SAME class as the
+ * eleven leaf-terminating fields the paragraph above already names
+ * (`Book.identifiers` et al.) — "there is nothing further under them to
+ * multiply, so pricing them above 1 would inflate the calibration record for
+ * no real risk." A multiplier here would do exactly that: it does not gate
+ * anything (breadth never reads it, and there are no NESTED fields for a
+ * complexity multiplier to scale), it would just inflate the complexity of
+ * every ordinary `ViewerBootstrapDocument` load for zero additional
+ * protection. The real bound on this field's own row count is
+ * `MAX_PUSH_SUBSCRIPTIONS_PER_USER` (`services/push-subscription.ts`),
+ * enforced where it actually matters — at the write path — the same way a
+ * `findMany` with no code-enforced cap at all would still need a DIFFERENT
+ * fix than a cost-limit multiplier. See `cost-limit.test.ts` for the pinned
+ * measurement proving this field costs the plain, unmultiplied rate.
+ */
 const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
   'Library.series': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
   'Library.pendingFixes': {

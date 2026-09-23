@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import {
   listPushSubscriptionRows,
   upsertPushSubscription,
@@ -5,6 +7,37 @@ import {
 import { builder } from '../../builder';
 import { model as pushSubscriptionModel } from '../../push-subscription/model';
 import { resolveViewerUserId } from './resolve-user-id';
+
+/**
+ * `endpoint` must parse as a URL with an `https:` scheme: this value is a
+ * bearer capability URL this server will POST to on every notification, so an
+ * arbitrary one is a blind SSRF primitive aimed at the LAN this add-on runs
+ * on. `p256dh`/`auth` must be non-empty base64url (the client's own
+ * `toBase64Url`, `lib/push.ts`, never emits padding, hence no `=`) —
+ * `web-push` rejects an empty key PRE-FLIGHT with a plain `Error` carrying no
+ * `statusCode`, which the driver's `classify` (`notification-channel-push.ts`)
+ * has no status to read and so calls `transient`, which is NEVER pruned: one
+ * such row would drag every future notification for that user through the
+ * full retry ladder, re-pushing their working devices each time. Length caps
+ * are generous, not measured — same "cheap insurance, not a modeled bound"
+ * reasoning `book-request/mutation/create.ts`'s own `.max()` calls use.
+ */
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+const inputSchema = z.object({
+  endpoint: z.string().trim().min(1).max(2048).refine(isHttpsUrl, 'endpoint must be an https URL'),
+  p256dh: z.string().trim().min(1).max(256).regex(BASE64URL, 'p256dh must be base64url'),
+  auth: z.string().trim().min(1).max(256).regex(BASE64URL, 'auth must be base64url'),
+  label: z.string().trim().max(100),
+});
 
 /**
  * Registers the calling browser for push, or re-registers it.
@@ -15,8 +48,17 @@ import { resolveViewerUserId } from './resolve-user-id';
  * keys on `endpoint`, so re-running it is free.
  *
  * `null` rather than an error union, matching `viewerSetNotificationPreference`:
- * the only failure is having no account row to key the subscription to, which
- * is the `ensureAdminUser` collision an install can be left in.
+ * malformed input and a refused-at-the-cap insert are both reported the same
+ * way as "no account row to key the subscription to" (the `ensureAdminUser`
+ * collision an install can be left in) already was — none of the three give
+ * the caller anything actionable beyond "this did not take", and inventing a
+ * union here would be a distinction with no client-visible use, unlike
+ * `bookRequestCreate`'s union, where the caller shows the limit/duplicate
+ * back to the user by name.
+ *
+ * Input is parsed INSIDE the resolver, after auth — `bookRequestCreate`'s own
+ * doc comment explains why this schema does not use declarative arg
+ * validation.
  */
 builder.mutationField('viewerAddPushSubscription', (t) =>
   t.field({
@@ -33,15 +75,25 @@ builder.mutationField('viewerAddPushSubscription', (t) =>
       const userId = await resolveViewerUserId(context);
       if (userId === null) return null;
 
-      const { id } = await upsertPushSubscription(context.prisma, {
-        userId,
+      const parsed = inputSchema.safeParse({
         endpoint: args.endpoint,
         p256dh: args.p256dh,
         auth: args.auth,
         label: args.label,
       });
+      if (!parsed.success) return null;
+
+      const result = await upsertPushSubscription(context.prisma, {
+        userId,
+        endpoint: parsed.data.endpoint,
+        p256dh: parsed.data.p256dh,
+        auth: parsed.data.auth,
+        label: parsed.data.label,
+      });
+      if (result === null) return null; // at the per-user cap, and this is a new device
+
       const rows = await listPushSubscriptionRows(context.prisma, userId);
-      return rows.find((row) => row.id === id) ?? null;
+      return rows.find((row) => row.id === result.id) ?? null;
     },
   })
 );

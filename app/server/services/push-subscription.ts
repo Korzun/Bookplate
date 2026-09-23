@@ -14,6 +14,17 @@ import { randomUUID } from 'crypto';
 
 import type { PrismaClient } from '@prisma/client';
 
+/**
+ * How many browsers one account may have registered for push at once. A
+ * module constant, not an add-on config option — same reasoning as
+ * `MAX_OPEN_BOOK_REQUESTS` (`services/book-request.ts`): nobody will tune
+ * this number, so it costs nothing to make it fixed. Re-subscribing an
+ * endpoint this account ALREADY holds a row for is exempt (see
+ * `upsertPushSubscription`'s own doc comment) — the cap only ever refuses a
+ * genuinely NEW device.
+ */
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 20;
+
 export type StoredSubscription = {
   id: string;
   endpoint: string;
@@ -41,6 +52,23 @@ export type SubscriptionRow = {
  *
  * `lastSuccessAt` is deliberately NOT reset here. A device that keeps working
  * across a re-sync has not stopped working.
+ *
+ * Capped at `MAX_PUSH_SUBSCRIPTIONS_PER_USER`, refusing the insert (returning
+ * `null`) rather than evicting an older row: an eviction would silently stop
+ * notifying a device its owner never touched and never asked to remove — the
+ * exact kind of silent, undiagnosable failure this file's other comments
+ * already avoid elsewhere (the `p256dh`/`auth` update above, for one).
+ * Refusing a NEW device at least fails where the reader can see it (the
+ * settings switch not turning on), and they still hold every already-working
+ * device. The cap is checked and the row written in ONE transaction, the same
+ * `createBookRequest` shape, so two concurrent registrations cannot both read
+ * a count under the cap and both insert.
+ *
+ * The check only runs for a genuinely NEW endpoint. Re-subscribing a browser
+ * this account already holds a row for must always succeed — it is the same
+ * device, not a new one — so it is exempt from the cap entirely, checked via
+ * the same `findUnique` this function needs anyway to decide whether the
+ * upsert below will insert or update.
  */
 export async function upsertPushSubscription(
   prisma: PrismaClient,
@@ -52,28 +80,37 @@ export async function upsertPushSubscription(
     label: string;
     now?: number;
   }
-): Promise<{ id: string }> {
+): Promise<{ id: string } | null> {
   const now = args.now ?? Date.now();
-  const row = await prisma.pushSubscription.upsert({
-    where: { endpoint: args.endpoint },
-    create: {
-      id: randomUUID(),
-      userId: args.userId,
-      endpoint: args.endpoint,
-      p256dh: args.p256dh,
-      auth: args.auth,
-      label: args.label,
-      createdAt: now,
-    },
-    update: {
-      userId: args.userId,
-      p256dh: args.p256dh,
-      auth: args.auth,
-      label: args.label,
-    },
-    select: { id: true },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.pushSubscription.findUnique({
+      where: { endpoint: args.endpoint },
+      select: { id: true },
+    });
+    if (existing === null) {
+      const count = await tx.pushSubscription.count({ where: { userId: args.userId } });
+      if (count >= MAX_PUSH_SUBSCRIPTIONS_PER_USER) return null;
+    }
+    return tx.pushSubscription.upsert({
+      where: { endpoint: args.endpoint },
+      create: {
+        id: randomUUID(),
+        userId: args.userId,
+        endpoint: args.endpoint,
+        p256dh: args.p256dh,
+        auth: args.auth,
+        label: args.label,
+        createdAt: now,
+      },
+      update: {
+        userId: args.userId,
+        p256dh: args.p256dh,
+        auth: args.auth,
+        label: args.label,
+      },
+      select: { id: true },
+    });
   });
-  return row;
 }
 
 /** For the driver: everything needed to encrypt and post. */
