@@ -588,6 +588,13 @@ describe('NotificationSettings', () => {
     async () => {
       stubBrowserThatCanSubscribe('https://push.example/resynced');
       vi.stubGlobal('Notification', { permission: 'granted', requestPermission: vi.fn() });
+      // I-1: `resyncSubscription` now also gates on `LOCAL_SUBSCRIPTION_ID` to
+      // tell a genuine expiry apart from a deliberate opt-out (see its own
+      // doc comment) — this test's scenario IS the expiry case (a prior
+      // subscription existed and this browser lost it), so the id from that
+      // prior subscription is still on record, exactly as it would be after
+      // a real expiry (an opt-out is the only thing that clears it).
+      localStorage.setItem(LOCAL_SUBSCRIPTION_ID, 'sub-before-expiry');
 
       renderCard({
         preferences: [pushPref()],
@@ -650,6 +657,102 @@ describe('NotificationSettings', () => {
     });
     expect(toggle).not.toBeChecked();
   });
+
+  it(
+    'keeps the device switch off after a deliberate opt-out, surviving an unmount and remount ' +
+      '(I-1: turning push off must stick, not look identical to an accidental expiry)',
+    async () => {
+      stubSupportedBrowser();
+      // `permission: 'granted'` directly, not merely a `requestPermission`
+      // resolution — this test remounts, and the load-time resync effect
+      // reads `Notification.permission` itself (`pushPermission()`), not any
+      // React state the first mount set. A real browser can never un-grant
+      // permission either, so this also matches production: it is exactly
+      // what makes an opt-out and an expiry otherwise indistinguishable to
+      // `resyncSubscription`.
+      vi.stubGlobal('Notification', {
+        permission: 'granted',
+        requestPermission: vi.fn().mockResolvedValue('granted'),
+      });
+      stubBrowserThatCanSubscribe('https://push.example/off-sticks');
+
+      // A variables-matcher-counting mock, not the plain `addSubscriptionMock`
+      // helper: this test's whole point is proving the add mutation does NOT
+      // fire a second time after the off-click, and a single-use mock being
+      // exhausted would prove nothing either way (a second attempt would just
+      // hit MockLink's own "no more responses" warning, not this component's
+      // logic). Re-used across BOTH renders below via a shared counter, same
+      // technique `test-utils.tsx`'s own standing note prescribes for
+      // pinning "this operation must NOT fire".
+      let addRequestCount = 0;
+      const addMock: MockedResponse<
+        ViewerAddPushSubscriptionMutation,
+        ViewerAddPushSubscriptionMutationVariables
+      > = {
+        request: {
+          query: ViewerAddPushSubscriptionDocument,
+          variables: () => {
+            addRequestCount++;
+            return true;
+          },
+        },
+        result: {
+          data: {
+            __typename: 'Mutation',
+            viewerAddPushSubscription: {
+              __typename: 'PushSubscription' as const,
+              ...makeFragmentData(
+                {
+                  __typename: 'PushSubscription' as const,
+                  id: 'sub-off-sticks',
+                  label: 'Chrome on macOS',
+                  createdAt: 1,
+                  lastSuccessAt: null,
+                },
+                PushSubscriptionFragment
+              ),
+            },
+          },
+        },
+      };
+      const removeMock = removeSubscriptionMock('sub-off-sticks');
+
+      const { unmount } = renderCard({
+        preferences: [pushPref()],
+        mocks: [addMock, removeMock],
+      });
+
+      const toggle = screen.getByRole('switch', { name: /enable push on this device/i });
+      await userEvent.click(toggle); // on
+      await waitFor(() => {
+        expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBe('sub-off-sticks');
+      });
+      expect(toggle).toBeChecked();
+      expect(addRequestCount).toBe(1);
+
+      await userEvent.click(toggle); // off — the deliberate opt-out under test
+      await waitFor(() => expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull());
+      expect(toggle).not.toBeChecked();
+
+      unmount();
+
+      // Remount: the load-time resync effect runs again. `Notification.permission`
+      // is still 'granted' (nothing in this app can un-grant it) and this
+      // stubbed browser's `getSubscription()` always resolves null — the
+      // exact state `resyncSubscription`'s own doc comment calls
+      // byte-identical to an accidental expiry. Without the
+      // `LOCAL_SUBSCRIPTION_ID` gate this fix adds, the effect would treat
+      // that as an expiry and silently re-subscribe, re-creating the server
+      // row and flipping the switch back on unasked.
+      renderCard({ preferences: [pushPref()], mocks: [addMock, removeMock] });
+
+      const remountedToggle = await screen.findByRole('switch', {
+        name: /enable push on this device/i,
+      });
+      await waitFor(() => expect(remountedToggle).not.toBeChecked());
+      expect(addRequestCount).toBe(1); // still just the original "on" click
+    }
+  );
 
   it('reverts the device switch and toasts when enabling push fails', async () => {
     stubSupportedBrowser();

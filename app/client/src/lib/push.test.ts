@@ -1,6 +1,7 @@
 import {
   currentSubscription,
   deviceLabel,
+  LOCAL_SUBSCRIPTION_ID,
   pushSupport,
   resyncSubscription,
   subscribeToPush,
@@ -38,6 +39,11 @@ const installServiceWorker = (
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // `localStorage` persists across tests in this file the same way
+  // `vi.stubGlobal` would if left unrestored — `component/notification-settings/
+  // index.test.tsx`'s own `afterEach` takes the identical precaution for the
+  // identical reason.
+  localStorage.clear();
 });
 
 it('reports unsupported where the APIs are absent', () => {
@@ -95,7 +101,12 @@ it('labels the device from the user agent', () => {
 });
 
 describe('resyncSubscription', () => {
-  it('subscribes again when permission is granted but no subscription exists', async () => {
+  it('re-subscribes an EXPIRED subscription when a local id proves one existed before', async () => {
+    // The expiry-repair case this function exists for: the browser lost its
+    // subscription (`getSubscription()` returns null) but never went through
+    // an explicit opt-out or logout, so `LOCAL_SUBSCRIPTION_ID` is still set
+    // from whenever it was first created.
+    localStorage.setItem(LOCAL_SUBSCRIPTION_ID, 'sub-1');
     const pushManager = installServiceWorker(null, 'granted');
     pushManager.subscribe.mockResolvedValue(fakeSubscription());
 
@@ -106,6 +117,25 @@ describe('resyncSubscription', () => {
     );
     expect(result?.endpoint).toBe('https://push.example/a');
   });
+
+  it(
+    'does NOT re-subscribe once the local id is gone, even though permission stays granted forever ' +
+      '(I-1: a deliberate opt-out must stick, not look identical to an expiry)',
+    async () => {
+      // No `localStorage.setItem` here: this is the state left behind by a
+      // deliberate `toggle(false)` or logout — permission can never be
+      // un-granted by this app, so without the id gate this is
+      // BYTE-IDENTICAL to the expiry case above and would silently
+      // re-subscribe, undoing the opt-out on the next load.
+      const pushManager = installServiceWorker(null, 'granted');
+      pushManager.subscribe.mockResolvedValue(fakeSubscription());
+
+      const result = await resyncSubscription(KEY);
+
+      expect(pushManager.subscribe).not.toHaveBeenCalled();
+      expect(result).toBeNull();
+    }
+  );
 
   it('does not subscribe when permission is default or denied', async () => {
     for (const permission of ['default', 'denied'] as const) {

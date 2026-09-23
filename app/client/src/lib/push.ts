@@ -145,10 +145,13 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<Subscribe
 }
 
 /**
- * The existing subscription, if this browser has one. Used on app load to
- * re-register it with the server: endpoints rotate, and a browser that
- * believes it is subscribed while the server holds no row for it receives
- * nothing and reports no error anywhere.
+ * A read-only lookup: this browser's existing subscription, if it has one,
+ * with no side effect and no decision about whether to create one. Used
+ * wherever the caller only needs to know what is already there — `toggle`'s
+ * "off" branch reads `LOCAL_SUBSCRIPTION_ID` from storage instead, so this is
+ * currently called from `resyncSubscription` only. For the LOAD-time case
+ * (deciding whether to re-subscribe), see `resyncSubscription` below, which
+ * used to be what this doc comment described before that function existed.
  */
 export async function currentSubscription(): Promise<SubscribeResult | null> {
   const reg = await registration();
@@ -180,11 +183,35 @@ export async function unsubscribeFromPush(): Promise<void> {
  * subscribes again. That needs no user gesture precisely because permission
  * is already in hand, so no prompt appears — this function never prompts,
  * and never subscribes without permission already granted.
+ *
+ * `Notification.permission` cannot be un-granted by anything short of the
+ * user digging into their browser settings, so a DELIBERATE opt-out
+ * (`toggle(false)`, or the device list's "Remove" on this device) leaves the
+ * browser in a state byte-identical to an accidental expiry: permission still
+ * `'granted'`, `getSubscription()` still `null`. Reading `LOCAL_SUBSCRIPTION_ID`
+ * is what tells the two apart — an opt-out (and logout: `lib/logout.ts`)
+ * clears it, an expiry does not — so its absence here means "the reader
+ * turned this off on purpose" and must NOT be silently re-subscribed. Without
+ * this gate, toggling push off would not stick: the next load re-subscribes,
+ * re-creates the server row, and flips the switch back on unasked, and doing
+ * the same after logging out on a shared browser would auto-subscribe
+ * whoever signs in next.
  */
 export async function resyncSubscription(vapidPublicKey: string): Promise<SubscribeResult | null> {
   if (pushSupport() !== 'supported') return null;
   if (pushPermission() !== 'granted') return null;
   const existing = await currentSubscription();
   if (existing !== null) return existing;
+  let localId: string | null;
+  try {
+    localId = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
+  } catch {
+    // A throwing storage API (private-browsing quota, disabled storage, …)
+    // must not break the resync — see the file header's "never throws"
+    // discipline. Treat it the same as "nothing recorded": no id to prove a
+    // prior subscription existed, so this does not resubscribe.
+    localId = null;
+  }
+  if (localId === null) return null;
   return subscribeToPush(vapidPublicKey);
 }
