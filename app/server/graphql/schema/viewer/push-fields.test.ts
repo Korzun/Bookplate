@@ -1,4 +1,4 @@
-import { MAX_PUSH_SUBSCRIPTIONS_PER_USER } from '../../../../services/push-subscription';
+import { MAX_PUSH_SUBSCRIPTIONS_PER_USER } from '../../../services/push-subscription';
 import { createHarness, type Harness } from '../../test-util';
 
 vi.mock('../../../logger');
