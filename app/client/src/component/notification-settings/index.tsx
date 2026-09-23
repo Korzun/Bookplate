@@ -134,6 +134,16 @@ export const NotificationSettings = ({
 
   const mountedRef = useRef(true);
   useEffect(() => {
+    // Set on EVERY mount, not just initialised once at `useRef(true)`.
+    // `main.tsx` wraps the app in `<StrictMode>`, which in development runs
+    // effects mount -> cleanup -> mount against the same hook state: without
+    // this line the cleanup's `false` is never undone, so `handleToggle`'s
+    // `finally` skips clearing `pending`, the row's key stays there forever,
+    // and `if (key in pending) return` silently swallows every later click on
+    // that row. Reported from real use as "the toggle only works once; I have
+    // to refresh to use it again" — and it still SAVED each time, because
+    // neither the mutation nor the `cache.modify` write sits behind this ref.
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
