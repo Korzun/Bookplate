@@ -8,7 +8,12 @@ import webpush from 'web-push';
 import { createPrismaClient } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import type { NotificationPayload, NotificationRecipient } from './notification';
-import { createPushChannelDriver, TTL_SECONDS, type PushSender } from './notification-channel-push';
+import {
+  createPushChannelDriver,
+  SEND_TIMEOUT_MS,
+  TTL_SECONDS,
+  type PushSender,
+} from './notification-channel-push';
 import { listPushSubscriptionRows, upsertPushSubscription } from './push-subscription';
 
 vi.mock('../logger');
@@ -200,6 +205,34 @@ it('lets a transient failure outrank a success so the row retries', async () => 
   // buys never losing the other device's notification.
   expect(await deliver(send)).toEqual({ ok: false, reason: 'transient' });
 });
+
+it(
+  'does not hang the drain when an endpoint completes the handshake and then never responds ' +
+    '(I-2: `deliver()` must resolve, not wedge `NotificationQueue.drainOnce`/`poke()` forever)',
+  async () => {
+    await subscribe('https://push.example/hangs');
+    // A `send` that never settles at all — the shape a TLS-connected but
+    // silent endpoint produces, since `web-push` gives this driver no
+    // per-request abort hook to fall back on (see `SEND_TIMEOUT_MS`'s own
+    // doc comment). Fake timers, not a real 10s wait: `vi.advanceTimersByTimeAsync`
+    // fast-forwards the `withTimeout` race's own timer without the test
+    // actually waiting out the deadline.
+    const send = vi.fn<PushSender>().mockReturnValue(new Promise<never>(() => {}));
+    vi.useFakeTimers();
+    try {
+      const result = deliver(send);
+      await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
+      // `transient`, not a hang and not a thrown error out of `deliver`
+      // itself: a timeout is retryable, exactly like the ECONNRESET case
+      // above, and the outbox row gets another attempt rather than being
+      // silently dropped or wedging every other user's notifications behind
+      // it.
+      expect(await result).toEqual({ ok: false, reason: 'transient' });
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+);
 
 it('lets a success outrank a misconfiguration', async () => {
   await subscribe('https://push.example/ok');

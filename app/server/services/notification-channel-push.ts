@@ -32,6 +32,39 @@ const log = logger('PushChannel');
 /** Three days. A phone that was off for a week should not surface stale news. */
 export const TTL_SECONDS = 259_200;
 
+/**
+ * Bounds each endpoint's `send`. `web-push`'s own `timeout` option is a
+ * socket-INACTIVITY timeout, not a whole-response deadline — a host that
+ * completes the TLS handshake and then never writes another byte would never
+ * trip it — so `deliver` races the call against this timer instead, the same
+ * "hard bound via `Promise.race`, not the library's own knob" shape
+ * `mailer-cloudflare.ts`'s `SEND_TIMEOUT_MS` uses for the identical reason
+ * (that file has a real `AbortSignal` to hang the deadline off; `web-push`
+ * gives this driver no such hook).
+ *
+ * Without it, `deliver` awaits every endpoint SEQUENTIALLY with no bound at
+ * all, `NotificationQueue.drainOnce` awaits `deliver`, and `poke()` holds
+ * `running = true` for the duration — so ONE hung endpoint suspends the drain
+ * FOREVER: `running` never clears, later `poke()` calls only set `pending`,
+ * and no notification on EITHER channel is ever delivered again until the
+ * container restarts, with no log line anywhere.
+ */
+export const SEND_TIMEOUT_MS = 10_000;
+
+/**
+ * Races `promise` against a timer that rejects after `ms`, always clearing
+ * the timer on the way out so a fast, successful send does not leave a
+ * 10-second handle dangling — `deliver` calls this once per endpoint, so an
+ * uncleared timer here would accumulate one per subscription per drain.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Push send timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export type PushSender = (args: {
   subscription: StoredSubscription;
   body: string;
@@ -130,7 +163,7 @@ export function createPushChannelDriver(deps: {
       for (const subscription of subscriptions) {
         let outcome: EndpointOutcome;
         try {
-          const { statusCode } = await send({ subscription, body });
+          const { statusCode } = await withTimeout(send({ subscription, body }), SEND_TIMEOUT_MS);
           outcome = classify(statusCode);
         } catch (e) {
           // `web-push` throws a WebPushError carrying the status for an HTTP
