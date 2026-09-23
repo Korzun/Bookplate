@@ -1,8 +1,8 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card } from '~/component';
-import { Switch } from '~/control';
+import { Button, Switch } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
 import type { NotificationChannel, NotificationEvent } from '~/gql/graphql';
 import {
@@ -17,13 +17,20 @@ import { useToast } from '~/provider/toast';
 import { useStyle } from './style';
 import { usePushDevice } from './use-push-device';
 
+/**
+ * Deliberately terse and parallel. These are row headers in a grid whose
+ * columns are the channels, so each one shares its row with two toggles and
+ * has to survive a phone's width; the sentences they replaced ("A book I
+ * requested is added to my library") wrapped to three lines there. The card's
+ * subtitle carries the context the brevity gives up.
+ */
 const EVENT_LABEL: Record<NotificationEvent, string> = {
-  BOOK_REQUEST_CREATED: 'A reader requests a book',
-  BOOK_REQUEST_FULFILLED: 'A book I requested is added to my library',
-  BOOK_REQUEST_DECLINED: 'A book I requested is declined',
+  BOOK_REQUEST_CREATED: 'Request received',
+  BOOK_REQUEST_FULFILLED: 'Request fulfilled',
+  BOOK_REQUEST_DECLINED: 'Request declined',
 };
 
-/** Distinguishes the two identically-labelled-by-event rows a second channel adds. */
+/** Column headers, and half of each toggle's accessible name. */
 const CHANNEL_LABEL: Record<NotificationChannel, string> = {
   EMAIL: 'Email',
   PUSH: 'Push',
@@ -248,12 +255,66 @@ export const NotificationSettings = ({
 
   const hasEmailChannel = rows.some((row) => row.channel === 'EMAIL');
 
+  // Server order, de-duplicated: `listNotificationPreferences` returns the
+  // cross-product event-major, so this yields the events in catalogue order
+  // and the channels in the order this install configured them.
+  const events = [...new Set(rows.map((row) => row.event))];
+  const channels = [...new Set(rows.map((row) => row.channel))];
+  const cellFor = (event: NotificationEvent, channel: NotificationChannel) =>
+    rows.find((row) => row.event === event && row.channel === channel);
+
   return (
     <Card title="Notifications">
+      {/* Not `Card`'s `subTitle`: that slot is a short fragment beside the
+          title ("0 books synced"), and a full sentence there wraps with a
+          word stranded on its own line. In the body it gets the card's full
+          width, and it carries the context the short row labels give up. */}
+      <p className={style.caption}>Which book-request events reach you, and how.</p>
       {hasEmailChannel && !emailVerified && (
         <p className={style.hint}>Confirm your email address above to start receiving these.</p>
       )}
-      <div className={style.deviceRow}>
+
+      <div
+        className={style.grid}
+        style={{ '--channel-count': channels.length } as React.CSSProperties}
+      >
+        <span />
+        {channels.map((channel) => (
+          <span key={channel} className={style.columnHeader}>
+            {CHANNEL_LABEL[channel]}
+          </span>
+        ))}
+        {events.map((event) => (
+          <Fragment key={event}>
+            <span className={style.rowHeader}>{EVENT_LABEL[event]}</span>
+            {channels.map((channel) => {
+              const cell = cellFor(event, channel);
+              // A channel this event has no row for. Cannot happen today —
+              // the server returns the full cross-product — but a hole in the
+              // grid must stay a hole rather than shifting every later cell
+              // into the wrong column.
+              if (cell === undefined) return <span key={channel} />;
+              const key = rowKey(event, channel);
+              return (
+                <div key={channel} className={style.cell}>
+                  <Switch
+                    name={key}
+                    // The visible name lives in the row and column headers, so
+                    // the toggle carries both dimensions itself rather than
+                    // falling back to announcing `name`.
+                    ariaLabel={`${EVENT_LABEL[event]} (${CHANNEL_LABEL[channel]})`}
+                    checked={pending[key] ?? cell.enabled}
+                    disabled={channelDisabled(channel)}
+                    onChange={(next) => void handleToggle(event, channel, next)}
+                  />
+                </div>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+
+      <div className={style.section}>
         <Switch
           name="push-device"
           checked={subscribed}
@@ -261,48 +322,36 @@ export const NotificationSettings = ({
           onChange={(next) => void toggle(next)}
           label="Enable push on this device"
           description={hint}
+          layout="horizontal"
         />
       </div>
-      <div className={style.list}>
-        {rows.map((row) => {
-          const key = rowKey(row.event, row.channel);
-          const checked = pending[key] ?? row.enabled;
-          return (
-            <Switch
-              key={key}
-              name={key}
-              label={`${EVENT_LABEL[row.event]} (${CHANNEL_LABEL[row.channel]})`}
-              layout="horizontal"
-              checked={checked}
-              disabled={channelDisabled(row.channel)}
-              onChange={(next) => void handleToggle(row.event, row.channel, next)}
-            />
-          );
-        })}
-      </div>
+
       {devices.length > 0 && (
-        <ul className={style.deviceList}>
-          {devices.map((device) => (
-            <li key={device.id} className={style.device}>
-              <div>
-                <span className={style.deviceName}>{device.label}</span>
-                {device.id === localId && <span className={style.thisDevice}>this device</span>}
-                <span className={style.deviceMeta}>
-                  {device.lastSuccessAt === null
-                    ? 'Never received a notification'
-                    : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
-                </span>
-              </div>
-              <button
-                type="button"
-                aria-label={`Remove ${device.label}`}
-                onClick={() => void handleRemove(device.id)}
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className={style.section}>
+          <p className={style.sectionTitle}>Devices</p>
+          <ul className={style.deviceList}>
+            {devices.map((device) => (
+              <li key={device.id} className={style.device}>
+                <div>
+                  <span className={style.deviceName}>{device.label}</span>
+                  {device.id === localId && <span className={style.thisDevice}>this device</span>}
+                  <span className={style.deviceMeta}>
+                    {device.lastSuccessAt === null
+                      ? 'Never received a notification'
+                      : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
+                  </span>
+                </div>
+                <Button
+                  type="link"
+                  ariaLabel={`Remove ${device.label}`}
+                  onClick={() => void handleRemove(device.id)}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Card>
   );

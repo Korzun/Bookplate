@@ -318,7 +318,7 @@ describe('NotificationSettings', () => {
   it('renders one labelled control per preference, reflecting its state', () => {
     renderCard({ preferences });
 
-    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    const fulfilled = screen.getByRole('switch', { name: /request fulfilled \(email\)/i });
     const declined = screen.getByRole('switch', { name: /declined/i });
     expect(fulfilled).toBeChecked();
     expect(declined).not.toBeChecked();
@@ -334,7 +334,7 @@ describe('NotificationSettings', () => {
     // the `aria-disabled` attribute directly is the accurate check for this
     // control; `component/device-form`'s own tests hit the same limitation
     // for other non-native controls.
-    expect(screen.getByRole('switch', { name: /added to my library/i })).toHaveAttribute(
+    expect(screen.getByRole('switch', { name: /request fulfilled \(email\)/i })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
@@ -375,7 +375,7 @@ describe('NotificationSettings', () => {
     ];
     renderWithApollo(<Harness />, { mocks });
 
-    const fulfilled = await screen.findByRole('switch', { name: /added to my library/i });
+    const fulfilled = await screen.findByRole('switch', { name: /request fulfilled \(email\)/i });
     expect(fulfilled).toBeChecked();
 
     await userEvent.click(fulfilled);
@@ -389,7 +389,9 @@ describe('NotificationSettings', () => {
     // value before the mutation resolves; this test's `waitFor` proves the
     // cache write independently arrives at the same state once it does.)
     await waitFor(() => {
-      expect(screen.getByRole('switch', { name: /added to my library/i })).not.toBeChecked();
+      expect(
+        screen.getByRole('switch', { name: /request fulfilled \(email\)/i })
+      ).not.toBeChecked();
     });
   });
 
@@ -403,7 +405,7 @@ describe('NotificationSettings', () => {
       />
     );
 
-    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    const fulfilled = screen.getByRole('switch', { name: /request fulfilled \(email\)/i });
     expect(fulfilled).toBeChecked();
 
     await userEvent.click(fulfilled);
@@ -431,7 +433,7 @@ describe('NotificationSettings', () => {
       />
     );
 
-    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    const fulfilled = screen.getByRole('switch', { name: /request fulfilled \(email\)/i });
     await userEvent.click(fulfilled);
 
     // Held open, so this is provably ahead of the rejection below, not a
@@ -454,7 +456,7 @@ describe('NotificationSettings', () => {
       />
     );
 
-    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    const fulfilled = screen.getByRole('switch', { name: /request fulfilled \(email\)/i });
     await userEvent.click(fulfilled);
     // A second click while the first request is HELD OPEN — deterministically
     // "still in flight", not merely "probably still in flight" — must not
@@ -494,7 +496,7 @@ describe('NotificationSettings', () => {
       />
     );
 
-    const fulfilled = screen.getByRole('switch', { name: /added to my library/i });
+    const fulfilled = screen.getByRole('switch', { name: /request fulfilled \(email\)/i });
     await userEvent.click(fulfilled);
 
     unmount();
@@ -504,6 +506,47 @@ describe('NotificationSettings', () => {
     // (its `finally` included) has definitely run before the test ends.
     await Promise.resolve();
     await Promise.resolve();
+  });
+
+  it('renders one row per event and one toggle per configured channel', async () => {
+    // The card's data IS an (event x channel) matrix; this pins that it is
+    // RENDERED as one. Before, each pair was its own flat row with the channel
+    // in a parenthetical, so a reader saw the same sentence four times.
+    renderCard({
+      preferences: [
+        preference({ event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL' }),
+        preference({ event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH' }),
+        preference({ event: 'BOOK_REQUEST_DECLINED', channel: 'EMAIL' }),
+        preference({ event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH' }),
+      ].map((row) => makeFragmentData(row, NotificationPreferenceFragment)),
+    });
+
+    // Two events -> two row labels, each appearing exactly once.
+    expect(screen.getByText('Request fulfilled')).toBeInTheDocument();
+    expect(screen.getByText('Request declined')).toBeInTheDocument();
+
+    // Two channels -> two column headers, each appearing exactly once.
+    expect(screen.getByText('Email')).toBeInTheDocument();
+    expect(screen.getByText('Push')).toBeInTheDocument();
+
+    // Four toggles, each still individually addressable by both dimensions.
+    for (const name of [
+      /request fulfilled \(email\)/i,
+      /request fulfilled \(push\)/i,
+      /request declined \(email\)/i,
+      /request declined \(push\)/i,
+    ]) {
+      expect(screen.getByRole('switch', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('renders a single column on an install with only one channel', async () => {
+    // A mail-less install gets `['push']` from the server, and must show one
+    // column rather than an empty Email column.
+    renderCard({ preferences: [pushPref()] });
+
+    expect(screen.getByText('Push')).toBeInTheDocument();
+    expect(screen.queryByText('Email')).not.toBeInTheDocument();
   });
 
   it('offers the device switch as disabled over plain HTTP', () => {
@@ -528,7 +571,7 @@ describe('NotificationSettings', () => {
     // which nothing else in this file exercised: `channel === 'EMAIL' ? … :
     // false` — i.e. never actually gating on `support` — would have passed
     // every other test here.
-    expect(screen.getByRole('switch', { name: /added.*push/i })).toHaveAttribute(
+    expect(screen.getByRole('switch', { name: /request fulfilled \(push\)/i })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
@@ -558,9 +601,7 @@ describe('NotificationSettings', () => {
     // whenever the server returns a non-empty catalogue.
     renderCard({ preferences: [pushPref()] });
 
-    expect(
-      screen.getByRole('switch', { name: /a book i requested is added.*push/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /request fulfilled \(push\)/i })).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /email/i })).not.toBeInTheDocument();
   });
 
@@ -572,11 +613,11 @@ describe('NotificationSettings', () => {
     // An unverified address says nothing about whether push works; disabling
     // a working toggle because of it would be the same lie the
     // unverified-email disabling exists to prevent.
-    expect(screen.getByRole('switch', { name: /added.*email/i })).toHaveAttribute(
+    expect(screen.getByRole('switch', { name: /request fulfilled \(email\)/i })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
-    expect(screen.getByRole('switch', { name: /added.*push/i })).toHaveAttribute(
+    expect(screen.getByRole('switch', { name: /request fulfilled \(push\)/i })).toHaveAttribute(
       'aria-disabled',
       'false'
     );

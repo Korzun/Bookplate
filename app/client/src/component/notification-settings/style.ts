@@ -1,26 +1,64 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
+  caption: {
+    margin: 0,
+    marginBottom: theme.space.md,
+    color: theme.color.text.description,
+    fontSize: theme.fontSize.sm,
+  },
   hint: {
     margin: 0,
     marginBottom: theme.space.md,
     color: theme.color.text.description,
     fontSize: theme.fontSize.sm,
   },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.space.md,
+  /**
+   * The (event x channel) matrix rendered AS a matrix: one row per event, one
+   * toggle column per configured channel. `--channel-count` is set inline
+   * because only the component knows how many channels this install has —
+   * a mail-less one gets a single `Push` column.
+   *
+   * The event label column is `minmax(0, 1fr)` so it, and never the toggle
+   * columns, absorbs the squeeze at narrow widths: the labels are short
+   * ("Request fulfilled") and may wrap, but a toggle must never be clipped or
+   * shrunk below its tap target.
+   */
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) repeat(var(--channel-count, 1), auto)',
+    alignItems: 'center',
+    columnGap: theme.space.lg,
+    rowGap: theme.space.sm,
   },
-  deviceRow: {
-    marginBottom: theme.space.md,
-    paddingBottom: theme.space.md,
-    borderBottom: `1px solid ${theme.color.border.default}`,
+  columnHeader: {
+    justifySelf: 'center',
+    color: theme.color.text.description,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  rowHeader: {
+    color: theme.color.text.primary,
+  },
+  cell: {
+    justifySelf: 'center',
+  },
+  /** Separates the three groups: the matrix, this device, and other devices. */
+  section: {
+    marginTop: theme.space.md,
+    paddingTop: theme.space.md,
+    borderTop: `1px solid ${theme.color.border.default}`,
+  },
+  sectionTitle: {
+    margin: 0,
+    marginBottom: theme.space.sm,
+    color: theme.color.text.description,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   deviceList: {
     listStyle: 'none',
     margin: 0,
-    marginTop: theme.space.md,
     padding: 0,
     display: 'flex',
     flexDirection: 'column',
@@ -31,8 +69,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
-    padding: `${theme.space.sm} 0`,
-    borderTop: `1px solid ${theme.color.border.default}`,
   },
   deviceName: {
     fontWeight: theme.fontWeight.medium,

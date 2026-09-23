@@ -4,6 +4,13 @@ import { ReactNode, useCallback, useId } from 'react';
 import { useStyle } from './style';
 
 type SwitchProps = {
+  /**
+   * Accessible name when the visible `label` is absent because something
+   * OUTSIDE the switch already carries it — a grid's row and column headers,
+   * say. Without it such a switch falls back to announcing `name`, which is a
+   * machine key (`BOOK_REQUEST_FULFILLED:EMAIL`), not a name.
+   */
+  ariaLabel?: string;
   checked: boolean;
   description?: ReactNode;
   disabled?: boolean;
@@ -14,6 +21,7 @@ type SwitchProps = {
 };
 
 export const Switch = ({
+  ariaLabel,
   checked,
   description,
   disabled = false,
@@ -74,7 +82,7 @@ export const Switch = ({
   const commonProps = {
     role: 'switch' as const,
     'aria-checked': checked,
-    'aria-label': label ?? name,
+    'aria-label': ariaLabel ?? label ?? name,
     'aria-describedby': descriptionId,
     'aria-disabled': disabled,
     tabIndex: disabled ? -1 : 0,
