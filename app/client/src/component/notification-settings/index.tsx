@@ -1,7 +1,7 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
-import { Card } from '~/component';
+import { Card, CardDivider } from '~/component';
 import { Button, Switch } from '~/control';
 import { type FragmentType, useFragment } from '~/gql';
 import type { NotificationChannel, NotificationEvent } from '~/gql/graphql';
@@ -314,21 +314,20 @@ export const NotificationSettings = ({
         ))}
       </div>
 
-      <div className={style.section}>
-        <Switch
-          name="push-device"
-          checked={subscribed}
-          disabled={support !== 'supported' || permission === 'denied'}
-          onChange={(next) => void toggle(next)}
-          label="Enable push on this device"
-          description={hint}
-          layout="horizontal"
-        />
-      </div>
+      <CardDivider />
+      <Switch
+        name="push-device"
+        checked={subscribed}
+        disabled={support !== 'supported' || permission === 'denied'}
+        onChange={(next) => void toggle(next)}
+        label="Enable push on this device"
+        description={hint}
+        layout="horizontal"
+      />
 
       {devices.length > 0 && (
-        <div className={style.section}>
-          <p className={style.sectionTitle}>Devices</p>
+        <>
+          <CardDivider>Devices</CardDivider>
           <ul className={style.deviceList}>
             {devices.map((device) => (
               <li key={device.id} className={style.device}>
@@ -351,7 +350,7 @@ export const NotificationSettings = ({
               </li>
             ))}
           </ul>
-        </div>
+        </>
       )}
     </Card>
   );

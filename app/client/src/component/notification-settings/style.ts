@@ -43,19 +43,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   cell: {
     justifySelf: 'center',
   },
-  /** Separates the three groups: the matrix, this device, and other devices. */
-  section: {
-    marginTop: theme.space.md,
-    paddingTop: theme.space.md,
-    borderTop: `1px solid ${theme.color.border.default}`,
-  },
-  sectionTitle: {
-    margin: 0,
-    marginBottom: theme.space.sm,
-    color: theme.color.text.description,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
   deviceList: {
     listStyle: 'none',
     margin: 0,
