@@ -45,7 +45,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   },
   headerCell: {
     width: TOGGLE_CELL_WIDTH,
-    textAlign: 'center',
+    // RIGHT, not centre, for the same reason `toggleCell` is: the cell is
+    // wider than a toggle, so centring left the last toggle 10px further from
+    // the row's edge than the single-toggle row below it. Aligning both ends
+    // to the same edge keeps the column reading as a column AND puts the last
+    // toggle exactly where `Switch.horizontal` puts its own.
+    textAlign: 'right',
     color: theme.color.text.description,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
@@ -86,7 +91,7 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   toggleCell: {
     width: TOGGLE_CELL_WIDTH,
     display: 'flex',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   deviceList: {
     listStyle: 'none',
@@ -102,8 +107,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
+  /**
+   * The same recipe every other row label on this page uses. Inheriting body
+   * text left it 16px/500 in near-black — the largest, darkest text in either
+   * card, and the only thing here not drawn from the shared label.
+   */
   deviceName: {
-    fontWeight: theme.fontWeight.medium,
+    ...theme.recipe.label,
+    display: 'inline',
   },
   thisDevice: {
     marginLeft: theme.space.sm,
