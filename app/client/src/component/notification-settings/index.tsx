@@ -242,6 +242,17 @@ export const NotificationSettings = ({
   );
 
   /**
+   * Nothing on this ACCOUNT can receive a push: this browser is not
+   * subscribed and no other browser is registered either. The per-event push
+   * toggles then describe a delivery that cannot happen, so they read off and
+   * disabled rather than claiming a routing that goes nowhere — the same rule
+   * the email column follows for an unverified address. One registered device
+   * anywhere is enough to make them meaningful again, which is why this is
+   * NOT simply `!subscribed`.
+   */
+  const pushUnreachable = !subscribed && devices.length === 0;
+
+  /**
    * Per CHANNEL, not per card. An unverified address makes the email column
    * a lie — nothing is ever sent to one — but says nothing about push, which
    * has no notion of a verified anything. Disabling a working push toggle
@@ -249,7 +260,7 @@ export const NotificationSettings = ({
    * email disabling exists to prevent.
    */
   const channelDisabled = (channel: NotificationChannel): boolean =>
-    channel === 'EMAIL' ? !emailVerified : support !== 'supported';
+    channel === 'EMAIL' ? !emailVerified : support !== 'supported' || pushUnreachable;
 
   if (rows.length === 0) return null;
 
@@ -264,94 +275,97 @@ export const NotificationSettings = ({
     rows.find((row) => row.event === event && row.channel === channel);
 
   return (
-    <Card title="Notifications">
-      {/* Not `Card`'s `subTitle`: that slot is a short fragment beside the
-          title ("0 books synced"), and a full sentence there wraps with a
-          word stranded on its own line. In the body it gets the card's full
-          width, and it carries the context the short row labels give up. */}
-      <p className={style.caption}>Which book-request events reach you, and how.</p>
-      {hasEmailChannel && !emailVerified && (
-        <p className={style.hint}>Confirm your email address above to start receiving these.</p>
-      )}
+    <>
+      <Card title="Notifications">
+        {hasEmailChannel && !emailVerified && (
+          <p className={style.hint}>Confirm your email address above to start receiving these.</p>
+        )}
 
-      <div
-        className={style.grid}
-        style={{ '--channel-count': channels.length } as React.CSSProperties}
-      >
-        <span />
-        {channels.map((channel) => (
-          <span key={channel} className={style.columnHeader}>
-            {CHANNEL_LABEL[channel]}
-          </span>
-        ))}
-        {events.map((event) => (
-          <Fragment key={event}>
-            <span className={style.rowHeader}>{EVENT_LABEL[event]}</span>
-            {channels.map((channel) => {
-              const cell = cellFor(event, channel);
-              // A channel this event has no row for. Cannot happen today —
-              // the server returns the full cross-product — but a hole in the
-              // grid must stay a hole rather than shifting every later cell
-              // into the wrong column.
-              if (cell === undefined) return <span key={channel} />;
-              const key = rowKey(event, channel);
-              return (
-                <div key={channel} className={style.cell}>
-                  <Switch
-                    name={key}
-                    // The visible name lives in the row and column headers, so
-                    // the toggle carries both dimensions itself rather than
-                    // falling back to announcing `name`.
-                    ariaLabel={`${EVENT_LABEL[event]} (${CHANNEL_LABEL[channel]})`}
-                    checked={pending[key] ?? cell.enabled}
-                    disabled={channelDisabled(channel)}
-                    onChange={(next) => void handleToggle(event, channel, next)}
-                  />
-                </div>
-              );
-            })}
-          </Fragment>
-        ))}
-      </div>
+        <div
+          className={style.grid}
+          style={{ '--channel-count': channels.length } as React.CSSProperties}
+        >
+          <span />
+          {channels.map((channel) => (
+            <span key={channel} className={style.columnHeader}>
+              {CHANNEL_LABEL[channel]}
+            </span>
+          ))}
+          {events.map((event) => (
+            <Fragment key={event}>
+              <span className={style.rowHeader}>{EVENT_LABEL[event]}</span>
+              {channels.map((channel) => {
+                const cell = cellFor(event, channel);
+                // A channel this event has no row for. Cannot happen today —
+                // the server returns the full cross-product — but a hole in the
+                // grid must stay a hole rather than shifting every later cell
+                // into the wrong column.
+                if (cell === undefined) return <span key={channel} />;
+                const key = rowKey(event, channel);
+                return (
+                  <div key={channel} className={style.cell}>
+                    <Switch
+                      name={key}
+                      // The visible name lives in the row and column headers, so
+                      // the toggle carries both dimensions itself rather than
+                      // falling back to announcing `name`.
+                      ariaLabel={`${EVENT_LABEL[event]} (${CHANNEL_LABEL[channel]})`}
+                      checked={
+                        channel === 'PUSH' && pushUnreachable
+                          ? false
+                          : (pending[key] ?? cell.enabled)
+                      }
+                      disabled={channelDisabled(channel)}
+                      onChange={(next) => void handleToggle(event, channel, next)}
+                    />
+                  </div>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </Card>
 
-      <CardDivider />
-      <Switch
-        name="push-device"
-        checked={subscribed}
-        disabled={support !== 'supported' || permission === 'denied'}
-        onChange={(next) => void toggle(next)}
-        label="Enable push on this device"
-        description={hint}
-        layout="horizontal"
-      />
+      <Card title="Push notifications">
+        <Switch
+          name="push-device"
+          checked={subscribed}
+          disabled={support !== 'supported' || permission === 'denied'}
+          onChange={(next) => void toggle(next)}
+          label="Enable push on this device"
+          description={hint}
+          layout="horizontal"
+        />
 
-      {devices.length > 0 && (
-        <>
-          <CardDivider>Devices</CardDivider>
-          <ul className={style.deviceList}>
-            {devices.map((device) => (
-              <li key={device.id} className={style.device}>
-                <div>
-                  <span className={style.deviceName}>{device.label}</span>
-                  {device.id === localId && <span className={style.thisDevice}>this device</span>}
-                  <span className={style.deviceMeta}>
-                    {device.lastSuccessAt === null
-                      ? 'Never received a notification'
-                      : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
-                  </span>
-                </div>
-                <Button
-                  type="link"
-                  ariaLabel={`Remove ${device.label}`}
-                  onClick={() => void handleRemove(device.id)}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </Card>
+        {devices.length > 0 && (
+          <>
+            <CardDivider>Devices</CardDivider>
+            <ul className={style.deviceList}>
+              {devices.map((device) => (
+                <li key={device.id} className={style.device}>
+                  <div>
+                    <span className={style.deviceName}>{device.label}</span>
+                    {device.id === localId && <span className={style.thisDevice}>this device</span>}
+                    <span className={style.deviceMeta}>
+                      {device.lastSuccessAt === null
+                        ? 'Never received a notification'
+                        : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
+                    </span>
+                  </div>
+                  <Button
+                    type="link"
+                    danger
+                    ariaLabel={`Remove ${device.label}`}
+                    onClick={() => void handleRemove(device.id)}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Card>
+    </>
   );
 };

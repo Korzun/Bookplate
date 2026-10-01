@@ -605,10 +605,45 @@ describe('NotificationSettings', () => {
     expect(screen.queryByRole('switch', { name: /email/i })).not.toBeInTheDocument();
   });
 
+  it('turns the push column off and disables it when nothing can receive a push', () => {
+    stubSupportedBrowser();
+
+    // This browser is not subscribed and the account has no other registered
+    // device, so a push has nowhere to go. An "on" toggle here would claim a
+    // routing that cannot happen — the stored preference says `true` and the
+    // control still reads off.
+    renderCard({ preferences: [pushPref(true)] });
+
+    const push = screen.getByRole('switch', { name: /request fulfilled \(push\)/i });
+    expect(push).toHaveAttribute('aria-disabled', 'true');
+    expect(push).not.toBeChecked();
+  });
+
+  it('re-enables the push column once any device is registered', () => {
+    stubSupportedBrowser();
+
+    // One registered browser ANYWHERE makes the per-event push preferences
+    // meaningful again, even though this browser is still not subscribed —
+    // which is why the rule is not simply "is this device subscribed".
+    renderCard({ preferences: [pushPref(true)], pushSubscriptions: [pushSubscription()] });
+
+    const push = screen.getByRole('switch', { name: /request fulfilled \(push\)/i });
+    expect(push).toHaveAttribute('aria-disabled', 'false');
+    expect(push).toBeChecked();
+  });
+
   it('keeps push toggles live when the address is unverified', () => {
     stubSupportedBrowser();
 
-    renderCard({ preferences: [emailPref(), pushPref()], emailVerified: false });
+    // A registered device is part of the FIXTURE, not incidental: without one
+    // the push column is disabled for an unrelated reason (nothing on the
+    // account can receive a push), and this test would pass while proving
+    // nothing about the email address.
+    renderCard({
+      preferences: [emailPref(), pushPref()],
+      emailVerified: false,
+      pushSubscriptions: [pushSubscription()],
+    });
 
     // An unverified address says nothing about whether push works; disabling
     // a working toggle because of it would be the same lie the
