@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Card, CardDivider } from '~/component';
 import { Button, Switch } from '~/control';
@@ -280,47 +280,50 @@ export const NotificationSettings = ({
           <p className={style.hint}>Confirm your email address above to start receiving these.</p>
         )}
 
-        <div
-          className={style.grid}
-          style={{ '--channel-count': channels.length } as React.CSSProperties}
-        >
-          <span />
-          {channels.map((channel) => (
-            <span key={channel} className={style.columnHeader}>
-              {CHANNEL_LABEL[channel]}
-            </span>
-          ))}
+        <div className={style.matrix}>
+          <div className={style.headerRow}>
+            {channels.map((channel) => (
+              <span key={channel} className={style.headerCell}>
+                {CHANNEL_LABEL[channel]}
+              </span>
+            ))}
+          </div>
           {events.map((event) => (
-            <Fragment key={event}>
-              <span className={style.rowHeader}>{EVENT_LABEL[event]}</span>
-              {channels.map((channel) => {
-                const cell = cellFor(event, channel);
-                // A channel this event has no row for. Cannot happen today —
-                // the server returns the full cross-product — but a hole in the
-                // grid must stay a hole rather than shifting every later cell
-                // into the wrong column.
-                if (cell === undefined) return <span key={channel} />;
-                const key = rowKey(event, channel);
-                return (
-                  <div key={channel} className={style.cell}>
-                    <Switch
-                      name={key}
-                      // The visible name lives in the row and column headers, so
-                      // the toggle carries both dimensions itself rather than
-                      // falling back to announcing `name`.
-                      ariaLabel={`${EVENT_LABEL[event]} (${CHANNEL_LABEL[channel]})`}
-                      checked={
-                        channel === 'PUSH' && pushUnreachable
-                          ? false
-                          : (pending[key] ?? cell.enabled)
-                      }
-                      disabled={channelDisabled(channel)}
-                      onChange={(next) => void handleToggle(event, channel, next)}
-                    />
-                  </div>
-                );
-              })}
-            </Fragment>
+            <div key={event} className={style.eventRow}>
+              <span className={style.eventLabel}>{EVENT_LABEL[event]}</span>
+              <div className={style.toggleGroup}>
+                {channels.map((channel) => {
+                  const cell = cellFor(event, channel);
+                  const key = rowKey(event, channel);
+                  return (
+                    <span key={channel} className={style.toggleCell}>
+                      {/* A channel this event has no row for. Cannot happen
+                          today — the server returns the full cross-product —
+                          but the empty cell must still hold its width, or
+                          every later toggle slides out from under its
+                          column header. */}
+                      {cell !== undefined && (
+                        <Switch
+                          name={key}
+                          // The visible name lives in the row label and the
+                          // column header, so the toggle carries both
+                          // dimensions itself rather than falling back to
+                          // announcing `name`.
+                          ariaLabel={`${EVENT_LABEL[event]} (${CHANNEL_LABEL[channel]})`}
+                          checked={
+                            channel === 'PUSH' && pushUnreachable
+                              ? false
+                              : (pending[key] ?? cell.enabled)
+                          }
+                          disabled={channelDisabled(channel)}
+                          onChange={(next) => void handleToggle(event, channel, next)}
+                        />
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
       </Card>
@@ -334,6 +337,7 @@ export const NotificationSettings = ({
             onChange={(next) => void toggle(next)}
             label="Enable push on this device"
             description={hint}
+            layout="horizontal"
           />
 
           {devices.length > 0 && (

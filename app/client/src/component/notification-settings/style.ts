@@ -1,12 +1,19 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
+/**
+ * Wide enough for the longest channel header ("Email") at `fontSize.sm`, and
+ * shared by the header cell and the toggle cell so the two columns cannot
+ * drift apart.
+ */
+const TOGGLE_CELL_WIDTH = '3rem';
+
 export const useStyle = createUseStyles((theme: Theme) => ({
   /**
    * `Card`'s content has padding but no gap between its children, so every
    * card supplies its own — `device-form` wraps its whole body in exactly
-   * this (a flex column at `space.md`) which is what gives its `CardDivider`s
+   * this (a flex column at `space.md`), which is what gives its `CardDivider`s
    * room. Without it the divider butts straight against the control above and
-   * the list below, and this card read tighter than the rest of the page.
+   * the list below.
    */
   stack: {
     display: 'flex',
@@ -19,35 +26,67 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.description,
     fontSize: theme.fontSize.sm,
   },
-  /**
-   * The (event x channel) matrix rendered AS a matrix: one row per event, one
-   * toggle column per configured channel. `--channel-count` is set inline
-   * because only the component knows how many channels this install has —
-   * a mail-less one gets a single `Push` column.
-   *
-   * The event label column is `minmax(0, 1fr)` so it, and never the toggle
-   * columns, absorbs the squeeze at narrow widths: the labels are short
-   * ("Request fulfilled") and may wrap, but a toggle must never be clipped or
-   * shrunk below its tap target.
-   */
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) repeat(var(--channel-count, 1), auto)',
-    alignItems: 'center',
-    columnGap: theme.space.lg,
-    rowGap: theme.space.sm,
+  matrix: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.sm,
   },
-  columnHeader: {
-    justifySelf: 'center',
+  /**
+   * Unshaded, and padded on the right by the SAME amount as a row, so its
+   * labels sit directly over the toggles rather than near them. Each header
+   * cell is the width of a toggle cell, so the two track each other by
+   * construction instead of by eye.
+   */
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: theme.space.md,
+    paddingRight: theme.space.lg,
+  },
+  headerCell: {
+    width: TOGGLE_CELL_WIDTH,
+    textAlign: 'center',
     color: theme.color.text.description,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
-  rowHeader: {
-    color: theme.color.text.primary,
+  /**
+   * One shaded row per event — the same row every other toggle and input on
+   * this page sits in. `Switch`'s `horizontal` layout and `TextInput`'s build
+   * it from exactly these two values (`bg.cardHeader` + `radius.md`), and this
+   * repeats them because there is no shared recipe for the shape yet. The
+   * padding is `Switch.horizontal`'s verbatim, so a two-toggle row here lines
+   * up with the single-toggle row in the card below.
+   */
+  eventRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
+    backgroundColor: theme.color.bg.cardHeader,
+    borderRadius: theme.radius.md,
+    padding: `${theme.space.md} ${theme.space.lg} ${theme.space.md} ${theme.space.sm}`,
   },
-  cell: {
-    justifySelf: 'center',
+  /**
+   * The SAME recipe `Switch` and `TextInput` give their own labels, not a
+   * hand-set colour: these rows sit directly above and below those controls,
+   * so anything else reads as a different kind of thing. Inheriting body text
+   * (what this did before) made them larger and darker than every other row
+   * label on the page.
+   */
+  eventLabel: {
+    ...theme.recipe.label,
+  },
+  toggleGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.space.md,
+  },
+  /** Fixed width so an empty cell still holds its column. See `headerCell`. */
+  toggleCell: {
+    width: TOGGLE_CELL_WIDTH,
+    display: 'flex',
+    justifyContent: 'center',
   },
   deviceList: {
     listStyle: 'none',
