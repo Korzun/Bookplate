@@ -1,6 +1,18 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
+  /**
+   * `Card`'s content has padding but no gap between its children, so every
+   * card supplies its own — `device-form` wraps its whole body in exactly
+   * this (a flex column at `space.md`) which is what gives its `CardDivider`s
+   * room. Without it the divider butts straight against the control above and
+   * the list below, and this card read tighter than the rest of the page.
+   */
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.space.md,
+  },
   hint: {
     margin: 0,
     marginBottom: theme.space.md,

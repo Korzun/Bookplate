@@ -21,8 +21,7 @@ import { usePushDevice } from './use-push-device';
  * Deliberately terse and parallel. These are row headers in a grid whose
  * columns are the channels, so each one shares its row with two toggles and
  * has to survive a phone's width; the sentences they replaced ("A book I
- * requested is added to my library") wrapped to three lines there. The card's
- * subtitle carries the context the brevity gives up.
+ * requested is added to my library") wrapped to three lines there.
  */
 const EVENT_LABEL: Record<NotificationEvent, string> = {
   BOOK_REQUEST_CREATED: 'Request received',
@@ -327,44 +326,47 @@ export const NotificationSettings = ({
       </Card>
 
       <Card title="Push notifications">
-        <Switch
-          name="push-device"
-          checked={subscribed}
-          disabled={support !== 'supported' || permission === 'denied'}
-          onChange={(next) => void toggle(next)}
-          label="Enable push on this device"
-          description={hint}
-          layout="horizontal"
-        />
+        <div className={style.stack}>
+          <Switch
+            name="push-device"
+            checked={subscribed}
+            disabled={support !== 'supported' || permission === 'denied'}
+            onChange={(next) => void toggle(next)}
+            label="Enable push on this device"
+            description={hint}
+          />
 
-        {devices.length > 0 && (
-          <>
-            <CardDivider>Devices</CardDivider>
-            <ul className={style.deviceList}>
-              {devices.map((device) => (
-                <li key={device.id} className={style.device}>
-                  <div>
-                    <span className={style.deviceName}>{device.label}</span>
-                    {device.id === localId && <span className={style.thisDevice}>this device</span>}
-                    <span className={style.deviceMeta}>
-                      {device.lastSuccessAt === null
-                        ? 'Never received a notification'
-                        : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
-                    </span>
-                  </div>
-                  <Button
-                    type="link"
-                    danger
-                    ariaLabel={`Remove ${device.label}`}
-                    onClick={() => void handleRemove(device.id)}
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+          {devices.length > 0 && (
+            <>
+              <CardDivider>Devices</CardDivider>
+              <ul className={style.deviceList}>
+                {devices.map((device) => (
+                  <li key={device.id} className={style.device}>
+                    <div>
+                      <span className={style.deviceName}>{device.label}</span>
+                      {device.id === localId && (
+                        <span className={style.thisDevice}>this device</span>
+                      )}
+                      <span className={style.deviceMeta}>
+                        {device.lastSuccessAt === null
+                          ? 'Never received a notification'
+                          : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
+                      </span>
+                    </div>
+                    <Button
+                      type="link"
+                      danger
+                      ariaLabel={`Remove ${device.label}`}
+                      onClick={() => void handleRemove(device.id)}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       </Card>
     </>
   );
