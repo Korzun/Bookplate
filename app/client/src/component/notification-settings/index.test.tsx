@@ -1024,44 +1024,44 @@ describe('NotificationSettings', () => {
     expect(registerSpy).not.toHaveBeenCalled();
   });
 
-  it('removing this device also unsubscribes the browser, not just the server row', async () => {
+  it('offers no Remove on this device, whose row the switch already owns', async () => {
     stubSupportedBrowser();
-    // `Notification.permission` defaults to 'default' in `stubSupportedBrowser`,
-    // so the load-time resync effect returns early WITHOUT ever calling
-    // `navigator.serviceWorker.register` (`resyncSubscription` bails before
-    // `currentSubscription` when permission isn't 'granted') — this spy is
-    // untouched until the click below, so a call afterwards can only be
-    // `unsubscribeFromPush`'s own `registration()` call.
-    const registerSpy = vi.mocked(navigator.serviceWorker.register);
     localStorage.setItem(LOCAL_SUBSCRIPTION_ID, 'sub-1');
-    const removeMock = removeSubscriptionMock('sub-1');
 
-    const { client } = renderCard({
+    renderCard({
       preferences: [pushPref()],
       pushSubscriptions: [
-        pushSubscription({
-          id: 'sub-1',
-          label: 'Chrome on macOS',
-          createdAt: 1000,
-          lastSuccessAt: 2000,
-        }),
+        pushSubscription({ id: 'sub-1', label: 'Chrome on macOS' }),
+        pushSubscription({ id: 'sub-2', label: 'Safari on iOS' }),
       ],
-      mocks: [removeMock],
     });
-    const refetchSpy = vi.spyOn(client, 'refetchQueries').mockResolvedValue([]);
-    expect(registerSpy).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole('button', { name: /remove chrome on macos/i }));
+    // "Enable push on this device" already unsubscribes the browser, deletes
+    // the row and clears the stored id — the exact three things this row's
+    // Remove did — so two controls would be two ways to spell one action.
+    expect(screen.getByText('Chrome on macOS')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /remove chrome on macos/i })
+    ).not.toBeInTheDocument();
 
-    // Proves `unsubscribeFromPush` actually ran against the BROWSER, not
-    // just that the server-side mutation fired — without this a bug that
-    // removed the row but left the browser subscribed would silently pass
-    // (and the next load's re-sync would re-create the row).
-    await waitFor(() => expect(registerSpy).toHaveBeenCalled());
-    // The persisted id must also revert — otherwise the next load's re-sync
-    // would silently re-create the row this click just removed.
-    await waitFor(() => expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull());
-    expect(refetchSpy).toHaveBeenCalledWith({ include: [ViewerBootstrapDocument] });
+    // Every OTHER browser keeps it: there, Remove is the only way to revoke
+    // one you may no longer have.
+    expect(screen.getByRole('button', { name: /remove safari on ios/i })).toBeInTheDocument();
+  });
+
+  it('gives a device its Remove back when the stored id no longer matches', async () => {
+    stubSupportedBrowser();
+    // Storage cleared, or never written on this browser. The row can no longer
+    // be recognised as "this device", so it must regain its Remove — otherwise
+    // the entry would be unremovable from this screen.
+    localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+
+    renderCard({
+      preferences: [pushPref()],
+      pushSubscriptions: [pushSubscription({ id: 'sub-1', label: 'Chrome on macOS' })],
+    });
+
+    expect(screen.getByRole('button', { name: /remove chrome on macos/i })).toBeInTheDocument();
   });
 
   it('toasts when removing a device fails', async () => {

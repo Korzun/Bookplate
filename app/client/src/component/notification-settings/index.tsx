@@ -173,6 +173,13 @@ export const NotificationSettings = ({
    * Removing another device must not touch this browser's own subscription
    * at all, hence the `id === localId` guards on both ends.
    *
+   * Those guards' TRUE branch is currently unreachable from the UI: this
+   * device's row renders no Remove, precisely because the switch above
+   * already does these same three things to it. They are kept rather than
+   * deleted so that re-introducing that button cannot silently leave the
+   * browser subscribed to a row the server no longer has — but note they are
+   * therefore untested, since no click can drive them.
+   *
    * `client.refetchQueries` (not a cache eviction): removing an entity from
    * an Apollo list requires updating whatever field held the array — a
    * plain `cache.evict` orphans the object but leaves stale refs in
@@ -357,14 +364,24 @@ export const NotificationSettings = ({
                           : `Last notified ${new Date(device.lastSuccessAt).toLocaleDateString()}`}
                       </span>
                     </div>
-                    <Button
-                      type="link"
-                      danger
-                      ariaLabel={`Remove ${device.label}`}
-                      onClick={() => void handleRemove(device.id)}
-                    >
-                      Remove
-                    </Button>
+                    {/* No Remove on THIS device: the switch above already does
+                      exactly this to it — unsubscribe the browser, delete the
+                      row, clear the stored id — so two controls would be two
+                      ways to spell one action. Remove stays for every OTHER
+                      browser, where it is the only way to revoke one you may
+                      no longer have. If the stored id is lost this row stops
+                      matching and gets its Remove back, which is the right
+                      fallback: the entry would otherwise be unremovable. */}
+                    {device.id !== localId && (
+                      <Button
+                        type="link"
+                        danger
+                        ariaLabel={`Remove ${device.label}`}
+                        onClick={() => void handleRemove(device.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
