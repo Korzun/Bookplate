@@ -187,11 +187,35 @@ function renderRow(
   );
 }
 
+/**
+ * Opens a collapsed row.
+ *
+ * The address and the three actions moved INTO the card, which `Card` hides
+ * while collapsed, so nothing here can be seen or clicked until the row is
+ * open. That is the behaviour change these tests encode: an action — including
+ * the destructive one — can no longer be fired from a row nobody opened.
+ *
+ * The header's accessible name is now just the username. It used to
+ * concatenate every descendant's text, including "Delete user", which is why
+ * the delete helper below still anchors its match.
+ */
+const expandRow = async (
+  userEventInstance: ReturnType<typeof userEvent.setup>,
+  username = 'alice'
+) => {
+  // `findBy`, not `getBy`: some of these rows arrive from a list query, so the
+  // header does not exist on the first tick.
+  await userEventInstance.click(
+    await screen.findByRole('button', { name: new RegExp(`^${username}$`) })
+  );
+};
+
 // Anchored, not a bare substring match: the collapsible `Card` header is
 // ITSELF a `role="button"` whose accessible name concatenates all of its
 // descendants' text — including "Delete user" — so an unanchored
 // `/delete user/i` matches both that header AND the actual button.
 const clickConfirmDelete = async (userEventInstance: ReturnType<typeof userEvent.setup>) => {
+  await expandRow(userEventInstance);
   await userEventInstance.click(screen.getByRole('button', { name: /^delete user$/i }));
   const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
   await userEventInstance.click(deleteButtons[deleteButtons.length - 1]);
@@ -242,6 +266,7 @@ describe('UserRow', () => {
     const userEventInstance = userEvent.setup();
     renderWithApollo(<UserRow user={makeFragmentData(user(), UserRowFragment)} />);
 
+    await expandRow(userEventInstance);
     await userEventInstance.click(screen.getByRole('button', { name: /^delete user$/i }));
     expect(screen.getByText(/delete user permanently\?/i)).toBeInTheDocument();
   });
@@ -292,7 +317,8 @@ describe('UserRow', () => {
   // `queryByText` absence check is the other half of the same fix: it pins
   // that the OPPOSITE label is not ALSO on screen, not just that the right
   // one happens to be present somewhere.
-  it('shows a confirmed address', () => {
+  it('shows a confirmed address once the row is open', async () => {
+    const userEventInstance = userEvent.setup();
     renderWithApollo(
       <UserRow
         user={makeFragmentData(
@@ -302,12 +328,17 @@ describe('UserRow', () => {
       />
     );
 
+    // Not in the collapsed header any more — that crowding is what moved it.
+    expect(screen.queryByText('ann@example.com')).toBeNull();
+    await expandRow(userEventInstance);
+
     expect(screen.getByText('ann@example.com')).toBeInTheDocument();
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
     expect(screen.queryByText(/not confirmed/i)).toBeNull();
   });
 
-  it('marks an unconfirmed address as not confirmed', () => {
+  it('marks an unconfirmed address as not confirmed', async () => {
+    const userEventInstance = userEvent.setup();
     renderWithApollo(
       <UserRow
         user={makeFragmentData(
@@ -316,6 +347,7 @@ describe('UserRow', () => {
         )}
       />
     );
+    await expandRow(userEventInstance);
 
     expect(screen.getByText('Not confirmed')).toBeInTheDocument();
     expect(screen.queryByText('Confirmed')).toBeNull();
@@ -346,6 +378,9 @@ describe('UserRow', () => {
     const row = user({ id: 'u1', email: 'ann@example.com', emailVerifiedAt: null });
     renderRow(<UserListFromQuery />, { mocks: [userListMock(row), clearEmailSuccessMock('u1')] });
 
+    // The address lives in the card now, so the row has to be open before it
+    // can be asserted on at all.
+    await expandRow(userEventInstance);
     // Positive control: the address is genuinely rendered before the click.
     expect(await screen.findByText('ann@example.com')).toBeInTheDocument();
 
@@ -377,6 +412,7 @@ describe('UserRow', () => {
       { emailEnabled: false }
     );
 
+    await expandRow(userEventInstance);
     await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
 
     // Positive control: the base sentence (the part that is always true)
@@ -398,6 +434,8 @@ describe('UserRow', () => {
       mocks: [userListMock(row), clearEmailSuccessMock('u1')],
     });
 
+    // The row must be open before the address is anywhere on screen.
+    await expandRow(userEventInstance);
     expect(await screen.findByText('ann@example.com')).toBeInTheDocument();
 
     await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
@@ -447,6 +485,7 @@ describe('UserRow', () => {
       { mocks: [clearEmailNullMock('u1')] }
     );
 
+    await expandRow(userEventInstance);
     await userEventInstance.click(screen.getByRole('button', { name: /^clear address$/i }));
     await userEventInstance.click(screen.getByRole('button', { name: /^clear$/i }));
 

@@ -19,26 +19,20 @@ export const useStyle = createUseStyles((theme: Theme) => ({
   badge: {
     marginLeft: theme.space.sm,
   },
-  // The card's `title` now carries the username AND (when the user has one)
-  // their address, so it needs to be a flex row itself. `badgeConfirmed`/
-  // `badgeUnconfirmed` below match `component/email-setting`'s own classes
-  // of the same name exactly (`theme.color.success` / `theme.color.text
-  // .faint`, `fontSize.sm`). `addressPill`/`address` do not mirror that
-  // file's `pill`/`address` — this is `addressPill` not `pill`, and the text
-  // uses `theme.color.text.faint` at `fontSize.sm` rather than
-  // `text.primary` at `fontSize.md` — deliberately toned down, since in this
-  // list row the address is secondary to the username, not the main content
-  // it is on `email-setting`'s own card.
-  titleRow: {
+  // The address and its confirmation state, now a row INSIDE the card rather
+  // than a pill crammed into the title beside the username, where at phone
+  // width it collided with the actions. `badgeConfirmed`/`badgeUnconfirmed`
+  // match `component/email-setting`'s own classes of the same name exactly
+  // (`theme.color.success` / `theme.color.text.faint`, `fontSize.sm`). The
+  // address text stays toned down — `text.faint` at `fontSize.sm` rather than
+  // `text.primary` at `fontSize.md` — because here it is secondary to the
+  // username above it, not the main content it is on `email-setting`'s card.
+  addressRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.space.md,
     flexWrap: 'wrap',
-  },
-  addressPill: {
-    display: 'flex',
-    alignItems: 'center',
     gap: theme.space.sm,
+    marginBottom: theme.space.sm,
   },
   address: {
     color: theme.color.text.faint,
