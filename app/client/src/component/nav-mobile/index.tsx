@@ -19,6 +19,21 @@ export interface NavMobileProps {
    */
   leading?: NavItem | null;
   trailing?: NavItem | null;
+  /**
+   * Whether this is the mode currently in use.
+   *
+   * Named `activeMode`, not `active`: `NavItem.active` already means "this
+   * item is the current route", and the measuring effect below has its own
+   * `active` for the measured tab. Three different `active`s in one file is
+   * one too many.
+   *
+   * `Nav` mounts BOTH modes at once and flips this, rather than rendering one
+   * or the other: React would otherwise unmount one bar and mount the other,
+   * leaving nothing on screen to animate between. An inactive bar keeps its
+   * place in the DOM but is hidden from assistive tech, taken out of the tab
+   * order and made transparent to clicks.
+   */
+  activeMode?: boolean;
 }
 
 /** Horizontal geometry measured from the live DOM. */
@@ -55,7 +70,12 @@ const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
 // "liquid glass" capsule whose active tab is wrapped by a glass lens that slides
 // between (equal-width) tabs. A blue copy of the tab row, clipped to the lens, reveals
 // the active color only where the lens is. Hidden at and above the desktop breakpoint.
-export const NavMobile = ({ items, leading = null, trailing = null }: NavMobileProps) => {
+export const NavMobile = ({
+  items,
+  leading = null,
+  trailing = null,
+  activeMode = true,
+}: NavMobileProps) => {
   const styles = useStyle();
   const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,7 +150,18 @@ export const NavMobile = ({ items, leading = null, trailing = null }: NavMobileP
     : { opacity: 0 };
 
   return (
-    <nav className={styles.root}>
+    <nav
+      className={cx(styles.root, { [styles.inactiveMode]: !activeMode })}
+      // `aria-hidden` keeps the other mode's destinations out of the
+      // accessibility tree — without it a screen reader would read two full
+      // navigations — and `inert` keeps them out of the tab order, which
+      // `pointer-events: none` alone does not do.
+      // `undefined` rather than `false` when active: `aria-hidden="false"` is
+      // valid but says nothing, and leaves the attribute on every bar for a
+      // reader of the DOM to interpret.
+      aria-hidden={activeMode ? undefined : true}
+      inert={activeMode ? undefined : true}
+    >
       {leading !== null && <Accessory item={leading} styles={styles} size={box?.capsuleHeight} />}
       <div className={styles.capsule} ref={containerRef}>
         <div className={styles.glass} aria-hidden="true" />

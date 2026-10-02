@@ -66,6 +66,45 @@ describe('NavMobile', () => {
     expect(css).toContain('rgba(255, 255, 255, 0.92)');
   });
 
+  /**
+   * `Nav` mounts both modes and flips `active`, so the inactive one is a real
+   * bar sitting in the document. Everything that makes it harmless lives
+   * here: out of the accessibility tree, out of the tab order, and
+   * transparent to clicks so the visible bar beneath receives them.
+   */
+  it('hides an inactive mode from assistive tech and the tab order', () => {
+    const { container } = renderWithProviders(
+      <NavMobile items={items('Library')} activeMode={false} />
+    );
+    const nav = container.querySelector('nav');
+    expect(nav).toHaveAttribute('aria-hidden', 'true');
+    expect(nav).toHaveAttribute('inert');
+    // Its links are gone from the accessibility tree, not merely invisible.
+    expect(screen.queryByRole('link', { name: 'Library' })).not.toBeInTheDocument();
+  });
+
+  it('leaves an active mode fully present', () => {
+    const { container } = renderWithProviders(<NavMobile items={items('Library')} />);
+    const nav = container.querySelector('nav');
+    expect(nav).not.toHaveAttribute('aria-hidden');
+    expect(nav).not.toHaveAttribute('inert');
+    expect(screen.getByRole('link', { name: 'Library' })).toBeInTheDocument();
+  });
+
+  /**
+   * The cross-fade itself. Both modes occupy the same fixed box, so the swap
+   * is a transition on the bar's own opacity and transform — there is no
+   * layout change to animate, and a screenshot cannot catch a 200ms fade, so
+   * the stylesheet is the thing to assert.
+   */
+  it('transitions the bar between modes rather than swapping it instantly', () => {
+    renderWithProviders(<NavMobile items={items('Library')} activeMode={false} />);
+    const css = collectCss();
+    expect(css).toMatch(/transition:[^;}]*opacity/);
+    expect(css).toMatch(/transition:[^;}]*transform/);
+    expect(css).toMatch(/scale\(0\.96\)/);
+  });
+
   it('drops the slide under reduced motion (lens/reveal snap)', () => {
     renderWithProviders(<NavMobile items={items('Library')} />);
     expect(collectCss()).toContain('prefers-reduced-motion: reduce');

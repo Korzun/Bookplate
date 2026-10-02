@@ -252,6 +252,44 @@ describe('Nav', () => {
     expect(screen.getAllByRole('link', { name: 'Request' })).toHaveLength(1);
   });
 
+  /**
+   * Both modes are mounted so they can cross-fade, which means the one you
+   * are NOT in is still in the document. It has to be hidden from assistive
+   * tech, or a screen reader reads two complete navigations — and the role
+   * queries throughout this file would be counting a bar nobody can see.
+   */
+  it('keeps the mode you are not in out of the accessibility tree', () => {
+    const { container } = renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+
+    const hidden = container.querySelector('nav[aria-hidden="true"]');
+    expect(hidden).not.toBeNull();
+    // The settings destinations are in the DOM...
+    expect(hidden?.textContent).toContain('Users');
+    // ...but unreachable by role, which is how everything else here queries.
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
+  });
+
+  /**
+   * A reader cannot reach the settings mode at all, so it is not mounted for
+   * them — not merely hidden. Mounting it would put `/users` and `/devices`
+   * in a reader's document for no reason.
+   */
+  it('does not put the settings mode in a reader document at all', () => {
+    const { container } = renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(container.querySelector('a[href="/users"]')).toBeNull();
+    expect(container.querySelector('a[href="/devices"]')).toBeNull();
+    expect(container.querySelector('nav[aria-hidden="true"]')).toBeNull();
+  });
+
   // `/user` is a settings destination too, so an admin reaching it is in the
   // same mode as on `/users` — otherwise tapping the accessory would expand
   // the bar and land somewhere the expanded bar does not list.

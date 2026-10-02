@@ -249,10 +249,22 @@ export const Nav = () => {
   return (
     <>
       <NavDesktop items={desktopItems} />
-      {inSettings ? (
-        <NavMobile items={settingsItems} leading={collapsedMain} />
-      ) : (
-        <NavMobile items={sharedLeading} trailing={settingsAccessory} />
+      {/* BOTH modes, always mounted, with `active` deciding which one is
+          visible — not a ternary. Swapping one for the other unmounts a bar
+          and mounts a different one, which leaves nothing on screen to
+          animate between; mounted together they can cross-fade, and the
+          inactive one is hidden from assistive tech rather than merely
+          invisible. Settings is second so it stacks above, which costs
+          nothing: an inactive bar is transparent to clicks. */}
+      <NavMobile items={sharedLeading} trailing={settingsAccessory} activeMode={!inSettings} />
+      {/* ADMIN ONLY, and not merely hidden for a reader: a reader can never
+          reach this mode, so mounting it would put `/users` and `/devices`
+          links in their document for no reason — which a `queryByText` test
+          caught the moment both modes went up unconditionally. With it
+          absent, `inSettings` is permanently false for a reader and the bar
+          above is simply always the active one. */}
+      {isAdmin && (
+        <NavMobile items={settingsItems} leading={collapsedMain} activeMode={inSettings} />
       )}
     </>
   );

@@ -60,6 +60,16 @@ export const useStyle = createUseStyles((theme: Theme) => {
       justifyContent: 'space-between',
       paddingLeft: bottomInset,
       paddingRight: bottomInset,
+      // Both modes are mounted and fixed at the same coordinates, so they
+      // already occupy the same place with no stacking context to arrange —
+      // only one is ever visible. Transitioning here is what turns the swap
+      // into a cross-fade.
+      transition: `opacity ${theme.transition.medium}, transform ${theme.transition.medium}`,
+      '@media (prefers-reduced-motion: reduce)': {
+        // Matching `lensReady`/`revealReady` above: the fade stays (it is what
+        // makes the swap legible), the movement goes.
+        transition: `opacity ${theme.transition.fast}`,
+      },
       // A floor, not the spacing: `space-between` sets the real gap. This
       // only stops the two touching if the capsule ever grows wide enough to
       // close the distance itself.
@@ -73,6 +83,22 @@ export const useStyle = createUseStyles((theme: Theme) => {
         display: 'none',
       },
     },
+    /**
+     * The mode that is not current. Still mounted — that is the whole point,
+     * since an unmounted bar has nothing to animate from — but inert, out of
+     * the accessibility tree, and transparent to clicks so the visible bar
+     * beneath receives them.
+     *
+     * Scaled slightly down rather than slid away: the two bars occupy the same
+     * box, so any translation large enough to read would leave one of them
+     * visibly off-centre mid-flight.
+     */
+    inactiveMode: {
+      opacity: 0,
+      transform: 'scale(0.96)',
+      pointerEvents: 'none',
+    },
+
     // Plain positioning/layout container. It deliberately has NO backdrop-filter:
     // the frosted glass lives in a separate `glass` layer so the lens and links are
     // its siblings, not its descendants (see `glass` below).
