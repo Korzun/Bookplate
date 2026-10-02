@@ -1,7 +1,8 @@
 import * as pathInternal from './path-internal';
 
 export const add = () => pathInternal.add();
-export const addRequest = () => pathInternal.addRequest();
+export const request = () => pathInternal.request();
+export const legacyAddRequest = () => pathInternal.legacyAddRequest();
 export const book = (bookId: string) => pathInternal.book(encodeURIComponent(bookId));
 export const bookEdit = (bookId: string) => pathInternal.bookEdit(encodeURIComponent(bookId));
 export const devices = () => pathInternal.devices();

@@ -31,8 +31,13 @@ export const useStyle = createUseStyles((theme: Theme) => {
       width: '100vw',
       zIndex: theme.zIndex.sticky,
       display: 'flex',
+      // COLUMN so an optional second level can stack above the capsule. With
+      // one child this is identical to the row it replaced; the capsule still
+      // centres and still sits on the same bottom edge.
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: theme.space.sm,
       // One rule, both contexts (no iOS-unreliable display-mode query): a browser tab has
       // no bottom safe-area inset, so env() ≈ 0 and this resolves to the fixed floor
       // (room for the frosted shadow); in standalone the home-indicator inset dominates
@@ -50,6 +55,7 @@ export const useStyle = createUseStyles((theme: Theme) => {
       position: 'relative',
       marginBottom: 0,
     },
+
     // Frosted-glass background as its own layer behind everything. The backdrop-filter
     // MUST live here and NOT on an ancestor of the lens/links: Safari and Firefox trap
     // positioned descendants of a backdrop-filter element in a stacking sandbox where

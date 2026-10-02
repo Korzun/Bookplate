@@ -1,10 +1,18 @@
-/** The Request child's own segment. Exported so `router/component.tsx` declares
- *  the nested route with the same constant `addRequest()` builds from, and the
- *  two cannot drift apart. Not a route PARAMETER, so it does not belong in
- *  `path-key-internal.ts` — that file holds only `:id`-style keys. */
-export const ADD_REQUEST_SEGMENT = 'request';
 export const add = () => '/add';
-export const addRequest = () => `${add()}/${ADD_REQUEST_SEGMENT}`;
+/**
+ * Requesting a book is its own destination, a SIBLING of `/add` rather than a
+ * child of it. The two were one page with a toggle; they are now two nav
+ * items, and a URL that still said `/add/request` would describe the old
+ * shape.
+ */
+export const request = () => '/request';
+/**
+ * The URL `request()` replaced. Kept solely so `router/component.tsx` can
+ * redirect it — a reader who bookmarked the Request view, or an admin who
+ * sent someone the link, must not land on a 404 (here, the catch-all bounce
+ * to the library, which would look like the feature was removed).
+ */
+export const legacyAddRequest = () => `${add()}/request`;
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';

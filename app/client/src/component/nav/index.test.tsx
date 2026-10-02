@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -195,15 +195,129 @@ describe('Nav', () => {
     expect(screen.queryByText('Users')).toBeNull();
   });
 
-  it('shows the Users tab for admins in both layouts', () => {
+  /**
+   * The two layouts carry DIFFERENT admin destinations, which is why `Nav`
+   * builds two item lists. Desktop is a centred row with room for both; the
+   * mobile capsule is an equal-column grid where a sixth tab clips its
+   * neighbours outright, so the pair collapses to one Admin tab there.
+   *
+   * Each name therefore appears ONCE, not twice — the layout that does not
+   * own it does not render it at all.
+   */
+  it('gives an admin Users and Devices on desktop, but a single Admin tab on mobile', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
       mocks: [viewerBootstrapMock(true)],
     });
-    // One link in the desktop layout, one in the mobile layout (CSS hides the
-    // off-breakpoint one). Query links so the mobile blue-reveal copy isn't counted.
-    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: 'Devices' })).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: 'Admin' })).toHaveLength(1);
+  });
+
+  /**
+   * The sub-bar makes the mobile nav taller than `theme.layout.navHeightMobile`,
+   * the fixed 96px the toast stack docks above. `component/nav-mobile`
+   * publishes the difference so the toast can clear it; nothing on screen
+   * shows whether it did, so only this catches it going missing.
+   */
+  it('publishes the extra nav height while the sub-bar is up, and retracts it after', () => {
+    const property = '--nav-mobile-extra-height';
+    expect(document.documentElement.style.getPropertyValue(property)).toBe('');
+
+    const { unmount } = renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/users'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    // jsdom reports every `offsetHeight` as 0, so the measured part cannot be
+    // asserted here — but the GAP is a real value either way, and a publication
+    // that dropped it (or published a bare `0px`) would leave the toast resting
+    // directly on the sub-bar. That is the half this can actually pin.
+    const published = document.documentElement.style.getPropertyValue(property);
+    expect(published).toMatch(/^calc\(/);
+    expect(published).toContain('0.375rem');
+
+    unmount();
+    expect(document.documentElement.style.getPropertyValue(property)).toBe('');
+  });
+
+  it('publishes no extra nav height on a route with no sub-bar', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(document.documentElement.style.getPropertyValue('--nav-mobile-extra-height')).toBe('');
+  });
+
+  it('gives a reader no admin destination in either layout', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Devices' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
+  });
+
+  // Request is a top-level destination in BOTH layouts — the thing the Admin
+  // grouping above bought room for.
+  it('shows Request as its own tab in both layouts', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    const request = screen.getAllByRole('link', { name: 'Request' });
+    expect(request).toHaveLength(2);
+    expect(request.every((link) => link.getAttribute('href') === '/request')).toBe(true);
+  });
+
+  /**
+   * `/add` and `/request` are siblings now. The Add tab used to match with
+   * `startsWith` so it stayed lit on its `/add/request` child; left that way,
+   * both tabs would light at once.
+   */
+  it('lights Request alone on /request, leaving Add dark', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/request'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Request' })
+        .every((l) => l.getAttribute('aria-current') === 'page')
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Add' })
+        .some((l) => l.getAttribute('aria-current') === 'page')
+    ).toBe(false);
+  });
+
+  /**
+   * The Admin tab's second level. It is that tab's, not standing chrome, so
+   * it exists only while an admin is actually on one of the two routes it
+   * picks between.
+   */
+  it('shows the admin sub-bar on the admin routes only', () => {
+    const { unmount } = renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/users'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.getByRole('radiogroup', { name: 'Admin section' })).toBeInTheDocument();
+    unmount();
+
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.queryByRole('radiogroup', { name: 'Admin section' })).not.toBeInTheDocument();
   });
 
   it('marks the current route active in both layouts', () => {
@@ -357,6 +471,21 @@ describe('Nav', () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+
+    // WHICH tab carries it, not merely that two exist. The dot used to live on
+    // Add, when Add and Request were one destination; with two tabs, a dot on
+    // Add pointing at a reader's request sends an admin to the wrong one. A
+    // bare count passes either way, so it cannot detect that regression.
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Request' })
+        .every((link) => within(link).queryByTestId('nav-badge-dot') !== null)
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Add' })
+        .some((link) => within(link).queryByTestId('nav-badge-dot') !== null)
+    ).toBe(false);
   });
 
   it('shows no dot when the waiting reader is NOT the selected library', async () => {

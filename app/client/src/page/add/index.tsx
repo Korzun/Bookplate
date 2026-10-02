@@ -10,7 +10,6 @@ import { useLibraryTarget } from '~/provider/library-target';
 import { path } from '~/router';
 
 import { useStyle } from './style';
-import { AddToggle } from './toggle';
 
 export type AddOutletContext = {
   /** Set by a child view to publish its page header actions; pass `undefined`
@@ -19,7 +18,14 @@ export type AddOutletContext = {
 };
 
 /**
- * The `/add` layout: everything the Upload and Request views share.
+ * The shared layout behind `/add` and `/request`: everything the Upload and
+ * Request views have in common.
+ *
+ * PATHLESS, with the two views declared as absolute-path children. They used
+ * to be one route with a segmented toggle, and are now two separate nav
+ * destinations — but they still share the admin "Select a library" gate, this
+ * `<Page>` shell and the header-actions channel below, and a layout route is
+ * what keeps all three without either view having to know the other exists.
  *
  * `<Page>` lives HERE rather than in each view because the shared chrome has to
  * render inside `<main>` — `page/library` hands its `<SearchBar />` to the same
@@ -46,7 +52,7 @@ export type AddOutletContext = {
  * entirely by the switcher, so changing library without leaving the page is a
  * requirement, not a convenience.
  */
-export const AddPage = () => {
+export const AddLayout = () => {
   const styles = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
@@ -96,7 +102,7 @@ export const AddPage = () => {
     // shares the row with this page's actions — toggle left, "Actions" right —
     // instead of sitting under them, which also stops the two views from
     // starting at different heights.
-    <Page headerActions={headerActions} actionsLabel="Actions" header={<AddToggle />}>
+    <Page headerActions={headerActions} actionsLabel="Actions">
       <Outlet context={context} />
     </Page>
   );

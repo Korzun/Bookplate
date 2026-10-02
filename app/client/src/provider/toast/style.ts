@@ -16,7 +16,12 @@ export const useStyle = createUseStyles((theme: Theme) => ({
       left: theme.space.xxl,
       // Rest just above the floating bottom nav (plus the home-indicator inset).
       // Sit one layer below the nav so toasts slide up from behind it, not over it.
-      bottom: `calc(${theme.layout.navHeightMobile} + ${theme.space.md} + env(safe-area-inset-bottom))`,
+      // `--nav-mobile-extra-height` is whatever the nav is carrying ABOVE its
+      // capsule (today: the admin sub-bar), published by `component/nav-mobile`
+      // and `0px` on every route without one. `navHeightMobile` describes the
+      // capsule alone, so without this a toast would land on top of the
+      // sub-bar rather than above the nav.
+      bottom: `calc(${theme.layout.navHeightMobile} + var(--nav-mobile-extra-height, 0px) + ${theme.space.md} + env(safe-area-inset-bottom))`,
       zIndex: theme.zIndex.sticky - 1,
       alignItems: 'stretch',
     },

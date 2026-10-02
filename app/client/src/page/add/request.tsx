@@ -14,12 +14,12 @@ import type { AddOutletContext } from './index';
  * `skip={false}`: `BookRequestsContent` keeps `skip` as a required prop for the
  * reason its own doc comment gives (its tests gate the query directly rather
  * than depending on a parent's mount timing). The lazy-mount gate that the
- * deleted `/user` card provided is now the toggle itself — this view is not
- * mounted at all until the reader switches to it.
+ * deleted `/user` card provided is now the ROUTE — this view is not mounted at
+ * all until the reader navigates to `/request`.
  *
- * The `data-testid="add-request-view"` wrapper exists for the toggle's own
- * navigation test (`page/add/index.test.tsx`): it needs a mount marker that
- * does not depend on `BookRequestsContent`'s query settling.
+ * The `data-testid="add-request-view"` wrapper exists for the routing tests in
+ * `page/add/index.test.tsx`: they need a mount marker that does not depend on
+ * `BookRequestsContent`'s query settling.
  *
  * The admin branch mounts `UserRequestList` scoped to whichever library the
  * (persistent, page-level) switcher currently targets — `useWithTargetUser`
