@@ -1,5 +1,27 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
+/**
+ * Named for what the switch SITS IN rather than for a size, matching
+ * `ButtonRadius`: a caller knows its own surroundings, not which step of the
+ * radius scale suits a 16px-tall track.
+ *
+ * Deliberately two values, where `ButtonRadius` has four. A switch's track is
+ * 16px tall, so any radius of 8px or more clamps to a full pill — `card`
+ * (`radius.md`) and `pill` would be the same shape, named twice, and could
+ * never diverge while the track keeps that height.
+ */
+export type SwitchRadiusValue = 'inset' | 'pill';
+export enum SwitchRadius {
+  /**
+   * Concentric with the shaded input row the switch sits in: 16px card, 8px
+   * row, 4px track, 2px thumb. The default, because that row is where every
+   * switch in this app currently lives.
+   */
+  Inset = 'inset',
+  /** The classic capsule toggle, for a switch standing on an unshaded surface. */
+  Pill = 'pill',
+}
+
 export const useStyle = createUseStyles((theme: Theme) => ({
   root: {
     display: 'inline-flex',
@@ -29,14 +51,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     position: 'relative',
     width: '28px',
     height: '16px',
-    // CONCENTRIC with what this sits in, not a pill. A switch always appears
-    // inside the shaded input row (`horizontal` below, and the notification
-    // matrix's copy of it), which is itself inside a card: 16px card, 8px
-    // row, 4px track, each step roughly halving. `radius.md` — what this was
-    // — is 8px against a 16px-tall track, i.e. exactly half the height, so it
-    // clamped to a full pill and read as a different family of shape from
-    // every rounded rectangle around it.
-    borderRadius: theme.radius.sm,
     backgroundColor: theme.color.border.default,
     ...theme.recipe.focusRing,
     transitionProperty: 'background-color, outline-color',
@@ -53,18 +67,29 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     left: '2px',
     width: '12px',
     height: '12px',
-    // The concentric rule one level further in: the thumb is inset 2px from
-    // the track on every side, so its radius is the track's less that inset.
-    // Expressed as arithmetic rather than a token because that is what makes
-    // it follow the track automatically if the track's radius ever changes —
-    // and because there is no 2px step on the scale.
-    borderRadius: `calc(${theme.radius.sm} - 2px)`,
     backgroundColor: theme.color.bg.input,
     transitionProperty: 'left',
     transitionDuration: '0.1s',
     transitionTimingFunction: 'ease-in',
     '$checked &': { left: '14px' },
   },
+  /**
+   * Each value sets the track AND its thumb together, because the two are not
+   * independent: the thumb is inset 2px on every side, so a concentric thumb
+   * is always the track's radius less that inset. Splitting them into two
+   * props would let a caller produce a square thumb in a capsule track.
+   */
+  [SwitchRadius.Inset]: {
+    borderRadius: theme.radius.sm,
+    // Arithmetic rather than a token so it follows the track automatically if
+    // that radius ever changes — and because the scale has no 2px step.
+    '& $thumb': { borderRadius: `calc(${theme.radius.sm} - 2px)` },
+  },
+  [SwitchRadius.Pill]: {
+    borderRadius: theme.radius.pill,
+    '& $thumb': { borderRadius: theme.radius.circle },
+  },
+
   label: {
     ...theme.recipe.label,
   },

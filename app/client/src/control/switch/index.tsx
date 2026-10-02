@@ -1,7 +1,7 @@
 import cx from 'classnames';
 import { ReactNode, useCallback, useId } from 'react';
 
-import { useStyle } from './style';
+import { SwitchRadius, SwitchRadiusValue, useStyle } from './style';
 
 type SwitchProps = {
   /**
@@ -18,6 +18,13 @@ type SwitchProps = {
   layout?: 'default' | 'horizontal';
   name: string;
   onChange: (checked: boolean) => void;
+  /**
+   * The corner shape of the track, named for what the switch sits in. Defaults
+   * to `inset` — concentric with the shaded input row every switch in this app
+   * currently sits in. Pass `pill` for the classic capsule on an unshaded
+   * surface.
+   */
+  radius?: SwitchRadiusValue;
 };
 
 export const Switch = ({
@@ -29,6 +36,7 @@ export const Switch = ({
   layout = 'default',
   name,
   onChange,
+  radius = SwitchRadius.Inset as SwitchRadiusValue,
 }: SwitchProps) => {
   const style = useStyle();
   // Per-instance id so the description's aria target stays unique even when two
@@ -61,8 +69,16 @@ export const Switch = ({
     event.stopPropagation();
   }, []);
 
+  // The radius class lands on the track rather than the root because it styles
+  // the track and its thumb, and the track is the one element both layouts
+  // below render identically.
   const track = (
-    <div className={cx(style.track, { [style.checked]: checked, [style.disabled]: disabled })}>
+    <div
+      className={cx(style.track, style[radius], {
+        [style.checked]: checked,
+        [style.disabled]: disabled,
+      })}
+    >
       <div className={style.thumb} />
     </div>
   );
