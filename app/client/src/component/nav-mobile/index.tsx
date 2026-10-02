@@ -7,33 +7,28 @@ import { useTheme } from '~/provider/theme';
 import type { NavItem } from '../nav/types';
 import { useStyle } from './style';
 
-export interface NavMobileProps {
+/**
+ * One side of the bar, in both of the shapes it can take.
+ *
+ * Both shapes are always rendered, which is what makes the swap a MORPH rather
+ * than a cross-fade: the pill around them is a single element whose width
+ * animates between the two, so the capsule is seen to shrink into the circle
+ * instead of one bar fading out while a different one fades in.
+ */
+export interface NavPill {
+  /** Destinations shown while this side is expanded. */
   items: NavItem[];
-  /**
-   * SPIKE. Single-destination buttons flanking the capsule.
-   *
-   * `trailing` is the settings button in the default mode. `leading` is the
-   * collapsed "back to the main tabs" button that replaces the whole primary
-   * group once you are inside settings — which is what keeps the capsule
-   * itself down to three or four targets however many destinations exist.
-   */
-  leading?: NavItem | null;
-  trailing?: NavItem | null;
-  /**
-   * Whether this is the mode currently in use.
-   *
-   * Named `activeMode`, not `active`: `NavItem.active` already means "this
-   * item is the current route", and the measuring effect below has its own
-   * `active` for the measured tab. Three different `active`s in one file is
-   * one too many.
-   *
-   * `Nav` mounts BOTH modes at once and flips this, rather than rendering one
-   * or the other: React would otherwise unmount one bar and mount the other,
-   * leaving nothing on screen to animate between. An inactive bar keeps its
-   * place in the DOM but is hidden from assistive tech, taken out of the tab
-   * order and made transparent to clicks.
-   */
-  activeMode?: boolean;
+  /** The single destination it collapses to. */
+  collapsed: NavItem;
+}
+
+export interface NavMobileProps {
+  /** The left-hand side: the app's main destinations. */
+  main: NavPill;
+  /** The right-hand side: settings. */
+  settings: NavPill;
+  /** Which side is expanded; the other is a circle. */
+  expanded: 'main' | 'settings';
 }
 
 /** Horizontal geometry measured from the live DOM. */
@@ -45,17 +40,14 @@ interface LensBox {
   /** Full capsule width — pins the blue reveal grid so its columns match the real row. */
   capsuleWidth: number;
   /**
-   * Full capsule height, which is what the accessory buttons are sized to so
-   * they are exactly as tall as the bar and perfectly round.
+   * The PILL's height, not the capsule's, and the diameter it collapses to.
    *
-   * Measured rather than derived: the capsule's height comes from its own
-   * content — icon, label, row gap and two levels of padding — and the label's
-   * line box is font-dependent, so there is no token arithmetic that reliably
-   * reproduces it. `aspect-ratio` cannot do it either: on a flex item whose
-   * cross size only becomes definite during layout, the content width wins and
-   * the button renders as a tall oval.
+   * Measured from the pill because the row stretches both pills to a common
+   * height: a side whose own content is shorter — a reader's settings side has
+   * no expanded destinations at all — would otherwise collapse to a circle
+   * smaller than the bar beside it.
    */
-  capsuleHeight: number;
+  pillHeight: number;
 }
 
 const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
@@ -64,49 +56,75 @@ const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
   a.left === b.left &&
   a.width === b.width &&
   a.capsuleWidth === b.capsuleWidth &&
-  a.capsuleHeight === b.capsuleHeight;
+  a.pillHeight === b.pillHeight;
 
-// Narrow navigation pinned to the bottom of the viewport (mobile only): a frosted
-// "liquid glass" capsule whose active tab is wrapped by a glass lens that slides
-// between (equal-width) tabs. A blue copy of the tab row, clipped to the lens, reveals
-// the active color only where the lens is. Hidden at and above the desktop breakpoint.
-export const NavMobile = ({
-  items,
-  leading = null,
-  trailing = null,
-  activeMode = true,
-}: NavMobileProps) => {
+// Narrow navigation pinned to the bottom of the viewport (mobile only): two frosted
+// "liquid glass" pills, one expanded and one collapsed to a circle. The expanded one's
+// active tab is wrapped by a glass lens that slides between (equal-width) tabs. A blue
+// copy of the tab row, clipped to the lens, reveals the active color only where the lens
+// is. Hidden at and above the desktop breakpoint.
+export const NavMobile = ({ main, settings, expanded }: NavMobileProps) => {
   const styles = useStyle();
+
+  return (
+    <nav className={styles.root}>
+      <Pill pill={main} expanded={expanded === 'main'} styles={styles} />
+      <Pill pill={settings} expanded={expanded === 'settings'} styles={styles} />
+    </nav>
+  );
+};
+
+const Pill = ({
+  pill,
+  expanded,
+  styles,
+}: {
+  pill: NavPill;
+  expanded: boolean;
+  styles: ReturnType<typeof useStyle>;
+}) => {
   const theme = useTheme();
+  const pillRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<LensBox | null>(null);
   const [shown, setShown] = useState(false);
   const [ready, setReady] = useState(false);
 
+  const { items, collapsed } = pill;
   const activeTo = items.find((item) => item.active)?.to;
+  const CollapsedIcon = collapsed.Icon;
 
-  // Measure the active tab's horizontal box (its vertical extent is fixed in CSS)
-  // so the lens can wrap and morph to it. Runs after paint so the morph transition
-  // starts from the on-screen position. Keeps the last box when the route maps to no
-  // tab, so the lens fades out / back in place. Re-measures on active-tab/tab-set
-  // change and on container resize.
+  // Measure the active tab's horizontal box (its vertical extent is fixed in CSS) so
+  // the lens can wrap and morph to it, plus the two sizes this pill animates between.
+  // Runs after paint so the morph transition starts from the on-screen position. Keeps
+  // the last lens box when the route maps to no tab, so the lens fades out / back in
+  // place. Re-measures on active-tab/tab-set change, on expand/collapse, and on resize.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const pillElement = pillRef.current;
+    if (!container || !pillElement) return;
 
     const measure = () => {
+      const pillBox = pillElement.getBoundingClientRect();
+      const containerBox = container.getBoundingClientRect();
       const active = container.querySelector<HTMLElement>('[aria-current="page"]');
       if (!active) {
+        // Still record the SIZES. A collapsed pill has no active tab inside it,
+        // and an early return here would leave it with no width to animate to.
+        setBox((prev) =>
+          prev === null
+            ? { left: 0, width: 0, capsuleWidth: containerBox.width, pillHeight: pillBox.height }
+            : { ...prev, capsuleWidth: containerBox.width, pillHeight: pillBox.height }
+        );
         setShown(false);
         return;
       }
-      const containerBox = container.getBoundingClientRect();
       const activeBox = active.getBoundingClientRect();
       const next: LensBox = {
         left: activeBox.left - containerBox.left - container.clientLeft,
         width: activeBox.width,
         capsuleWidth: containerBox.width,
-        capsuleHeight: containerBox.height,
+        pillHeight: pillBox.height,
       };
       setBox((prev) => (sameBox(prev, next) ? prev : next));
       setShown(true);
@@ -117,11 +135,14 @@ export const NavMobile = ({
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
     observer.observe(container);
+    observer.observe(pillElement);
     return () => observer.disconnect();
-  }, [activeTo, items.length]);
+  }, [activeTo, items.length, expanded]);
 
-  // Enable the morph transition one frame after the first placement, so it is never
-  // turned on in the same frame the lens position changes.
+  // Enable the morph transitions one frame after the first placement, so they are never
+  // turned on in the same frame a position or width is first set. Without this a pill
+  // would animate its whole width on mount — from the natural capsule width down to a
+  // circle — as if the bar were collapsing on arrival.
   useEffect(() => {
     let raf = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -149,22 +170,28 @@ export const NavMobile = ({
     ? { opacity: shown ? 1 : 0, clipPath: clip, WebkitClipPath: clip }
     : { opacity: 0 };
 
+  // The morph itself: one number, animated. Expanded, the pill is as wide as its capsule
+  // naturally is; collapsed, as wide as it is tall, which at `radius.pill` is a circle.
+  // Left to CSS until the first measurement, so a pill never renders at a guessed width.
+  const pillStyle: CSSProperties | undefined =
+    box === null ? undefined : { width: expanded ? box.capsuleWidth : box.pillHeight };
+
   return (
-    <nav
-      className={cx(styles.root, { [styles.inactiveMode]: !activeMode })}
-      // `aria-hidden` keeps the other mode's destinations out of the
-      // accessibility tree — without it a screen reader would read two full
-      // navigations — and `inert` keeps them out of the tab order, which
-      // `pointer-events: none` alone does not do.
-      // `undefined` rather than `false` when active: `aria-hidden="false"` is
-      // valid but says nothing, and leaves the attribute on every bar for a
-      // reader of the DOM to interpret.
-      aria-hidden={activeMode ? undefined : true}
-      inert={activeMode ? undefined : true}
+    <div
+      ref={pillRef}
+      className={cx(styles.pill, { [styles.pillReady]: ready, [styles.pillCollapsed]: !expanded })}
+      style={pillStyle}
     >
-      {leading !== null && <Accessory item={leading} styles={styles} size={box?.capsuleHeight} />}
-      <div className={styles.capsule} ref={containerRef}>
-        <div className={styles.glass} aria-hidden="true" />
+      <div className={styles.glass} aria-hidden="true" />
+      <div
+        ref={containerRef}
+        className={cx(styles.capsule, { [styles.capsuleHidden]: !expanded })}
+        // A collapsed pill's destinations are behind a clip, not merely faded:
+        // without these they stay in the accessibility tree and the tab order, and a
+        // screen reader reads a navigation nobody can see.
+        aria-hidden={expanded ? undefined : true}
+        inert={expanded ? undefined : true}
+      >
         <span
           className={cx(styles.lens, { [styles.lensReady]: ready })}
           style={lensStyle}
@@ -207,33 +234,22 @@ export const NavMobile = ({
           ))}
         </div>
       </div>
-      {trailing !== null && <Accessory item={trailing} styles={styles} size={box?.capsuleHeight} />}
-    </nav>
+      <Link
+        className={cx(styles.collapsedLink, {
+          [styles.collapsedHidden]: expanded,
+          [styles.collapsedActive]: collapsed.active,
+        })}
+        // The mirror of the capsule's pair above: whichever shape is not showing
+        // is out of the accessibility tree and the tab order, so the bar offers
+        // exactly what is on screen and nothing else.
+        aria-hidden={expanded ? true : undefined}
+        inert={expanded ? true : undefined}
+        aria-current={collapsed.active ? 'page' : undefined}
+        aria-label={collapsed.label}
+        to={collapsed.to}
+      >
+        <CollapsedIcon height={18} width={18} />
+      </Link>
+    </div>
   );
 };
-
-/** SPIKE. One destination as a standalone round button beside the capsule. */
-const Accessory = ({
-  item,
-  styles,
-  size,
-}: {
-  item: NavItem;
-  styles: ReturnType<typeof useStyle>;
-  /** The capsule's measured height; undefined until the first measurement. */
-  size: number | undefined;
-}) => (
-  <Link
-    className={cx(styles.accessory, { [styles.accessoryActive]: item.active })}
-    // Square at exactly the capsule's height, so `radius.pill` renders a true
-    // circle. Until the first measurement lands, the stylesheet's
-    // `alignSelf: stretch` already has the HEIGHT right — so the only thing a
-    // first frame can get wrong is the width, never a button that looks broken.
-    style={size === undefined ? undefined : { width: size, height: size }}
-    aria-current={item.active ? 'page' : undefined}
-    aria-label={item.label}
-    to={item.to}
-  >
-    <item.Icon height={18} width={18} />
-  </Link>
-);

@@ -51,25 +51,17 @@ export const useStyle = createUseStyles((theme: Theme) => {
       // this app, so it is declared here.
       boxSizing: 'border-box',
       display: 'flex',
-      // SPIKE: a row again. The accessory buttons sit BESIDE the capsule
-      // rather than above it, so the nav keeps its single-line height.
-      alignItems: 'center',
+      // STRETCH, so both pills share one height however much each contains.
+      // A collapsed pill's circle is its own measured height, and a side with
+      // nothing to expand into (a reader's settings side) would otherwise be
+      // shorter than the bar beside it.
+      alignItems: 'stretch',
       // Pushed to opposite edges: the capsule takes one side and its
       // accessory the other, each inset by the same distance the bar floats
       // above the bottom.
       justifyContent: 'space-between',
       paddingLeft: bottomInset,
       paddingRight: bottomInset,
-      // Both modes are mounted and fixed at the same coordinates, so they
-      // already occupy the same place with no stacking context to arrange —
-      // only one is ever visible. Transitioning here is what turns the swap
-      // into a cross-fade.
-      transition: `opacity ${theme.transition.medium}, transform ${theme.transition.medium}`,
-      '@media (prefers-reduced-motion: reduce)': {
-        // Matching `lensReady`/`revealReady` above: the fade stays (it is what
-        // makes the swap legible), the movement goes.
-        transition: `opacity ${theme.transition.fast}`,
-      },
       // A floor, not the spacing: `space-between` sets the real gap. This
       // only stops the two touching if the capsule ever grows wide enough to
       // close the distance itself.
@@ -84,19 +76,84 @@ export const useStyle = createUseStyles((theme: Theme) => {
       },
     },
     /**
-     * The mode that is not current. Still mounted — that is the whole point,
-     * since an unmounted bar has nothing to animate from — but inert, out of
-     * the accessibility tree, and transparent to clicks so the visible bar
-     * beneath receives them.
+     * One side of the bar, and the thing that actually morphs.
      *
-     * Scaled slightly down rather than slid away: the two bars occupy the same
-     * box, so any translation large enough to read would leave one of them
-     * visibly off-centre mid-flight.
+     * It holds BOTH shapes — the capsule of destinations and the single
+     * collapsed link — and animates its own width between them, clipping
+     * whichever is too wide to fit. That is the difference between a morph and
+     * a cross-fade: there is one element throughout, so the capsule is seen to
+     * shrink into the circle rather than being swapped for it.
+     *
+     * The frosted glass lives HERE rather than on the capsule now, so the
+     * visible surface is the pill itself and follows the width. It remains a
+     * SIBLING of the lens, never an ancestor — Safari and Firefox trap
+     * positioned descendants of a `backdrop-filter` element in a stacking
+     * sandbox where they stop repainting, which is the same reason the glass
+     * was a separate layer before.
      */
-    inactiveMode: {
+    pill: {
+      position: 'relative',
+      flexShrink: 0,
+      boxSizing: 'border-box',
+      borderRadius: theme.radius.pill,
+      // Clips the shape that is currently too wide for the pill. Without it a
+      // collapsed pill would show a slice of its capsule rather than a circle.
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    /**
+     * Added one frame after the first measurement. The width is set from the
+     * DOM, so on the very first render it changes from `auto` to a number —
+     * and with the transition already on, every pill would animate itself down
+     * to a circle on arrival, as if the bar collapsed as the page loaded.
+     */
+    pillReady: {
+      transition: `width ${theme.transition.spring}`,
+      '@media (prefers-reduced-motion: reduce)': {
+        // The capsule and circle still swap, they just stop sliding between
+        // the two widths — matching `lensReady`/`revealReady` below.
+        transition: 'none',
+      },
+    },
+    /** Only a hook for tests and future styling; the width does the work. */
+    pillCollapsed: {},
+
+    /** The collapsed shape: one icon, centred, filling the circle. */
+    collapsedLink: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      zIndex: 2,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: theme.color.text.primary,
+      textDecoration: 'none',
+      cursor: 'pointer',
+      userSelect: 'none',
+      '-webkit-user-select': 'none',
+      transition: `opacity ${theme.transition.fast}`,
+    },
+    collapsedActive: {
+      color: theme.color.brand.default,
+    },
+    /**
+     * Faded rather than unmounted: the two shapes swap while the pill is still
+     * mid-width, so both have to be drawable at once. `pointerEvents` matters
+     * independently of opacity — a transparent link still takes the tap.
+     */
+    collapsedHidden: {
       opacity: 0,
-      transform: 'scale(0.96)',
       pointerEvents: 'none',
+    },
+    capsuleHidden: {
+      opacity: 0,
+      pointerEvents: 'none',
+      transition: `opacity ${theme.transition.fast}`,
     },
 
     // Plain positioning/layout container. It deliberately has NO backdrop-filter:
@@ -106,6 +163,12 @@ export const useStyle = createUseStyles((theme: Theme) => {
       ...grid,
       position: 'relative',
       marginBottom: 0,
+      // Its NATURAL width, whatever the pill around it is currently set to.
+      // Without this the grid would shrink to fit a collapsing pill, the
+      // measured `capsuleWidth` would shrink with it, and the pill would chase
+      // a width that keeps moving.
+      width: 'max-content',
+      transition: `opacity ${theme.transition.fast}`,
     },
 
     // Frosted-glass background as its own layer behind everything. The backdrop-filter
@@ -124,45 +187,6 @@ export const useStyle = createUseStyles((theme: Theme) => {
       borderRadius: theme.radius.pill,
       pointerEvents: 'none',
     },
-    /**
-     * SPIKE. A one-item capsule beside the main one: the settings button in
-     * the default mode, and the collapsed "back to the main tabs" button in
-     * settings mode.
-     *
-     * Its own glass surface, matching the capsule's, so the two read as
-     * siblings of one system rather than a bar with something stuck to it.
-     * Square padding keeps it circular-ish at `radius.pill`.
-     */
-    accessory: {
-      ...theme.recipe.glass,
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      boxSizing: 'border-box',
-      borderRadius: theme.radius.pill,
-      // Matches the capsule's height by STRETCHING to it rather than by
-      // padding the icon to a number that happens to agree today: the capsule
-      // is sized by its own content (icon + label + paddings), so any change
-      // to a tab's type or spacing would silently desync a hand-tuned value.
-      // `root` centres its children, so this opts out for itself alone.
-      alignSelf: 'stretch',
-      // Width comes from the capsule's MEASURED height (set inline), which is
-      // what makes this a circle rather than the tall oval `aspect-ratio`
-      // produces on a flex item — see `LensBox.capsuleHeight`.
-      padding: 0,
-      color: theme.color.text.primary,
-      textDecoration: 'none',
-      cursor: 'pointer',
-      userSelect: 'none',
-      '-webkit-user-select': 'none',
-    },
-    /** The accessory for the section you are currently in. */
-    accessoryActive: {
-      color: theme.color.brand.default,
-    },
-
     // The active-tab lens. Vertical extent is fixed here (top/bottom insets ⇒ always
     // concentric with the capsule); horizontal position + width come from inline style
     // (measured from the active tab). The base rule only transitions opacity, so the

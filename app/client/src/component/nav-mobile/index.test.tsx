@@ -34,79 +34,96 @@ const collectCss = (): string => {
   return css;
 };
 
+/**
+ * The bar always has two sides, so every render needs both. These stand in for
+ * the real ones: `main` is the side under test, `settings` is a side with
+ * nothing to expand into — exactly the shape a reader's settings side has.
+ */
+const HOME: NavItem = { to: '/library', label: 'Back to library', Icon: BookIcon, active: false };
+// Deliberately NOT 'Settings': `items` already has a tab by that name, and two
+// links sharing an accessible name make every role query here ambiguous.
+const GEAR: NavItem = { to: '/user', label: 'Open settings', Icon: SettingsIcon, active: false };
+
+const renderBar = (mainItems: NavItem[], { expanded = 'main' as 'main' | 'settings' } = {}) =>
+  renderWithProviders(
+    <NavMobile
+      main={{ items: mainItems, collapsed: HOME }}
+      settings={{ items: [], collapsed: GEAR }}
+      expanded={expanded}
+    />
+  );
+
 describe('NavMobile', () => {
   it('renders a link for every item', () => {
-    renderWithProviders(<NavMobile items={items('Library')} />);
+    renderBar(items('Library'));
     expect(linkFor('Library')).toHaveAttribute('href', '/library');
     expect(linkFor('Add')).toHaveAttribute('href', '/add');
     expect(linkFor('Settings')).toHaveAttribute('href', '/user');
   });
 
   it('marks only the active item with aria-current', () => {
-    renderWithProviders(<NavMobile items={items('Add')} />);
+    renderBar(items('Add'));
     expect(linkFor('Add')).toHaveAttribute('aria-current', 'page');
     expect(linkFor('Library')).not.toHaveAttribute('aria-current');
     expect(linkFor('Settings')).not.toHaveAttribute('aria-current');
   });
 
   it('renders the decorative lens element', () => {
-    const { container } = renderWithProviders(<NavMobile items={items('Library')} />);
+    const { container } = renderBar(items('Library'));
     expect(container.querySelector('span[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('marks no item active when none matches the route', () => {
-    renderWithProviders(<NavMobile items={items(null)} />);
+    renderBar(items(null));
     expect(screen.queryByRole('link', { current: 'page' })).toBeNull();
   });
 
   it('emits an opaque capsule fallback where backdrop-filter is unsupported', () => {
-    renderWithProviders(<NavMobile items={items('Library')} />);
+    renderBar(items('Library'));
     const css = collectCss();
     expect(css).toMatch(/@supports not.*backdrop-filter/);
     expect(css).toContain('rgba(255, 255, 255, 0.92)');
   });
 
   /**
-   * `Nav` mounts both modes and flips `active`, so the inactive one is a real
-   * bar sitting in the document. Everything that makes it harmless lives
-   * here: out of the accessibility tree, out of the tab order, and
-   * transparent to clicks so the visible bar beneath receives them.
+   * A collapsed side still holds its full capsule — that is what the pill
+   * morphs back out to — so the destinations are in the document behind a
+   * clip. Everything that keeps them from being reachable lives on the
+   * capsule: out of the accessibility tree, out of the tab order.
    */
-  it('hides an inactive mode from assistive tech and the tab order', () => {
-    const { container } = renderWithProviders(
-      <NavMobile items={items('Library')} activeMode={false} />
-    );
-    const nav = container.querySelector('nav');
-    expect(nav).toHaveAttribute('aria-hidden', 'true');
-    expect(nav).toHaveAttribute('inert');
-    // Its links are gone from the accessibility tree, not merely invisible.
+  it('hides a collapsed side destinations from assistive tech and the tab order', () => {
+    renderBar(items('Library'), { expanded: 'settings' });
     expect(screen.queryByRole('link', { name: 'Library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add' })).not.toBeInTheDocument();
+    // That side offers its collapsed link in their place.
+    expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
   });
 
-  it('leaves an active mode fully present', () => {
-    const { container } = renderWithProviders(<NavMobile items={items('Library')} />);
-    const nav = container.querySelector('nav');
-    expect(nav).not.toHaveAttribute('aria-hidden');
-    expect(nav).not.toHaveAttribute('inert');
+  it('offers the expanded side destinations and not its collapsed link', () => {
+    renderBar(items('Library'));
     expect(screen.getByRole('link', { name: 'Library' })).toBeInTheDocument();
+    // `Back to library` is this side's COLLAPSED shape, which is not showing.
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
   });
 
   /**
-   * The cross-fade itself. Both modes occupy the same fixed box, so the swap
-   * is a transition on the bar's own opacity and transform — there is no
-   * layout change to animate, and a screenshot cannot catch a 200ms fade, so
-   * the stylesheet is the thing to assert.
+   * The morph. One element changes width between the capsule's natural width
+   * and its own height (a circle at `radius.pill`), so the capsule is seen to
+   * shrink into the circle rather than being swapped for it.
+   *
+   * The stylesheet is the thing to assert: the widths come from measurements
+   * jsdom reports as 0, and a screenshot cannot catch a 350ms animation.
    */
-  it('transitions the bar between modes rather than swapping it instantly', () => {
-    renderWithProviders(<NavMobile items={items('Library')} activeMode={false} />);
+  it('animates the pill width rather than swapping the two shapes', () => {
+    renderBar(items('Library'));
     const css = collectCss();
-    expect(css).toMatch(/transition:[^;}]*opacity/);
-    expect(css).toMatch(/transition:[^;}]*transform/);
-    expect(css).toMatch(/scale\(0\.96\)/);
+    expect(css).toMatch(/transition:\s*width/);
+    // Clipping is what makes the too-wide shape disappear into the circle.
+    expect(css).toMatch(/overflow:\s*hidden/);
   });
 
   it('drops the slide under reduced motion (lens/reveal snap)', () => {
-    renderWithProviders(<NavMobile items={items('Library')} />);
+    renderBar(items('Library'));
     expect(collectCss()).toContain('prefers-reduced-motion: reduce');
   });
 });
@@ -123,7 +140,7 @@ const badgeItems = (badge: NavItem['badge']): NavItem[] => [
  */
 describe('NavMobile badge placement', () => {
   it('renders the count as a readable number, not a dot-sized box', () => {
-    renderWithProviders(<NavMobile items={badgeItems(4)} />);
+    renderBar(badgeItems(4));
 
     // Mobile used to render the count through the DOT's style — an 8x8 box with
     // no padding — so a number was squeezed into it. The count now gets the
@@ -134,7 +151,7 @@ describe('NavMobile badge placement', () => {
   });
 
   it('puts the count in a wrapper holding the icon and nothing else', () => {
-    renderWithProviders(<NavMobile items={badgeItems(4)} />);
+    renderBar(badgeItems(4));
 
     const wrapper = screen.getByText('4').parentElement;
     expect(wrapper?.querySelector('svg')).toBeTruthy();
@@ -142,7 +159,7 @@ describe('NavMobile badge placement', () => {
   });
 
   it('puts the dot in a wrapper holding the icon and nothing else', () => {
-    renderWithProviders(<NavMobile items={badgeItems('dot')} />);
+    renderBar(badgeItems('dot'));
 
     const wrapper = screen.getByTestId('nav-badge-dot').parentElement;
     expect(wrapper?.querySelector('svg')).toBeTruthy();

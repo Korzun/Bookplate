@@ -249,23 +249,19 @@ export const Nav = () => {
   return (
     <>
       <NavDesktop items={desktopItems} />
-      {/* BOTH modes, always mounted, with `active` deciding which one is
-          visible — not a ternary. Swapping one for the other unmounts a bar
-          and mounts a different one, which leaves nothing on screen to
-          animate between; mounted together they can cross-fade, and the
-          inactive one is hidden from assistive tech rather than merely
-          invisible. Settings is second so it stacks above, which costs
-          nothing: an inactive bar is transparent to clicks. */}
-      <NavMobile items={sharedLeading} trailing={settingsAccessory} activeMode={!inSettings} />
-      {/* ADMIN ONLY, and not merely hidden for a reader: a reader can never
-          reach this mode, so mounting it would put `/users` and `/devices`
-          links in their document for no reason — which a `queryByText` test
-          caught the moment both modes went up unconditionally. With it
-          absent, `inSettings` is permanently false for a reader and the bar
-          above is simply always the active one. */}
-      {isAdmin && (
-        <NavMobile items={settingsItems} leading={collapsedMain} activeMode={inSettings} />
-      )}
+      {/* ONE bar with two sides, each able to be the expanded one. The sides
+          are single elements that change width, which is what lets the capsule
+          morph into the circle rather than cross-fade with it.
+
+          A reader gets no expandable settings side — `items: []` — so their
+          settings pill is permanently a circle and `/users` and `/devices`
+          never enter their document. `expanded` is correspondingly always
+          `main` for them, since `inSettings` is admin-gated above. */}
+      <NavMobile
+        main={{ items: sharedLeading, collapsed: collapsedMain }}
+        settings={{ items: isAdmin ? settingsItems : [], collapsed: settingsAccessory }}
+        expanded={inSettings ? 'settings' : 'main'}
+      />
     </>
   );
 };

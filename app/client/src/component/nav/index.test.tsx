@@ -253,25 +253,25 @@ describe('Nav', () => {
   });
 
   /**
-   * Both modes are mounted so they can cross-fade, which means the one you
-   * are NOT in is still in the document. It has to be hidden from assistive
-   * tech, or a screen reader reads two complete navigations — and the role
-   * queries throughout this file would be counting a bar nobody can see.
+   * Both sides of the bar hold their full contents at all times — that is what
+   * the pill morphs between — so the collapsed side's destinations sit in the
+   * document behind a clip. They have to stay out of the accessibility tree,
+   * or a screen reader reads a navigation nobody can see, and every role query
+   * in this file would be counting destinations that are not on screen.
    */
-  it('keeps the mode you are not in out of the accessibility tree', () => {
+  it('keeps the collapsed side out of the accessibility tree', () => {
     const { container } = renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
       mocks: [viewerBootstrapMock(true)],
     });
 
-    const hidden = container.querySelector('nav[aria-hidden="true"]');
-    expect(hidden).not.toBeNull();
-    // The settings destinations are in the DOM...
-    expect(hidden?.textContent).toContain('Users');
+    // The settings destinations ARE in the document...
+    expect(container.textContent).toContain('General');
     // ...but unreachable by role, which is how everything else here queries.
     expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
+    expect(container.querySelector('[aria-hidden="true"][inert]')).not.toBeNull();
   });
 
   /**
@@ -287,7 +287,8 @@ describe('Nav', () => {
     });
     expect(container.querySelector('a[href="/users"]')).toBeNull();
     expect(container.querySelector('a[href="/devices"]')).toBeNull();
-    expect(container.querySelector('nav[aria-hidden="true"]')).toBeNull();
+    // Their settings side exists, but as a circle with nothing to expand into.
+    expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0);
   });
 
   // `/user` is a settings destination too, so an admin reaching it is in the
