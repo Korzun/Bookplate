@@ -18,7 +18,17 @@ export enum SwitchRadius {
    * switch in this app currently lives.
    */
   Inset = 'inset',
-  /** The classic capsule toggle, for a switch standing on an unshaded surface. */
+  /**
+   * The classic capsule, and the rule for a switch in a CARD HEADER.
+   *
+   * Not about shading — a card header is painted `bg.cardHeader`, the same
+   * colour as the input row. It is about whether there is anything nearby to
+   * be concentric WITH. An input row is a small rounded rectangle wrapping the
+   * switch, so a 4px track echoes its 8px corner a few pixels away. A card
+   * header is a full-width bar whose only corners are the card's own, far off
+   * at either end: nothing for the track to relate to, so it reads better as a
+   * self-contained control than as a square-ish chip floating in a bar.
+   */
   Pill = 'pill',
 }
 
