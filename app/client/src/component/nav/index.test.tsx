@@ -196,15 +196,12 @@ describe('Nav', () => {
   });
 
   /**
-   * The two layouts carry DIFFERENT admin destinations, which is why `Nav`
-   * builds two item lists. Desktop is a centred row with room for both; the
-   * mobile capsule is an equal-column grid where a sixth tab clips its
-   * neighbours outright, so the pair collapses to one Admin tab there.
-   *
-   * Each name therefore appears ONCE, not twice — the layout that does not
-   * own it does not render it at all.
+   * Desktop is unchanged by the mobile redesign: a centred row with room for
+   * every destination, so nothing is grouped or collapsed there. These names
+   * appear ONCE because only the desktop layout renders them — the mobile
+   * capsule's default mode carries Library, Add and Request and nothing else.
    */
-  it('gives an admin Users and Devices on desktop, but a single Admin tab on mobile', () => {
+  it('keeps every admin destination on desktop, and none of them in the mobile capsule', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
@@ -212,43 +209,81 @@ describe('Nav', () => {
     });
     expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
     expect(screen.getAllByRole('link', { name: 'Devices' })).toHaveLength(1);
-    expect(screen.getAllByRole('link', { name: 'Admin' })).toHaveLength(1);
+    // Both layouts carry the three main destinations, so these are the pair.
+    expect(screen.getAllByRole('link', { name: 'Library' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Request' })).toHaveLength(2);
   });
 
   /**
-   * The sub-bar makes the mobile nav taller than `theme.layout.navHeightMobile`,
-   * the fixed 96px the toast stack docks above. `component/nav-mobile`
-   * publishes the difference so the toast can clear it; nothing on screen
-   * shows whether it did, so only this catches it going missing.
+   * The mobile bar has two MODES, which is what keeps it to four targets
+   * however many destinations exist. Default: the three main tabs plus a
+   * settings accessory. Settings: the main group collapses to one button and
+   * the settings destinations take the capsule.
+   *
+   * Driven by the ROUTE, not by a UI flag — so Back behaves and nothing can
+   * desync from the URL. These two pin exactly that: the same component, the
+   * same admin, different pathname, different bar.
    */
-  it('publishes the extra nav height while the sub-bar is up, and retracts it after', () => {
-    const property = '--nav-mobile-extra-height';
-    expect(document.documentElement.style.getPropertyValue(property)).toBe('');
-
-    const { unmount } = renderWithApollo(<Nav />, {
-      user: { username: 'admin', isAdmin: true },
-      initialEntries: ['/users'],
-      mocks: [viewerBootstrapMock(true)],
-    });
-    // jsdom reports every `offsetHeight` as 0, so the measured part cannot be
-    // asserted here — but the GAP is a real value either way, and a publication
-    // that dropped it (or published a bare `0px`) would leave the toast resting
-    // directly on the sub-bar. That is the half this can actually pin.
-    const published = document.documentElement.style.getPropertyValue(property);
-    expect(published).toMatch(/^calc\(/);
-    expect(published).toContain('0.375rem');
-
-    unmount();
-    expect(document.documentElement.style.getPropertyValue(property)).toBe('');
-  });
-
-  it('publishes no extra nav height on a route with no sub-bar', () => {
+  it('shows the main tabs and a settings accessory on a main route', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
       mocks: [viewerBootstrapMock(true)],
     });
-    expect(document.documentElement.style.getPropertyValue('--nav-mobile-extra-height')).toBe('');
+    // The accessory, by its `aria-label` — it renders an icon and no text.
+    expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0);
+    // The collapsed button and the settings capsule belong to the other mode.
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+  });
+
+  it('collapses the main group and expands settings on an admin route', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/users'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
+    // General is mobile-only: desktop calls the same destination "Settings".
+    expect(screen.getAllByRole('link', { name: 'General' })).toHaveLength(1);
+    // Users now appears TWICE — desktop's own tab, plus the mobile capsule's.
+    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(2);
+    // The main tabs have left the capsule, so each is desktop's alone.
+    expect(screen.getAllByRole('link', { name: 'Request' })).toHaveLength(1);
+  });
+
+  // `/user` is a settings destination too, so an admin reaching it is in the
+  // same mode as on `/users` — otherwise tapping the accessory would expand
+  // the bar and land somewhere the expanded bar does not list.
+  it('treats the account page as a settings route for an admin', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/user'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
+  });
+
+  /**
+   * A reader's settings holds exactly one destination, so there is nothing to
+   * expand INTO — a bar that expanded to show a single item would be worse
+   * than one that did not. They keep the default bar everywhere, and the
+   * accessory simply marks itself current.
+   */
+  it('never collapses the bar for a reader, even on their own settings page', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/user'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Library' })).toHaveLength(2);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Settings' })
+        .some((link) => link.getAttribute('aria-current') === 'page')
+    ).toBe(true);
   });
 
   it('gives a reader no admin destination in either layout', () => {
@@ -259,11 +294,10 @@ describe('Nav', () => {
     });
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Devices' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
   });
 
-  // Request is a top-level destination in BOTH layouts — the thing the Admin
-  // grouping above bought room for.
+  // Request is a top-level destination in BOTH layouts — the thing splitting
+  // the mobile bar into two modes bought room for.
   it('shows Request as its own tab in both layouts', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
@@ -296,28 +330,6 @@ describe('Nav', () => {
         .getAllByRole('link', { name: 'Add' })
         .some((l) => l.getAttribute('aria-current') === 'page')
     ).toBe(false);
-  });
-
-  /**
-   * The Admin tab's second level. It is that tab's, not standing chrome, so
-   * it exists only while an admin is actually on one of the two routes it
-   * picks between.
-   */
-  it('shows the admin sub-bar on the admin routes only', () => {
-    const { unmount } = renderWithApollo(<Nav />, {
-      user: { username: 'admin', isAdmin: true },
-      initialEntries: ['/users'],
-      mocks: [viewerBootstrapMock(true)],
-    });
-    expect(screen.getByRole('radiogroup', { name: 'Admin section' })).toBeInTheDocument();
-    unmount();
-
-    renderWithApollo(<Nav />, {
-      user: { username: 'admin', isAdmin: true },
-      initialEntries: ['/library'],
-      mocks: [viewerBootstrapMock(true)],
-    });
-    expect(screen.queryByRole('radiogroup', { name: 'Admin section' })).not.toBeInTheDocument();
   });
 
   it('marks the current route active in both layouts', () => {

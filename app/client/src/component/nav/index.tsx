@@ -6,9 +6,10 @@ import { useFragment } from '~/gql';
 import { LibraryPendingFixesDocument, PendingFixRowFragment } from '~/graphql/upload';
 import { UserListDocument } from '~/graphql/user';
 import {
+  AdjustmentsHorizontalIcon,
   BookIcon,
   DeviceIcon,
-  KeyIcon,
+  HomeIcon,
   ListCheckIcon,
   SettingsIcon,
   UploadIcon,
@@ -21,7 +22,6 @@ import { path } from '~/router';
 
 import { NavDesktop } from '../nav-desktop';
 import { NavMobile } from '../nav-mobile';
-import { AdminSubNav } from './admin-sub-nav';
 import type { NavItem } from './types';
 
 // Owns the navigation destinations (which links exist, which is active, admin
@@ -186,29 +186,74 @@ export const Nav = () => {
     settings,
   ];
 
-  const mobileItems: NavItem[] = [
-    ...sharedLeading,
-    ...(isAdmin
-      ? [
-          {
-            // Lands on Users, the fuller of the two. The sub-bar is what
-            // reaches Devices, so this tab stays lit for both.
-            to: path.userList(),
-            label: 'Admin',
-            Icon: KeyIcon,
-            active: onAdminRoute,
-          },
-        ]
-      : []),
-    settings,
+  /**
+   * SPIKE — the two-mode mobile nav.
+   *
+   * The capsule holds the three MAIN destinations and nothing else, with
+   * single-destination buttons flanking it. Tapping settings collapses the
+   * main group to one button and expands settings in its place, so the bar
+   * never carries more than four targets however many destinations exist —
+   * which is the fit problem solved structurally rather than by finding room
+   * for one more tab.
+   *
+   * Route-driven, like everything else here: you are in settings mode because
+   * of where you ARE, so nothing can desync from the URL and Back behaves.
+   *
+   * Admin only. A reader's settings holds exactly one destination, and a bar
+   * that expands to show a single item is worse than one that does not expand
+   * — so a reader keeps the default bar and the button goes straight to
+   * `/user`. Splitting the account page into real sections is its own job;
+   * when it lands, readers get this mode too.
+   */
+  const inSettings = isAdmin && (onAdminRoute || pathname === path.user());
+
+  const settingsAccessory: NavItem = {
+    to: path.user(),
+    label: 'Settings',
+    Icon: SettingsIcon,
+    active: pathname === path.user(),
+  };
+
+  // The collapsed stand-in for the whole main group. Returns to Library
+  // rather than to wherever you were: "where you were" is state this nav
+  // deliberately does not keep, and guessing it wrong is worse than a
+  // destination that is always the same.
+  const collapsedMain: NavItem = {
+    to: path.library(),
+    label: 'Back to library',
+    // `home`, not a book: this stands for the whole main group (Library, Add,
+    // Request), not for the Library tab alone, and a second book icon beside
+    // the one the Library tab already uses would read as a duplicate.
+    Icon: HomeIcon,
+    active: false,
+  };
+
+  // General FIRST. Tapping the settings button lands on `/user`, so whichever
+  // item that is reads as "the one you just chose" — and landing on the third
+  // of three looks like something was skipped past. It is also the only item
+  // here every account has, which makes it the natural head of the list.
+  const settingsItems: NavItem[] = [
+    // Sliders rather than a second gear. The accessory that opens this mode is
+    // already a gear, and at the far ends of the bar the same glyph twice read
+    // as one control duplicated rather than two different places.
+    {
+      to: path.user(),
+      label: 'General',
+      Icon: AdjustmentsHorizontalIcon,
+      active: pathname === path.user(),
+    },
+    { to: path.userList(), label: 'Users', Icon: UsersIcon, active: pathname === path.userList() },
+    { to: path.devices(), label: 'Devices', Icon: DeviceIcon, active: pathname === path.devices() },
   ];
 
   return (
     <>
       <NavDesktop items={desktopItems} />
-      {/* The sub-bar only exists while the Admin tab is the active one: it is
-          that tab's second level, not standing chrome. */}
-      <NavMobile items={mobileItems} subNav={isAdmin && onAdminRoute ? <AdminSubNav /> : null} />
+      {inSettings ? (
+        <NavMobile items={settingsItems} leading={collapsedMain} />
+      ) : (
+        <NavMobile items={sharedLeading} trailing={settingsAccessory} />
+      )}
     </>
   );
 };

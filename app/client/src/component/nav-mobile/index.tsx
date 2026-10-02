@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { useTheme } from '~/provider/theme';
@@ -7,35 +7,18 @@ import { useTheme } from '~/provider/theme';
 import type { NavItem } from '../nav/types';
 import { useStyle } from './style';
 
-/**
- * How much taller than usual the nav currently is, published so anything that
- * docks above it can clear it.
- *
- * `theme.layout.navHeightMobile` is a FIXED 96px describing the capsule alone,
- * and both `component/page`'s bottom padding and the toast stack are measured
- * from it. A sub-bar makes the nav taller than that constant, and while the
- * page's reservation carries enough slack to absorb it, the toast stack sits
- * only `space.md` above the 96 and would land on top of the sub-bar.
- *
- * A custom property rather than a second constant because the height depends
- * on what is rendered, and a hard-coded copy would drift the moment the
- * control inside changes. Defaults to `0px` wherever it is unset — which is
- * every route without a sub-bar, i.e. nearly all of them.
- */
-const NAV_EXTRA_HEIGHT_PROPERTY = '--nav-mobile-extra-height';
-
 export interface NavMobileProps {
   items: NavItem[];
   /**
-   * A second level for the active tab, stacked directly above the capsule
-   * inside the same fixed container — so it rides with the nav instead of
-   * scrolling with the page, and the two read as one piece of chrome.
+   * SPIKE. Single-destination buttons flanking the capsule.
    *
-   * `Nav` decides when there is one (today: the admin Users/Devices pair,
-   * only while that tab is active). Null the rest of the time, which is most
-   * of the time, so the capsule sits where it always has.
+   * `trailing` is the settings button in the default mode. `leading` is the
+   * collapsed "back to the main tabs" button that replaces the whole primary
+   * group once you are inside settings — which is what keeps the capsule
+   * itself down to three or four targets however many destinations exist.
    */
-  subNav?: ReactNode;
+  leading?: NavItem | null;
+  trailing?: NavItem | null;
 }
 
 /** Horizontal geometry measured from the live DOM. */
@@ -46,6 +29,18 @@ interface LensBox {
   width: number;
   /** Full capsule width — pins the blue reveal grid so its columns match the real row. */
   capsuleWidth: number;
+  /**
+   * Full capsule height, which is what the accessory buttons are sized to so
+   * they are exactly as tall as the bar and perfectly round.
+   *
+   * Measured rather than derived: the capsule's height comes from its own
+   * content — icon, label, row gap and two levels of padding — and the label's
+   * line box is font-dependent, so there is no token arithmetic that reliably
+   * reproduces it. `aspect-ratio` cannot do it either: on a flex item whose
+   * cross size only becomes definite during layout, the content width wins and
+   * the button renders as a tall oval.
+   */
+  capsuleHeight: number;
 }
 
 const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
@@ -53,13 +48,14 @@ const sameBox = (a: LensBox | null, b: LensBox | null): boolean =>
   b != null &&
   a.left === b.left &&
   a.width === b.width &&
-  a.capsuleWidth === b.capsuleWidth;
+  a.capsuleWidth === b.capsuleWidth &&
+  a.capsuleHeight === b.capsuleHeight;
 
 // Narrow navigation pinned to the bottom of the viewport (mobile only): a frosted
 // "liquid glass" capsule whose active tab is wrapped by a glass lens that slides
 // between (equal-width) tabs. A blue copy of the tab row, clipped to the lens, reveals
 // the active color only where the lens is. Hidden at and above the desktop breakpoint.
-export const NavMobile = ({ items, subNav = null }: NavMobileProps) => {
+export const NavMobile = ({ items, leading = null, trailing = null }: NavMobileProps) => {
   const styles = useStyle();
   const theme = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,32 +63,7 @@ export const NavMobile = ({ items, subNav = null }: NavMobileProps) => {
   const [shown, setShown] = useState(false);
   const [ready, setReady] = useState(false);
 
-  const subNavRef = useRef<HTMLDivElement>(null);
-
   const activeTo = items.find((item) => item.active)?.to;
-
-  // Publish (and retract) the sub-bar's height on the document element. Not on
-  // this nav or a container: the toast stack is `position: fixed` and renders
-  // from its own provider, which is not guaranteed to be a descendant of
-  // anything here, so the one ancestor both are certain to share is the root.
-  useEffect(() => {
-    const root = document.documentElement;
-    const element = subNavRef.current;
-    if (element === null) {
-      root.style.removeProperty(NAV_EXTRA_HEIGHT_PROPERTY);
-      return;
-    }
-    // Plus the column gap: the sub-bar's own box does not include the space
-    // between it and the capsule, and anything docking above the nav has to
-    // clear both.
-    root.style.setProperty(
-      NAV_EXTRA_HEIGHT_PROPERTY,
-      `calc(${element.offsetHeight}px + ${theme.space.sm})`
-    );
-    return () => {
-      root.style.removeProperty(NAV_EXTRA_HEIGHT_PROPERTY);
-    };
-  }, [subNav, theme.space.sm]);
 
   // Measure the active tab's horizontal box (its vertical extent is fixed in CSS)
   // so the lens can wrap and morph to it. Runs after paint so the morph transition
@@ -115,6 +86,7 @@ export const NavMobile = ({ items, subNav = null }: NavMobileProps) => {
         left: activeBox.left - containerBox.left - container.clientLeft,
         width: activeBox.width,
         capsuleWidth: containerBox.width,
+        capsuleHeight: containerBox.height,
       };
       setBox((prev) => (sameBox(prev, next) ? prev : next));
       setShown(true);
@@ -159,12 +131,7 @@ export const NavMobile = ({ items, subNav = null }: NavMobileProps) => {
 
   return (
     <nav className={styles.root}>
-      {/* The wrapper is a measurement anchor for the effect above, which has
-          to know how much taller the sub-bar makes this nav. It deliberately
-          gets none of the capsule's frosted glass — two stacked glass
-          surfaces read as two bars competing for the same corner, and the
-          control inside carries its own background already. */}
-      {subNav !== null && <div ref={subNavRef}>{subNav}</div>}
+      {leading !== null && <Accessory item={leading} styles={styles} size={box?.capsuleHeight} />}
       <div className={styles.capsule} ref={containerRef}>
         <div className={styles.glass} aria-hidden="true" />
         <span
@@ -209,6 +176,33 @@ export const NavMobile = ({ items, subNav = null }: NavMobileProps) => {
           ))}
         </div>
       </div>
+      {trailing !== null && <Accessory item={trailing} styles={styles} size={box?.capsuleHeight} />}
     </nav>
   );
 };
+
+/** SPIKE. One destination as a standalone round button beside the capsule. */
+const Accessory = ({
+  item,
+  styles,
+  size,
+}: {
+  item: NavItem;
+  styles: ReturnType<typeof useStyle>;
+  /** The capsule's measured height; undefined until the first measurement. */
+  size: number | undefined;
+}) => (
+  <Link
+    className={cx(styles.accessory, { [styles.accessoryActive]: item.active })}
+    // Square at exactly the capsule's height, so `radius.pill` renders a true
+    // circle. Until the first measurement lands, the stylesheet's
+    // `alignSelf: stretch` already has the HEIGHT right — so the only thing a
+    // first frame can get wrong is the width, never a button that looks broken.
+    style={size === undefined ? undefined : { width: size, height: size }}
+    aria-current={item.active ? 'page' : undefined}
+    aria-label={item.label}
+    to={item.to}
+  >
+    <item.Icon height={18} width={18} />
+  </Link>
+);

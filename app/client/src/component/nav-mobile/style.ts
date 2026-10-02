@@ -23,6 +23,21 @@ export const useStyle = createUseStyles((theme: Theme) => {
     fontSize: '0.80rem', // nav-specific size; not on the global fontSize scale
   } as const;
 
+  /**
+   * The nav's inset on all three open sides: how far it floats above the
+   * bottom edge, and how far the capsule and its accessory sit in from the
+   * left and right. One distance framing the whole bar rather than three
+   * unrelated ones.
+   *
+   * One expression reused rather than values that happen to agree: it
+   * resolves differently per device (a browser tab has no bottom inset, so
+   * `env()` is 0 and this falls to the fixed floor; in standalone the home
+   * indicator dominates), and hard-coded side padding would match on a
+   * desktop screenshot while drifting apart on the device where the inset
+   * actually does something.
+   */
+  const bottomInset = `max(${theme.space.xxxl}, calc(env(safe-area-inset-bottom) - ${theme.space.xl}))`;
+
   return {
     root: {
       position: 'fixed',
@@ -30,19 +45,30 @@ export const useStyle = createUseStyles((theme: Theme) => {
       left: 0,
       width: '100vw',
       zIndex: theme.zIndex.sticky,
+      // The side padding below is INSIDE the 100vw above; without this the
+      // nav would be two insets wider than the viewport and put a horizontal
+      // scrollbar on every page. There is no global `border-box` reset in
+      // this app, so it is declared here.
+      boxSizing: 'border-box',
       display: 'flex',
-      // COLUMN so an optional second level can stack above the capsule. With
-      // one child this is identical to the row it replaced; the capsule still
-      // centres and still sits on the same bottom edge.
-      flexDirection: 'column',
+      // SPIKE: a row again. The accessory buttons sit BESIDE the capsule
+      // rather than above it, so the nav keeps its single-line height.
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.space.sm,
+      // Pushed to opposite edges: the capsule takes one side and its
+      // accessory the other, each inset by the same distance the bar floats
+      // above the bottom.
+      justifyContent: 'space-between',
+      paddingLeft: bottomInset,
+      paddingRight: bottomInset,
+      // A floor, not the spacing: `space-between` sets the real gap. This
+      // only stops the two touching if the capsule ever grows wide enough to
+      // close the distance itself.
+      gap: bottomInset,
       // One rule, both contexts (no iOS-unreliable display-mode query): a browser tab has
       // no bottom safe-area inset, so env() ≈ 0 and this resolves to the fixed floor
       // (room for the frosted shadow); in standalone the home-indicator inset dominates
       // and the pill dips toward it while staying clear.
-      paddingBottom: `max(${theme.space.xxxl}, calc(env(safe-area-inset-bottom) - ${theme.space.xl}))`,
+      paddingBottom: bottomInset,
       [theme.breakpoint.normal]: {
         display: 'none',
       },
@@ -72,6 +98,45 @@ export const useStyle = createUseStyles((theme: Theme) => {
       borderRadius: theme.radius.pill,
       pointerEvents: 'none',
     },
+    /**
+     * SPIKE. A one-item capsule beside the main one: the settings button in
+     * the default mode, and the collapsed "back to the main tabs" button in
+     * settings mode.
+     *
+     * Its own glass surface, matching the capsule's, so the two read as
+     * siblings of one system rather than a bar with something stuck to it.
+     * Square padding keeps it circular-ish at `radius.pill`.
+     */
+    accessory: {
+      ...theme.recipe.glass,
+      position: 'relative',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      boxSizing: 'border-box',
+      borderRadius: theme.radius.pill,
+      // Matches the capsule's height by STRETCHING to it rather than by
+      // padding the icon to a number that happens to agree today: the capsule
+      // is sized by its own content (icon + label + paddings), so any change
+      // to a tab's type or spacing would silently desync a hand-tuned value.
+      // `root` centres its children, so this opts out for itself alone.
+      alignSelf: 'stretch',
+      // Width comes from the capsule's MEASURED height (set inline), which is
+      // what makes this a circle rather than the tall oval `aspect-ratio`
+      // produces on a flex item — see `LensBox.capsuleHeight`.
+      padding: 0,
+      color: theme.color.text.primary,
+      textDecoration: 'none',
+      cursor: 'pointer',
+      userSelect: 'none',
+      '-webkit-user-select': 'none',
+    },
+    /** The accessory for the section you are currently in. */
+    accessoryActive: {
+      color: theme.color.brand.default,
+    },
+
     // The active-tab lens. Vertical extent is fixed here (top/bottom insets ⇒ always
     // concentric with the capsule); horizontal position + width come from inline style
     // (measured from the active tab). The base rule only transitions opacity, so the
