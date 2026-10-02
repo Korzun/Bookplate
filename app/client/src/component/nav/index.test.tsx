@@ -349,11 +349,11 @@ describe('Nav', () => {
   });
 
   /**
-   * `/add` and `/request` are siblings now. The Add tab used to match with
+   * `/add` and `/request` are siblings now. The Upload tab used to match with
    * `startsWith` so it stayed lit on its `/add/request` child; left that way,
    * both tabs would light at once.
    */
-  it('lights Request alone on /request, leaving Add dark', () => {
+  it('lights Request alone on /request, leaving Upload dark', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
       initialEntries: ['/request'],
@@ -366,7 +366,7 @@ describe('Nav', () => {
     ).toBe(true);
     expect(
       screen
-        .getAllByRole('link', { name: 'Add' })
+        .getAllByRole('link', { name: 'Upload' })
         .some((l) => l.getAttribute('aria-current') === 'page')
     ).toBe(false);
   });
@@ -377,9 +377,9 @@ describe('Nav', () => {
       initialEntries: ['/add'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
-    const addLinks = screen.getAllByRole('link', { name: 'Add' });
-    expect(addLinks).toHaveLength(2);
-    expect(addLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
+    const uploadLinks = screen.getAllByRole('link', { name: 'Upload' });
+    expect(uploadLinks).toHaveLength(2);
+    expect(uploadLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 
     const libraryLinks = screen.getAllByRole('link', { name: 'Library' });
     expect(libraryLinks.every((link) => link.getAttribute('aria-current') === null)).toBe(true);
@@ -534,7 +534,7 @@ describe('Nav', () => {
     ).toBe(true);
     expect(
       screen
-        .getAllByRole('link', { name: 'Add' })
+        .getAllByRole('link', { name: 'Upload' })
         .some((link) => within(link).queryByTestId('nav-badge-dot') !== null)
     ).toBe(false);
   });

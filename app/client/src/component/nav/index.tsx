@@ -129,7 +129,7 @@ export const Nav = () => {
       // lit on the `/add/request` child; that child is now `/request`, a
       // sibling with a tab of its own, and `startsWith` would light both.
       to: path.add(),
-      label: 'Add',
+      label: 'Upload',
       Icon: UploadIcon,
       active: pathname === path.add(),
       badge: uploadBadge,
