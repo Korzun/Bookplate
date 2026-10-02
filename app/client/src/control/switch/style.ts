@@ -100,6 +100,37 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     '& $thumb': { borderRadius: theme.radius.circle },
   },
 
+  /**
+   * Replaces the thumb while a save is in flight. Sized to the thumb it
+   * stands in for, and inheriting `currentColor` from `$track` below so it
+   * stays legible against both track colours.
+   */
+  spinner: {
+    ...theme.recipe.spinner,
+    position: 'absolute',
+    top: '2px',
+    width: '12px',
+    height: '12px',
+    // Matches the thumb's own transition, so a click that both moves the
+    // switch AND starts a save does not animate the two at different speeds.
+    transitionProperty: 'left',
+    transitionDuration: '0.1s',
+    transitionTimingFunction: 'ease-in',
+    left: '2px',
+    '$checked &': { left: '14px' },
+  },
+  loading: {
+    // The track keeps its colour — this is "working", not "unavailable",
+    // which `disabled` already says by fading to 40%. Only the cursor and the
+    // thumb change.
+    cursor: 'progress',
+    // `currentColor` for the spinner: muted against the pale unchecked track,
+    // white against the saturated checked one. A single colour would vanish
+    // into one of the two.
+    color: theme.color.text.muted,
+    '&$checked': { color: theme.color.bg.input },
+  },
+
   label: {
     ...theme.recipe.label,
   },

@@ -135,7 +135,7 @@ export const NotificationSettings = ({
    */
   const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
 
-  const { subscribed, support, permission, hint, toggle, markUnsubscribed } =
+  const { subscribed, busy, support, permission, hint, toggle, markUnsubscribed } =
     usePushDevice(pushPublicKey);
 
   const mountedRef = useRef(true);
@@ -323,6 +323,11 @@ export const NotificationSettings = ({
                               : (pending[key] ?? cell.enabled)
                           }
                           disabled={channelDisabled(channel)}
+                          // `pending` has held exactly this fact since the
+                          // feature was written — a row whose mutation has
+                          // not settled — and `handleToggle` already refuses
+                          // further clicks on it. This only makes it visible.
+                          loading={key in pending}
                           onChange={(next) => void handleToggle(event, channel, next)}
                         />
                       )}
@@ -340,6 +345,11 @@ export const NotificationSettings = ({
           <Switch
             name="push-device"
             checked={subscribed}
+            // Covers the load-time query of the browser's own push state as
+            // well as a toggle in flight: until that first query settles,
+            // `subscribed` is the `false` it was initialised to rather than
+            // an answer, and the switch should not assert it.
+            loading={busy}
             disabled={support !== 'supported' || permission === 'denied'}
             onChange={(next) => void toggle(next)}
             label="Enable push on this device"

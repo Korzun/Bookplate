@@ -27,6 +27,17 @@ export type UsePushDevice = {
    * EVENT×CHANNEL matrix, not a per-device fact) has no way to express.
    */
   subscribed: boolean;
+  /**
+   * Something this hook does is outstanding: the load-time query of the
+   * browser's own push state, or a `toggle` the reader just fired.
+   *
+   * It starts TRUE and stays that way until the first resync settles, because
+   * until then `subscribed` is merely the `false` it was initialised to — not
+   * an answer. `page/user` passes `''` for the key while the bootstrap query
+   * is in flight (`pushPublicKey` is non-nullable server-side, so `''` can
+   * mean nothing else), and that window counts as querying too.
+   */
+  busy: boolean;
   support: PushSupport;
   permission: NotificationPermission | 'unsupported';
   /**
@@ -67,6 +78,9 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
   const [removeSubscription] = useMutation(ViewerRemovePushSubscriptionDocument);
 
   const [subscribed, setSubscribed] = useState(false);
+  // Starts true: on first render nothing has asked the browser anything yet,
+  // so the switch below has no business claiming to be off.
+  const [busy, setBusy] = useState(true);
 
   const support = pushSupport();
   /**
@@ -139,20 +153,27 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
       if (cancelled || existing === null) return;
       setSubscribed(true);
       await syncPushSubscription(existing);
-    })().catch(() => {
-      // Best-effort and silent (no toast): this runs unattended on every
-      // load, not from anything the reader did, so there is nothing for
-      // them to act on right now — but it MUST be caught. An uncaught
-      // rejection here is an unhandled rejection at the top of an async
-      // IIFE, which in this repo's test runner produces an "all tests
-      // passed" run that still exits 1 (`notification-settings/index.test.tsx`'s
-      // own `mountedRef` test records the identical failure mode for a
-      // different cause). Revert the optimistic `setSubscribed(true)`
-      // above: whatever failed, this browser cannot be relied on to be
-      // correctly registered with the server, so the switch should say so
-      // rather than show a subscription that may not exist.
-      if (!cancelled) setSubscribed(false);
-    });
+    })()
+      .finally(() => {
+        // However that resolved — subscription found, none found, or the
+        // catch below — the question "what does this browser think" has now
+        // been answered, so the switch may stop saying it is working.
+        if (!cancelled) setBusy(false);
+      })
+      .catch(() => {
+        // Best-effort and silent (no toast): this runs unattended on every
+        // load, not from anything the reader did, so there is nothing for
+        // them to act on right now — but it MUST be caught. An uncaught
+        // rejection here is an unhandled rejection at the top of an async
+        // IIFE, which in this repo's test runner produces an "all tests
+        // passed" run that still exits 1 (`notification-settings/index.test.tsx`'s
+        // own `mountedRef` test records the identical failure mode for a
+        // different cause). Revert the optimistic `setSubscribed(true)`
+        // above: whatever failed, this browser cannot be relied on to be
+        // correctly registered with the server, so the switch should say so
+        // rather than show a subscription that may not exist.
+        if (!cancelled) setSubscribed(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -160,67 +181,77 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
 
   const toggle = useCallback(
     async (next: boolean) => {
-      if (!next) {
-        const id = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
-        // Optimistic, matching the "on" branch below and the load effect
-        // above: set first, revert in the `catch` — not left until after
-        // the round trip, which is what let a failed disable leave the
-        // switch showing "on" while the browser had already unsubscribed
-        // (the worse of the two desyncs a failure here can cause, since it
-        // tells the reader push still works when it may not).
-        setSubscribed(false);
+      // Brackets the WHOLE body, including the branches that return early
+      // (permission refused, `subscribeToPush` returning null). Each of those
+      // leaves the switch settled just as much as the success path does, so
+      // each has to clear this — which a `finally` guarantees and a clear at
+      // the end of the happy path would miss.
+      setBusy(true);
+      try {
+        if (!next) {
+          const id = localStorage.getItem(LOCAL_SUBSCRIPTION_ID);
+          // Optimistic, matching the "on" branch below and the load effect
+          // above: set first, revert in the `catch` — not left until after
+          // the round trip, which is what let a failed disable leave the
+          // switch showing "on" while the browser had already unsubscribed
+          // (the worse of the two desyncs a failure here can cause, since it
+          // tells the reader push still works when it may not).
+          setSubscribed(false);
+          try {
+            await unsubscribeFromPush();
+            if (id !== null) await removeSubscription({ variables: { id } });
+            localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+          } catch {
+            setSubscribed(true);
+            showToast('Could not update push on this device.', 'error');
+          }
+          return;
+        }
+        // Only ever from THIS click. `Notification.requestPermission()` may
+        // only be called from a user gesture, and `denied` is permanent until
+        // the user clears it in browser settings — there is exactly one
+        // chance to ask and it is spent here, never on load.
+        const granted = await Notification.requestPermission();
+        setPermission(granted);
+        if (granted !== 'granted') {
+          // `denied` is permanent and earns the standing hint below, which
+          // `setPermission` has just made appear. `default` means the prompt was
+          // DISMISSED rather than answered — and it is also the pristine
+          // never-asked state, so it cannot have a standing hint without
+          // accusing a fresh install of having refused something. That left the
+          // dismissal case with no trace anywhere: no hint, no console line, no
+          // state change, the switch simply staying off. Reported from real use
+          // as "I can't enable it and I don't get an error". A toast is the
+          // right shape precisely because it belongs to the ACTION, not to the
+          // state.
+          if (granted !== 'denied') {
+            showToast('Notifications were not allowed. You can try again.', 'error');
+          }
+          return;
+        }
+
+        const subscription = await subscribeToPush(pushPublicKey);
+        if (subscription === null) {
+          showToast('Could not enable push notifications on this device.', 'error');
+          return;
+        }
+        // Optimistic, matching the load effect's own ordering — set before
+        // awaiting the mutation, revert in the `catch` — rather than only
+        // after `syncPushSubscription` resolves. `addSubscription`/
+        // `removeSubscription` reject on error like any other mutation in
+        // this file; without this `catch` that rejection escaped as an
+        // unhandled rejection, `setSubscribed(true)` below never ran, and the
+        // switch silently snapped back to "off" with no toast while the
+        // browser held a live subscription the server had no row for.
+        setSubscribed(true);
         try {
-          await unsubscribeFromPush();
-          if (id !== null) await removeSubscription({ variables: { id } });
-          localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
+          await syncPushSubscription(subscription);
         } catch {
-          setSubscribed(true);
+          setSubscribed(false);
           showToast('Could not update push on this device.', 'error');
         }
-        return;
-      }
-      // Only ever from THIS click. `Notification.requestPermission()` may
-      // only be called from a user gesture, and `denied` is permanent until
-      // the user clears it in browser settings — there is exactly one
-      // chance to ask and it is spent here, never on load.
-      const granted = await Notification.requestPermission();
-      setPermission(granted);
-      if (granted !== 'granted') {
-        // `denied` is permanent and earns the standing hint below, which
-        // `setPermission` has just made appear. `default` means the prompt was
-        // DISMISSED rather than answered — and it is also the pristine
-        // never-asked state, so it cannot have a standing hint without
-        // accusing a fresh install of having refused something. That left the
-        // dismissal case with no trace anywhere: no hint, no console line, no
-        // state change, the switch simply staying off. Reported from real use
-        // as "I can't enable it and I don't get an error". A toast is the
-        // right shape precisely because it belongs to the ACTION, not to the
-        // state.
-        if (granted !== 'denied') {
-          showToast('Notifications were not allowed. You can try again.', 'error');
-        }
-        return;
-      }
-
-      const subscription = await subscribeToPush(pushPublicKey);
-      if (subscription === null) {
-        showToast('Could not enable push notifications on this device.', 'error');
-        return;
-      }
-      // Optimistic, matching the load effect's own ordering — set before
-      // awaiting the mutation, revert in the `catch` — rather than only
-      // after `syncPushSubscription` resolves. `addSubscription`/
-      // `removeSubscription` reject on error like any other mutation in
-      // this file; without this `catch` that rejection escaped as an
-      // unhandled rejection, `setSubscribed(true)` below never ran, and the
-      // switch silently snapped back to "off" with no toast while the
-      // browser held a live subscription the server had no row for.
-      setSubscribed(true);
-      try {
-        await syncPushSubscription(subscription);
-      } catch {
-        setSubscribed(false);
-        showToast('Could not update push on this device.', 'error');
+      } finally {
+        setBusy(false);
       }
     },
     [pushPublicKey, removeSubscription, showToast, syncPushSubscription]
@@ -238,5 +269,5 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
     hint = 'Notifications are blocked for this site in your browser settings.';
   }
 
-  return { subscribed, support, permission, hint, toggle, markUnsubscribed };
+  return { subscribed, busy, support, permission, hint, toggle, markUnsubscribed };
 }

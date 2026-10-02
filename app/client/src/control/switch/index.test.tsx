@@ -1,6 +1,7 @@
 // client/src/control/switch/index.test.tsx
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '~/test-utils';
@@ -49,6 +50,63 @@ describe('Switch', () => {
       <Switch name="dark-mode" checked={false} onChange={vi.fn()} radius="pill" />
     );
     expect(trackClass(pill)).not.toBe(trackClass(inset));
+  });
+
+  describe('loading', () => {
+    const hasSpinner = (container: HTMLElement): boolean => container.querySelector('svg') !== null;
+
+    it('shows nothing for the first moments, so a fast save never flashes', () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = renderWithProviders(
+          <Switch name="dark-mode" checked={true} onChange={vi.fn()} loading={true} />
+        );
+        expect(hasSpinner(container)).toBe(false);
+        act(() => {
+          vi.advanceTimersByTime(149);
+        });
+        expect(hasSpinner(container)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('shows the spinner once the save outlives the delay', () => {
+      vi.useFakeTimers();
+      try {
+        const { container } = renderWithProviders(
+          <Switch name="dark-mode" checked={true} onChange={vi.fn()} loading={true} />
+        );
+        act(() => {
+          vi.advanceTimersByTime(150);
+        });
+        expect(hasSpinner(container)).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /**
+     * The delay is cosmetic, so it must NOT also gate the click guard: a
+     * second click inside the first 150ms would otherwise fire a second
+     * mutation against a row whose first one has not settled.
+     */
+    it('ignores clicks immediately, before the spinner is even visible', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <Switch name="dark-mode" checked={false} onChange={onChange} loading={true} />
+      );
+      await user.click(screen.getByRole('switch'));
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('reports busy to assistive tech without waiting out the delay', () => {
+      renderWithProviders(
+        <Switch name="dark-mode" checked={false} onChange={vi.fn()} loading={true} />
+      );
+      expect(screen.getByRole('switch')).toHaveAttribute('aria-busy', 'true');
+    });
   });
 
   it('calls onChange with the toggled value when clicked', async () => {
