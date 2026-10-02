@@ -1,11 +1,21 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 /**
- * Wide enough for the longest channel header ("Email") at `fontSize.sm`, and
- * shared by the header cell and the toggle cell so the two columns cannot
- * drift apart.
+ * Shared by the header cell and the toggle cell so the two columns cannot
+ * drift apart — and kept as close to the longest channel header ("Email",
+ * ~34px at `fontSize.sm`) as that allows.
+ *
+ * The slack between this and the 28px switch inside it is dead space to the
+ * LEFT of every toggle, because both cells align right. It therefore adds to
+ * the gap between the two columns on top of `toggleGroup`'s own: at the 3rem
+ * this started as, two adjacent toggles sat 28px apart while their headers
+ * sat the same 28px apart, which read as two unrelated controls rather than
+ * one row. Narrowing it to 2.25rem halves that without letting "Email" touch
+ * its neighbour. If a platform's system-ui renders that header wider than
+ * this, it overflows left rather than clipping, and the right edge the
+ * column is aligned on stays correct.
  */
-const TOGGLE_CELL_WIDTH = '3rem';
+const TOGGLE_CELL_WIDTH = '2.25rem';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
   /**
