@@ -1,6 +1,24 @@
-import { GraphQLError, parse, validate, type DocumentNode } from 'graphql';
+import {
+  getNamedType,
+  GraphQLError,
+  isCompositeType,
+  isInterfaceType,
+  isListType,
+  isNonNullType,
+  isObjectType,
+  parse,
+  validate,
+  type DocumentNode,
+} from 'graphql';
 
-import { BREADTH_BUDGET, COMPLEXITY_BUDGET, costLimitRule, type OperationCost } from './cost-limit';
+import {
+  BREADTH_BUDGET,
+  COMPLEXITY_BUDGET,
+  costLimitRule,
+  SUGGESTION_FIELD_LIMITS,
+  UNBOUNDED_LIST_FIELD_LIMITS,
+  type OperationCost,
+} from './cost-limit';
 import { costOf } from './cost-test-support';
 import { schema } from './schema';
 
@@ -220,13 +238,110 @@ describe('multiplierFor — args-aware connection weighting (via measureOperatio
  * 3,652 / depth 10 — INSIDE every one of this task's own calibrated
  * envelopes (41 / 3823 / 12) — while fetching `S × 1,200` rows, against the
  * richest calibrated legit screen's ~220 rows at complexity 3823. Fixed via
- * `UNBOUNDED_LIST_FIELD_LIMITS` — see `cost-limit.ts`'s doc comment there
- * for the full inventory: 25 composite-element list fields total, 9 priced
- * (7 here + `Library.searchSuggestions`/`SuggestionGroup.items`, priced
- * separately below — round-2 re-review, I-5), 1 priced elsewhere
- * (`Query.nodes`), 4 are a priced connection's own `edges` (not
- * double-counted), 11 leaf-terminating (nothing to multiply).
+ * `UNBOUNDED_LIST_FIELD_LIMITS` — see `cost-limit.ts`'s doc comment there for
+ * how the inventory partitions, and the "composite-element list-field
+ * inventory" suite above for the inventory itself, which is derived from the
+ * built schema rather than restated in prose.
  */
+/**
+ * The inventory `cost-limit.ts`'s own doc comment partitions, derived from the
+ * BUILT SCHEMA rather than restated.
+ *
+ * That comment used to carry a hand-counted total ("exactly 25"), verified
+ * programmatically once and then left to rot: by the time push notifications
+ * landed the real number was 30, and the arithmetic it published
+ * (`25 = 9 + 1 + 4 + 11`) had never matched its own enumerated list, which
+ * names 8 priced fields rather than 9. A count nobody re-runs is a comment
+ * that becomes false without anybody noticing.
+ *
+ * So the count lives here instead. Adding a composite-element list field now
+ * fails this test BY NAME, and whoever adds it has to decide which bucket it
+ * belongs in — which is the decision the comment existed to force.
+ */
+describe('the composite-element list-field inventory', () => {
+  /** Every field in the schema whose type is a list of composite elements. */
+  const inventory = (): string[] => {
+    const found: string[] = [];
+    for (const type of Object.values(schema.getTypeMap())) {
+      if (type.name.startsWith('__')) continue;
+      if (!isObjectType(type) && !isInterfaceType(type)) continue;
+      for (const [fieldName, field] of Object.entries(type.getFields())) {
+        const unwrapped = isNonNullType(field.type) ? field.type.ofType : field.type;
+        if (!isListType(unwrapped)) continue;
+        if (isCompositeType(getNamedType(field.type))) found.push(`${type.name}.${fieldName}`);
+      }
+    }
+    return found.sort();
+  };
+
+  // Priced: reaches further amplifiable content with no code-enforced ceiling
+  // (`UNBOUNDED_LIST_FIELD_LIMITS`), or with one worth pricing AT
+  // (`SUGGESTION_FIELD_LIMITS`).
+  const PRICED = [
+    'Book.lineage',
+    'Device.enabledUsers',
+    'Library.pendingFixes',
+    'Library.searchSuggestions',
+    'Library.series',
+    'SuggestionGroup.items',
+    'Viewer.devices',
+    'Viewer.users',
+  ];
+  // Priced in `multiplierFor` instead, by `ids.length`.
+  const PRICED_BY_ARGS = ['Query.nodes'];
+  // A priced connection's own `edges`. NOT priced separately: the parent
+  // connection field's multiplier already scales these, so pricing them too
+  // would double-count.
+  const CONNECTION_EDGES = [
+    'LibraryEntriesConnection.edges',
+    'LibraryProgressConnection.edges',
+    'SeriesBooksConnection.edges',
+    'UserBookRequestsConnection.edges',
+    'ValidationMessagesConnection.edges',
+  ];
+  // Leaf-terminating: the element type's full reachability closure contains no
+  // composite-element list field and no `first`/`last`-bearing field, so there
+  // is nothing under them to multiply.
+  const LEAF_TERMINATING = [
+    'Book.identifiers',
+    'BookAnalyzeReplacePayload.autoFixes',
+    'BookAnalyzeReplacePayload.messages',
+    'BookAnalyzeReplacePayload.proposals',
+    'EpubValidationError.messages',
+    'InvalidInputError.issues',
+    'PendingFixState.appliedFixes',
+    'PendingFixState.autoFixes',
+    'PendingFixState.proposals',
+    'UndoSnapshot.appliedFixes',
+    'UndoSnapshot.proposals',
+    'Validation.counts',
+    'ValidationMessage.segments',
+    'Viewer.notificationPreferences',
+    'Viewer.pushSubscriptions',
+    'ViewerSetNotificationPreferencePayload.notificationPreferences',
+  ];
+
+  it('accounts for every composite-element list field in the schema', () => {
+    const accounted = [
+      ...PRICED,
+      ...PRICED_BY_ARGS,
+      ...CONNECTION_EDGES,
+      ...LEAF_TERMINATING,
+    ].sort();
+    // Named, not counted: a bare length assertion would fail without saying
+    // WHICH field appeared, which is the only part worth knowing.
+    expect(inventory()).toEqual(accounted);
+  });
+
+  it('prices exactly the fields the two limit maps claim', () => {
+    // Guards the partition from the other side: a field moved between buckets
+    // in the list above, without being priced, would otherwise pass silently.
+    expect(
+      [...Object.keys(UNBOUNDED_LIST_FIELD_LIMITS), ...Object.keys(SUGGESTION_FIELD_LIMITS)].sort()
+    ).toEqual(PRICED);
+  });
+});
+
 describe('UNBOUNDED_LIST_FIELD_LIMITS — I-4, unbounded plain lists that reach a priced connection', () => {
   it('Library.series prices its children at the assumed worst case (100), same as a real connection would', () => {
     const { complexity } = costOf(

@@ -191,6 +191,59 @@ describe('the per-user cap (I-3, 3b)', () => {
     });
   });
 
+  /**
+   * The cap exempts re-subscribing a browser THIS account already holds — but
+   * the endpoint lookup that decides that is unique globally, not per user, so
+   * an endpoint held by SOMEONE ELSE took the same exemption. For the account
+   * receiving it the row is a new device (the upsert re-binds `userId`), so it
+   * has to be capped like one.
+   *
+   * Reaching it needs a known endpoint, which this app returns to nobody — so
+   * this is the cap failing to mean what it says rather than a reachable
+   * escalation. Pinned because the exemption reads as per-account and was not.
+   */
+  it('caps an endpoint re-bound from another user, which is a new device here', async () => {
+    await subscribe(BOB, 'https://push.example/bobs-browser');
+    for (let i = 0; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i++) {
+      await subscribe(ALICE, `https://push.example/alice-${i}`);
+    }
+
+    const result = await upsertPushSubscription(prisma, {
+      userId: ALICE,
+      endpoint: 'https://push.example/bobs-browser',
+      p256dh: 'key',
+      auth: 'secret',
+      label: 'Chrome',
+      now: 2000,
+    });
+
+    expect(result).toBeNull();
+    // Bob keeps it: a refused upsert must not re-bind the row on its way out.
+    expect(await listPushSubscriptionsForUser(prisma, BOB)).toHaveLength(1);
+    expect(await listPushSubscriptionsForUser(prisma, ALICE)).toHaveLength(
+      MAX_PUSH_SUBSCRIPTIONS_PER_USER
+    );
+  });
+
+  // Still allowed, and the reason the re-bind exists: a browser that changed
+  // hands moves to its new owner when they have room for it.
+  it('re-binds an endpoint from another user when the new owner is under the cap', async () => {
+    await subscribe(BOB, 'https://push.example/bobs-browser');
+
+    const result = await upsertPushSubscription(prisma, {
+      userId: ALICE,
+      endpoint: 'https://push.example/bobs-browser',
+      p256dh: 'key',
+      auth: 'secret',
+      label: 'Chrome',
+      now: 2000,
+    });
+
+    expect(result).not.toBeNull();
+    expect(await listPushSubscriptionsForUser(prisma, BOB)).toHaveLength(0);
+    expect(await listPushSubscriptionsForUser(prisma, ALICE)).toHaveLength(1);
+  });
+
   it("does not count toward a DIFFERENT user's cap", async () => {
     for (let i = 0; i < MAX_PUSH_SUBSCRIPTIONS_PER_USER; i++) {
       await subscribe(ALICE, `https://push.example/alice-${i}`);

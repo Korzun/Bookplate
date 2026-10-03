@@ -64,11 +64,18 @@ export type SubscriptionRow = {
  * `createBookRequest` shape, so two concurrent registrations cannot both read
  * a count under the cap and both insert.
  *
- * The check only runs for a genuinely NEW endpoint. Re-subscribing a browser
+ * The check only runs for a genuinely NEW device. Re-subscribing a browser
  * this account already holds a row for must always succeed — it is the same
  * device, not a new one — so it is exempt from the cap entirely, checked via
  * the same `findUnique` this function needs anyway to decide whether the
  * upsert below will insert or update.
+ *
+ * "This account" is load-bearing, and the lookup alone does not establish it:
+ * `endpoint` is unique GLOBALLY, so a row held by a DIFFERENT user comes back
+ * from the same `findUnique` and used to take the same exemption. For the
+ * account receiving it that row is a new device — the upsert re-binds
+ * `userId`, which is the re-bind this file documents above — so it has to be
+ * capped like one, and the owner is compared explicitly below.
  */
 export async function upsertPushSubscription(
   prisma: PrismaClient,
@@ -85,9 +92,11 @@ export async function upsertPushSubscription(
   return prisma.$transaction(async (tx) => {
     const existing = await tx.pushSubscription.findUnique({
       where: { endpoint: args.endpoint },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
-    if (existing === null) {
+    // Exempt only a row THIS account already holds. One belonging to someone
+    // else is about to become a new device here, so it is counted like one.
+    if (existing === null || existing.userId !== args.userId) {
       const count = await tx.pushSubscription.count({ where: { userId: args.userId } });
       if (count >= MAX_PUSH_SUBSCRIPTIONS_PER_USER) return null;
     }

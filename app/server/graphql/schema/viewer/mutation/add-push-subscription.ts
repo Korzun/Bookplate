@@ -9,10 +9,27 @@ import { model as pushSubscriptionModel } from '../../push-subscription/model';
 import { resolveViewerUserId } from './resolve-user-id';
 
 /**
- * `endpoint` must parse as a URL with an `https:` scheme: this value is a
- * bearer capability URL this server will POST to on every notification, so an
+ * `endpoint` must parse as a URL with an `https:` scheme. This value is a
+ * bearer capability URL the server POSTs to on every notification, so an
  * arbitrary one is a blind SSRF primitive aimed at the LAN this add-on runs
- * on. `p256dh`/`auth` must be non-empty base64url (the client's own
+ * on.
+ *
+ * What the scheme check actually closes, stated precisely because it is less
+ * than it sounds: it rules out the NON-https schemes — `http:` to a plaintext
+ * LAN service, and `file:`/`gopher:`-style schemes a URL parser will accept.
+ * It does NOT restrict the HOST. `https://192.168.1.1/anything` and
+ * `https://nas.local/` both pass, so a blind POST at an https LAN service
+ * remains reachable by anyone who can call this mutation — which is any
+ * authenticated account, for itself.
+ *
+ * It is left there deliberately rather than closed by accident: narrowing it
+ * means allowlisting hosts or rejecting private address ranges after DNS
+ * resolution, which is a real piece of work (and a DNS-rebinding problem of
+ * its own), and this is a self-hosted add-on whose attacker model is an
+ * account the operator created. Worth doing if that model ever widens; worth
+ * not pretending is already done in the meantime.
+ *
+ * `p256dh`/`auth` must be non-empty base64url (the client's own
  * `toBase64Url`, `lib/push.ts`, never emits padding, hence no `=`) —
  * `web-push` rejects an empty key PRE-FLIGHT with a plain `Error` carrying no
  * `statusCode`, which the driver's `classify` (`notification-channel-push.ts`)

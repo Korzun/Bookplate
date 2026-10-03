@@ -147,7 +147,10 @@ describe('Viewer.pushSubscriptions and mutations', () => {
       expect(await harness.prisma.pushSubscription.count()).toBe(0);
     });
 
-    it('rejects a non-https endpoint — the SSRF/LAN exposure this check closes', async () => {
+    // Narrows the SSRF primitive rather than closing it: the scheme is checked,
+    // the HOST is not, so an `https:` LAN address still passes. See
+    // `add-push-subscription.ts` for why that is left open.
+    it('rejects a non-https endpoint', async () => {
       harness = await createHarness();
 
       const result = await add({ endpoint: 'http://192.168.1.1/admin' });
