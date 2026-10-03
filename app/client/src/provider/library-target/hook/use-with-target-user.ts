@@ -51,7 +51,7 @@ export type WithTargetUser = {
    * The target user's Relay global id, off the SAME matched row `username`
    * comes from — `undefined` in exactly the cases `username` already is (no
    * stored selection, or a stored selection matching no user in the list).
-   * `UserRequestList` (`page/add/request.tsx`) needs a User global id where
+   * `UserRequestList` (`page/upload-request/request.tsx`) needs a User global id where
    * the switcher only holds a Library global id; this hook already performs
    * exactly that lookup for `username`, so this is one more field off the
    * same row rather than a second hook repeating the `UserListDocument`

@@ -30,7 +30,7 @@ type BookRequestCreatePayload = Extract<
 
 interface BookRequestsContentProps {
   /**
-   * This component's own PARENT (`AddRequestView`, `page/add/request`) always
+   * This component's own PARENT (`RequestView`, `page/upload-request/request`) always
    * passes `false` at its one production call site — this view is not even
    * mounted until the reader switches to it, which is the lazy-mount gate a
    * now-deleted `/user` card's collapsible `Card` used to provide. `skip`
@@ -43,13 +43,13 @@ interface BookRequestsContentProps {
   skip: boolean;
   /**
    * Publishes this component's page-header actions — "Clear resolved" — for
-   * the view above to hand to `<Page>` (`page/add/request.tsx` passes
-   * `AddOutletContext`'s `setHeaderActions` straight through).
+   * the view above to hand to `<Page>` (`page/upload-request/request.tsx` passes
+   * `UploadRequestOutletContext`'s `setHeaderActions` straight through).
    *
    * Here rather than on that view for the same reason `UserRequestList`'s
    * identical prop gives: the rows it acts on and the mutation it runs are
    * both this component's. Publishes `undefined` on unmount, which is
-   * `AddOutletContext`'s standing contract.
+   * `UploadRequestOutletContext`'s standing contract.
    */
   onHeaderActions?: (actions: PageActionItem[] | undefined) => void;
 }
@@ -110,7 +110,7 @@ interface BookRequestsContentProps {
  * reads as stray text against the left edge.
  *
  * **This component brings its own `Card`** around the create form. Its view
- * (`page/add/request.tsx`) deliberately adds none — the add-page reorg deleted
+ * (`page/upload-request/request.tsx`) deliberately adds none — the add-page reorg deleted
  * the `/user` card that used to wrap this whole component, because the
  * Upload/Request toggle replaced the lazy-mount gate it provided. That card
  * was load-bearing twice, though, and the shell half of its job did not have a
@@ -287,7 +287,7 @@ export const BookRequestsContent = ({ skip, onHeaderActions }: BookRequestsConte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedIds.join('\u0000'), deleteRequest, client]);
 
-  // MEMOIZED for the reason `page/add/upload.tsx` spells out at its own copy
+  // MEMOIZED for the reason `page/upload-request/upload.tsx` spells out at its own copy
   // of this effect: a fresh array every render would republish every render.
   const headerActions = useMemo<PageActionItem[]>(
     () => [

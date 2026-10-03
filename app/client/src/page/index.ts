@@ -1,6 +1,6 @@
-export { AddLayout } from './add';
-export { AddRequestView } from './add/request';
-export { AddUploadView } from './add/upload';
+export { UploadRequestLayout } from './upload-request';
+export { RequestView } from './upload-request/request';
+export { UploadView } from './upload-request/upload';
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
 export { DeviceListPage } from './device-list';

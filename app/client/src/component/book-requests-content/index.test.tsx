@@ -318,7 +318,7 @@ describe('BookRequestsContent', () => {
 
 /**
  * "Clear resolved", the page-header action this component publishes upward for
- * `AddRequestView` to hand to `<Page>` — the reader's counterpart to the
+ * `RequestView` to hand to `<Page>` — the reader's counterpart to the
  * admin's "Decline all" (`component/user-request-list`), and the same idea as
  * the Upload view's "Clear finished" one toggle away.
  *

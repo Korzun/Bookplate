@@ -15,14 +15,14 @@ import { useStyle } from './style';
 
 interface UserRequestListProps {
   /**
-   * The target user's Relay global id — `AddRequestView`'s own admin branch
+   * The target user's Relay global id — `RequestView`'s own admin branch
    * resolves it via `useWithTargetUser().userId`, which matches the
    * (persistent, page-level) library switcher's selection against
    * `UserListDocument`.
    */
   userId: string;
   /**
-   * This component's own PARENT (`AddRequestView`, `page/add/request.tsx`)
+   * This component's own PARENT (`RequestView`, `page/upload-request/request.tsx`)
    * always passes `false` at its one production call site — this view is not
    * even mounted until an admin reaches `/add/request` with a library
    * selected, which is the lazy-mount gate a now-deleted `/users` card's
@@ -36,15 +36,15 @@ interface UserRequestListProps {
   skip: boolean;
   /**
    * Publishes this list's page-header actions — "Decline all" — for the view
-   * above to hand to `<Page>` (`page/add/request.tsx` passes
-   * `AddOutletContext`'s `setHeaderActions` straight through).
+   * above to hand to `<Page>` (`page/upload-request/request.tsx` passes
+   * `UploadRequestOutletContext`'s `setHeaderActions` straight through).
    *
    * The action lives HERE rather than on that view because both halves of it
    * are this component's: the rows it acts on, and the mutation it runs. The
    * view has neither, and threading them upward to build the action there
    * would mean exporting this list's state rather than its intent.
    *
-   * Publishes `undefined` on unmount, which is `AddOutletContext`'s standing
+   * Publishes `undefined` on unmount, which is `UploadRequestOutletContext`'s standing
    * contract — a view that leaves its actions published leaves them on the
    * other view's header.
    */
@@ -53,11 +53,11 @@ interface UserRequestListProps {
 
 /**
  * An admin's view of ANOTHER user's book requests, mounted by the admin
- * branch of `AddRequestView` (`page/add/request.tsx`) — structurally a copy
+ * branch of `RequestView` (`page/upload-request/request.tsx`) — structurally a copy
  * of `UserRowContent`'s progress-list half (read that component's own doc
  * comment first): `usePaginatedConnection` over `Query.user(id: $userId) {
  * bookRequests }`, not `viewer.user.bookRequests` — the target is a
- * different user's requests, and `AddRequestView` resolves their `userId` via
+ * different user's requests, and `RequestView` resolves their `userId` via
  * `useWithTargetUser()`, which matches the (persistent, page-level) library
  * switcher's selected Library global id against `UserListDocument`.
  * `Query.user(id:)` is admin-only, which is correct here: this list renders
@@ -69,7 +69,7 @@ interface UserRequestListProps {
  * `page/user-list`, for the SAME reason `UserProgressListDocument` is: this
  * component has NO `Card` collapse gate — that gate belonged to the deleted
  * `/users` card mount. The gate now is the Upload/Request TOGGLE itself:
- * `AddRequestView` is not even mounted until an admin switches to `/add/
+ * `RequestView` is not even mounted until an admin switches to `/add/
  * request`, so this component, and the query it owns, is never even MOUNTED
  * until then. Hoisting it to `page/user-list` (a per-VIEWER route) would
  * fetch it for EVERY user on EVERY visit, under `Viewer.users`'s ×50 cost
@@ -200,7 +200,7 @@ export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestLi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.join('\u0000'), declineAllReason, runDecline, client]);
 
-  // MEMOIZED for the reason `page/add/upload.tsx` spells out at its own copy of
+  // MEMOIZED for the reason `page/upload-request/upload.tsx` spells out at its own copy of
   // this effect: a fresh array every render would republish on every render and
   // loop forever.
   const headerActions = useMemo<PageActionItem[]>(

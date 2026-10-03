@@ -14,13 +14,13 @@ import { UploadProvider } from '~/provider/upload';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
-import { AddLayout, type AddOutletContext } from './index';
-import { AddRequestView } from './request';
-import { AddUploadView } from './upload';
+import { UploadRequestLayout, type UploadRequestOutletContext } from './index';
+import { RequestView } from './request';
+import { UploadView } from './upload';
 
 // ── auth / library-target mocks ─────────────────────────────────────────────
 //
-// Same shape as `page/library/index.test.tsx`'s own mocks: `AddLayout` and the
+// Same shape as `page/library/index.test.tsx`'s own mocks: `UploadRequestLayout` and the
 // REAL `LibrarySwitcher` it renders both read `useIsAdmin`/`useLibraryTarget`,
 // so mocking the two provider modules drives both consistently without a
 // `LibraryTargetProvider` (which is backed by `localStorage`, not test props).
@@ -35,7 +35,7 @@ vi.mock('~/provider/auth', () => ({
 vi.mock('~/provider/library-target', () => ({
   useLibraryTarget: () => [targetLibraryIdValue, vi.fn()],
   // `useCurrentLibraryId`/`useWithTargetUser` are only reached by
-  // `renderAddPageAt`'s tests below, which mount the REAL `AddUploadView` —
+  // `renderUploadRequestLayoutAt`'s tests below, which mount the REAL `UploadView` —
   // its upload queue engine calls both (never `useLibraryTarget` directly,
   // see `useCurrentLibraryId`'s own doc comment). `libraryId: undefined` is a
   // safe stub: the pending-fixes query it gates is `skip`ped outright when
@@ -79,7 +79,7 @@ function makeUser(overrides: { id?: string; username?: string; libraryId?: strin
   };
 }
 
-// `maxUsageCount: 2` — `AddPage`'s own admin-gate read of `UserListDocument`
+// `maxUsageCount: 2` — `UploadRequestLayout`'s own admin-gate read of `UserListDocument`
 // AND `LibrarySwitcher`'s own (separate) read both fire on every admin
 // render; a default `maxUsageCount` of 1 would leave the second consumer
 // with no matching mock (a `console.warn`, per `test-utils.tsx`'s standing
@@ -95,7 +95,7 @@ function userListMock(users: ReturnType<typeof makeUser>[] = []): MockedResponse
   };
 }
 
-function renderAddPage({
+function renderUploadRequestLayout({
   isAdmin = false,
   targetLibraryId,
   users = [makeUser({ libraryId: targetLibraryId })],
@@ -112,7 +112,7 @@ function renderAddPage({
   targetLibraryIdValue = targetLibraryId;
   return renderWithApollo(
     <Routes>
-      <Route element={<AddLayout />}>
+      <Route element={<UploadRequestLayout />}>
         <Route index element={<div data-testid="add-outlet-child" />} />
       </Route>
     </Routes>,
@@ -120,21 +120,21 @@ function renderAddPage({
   );
 }
 
-function renderAddPageWithChild(
-  renderChild: (context: AddOutletContext) => ReactElement,
+function renderUploadRequestLayoutWithChild(
+  renderChild: (context: UploadRequestOutletContext) => ReactElement,
   { isAdmin = false, targetLibraryId }: { isAdmin?: boolean; targetLibraryId?: string } = {}
 ) {
   isAdminValue = isAdmin;
   targetLibraryIdValue = targetLibraryId;
 
   function ChildRoute() {
-    const context = useOutletContext<AddOutletContext>();
+    const context = useOutletContext<UploadRequestOutletContext>();
     return renderChild(context);
   }
 
   return renderWithApollo(
     <Routes>
-      <Route element={<AddLayout />}>
+      <Route element={<UploadRequestLayout />}>
         <Route index element={<ChildRoute />} />
       </Route>
     </Routes>,
@@ -143,13 +143,13 @@ function renderAddPageWithChild(
 }
 
 /**
- * Mounts the REAL `AddLayout` + `AddUploadView`/`AddRequestView` route tree at
+ * Mounts the REAL `UploadRequestLayout` + `UploadView`/`RequestView` route tree at
  * a given pathname, mirroring `router/component.tsx`: one PATHLESS layout with
  * two absolute-path children, which is what lets `/add` and `/request` be
  * siblings while still sharing the gate, the `<Page>` shell and the
  * header-actions channel.
  *
- * Wrapped in `UploadProvider` because the real `AddUploadView` (unlike the
+ * Wrapped in `UploadProvider` because the real `UploadView` (unlike the
  * `add-outlet-child` stand-in the other tests here use) depends on it.
  *
  * The bare `<Link>` is the only way left to cross between the two views from
@@ -157,16 +157,19 @@ function renderAddPageWithChild(
  * gone now that each is its own nav destination. It stands in for the nav tab
  * a real reader would click — `component/nav` owns and tests the real one.
  */
-function renderAddPageAt(initialPath: string, { isAdmin = false }: { isAdmin?: boolean } = {}) {
+function renderUploadRequestLayoutAt(
+  initialPath: string,
+  { isAdmin = false }: { isAdmin?: boolean } = {}
+) {
   isAdminValue = isAdmin;
   targetLibraryIdValue = undefined;
   const rendered = renderWithApollo(
     <UploadProvider>
       <Link to={path.request()}>go to request</Link>
       <Routes>
-        <Route element={<AddLayout />}>
-          <Route path={path.upload()} element={<AddUploadView />} />
-          <Route path={path.request()} element={<AddRequestView />} />
+        <Route element={<UploadRequestLayout />}>
+          <Route path={path.upload()} element={<UploadView />} />
+          <Route path={path.request()} element={<RequestView />} />
         </Route>
       </Routes>
     </UploadProvider>,
@@ -175,9 +178,9 @@ function renderAddPageAt(initialPath: string, { isAdmin = false }: { isAdmin?: b
   return { ...rendered, user: userEvent.setup() };
 }
 
-describe('AddPage layout', () => {
+describe('UploadRequestLayout layout', () => {
   it('gates an admin with no library selected, rendering no view at all', async () => {
-    renderAddPage({ isAdmin: true, targetLibraryId: undefined });
+    renderUploadRequestLayout({ isAdmin: true, targetLibraryId: undefined });
     expect(await screen.findByText(/select a library/i)).toBeInTheDocument();
     // The early return replaces the `<Outlet />` entirely, so neither view
     // mounts. This used to assert "no toggle" via its `radiogroup` role; that
@@ -187,7 +190,7 @@ describe('AddPage layout', () => {
   });
 
   it('tells an admin to register a user when there are none', async () => {
-    renderAddPage({ isAdmin: true, targetLibraryId: undefined, users: [] });
+    renderUploadRequestLayout({ isAdmin: true, targetLibraryId: undefined, users: [] });
     // Exactly ONCE, as the empty-state title. It used to appear twice, the
     // second being the disabled switcher's own placeholder — the switcher is
     // global now (`router/nav-layout`) and no longer rendered by this page, so
@@ -198,7 +201,7 @@ describe('AddPage layout', () => {
   });
 
   it('renders the child view once a library is selected, and owns no switcher', async () => {
-    renderAddPage({ isAdmin: true, targetLibraryId: DEFAULT_LIBRARY_ID });
+    renderUploadRequestLayout({ isAdmin: true, targetLibraryId: DEFAULT_LIBRARY_ID });
 
     expect(await screen.findByTestId('add-outlet-child')).toBeInTheDocument();
     // The picker is global chrome now, rendered once by `router/nav-layout`
@@ -210,13 +213,13 @@ describe('AddPage layout', () => {
   });
 
   it('renders no switcher for a reader, and goes straight to the child view', () => {
-    renderAddPage({ isAdmin: false });
+    renderUploadRequestLayout({ isAdmin: false });
     // Anchoring to the placeholder text alone (`/select library/i`) would
     // still pass if the switcher rendered WITH a selection — its trigger's
     // accessible name is the selected option's label then, not the
     // placeholder. `LibrarySwitcher` returns `null` outright for a reader
     // (`AdminLibrarySwitcher` never even mounts), and its `Select` trigger is
-    // the only `role="button"` element `AddPage`'s own chrome ever renders
+    // the only `role="button"` element `UploadRequestLayout`'s own chrome ever renders
     // here (`AddToggle` is `role="radiogroup"`/`"radio"`, and no header
     // actions are published yet) — so asserting zero buttons catches a
     // switcher rendered in ANY state, not just the unselected one.
@@ -230,13 +233,13 @@ describe('AddPage layout', () => {
    * a parent route and a child selected by an in-page toggle.
    */
   it('mounts the Upload view on /add', async () => {
-    renderAddPageAt('/upload', { isAdmin: false });
+    renderUploadRequestLayoutAt('/upload', { isAdmin: false });
     expect(await screen.findByRole('button', { name: /^actions$/i })).toBeInTheDocument();
     expect(screen.queryByTestId('add-request-view')).not.toBeInTheDocument();
   });
 
   it('mounts the Request view on /request', async () => {
-    renderAddPageAt('/request', { isAdmin: false });
+    renderUploadRequestLayoutAt('/request', { isAdmin: false });
     expect(await screen.findByTestId('add-request-view')).toBeInTheDocument();
   });
 
@@ -244,23 +247,23 @@ describe('AddPage layout', () => {
   // toggle that used to ride in its header moved up to the nav, where Upload
   // and Request are separate destinations.
   it('renders no segmented control of its own', async () => {
-    renderAddPageAt('/upload', { isAdmin: false });
+    renderUploadRequestLayoutAt('/upload', { isAdmin: false });
     await screen.findByRole('button', { name: /^actions$/i });
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
-  // Pins `AddOutletContext`'s doc comment ("Children MUST clear on unmount")
-  // from the OTHER direction: `page/add/upload.tsx`'s
+  // Pins `UploadRequestOutletContext`'s doc comment ("Children MUST clear on unmount")
+  // from the OTHER direction: `page/upload-request/upload.tsx`'s
   // `useEffect(() => { setHeaderActions(headerActions); return () =>
   // setHeaderActions(undefined); }, ...)` cleanup is what this test catches
-  // if deleted. `AddUploadView` always publishes 3 actions (`buildUploadActions`
-  // returns them unconditionally, disabled or not — see `page/add/actions.ts`),
+  // if deleted. `UploadView` always publishes 3 actions (`buildUploadActions`
+  // returns them unconditionally, disabled or not — see `page/upload-request/actions.ts`),
   // so its "Actions" trigger appears as soon as it mounts; without the
-  // unmount cleanup, switching to Request would leave `AddPage`'s
+  // unmount cleanup, switching to Request would leave `UploadRequestLayout`'s
   // `headerActions` state stale and the (now-irrelevant) Upload trigger stuck
   // on screen.
   it("clears the Upload view's header actions when navigating to Request", async () => {
-    const { user } = renderAddPageAt('/upload', { isAdmin: false });
+    const { user } = renderUploadRequestLayoutAt('/upload', { isAdmin: false });
     expect(await screen.findByRole('button', { name: /^actions$/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: 'go to request' }));
@@ -282,7 +285,7 @@ describe('AddPage layout', () => {
   });
 
   it('renders header actions a child publishes through the outlet context', async () => {
-    renderAddPageWithChild(({ setHeaderActions }) => {
+    renderUploadRequestLayoutWithChild(({ setHeaderActions }) => {
       useEffect(() => {
         setHeaderActions([{ label: 'Do a thing', onClick: () => {} }]);
         return () => setHeaderActions(undefined);
@@ -290,7 +293,7 @@ describe('AddPage layout', () => {
       return <div />;
     });
     // `/actions/i` alone matches BOTH the desktop trigger ("Actions",
-    // `actionsLabel` from `AddPage`) and the mobile trigger's static "More
+    // `actionsLabel` from `UploadRequestLayout`) and the mobile trigger's static "More
     // actions" `aria-label` (`control/page-actions-bar`) — anchor to the
     // exact desktop label so this pins the layout's own `actionsLabel="Actions"`
     // prop, not just "some actions trigger exists".
@@ -301,9 +304,9 @@ describe('AddPage layout', () => {
 // ── The `UserListDocument` admin gate ────────────────────────────────────────
 //
 // Moved from `page/upload/index.test.tsx` (pre-Task-2): the admin gate itself
-// — `skip: !isAdmin` on `AddPage`'s own read — moved out of the Upload view
+// — `skip: !isAdmin` on `UploadRequestLayout`'s own read — moved out of the Upload view
 // verbatim, so this coverage belongs with the layout now, not with
-// `AddUploadView` (`page/add/upload.test.tsx`), which no longer touches
+// `UploadView` (`page/upload-request/upload.test.tsx`), which no longer touches
 // `UserListDocument` at all.
 //
 // The gate is pinned by a REQUEST COUNTER rather than by rendered output —
@@ -314,7 +317,7 @@ describe('AddPage layout', () => {
 // the operation is issued, so the count is already correct before the first
 // `await` below.
 //
-// The admin case's count is 1, not 2, even though BOTH `AddPage`'s own gate
+// The admin case's count is 1, not 2, even though BOTH `UploadRequestLayout`'s own gate
 // read and the real `LibrarySwitcher`'s own read fire on the same render:
 // `UserListDocument` takes no variables, and Apollo's default
 // `queryDeduplication` collapses two concurrently in-flight requests for the
@@ -337,7 +340,7 @@ const countingUserListMock = (): MockedResponse<UserListQuery> => ({
   },
 });
 
-describe('AddPage — UserList admin gate', () => {
+describe('UploadRequestLayout — UserList admin gate', () => {
   beforeEach(() => {
     userListRequests.count = 0;
   });
@@ -347,7 +350,7 @@ describe('AddPage — UserList admin gate', () => {
     // with an empty `mocks` array the matcher would never be consulted and
     // the counter would read 0 even for a query that DID fire (a fail-open
     // test).
-    renderAddPage({ isAdmin: false, mocks: [countingUserListMock()] });
+    renderUploadRequestLayout({ isAdmin: false, mocks: [countingUserListMock()] });
 
     await act(async () => {
       await Promise.resolve();
@@ -359,7 +362,11 @@ describe('AddPage — UserList admin gate', () => {
   // The other side of the same gate, so the counter above is known to be
   // wired to a query that CAN fire.
   it('issues the UserList query once for an admin viewer', async () => {
-    renderAddPage({ isAdmin: true, targetLibraryId: undefined, mocks: [countingUserListMock()] });
+    renderUploadRequestLayout({
+      isAdmin: true,
+      targetLibraryId: undefined,
+      mocks: [countingUserListMock()],
+    });
 
     await waitFor(() => expect(userListRequests.count).toBe(1));
   });

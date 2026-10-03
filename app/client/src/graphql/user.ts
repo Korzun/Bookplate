@@ -2,7 +2,7 @@ import { graphql } from '~/gql';
 
 /**
  * A document read by more than one ROUTE (`page/user-list`, `page/library`,
- * `page/add`) and by a kept PROVIDER (`provider/library-target`'s
+ * `page/upload-request`) and by a kept PROVIDER (`provider/library-target`'s
  * `useWithTargetUser`) lives in a leaf module under `src/graphql/`, not in
  * whichever route happens to compose it — that is the general rule this
  * project settled on after `UserListDocument` briefly lived at
@@ -12,8 +12,7 @@ import { graphql } from '~/gql';
  * a page module and the whole component barrel it re-exports, a strict
  * regression from the pre-task-2 shape (`~/graphql/user`, a leaf). Seven
  * readers as of this writing: `page/user-list` (composes `...UserRowFragment`
- * into it), `page/library`, `page/add` (`page/upload` before the `/add`
- * rename), `component/library-switcher`, `component/device-form`,
+ * into it), `page/library`, `page/upload-request`, `component/library-switcher`, `component/device-form`,
  * `provider/library-target`'s `useWithTargetUser`, and `component/nav` —
  * mounted on EVERY admin page, the single most cost-relevant reader of this
  * document: its own read (`skip: !isAdmin`, for the pending-request dot on
@@ -49,7 +48,7 @@ import { graphql } from '~/gql';
  * live data. There is deliberately no "null folds to empty" branch anywhere
  * this document is read. `skip: !isAdmin` is what stops the request before
  * the server ever gets to deny it — every non-admin visits `page/library`/
- * `page/add` (the app's default landing pages), `component/device-form`, and
+ * `page/upload-request` (the app's default landing pages), `component/device-form`, and
  * `component/nav` (mounted on every page), all of which read this same
  * document unconditionally.
  */

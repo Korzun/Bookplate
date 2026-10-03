@@ -11,7 +11,7 @@ import { path } from '~/router';
 
 import { useStyle } from './style';
 
-export type AddOutletContext = {
+export type UploadRequestOutletContext = {
   /** Set by a child view to publish its page header actions; pass `undefined`
    *  to clear. Children MUST clear on unmount. */
   setHeaderActions: (actions: PageActionItem[] | undefined) => void;
@@ -40,7 +40,7 @@ export type AddOutletContext = {
  * at that one.
  *
  * The consequence is `headerActions`: they are the Upload view's, and they now
- * travel upward through `AddOutletContext`. A view publishes on mount and
+ * travel upward through `UploadRequestOutletContext`. A view publishes on mount and
  * CLEARS ON UNMOUNT, which is what keeps one view's actions off the other —
  * switching views unmounts the child, so no route-change reset is needed here.
  *
@@ -52,7 +52,7 @@ export type AddOutletContext = {
  * entirely by the switcher, so changing library without leaving the page is a
  * requirement, not a convenience.
  */
-export const AddLayout = () => {
+export const UploadRequestLayout = () => {
   const styles = useStyle();
   const [isAdmin] = useIsAdmin();
   const [targetLibraryId] = useLibraryTarget();
@@ -66,7 +66,7 @@ export const AddLayout = () => {
   const userList = userListData?.viewer.users ?? [];
 
   const [headerActions, setHeaderActions] = useState<PageActionItem[] | undefined>(undefined);
-  const context: AddOutletContext = useMemo(() => ({ setHeaderActions }), []);
+  const context: UploadRequestOutletContext = useMemo(() => ({ setHeaderActions }), []);
 
   if (isAdmin && !targetLibraryId) {
     const noUsers = !userListLoading && userList.length === 0;

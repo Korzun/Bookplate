@@ -5,7 +5,7 @@ import { UserRequestList } from '~/component/user-request-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useWithTargetUser } from '~/provider/library-target';
 
-import type { AddOutletContext } from './index';
+import type { UploadRequestOutletContext } from './index';
 
 /**
  * The Request view. Branches on `isAdmin`, and each branch mounts a component
@@ -18,7 +18,7 @@ import type { AddOutletContext } from './index';
  * all until the reader navigates to `/request`.
  *
  * The `data-testid="add-request-view"` wrapper exists for the routing tests in
- * `page/add/index.test.tsx`: they need a mount marker that does not depend on
+ * `page/upload-request/index.test.tsx`: they need a mount marker that does not depend on
  * `BookRequestsContent`'s query settling.
  *
  * The admin branch mounts `UserRequestList` scoped to whichever library the
@@ -29,13 +29,13 @@ import type { AddOutletContext } from './index';
  * `data-testid` here: `UserRequestList` renders its own rows/empty state,
  * which is marker enough once mounted.
  */
-export const AddRequestView = () => {
+export const RequestView = () => {
   const [isAdmin] = useIsAdmin();
   const withTargetUser = useWithTargetUser();
   // Handed straight through to whichever list this view mounts: each owns both
   // halves of the action it publishes — the rows and the mutation. This view is
-  // only the wire, exactly as `AddUploadView` is for its own queue actions.
-  const { setHeaderActions } = useOutletContext<AddOutletContext>();
+  // only the wire, exactly as `UploadView` is for its own queue actions.
+  const { setHeaderActions } = useOutletContext<UploadRequestOutletContext>();
 
   // Both branches publish, and they publish DIFFERENT actions, which is the
   // point: the admin resolves other people's requests ("Decline all") and the
@@ -51,7 +51,7 @@ export const AddRequestView = () => {
     );
   }
 
-  // `AddPage`'s admin gate means an admin only reaches this view with a
+  // `UploadRequestLayout`'s admin gate means an admin only reaches this view with a
   // library selected, so `userId` is resolved in practice. The guard below is
   // for the frame between a switcher change and the user list resolving.
   const userId = withTargetUser.userId;

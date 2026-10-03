@@ -15,21 +15,21 @@ import type { MetadataFix } from '~/lib/book-types';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
 
-import { type AddOutletContext } from './index';
-import { AddUploadView } from './upload';
+import { type UploadRequestOutletContext } from './index';
+import { UploadView } from './upload';
 
 /**
- * A minimal stand-in for `AddPage` (`page/add/index.tsx`) — just the two
- * things `AddUploadView` actually depends on: the `<Page>` wrapper that
+ * A minimal stand-in for `UploadRequestLayout` (`page/upload-request/index.tsx`) — just the two
+ * things `UploadView` actually depends on: the `<Page>` wrapper that
  * renders the header-actions menu it publishes into, and an `<Outlet>`
- * carrying `AddOutletContext`. The real layout's admin gate/`LibrarySwitcher`
+ * carrying `UploadRequestOutletContext`. The real layout's admin gate/`LibrarySwitcher`
  * are irrelevant to these tests (they test the Upload view's own queue
  * mechanics), so this harness does not reproduce them — that coverage lives
- * in `page/add/index.test.tsx` instead.
+ * in `page/upload-request/index.test.tsx` instead.
  */
 function Harness() {
   const [headerActions, setHeaderActions] = useState<PageActionItem[] | undefined>(undefined);
-  const context: AddOutletContext = useMemo(() => ({ setHeaderActions }), []);
+  const context: UploadRequestOutletContext = useMemo(() => ({ setHeaderActions }), []);
   return (
     <Page headerActions={headerActions} actionsLabel="Actions">
       <Outlet context={context} />
@@ -37,12 +37,12 @@ function Harness() {
   );
 }
 
-function renderAddUploadView(options?: Parameters<typeof renderWithApollo>[1]) {
+function renderUploadView(options?: Parameters<typeof renderWithApollo>[1]) {
   return renderWithApollo(
     <UploadProvider>
       <Routes>
         <Route element={<Harness />}>
-          <Route index element={<AddUploadView />} />
+          <Route index element={<UploadView />} />
         </Route>
       </Routes>
     </UploadProvider>,
@@ -155,15 +155,15 @@ afterEach(() => {
 // An item that uploads with no server auto-fixes must never be announced.
 // Previously it was never added to `announcedRef`, so a later *manual* Accept
 // (which moves a fix into appliedFixes) tripped the "Auto-fixed" effect and
-// fired a misleading toast. This mounts the real AddUploadView wrapped in the
+// fired a misleading toast. This mounts the real UploadView wrapped in the
 // (lifted) UploadProvider — everything else uses its context's default
 // no-op value — and drives an upload + manual apply end-to-end.
 
-describe('AddUploadView — manual apply does not trigger the auto-fix toast', () => {
+describe('UploadView — manual apply does not trigger the auto-fix toast', () => {
   it('shows no "Auto-fixed" toast for a manually-applied proposal', async () => {
     const fix = makeFix();
 
-    renderAddUploadView();
+    renderUploadView();
 
     // Let the initial config fetch settle.
     await act(async () => {
@@ -209,9 +209,9 @@ describe('AddUploadView — manual apply does not trigger the auto-fix toast', (
   });
 });
 
-describe('AddUploadView — Clear finished', () => {
+describe('UploadView — Clear finished', () => {
   it('is disabled with an empty queue and clears a failed row when chosen', async () => {
-    renderAddUploadView();
+    renderUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -254,7 +254,7 @@ describe('AddUploadView — Clear finished', () => {
   });
 
   it('clears only the failed row, leaving an in-progress upload untouched', async () => {
-    renderAddUploadView();
+    renderUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -305,11 +305,11 @@ describe('AddUploadView — Clear finished', () => {
   });
 });
 
-describe('AddUploadView — Accept all / Reject all', () => {
+describe('UploadView — Accept all / Reject all', () => {
   it('applies every pending proposal across the queue via the Actions menu', async () => {
     const fix = makeFix();
 
-    renderAddUploadView();
+    renderUploadView();
     await act(async () => {
       await Promise.resolve();
     });
@@ -373,7 +373,7 @@ describe('AddUploadView — Accept all / Reject all', () => {
     const fix = makeFix();
     let acceptCalls = 0;
 
-    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => acceptCalls++)] });
+    renderUploadView({ mocks: [acceptAllMock('GID-1', () => acceptCalls++)] });
     await act(async () => {
       await Promise.resolve();
     });
@@ -446,7 +446,7 @@ describe('AddUploadView — Accept all / Reject all', () => {
     // (React state, not a round trip) so the first `waitFor` finds it
     // immediately, and the second one below waits the window out to see the
     // lock lift, with a timeout that outlasts it.
-    renderAddUploadView({ mocks: [acceptAllMock('GID-1', () => {}, 1500)] });
+    renderUploadView({ mocks: [acceptAllMock('GID-1', () => {}, 1500)] });
     await act(async () => {
       await Promise.resolve();
     });
@@ -518,6 +518,6 @@ describe('AddUploadView — Accept all / Reject all', () => {
 });
 
 // The `UserListDocument` admin-gate coverage that used to live here moved to
-// `page/add/index.test.tsx`'s "AddPage — UserList admin gate" describe block:
+// `page/upload-request/index.test.tsx`'s "UploadRequestLayout — UserList admin gate" describe block:
 // the gate itself (`skip: !isAdmin`) moved out of the Upload view verbatim
-// into `AddPage`, and `AddUploadView` no longer reads that document at all.
+// into `UploadRequestLayout`, and `UploadView` no longer reads that document at all.

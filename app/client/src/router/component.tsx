@@ -1,9 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import {
-  AddLayout,
-  AddRequestView,
-  AddUploadView,
+  UploadRequestLayout,
+  RequestView,
+  UploadView,
   BookEditPage,
   BookPage,
   DeviceListPage,
@@ -43,22 +43,13 @@ export const AppRouter = () => {
             {/* One PATHLESS layout for two sibling destinations. Upload and
                 Request are separate nav items now, but they still share the
                 admin "Select a library" gate, the `<Page>` shell and the
-                header-actions channel that `AddLayout` provides — a layout
+                header-actions channel that `UploadRequestLayout` provides — a layout
                 route keeps all three without either view knowing the other
                 exists. */}
-            <Route element={<AddLayout />}>
-              <Route path={path.upload()} element={<AddUploadView />} />
-              <Route path={path.request()} element={<AddRequestView />} />
+            <Route element={<UploadRequestLayout />}>
+              <Route path={path.upload()} element={<UploadView />} />
+              <Route path={path.request()} element={<RequestView />} />
             </Route>
-            {/* The URLs these two used to live at, when both were one `/add`
-                page behind a toggle. Without these the catch-all below would
-                bounce an old bookmark to the library, which reads as "the
-                feature is gone" rather than "it moved". */}
-            <Route path={path.legacyAdd()} element={<Navigate to={path.upload()} replace />} />
-            <Route
-              path={path.legacyAddRequest()}
-              element={<Navigate to={path.request()} replace />}
-            />
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />

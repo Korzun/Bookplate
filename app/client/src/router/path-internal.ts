@@ -7,14 +7,6 @@
  */
 export const upload = () => '/upload';
 export const request = () => '/request';
-/**
- * The URLs those two replaced. Kept solely so `router/component.tsx` can
- * redirect them — someone who bookmarked either view, or was sent a link to
- * one, must not land on the catch-all bounce to the library, which reads as
- * the feature having been removed rather than moved.
- */
-export const legacyAdd = () => '/add';
-export const legacyAddRequest = () => `${legacyAdd()}/request`;
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';

@@ -20,23 +20,23 @@ import { UserListDocument } from '~/graphql/user';
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 import { renderWithApollo } from '~/test-utils';
 
-import type { AddOutletContext } from './index';
-import { AddRequestView } from './request';
+import type { UploadRequestOutletContext } from './index';
+import { RequestView } from './request';
 
 /**
- * A minimal stand-in for `AddPage` — the two things this view depends on: the
+ * A minimal stand-in for `UploadRequestLayout` — the two things this view depends on: the
  * `<Page>` its published actions land in, and an `<Outlet>` carrying
- * `AddOutletContext`. Same harness, for the same reason, as
- * `page/add/upload.test.tsx`'s; the real layout's admin gate is covered in
- * `page/add/index.test.tsx` instead.
+ * `UploadRequestOutletContext`. Same harness, for the same reason, as
+ * `page/upload-request/upload.test.tsx`'s; the real layout's admin gate is covered in
+ * `page/upload-request/index.test.tsx` instead.
  *
  * It renders a REAL `<Page>` rather than capturing the published actions, so
  * "Decline all reaches the page header" is asserted through the trigger an
  * admin actually clicks.
  */
-function AddPageHarness() {
+function UploadRequestLayoutHarness() {
   const [headerActions, setHeaderActions] = useState<PageActionItem[] | undefined>(undefined);
-  const context: AddOutletContext = useMemo(() => ({ setHeaderActions }), []);
+  const context: UploadRequestOutletContext = useMemo(() => ({ setHeaderActions }), []);
   return (
     <Page headerActions={headerActions} actionsLabel="Actions">
       <Outlet context={context} />
@@ -44,10 +44,10 @@ function AddPageHarness() {
   );
 }
 
-/** Mounts `element` where `AddPage` mounts its `<Outlet />`. */
-const inAddPage = (element: ReactNode) => (
+/** Mounts `element` where `UploadRequestLayout` mounts its `<Outlet />`. */
+const inUploadRequestLayout = (element: ReactNode) => (
   <Routes>
-    <Route element={<AddPageHarness />}>
+    <Route element={<UploadRequestLayoutHarness />}>
       <Route index element={element} />
     </Route>
   </Routes>
@@ -200,7 +200,7 @@ function renderAddRequest({
   isAdmin: boolean;
   requests?: Partial<BookRequestRowFragmentFragment>[];
   /** Seeds `LibraryTargetProvider`'s `localStorage`-backed state — the real
-   *  provider, not a mock, since `AddRequestView` now reaches it through
+   *  provider, not a mock, since `RequestView` now reaches it through
    *  `useWithTargetUser`. */
   targetLibraryId?: string;
   /** The row in `UserListDocument`'s response whose `library.id` matches
@@ -230,12 +230,12 @@ function renderAddRequest({
   }
 
   return renderWithApollo(
-    <LibraryTargetProvider>{inAddPage(<AddRequestView />)}</LibraryTargetProvider>,
+    <LibraryTargetProvider>{inUploadRequestLayout(<RequestView />)}</LibraryTargetProvider>,
     { user: { username: 'reader', isAdmin }, mocks }
   );
 }
 
-describe('AddRequestView', () => {
+describe('RequestView', () => {
   it("renders the reader's own request form and list", async () => {
     renderAddRequest({ isAdmin: false, requests: [{ title: 'Dune' }] });
     expect(await screen.findByText('Dune')).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe('AddRequestView', () => {
 
   /**
    * The end of the wire: `UserRequestList` builds the action, this view hands
-   * it to `AddOutletContext`, and `AddPage`'s `<Page>` renders it. Asserted
+   * it to `UploadRequestOutletContext`, and `UploadRequestLayout`'s `<Page>` renders it. Asserted
    * through the trigger rather than through a captured callback, because the
    * point of the change was that the Request view has an "Actions" button at
    * all — the Upload view has one, and a header row that empties as you
@@ -297,10 +297,10 @@ describe('AddRequestView', () => {
   });
 
   it('renders nothing for an admin with no library selected', () => {
-    // Neither branch of `AddRequestView`/`UserRequestList` ever renders a
+    // Neither branch of `RequestView`/`UserRequestList` ever renders a
     // `list` role (rows and the empty state are plain divs), so
     // `queryByRole('list')` passes identically whether or not this guard
-    // exists. `AddRequestView`'s admin branch returns `null` outright here
+    // exists. `RequestView`'s admin branch returns `null` outright here
     // (`withTargetUser.userId === undefined`), so nothing at all mounts —
     // in particular `UserRequestList` never mounts, so none of its own
     // possible renders ("Loading…", "No requests yet", or a row) ever
@@ -314,7 +314,7 @@ describe('AddRequestView', () => {
   it("shows the newly-selected user's requests when the switcher's target changes", async () => {
     // Spec §7: "changing the library changes whose requests appear, which is
     // the one genuinely new behaviour in this design and the test most worth
-    // having." `renderAddRequest` above only ever mounts `AddRequestView` at
+    // having." `renderAddRequest` above only ever mounts `RequestView` at
     // a FIXED target, so this test mounts a small harness alongside it, both
     // sharing one real `LibraryTargetProvider`, and drives the switch through
     // the same `useLibraryTarget` setter the real `LibrarySwitcher` calls —
@@ -348,15 +348,18 @@ describe('AddRequestView', () => {
       return (
         <>
           <button onClick={() => setTargetLibraryId(carolLibrary)}>Switch to carol</button>
-          <AddRequestView />
+          <RequestView />
         </>
       );
     }
 
-    renderWithApollo(<LibraryTargetProvider>{inAddPage(<Harness />)}</LibraryTargetProvider>, {
-      user: { username: 'reader', isAdmin: true },
-      mocks,
-    });
+    renderWithApollo(
+      <LibraryTargetProvider>{inUploadRequestLayout(<Harness />)}</LibraryTargetProvider>,
+      {
+        user: { username: 'reader', isAdmin: true },
+        mocks,
+      }
+    );
 
     expect(await screen.findByText('Dune')).toBeInTheDocument();
 
