@@ -10,7 +10,7 @@ import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { createMailer } from './services/mailer';
 import { createEmailChannelDriver } from './services/notification-channel-email';
-import { createPushChannelDriver } from './services/notification-channel-push';
+import { createPushChannelDriver, PUSH_CONTACT } from './services/notification-channel-push';
 import { NotificationQueue } from './services/notification-queue';
 import { getOrCreateVapidKeys } from './services/push-keys';
 import { createReplaceStaging } from './services/replace-staging';
@@ -75,13 +75,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
       push: createPushChannelDriver({
         prisma,
         vapid,
-        // The contact a push service may use to reach the operator about a
-        // misbehaving sender. The configured From address when there is one;
-        // otherwise a non-routable placeholder, which the spec accepts —
-        // VAPID requires the claim to be present, not to be reachable.
-        contact: config.mail?.from
-          ? `mailto:${config.mail.from}`
-          : 'mailto:admin@bookplate.invalid',
+        // See `PUSH_CONTACT`: a constant, not the configured From address, so
+        // that no mail setting can stop push from reaching Apple devices.
+        contact: PUSH_CONTACT,
         libraryName: config.libraryName,
       }),
     },

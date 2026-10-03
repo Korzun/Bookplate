@@ -93,6 +93,32 @@ function classify(statusCode: number): EndpointOutcome {
   return 'misconfigured';
 }
 
+/**
+ * The VAPID `sub` claim: a contact a push service may use to reach whoever is
+ * responsible for a misbehaving sender.
+ *
+ * A CONSTANT, and deliberately not the operator's configured From address,
+ * which is what this used to be (falling back to
+ * `mailto:admin@bookplate.invalid` when mail was unconfigured). RFC 8292 only
+ * requires the claim to be present and well-formed, and that fallback's
+ * comment said as much — but **Apple validates the domain and rejects a
+ * reserved TLD**, answering `403 BadJwtToken`. Verified against
+ * `web.push.apple.com`: `mailto:…@example.invalid` is refused while
+ * `mailto:…@example.com`, this URL, and any real address are accepted.
+ *
+ * So the old fallback meant push to Apple devices could never work on an
+ * install with no mail configured — and the driver reports that as
+ * `misconfigured`, which is terminal, so the notification was dropped rather
+ * than retried. Deriving it from the From address had the same failure mode
+ * for any operator whose address was unroutable.
+ *
+ * Making it constant decouples push from mail configuration entirely: there
+ * is no longer a mail setting that can silently stop push from working. A
+ * push service with a complaint wants whoever can fix the software, which for
+ * a self-hosted add-on is the project rather than the household running it.
+ */
+export const PUSH_CONTACT = 'https://github.com/Korzun/Bookplate';
+
 export function createPushChannelDriver(deps: {
   prisma: PrismaClient;
   vapid: VapidKeys;

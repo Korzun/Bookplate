@@ -247,6 +247,35 @@ it('lets a success outrank a misconfiguration', async () => {
   expect(await deliver(send)).toEqual({ ok: true });
 });
 
+import { PUSH_CONTACT } from './notification-channel-push';
+
+/**
+ * Apple answers `403 BadJwtToken` for a VAPID `sub` in a reserved TLD, which
+ * the driver classifies as `misconfigured` — terminal, so the notification is
+ * dropped rather than retried. The previous value,
+ * `mailto:admin@bookplate.invalid`, hit exactly that: push to Apple devices
+ * could never work on an install without mail configured, and nothing in the
+ * unit suite noticed because no unit test talks to a push service.
+ *
+ * Verified against `web.push.apple.com` while smoke-testing the branch:
+ * `mailto:…@example.invalid` refused, `mailto:…@example.com` and this URL
+ * accepted.
+ */
+describe('PUSH_CONTACT', () => {
+  const RESERVED_TLDS = ['.invalid', '.example', '.test', '.localhost'];
+
+  it('is not in a reserved TLD, which Apple rejects outright', () => {
+    const host = new URL(PUSH_CONTACT).hostname;
+    for (const tld of RESERVED_TLDS) {
+      expect(host.endsWith(tld)).toBe(false);
+    }
+  });
+
+  it('is a contact URI shape RFC 8292 allows', () => {
+    expect(['https:', 'mailto:']).toContain(new URL(PUSH_CONTACT).protocol);
+  });
+});
+
 describe('the default send (no injected `send`)', () => {
   // Every `it` above injects a fake `send`, so the real closure — the one
   // that actually calls `webpush.sendNotification` in production — was
