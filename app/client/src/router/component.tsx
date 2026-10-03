@@ -47,12 +47,14 @@ export const AppRouter = () => {
                 route keeps all three without either view knowing the other
                 exists. */}
             <Route element={<AddLayout />}>
-              <Route path={path.add()} element={<AddUploadView />} />
+              <Route path={path.upload()} element={<AddUploadView />} />
               <Route path={path.request()} element={<AddRequestView />} />
             </Route>
-            {/* The URL Request used to live at. Without this the catch-all
-                below would bounce an old bookmark to the library, which reads
-                as "the feature is gone" rather than "it moved". */}
+            {/* The URLs these two used to live at, when both were one `/add`
+                page behind a toggle. Without these the catch-all below would
+                bounce an old bookmark to the library, which reads as "the
+                feature is gone" rather than "it moved". */}
+            <Route path={path.legacyAdd()} element={<Navigate to={path.upload()} replace />} />
             <Route
               path={path.legacyAddRequest()}
               element={<Navigate to={path.request()} replace />}

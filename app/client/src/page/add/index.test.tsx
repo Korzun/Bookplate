@@ -165,7 +165,7 @@ function renderAddPageAt(initialPath: string, { isAdmin = false }: { isAdmin?: b
       <Link to={path.request()}>go to request</Link>
       <Routes>
         <Route element={<AddLayout />}>
-          <Route path={path.add()} element={<AddUploadView />} />
+          <Route path={path.upload()} element={<AddUploadView />} />
           <Route path={path.request()} element={<AddRequestView />} />
         </Route>
       </Routes>
@@ -230,7 +230,7 @@ describe('AddPage layout', () => {
    * a parent route and a child selected by an in-page toggle.
    */
   it('mounts the Upload view on /add', async () => {
-    renderAddPageAt('/add', { isAdmin: false });
+    renderAddPageAt('/upload', { isAdmin: false });
     expect(await screen.findByRole('button', { name: /^actions$/i })).toBeInTheDocument();
     expect(screen.queryByTestId('add-request-view')).not.toBeInTheDocument();
   });
@@ -244,7 +244,7 @@ describe('AddPage layout', () => {
   // toggle that used to ride in its header moved up to the nav, where Upload
   // and Request are separate destinations.
   it('renders no segmented control of its own', async () => {
-    renderAddPageAt('/add', { isAdmin: false });
+    renderAddPageAt('/upload', { isAdmin: false });
     await screen.findByRole('button', { name: /^actions$/i });
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
@@ -260,7 +260,7 @@ describe('AddPage layout', () => {
   // `headerActions` state stale and the (now-irrelevant) Upload trigger stuck
   // on screen.
   it("clears the Upload view's header actions when navigating to Request", async () => {
-    const { user } = renderAddPageAt('/add', { isAdmin: false });
+    const { user } = renderAddPageAt('/upload', { isAdmin: false });
     expect(await screen.findByRole('button', { name: /^actions$/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: 'go to request' }));

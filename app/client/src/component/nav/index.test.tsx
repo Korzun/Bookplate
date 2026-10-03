@@ -374,7 +374,7 @@ describe('Nav', () => {
   it('marks the current route active in both layouts', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
-      initialEntries: ['/add'],
+      initialEntries: ['/upload'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
     const uploadLinks = screen.getAllByRole('link', { name: 'Upload' });

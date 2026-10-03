@@ -128,10 +128,10 @@ export const Nav = () => {
       // Exact, not `startsWith`. It used to be `startsWith` so the tab stayed
       // lit on the `/add/request` child; that child is now `/request`, a
       // sibling with a tab of its own, and `startsWith` would light both.
-      to: path.add(),
+      to: path.upload(),
       label: 'Upload',
       Icon: UploadIcon,
-      active: pathname === path.add(),
+      active: pathname === path.upload(),
       badge: uploadBadge,
     },
     {

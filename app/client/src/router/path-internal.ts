@@ -1,18 +1,20 @@
-export const add = () => '/add';
 /**
- * Requesting a book is its own destination, a SIBLING of `/add` rather than a
- * child of it. The two were one page with a toggle; they are now two nav
- * items, and a URL that still said `/add/request` would describe the old
- * shape.
+ * Uploading and requesting are two destinations, named for what they do.
+ *
+ * Both were once one `/add` page with a segmented toggle, which is where the
+ * old names came from. The nav calls them Upload and Request, and a URL that
+ * still said `/add` would describe a page that no longer exists.
  */
+export const upload = () => '/upload';
 export const request = () => '/request';
 /**
- * The URL `request()` replaced. Kept solely so `router/component.tsx` can
- * redirect it — a reader who bookmarked the Request view, or an admin who
- * sent someone the link, must not land on a 404 (here, the catch-all bounce
- * to the library, which would look like the feature was removed).
+ * The URLs those two replaced. Kept solely so `router/component.tsx` can
+ * redirect them — someone who bookmarked either view, or was sent a link to
+ * one, must not land on the catch-all bounce to the library, which reads as
+ * the feature having been removed rather than moved.
  */
-export const legacyAddRequest = () => `${add()}/request`;
+export const legacyAdd = () => '/add';
+export const legacyAddRequest = () => `${legacyAdd()}/request`;
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';
