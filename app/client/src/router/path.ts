@@ -1,7 +1,7 @@
 import * as pathInternal from './path-internal';
 
-export const add = () => pathInternal.add();
-export const addRequest = () => pathInternal.addRequest();
+export const upload = () => pathInternal.upload();
+export const request = () => pathInternal.request();
 export const book = (bookId: string) => pathInternal.book(encodeURIComponent(bookId));
 export const bookEdit = (bookId: string) => pathInternal.bookEdit(encodeURIComponent(bookId));
 export const devices = () => pathInternal.devices();
@@ -13,6 +13,6 @@ export const series = (seriesName: string) => pathInternal.series(encodeURICompo
 export const passwordReset = () => pathInternal.passwordReset();
 export const resetPasswordByEmail = () => pathInternal.resetPasswordByEmail();
 export const setEmail = () => pathInternal.setEmail();
-export const user = () => pathInternal.user();
+export const settings = () => pathInternal.settings();
 export const userList = () => pathInternal.userList();
 export const login = () => pathInternal.login();

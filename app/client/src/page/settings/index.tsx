@@ -53,7 +53,7 @@ export const UserPageDocument = graphql(`
   }
 `);
 
-export const UserPage = () => {
+export const SettingsPage = () => {
   const [isAdmin] = useIsAdmin();
   const { data } = useQuery(UserPageDocument, { skip: isAdmin });
   // Not `skip: isAdmin` — unlike `UserPageDocument` above, this document is

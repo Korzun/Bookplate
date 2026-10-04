@@ -1,10 +1,12 @@
-/** The Request child's own segment. Exported so `router/component.tsx` declares
- *  the nested route with the same constant `addRequest()` builds from, and the
- *  two cannot drift apart. Not a route PARAMETER, so it does not belong in
- *  `path-key-internal.ts` — that file holds only `:id`-style keys. */
-export const ADD_REQUEST_SEGMENT = 'request';
-export const add = () => '/add';
-export const addRequest = () => `${add()}/${ADD_REQUEST_SEGMENT}`;
+/**
+ * Uploading and requesting are two destinations, named for what they do.
+ *
+ * Both were once one `/add` page with a segmented toggle, which is where the
+ * old names came from. The nav calls them Upload and Request, and a URL that
+ * still said `/add` would describe a page that no longer exists.
+ */
+export const upload = () => '/upload';
+export const request = () => '/request';
 export const book = (bookId: string) => `${library()}/book/${bookId}`;
 export const bookEdit = (bookId: string) => `${library()}/book/${bookId}/edit`;
 export const devices = () => '/devices';
@@ -24,5 +26,12 @@ export const passwordReset = () => '/password-reset';
 export const resetPasswordByEmail = () => '/reset-password';
 export const series = (seriesName: string) => `/library/series/${seriesName}`;
 export const setEmail = () => '/set-email';
-export const user = () => '/user';
+/**
+ * The signed-in account's own settings. `/settings` rather than `/user`: the
+ * nav calls it Settings, and the page holds appearance, notifications, sync
+ * URLs and a password change — things about the INSTALL as this person sees
+ * it, not a profile. `/users` below is the admin's list of other people and
+ * is deliberately unrelated.
+ */
+export const settings = () => '/settings';
 export const userList = () => '/users';

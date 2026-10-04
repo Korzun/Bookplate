@@ -318,7 +318,7 @@ describe('BookRequestRow', () => {
   it('offers no resolve actions when canResolve is false', () => {
     renderRow({ status: 'PENDING' }, { canResolve: false });
     expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /link existing book/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /link existing/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/upload epub/i)).not.toBeInTheDocument();
   });
 
@@ -347,7 +347,7 @@ describe('BookRequestRow resolve actions', () => {
     );
 
     expect(screen.getByLabelText(/upload epub/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /link existing book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /link existing/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /decline/i })).toBeInTheDocument();
   });
 
@@ -391,7 +391,7 @@ describe('BookRequestRow resolve actions', () => {
     );
 
     expect(await screen.findByText(/didn't close/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /link existing book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /link existing/i })).toBeInTheDocument();
   });
 
   it('fulfils from the picker', async () => {
@@ -400,7 +400,7 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, libraryId: 'TGliOmJvYg==' }
     );
 
-    await user.click(screen.getByRole('button', { name: /link existing book/i }));
+    await user.click(screen.getByRole('button', { name: /link existing/i }));
     await user.click(await screen.findByRole('button', { name: /Dune/ }));
 
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
@@ -419,7 +419,14 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, libraryId: 'TGliOmJvYg==', watchUserList: true }
     );
 
-    await user.click(screen.getByRole('button', { name: /link existing book/i }));
+    // The watcher's own first load has to have LANDED before the action runs.
+    // `client.refetchQueries` only refetches queries that are already active
+    // (see `UserListWatcher`), so an action that fires while this one is still
+    // in flight finds nothing to refetch and the count never reaches 2. Racy
+    // rather than slow: the failure is `expected 1 to be 2`, not a late 2.
+    await waitFor(() => expect(userListCalls()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: /link existing/i }));
     await user.click(await screen.findByRole('button', { name: /Dune/ }));
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
 
@@ -448,10 +455,18 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, watchUserList: true }
     );
 
+    // The watcher's own first load has to have LANDED before the action runs.
+    // `client.refetchQueries` only refetches queries that are already active
+    // (see `UserListWatcher`), so an action that fires while this one is still
+    // in flight finds nothing to refetch and the count never reaches 2. Racy
+    // rather than slow: the failure is `expected 1 to be 2`, not a late 2.
+    await waitFor(() => expect(userListCalls()).toBe(1));
+
     await user.click(screen.getByRole('button', { name: /decline/i }));
     await user.click(screen.getByRole('button', { name: /confirm/i }));
     await waitFor(() => expect(declineCalls()).toHaveLength(1));
 
+    // One for the watcher's initial mount above, one for the refetch.
     await waitFor(() => expect(userListCalls()).toBe(2));
   });
 
@@ -516,7 +531,7 @@ describe('BookRequestRow — who may delete', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     // Positive control: the admin's own actions ARE there, so this test cannot
     // pass against a row that rendered nothing at all.
-    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Link existing' })).toBeInTheDocument();
   });
 
   it('offers the admin no Clear on a resolved request', () => {
@@ -547,7 +562,7 @@ describe('BookRequestRow — the upload control', () => {
     const input = screen.getByLabelText(/upload epub/i);
     const clickSpy = vi.spyOn(input, 'click');
 
-    await user.click(screen.getByRole('button', { name: 'Upload EPUB' }));
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
 
     expect(clickSpy).toHaveBeenCalled();
   });
