@@ -69,8 +69,8 @@ type SendResponse = {
 export function createCloudflareMailer(mail: MailConfig): Mailer {
   // Per-instance, not per-module: a misconfigured token produces a failure on
   // EVERY send, and one log line per process is enough to diagnose it. Without
-  // this latch a notification fan-out (next spec) would write one line per
-  // recipient per event.
+  // this latch a notification fan-out would write one log line per recipient
+  // per event.
   let misconfigurationLogged = false;
 
   return {
@@ -136,7 +136,7 @@ export function createCloudflareMailer(mail: MailConfig): Mailer {
       }
       if (body.result?.permanent_bounces?.length) {
         log.warn('Send bounced permanently — recipient address rejected');
-        return { ok: false, reason: 'bad_address' };
+        return { ok: false, reason: 'invalid_destination' };
       }
       return { ok: true };
     },

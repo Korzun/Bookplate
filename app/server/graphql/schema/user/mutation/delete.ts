@@ -97,8 +97,8 @@ const result = builder.unionType('UserDeleteResult', { types: [payload] });
  * admin may call this mutation, and it never owns one of these ordinary rows.
  *
  * The config admin DOES have a `users` row as of the email-identity work — it
- * is where its address and (next spec) notification preferences live — but
- * that row is identity-attached data, not an account this mutation may touch.
+ * is where its address and notification preferences live — but that row is
+ * identity-attached data, not an account this mutation may touch.
  * The guard in the resolver refuses it explicitly, restoring what REST's
  * target-specific 403 did and what this comment previously argued was
  * unnecessary because no `User` global ID could name the admin. That argument
