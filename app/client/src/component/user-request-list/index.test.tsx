@@ -156,13 +156,13 @@ describe('UserRequestList', () => {
     expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument();
     // Positive control: the admin's own actions ARE rendered, so this cannot
     // pass against a list that failed to render its rows at all.
-    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Link existing' })).toBeInTheDocument();
   });
 });
 
 /**
  * "Decline all", the page-header action this list publishes upward for
- * `AddRequestView` to hand to `<Page>`. It lives HERE, not on the view,
+ * `RequestView` to hand to `<Page>`. It lives HERE, not on the view,
  * because the rows it acts on and the mutation it runs are both this
  * component's — the view has neither.
  *
@@ -229,7 +229,7 @@ describe('UserRequestList — decline all', () => {
 
     unmount();
 
-    // `AddOutletContext`'s standing contract — a view that leaves its actions
+    // `UploadRequestOutletContext`'s standing contract — a view that leaves its actions
     // published leaves them on the OTHER view's header.
     expect(onHeaderActions.mock.calls.at(-1)?.[0]).toBeUndefined();
   });
