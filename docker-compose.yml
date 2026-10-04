@@ -26,6 +26,15 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./app/client/src:/app/src
+      # Without this, NOTHING in `public/` reaches the dev container — the
+      # image copies only the config files above — and vite answers every
+      # request for one with its SPA fallback, i.e. `index.html` under a
+      # `text/html` content type. That was invisible while `public/` held
+      # only cosmetic assets (favicon, manifest, splash screens), but
+      # `sw.js` is load-bearing: a service worker served as html fails
+      # registration outright (`SecurityError: script load failed`), so push
+      # cannot be enabled in dev at all without this mount.
+      - ./app/client/public:/app/public
       - ./app/client/index.html:/app/index.html
       - ./app/client/vite.config.ts:/app/vite.config.ts
       - ./app/client/tsconfig.json:/app/tsconfig.json
