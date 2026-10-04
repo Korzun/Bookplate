@@ -63,6 +63,13 @@ export interface Theme {
       page: string;
       card: string;
       cardHeader: string;
+      /**
+       * The rail behind a segmented control's sliding lens. Its own token, not
+       * `cardHeader`, because it must read against BOTH `page` and `card` — and
+       * in dark mode those sit on either side of `cardHeader`, which left the
+       * rail invisible on the page.
+       */
+      track: string;
       input: string;
       footer: string;
       glass: string;
@@ -224,6 +231,9 @@ function buildTheme(mode: ThemeMode): Theme {
       page: '#F6F6F9',
       card: gray[50],
       cardHeader: gray[100],
+      // Unchanged from the `cardHeader` this used to borrow: in light mode the
+      // track was already a step darker than the page, so light renders as before.
+      track: gray[100],
       input: '#FFFFFF',
       footer: gray[100],
       glass: applyTransparency('#FFFFFF', 0.6),
@@ -307,6 +317,12 @@ function buildTheme(mode: ThemeMode): Theme {
       page: '#242527',
       card: '#1A1B1E',
       cardHeader: '#232427',
+      // A step LIGHTER than the page, not darker. This palette puts `page`
+      // (#242527) above `card`/`input` (#1A1B1E), so the light-mode move —
+      // recess the track below the surface — has nowhere to go in dark without
+      // colliding with the lens. Raising it instead keeps the same ~8-per-channel
+      // separation light mode has, in the only direction that is still free.
+      track: '#2C2D31',
       input: '#1A1B1E',
       footer: '#232427',
       glass: applyTransparency('#1C1C1E', 0.6),

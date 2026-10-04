@@ -12,6 +12,12 @@ type ButtonVariant =
 
 type ButtonProps = React.PropsWithChildren<
   {
+    /**
+     * Accessible name when the visible children are not distinguishing enough
+     * on their own — several "Remove" buttons in a list, each belonging to a
+     * different row.
+     */
+    ariaLabel?: string;
     className?: string;
     disabled?: boolean;
     form?: string;
@@ -29,6 +35,7 @@ type ButtonProps = React.PropsWithChildren<
   } & ButtonVariant
 >;
 export const Button = ({
+  ariaLabel,
   children,
   className: classNameProp,
   danger = false,
@@ -94,6 +101,7 @@ export const Button = ({
     return (
       <button
         type="submit"
+        aria-label={ariaLabel}
         form={form}
         className={className}
         disabled={disabled || busy}
@@ -113,6 +121,7 @@ export const Button = ({
   return (
     <div
       role="button"
+      aria-label={ariaLabel}
       aria-disabled={nonInteractive || undefined}
       tabIndex={nonInteractive ? -1 : tabIndex}
       className={className}
