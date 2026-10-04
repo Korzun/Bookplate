@@ -9,7 +9,7 @@ import { useStyle } from './style';
 
 /**
  * Colocated: exactly the `Device` fields this component renders. Composed,
- * along with the rest of `page/user`'s content, into `UserPageDocument` —
+ * along with the rest of `page/settings`'s content, into `UserPageDocument` —
  * the ONE document that route sends (Ruling C / task 1's brief: a future
  * task extends that same document rather than adding a second one, since
  * two documents on one route means two requests per screen).
@@ -59,7 +59,7 @@ interface ConnectionUrlsProps {
 }
 
 /**
- * Fetch-free: `page/user` composes `UserPageDocument` from this component's
+ * Fetch-free: `page/settings` composes `UserPageDocument` from this component's
  * own fragment and passes the result straight through. `useFragment` is
  * called once, unconditionally, at the top of this body — with an ARRAY of
  * refs, one of the masking helper's supported overloads.

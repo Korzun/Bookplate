@@ -318,7 +318,7 @@ describe('BookRequestsContent', () => {
 
 /**
  * "Clear resolved", the page-header action this component publishes upward for
- * `AddRequestView` to hand to `<Page>` — the reader's counterpart to the
+ * `RequestView` to hand to `<Page>` — the reader's counterpart to the
  * admin's "Decline all" (`component/user-request-list`), and the same idea as
  * the Upload view's "Clear finished" one toggle away.
  *
@@ -435,7 +435,7 @@ describe('BookRequestsContent — clear resolved', () => {
   it('shells the create form in a card with its own header', async () => {
     const { container } = renderContent();
 
-    // `/add/request` renders this component BARE, straight under `<Page>` —
+    // `/request` renders this component BARE, straight under `<Page>` —
     // there is no `Card` above it the way the deleted `/user` card used to
     // provide, and without one the fields went full-bleed and square-cornered
     // against the page background (the shipped bug). The card's header text is

@@ -26,7 +26,7 @@ type UserRegenerateSyncPasswordPayload = Extract<
  * rather than kept as `provider/user` hooks — this card is their only
  * caller. `Viewer.syncPassword` resolves to a clean `null` for the
  * config-based admin (no `authScopes`, no accompanying `FORBIDDEN` error),
- * so there is no `skip` gate to guard the read with; `page/user` also only
+ * so there is no `skip` gate to guard the read with; `page/settings` also only
  * ever mounts `SyncPassword` for a non-admin viewer.
  *
  * The mutation takes the viewer's own `User` global ID (`userId: ID!`), read
