@@ -130,41 +130,35 @@ const CONNECTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: nu
  * `Library.pendingFixes` is the same class (`PendingFix.book.series.books`
  * reaches the identical connection through one more singular hop).
  *
- * **Full inventory (re-review round 2, verified programmatically against the
- * built schema, not by `grep`): exactly 25 composite-element list fields
- * exist.** They partition as:
- *  - 9 priced here (`UNBOUNDED_LIST_FIELD_LIMITS`, below) — the 7 from I-4
- *    plus 2 more from I-5 (`Library.searchSuggestions`, `SuggestionGroup.items`).
- *  - 1 priced separately in `multiplierFor` (`Query.nodes`, by `ids.length`).
- *  - 4 are a priced connection's own `edges` field (`LibraryEntriesConnection.edges`,
- *    `SeriesBooksConnection.edges`, `LibraryProgressConnection.edges`,
- *    `ValidationMessagesConnection.edges`) — correctly NOT priced separately:
- *    each is a child of the already-priced connection FIELD, so the parent's
- *    multiplier already scales it; pricing them too would double-count.
- *  - 11 are leaf-terminating — their element type's full reachability
- *    closure contains ZERO composite-element list fields and ZERO
- *    `first`/`last`-bearing fields (verified by closure, not by eyeballing
- *    the immediate fields): `Book.identifiers`,
- *    `BookAnalyzeReplacePayload.{autoFixes,messages,proposals}`,
- *    `EpubValidationError.messages`, `InvalidInputError.issues`,
- *    `PendingFixState.{appliedFixes,autoFixes,proposals}`,
- *    `UndoSnapshot.{appliedFixes,proposals}`. There is nothing further under
- *    them to multiply, so pricing them above 1 would inflate the
- *    calibration record for no real risk — the same "don't invent a number
- *    where there's nothing to multiply" discipline `CONNECTION_FIELD_LIMITS`
- *    already follows. (`BookUnlinkDocumentPayload.identifiers` was
- *    PREVIOUSLY, WRONGLY, listed here in an earlier version of this comment
- *    — task-3-re-review-2.md, M-6: `identifiers: [IdentifierInput!]` is a
- *    field on the INPUT type `BookUpdateMetadataInput`, not on
- *    `BookUnlinkDocumentPayload` — an input type cannot be selected and
- *    cannot appear in this walk at all, so it was never a real inventory row.)
- *  - 9 priced below.
+ * **Full inventory: derived from the built schema by
+ * `cost-limit.test.ts`'s "composite-element list-field inventory" suite, not
+ * counted here.** That test names every composite-element list field and
+ * asserts it falls in one of four buckets:
+ *  - PRICED — the 8 below (6 in `UNBOUNDED_LIST_FIELD_LIMITS`, plus
+ *    `Library.searchSuggestions`/`SuggestionGroup.items` in
+ *    `SUGGESTION_FIELD_LIMITS`).
+ *  - PRICED BY ARGS — `Query.nodes`, by `ids.length` in `multiplierFor`.
+ *  - CONNECTION EDGES — a priced connection's own `edges`, correctly NOT
+ *    priced separately: each is a child of the already-priced connection
+ *    FIELD, so the parent's multiplier already scales it and pricing them
+ *    too would double-count.
+ *  - LEAF-TERMINATING — the element type's full reachability closure holds
+ *    ZERO composite-element list fields and ZERO `first`/`last`-bearing
+ *    fields, so there is nothing under them to multiply. Pricing them above
+ *    1 would inflate the calibration record for no real risk, the same
+ *    "don't invent a number where there's nothing to multiply" discipline
+ *    `CONNECTION_FIELD_LIMITS` already follows.
  *
- * (25 = 9 + 1 + 4 + 11.)
+ * This paragraph used to carry the inventory itself — "exactly 25", verified
+ * programmatically once. It then went stale in silence: push notifications
+ * took the real total to 30, and the arithmetic it published
+ * (`25 = 9 + 1 + 4 + 11`) never matched its own enumerated list, which names
+ * 8 priced fields and not 9. A count nobody re-runs stops being true without
+ * anybody noticing, so the count moved somewhere that re-runs.
  *
- * The 9 priced fields, each reaching further amplifiable content with NO
- * code-enforced ceiling (I-4's original 7) or WITH one that was being used
- * as a reason to price at 1 instead of pricing AT it (I-5's 2, below):
+ * The priced fields, each reaching further amplifiable content with NO
+ * code-enforced ceiling (I-4) or WITH one that was being used as a reason to
+ * price at 1 instead of pricing AT it (I-5's 2, below):
  *  - `Library.series` — `findMany({where:{userId}})`, no cap
  *    (`library/model.ts`); reaches `Series.books`.
  *  - `Library.pendingFixes` — `findMany({where:{userId}})`, no cap
@@ -382,29 +376,53 @@ const INSTANCE_DEVICE_MULTIPLIER = 100;
 const INSTANCE_USER_MULTIPLIER = 50;
 const BOOK_LINEAGE_MULTIPLIER = 20;
 
-const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
-  'Library.series': { maxSize: UNBOUNDED_LIST_MULTIPLIER, defaultSize: UNBOUNDED_LIST_MULTIPLIER },
-  'Library.pendingFixes': {
-    maxSize: UNBOUNDED_LIST_MULTIPLIER,
-    defaultSize: UNBOUNDED_LIST_MULTIPLIER,
-  },
-  'Viewer.users': { maxSize: INSTANCE_USER_MULTIPLIER, defaultSize: INSTANCE_USER_MULTIPLIER },
-  'Viewer.devices': {
-    maxSize: INSTANCE_DEVICE_MULTIPLIER,
-    defaultSize: INSTANCE_DEVICE_MULTIPLIER,
-  },
-  // M-8: shares Viewer.users's multiplier, not INSTANCE_DEVICE_MULTIPLIER —
-  // enabledUsers is a SUBSET of the instance's users (device/model.ts's
-  // `where: { deviceAccess: { some: { deviceId } } }`), so it cannot exceed
-  // Viewer.users's own count and must never be priced tighter than it.
-  'Device.enabledUsers': {
-    maxSize: INSTANCE_USER_MULTIPLIER,
-    defaultSize: INSTANCE_USER_MULTIPLIER,
-  },
-  // I-7: per-book re-import history, not library-scale — see the doc
-  // comment above BOOK_LINEAGE_MULTIPLIER's declaration.
-  'Book.lineage': { maxSize: BOOK_LINEAGE_MULTIPLIER, defaultSize: BOOK_LINEAGE_MULTIPLIER },
-};
+/**
+ * `Viewer.pushSubscriptions: [PushSubscription!]!` (`viewer/model.ts`) is a
+ * plain, uncapped-at-the-schema-level `findMany`, and deliberately NOT added
+ * to the map below. `PushSubscription` (`push-subscription/model.ts`) exposes
+ * only `id`/`label`/`createdAt`/`lastSuccessAt`, all scalars: its reachability
+ * closure contains zero further list fields, which puts it in the
+ * LEAF_TERMINATING group of the inventory `cost-limit.test.ts` derives from
+ * the schema — "there is nothing further under them to multiply, so pricing
+ * them above 1 would inflate the calibration record for no real risk." A
+ * multiplier here would do exactly that: it does not gate
+ * anything (breadth never reads it, and there are no NESTED fields for a
+ * complexity multiplier to scale), it would just inflate the complexity of
+ * every ordinary `ViewerBootstrapDocument` load for zero additional
+ * protection. The real bound on this field's own row count is
+ * `MAX_PUSH_SUBSCRIPTIONS_PER_USER` (`services/push-subscription.ts`),
+ * enforced where it actually matters — at the write path — the same way a
+ * `findMany` with no code-enforced cap at all would still need a DIFFERENT
+ * fix than a cost-limit multiplier. See `cost-limit.test.ts` for the pinned
+ * measurement proving this field costs the plain, unmultiplied rate.
+ */
+export const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> =
+  {
+    'Library.series': {
+      maxSize: UNBOUNDED_LIST_MULTIPLIER,
+      defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+    },
+    'Library.pendingFixes': {
+      maxSize: UNBOUNDED_LIST_MULTIPLIER,
+      defaultSize: UNBOUNDED_LIST_MULTIPLIER,
+    },
+    'Viewer.users': { maxSize: INSTANCE_USER_MULTIPLIER, defaultSize: INSTANCE_USER_MULTIPLIER },
+    'Viewer.devices': {
+      maxSize: INSTANCE_DEVICE_MULTIPLIER,
+      defaultSize: INSTANCE_DEVICE_MULTIPLIER,
+    },
+    // M-8: shares Viewer.users's multiplier, not INSTANCE_DEVICE_MULTIPLIER —
+    // enabledUsers is a SUBSET of the instance's users (device/model.ts's
+    // `where: { deviceAccess: { some: { deviceId } } }`), so it cannot exceed
+    // Viewer.users's own count and must never be priced tighter than it.
+    'Device.enabledUsers': {
+      maxSize: INSTANCE_USER_MULTIPLIER,
+      defaultSize: INSTANCE_USER_MULTIPLIER,
+    },
+    // I-7: per-book re-import history, not library-scale — see the doc
+    // comment above BOOK_LINEAGE_MULTIPLIER's declaration.
+    'Book.lineage': { maxSize: BOOK_LINEAGE_MULTIPLIER, defaultSize: BOOK_LINEAGE_MULTIPLIER },
+  };
 
 /**
  * `Library.searchSuggestions`/`SuggestionGroup.items` — task-3-re-review-2.md,
@@ -440,7 +458,7 @@ const UNBOUNDED_LIST_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize
 const SUGGESTION_GROUP_COUNT = 4;
 const SUGGESTION_ITEMS_PER_GROUP = 30;
 
-const SUGGESTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
+export const SUGGESTION_FIELD_LIMITS: Record<string, { maxSize: number; defaultSize: number }> = {
   'Library.searchSuggestions': {
     maxSize: SUGGESTION_GROUP_COUNT,
     defaultSize: SUGGESTION_GROUP_COUNT,
