@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -51,6 +51,9 @@ const viewerBootstrapMock = (isAdmin: boolean): MockedResponse => ({
         mustChangePassword: false,
         email: null,
         emailVerifiedAt: null,
+        notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: isAdmin ? null : { __typename: 'User', id: 'USER-1' },
         library: isAdmin ? null : { __typename: 'Library', id: LIBRARY_ID },
       },
@@ -192,26 +195,191 @@ describe('Nav', () => {
     expect(screen.queryByText('Users')).toBeNull();
   });
 
-  it('shows the Users tab for admins in both layouts', () => {
+  /**
+   * Desktop is unchanged by the mobile redesign: a centred row with room for
+   * every destination, so nothing is grouped or collapsed there. These names
+   * appear ONCE because only the desktop layout renders them — the mobile
+   * capsule's default mode carries Library, Add and Request and nothing else.
+   */
+  it('keeps every admin destination on desktop, and none of them in the mobile capsule', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
       initialEntries: ['/library'],
       mocks: [viewerBootstrapMock(true)],
     });
-    // One link in the desktop layout, one in the mobile layout (CSS hides the
-    // off-breakpoint one). Query links so the mobile blue-reveal copy isn't counted.
+    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: 'Devices' })).toHaveLength(1);
+    // Both layouts carry the three main destinations, so these are the pair.
+    expect(screen.getAllByRole('link', { name: 'Library' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Request' })).toHaveLength(2);
+  });
+
+  /**
+   * The mobile bar has two MODES, which is what keeps it to four targets
+   * however many destinations exist. Default: the three main tabs plus a
+   * settings accessory. Settings: the main group collapses to one button and
+   * the settings destinations take the capsule.
+   *
+   * Driven by the ROUTE, not by a UI flag — so Back behaves and nothing can
+   * desync from the URL. These two pin exactly that: the same component, the
+   * same admin, different pathname, different bar.
+   */
+  it('shows the main tabs and a settings accessory on a main route', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    // The accessory, by its `aria-label` — it renders an icon and no text.
+    expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0);
+    // The collapsed button and the settings capsule belong to the other mode.
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+  });
+
+  it('collapses the main group and expands settings on an admin route', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/users'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
+    // General is mobile-only: desktop calls the same destination "Settings".
+    expect(screen.getAllByRole('link', { name: 'General' })).toHaveLength(1);
+    // Users now appears TWICE — desktop's own tab, plus the mobile capsule's.
     expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(2);
+    // The main tabs have left the capsule, so each is desktop's alone.
+    expect(screen.getAllByRole('link', { name: 'Request' })).toHaveLength(1);
+  });
+
+  /**
+   * Both sides of the bar hold their full contents at all times — that is what
+   * the pill morphs between — so the collapsed side's destinations sit in the
+   * document behind a clip. They have to stay out of the accessibility tree,
+   * or a screen reader reads a navigation nobody can see, and every role query
+   * in this file would be counting destinations that are not on screen.
+   */
+  it('keeps the collapsed side out of the accessibility tree', () => {
+    const { container } = renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+
+    // The settings destinations ARE in the document...
+    expect(container.textContent).toContain('General');
+    // ...but unreachable by role, which is how everything else here queries.
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Users' })).toHaveLength(1);
+    expect(container.querySelector('[aria-hidden="true"][inert]')).not.toBeNull();
+  });
+
+  /**
+   * A reader cannot reach the settings mode at all, so it is not mounted for
+   * them — not merely hidden. Mounting it would put `/users` and `/devices`
+   * in a reader's document for no reason.
+   */
+  it('does not put the settings mode in a reader document at all', () => {
+    const { container } = renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(container.querySelector('a[href="/users"]')).toBeNull();
+    expect(container.querySelector('a[href="/devices"]')).toBeNull();
+    // Their settings side exists, but as a circle with nothing to expand into.
+    expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0);
+  });
+
+  // `/user` is a settings destination too, so an admin reaching it is in the
+  // same mode as on `/users` — otherwise tapping the accessory would expand
+  // the bar and land somewhere the expanded bar does not list.
+  it('treats the account page as a settings route for an admin', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'admin', isAdmin: true },
+      initialEntries: ['/settings'],
+      mocks: [viewerBootstrapMock(true)],
+    });
+    expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
+  });
+
+  /**
+   * A reader's settings holds exactly one destination, so there is nothing to
+   * expand INTO — a bar that expanded to show a single item would be worse
+   * than one that did not. They keep the default bar everywhere, and the
+   * accessory simply marks itself current.
+   */
+  it('never collapses the bar for a reader, even on their own settings page', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/settings'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'General' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Library' })).toHaveLength(2);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Settings' })
+        .some((link) => link.getAttribute('aria-current') === 'page')
+    ).toBe(true);
+  });
+
+  it('gives a reader no admin destination in either layout', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Devices' })).not.toBeInTheDocument();
+  });
+
+  // Request is a top-level destination in BOTH layouts — the thing splitting
+  // the mobile bar into two modes bought room for.
+  it('shows Request as its own tab in both layouts', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/library'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    const request = screen.getAllByRole('link', { name: 'Request' });
+    expect(request).toHaveLength(2);
+    expect(request.every((link) => link.getAttribute('href') === '/request')).toBe(true);
+  });
+
+  /**
+   * `/add` and `/request` are siblings now. The Upload tab used to match with
+   * `startsWith` so it stayed lit on its `/request` child; left that way,
+   * both tabs would light at once.
+   */
+  it('lights Request alone on /request, leaving Upload dark', () => {
+    renderWithApollo(<Nav />, {
+      user: { username: 'reader', isAdmin: false },
+      initialEntries: ['/request'],
+      mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
+    });
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Request' })
+        .every((l) => l.getAttribute('aria-current') === 'page')
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Upload' })
+        .some((l) => l.getAttribute('aria-current') === 'page')
+    ).toBe(false);
   });
 
   it('marks the current route active in both layouts', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
-      initialEntries: ['/add'],
+      initialEntries: ['/upload'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
-    const addLinks = screen.getAllByRole('link', { name: 'Add' });
-    expect(addLinks).toHaveLength(2);
-    expect(addLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
+    const uploadLinks = screen.getAllByRole('link', { name: 'Upload' });
+    expect(uploadLinks).toHaveLength(2);
+    expect(uploadLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
 
     const libraryLinks = screen.getAllByRole('link', { name: 'Library' });
     expect(libraryLinks.every((link) => link.getAttribute('aria-current') === null)).toBe(true);
@@ -354,6 +522,85 @@ describe('Nav', () => {
     );
 
     await waitFor(() => expect(screen.getAllByTestId('nav-badge-dot')).toHaveLength(2));
+
+    // WHICH tab carries it, not merely that two exist. The dot used to live on
+    // Add, when Add and Request were one destination; with two tabs, a dot on
+    // Add pointing at a reader's request sends an admin to the wrong one. A
+    // bare count passes either way, so it cannot detect that regression.
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Request' })
+        .every((link) => within(link).queryByTestId('nav-badge-dot') !== null)
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Upload' })
+        .some((link) => within(link).queryByTestId('nav-badge-dot') !== null)
+    ).toBe(false);
+  });
+
+  /**
+   * A collapsed side speaks for what it hides. On an admin route the main
+   * destinations are behind the Home circle, so a dot owed to Request has to
+   * surface there — otherwise the one state the badge exists to announce goes
+   * silent exactly while it cannot be seen.
+   *
+   * A DOT, not the count: see `summaryBadge`.
+   */
+  it('carries a dot on the collapsed side when a destination it hides has one', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        // An ADMIN ROUTE, so the main side — which owns the Request tab the
+        // dot belongs to — is the collapsed one.
+        initialEntries: ['/users'],
+        mocks: [viewerBootstrapMock(true), userListMock([userRow(2, LIBRARY_ID)])],
+      }
+    );
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('link', { name: 'Back to library' })).queryByTestId('nav-badge-dot')
+      ).not.toBeNull()
+    );
+  });
+
+  it('leaves the collapsed side bare when nothing it hides wants attention', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+    let delivered = false;
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/users'],
+        mocks: [
+          viewerBootstrapMock(true),
+          // No pending requests, so nothing on the main side is badged.
+          userListMock([userRow(0, LIBRARY_ID)], () => {
+            delivered = true;
+          }),
+        ],
+      }
+    );
+
+    // Waiting for the query to LAND, the same way the other negative badge
+    // tests here do: asserting an absence before the data arrives would pass
+    // whatever the answer turned out to be.
+    await waitFor(() => expect(delivered).toBe(true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      within(screen.getByRole('link', { name: 'Back to library' })).queryByTestId('nav-badge-dot')
+    ).toBeNull();
   });
 
   it('shows no dot when the waiting reader is NOT the selected library', async () => {

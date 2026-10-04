@@ -1,3 +1,4 @@
+export { AdjustmentsHorizontalIcon } from './adjustments-horizontal';
 export { AlertOctagonIcon } from './alert-octagon';
 export { BookIcon } from './book';
 export { BookplateIcon } from './bookplate';
@@ -9,6 +10,7 @@ export { ChevronIcon } from './chevron';
 export { CircleXIcon } from './circle-x';
 export { ClockIcon } from './clock';
 export { DeviceIcon } from './device';
+export { HomeIcon } from './home';
 export { InfoCircleIcon } from './info-circle';
 export { KeyIcon } from './key';
 export { ListCheckIcon } from './list-check';
