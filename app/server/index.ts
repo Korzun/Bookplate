@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import packageJson from '../../package.json';
 import { loadConfig } from './config';
 import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -10,12 +9,15 @@ import { logger } from './logger';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { createMailer } from './services/mailer';
+import { createEmailChannelDriver } from './services/notification-channel-email';
+import { createPushChannelDriver, PUSH_CONTACT } from './services/notification-channel-push';
+import { NotificationQueue } from './services/notification-queue';
+import { getOrCreateVapidKeys } from './services/push-keys';
 import { createReplaceStaging } from './services/replace-staging';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { getOrCreateJwtSecret } from './services/token';
 import { startBookplate } from './startup';
-
-const version: string = packageJson.version;
+import { APP_VERSION } from './utils/app-version';
 
 const log = logger('Server');
 
@@ -49,6 +51,38 @@ fs.mkdirSync(config.dataDir, { recursive: true });
   // warning per instance, so a per-request mailer would log that line on
   // every send (see `Context.mailer`'s doc comment).
   const mailer = createMailer(config.mail);
+  // Generated on first boot and reused forever after; see `push-keys.ts` for
+  // why nothing rotates them. Unlike mail, push needs no operator credentials,
+  // so its driver is ALWAYS registered — a user with no subscription is
+  // handled by the driver's `no_destination`, not by the driver's absence.
+  const vapid = await getOrCreateVapidKeys(prisma);
+  // One queue, started once. The email driver exists only when mail is
+  // configured; with no driver the drain discards the rows it finds, which is
+  // how a LAN-only install stays bounded without the services needing to know
+  // whether mail exists (see `enqueueNotification`).
+  const notificationQueue = new NotificationQueue({
+    prisma,
+    drivers: {
+      ...(mailer === null
+        ? {}
+        : {
+            email: createEmailChannelDriver({
+              mailer,
+              libraryName: config.libraryName,
+              publicUrl: config.publicUrl ?? null,
+            }),
+          }),
+      push: createPushChannelDriver({
+        prisma,
+        vapid,
+        // See `PUSH_CONTACT`: a constant, not the configured From address, so
+        // that no mail setting can stop push from reaching Apple devices.
+        contact: PUSH_CONTACT,
+        libraryName: config.libraryName,
+      }),
+    },
+  });
+  notificationQueue.start();
   const graphqlHandler = createGraphqlHandler({
     prisma,
     thumbnails: thumbnailQueue,
@@ -56,6 +90,8 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     editionsRoot,
     config,
     mailer,
+    notifications: notificationQueue,
+    vapidPublicKey: vapid.publicKey,
     jwtSecret,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
     // the default and insecure mode must be opted into explicitly. Nothing in
@@ -76,7 +112,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     mailer,
   });
 
-  await startBookplate({ prisma, config, version, thumbnailQueue, server });
+  await startBookplate({ prisma, config, version: APP_VERSION, thumbnailQueue, server });
 })().catch((err) => {
   console.error('Fatal startup error:', err);
   process.exit(1);

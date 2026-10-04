@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { verifyAccessToken } from '../services/jwt';
 import type { Mailer } from '../services/mailer';
+import type { NotificationPoker } from '../services/notification-queue';
 import type { ReplaceStaging } from '../services/replace-staging';
 import type { ThumbnailQueue } from '../services/thumbnail-queue';
 import type { AppConfig } from '../types';
@@ -69,6 +70,21 @@ export type Context = {
    * per-request mailer would log that line on every send.
    */
   mailer: Mailer | null;
+  /**
+   * A HINT, not a delivery path. The outbox row is already committed by the
+   * time a resolver pokes (`services/book-request.ts` writes it inside the
+   * mutation's own transaction), so a lost poke costs at most one drain tick —
+   * see `NotificationPoker`. Poking from the resolver rather than the service
+   * is deliberate: a poke inside the transaction would let the drain read
+   * uncommitted state and find nothing.
+   */
+  notifications: NotificationPoker;
+  /**
+   * The VAPID public key generated once at boot (`getOrCreateVapidKeys`),
+   * handed to browsers via `Viewer.pushPublicKey` so they can subscribe
+   * against the same keypair the push driver signs with.
+   */
+  vapidPublicKey: string;
   loadLineage: LineageLoader;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
@@ -88,6 +104,8 @@ export type ContextDeps = {
   config: AppConfig;
   jwtSecret: Buffer;
   mailer: Mailer | null;
+  notifications: NotificationPoker;
+  vapidPublicKey: string;
 };
 
 /** Derives the viewer from an Authorization header. Pure. */
@@ -131,6 +149,8 @@ export const createContext =
       editionsRoot: deps.editionsRoot,
       config: deps.config,
       mailer: deps.mailer,
+      notifications: deps.notifications,
+      vapidPublicKey: deps.vapidPublicKey,
       loadLineage: createLineageLoader(deps.prisma),
       loadOwner: createOwnerLoader(deps.prisma),
       loadProgress: createProgressLoader(deps.prisma),
