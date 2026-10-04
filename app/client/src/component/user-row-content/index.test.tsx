@@ -175,7 +175,7 @@ describe('UserRowContent', () => {
   });
 
   // Task 6 (add-page reorg): `UserRequestList` no longer mounts here — every
-  // request list now lives on `/add/request`. Pinned against the PROGRESS
+  // request list now lives on `/request`. Pinned against the PROGRESS
   // half's own "Progress" heading so a regression that re-adds the old
   // "Book requests" divider/list fails here rather than only in
   // `UserRow`'s own tests.

@@ -243,7 +243,7 @@ export const BookEditPage = () => {
       {hasPendingConflict ? (
         <UploadFixGuardModal
           isOpen
-          onReview={() => navigate(path.add())}
+          onReview={() => navigate(path.upload())}
           onDismissAndEdit={() => void dismissPendingFixes(book.id)}
           onCancel={() => navigate(path.library())}
         />
