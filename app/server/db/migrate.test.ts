@@ -962,4 +962,54 @@ describe('legacy id-recompute and page-count migrations', () => {
     expect(await prisma.notificationPreference.count()).toBe(0);
     expect(await prisma.notificationOutbox.count()).toBe(0);
   });
+
+  it('creates push_subscriptions and is idempotent', async () => {
+    await runMigrations(prisma, booksDir);
+    await runMigrations(prisma, booksDir);
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `PRAGMA table_info("push_subscriptions")`
+    );
+    expect(columns.map((c) => c.name).sort()).toEqual([
+      'auth',
+      'created_at',
+      'endpoint',
+      'id',
+      'label',
+      'last_success_at',
+      'p256dh',
+      'user_id',
+    ]);
+  });
+
+  it('enforces one row per endpoint across users', async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
+    await prisma.user.create({ data: { id: 'u2', username: 'u2' } });
+    await prisma.pushSubscription.create({
+      data: {
+        id: 's1',
+        userId: 'u1',
+        endpoint: 'https://push.example/e1',
+        p256dh: 'k',
+        auth: 'a',
+        label: 'Chrome',
+        createdAt: 1,
+      },
+    });
+
+    await expect(
+      prisma.pushSubscription.create({
+        data: {
+          id: 's2',
+          userId: 'u2',
+          endpoint: 'https://push.example/e1',
+          p256dh: 'k',
+          auth: 'a',
+          label: 'Chrome',
+          createdAt: 2,
+        },
+      })
+    ).rejects.toThrow();
+  });
 });
