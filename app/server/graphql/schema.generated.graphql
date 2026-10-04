@@ -711,10 +711,16 @@ type Mutation {
   """
   userResetPassword(input: UserResetPasswordInput!): UserResetPasswordResult
 
+  """Registers the calling browser to receive push notifications."""
+  viewerAddPushSubscription(auth: String!, endpoint: String!, label: String!, p256dh: String!): PushSubscription
+
   """
   Confirms the viewer's email address with the code sent to it. Works even when mail is currently unconfigured — the code was already delivered.
   """
   viewerConfirmEmail(input: ViewerConfirmEmailInput!): ViewerConfirmEmailResult!
+
+  """Removes one of the viewer's subscribed browsers."""
+  viewerRemovePushSubscription(id: ID!): Boolean!
 
   """
   Sends a fresh verification code to the viewer's own email address. `InvalidInputError` covers every reason it cannot: no address on file, the address is already confirmed, or a resend cooldown/cap is in effect.
@@ -725,10 +731,31 @@ type Mutation {
   Sets the viewer's email address and sends a verification code to it. Succeeds (with `delivered: false`) even if the send itself fails, because the address is already saved by then.
   """
   viewerSetEmail(input: ViewerSetEmailInput!): ViewerSetEmailResult!
+
+  """Turns one notification on or off for the viewer's own account."""
+  viewerSetNotificationPreference(channel: NotificationChannel!, enabled: Boolean!, event: NotificationEvent!): ViewerSetNotificationPreferencePayload
 }
 
 interface Node {
   id: ID!
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+}
+
+enum NotificationEvent {
+  BOOK_REQUEST_CREATED
+  BOOK_REQUEST_DECLINED
+  BOOK_REQUEST_FULFILLED
+}
+
+"""Whether one notification event reaches this account on one channel."""
+type NotificationPreference {
+  channel: NotificationChannel!
+  enabled: Boolean!
+  event: NotificationEvent!
 }
 
 type PageInfo {
@@ -815,6 +842,18 @@ type ProgressSetPayload {
 }
 
 union ProgressSetResult = InvalidInputError | ProgressSetPayload
+
+"""One browser subscribed to push notifications for this account."""
+type PushSubscription {
+  createdAt: Float!
+  id: ID!
+  label: String!
+
+  """
+  When a notification last reached this browser. Null means it has never received one.
+  """
+  lastSuccessAt: Float
+}
 
 type Query {
   config: Config!
@@ -1059,6 +1098,9 @@ type Viewer {
   isAdmin: Boolean!
   library: Library
   mustChangePassword: Boolean!
+  notificationPreferences: [NotificationPreference!]!
+  pushPublicKey: String!
+  pushSubscriptions: [PushSubscription!]!
   syncPassword: String
   user: User
   username: String!
@@ -1091,3 +1133,7 @@ type ViewerSetEmailPayload {
 }
 
 union ViewerSetEmailResult = EmailInUseError | EmailNotConfiguredError | InvalidInputError | ViewerSetEmailPayload
+
+type ViewerSetNotificationPreferencePayload {
+  notificationPreferences: [NotificationPreference!]!
+}
