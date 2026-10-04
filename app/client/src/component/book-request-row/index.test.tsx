@@ -419,6 +419,13 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, libraryId: 'TGliOmJvYg==', watchUserList: true }
     );
 
+    // The watcher's own first load has to have LANDED before the action runs.
+    // `client.refetchQueries` only refetches queries that are already active
+    // (see `UserListWatcher`), so an action that fires while this one is still
+    // in flight finds nothing to refetch and the count never reaches 2. Racy
+    // rather than slow: the failure is `expected 1 to be 2`, not a late 2.
+    await waitFor(() => expect(userListCalls()).toBe(1));
+
     await user.click(screen.getByRole('button', { name: /link existing/i }));
     await user.click(await screen.findByRole('button', { name: /Dune/ }));
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
@@ -448,10 +455,18 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, watchUserList: true }
     );
 
+    // The watcher's own first load has to have LANDED before the action runs.
+    // `client.refetchQueries` only refetches queries that are already active
+    // (see `UserListWatcher`), so an action that fires while this one is still
+    // in flight finds nothing to refetch and the count never reaches 2. Racy
+    // rather than slow: the failure is `expected 1 to be 2`, not a late 2.
+    await waitFor(() => expect(userListCalls()).toBe(1));
+
     await user.click(screen.getByRole('button', { name: /decline/i }));
     await user.click(screen.getByRole('button', { name: /confirm/i }));
     await waitFor(() => expect(declineCalls()).toHaveLength(1));
 
+    // One for the watcher's initial mount above, one for the refetch.
     await waitFor(() => expect(userListCalls()).toBe(2));
   });
 
