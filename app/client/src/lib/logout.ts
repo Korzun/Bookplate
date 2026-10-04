@@ -67,9 +67,17 @@ export async function logout(): Promise<void> {
       unsubscribeFromPush(),
       new Promise<void>((resolve) => setTimeout(resolve, PUSH_TEARDOWN_TIMEOUT_MS)),
     ]);
-    localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
   } catch {
     // Ignored on purpose; see above.
+  } finally {
+    // `finally`, not the end of the `try`: `unsubscribeFromPush()` can reject
+    // (`getSubscription()`/`unsubscribe()` are unguarded inside it), and a
+    // rejection used to skip this line. The id left behind is what
+    // `resyncSubscription` reads as "this browser opted IN and then expired",
+    // so the next account signing in here could be auto-subscribed against a
+    // row the previous one created — the exact shared-browser case the id gate
+    // exists to prevent. Clearing it is teardown, not part of the attempt.
+    localStorage.removeItem(LOCAL_SUBSCRIPTION_ID);
   }
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
