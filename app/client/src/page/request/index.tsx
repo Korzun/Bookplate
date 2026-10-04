@@ -5,7 +5,7 @@ import { UserRequestList } from '~/component/user-request-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useWithTargetUser } from '~/provider/library-target';
 
-import type { AddOutletContext } from './index';
+import type { UploadRequestOutletContext } from '../upload-request';
 
 /**
  * The Request view. Branches on `isAdmin`, and each branch mounts a component
@@ -14,12 +14,12 @@ import type { AddOutletContext } from './index';
  * `skip={false}`: `BookRequestsContent` keeps `skip` as a required prop for the
  * reason its own doc comment gives (its tests gate the query directly rather
  * than depending on a parent's mount timing). The lazy-mount gate that the
- * deleted `/user` card provided is now the toggle itself — this view is not
- * mounted at all until the reader switches to it.
+ * deleted `/user` card provided is now the ROUTE — this view is not mounted at
+ * all until the reader navigates to `/request`.
  *
- * The `data-testid="add-request-view"` wrapper exists for the toggle's own
- * navigation test (`page/add/index.test.tsx`): it needs a mount marker that
- * does not depend on `BookRequestsContent`'s query settling.
+ * The `data-testid="add-request-view"` wrapper exists for the routing tests in
+ * `page/upload-request/index.test.tsx`: they need a mount marker that does not depend on
+ * `BookRequestsContent`'s query settling.
  *
  * The admin branch mounts `UserRequestList` scoped to whichever library the
  * (persistent, page-level) switcher currently targets — `useWithTargetUser`
@@ -29,13 +29,13 @@ import type { AddOutletContext } from './index';
  * `data-testid` here: `UserRequestList` renders its own rows/empty state,
  * which is marker enough once mounted.
  */
-export const AddRequestView = () => {
+export const RequestView = () => {
   const [isAdmin] = useIsAdmin();
   const withTargetUser = useWithTargetUser();
   // Handed straight through to whichever list this view mounts: each owns both
   // halves of the action it publishes — the rows and the mutation. This view is
-  // only the wire, exactly as `AddUploadView` is for its own queue actions.
-  const { setHeaderActions } = useOutletContext<AddOutletContext>();
+  // only the wire, exactly as `UploadView` is for its own queue actions.
+  const { setHeaderActions } = useOutletContext<UploadRequestOutletContext>();
 
   // Both branches publish, and they publish DIFFERENT actions, which is the
   // point: the admin resolves other people's requests ("Decline all") and the
@@ -51,7 +51,7 @@ export const AddRequestView = () => {
     );
   }
 
-  // `AddPage`'s admin gate means an admin only reaches this view with a
+  // `UploadRequestLayout`'s admin gate means an admin only reaches this view with a
   // library selected, so `userId` is resolved in practice. The guard below is
   // for the frame between a switcher change and the user list resolving.
   const userId = withTargetUser.userId;

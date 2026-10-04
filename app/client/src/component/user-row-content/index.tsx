@@ -118,7 +118,7 @@ interface UserRowContentProps {
  *
  * **No longer mounts `UserRequestList`** (Task 6 of the add-page reorg
  * removed it from here). Every request list — reader's and admin's alike —
- * now lives on `/add/request` (`page/add/request`, `UserRequestList` and
+ * now lives on `/request` (`page/request`, `UserRequestList` and
  * `BookRequestsContent`); this row keeps only the pending-request COUNT
  * (`UserRow`'s badge, off `UserRowFragment`), which now navigates there.
  */

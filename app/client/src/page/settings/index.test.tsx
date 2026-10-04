@@ -3,11 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithApollo } from '~/test-utils';
 
-import { UserPage } from './index';
+import { SettingsPage } from './index';
 
-// `page/user` composes eight named exports from the `~/component` barrel
-// (`ConnectionUrls`, `EmailSetting`, `MyProgress`, `Page`, `ScanLibrarySetting`,
-// `SyncPassword`, `ThemeSetting`, `UserChangePassword`), each of which owns
+// `page/settings` composes nine named exports from the `~/component` barrel
+// (`ConnectionUrls`, `EmailSetting`, `MyProgress`, `NotificationSettings`,
+// `Page`, `ScanLibrarySetting`, `SyncPassword`, `ThemeSetting`,
+// `UserChangePassword`), each of which owns
 // its own GraphQL document/mutation and, in `ScanLibrarySetting`'s case, a
 // scan-progress subscription. None of that is what this file tests — it
 // tests `UserPage`'s OWN composition (which cards mount for which role) —
@@ -20,6 +21,7 @@ vi.mock('~/component', () => ({
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
   MyProgress: () => <div>MyProgress</div>,
+  NotificationSettings: () => <div>NotificationSettings</div>,
   Page: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   ScanLibrarySetting: () => <div>ScanLibrarySetting</div>,
   SyncPassword: () => <div>SyncPassword</div>,
@@ -29,21 +31,21 @@ vi.mock('~/component', () => ({
 
 describe('UserPage', () => {
   // Task 6 (add-page reorg): the reader's `BookRequests` card is gone —
-  // every request surface now lives on `/add/request`. `BookRequests` is no
+  // every request surface now lives on `/request`. `BookRequests` is no
   // longer even an EXPORT of `~/component` (see this file's own barrel
   // mock above, which would throw "element type is invalid" on render if
   // `page/user/index.tsx` still imported it) — a stronger pin than the text
   // query alone, which would pass vacuously against a page that never
   // rendered at all.
   it('no longer renders the book requests card', () => {
-    renderWithApollo(<UserPage />, { user: { username: 'alice', isAdmin: false } });
+    renderWithApollo(<SettingsPage />, { user: { username: 'alice', isAdmin: false } });
 
     expect(screen.getByText('SyncPassword')).toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 
   it('renders the admin branch without the reader-only cards', () => {
-    renderWithApollo(<UserPage />, { user: { username: 'admin', isAdmin: true } });
+    renderWithApollo(<SettingsPage />, { user: { username: 'admin', isAdmin: true } });
 
     // `ThemeSetting` is the positive control — without it this test would pass
     // against a page that rendered nothing at all. It replaced
