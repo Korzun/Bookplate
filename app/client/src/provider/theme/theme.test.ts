@@ -185,3 +185,51 @@ describe('bg.page flat noise-average (noise textures removed)', () => {
     expect(lightTheme.color.bg.page).toBe('#F6F6F9');
   });
 });
+
+describe('bg.track separates the segmented-control track from what it sits on', () => {
+  // The track is borderless by design (the lens carries the control's only
+  // outlined edge), so its background is the ONLY thing separating it from the
+  // surface beneath. `bg.cardHeader` used to serve here, which works in light
+  // (gray[100] on a lighter page) but collapsed in dark, where cardHeader
+  // (#232427) and page (#242527) are a single channel-step apart — the track
+  // simply disappeared on the Add page.
+  const channelDistance = (a: string, b: string) => {
+    const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const [ca, cb] = [channels(a), channels(b)];
+    return Math.max(...ca.map((value, i) => Math.abs(value - cb[i])));
+  };
+
+  it('reads against the page in dark mode', () => {
+    expect(
+      channelDistance(darkTheme.color.bg.track, darkTheme.color.bg.page)
+    ).toBeGreaterThanOrEqual(6);
+  });
+
+  it('reads against the page in light mode', () => {
+    expect(
+      channelDistance(lightTheme.color.bg.track, lightTheme.color.bg.page)
+    ).toBeGreaterThanOrEqual(6);
+  });
+
+  it('reads against a card body, where the Appearance copy of the control sits', () => {
+    expect(
+      channelDistance(darkTheme.color.bg.track, darkTheme.color.bg.card)
+    ).toBeGreaterThanOrEqual(6);
+    expect(
+      channelDistance(lightTheme.color.bg.track, lightTheme.color.bg.card)
+    ).toBeGreaterThanOrEqual(6);
+  });
+
+  it('holds the lens apart from the track in both modes', () => {
+    expect(
+      channelDistance(darkTheme.color.bg.track, darkTheme.color.bg.input)
+    ).toBeGreaterThanOrEqual(6);
+    expect(
+      channelDistance(lightTheme.color.bg.track, lightTheme.color.bg.input)
+    ).toBeGreaterThanOrEqual(6);
+  });
+
+  it('leaves light mode exactly as it rendered before', () => {
+    expect(lightTheme.color.bg.track).toBe(lightTheme.color.gray[100]);
+  });
+});
