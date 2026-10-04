@@ -8,7 +8,7 @@ import type {
   BookUnlinkDocumentMutationVariables,
 } from '~/gql/graphql';
 import { BookUnlinkDocumentDocument } from '~/graphql/book';
-import { renderWithApollo } from '~/test-utils';
+import { renderWithApollo, renderWithControlledLink } from '~/test-utils';
 
 import { UnlinkBookLineageButton } from './index';
 
@@ -31,6 +31,15 @@ const unlinkOkMock: MockedResponse<
         book: { __typename: 'Book', id: BOOK_ID, lineage: [] },
       },
     },
+  },
+};
+
+/** The same payload as `unlinkOkMock.result`, for `release()`. */
+const unlinkOkData: BookUnlinkDocumentMutation = {
+  __typename: 'Mutation',
+  bookUnlinkDocument: {
+    __typename: 'BookUnlinkDocumentPayload',
+    book: { __typename: 'Book', id: BOOK_ID, lineage: [] },
   },
 };
 
@@ -170,9 +179,12 @@ describe('UnlinkBookLineageButton', () => {
   });
 
   it('shows loading on the confirm button while the mutation is in flight', async () => {
-    renderWithApollo(
-      <UnlinkBookLineageButton bookId={BOOK_ID} bookTitle="Dune" documentId={DOCUMENT_ID} />,
-      { mocks: [{ ...unlinkOkMock, delay: 20 }] }
+    // A CONTROLLED link, not `delay: 20`. The assertion below is synchronous
+    // and only means anything while the mutation is genuinely unresolved; a
+    // real 20ms timer made that a race this test lost under full-suite load.
+    // See `renderWithControlledLink`'s comment.
+    const { release } = renderWithControlledLink<BookUnlinkDocumentMutation>(
+      <UnlinkBookLineageButton bookId={BOOK_ID} bookTitle="Dune" documentId={DOCUMENT_ID} />
     );
 
     await userEvent.click(screen.getByRole('button', { name: /unlink/i }));
@@ -182,30 +194,35 @@ describe('UnlinkBookLineageButton', () => {
     // its "disabled" state is `aria-disabled`, which jest-dom's `toBeDisabled`
     // does not recognize on a div, so it's asserted directly.
     expect(getConfirmButton()).toHaveAttribute('aria-disabled', 'true');
+
+    release({ data: unlinkOkData });
     await waitFor(() => expect(getConfirmButton()).not.toHaveAttribute('aria-disabled'));
   });
 
   it('ignores a second confirm click while the first is still in flight', async () => {
     const onSuccess = vi.fn();
-    renderWithApollo(
+    // The controlled link holds the first mutation open for as long as this
+    // test wants, so "while the first is still in flight" is a fact rather
+    // than a 20ms bet — and `requestCount` asserts the guard DIRECTLY (a
+    // second request was never issued) instead of inferring it from MockLink
+    // running out of queued responses.
+    const { release, requestCount } = renderWithControlledLink<BookUnlinkDocumentMutation>(
       <UnlinkBookLineageButton
         bookId={BOOK_ID}
         bookTitle="Dune"
         documentId={DOCUMENT_ID}
         onSuccess={onSuccess}
-      />,
-      { mocks: [{ ...unlinkOkMock, delay: 20 }] }
+      />
     );
 
     await userEvent.click(screen.getByRole('button', { name: /unlink/i }));
     const confirmButton = getConfirmButton();
     await userEvent.click(confirmButton);
-    // A second click while in flight must not consume a second mock —
-    // MockLink only has ONE queued response; if the guard were missing, the
-    // second call would try to consume a second response from a link with
-    // none left.
     await userEvent.click(confirmButton);
 
+    expect(requestCount.current).toBe(1);
+
+    release({ data: unlinkOkData });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 

@@ -1,4 +1,11 @@
-import { ApolloClient, InMemoryCache, type OperationVariables } from '@apollo/client';
+import {
+  ApolloClient,
+  ApolloLink,
+  InMemoryCache,
+  Observable,
+  type FetchResult,
+  type OperationVariables,
+} from '@apollo/client';
 import { ApolloProvider } from '@apollo/client/react';
 import { MockLink, type MockedResponse } from '@apollo/client/testing';
 import { render, type RenderOptions } from '@testing-library/react';
@@ -238,4 +245,78 @@ export function ApolloTestProvider({
     () => new ApolloClient({ link: new MockLink(mocks), cache: new InMemoryCache(cacheConfig) })
   );
   return <ApolloProvider client={client}>{children}</ApolloProvider>;
+}
+
+/**
+ * Renders through a link the TEST fully controls: every operation it sees is
+ * held open until the test calls `release`, and `requestCount` counts requests
+ * the instant they are ISSUED (Apollo invokes a link's request handler
+ * synchronously from `client.mutate()`/`client.query()`, before any microtask)
+ * rather than when they settle.
+ *
+ * THIS EXISTS BECAUSE `MockedResponse`'s `delay` IS A REAL `setTimeout`, and
+ * a short one paired with a synchronous "it hasn't settled yet" assertion is a
+ * bet on wall-clock time that an idle machine wins and a loaded full-suite run
+ * loses. That bet flaked two different ways in this repo, both worth
+ * recognising because only one of them looks like a failure:
+ *
+ *  - the assertion reads the ALREADY-SETTLED value (the timer won the race),
+ *    which surfaces as an ordinary failing test; and
+ *  - the timer fires LATE, running a component's `finally` after a later test
+ *    file's `cleanup()` has unmounted the tree — which surfaces as an
+ *    unhandled error with an ALL-GREEN test count and a non-zero exit code.
+ *
+ * A `release` that only ever fires when this test calls it removes both: a
+ * mock cannot settle before an assertion the test has not reached, and nothing
+ * is left resolving once the test function returns.
+ *
+ * Use this whenever a test asserts on IN-FLIGHT state — a loading spinner, a
+ * disabled control, an optimistic value, a re-entrancy guard. For a mock that
+ * simply must never resolve, `delay: Infinity` is still the simpler tool; the
+ * anti-pattern is specifically a SHORT delay used as a synchronisation device.
+ *
+ * Releases are FIFO: `release` delivers to the oldest request not yet
+ * delivered, so a test with two in flight resolves them in issue order.
+ *
+ * Composed from `renderWithProviders` rather than `renderWithApollo`, because
+ * the latter hard-codes `new MockLink(mocks)` — fixed per-mock `delay`, with
+ * no notion of "held open until told otherwise".
+ */
+export type ControlledOutcome<TData = Record<string, unknown>> = { data: TData } | { error: Error };
+
+export function renderWithControlledLink<TData = Record<string, unknown>>(
+  ui: ReactElement,
+  options: RenderWithProvidersOptions = {}
+) {
+  const deliverers: ((outcome: ControlledOutcome<TData>) => void)[] = [];
+  const requestCount = { current: 0 };
+
+  const link = new ApolloLink(
+    () =>
+      new Observable<FetchResult>((observer) => {
+        requestCount.current += 1;
+        deliverers.push((outcome) => {
+          if ('error' in outcome) {
+            observer.error(outcome.error);
+          } else {
+            observer.next({ data: outcome.data as FetchResult['data'] });
+            observer.complete();
+          }
+        });
+      })
+  );
+  const client = new ApolloClient({ link, cache: new InMemoryCache(cacheConfig) });
+
+  return {
+    client,
+    requestCount,
+    release: (outcome: ControlledOutcome<TData>) => {
+      const deliver = deliverers.shift();
+      if (deliver === undefined) {
+        throw new Error('release() called before any request was issued');
+      }
+      deliver(outcome);
+    },
+    ...renderWithProviders(<ApolloProvider client={client}>{ui}</ApolloProvider>, options),
+  };
 }

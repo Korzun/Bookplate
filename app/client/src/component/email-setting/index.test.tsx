@@ -1,5 +1,5 @@
 import type { MockedResponse } from '@apollo/client/testing';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -100,13 +100,25 @@ describe('EmailSetting', () => {
 
   it('accepts a code inline once one has been sent', async () => {
     const user = userEvent.setup();
-    renderWithConfig(<EmailSetting email="ann@example.com" emailVerifiedAt={null} />, {
-      mocks: [resendMock(), confirmMock('K7M2QX4P')],
-    });
-    await user.click(screen.getByRole('button', { name: /resend/i }));
-    await user.type(await screen.findByPlaceholderText(/code/i), 'K7M2QX4P');
-    await user.click(screen.getByRole('button', { name: /confirm/i }));
-    expect(await screen.findByText(/confirmed/i)).toBeInTheDocument();
+    // SCOPED to the card, via the same marker-`div` isolation the
+    // email-disabled test below uses. A bare `findByText(/confirmed/i)` on
+    // `screen` matched TWO nodes — this card's own `Confirmed` badge and the
+    // `Email confirmed` success toast `ToastProvider` renders as a sibling —
+    // and which of those was on screen depended on whether the toast had
+    // auto-dismissed yet, so it failed only under full-suite load. Scoping
+    // excludes the toast portal structurally, rather than relying on a
+    // tighter regex that the next toast copy could collide with again.
+    renderWithConfig(
+      <div data-testid="card">
+        <EmailSetting email="ann@example.com" emailVerifiedAt={null} />
+      </div>,
+      { mocks: [resendMock(), confirmMock('K7M2QX4P')] }
+    );
+    const card = within(screen.getByTestId('card'));
+    await user.click(card.getByRole('button', { name: /resend/i }));
+    await user.type(await card.findByPlaceholderText(/code/i), 'K7M2QX4P');
+    await user.click(card.getByRole('button', { name: /confirm/i }));
+    expect(await card.findByText(/confirmed/i)).toBeInTheDocument();
   });
 
   it('changes the address and warns that it needs confirming again', async () => {
