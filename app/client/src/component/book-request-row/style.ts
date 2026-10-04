@@ -40,6 +40,23 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.space.sm,
     width: '100%',
+    /**
+     * STACKED on a phone, where the row cannot hold three buttons.
+     *
+     * Wrapping alone produced the worst of both: `space-between` plus
+     * `footerRight`'s `margin-left: auto` put the dismissive action alone on
+     * the first line and crowded the two resolving ones onto the second,
+     * right-aligned — a ragged two-line block that read as broken rather than
+     * as a deliberate split. Measured at 320px with three actions present.
+     *
+     * The order is the DOM's, not reversed: visual order stays focus order,
+     * and it happens to put the destructive action furthest from the thumb
+     * and the primary one nearest it.
+     */
+    [theme.breakpoint.mobile]: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
   footerRight: {
     display: 'flex',
@@ -47,6 +64,14 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.space.sm,
     marginLeft: 'auto',
+    // Follows the bar above: once that is a column, this must be one too, or
+    // its two buttons stay side by side in a full-width row of their own.
+    // `margin-left` goes with it — there is no free space left to push into.
+    [theme.breakpoint.mobile]: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      marginLeft: 0,
+    },
   },
   // Typography lifted from the Book page's own book card (`page/book/style.ts`'s
   // `title`/`author`) so a request reads like the book it is asking for. The

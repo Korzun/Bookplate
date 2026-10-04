@@ -351,6 +351,59 @@ describe('BookRequestRow resolve actions', () => {
     expect(screen.getByRole('button', { name: /decline/i })).toBeInTheDocument();
   });
 
+  /**
+   * Three buttons do not fit one row on a phone. Left to wrap, `space-between`
+   * plus the resolving group's `margin-left: auto` stranded Decline alone on
+   * the first line and crowded the other two, right-aligned, onto the second —
+   * ragged enough to read as broken. Measured at 320px.
+   *
+   * The stylesheet is what is asserted: the widths that trigger this come from
+   * a media query, which jsdom does not evaluate, so no render can show it.
+   */
+  it('stacks its actions at the mobile breakpoint rather than wrapping them', () => {
+    renderRow(
+      { id: 'QmVxOjE=', status: 'PENDING' },
+      { canResolve: true, libraryId: 'TGliOmJvYg==' }
+    );
+
+    /**
+     * Walks the CSSOM rather than regexing the concatenated text. A text
+     * search for the media block ran past its closing brace into the BASE
+     * rules that follow, so it found `.footerBar`'s unprefixed declaration —
+     * which has no `flex-direction` — and reported the fix missing while it
+     * was present. Only declarations INSIDE a `max-width: 640px` block count.
+     */
+    const mobileRules = (ruleName: string): CSSStyleDeclaration[] => {
+      const found: CSSStyleDeclaration[] = [];
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRule[];
+        try {
+          rules = Array.from(sheet.cssRules);
+        } catch {
+          continue; // unreadable sheet
+        }
+        for (const rule of rules) {
+          if (!(rule instanceof CSSMediaRule)) continue;
+          if (!rule.conditionText.includes('max-width: 640px')) continue;
+          for (const inner of Array.from(rule.cssRules)) {
+            if (inner instanceof CSSStyleRule && inner.selectorText.includes(ruleName)) {
+              found.push(inner.style);
+            }
+          }
+        }
+      }
+      return found;
+    };
+
+    // Both halves have to turn: the bar alone would leave the resolving pair
+    // side by side in a full-width row of their own.
+    for (const ruleName of ['footerBar', 'footerRight']) {
+      const declarations = mobileRules(ruleName);
+      expect(declarations.length).toBeGreaterThan(0);
+      expect(declarations.some((style) => style.flexDirection === 'column')).toBe(true);
+    }
+  });
+
   it('queues an upload against this reader library and this request', async () => {
     const { user, addFilesCalls } = renderRow(
       { id: 'QmVxOjE=', status: 'PENDING' },
