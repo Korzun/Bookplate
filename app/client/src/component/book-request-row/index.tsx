@@ -117,7 +117,7 @@ interface BookRequestRowProps {
  *   queue effect fire `bookRequestFulfill` once the item lands
  *   (`provider/upload/hook/use-upload-queue.ts`). This row fires NO mutation
  *   itself for that path — the queue owns it.
- * - **Link existing book**: opens `LinkExistingBookModal` rooted at
+ * - **Link existing**: opens `LinkExistingBookModal` rooted at
  *   `target.libraryId`, and runs `BookRequestFulfillDocument` directly with
  *   the picked book's GLOBAL id the instant it is picked. This is both the
  *   recovery path when auto-fulfil failed (see "didn't close" below) and the
@@ -163,7 +163,7 @@ interface BookRequestRowProps {
  * book whenever the queue item landed (`status === 'done'`) but the request
  * itself is still `PENDING` — the queue's own `bookRequestFulfill` call
  * either failed, or has not round-tripped back into this row's props yet.
- * Either way, Link existing book (pointed straight at the just-uploaded
+ * Either way, Link existing (pointed straight at the just-uploaded
  * book) is the recovery path — no retry button re-fires the same fire-once
  * queue effect from here.
  */
@@ -307,7 +307,7 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
         </Button>
         <div className={styles.footerRight}>
           <Button type="default" radius="card" onClick={handleOpenPicker}>
-            Link existing book
+            Link existing
           </Button>
           {/* A real primary `Button` rather than a `<label>` styled to look
               like one: the label needed its own copy of the button's chrome,
@@ -317,8 +317,13 @@ export const BookRequestRow = ({ request, canResolve, onDelete, target }: BookRe
               control — `getByLabelText`/`user.upload` still address the input
               directly, and the button's own text is not a label, so the two
               never collide. */}
+          {/* "Upload", not "Upload EPUB": three actions have to share one row
+              at phone width, and the format is already implied by the accept
+              filter and by the input's own `aria-label`, which stays explicit
+              — the visible text is a subset of it, so the accessible name
+              still contains the label. */}
           <Button type="primary" radius="card" onClick={handleUploadClick}>
-            Upload EPUB
+            Upload
           </Button>
           <input
             ref={uploadInputRef}

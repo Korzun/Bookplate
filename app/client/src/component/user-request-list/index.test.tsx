@@ -156,7 +156,7 @@ describe('UserRequestList', () => {
     expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument();
     // Positive control: the admin's own actions ARE rendered, so this cannot
     // pass against a list that failed to render its rows at all.
-    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Link existing' })).toBeInTheDocument();
   });
 });
 

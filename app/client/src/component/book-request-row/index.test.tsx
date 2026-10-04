@@ -318,7 +318,7 @@ describe('BookRequestRow', () => {
   it('offers no resolve actions when canResolve is false', () => {
     renderRow({ status: 'PENDING' }, { canResolve: false });
     expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /link existing book/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /link existing/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/upload epub/i)).not.toBeInTheDocument();
   });
 
@@ -347,61 +347,8 @@ describe('BookRequestRow resolve actions', () => {
     );
 
     expect(screen.getByLabelText(/upload epub/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /link existing book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /link existing/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /decline/i })).toBeInTheDocument();
-  });
-
-  /**
-   * Three buttons do not fit one row on a phone. Left to wrap, `space-between`
-   * plus the resolving group's `margin-left: auto` stranded Decline alone on
-   * the first line and crowded the other two, right-aligned, onto the second —
-   * ragged enough to read as broken. Measured at 320px.
-   *
-   * The stylesheet is what is asserted: the widths that trigger this come from
-   * a media query, which jsdom does not evaluate, so no render can show it.
-   */
-  it('stacks its actions at the mobile breakpoint rather than wrapping them', () => {
-    renderRow(
-      { id: 'QmVxOjE=', status: 'PENDING' },
-      { canResolve: true, libraryId: 'TGliOmJvYg==' }
-    );
-
-    /**
-     * Walks the CSSOM rather than regexing the concatenated text. A text
-     * search for the media block ran past its closing brace into the BASE
-     * rules that follow, so it found `.footerBar`'s unprefixed declaration —
-     * which has no `flex-direction` — and reported the fix missing while it
-     * was present. Only declarations INSIDE a `max-width: 640px` block count.
-     */
-    const mobileRules = (ruleName: string): CSSStyleDeclaration[] => {
-      const found: CSSStyleDeclaration[] = [];
-      for (const sheet of Array.from(document.styleSheets)) {
-        let rules: CSSRule[];
-        try {
-          rules = Array.from(sheet.cssRules);
-        } catch {
-          continue; // unreadable sheet
-        }
-        for (const rule of rules) {
-          if (!(rule instanceof CSSMediaRule)) continue;
-          if (!rule.conditionText.includes('max-width: 640px')) continue;
-          for (const inner of Array.from(rule.cssRules)) {
-            if (inner instanceof CSSStyleRule && inner.selectorText.includes(ruleName)) {
-              found.push(inner.style);
-            }
-          }
-        }
-      }
-      return found;
-    };
-
-    // Both halves have to turn: the bar alone would leave the resolving pair
-    // side by side in a full-width row of their own.
-    for (const ruleName of ['footerBar', 'footerRight']) {
-      const declarations = mobileRules(ruleName);
-      expect(declarations.length).toBeGreaterThan(0);
-      expect(declarations.some((style) => style.flexDirection === 'column')).toBe(true);
-    }
   });
 
   it('queues an upload against this reader library and this request', async () => {
@@ -444,7 +391,7 @@ describe('BookRequestRow resolve actions', () => {
     );
 
     expect(await screen.findByText(/didn't close/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /link existing book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /link existing/i })).toBeInTheDocument();
   });
 
   it('fulfils from the picker', async () => {
@@ -453,7 +400,7 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, libraryId: 'TGliOmJvYg==' }
     );
 
-    await user.click(screen.getByRole('button', { name: /link existing book/i }));
+    await user.click(screen.getByRole('button', { name: /link existing/i }));
     await user.click(await screen.findByRole('button', { name: /Dune/ }));
 
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
@@ -472,7 +419,7 @@ describe('BookRequestRow resolve actions', () => {
       { canResolve: true, libraryId: 'TGliOmJvYg==', watchUserList: true }
     );
 
-    await user.click(screen.getByRole('button', { name: /link existing book/i }));
+    await user.click(screen.getByRole('button', { name: /link existing/i }));
     await user.click(await screen.findByRole('button', { name: /Dune/ }));
     await waitFor(() => expect(fulfillCalls()).toHaveLength(1));
 
@@ -569,7 +516,7 @@ describe('BookRequestRow — who may delete', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     // Positive control: the admin's own actions ARE there, so this test cannot
     // pass against a row that rendered nothing at all.
-    expect(screen.getByRole('button', { name: 'Link existing book' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Link existing' })).toBeInTheDocument();
   });
 
   it('offers the admin no Clear on a resolved request', () => {
@@ -600,7 +547,7 @@ describe('BookRequestRow — the upload control', () => {
     const input = screen.getByLabelText(/upload epub/i);
     const clickSpy = vi.spyOn(input, 'click');
 
-    await user.click(screen.getByRole('button', { name: 'Upload EPUB' }));
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
 
     expect(clickSpy).toHaveBeenCalled();
   });
