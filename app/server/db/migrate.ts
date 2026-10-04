@@ -871,4 +871,33 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
          ON "notification_outbox" ("sent_at", "failed_at", "next_attempt_at")`
     );
   });
+
+  // Data migration: the push_subscriptions table. Runs after
+  // data_v10_user_surrogate_id, which rebuilds "users" from an explicit column
+  // list — the table carries a foreign key to it. The Prisma DDL migration
+  // (20260922000000_add_push_subscriptions) is a no-op; see its comment.
+  await runDataMigration(prisma, 'data_v21_push_subscriptions', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "push_subscriptions" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "endpoint" TEXT NOT NULL,
+        "p256dh" TEXT NOT NULL,
+        "auth" TEXT NOT NULL,
+        "label" TEXT NOT NULL,
+        "created_at" REAL NOT NULL,
+        "last_success_at" REAL,
+        CONSTRAINT "push_subscriptions_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "push_subscriptions_endpoint_key"
+         ON "push_subscriptions" ("endpoint")`
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "push_subscriptions_user_id_idx"
+         ON "push_subscriptions" ("user_id")`
+    );
+  });
 }
