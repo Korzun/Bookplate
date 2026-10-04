@@ -23,7 +23,9 @@ describe('Viewer.notificationPreferences', () => {
       viewer: {
         notificationPreferences: [
           { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH', enabled: true },
           { event: 'BOOK_REQUEST_DECLINED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH', enabled: true },
         ],
       },
     });
@@ -45,7 +47,9 @@ describe('Viewer.notificationPreferences', () => {
       viewer: {
         notificationPreferences: [
           { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH', enabled: true },
           { event: 'BOOK_REQUEST_DECLINED', channel: 'EMAIL', enabled: false },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH', enabled: true },
         ],
       },
     });
@@ -62,18 +66,26 @@ describe('Viewer.notificationPreferences', () => {
       viewer: {
         notificationPreferences: [
           { event: 'BOOK_REQUEST_CREATED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_CREATED', channel: 'PUSH', enabled: true },
         ],
       },
     });
   });
 
-  it('is empty on an install with no mail configured', async () => {
+  it('offers only push on an install with no mail configured', async () => {
     harness = await createHarness();
 
     const result = await harness.execute(QUERY);
 
     expect(result.errors).toBeUndefined();
-    expect(result.data).toEqual({ viewer: { notificationPreferences: [] } });
+    expect(result.data).toEqual({
+      viewer: {
+        notificationPreferences: [
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH', enabled: true },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH', enabled: true },
+        ],
+      },
+    });
   });
 });
 
@@ -85,7 +97,7 @@ describe('viewerSetNotificationPreference', () => {
         channel: EMAIL
         enabled: $enabled
       ) {
-        notificationPreferences { event enabled }
+        notificationPreferences { event channel enabled }
       }
     }
   `;
@@ -96,11 +108,18 @@ describe('viewerSetNotificationPreference', () => {
     const result = await harness.execute(MUTATION, { variables: { enabled: false } });
 
     expect(result.errors).toBeUndefined();
+    // `channel` selected and asserted BY VALUE, not merely `{event, enabled}`
+    // read off array position: the mutation's own args ask to mute
+    // `BOOK_REQUEST_DECLINED`/`EMAIL` specifically, and this is what catches
+    // an implementation that muted the wrong channel (PUSH instead of EMAIL)
+    // while still returning a same-shaped, same-length list.
     expect(result.data).toEqual({
       viewerSetNotificationPreference: {
         notificationPreferences: [
-          { event: 'BOOK_REQUEST_FULFILLED', enabled: true },
-          { event: 'BOOK_REQUEST_DECLINED', enabled: false },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'EMAIL', enabled: true },
+          { event: 'BOOK_REQUEST_FULFILLED', channel: 'PUSH', enabled: true },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'EMAIL', enabled: false },
+          { event: 'BOOK_REQUEST_DECLINED', channel: 'PUSH', enabled: true },
         ],
       },
     });

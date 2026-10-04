@@ -134,7 +134,9 @@ describe('listNotificationPreferences', () => {
 
     expect(rows).toEqual([
       { event: 'book_request.fulfilled', channel: 'email', enabled: true },
+      { event: 'book_request.fulfilled', channel: 'push', enabled: true },
       { event: 'book_request.declined', channel: 'email', enabled: false },
+      { event: 'book_request.declined', channel: 'push', enabled: true },
     ]);
   });
 
@@ -157,19 +159,20 @@ describe('enqueueNotification', () => {
       now: 1000,
     });
 
-    const rows = await prisma.notificationOutbox.findMany();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      userId: ALICE,
-      event: 'book_request.fulfilled',
-      channel: 'email',
-      attempts: 0,
-      nextAttemptAt: 1000,
-      createdAt: 1000,
-      sentAt: null,
-      failedAt: null,
-    });
-    expect(parsePayload(rows[0].payload)).toEqual(payload());
+    const rows = await prisma.notificationOutbox.findMany({ orderBy: { channel: 'asc' } });
+    expect(rows.map((r) => r.channel)).toEqual(['email', 'push']);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        userId: ALICE,
+        event: 'book_request.fulfilled',
+        attempts: 0,
+        nextAttemptAt: 1000,
+        createdAt: 1000,
+        sentAt: null,
+        failedAt: null,
+      });
+      expect(parsePayload(row.payload)).toEqual(payload());
+    }
   });
 
   it('routes an admin-audience event to the config admin, not the subject', async () => {
@@ -182,8 +185,8 @@ describe('enqueueNotification', () => {
     });
 
     const rows = await prisma.notificationOutbox.findMany();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].userId).toBe(ADMIN);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.userId === ADMIN)).toBe(true);
   });
 
   it('enqueues nothing when there is no admin row', async () => {
@@ -200,6 +203,12 @@ describe('enqueueNotification', () => {
       userId: ALICE,
       event: 'book_request.fulfilled',
       channel: 'email',
+      enabled: false,
+    });
+    await setNotificationPreference(prisma, {
+      userId: ALICE,
+      event: 'book_request.fulfilled',
+      channel: 'push',
       enabled: false,
     });
 
@@ -224,5 +233,36 @@ describe('enqueueNotification', () => {
     ).rejects.toThrow('boom');
 
     expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+
+  it('enqueues one row per enabled channel', async () => {
+    await enqueueNotification(prisma, {
+      event: 'book_request.fulfilled',
+      subjectUserId: ALICE,
+      payload: payload(),
+      now: 1000,
+    });
+
+    const rows = await prisma.notificationOutbox.findMany({ orderBy: { channel: 'asc' } });
+    expect(rows.map((r) => r.channel)).toEqual(['email', 'push']);
+  });
+
+  it('skips only the muted channel', async () => {
+    await setNotificationPreference(prisma, {
+      userId: ALICE,
+      event: 'book_request.fulfilled',
+      channel: 'push',
+      enabled: false,
+    });
+
+    await enqueueNotification(prisma, {
+      event: 'book_request.fulfilled',
+      subjectUserId: ALICE,
+      payload: payload(),
+      now: 1000,
+    });
+
+    const rows = await prisma.notificationOutbox.findMany();
+    expect(rows.map((r) => r.channel)).toEqual(['email']);
   });
 });

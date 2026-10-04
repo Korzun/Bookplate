@@ -321,16 +321,19 @@ describe('notification enqueue', () => {
     await createBookRequest(prisma, input({ note: 'the 1965 edition' }));
 
     const rows = await outbox();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].userId).toBe(ADMIN);
-    expect(rows[0].event).toBe('book_request.created');
-    expect(parsePayload(rows[0].payload)).toEqual({
-      requesterUsername: 'alice',
-      title: 'Dune',
-      author: 'Frank Herbert',
-      note: 'the 1965 edition',
-      declineReason: '',
-    });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.channel).sort()).toEqual(['email', 'push']);
+    for (const row of rows) {
+      expect(row.userId).toBe(ADMIN);
+      expect(row.event).toBe('book_request.created');
+      expect(parsePayload(row.payload)).toEqual({
+        requesterUsername: 'alice',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        note: 'the 1965 edition',
+        declineReason: '',
+      });
+    }
   });
 
   it('enqueues nothing for a duplicate', async () => {
@@ -375,9 +378,12 @@ describe('notification enqueue', () => {
 
     expect(outcome.kind).toBe('resolved');
     const rows = await outbox();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ userId: ALICE, event: 'book_request.fulfilled' });
-    expect(parsePayload(rows[0].payload).title).toBe('Dune');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.channel).sort()).toEqual(['email', 'push']);
+    for (const row of rows) {
+      expect(row).toMatchObject({ userId: ALICE, event: 'book_request.fulfilled' });
+      expect(parsePayload(row.payload).title).toBe('Dune');
+    }
   });
 
   it('enqueues book_request.declined to the requester, carrying the reason', async () => {
@@ -393,9 +399,12 @@ describe('notification enqueue', () => {
 
     expect(outcome.kind).toBe('resolved');
     const rows = await outbox();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ userId: ALICE, event: 'book_request.declined' });
-    expect(parsePayload(rows[0].payload).declineReason).toBe('already on the shelf');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.channel).sort()).toEqual(['email', 'push']);
+    for (const row of rows) {
+      expect(row).toMatchObject({ userId: ALICE, event: 'book_request.declined' });
+      expect(parsePayload(row.payload).declineReason).toBe('already on the shelf');
+    }
   });
 
   it('enqueues nothing when a decline finds no pending request', async () => {

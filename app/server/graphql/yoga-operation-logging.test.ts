@@ -59,6 +59,7 @@ beforeEach(async () => {
       config: harness.config,
       mailer: harness.mailer,
       notifications: harness.notifications,
+      vapidPublicKey: harness.vapidPublicKey,
       jwtSecret,
       isProduction: false,
     })

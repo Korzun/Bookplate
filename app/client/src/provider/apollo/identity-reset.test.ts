@@ -31,6 +31,8 @@ const writeViewer = (client: ApolloClient) => {
         email: null,
         emailVerifiedAt: null,
         notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: { __typename: 'User', id: 'USER-1' },
         library: { __typename: 'Library', id: 'LIB-1' },
       },
