@@ -152,47 +152,63 @@ export const SetEmailPage = () => {
     <Page type="minimal">
       <div className={styles.root}>
         <BrandLockup />
-        <Card className={styles.card}>
-          {stage === 'address' ? (
-            <form className={styles.form} action={submitAddress}>
-              <p className={styles.lead}>
-                Add an email address to your account. We&rsquo;ll send a code to confirm it.
-              </p>
-              <TextInput
-                placeholder="Email address"
-                name="email"
-                autoCapitalize="none"
-                onChange={handleEmailChange}
-                value={email}
-              />
-              <Button submit loading={isSaving} type="primary" radius="card">
-                Send confirmation code
-              </Button>
-            </form>
-          ) : (
-            <form className={styles.form} action={submitCode}>
-              <p className={styles.lead}>
-                Enter the code we sent to {email === '' ? 'your email address' : email}.
-              </p>
-              <TextInput
-                placeholder="Confirmation code"
-                name="code"
-                autoCapitalize="characters"
-                onChange={handleCodeChange}
-                value={code}
-              />
-              <Button submit loading={isConfirming} type="primary" radius="card">
-                Confirm
-              </Button>
-              <Button type="text" onClick={() => void handleResend()}>
-                Resend code
-              </Button>
-              <Button type="text" onClick={() => setStage('address')}>
-                Use a different address
-              </Button>
-            </form>
-          )}
-        </Card>
+        {/* The stack shrink-wraps to the card, itself sized by the field column
+            to match the login card, so the button below lands card-wide. */}
+        <div className={styles.stack}>
+          <Card>
+            <div className={styles.content}>
+              {stage === 'address' ? (
+                <form className={styles.form} action={submitAddress}>
+                  <p className={styles.lead}>
+                    Add an email address to your account. We&rsquo;ll send a code to confirm it.
+                  </p>
+                  <TextInput
+                    placeholder="Email address"
+                    name="email"
+                    autoCapitalize="none"
+                    onChange={handleEmailChange}
+                    value={email}
+                  />
+                  <Button submit loading={isSaving} type="primary" radius="card">
+                    Send confirmation code
+                  </Button>
+                </form>
+              ) : (
+                <form className={styles.form} action={submitCode}>
+                  {/* The lead that stood here restated the placeholder and the
+                      button below it, and named an address the caller had just
+                      typed on the previous stage. */}
+                  <TextInput
+                    placeholder="Confirmation code"
+                    name="code"
+                    autoCapitalize="characters"
+                    onChange={handleCodeChange}
+                    value={code}
+                  />
+                  <Button submit loading={isConfirming} type="primary" radius="card">
+                    Confirm
+                  </Button>
+                  {/* Stays in the card — it acts on the code field above it —
+                      so it takes the card radius, not the page default. Its
+                      `text` type paints a background on hover, which is what
+                      made the mismatched corners visible. */}
+                  <Button type="text" radius="card" onClick={() => void handleResend()}>
+                    Resend code
+                  </Button>
+                </form>
+              )}
+            </div>
+          </Card>
+          {/* Leaves the code stage rather than acting on it, so it sits on the
+              page below the card like the sibling screens' secondary actions,
+              and takes the page radius — the Button default, hence no
+              `radius` prop. */}
+          {stage === 'code' ? (
+            <Button type="default" onClick={() => setStage('address')}>
+              Use a different address
+            </Button>
+          ) : null}
+        </div>
       </div>
     </Page>
   );
