@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
 import { consumeLoggedOutMark, logout } from './logout';
+import { LOCAL_SUBSCRIPTION_ID } from './push';
 import { getToken, setToken } from './token';
 
 /**
@@ -142,6 +143,22 @@ it('still logs out when unsubscribing fails', async () => {
 
   expect(getToken()).toBeNull();
   expect(assign).toHaveBeenCalledWith('/login');
+});
+
+it('clears the stored subscription id even when unsubscribing fails', async () => {
+  stubServiceWorkerThatThrows();
+  localStorage.setItem(LOCAL_SUBSCRIPTION_ID, 'sub-from-the-previous-account');
+  setToken('t');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal('location', { ...window.location, set href(_v: string) {} });
+
+  await logout();
+
+  // The id is what `resyncSubscription` reads as "this browser opted in and
+  // then expired". Left behind, the next account signing in here can be
+  // auto-subscribed against the previous account's row — so clearing it is
+  // teardown that has to happen whether or not the unsubscribe itself worked.
+  expect(localStorage.getItem(LOCAL_SUBSCRIPTION_ID)).toBeNull();
 });
 
 it('does not hang forever when unsubscribing never settles', async () => {

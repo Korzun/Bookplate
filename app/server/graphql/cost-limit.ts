@@ -378,16 +378,14 @@ const BOOK_LINEAGE_MULTIPLIER = 20;
 
 /**
  * `Viewer.pushSubscriptions: [PushSubscription!]!` (`viewer/model.ts`) is a
- * plain, uncapped-at-the-schema-level `findMany` — a composite-element list
- * field the "full inventory" paragraph above predates (push notifications
- * shipped after that count was taken) — but it is deliberately NOT added to
- * the map below. `PushSubscription` (`push-subscription/model.ts`) exposes
+ * plain, uncapped-at-the-schema-level `findMany`, and deliberately NOT added
+ * to the map below. `PushSubscription` (`push-subscription/model.ts`) exposes
  * only `id`/`label`/`createdAt`/`lastSuccessAt`, all scalars: its reachability
- * closure contains zero further list fields, so it is the SAME class as the
- * eleven leaf-terminating fields the paragraph above already names
- * (`Book.identifiers` et al.) — "there is nothing further under them to
- * multiply, so pricing them above 1 would inflate the calibration record for
- * no real risk." A multiplier here would do exactly that: it does not gate
+ * closure contains zero further list fields, which puts it in the
+ * LEAF_TERMINATING group of the inventory `cost-limit.test.ts` derives from
+ * the schema — "there is nothing further under them to multiply, so pricing
+ * them above 1 would inflate the calibration record for no real risk." A
+ * multiplier here would do exactly that: it does not gate
  * anything (breadth never reads it, and there are no NESTED fields for a
  * complexity multiplier to scale), it would just inflate the complexity of
  * every ordinary `ViewerBootstrapDocument` load for zero additional
