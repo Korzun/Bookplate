@@ -33,7 +33,7 @@ export type UsePushDevice = {
    *
    * It starts TRUE and stays that way until the first resync settles, because
    * until then `subscribed` is merely the `false` it was initialised to — not
-   * an answer. `page/user` passes `''` for the key while the bootstrap query
+   * an answer. `page/settings` passes `''` for the key while the bootstrap query
    * is in flight (`pushPublicKey` is non-nullable server-side, so `''` can
    * mean nothing else), and that window counts as querying too.
    */
@@ -124,14 +124,14 @@ export function usePushDevice(pushPublicKey: string): UsePushDevice {
       // already-cached `viewer.pushSubscriptions` list on its own. `include`
       // only refetches ACTIVE queries (`EmailSetting`'s own identical call),
       // so this is a no-op wherever nothing has `ViewerBootstrapDocument`
-      // mounted and a real refetch wherever `page/user` does.
+      // mounted and a real refetch wherever `page/settings` does.
       await client.refetchQueries({ include: [ViewerBootstrapDocument] });
     },
     [addSubscription, client]
   );
 
   useEffect(() => {
-    // `page/user` hands down `''` until `ViewerBootstrapDocument` resolves
+    // `page/settings` hands down `''` until `ViewerBootstrapDocument` resolves
     // (`NotificationSettingsProps.pushPublicKey`'s own doc comment). Running
     // anyway would register the worker and, for a browser with permission
     // already granted but no subscription, call `subscribeToPush('')` —

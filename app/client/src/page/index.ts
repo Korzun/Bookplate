@@ -13,4 +13,4 @@ export { ResetPasswordPage } from './reset-password';
 export { SeriesPage } from './series';
 export { SetEmailPage } from './set-email';
 export { UserListPage } from './user-list';
-export { UserPage } from './user';
+export { SettingsPage } from './settings';

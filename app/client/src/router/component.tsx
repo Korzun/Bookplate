@@ -15,7 +15,7 @@ import {
   SeriesPage,
   SetEmailPage,
   UserListPage,
-  UserPage,
+  SettingsPage,
 } from '~/page';
 
 import { NavLayout } from './nav-layout';
@@ -53,7 +53,7 @@ export const AppRouter = () => {
             <Route path={path.series(pathKey.seriesName)} element={<SeriesPage />} />
             <Route path={path.book(pathKey.bookId)} element={<BookPage />} />
             <Route path={path.bookEdit(pathKey.bookId)} element={<BookEditPage />} />
-            <Route path={path.user()} element={<UserPage />} />
+            <Route path={path.settings()} element={<SettingsPage />} />
             <Route path={path.userList()} element={<UserListPage />} />
             <Route path={path.devices()} element={<DeviceListPage />} />
             <Route path="*" element={<Navigate to={path.library()} replace />} />

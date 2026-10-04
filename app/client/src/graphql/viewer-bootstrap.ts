@@ -13,21 +13,21 @@ import { graphql } from '~/gql';
  * library and whose token carries no `sub`.
  *
  * `email`/`emailVerifiedAt` (task 16) feed `component/email-setting`, mounted
- * on `page/user`. This document is the natural place for them: unlike
- * `page/user`'s own `UserPageDocument` (skipped entirely for an admin
+ * on `page/settings`. This document is the natural place for them: unlike
+ * `page/settings`'s own `UserPageDocument` (skipped entirely for an admin
  * viewer, to spare the ×100 `Viewer.devices` cost multiplier), this one is
  * unconditionally active for every viewer, admin included — and the admin
  * manages its own address too (`Viewer.email`'s own doc comment,
  * `graphql/schema/viewer/model.ts`).
  *
  * `notificationPreferences` (task 10) feeds `component/notification-settings`,
- * mounted on `page/user` right beside `EmailSetting` — same reasoning as
+ * mounted on `page/settings` right beside `EmailSetting` — same reasoning as
  * above: the admin is the only recipient of `BOOK_REQUEST_CREATED`, so this
  * field has to be selected unconditionally here rather than on the
  * admin-skipped `UserPageDocument`.
  *
  * `pushPublicKey`/`pushSubscriptions` (task 12) feed the push settings card
- * and device list, also mounted on `page/user` — same reasoning again: the
+ * and device list, also mounted on `page/settings` — same reasoning again: the
  * admin is the only recipient of `BOOK_REQUEST_CREATED`, so these fields have
  * to be selected unconditionally here rather than on the admin-skipped
  * `UserPageDocument`.

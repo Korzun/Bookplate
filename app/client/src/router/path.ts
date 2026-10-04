@@ -13,6 +13,6 @@ export const series = (seriesName: string) => pathInternal.series(encodeURICompo
 export const passwordReset = () => pathInternal.passwordReset();
 export const resetPasswordByEmail = () => pathInternal.resetPasswordByEmail();
 export const setEmail = () => pathInternal.setEmail();
-export const user = () => pathInternal.user();
+export const settings = () => pathInternal.settings();
 export const userList = () => pathInternal.userList();
 export const login = () => pathInternal.login();

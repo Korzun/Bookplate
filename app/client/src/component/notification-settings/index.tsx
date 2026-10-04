@@ -51,7 +51,7 @@ export type NotificationSettingsProps = {
   /**
    * The VAPID public key this install signs push subscriptions with, handed
    * to `usePushDevice`, which passes it straight through to
-   * `subscribeToPush`/`resyncSubscription` (`~/lib/push`). `page/user`
+   * `subscribeToPush`/`resyncSubscription` (`~/lib/push`). `page/settings`
    * falls back to `''` before `ViewerBootstrapDocument` resolves; an empty
    * key simply makes `subscribeToPush` fail, the same as any other failure
    * that function already handles.
@@ -66,8 +66,8 @@ export type NotificationSettingsProps = {
 };
 
 /**
- * `page/user`'s notifications card. `preferences`/`emailVerified` are handed
- * down as props (`page/user` reads them off `ViewerBootstrapDocument`,
+ * `page/settings`'s notifications card. `preferences`/`emailVerified` are handed
+ * down as props (`page/settings` reads them off `ViewerBootstrapDocument`,
  * mirroring `component/email-setting`) rather than fetched here directly —
  * this component's own job is the toggle mutation, not the read, and it
  * holds no PERSISTENT local copy of the list: absent a mutation of its own in
@@ -76,7 +76,7 @@ export type NotificationSettingsProps = {
  * A successful toggle writes the mutation's returned list — the FULL,
  * authoritative state, not just the changed row — onto `Viewer.notificationPreferences`
  * via `cache.modify` (`component/sync-password` takes the identical approach
- * for `Viewer.syncPassword`). That write relies on `page/user`'s own
+ * for `Viewer.syncPassword`). That write relies on `page/settings`'s own
  * `useQuery(ViewerBootstrapDocument)` being an ACTIVE watched query, which
  * reacts to the cache write and re-renders this component with a fresh
  * `preferences` prop, the same way any other cache write (a mutation, a

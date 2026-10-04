@@ -48,7 +48,7 @@ export type EmailSettingProps = {
  * per that file's own doc comment on why a second copy would drift and
  * defeat Apollo's normalized cache.
  *
- * `email`/`emailVerifiedAt` are handed down as props (`page/user` reads them
+ * `email`/`emailVerifiedAt` are handed down as props (`page/settings` reads them
  * off `ViewerBootstrapDocument`) rather than fetched here directly — this
  * component's own job is the three mutations and the state machine around
  * them, not the read.

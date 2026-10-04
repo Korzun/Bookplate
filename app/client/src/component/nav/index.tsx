@@ -144,10 +144,10 @@ export const Nav = () => {
   ];
 
   const settings: NavItem = {
-    to: path.user(),
+    to: path.settings(),
     label: 'Settings',
     Icon: SettingsIcon,
-    active: pathname === path.user(),
+    active: pathname === path.settings(),
   };
 
   const onAdminRoute = pathname === path.userList() || pathname === path.devices();
@@ -205,7 +205,7 @@ export const Nav = () => {
    * `/user`. Splitting the account page into real sections is its own job;
    * when it lands, readers get this mode too.
    */
-  const inSettings = isAdmin && (onAdminRoute || pathname === path.user());
+  const inSettings = isAdmin && (onAdminRoute || pathname === path.settings());
 
   /**
    * What a collapsed side shows for the destinations it is hiding.
@@ -229,20 +229,20 @@ export const Nav = () => {
     // already a gear, and at the far ends of the bar the same glyph twice read
     // as one control duplicated rather than two different places.
     {
-      to: path.user(),
+      to: path.settings(),
       label: 'General',
       Icon: AdjustmentsHorizontalIcon,
-      active: pathname === path.user(),
+      active: pathname === path.settings(),
     },
     { to: path.userList(), label: 'Users', Icon: UsersIcon, active: pathname === path.userList() },
     { to: path.devices(), label: 'Devices', Icon: DeviceIcon, active: pathname === path.devices() },
   ];
 
   const settingsAccessory: NavItem = {
-    to: path.user(),
+    to: path.settings(),
     label: 'Settings',
     Icon: SettingsIcon,
-    active: pathname === path.user(),
+    active: pathname === path.settings(),
     // Declared after `settingsItems` so it can summarise them: a collapsed
     // side has to speak for what it is hiding.
     badge: summaryBadge(settingsItems),

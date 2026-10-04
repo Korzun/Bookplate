@@ -297,7 +297,7 @@ describe('Nav', () => {
   it('treats the account page as a settings route for an admin', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'admin', isAdmin: true },
-      initialEntries: ['/user'],
+      initialEntries: ['/settings'],
       mocks: [viewerBootstrapMock(true)],
     });
     expect(screen.getByRole('link', { name: 'Back to library' })).toBeInTheDocument();
@@ -312,7 +312,7 @@ describe('Nav', () => {
   it('never collapses the bar for a reader, even on their own settings page', () => {
     renderWithApollo(<Nav />, {
       user: { username: 'reader', isAdmin: false },
-      initialEntries: ['/user'],
+      initialEntries: ['/settings'],
       mocks: [viewerBootstrapMock(false), emptyPendingFixesMock],
     });
     expect(screen.queryByRole('link', { name: 'Back to library' })).not.toBeInTheDocument();

@@ -26,5 +26,12 @@ export const passwordReset = () => '/password-reset';
 export const resetPasswordByEmail = () => '/reset-password';
 export const series = (seriesName: string) => `/library/series/${seriesName}`;
 export const setEmail = () => '/set-email';
-export const user = () => '/user';
+/**
+ * The signed-in account's own settings. `/settings` rather than `/user`: the
+ * nav calls it Settings, and the page holds appearance, notifications, sync
+ * URLs and a password change — things about the INSTALL as this person sees
+ * it, not a profile. `/users` below is the admin's list of other people and
+ * is deliberately unrelated.
+ */
+export const settings = () => '/settings';
 export const userList = () => '/users';

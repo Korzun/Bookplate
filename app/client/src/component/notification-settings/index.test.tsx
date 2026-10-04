@@ -245,14 +245,14 @@ const viewerBootstrapMock = (
 });
 
 /**
- * Mirrors `page/user`'s own composition: reads `ViewerBootstrapDocument` and
+ * Mirrors `page/settings`'s own composition: reads `ViewerBootstrapDocument` and
  * passes its `notificationPreferences` straight through as the `preferences`
  * prop, exactly as `page/user/index.tsx`'s `notificationSection` does.
  * `NotificationSettings` itself holds no state of its own for the list — a
  * successful toggle writes the mutation's returned list onto the `Viewer`
  * singleton via `cache.modify`, and THIS harness's `useQuery` is the active
  * watcher that reacts to that write and re-renders with the fresh list, the
- * same mechanism `page/user`'s own `useQuery(ViewerBootstrapDocument)` relies
+ * same mechanism `page/settings`'s own `useQuery(ViewerBootstrapDocument)` relies
  * on in the real app. A test that instead fed `NotificationSettings` a fixed
  * `preferences` prop and expected it to update on its own would be testing
  * component-local state this component deliberately does not have.
@@ -382,7 +382,7 @@ describe('NotificationSettings', () => {
 
     // Not just "the mutation fired": this only passes if `cache.modify`'s
     // write actually lands where `Harness`'s `useQuery(ViewerBootstrapDocument)`
-    // reads from, which is the same path `page/user` depends on in the real
+    // reads from, which is the same path `page/settings` depends on in the real
     // app — a stale local copy of the LIST inside `NotificationSettings`
     // would make this assertion pass for the wrong reason. (The row's own
     // brief `pending` optimism, covered separately below, already shows this
@@ -474,7 +474,7 @@ describe('NotificationSettings', () => {
 
   it('settling after unmount does not throw — pinning the mountedRef guard', async () => {
     // Mirrors a reader toggling a preference and navigating off the account
-    // page before the mutation round-trips: `page/user` (and this component
+    // page before the mutation round-trips: `page/settings` (and this component
     // with it) unmounts while `handleToggle`'s `await setPreference(...)` is
     // still in flight. Nothing aborts that call, so its `finally` still runs
     // once `release` settles it below, against an already-unmounted tree.
