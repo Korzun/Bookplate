@@ -594,7 +594,14 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
         <Card
           title="Series"
           headerAction={
-            <Switch name="isSeries" checked={isSeries} onChange={handleIsSeriesChange} />
+            // `pill` because this sits in a card HEADER rather than in a shaded
+            // input row — see `SwitchRadius.Pill`. Every header switch takes it.
+            <Switch
+              name="isSeries"
+              checked={isSeries}
+              onChange={handleIsSeriesChange}
+              radius="pill"
+            />
           }
         >
           {isSeries && (
