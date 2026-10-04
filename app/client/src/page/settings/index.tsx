@@ -82,6 +82,8 @@ export const SettingsPage = () => {
   const notificationSection = (
     <NotificationSettings
       preferences={viewerData?.viewer.notificationPreferences ?? []}
+      pushSubscriptions={viewerData?.viewer.pushSubscriptions ?? []}
+      pushPublicKey={viewerData?.viewer.pushPublicKey ?? ''}
       emailVerified={viewerData?.viewer.emailVerifiedAt != null}
     />
   );

@@ -27,6 +27,8 @@ const viewerMock = (
         email: null,
         emailVerifiedAt: null,
         notificationPreferences: [],
+        pushPublicKey: 'vapid-public-key',
+        pushSubscriptions: [],
         user: isAdmin ? null : { __typename: 'User' as const, id: 'USER-1' },
         library,
       },

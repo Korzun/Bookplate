@@ -1,13 +1,15 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
-import { isMailConfigured } from '../../../services/mailer';
-import { listNotificationPreferences, NOTIFICATION_CHANNELS } from '../../../services/notification';
+import { listNotificationPreferences } from '../../../services/notification';
+import { configuredChannels } from '../../../services/notification-channels';
 import { getSyncPassword } from '../../../services/password';
+import { listPushSubscriptionRows } from '../../../services/push-subscription';
 import type { Viewer } from '../../context';
 import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
 import { model as notificationPreferenceModel } from '../notification-preference/model';
+import { model as pushSubscriptionModel } from '../push-subscription/model';
 import { model as user } from '../user/model';
 import { resolveViewerUserId } from './mutation/resolve-user-id';
 
@@ -81,8 +83,29 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
         return listNotificationPreferences(context.prisma, {
           userId,
           role: context.viewer?.userId == null ? 'admin' : 'reader',
-          channels: isMailConfigured(context.config) ? NOTIFICATION_CHANNELS : [],
+          channels: configuredChannels(context.config),
         });
+      },
+    }),
+
+    /**
+     * The install's VAPID public key, which the browser must pass to
+     * `pushManager.subscribe`. Not a secret — it is the half a client is
+     * required to hold, and the private half never leaves the server.
+     */
+    pushPublicKey: t.string({ resolve: (_v, _args, context) => context.vapidPublicKey }),
+
+    /**
+     * The viewer's own subscribed browsers, so the settings UI can list and
+     * let a user revoke one. Carries no `endpoint`/`p256dh`/`auth` — see
+     * `push-subscription/model.ts` for why the object type itself cannot.
+     */
+    pushSubscriptions: t.field({
+      type: [pushSubscriptionModel],
+      resolve: async (_v, _args, context) => {
+        const userId = await resolveViewerUserId(context);
+        if (userId === null) return [];
+        return listPushSubscriptionRows(context.prisma, userId);
       },
     }),
 

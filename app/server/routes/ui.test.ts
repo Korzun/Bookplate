@@ -141,6 +141,29 @@ afterAll(() => {
   if (!spaDirExisted) fs.rmSync(CLIENT_DIST_DIR, { recursive: true, force: true });
 });
 
+// `public/sw.js`'s own doc comment names the trap this guards: a service
+// worker served as `index.html` registers successfully and then never
+// fires, so push breaks with no error anywhere. Vite copies `public/sw.js`
+// to `CLIENT_DIST_DIR` verbatim at build time; in CI, where the client is
+// never built (same as the `index.html` placeholder above), create a
+// placeholder here too — otherwise "GET /sw.js" would pass the test below
+// for the wrong reason, by falling through to the SPA catch-all's
+// `index.html`, which is exactly the bug this exists to catch.
+const SW_JS_PATH = path.join(CLIENT_DIST_DIR, 'sw.js');
+const swJsExisted = fs.existsSync(SW_JS_PATH);
+const PLACEHOLDER_SW_JS = '// placeholder service worker (ui.test.ts)\n';
+
+beforeAll(() => {
+  if (swJsExisted) return;
+  fs.mkdirSync(CLIENT_DIST_DIR, { recursive: true });
+  fs.writeFileSync(SW_JS_PATH, PLACEHOLDER_SW_JS);
+});
+
+afterAll(() => {
+  if (swJsExisted) return;
+  fs.rmSync(SW_JS_PATH, { force: true });
+});
+
 let booksDir: string;
 let editionsRoot: string;
 let prisma: PrismaClient;
@@ -368,6 +391,7 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     config: { ...config, booksDir },
     mailer: null,
     notifications,
+    vapidPublicKey: 'test-vapid-public-key',
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -2090,6 +2114,24 @@ describe('SPA routes serve index.html', () => {
     const res = await request(app).get('/login');
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
+  });
+});
+
+// Task 16 (web-push spec): guards the trap `public/sw.js`'s own doc comment
+// names. The worker is served through `routes/ui.ts`'s unauthenticated
+// `express.static(CLIENT_DIST_DIR, ...)`, mounted ahead of the `router.get('*',
+// serveSpa)` catch-all above — if it were ever removed from the static mount,
+// or the catch-all reordered ahead of it, `GET /sw.js` would fall through to
+// that catch-all and get back `index.html` instead. A worker registered from
+// THAT response registers successfully and then never fires, so push breaks
+// silently with no error anywhere. A bare status check cannot catch this — the
+// catch-all also answers 200 — so the assertion has to be on the body/type.
+describe('GET /sw.js', () => {
+  it('is served as JavaScript by the static mount, not the SPA fallback', async () => {
+    const res = await request(app).get('/sw.js');
+    expect(res.status).toBe(200);
+    expect(res.type).toBe('application/javascript');
+    expect(res.text).not.toContain('<!DOCTYPE html>');
   });
 });
 

@@ -79,6 +79,12 @@ export type Context = {
    * uncommitted state and find nothing.
    */
   notifications: NotificationPoker;
+  /**
+   * The VAPID public key generated once at boot (`getOrCreateVapidKeys`),
+   * handed to browsers via `Viewer.pushPublicKey` so they can subscribe
+   * against the same keypair the push driver signs with.
+   */
+  vapidPublicKey: string;
   loadLineage: LineageLoader;
   loadOwner: OwnerLoader;
   loadProgress: ProgressLoader;
@@ -99,6 +105,7 @@ export type ContextDeps = {
   jwtSecret: Buffer;
   mailer: Mailer | null;
   notifications: NotificationPoker;
+  vapidPublicKey: string;
 };
 
 /** Derives the viewer from an Authorization header. Pure. */
@@ -143,6 +150,7 @@ export const createContext =
       config: deps.config,
       mailer: deps.mailer,
       notifications: deps.notifications,
+      vapidPublicKey: deps.vapidPublicKey,
       loadLineage: createLineageLoader(deps.prisma),
       loadOwner: createOwnerLoader(deps.prisma),
       loadProgress: createProgressLoader(deps.prisma),
