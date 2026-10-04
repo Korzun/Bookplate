@@ -225,20 +225,16 @@ export const UserRow = ({ user }: UserRowProps) => {
       <Card
         isCollapsible
         defaultCollapsed
-        title={
-          <div className={styles.titleRow}>
-            <span>{unmasked.username}</span>
-            {unmasked.email !== null && (
-              <span className={styles.addressPill}>
-                <span className={styles.address}>{unmasked.email}</span>
-                <span className={isConfirmed ? styles.badgeConfirmed : styles.badgeUnconfirmed}>
-                  {isConfirmed ? 'Confirmed' : 'Not confirmed'}
-                </span>
-              </span>
-            )}
-          </div>
-        }
-        headerAction={
+        // The username alone. Everything else this row knows — the address,
+        // its confirmation state, the three actions — used to share this one
+        // line, which at phone width wrapped each action onto two lines and
+        // pushed "Delete user" off the right edge entirely.
+        title={unmasked.username}
+        // The actions sit in the footer, which `Card` hides while collapsed.
+        // They are therefore reachable only from an opened row — including
+        // the destructive one, which previously could be fired straight from
+        // a collapsed list.
+        footer={
           <Fragment>
             <ResetPasswordButton userId={unmasked.id} username={unmasked.username} />
             {unmasked.email !== null && (
@@ -253,6 +249,14 @@ export const UserRow = ({ user }: UserRowProps) => {
         }
       >
         <div className={styles.content}>
+          {unmasked.email !== null && (
+            <div className={styles.addressRow}>
+              <span className={styles.address}>{unmasked.email}</span>
+              <span className={isConfirmed ? styles.badgeConfirmed : styles.badgeUnconfirmed}>
+                {isConfirmed ? 'Confirmed' : 'Not confirmed'}
+              </span>
+            </div>
+          )}
           <UserRowContent userId={unmasked.id} username={unmasked.username} skip={false} />
         </div>
       </Card>
