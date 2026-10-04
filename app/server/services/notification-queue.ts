@@ -212,6 +212,17 @@ export class NotificationQueue implements NotificationPoker {
           continue;
         }
 
+        if (result.reason === 'no_destination') {
+          // Not a failure. The recipient has nothing to deliver to on this
+          // channel — the same category as "no driver" and "recipient is
+          // gone" above, and handled the same way, so a user who never
+          // subscribed a browser does not accumulate a buried row per
+          // notification for the pruner to carry for 30 days.
+          log.debug(`No destination for ${row.id} on ${row.channel}; discarding`);
+          await this.prisma.notificationOutbox.delete({ where: { id: row.id } });
+          continue;
+        }
+
         if (TERMINAL.includes(result.reason)) {
           await this.prisma.notificationOutbox.update({
             where: { id: row.id },

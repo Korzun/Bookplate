@@ -107,7 +107,13 @@ describe('NotificationQueue.drainOnce', () => {
 
   it('leaves a row whose nextAttemptAt is in the future alone', async () => {
     await enqueue();
-    await prisma.notificationOutbox.updateMany({ data: { nextAttemptAt: NOW + 1 } });
+    // Only the email row: the push row has no registered driver in this
+    // test's `queueWith`, so leaving it due lets drainOnce discard it the
+    // same pass, keeping `onlyRow()` meaningful for the email row under test.
+    await prisma.notificationOutbox.updateMany({
+      where: { channel: 'email' },
+      data: { nextAttemptAt: NOW + 1 },
+    });
     const driver = stubDriver();
 
     await queueWith(driver).drainOnce();
@@ -241,6 +247,31 @@ describe('NotificationQueue.drainOnce', () => {
     await queueWith(undefined).drainOnce();
 
     expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+
+  it('discards a row whose driver reports no destination, recording no failure', async () => {
+    await enqueue();
+    const driver = stubDriver();
+    driver.nextResult = { ok: false, reason: 'no_destination' };
+
+    await queueWith(driver).drainOnce();
+
+    // Deleted outright, exactly as a missing driver's row is: this is "nobody is
+    // reachable on this channel", which is an absence, not an error.
+    expect(await prisma.notificationOutbox.count()).toBe(0);
+  });
+
+  it('buries rather than discards an invalid destination', async () => {
+    await enqueue();
+    const driver = stubDriver();
+    driver.nextResult = { ok: false, reason: 'invalid_destination' };
+
+    await queueWith(driver).drainOnce();
+
+    // The contrast that matters: a REFUSAL is recorded, an ABSENCE is not.
+    const row = await onlyRow();
+    expect(row.failedAt).toBe(NOW);
+    expect(row.lastError).toBe('terminal: invalid_destination');
   });
 
   it('discards a row whose recipient no longer exists', async () => {
