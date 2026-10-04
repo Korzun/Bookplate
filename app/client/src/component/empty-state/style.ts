@@ -1,7 +1,7 @@
 import { createUseStyles, type Theme } from '~/provider/theme';
 
 export const useStyle = createUseStyles((theme: Theme) => ({
-  // Lifted verbatim from `page/add/style.ts`'s own empty state (itself a copy
+  // Lifted verbatim from `page/upload-request/style.ts`'s own empty state (itself a copy
   // of `page/library`'s), which is what makes this component worth having:
   // three surfaces now share one block instead of three copies of it. Those
   // two pages still hold their own copies — they render their states inline

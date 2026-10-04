@@ -20,7 +20,7 @@ export type EmptyStateProps = {
  * page. Inside a card, a plain left-aligned line is right — it is one line of
  * card content, indented and bounded like every other. Rendered bare on a
  * page it has nothing around it, and reads as stray text jammed against the
- * left edge, which is exactly what `/add/request` shipped with when its
+ * left edge, which is exactly what `/request` shipped with when its
  * `Card` wrapper was dropped in the add-page reorg.
  */
 export const EmptyState = ({ title, children, danger = false }: EmptyStateProps) => {

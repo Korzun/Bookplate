@@ -32,7 +32,7 @@ import { useStyle } from './style';
  * (`visibleChildren = isExpanded ? children : null`,
  * `component/card/index.tsx`) — so this component, and the query it owns,
  * is never even MOUNTED until the card is expanded. That mount/unmount IS
- * the lazy gate spec 3.4 asks for; hoisting this document to `page/user`
+ * the lazy gate spec 3.4 asks for; hoisting this document to `page/settings`
  * (spec 3.1's normal "the route composes the query" rule) would fetch it
  * unconditionally on every visit to that route instead.
  *
