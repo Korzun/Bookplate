@@ -245,7 +245,7 @@ describe('UserRow', () => {
   });
 
   // The pending-request badge is GONE. It existed as the entry point into
-  // `/add/request` back when the library picker lived on individual pages;
+  // `/request` back when the library picker lived on individual pages;
   // the picker is global chrome on every page now, so the row no longer has
   // to carry a way in. `pendingBookRequestCount` itself stays on the
   // fragment — `component/library-switcher` shows it per option and

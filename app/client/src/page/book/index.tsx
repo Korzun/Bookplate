@@ -51,7 +51,7 @@ import { useStyle } from './style';
  * `counts` on `ValidationFragment` is a LIST (`{ severity count }[]`) — the
  * server shape, one entry per severity that actually occurred. The modal
  * (`ValidationDetailModal`, still shared with `page/upload-request`'s Upload view
- * (`page/upload-request/upload.tsx`, via `component/upload-item`) and the replace flow,
+ * (`page/upload/index.tsx`, via `component/upload-item`) and the replace flow,
  * both on the REST-shaped record until a later step) takes
  * `Record<Severity, number>`. `SeverityCounts`' own `orderSeverityCounts`
  * reads `counts[severity] ?? 0`, so a partial record — every severity NOT in

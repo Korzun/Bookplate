@@ -422,7 +422,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
       } catch {
         // A network failure resolves `false` like a typed error does — the
         // public `UseUploadQueue` contract is a bare boolean, and
-        // `UploadView` (`page/upload-request/upload.tsx`) turns it into a toast.
+        // `UploadView` (`page/upload/index.tsx`) turns it into a toast.
         return { ok: false };
       }
     },
@@ -478,7 +478,7 @@ export const useUploadQueueEngine = (): UseUploadQueue => {
 
   /**
    * Item ids whose `bookRequestFulfill` has already been fired. Same guard
-   * `UploadView`'s (`page/upload-request/upload.tsx`) `announcedRef` uses, and for the
+   * `UploadView`'s (`page/upload/index.tsx`) `announcedRef` uses, and for the
    * same reason: this effect runs on every render where `transport.items`
    * changed, and a `done` item stays `done`. The id is added BEFORE the call
    * is awaited, so a re-render while the mutation is in flight cannot fire a

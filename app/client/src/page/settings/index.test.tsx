@@ -31,7 +31,7 @@ vi.mock('~/component', () => ({
 
 describe('UserPage', () => {
   // Task 6 (add-page reorg): the reader's `BookRequests` card is gone —
-  // every request surface now lives on `/add/request`. `BookRequests` is no
+  // every request surface now lives on `/request`. `BookRequests` is no
   // longer even an EXPORT of `~/component` (see this file's own barrel
   // mock above, which would throw "element type is invalid" on render if
   // `page/user/index.tsx` still imported it) — a stronger pin than the text

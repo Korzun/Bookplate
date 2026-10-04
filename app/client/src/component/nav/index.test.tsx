@@ -350,7 +350,7 @@ describe('Nav', () => {
 
   /**
    * `/add` and `/request` are siblings now. The Upload tab used to match with
-   * `startsWith` so it stayed lit on its `/add/request` child; left that way,
+   * `startsWith` so it stayed lit on its `/request` child; left that way,
    * both tabs would light at once.
    */
   it('lights Request alone on /request, leaving Upload dark', () => {

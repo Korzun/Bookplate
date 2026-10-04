@@ -19,7 +19,7 @@ it('renders the created notice for the admin', () => {
   expect(message.title).toBe('alice requested a book');
   expect(message.body).toContain('Dune');
   expect(message.body).toContain('Frank Herbert');
-  expect(message.url).toBe('/add/request');
+  expect(message.url).toBe('/request');
 });
 
 it('renders the fulfilled and declined notices', () => {

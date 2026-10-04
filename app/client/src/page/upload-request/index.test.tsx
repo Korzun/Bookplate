@@ -14,9 +14,9 @@ import { UploadProvider } from '~/provider/upload';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
+import { RequestView } from '../request';
+import { UploadView } from '../upload';
 import { UploadRequestLayout, type UploadRequestOutletContext } from './index';
-import { RequestView } from './request';
-import { UploadView } from './upload';
 
 // ── auth / library-target mocks ─────────────────────────────────────────────
 //
@@ -253,11 +253,11 @@ describe('UploadRequestLayout layout', () => {
   });
 
   // Pins `UploadRequestOutletContext`'s doc comment ("Children MUST clear on unmount")
-  // from the OTHER direction: `page/upload-request/upload.tsx`'s
+  // from the OTHER direction: `page/upload/index.tsx`'s
   // `useEffect(() => { setHeaderActions(headerActions); return () =>
   // setHeaderActions(undefined); }, ...)` cleanup is what this test catches
   // if deleted. `UploadView` always publishes 3 actions (`buildUploadActions`
-  // returns them unconditionally, disabled or not — see `page/upload-request/actions.ts`),
+  // returns them unconditionally, disabled or not — see `page/upload/actions.ts`),
   // so its "Actions" trigger appears as soon as it mounts; without the
   // unmount cleanup, switching to Request would leave `UploadRequestLayout`'s
   // `headerActions` state stale and the (now-irrelevant) Upload trigger stuck
@@ -306,7 +306,7 @@ describe('UploadRequestLayout layout', () => {
 // Moved from `page/upload/index.test.tsx` (pre-Task-2): the admin gate itself
 // — `skip: !isAdmin` on `UploadRequestLayout`'s own read — moved out of the Upload view
 // verbatim, so this coverage belongs with the layout now, not with
-// `UploadView` (`page/upload-request/upload.test.tsx`), which no longer touches
+// `UploadView` (`page/upload/index.test.tsx`), which no longer touches
 // `UserListDocument` at all.
 //
 // The gate is pinned by a REQUEST COUNTER rather than by rendered output —

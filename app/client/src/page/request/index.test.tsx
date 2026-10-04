@@ -20,14 +20,14 @@ import { UserListDocument } from '~/graphql/user';
 import { LibraryTargetProvider, useLibraryTarget } from '~/provider/library-target';
 import { renderWithApollo } from '~/test-utils';
 
-import type { UploadRequestOutletContext } from './index';
-import { RequestView } from './request';
+import type { UploadRequestOutletContext } from '../upload-request';
+import { RequestView } from './index';
 
 /**
  * A minimal stand-in for `UploadRequestLayout` — the two things this view depends on: the
  * `<Page>` its published actions land in, and an `<Outlet>` carrying
  * `UploadRequestOutletContext`. Same harness, for the same reason, as
- * `page/upload-request/upload.test.tsx`'s; the real layout's admin gate is covered in
+ * `page/upload/index.test.tsx`'s; the real layout's admin gate is covered in
  * `page/upload-request/index.test.tsx` instead.
  *
  * It renders a REAL `<Page>` rather than capturing the published actions, so

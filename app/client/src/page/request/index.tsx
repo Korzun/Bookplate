@@ -5,7 +5,7 @@ import { UserRequestList } from '~/component/user-request-list';
 import { useIsAdmin } from '~/provider/auth';
 import { useWithTargetUser } from '~/provider/library-target';
 
-import type { UploadRequestOutletContext } from './index';
+import type { UploadRequestOutletContext } from '../upload-request';
 
 /**
  * The Request view. Branches on `isAdmin`, and each branch mounts a component

@@ -15,8 +15,8 @@ import type { MetadataFix } from '~/lib/book-types';
 import { UploadProvider } from '~/provider/upload';
 import { renderWithApollo } from '~/test-utils';
 
-import { type UploadRequestOutletContext } from './index';
-import { UploadView } from './upload';
+import { type UploadRequestOutletContext } from '../upload-request';
+import { UploadView } from './index';
 
 /**
  * A minimal stand-in for `UploadRequestLayout` (`page/upload-request/index.tsx`) — just the two

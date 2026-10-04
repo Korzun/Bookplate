@@ -55,7 +55,7 @@ it('shows a notification from the pushed payload', async () => {
       json: () => ({
         title: 'Dune was added',
         body: 'Frank Herbert',
-        url: '/add/request',
+        url: '/request',
         tag: 't1',
       }),
     },
@@ -66,7 +66,7 @@ it('shows a notification from the pushed payload', async () => {
     expect.objectContaining({
       body: 'Frank Herbert',
       tag: 't1',
-      data: { url: '/add/request' },
+      data: { url: '/request' },
     })
   );
 });
@@ -90,7 +90,7 @@ it('focuses an open tab rather than opening a second one', async () => {
 
   const close = vi.fn();
   await dispatch(handlers.get('notificationclick')!, {
-    notification: { data: { url: '/add/request' }, close },
+    notification: { data: { url: '/request' }, close },
   });
 
   expect(focus).toHaveBeenCalled();
@@ -102,8 +102,8 @@ it('opens a window when nothing is open', async () => {
   const { handlers, openWindow } = loadWorker();
 
   await dispatch(handlers.get('notificationclick')!, {
-    notification: { data: { url: '/add/request' }, close: vi.fn() },
+    notification: { data: { url: '/request' }, close: vi.fn() },
   });
 
-  expect(openWindow).toHaveBeenCalledWith('/add/request');
+  expect(openWindow).toHaveBeenCalledWith('/request');
 });

@@ -22,9 +22,9 @@ interface UserRequestListProps {
    */
   userId: string;
   /**
-   * This component's own PARENT (`RequestView`, `page/upload-request/request.tsx`)
+   * This component's own PARENT (`RequestView`, `page/request/index.tsx`)
    * always passes `false` at its one production call site — this view is not
-   * even mounted until an admin reaches `/add/request` with a library
+   * even mounted until an admin reaches `/request` with a library
    * selected, which is the lazy-mount gate a now-deleted `/users` card's
    * collapsible `Card` used to provide. There is no `Card`/collapse gate here
    * at all any more: the route itself is the gate. `skip` stays a required,
@@ -36,7 +36,7 @@ interface UserRequestListProps {
   skip: boolean;
   /**
    * Publishes this list's page-header actions — "Decline all" — for the view
-   * above to hand to `<Page>` (`page/upload-request/request.tsx` passes
+   * above to hand to `<Page>` (`page/request/index.tsx` passes
    * `UploadRequestOutletContext`'s `setHeaderActions` straight through).
    *
    * The action lives HERE rather than on that view because both halves of it
@@ -53,7 +53,7 @@ interface UserRequestListProps {
 
 /**
  * An admin's view of ANOTHER user's book requests, mounted by the admin
- * branch of `RequestView` (`page/upload-request/request.tsx`) — structurally a copy
+ * branch of `RequestView` (`page/request/index.tsx`) — structurally a copy
  * of `UserRowContent`'s progress-list half (read that component's own doc
  * comment first): `usePaginatedConnection` over `Query.user(id: $userId) {
  * bookRequests }`, not `viewer.user.bookRequests` — the target is a
@@ -200,7 +200,7 @@ export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestLi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.join('\u0000'), declineAllReason, runDecline, client]);
 
-  // MEMOIZED for the reason `page/upload-request/upload.tsx` spells out at its own copy of
+  // MEMOIZED for the reason `page/upload/index.tsx` spells out at its own copy of
   // this effect: a fresh array every render would republish on every render and
   // loop forever.
   const headerActions = useMemo<PageActionItem[]>(
@@ -251,7 +251,7 @@ export const UserRequestList = ({ userId, skip, onHeaderActions }: UserRequestLi
   );
 
   // Centred page-level states, not the bare left-aligned lines this rendered
-  // while it lived inside a `Card` on `/users`: on `/add/request` it is mounted
+  // while it lived inside a `Card` on `/users`: on `/request` it is mounted
   // straight under `<Page>` with nothing around it. Same three branches, same
   // copy — only the block they render in changed. `BookRequestsContent` does
   // the same for the reader's half of this view.

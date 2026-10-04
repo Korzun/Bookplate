@@ -168,13 +168,13 @@ export type NoticeArgs = {
 
 /**
  * All three notifications deep-link to the SAME surface, which serves the
- * reader's own request list and the admin's queue alike (`/add/request`).
+ * reader's own request list and the admin's queue alike (`/request`).
  * `null` when `public_url` is unset, exactly as the code mails' link is — a
  * LAN-only install gets a fully useful message with no link, and no URL is
  * ever synthesised from a request header.
  */
 function requestsLink(publicUrl: string | null): string | null {
-  return publicUrl === null ? null : `${publicUrl}/add/request`;
+  return publicUrl === null ? null : `${publicUrl}/request`;
 }
 
 export function bookRequestedMessage(args: NoticeArgs): MailMessage {

@@ -115,7 +115,7 @@ it('sends the rendered template as the body', async () => {
 
   const body = JSON.parse(send.mock.calls[0]![0].body) as Record<string, string>;
   expect(body.title).toBe('Dune was added to your library');
-  expect(body.url).toBe('/add/request');
+  expect(body.url).toBe('/request');
   expect(body.tag).toContain('book_request.fulfilled');
 });
 

@@ -25,7 +25,7 @@ export const MetadataFixFragment = graphql(`
  * `originalMetadata` is not exposed at all — the client renders only whether
  * an undo is armed and its kind, for the button label
  * (`fix-review/index.tsx`). `appliedFixes` itself IS selected despite this —
- * the auto-fix toast in `page/upload-request/upload.tsx` (`UploadView`) and
+ * the auto-fix toast in `page/upload/index.tsx` (`UploadView`) and
  * `FixReview` both render it — so this fragment's host query,
  * `LibraryPendingFixesDocument`, ships at breadth 55 (55.0%) (measured:
  * `npm run test:cost -w app/server`), not

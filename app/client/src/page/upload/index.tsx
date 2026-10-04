@@ -6,8 +6,8 @@ import { useToast } from '~/provider/toast';
 import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { useUploadQueue } from '~/provider/upload';
 
+import { type UploadRequestOutletContext } from '../upload-request';
 import { buildUploadActions } from './actions';
-import { type UploadRequestOutletContext } from './index';
 import { useStyle } from './style';
 
 const isDismissible = (i: UploadItemType) =>

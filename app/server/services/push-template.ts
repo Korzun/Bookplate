@@ -38,8 +38,15 @@ export type PushNoticeArgs = {
  */
 export const BODY_BUDGET = 180;
 
-/** Both surfaces — the reader's own list and the admin's queue — are here. */
-const REQUESTS_PATH = '/add/request';
+/**
+ * Both surfaces — the reader's own list and the admin's queue — are here.
+ *
+ * `/request`, not the `/add/request` this was: that URL moved when Request
+ * became its own nav destination, and the client no longer redirects it. A
+ * notification is the app linking to ITSELF, so it has to track the route —
+ * "nobody is holding a stale bookmark" does not cover links the app mints.
+ */
+const REQUESTS_PATH = '/request';
 
 function truncate(value: string): string {
   if (value.length <= BODY_BUDGET) return value;
