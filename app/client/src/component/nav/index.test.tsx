@@ -539,6 +539,70 @@ describe('Nav', () => {
     ).toBe(false);
   });
 
+  /**
+   * A collapsed side speaks for what it hides. On an admin route the main
+   * destinations are behind the Home circle, so a dot owed to Request has to
+   * surface there — otherwise the one state the badge exists to announce goes
+   * silent exactly while it cannot be seen.
+   *
+   * A DOT, not the count: see `summaryBadge`.
+   */
+  it('carries a dot on the collapsed side when a destination it hides has one', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        // An ADMIN ROUTE, so the main side — which owns the Request tab the
+        // dot belongs to — is the collapsed one.
+        initialEntries: ['/users'],
+        mocks: [viewerBootstrapMock(true), userListMock([userRow(2, LIBRARY_ID)])],
+      }
+    );
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('link', { name: 'Back to library' })).queryByTestId('nav-badge-dot')
+      ).not.toBeNull()
+    );
+  });
+
+  it('leaves the collapsed side bare when nothing it hides wants attention', async () => {
+    localStorage.setItem('library-target-id', LIBRARY_ID);
+    let delivered = false;
+
+    renderWithApollo(
+      <LibraryTargetProvider>
+        <Nav />
+      </LibraryTargetProvider>,
+      {
+        user: { username: 'admin', isAdmin: true },
+        initialEntries: ['/users'],
+        mocks: [
+          viewerBootstrapMock(true),
+          // No pending requests, so nothing on the main side is badged.
+          userListMock([userRow(0, LIBRARY_ID)], () => {
+            delivered = true;
+          }),
+        ],
+      }
+    );
+
+    // Waiting for the query to LAND, the same way the other negative badge
+    // tests here do: asserting an absence before the data arrives would pass
+    // whatever the answer turned out to be.
+    await waitFor(() => expect(delivered).toBe(true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      within(screen.getByRole('link', { name: 'Back to library' })).queryByTestId('nav-badge-dot')
+    ).toBeNull();
+  });
+
   it('shows no dot when the waiting reader is NOT the selected library', async () => {
     localStorage.setItem('library-target-id', LIBRARY_ID);
     let delivered = false;

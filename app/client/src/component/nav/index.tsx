@@ -207,26 +207,18 @@ export const Nav = () => {
    */
   const inSettings = isAdmin && (onAdminRoute || pathname === path.user());
 
-  const settingsAccessory: NavItem = {
-    to: path.user(),
-    label: 'Settings',
-    Icon: SettingsIcon,
-    active: pathname === path.user(),
-  };
-
-  // The collapsed stand-in for the whole main group. Returns to Library
-  // rather than to wherever you were: "where you were" is state this nav
-  // deliberately does not keep, and guessing it wrong is worse than a
-  // destination that is always the same.
-  const collapsedMain: NavItem = {
-    to: path.library(),
-    label: 'Back to library',
-    // `home`, not a book: this stands for the whole main group (Library, Add,
-    // Request), not for the Library tab alone, and a second book icon beside
-    // the one the Library tab already uses would read as a duplicate.
-    Icon: HomeIcon,
-    active: false,
-  };
+  /**
+   * What a collapsed side shows for the destinations it is hiding.
+   *
+   * A DOT, never a number, however the hidden badges are shaped. A count here
+   * would have to add populations that do not add up — fixes awaiting a
+   * decision and readers waiting on a request are not four of one thing — and
+   * the Add tab's own badge comment already refuses that conflation. The dot
+   * says only "something in here wants you", which is all a collapsed side can
+   * honestly claim; opening it shows which.
+   */
+  const summaryBadge = (hidden: NavItem[]): NavItem['badge'] =>
+    hidden.some((item) => item.badge !== undefined) ? 'dot' : undefined;
 
   // General FIRST. Tapping the settings button lands on `/user`, so whichever
   // item that is reads as "the one you just chose" — and landing on the third
@@ -245,6 +237,31 @@ export const Nav = () => {
     { to: path.userList(), label: 'Users', Icon: UsersIcon, active: pathname === path.userList() },
     { to: path.devices(), label: 'Devices', Icon: DeviceIcon, active: pathname === path.devices() },
   ];
+
+  const settingsAccessory: NavItem = {
+    to: path.user(),
+    label: 'Settings',
+    Icon: SettingsIcon,
+    active: pathname === path.user(),
+    // Declared after `settingsItems` so it can summarise them: a collapsed
+    // side has to speak for what it is hiding.
+    badge: summaryBadge(settingsItems),
+  };
+
+  // The collapsed stand-in for the whole main group. Returns to Library
+  // rather than to wherever you were: "where you were" is state this nav
+  // deliberately does not keep, and guessing it wrong is worse than a
+  // destination that is always the same.
+  const collapsedMain: NavItem = {
+    to: path.library(),
+    label: 'Back to library',
+    // `home`, not a book: this stands for the whole main group (Library, Add,
+    // Request), not for the Library tab alone, and a second book icon beside
+    // the one the Library tab already uses would read as a duplicate.
+    Icon: HomeIcon,
+    active: false,
+    badge: summaryBadge(sharedLeading),
+  };
 
   return (
     <>

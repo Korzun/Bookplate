@@ -248,7 +248,22 @@ const Pill = ({
         aria-label={collapsed.label}
         to={collapsed.to}
       >
-        <CollapsedIcon height={18} width={18} />
+        {/* Same badge wrapper the capsule's own tabs use. A collapsed side
+            hides whatever is inside it, so without this a tab that wanted
+            attention would go silent exactly when it could not be seen.
+            Only while actually COLLAPSED: this shape stays mounted when the
+            side is expanded (it is what the pill morphs back to), and a badge
+            left in the document there would double-count the one already
+            showing on the tab it stands for. */}
+        <span className={styles.iconWrap}>
+          <CollapsedIcon height={18} width={18} />
+          {!expanded && typeof collapsed.badge === 'number' && collapsed.badge > 0 && (
+            <span className={styles.badge}>{collapsed.badge}</span>
+          )}
+          {!expanded && collapsed.badge === 'dot' && (
+            <span className={styles.badgeDot} data-testid="nav-badge-dot" />
+          )}
+        </span>
       </Link>
     </div>
   );
