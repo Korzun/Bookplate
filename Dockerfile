@@ -41,7 +41,6 @@ ARG TARGETARCH
 WORKDIR /bookplate
 
 COPY package*.json ./
-COPY package.json ./app/package.json
 COPY app/server/package*.json ./app/server/
 COPY app/client/package*.json ./app/client/
 # ARGON2=1 skips node-gyp-build's install-time prebuild load-test for argon2:
@@ -63,7 +62,6 @@ FROM node:24-alpine
 WORKDIR /bookplate
 
 COPY package.json ./
-COPY package.json ./app/package.json
 COPY app/server/package.json ./app/server/
 COPY app/client/package.json ./app/client/
 

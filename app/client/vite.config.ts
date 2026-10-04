@@ -15,7 +15,6 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': apiUrl,
-      '/logout': apiUrl,
       // The GraphQL endpoint the Apollo client migration will talk to —
       // same target as `/api`, same reasoning: dev serves the SPA off
       // vite's own port, so API/GraphQL calls need a same-origin proxy to

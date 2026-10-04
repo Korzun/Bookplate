@@ -25,6 +25,7 @@ import { getBookById, listBooks } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
 import { setUserEmail } from '../services/email';
 import { verifyAccessToken } from '../services/jwt';
+import type { NotificationPoker } from '../services/notification-queue';
 import { hashLoginPassword, resetPassword } from '../services/password';
 import {
   ADMIN_STAGING_ID,
@@ -106,24 +107,61 @@ import {
   EpubValidationError,
 } from '../services/epub-validator';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
+import { CLIENT_DIST_DIR, CLIENT_INDEX_HTML } from '../utils/client-dist';
 import { detectMetadataIssues } from '../utils/metadata-issues';
 const mockAssertValid = assertValidEpub as MockedFunction<typeof assertValidEpub>;
 const mockDetectMetadataIssues = detectMetadataIssues as MockedFunction<
   typeof detectMetadataIssues
 >;
 
-// The SPA routes call res.sendFile('client/dist/index.html'). Create a
-// minimal placeholder before the suite runs so the file exists in CI.
-const SPA_HTML_DIR = path.join(__dirname, '..', '..', '..', 'client', 'dist');
-const SPA_HTML_PATH = path.join(SPA_HTML_DIR, 'index.html');
+// The SPA routes serve `CLIENT_INDEX_HTML`. Create a minimal placeholder before
+// the suite runs so the file exists in CI, where the client is never built.
+//
+// Cleanup removes only what this suite itself created. That guard is new and
+// load-bearing: these paths used to be spelled with the same off-by-one
+// `../../../client/dist` the routes carried, so the directory being made and
+// recursively deleted here was a stray `<repo>/client/dist` that nothing else
+// in the repo used. Now that it resolves to the REAL `app/client/dist`, an
+// unconditional delete would wipe a developer's actual client build.
+const spaDirExisted = fs.existsSync(CLIENT_DIST_DIR);
+const spaIndexExisted = fs.existsSync(CLIENT_INDEX_HTML);
 
 beforeAll(() => {
-  fs.mkdirSync(SPA_HTML_DIR, { recursive: true });
-  fs.writeFileSync(SPA_HTML_PATH, '<!DOCTYPE html><html><body><div id="root"></div></body></html>');
+  if (spaIndexExisted) return;
+  fs.mkdirSync(CLIENT_DIST_DIR, { recursive: true });
+  fs.writeFileSync(
+    CLIENT_INDEX_HTML,
+    '<!DOCTYPE html><html><body><div id="root"></div></body></html>'
+  );
 });
 
 afterAll(() => {
-  fs.rmSync(SPA_HTML_DIR, { recursive: true, force: true });
+  if (spaIndexExisted) return;
+  fs.rmSync(CLIENT_INDEX_HTML, { force: true });
+  if (!spaDirExisted) fs.rmSync(CLIENT_DIST_DIR, { recursive: true, force: true });
+});
+
+// `public/sw.js`'s own doc comment names the trap this guards: a service
+// worker served as `index.html` registers successfully and then never
+// fires, so push breaks with no error anywhere. Vite copies `public/sw.js`
+// to `CLIENT_DIST_DIR` verbatim at build time; in CI, where the client is
+// never built (same as the `index.html` placeholder above), create a
+// placeholder here too — otherwise "GET /sw.js" would pass the test below
+// for the wrong reason, by falling through to the SPA catch-all's
+// `index.html`, which is exactly the bug this exists to catch.
+const SW_JS_PATH = path.join(CLIENT_DIST_DIR, 'sw.js');
+const swJsExisted = fs.existsSync(SW_JS_PATH);
+const PLACEHOLDER_SW_JS = '// placeholder service worker (ui.test.ts)\n';
+
+beforeAll(() => {
+  if (swJsExisted) return;
+  fs.mkdirSync(CLIENT_DIST_DIR, { recursive: true });
+  fs.writeFileSync(SW_JS_PATH, PLACEHOLDER_SW_JS);
+});
+
+afterAll(() => {
+  if (swJsExisted) return;
+  fs.rmSync(SW_JS_PATH, { force: true });
 });
 
 let booksDir: string;
@@ -156,6 +194,11 @@ const mockThumbnailQueue = {
   enqueue: vi.fn(),
   reconcile: vi.fn(),
 } as unknown as ThumbnailQueue;
+
+// This suite never asserts on notification pokes — it exercises REST routes,
+// not the book-request mutations — so a no-op stub is enough to satisfy
+// `Context.notifications`.
+const notifications: NotificationPoker = { poke: () => {} };
 
 const FAKE_META: EpubMeta = {
   title: 'Test Book',
@@ -347,6 +390,8 @@ async function gqlExecute(source: string, viewer: Viewer): Promise<ExecutionResu
     editionsRoot,
     config: { ...config, booksDir },
     mailer: null,
+    notifications,
+    vapidPublicKey: 'test-vapid-public-key',
     loadLineage: createLineageLoader(prisma),
     loadOwner: createOwnerLoader(prisma),
     loadProgress: createProgressLoader(prisma),
@@ -2061,6 +2106,64 @@ describe('SPA routes serve index.html', () => {
     const res = await request(app).get('/add');
     expect(res.status).toBe(200);
     expect(res.text).toContain('<!DOCTYPE html>');
+  });
+
+  // The one SPA route with its own handler rather than the catch-all, and so
+  // the one that could regress independently of the others.
+  it('GET /login returns 200 with HTML', async () => {
+    const res = await request(app).get('/login');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<!DOCTYPE html>');
+  });
+});
+
+// Task 16 (web-push spec): guards the trap `public/sw.js`'s own doc comment
+// names. The worker is served through `routes/ui.ts`'s unauthenticated
+// `express.static(CLIENT_DIST_DIR, ...)`, mounted ahead of the `router.get('*',
+// serveSpa)` catch-all above — if it were ever removed from the static mount,
+// or the catch-all reordered ahead of it, `GET /sw.js` would fall through to
+// that catch-all and get back `index.html` instead. A worker registered from
+// THAT response registers successfully and then never fires, so push breaks
+// silently with no error anywhere. A bare status check cannot catch this — the
+// catch-all also answers 200 — so the assertion has to be on the body/type.
+describe('GET /sw.js', () => {
+  it('is served as JavaScript by the static mount, not the SPA fallback', async () => {
+    const res = await request(app).get('/sw.js');
+    expect(res.status).toBe(200);
+    expect(res.type).toBe('application/javascript');
+    expect(res.text).not.toContain('<!DOCTYPE html>');
+  });
+});
+
+// The other half of the SPA contract: what happens when there is no SPA on
+// disk. This is the NORMAL state of the dev API server — the client is served
+// by vite and never built — and it used to surface as an unhandled ENOENT and
+// a generic 500 (see `utils/client-dist.ts` for the full story).
+describe('SPA routes when the client has not been built', () => {
+  // Hidden by rename rather than deleted: the suite fixture at the top of this
+  // file may be a developer's real build, which has to survive the run.
+  const hidden = `${CLIENT_INDEX_HTML}.hidden-by-test`;
+
+  beforeEach(() => {
+    fs.renameSync(CLIENT_INDEX_HTML, hidden);
+  });
+
+  afterEach(() => {
+    fs.renameSync(hidden, CLIENT_INDEX_HTML);
+  });
+
+  it('GET /login answers 503 naming the build command, not an ENOENT 500', async () => {
+    const res = await request(app).get('/login');
+    expect(res.status).toBe(503);
+    expect(res.text).toContain('npm run build -w app/client');
+    expect(res.text).not.toContain('Internal server error');
+    expect(res.text).not.toContain('ENOENT');
+  });
+
+  it('a deep link through the catch-all answers the same way', async () => {
+    const res = await request(app).get('/books/someid');
+    expect(res.status).toBe(503);
+    expect(res.text).toContain('npm run build -w app/client');
   });
 });
 
