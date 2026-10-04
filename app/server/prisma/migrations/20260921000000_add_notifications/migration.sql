@@ -1,0 +1,12 @@
+-- NO-OP BY DESIGN. Both tables are created by the `data_v20_notifications`
+-- data migration in `db/migrate.ts`, not here.
+--
+-- `data_v10_user_surrogate_id` rebuilds "users" from an explicit column list,
+-- and both of these tables carry a foreign key to "users" — a table created in
+-- this DDL pass would therefore be created BEFORE the table it references is
+-- rebuilt. `20260830000000_add_book_requests` and `20260919000000_add_user_email`
+-- are no-ops for the same reason; see their comments and the data migrations
+-- that do the real work.
+--
+-- This file exists so `_prisma_migrations` stays in step with the schema.
+SELECT 1;

@@ -1,0 +1,9 @@
+-- Intentionally empty.
+--
+-- `push_subscriptions` carries a foreign key to `users`, and
+-- `data_v10_user_surrogate_id` rebuilds `users` from an explicit column list —
+-- anything the DDL pass creates against that table is dropped on its way in.
+-- The table is therefore created by `data_v21_push_subscriptions` in
+-- `db/migrate.ts`, which runs after `data_v10`. Same treatment, same reason, as
+-- `20260830000000_add_book_requests`, `20260919000000_add_user_email` and
+-- `20260921000000_add_notifications`.
