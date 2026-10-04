@@ -6,16 +6,16 @@ import { useToast } from '~/provider/toast';
 import type { UploadItem as UploadItemType } from '~/provider/upload';
 import { useUploadQueue } from '~/provider/upload';
 
+import { type UploadRequestOutletContext } from '../upload-request';
 import { buildUploadActions } from './actions';
-import { type AddOutletContext } from './index';
 import { useStyle } from './style';
 
 const isDismissible = (i: UploadItemType) =>
   i.status === 'error' || (i.status === 'done' && (i.proposals?.length ?? 0) === 0);
 
-export const AddUploadView = () => {
+export const UploadView = () => {
   const styles = useStyle();
-  const { setHeaderActions } = useOutletContext<AddOutletContext>();
+  const { setHeaderActions } = useOutletContext<UploadRequestOutletContext>();
 
   const {
     items,

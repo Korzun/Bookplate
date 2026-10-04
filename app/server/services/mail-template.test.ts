@@ -96,8 +96,8 @@ describe('notification messages', () => {
     expect(message.text).toContain('Dune');
     expect(message.text).toContain('Frank Herbert');
     expect(message.text).toContain('the 1965 edition if you can');
-    expect(message.text).toContain('https://books.example.com/add/request');
-    expect(message.html).toContain('href="https://books.example.com/add/request"');
+    expect(message.text).toContain('https://books.example.com/request');
+    expect(message.html).toContain('href="https://books.example.com/request"');
   });
 
   it('omits the link entirely when publicUrl is null', () => {

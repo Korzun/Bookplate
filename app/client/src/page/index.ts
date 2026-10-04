@@ -1,6 +1,6 @@
-export { AddPage } from './add';
-export { AddRequestView } from './add/request';
-export { AddUploadView } from './add/upload';
+export { UploadRequestLayout } from './upload-request';
+export { RequestView } from './request';
+export { UploadView } from './upload';
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
 export { DeviceListPage } from './device-list';
@@ -13,4 +13,4 @@ export { ResetPasswordPage } from './reset-password';
 export { SeriesPage } from './series';
 export { SetEmailPage } from './set-email';
 export { UserListPage } from './user-list';
-export { UserPage } from './user';
+export { SettingsPage } from './settings';
