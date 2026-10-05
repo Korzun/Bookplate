@@ -72,8 +72,8 @@ export type FixKey = { field: string; kind: string; from: string };
  * `true` (a typed error carries no payload to read it from).
  *
  * This type stays INTERNAL: `UseUploadQueue`'s public contract is still
- * boolean, so `page/upload-request`'s Upload view (`UploadView`, `page/upload-request/
- * upload.tsx`) never sees a `FixOutcome`.
+ * boolean, so `page/upload`'s view (`UploadView`,
+ * `page/upload/index.tsx`) never sees a `FixOutcome`.
  */
 type FixOutcome = { ok: boolean; bookGlobalId?: string };
 
