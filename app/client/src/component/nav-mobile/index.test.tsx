@@ -10,8 +10,8 @@ import { NavMobile } from './index';
 const items = (activeLabel: string | null): NavItem[] =>
   [
     { to: '/library', label: 'Library', Icon: BookIcon },
-    { to: '/add', label: 'Add', Icon: UploadIcon },
-    { to: '/user', label: 'Settings', Icon: SettingsIcon },
+    { to: '/upload', label: 'Upload', Icon: UploadIcon },
+    { to: '/settings', label: 'Settings', Icon: SettingsIcon },
   ].map((item) => ({ ...item, active: item.label === activeLabel }));
 
 // Each label also appears in the (aria-hidden) blue reveal copy, so query the link
@@ -42,7 +42,12 @@ const collectCss = (): string => {
 const HOME: NavItem = { to: '/library', label: 'Back to library', Icon: BookIcon, active: false };
 // Deliberately NOT 'Settings': `items` already has a tab by that name, and two
 // links sharing an accessible name make every role query here ambiguous.
-const GEAR: NavItem = { to: '/user', label: 'Open settings', Icon: SettingsIcon, active: false };
+const GEAR: NavItem = {
+  to: '/settings',
+  label: 'Open settings',
+  Icon: SettingsIcon,
+  active: false,
+};
 
 const renderBar = (mainItems: NavItem[], { expanded = 'main' as 'main' | 'settings' } = {}) =>
   renderWithProviders(
@@ -57,13 +62,13 @@ describe('NavMobile', () => {
   it('renders a link for every item', () => {
     renderBar(items('Library'));
     expect(linkFor('Library')).toHaveAttribute('href', '/library');
-    expect(linkFor('Add')).toHaveAttribute('href', '/add');
-    expect(linkFor('Settings')).toHaveAttribute('href', '/user');
+    expect(linkFor('Upload')).toHaveAttribute('href', '/upload');
+    expect(linkFor('Settings')).toHaveAttribute('href', '/settings');
   });
 
   it('marks only the active item with aria-current', () => {
-    renderBar(items('Add'));
-    expect(linkFor('Add')).toHaveAttribute('aria-current', 'page');
+    renderBar(items('Upload'));
+    expect(linkFor('Upload')).toHaveAttribute('aria-current', 'page');
     expect(linkFor('Library')).not.toHaveAttribute('aria-current');
     expect(linkFor('Settings')).not.toHaveAttribute('aria-current');
   });
@@ -129,7 +134,7 @@ describe('NavMobile', () => {
 });
 
 const badgeItems = (badge: NavItem['badge']): NavItem[] => [
-  { to: '/add', label: 'Add', Icon: UploadIcon, active: false, badge },
+  { to: '/upload', label: 'Upload', Icon: UploadIcon, active: false, badge },
 ];
 
 /**

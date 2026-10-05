@@ -68,10 +68,9 @@ interface UserRequestListProps {
  * more` on one must not affect the other's cursor. Declared HERE, not on
  * `page/user-list`, for the SAME reason `UserProgressListDocument` is: this
  * component has NO `Card` collapse gate — that gate belonged to the deleted
- * `/users` card mount. The gate now is the Upload/Request TOGGLE itself:
- * `RequestView` is not even mounted until an admin switches to `/add/
- * request`, so this component, and the query it owns, is never even MOUNTED
- * until then. Hoisting it to `page/user-list` (a per-VIEWER route) would
+ * `/users` card mount. The gate now is the ROUTE itself: `RequestView` is not
+ * even mounted until an admin navigates to `/request`, so this component, and
+ * the query it owns, is never even MOUNTED until then. Hoisting it to `page/user-list` (a per-VIEWER route) would
  * fetch it for EVERY user on EVERY visit, under `Viewer.users`'s ×50 cost
  * multiplier — a severe cost regression, not just an architectural one.
  *

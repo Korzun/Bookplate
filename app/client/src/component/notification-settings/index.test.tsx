@@ -247,7 +247,7 @@ const viewerBootstrapMock = (
 /**
  * Mirrors `page/settings`'s own composition: reads `ViewerBootstrapDocument` and
  * passes its `notificationPreferences` straight through as the `preferences`
- * prop, exactly as `page/user/index.tsx`'s `notificationSection` does.
+ * prop, exactly as `page/settings/index.tsx`'s `notificationSection` does.
  * `NotificationSettings` itself holds no state of its own for the list — a
  * successful toggle writes the mutation's returned list onto the `Viewer`
  * singleton via `cache.modify`, and THIS harness's `useQuery` is the active

@@ -12,7 +12,8 @@ import { graphql } from '~/gql';
  * a page module and the whole component barrel it re-exports, a strict
  * regression from the pre-task-2 shape (`~/graphql/user`, a leaf). Seven
  * readers as of this writing: `page/user-list` (composes `...UserRowFragment`
- * into it), `page/library`, `page/upload-request`, `component/library-switcher`, `component/device-form`,
+ * into it), `page/library`, `page/upload`, `page/request`,
+ * `component/library-switcher`, `component/device-form`,
  * `provider/library-target`'s `useWithTargetUser`, and `component/nav` —
  * mounted on EVERY admin page, the single most cost-relevant reader of this
  * document: its own read (`skip: !isAdmin`, for the pending-request dot on
