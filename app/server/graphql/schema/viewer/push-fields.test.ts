@@ -147,9 +147,6 @@ describe('Viewer.pushSubscriptions and mutations', () => {
       expect(await harness.prisma.pushSubscription.count()).toBe(0);
     });
 
-    // Narrows the SSRF primitive rather than closing it: the scheme is checked,
-    // the HOST is not, so an `https:` LAN address still passes. See
-    // `add-push-subscription.ts` for why that is left open.
     it('rejects a non-https endpoint', async () => {
       harness = await createHarness();
 
@@ -157,6 +154,66 @@ describe('Viewer.pushSubscriptions and mutations', () => {
 
       expect(result.data).toEqual({ viewerAddPushSubscription: null });
       expect(await harness.prisma.pushSubscription.count()).toBe(0);
+    });
+
+    /**
+     * The endpoint is a bearer capability URL this server POSTs to on every
+     * notification, so an arbitrary one is a blind SSRF primitive aimed at the
+     * install's own network — reachable by any authenticated account. `https:`
+     * alone never bounded that: every address below is a perfectly valid
+     * https URL.
+     */
+    it.each([
+      ['loopback', 'https://127.0.0.1/admin'],
+      ['private class A', 'https://10.0.0.5/admin'],
+      ['private class B', 'https://172.16.4.2/admin'],
+      ['private class C', 'https://192.168.1.1/admin'],
+      ['link-local', 'https://169.254.169.254/latest/meta-data'],
+      ['IPv6 loopback', 'https://[::1]/admin'],
+      ['IPv6 unique-local', 'https://[fd00::1]/admin'],
+      ['IPv4-mapped IPv6', 'https://[::ffff:192.168.1.1]/admin'],
+      ['mDNS name', 'https://nas.local/admin'],
+      ['router domain', 'https://printer.lan/admin'],
+      ['bare hostname', 'https://nas/admin'],
+      ['localhost', 'https://localhost/admin'],
+    ])('rejects an https endpoint on a private host (%s)', async (_label, endpoint) => {
+      harness = await createHarness();
+
+      const result = await add({ endpoint });
+
+      expect(result.data).toEqual({ viewerAddPushSubscription: null });
+      expect(await harness.prisma.pushSubscription.count()).toBe(0);
+    });
+
+    /**
+     * The real push services, which must keep working. A regression here
+     * would not fail loudly — it would quietly stop every device registering.
+     */
+    it.each([
+      ['Apple', 'https://web.push.apple.com/QGaj0UFZT1DeN1rTEO'],
+      ['Mozilla', 'https://updates.push.services.mozilla.com/wpush/v2/gAAAA'],
+      ['Google', 'https://fcm.googleapis.com/fcm/send/abc123'],
+    ])('accepts a real push service endpoint (%s)', async (_label, endpoint) => {
+      harness = await createHarness();
+
+      const result = await add({ endpoint });
+
+      expect(result.data?.viewerAddPushSubscription).not.toBeNull();
+    });
+
+    /**
+     * States the limit rather than hiding it: nothing here resolves DNS, so a
+     * PUBLIC name pointing at a private address still passes. Resolving in a
+     * validator would add network I/O and still lose to rebinding — the real
+     * fix is an address check at connect time, in the driver's HTTP agent.
+     * This test exists so that gap is a recorded decision, not a surprise.
+     */
+    it('does NOT reject a public name that could resolve privately — a known gap', async () => {
+      harness = await createHarness();
+
+      const result = await add({ endpoint: 'https://localtest.me/admin' });
+
+      expect(result.data?.viewerAddPushSubscription).not.toBeNull();
     });
 
     it(
