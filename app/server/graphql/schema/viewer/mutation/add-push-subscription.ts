@@ -9,25 +9,24 @@ import { model as pushSubscriptionModel } from '../../push-subscription/model';
 import { resolveViewerUserId } from './resolve-user-id';
 
 /**
- * `endpoint` must parse as a URL with an `https:` scheme. This value is a
- * bearer capability URL the server POSTs to on every notification, so an
- * arbitrary one is a blind SSRF primitive aimed at the LAN this add-on runs
- * on.
+ * `endpoint` must parse as a URL with an `https:` scheme AND a public host.
+ * This value is a bearer capability URL the server POSTs to on every
+ * notification, so an arbitrary one is a blind SSRF primitive aimed at the
+ * LAN this add-on runs on — and any authenticated account can supply one.
+ * `isPrivateHost` rejects the literal private, loopback and link-local ranges
+ * and the hostname forms that only resolve on a LAN.
  *
- * What the scheme check actually closes, stated precisely because it is less
- * than it sounds: it rules out the NON-https schemes — `http:` to a plaintext
- * LAN service, and `file:`/`gopher:`-style schemes a URL parser will accept.
- * It does NOT restrict the HOST. `https://192.168.1.1/anything` and
- * `https://nas.local/` both pass, so a blind POST at an https LAN service
- * remains reachable by anyone who can call this mutation — which is any
- * authenticated account, for itself.
+ * What that does NOT close, stated plainly: a PUBLIC name that resolves to a
+ * private address still passes, because nothing here resolves DNS. Resolving
+ * would put network I/O in a validator and still lose to rebinding — a name
+ * that answers publicly at check time can answer privately at send time — so
+ * it would buy the look of completeness rather than a real bound. Closing
+ * that properly means checking the address at CONNECT time, inside the
+ * driver's HTTP agent, which is a different change in a different file.
  *
- * It is left there deliberately rather than closed by accident: narrowing it
- * means allowlisting hosts or rejecting private address ranges after DNS
- * resolution, which is a real piece of work (and a DNS-rebinding problem of
- * its own), and this is a self-hosted add-on whose attacker model is an
- * account the operator created. Worth doing if that model ever widens; worth
- * not pretending is already done in the meantime.
+ * Every real push service is a public FQDN (`web.push.apple.com`,
+ * `updates.push.services.mozilla.com`, `fcm.googleapis.com`), so nothing
+ * legitimate is turned away by this.
  *
  * `p256dh`/`auth` must be non-empty base64url (the client's own
  * `toBase64Url`, `lib/push.ts`, never emits padding, hence no `=`) —
@@ -41,16 +40,81 @@ import { resolveViewerUserId } from './resolve-user-id';
  */
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
-function isHttpsUrl(value: string): boolean {
+/**
+ * Host suffixes that name a machine on this network rather than a push
+ * service. `.lan`/`.home.arpa` are the usual router-assigned domains and
+ * `.internal` is the convention for private zones; `.local` is mDNS.
+ */
+const PRIVATE_HOST_SUFFIXES = ['.local', '.internal', '.home.arpa', '.lan'];
+
+/**
+ * Whether a URL host names something on the install's own network.
+ *
+ * Covers what can be decided from the STRING: literal addresses in the
+ * private, loopback and link-local ranges, and the hostname forms that only
+ * resolve on a LAN. It deliberately does NOT resolve DNS — that would put
+ * network I/O in a validator, and a name that resolves publicly at check time
+ * can resolve privately at send time (DNS rebinding), so resolving here would
+ * buy a false sense of completeness rather than a real bound.
+ */
+function isPrivateHost(hostname: string): boolean {
+  // `URL.hostname` keeps the brackets on an IPv6 literal.
+  const host = hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (PRIVATE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true;
+
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4 !== null) {
+    const first = Number(ipv4[1]);
+    const second = Number(ipv4[2]);
+    if (first === 0 || first === 10 || first === 127) return true;
+    if (first === 172 && second >= 16 && second <= 31) return true;
+    if (first === 192 && second === 168) return true;
+    if (first === 169 && second === 254) return true;
+    return false;
+  }
+
+  if (host.includes(':')) {
+    if (host === '::' || host === '::1') return true;
+    // An IPv4-mapped address, which the URL parser normalises to hex:
+    // `::ffff:192.168.1.1` arrives as `::ffff:c0a8:101`. Decode the two
+    // groups back to dotted quad rather than matching the readable spelling
+    // the parser never produces.
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (mapped !== null) {
+      const high = parseInt(mapped[1], 16);
+      const low = parseInt(mapped[2], 16);
+      return isPrivateHost(
+        `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`
+      );
+    }
+    if (host.startsWith('::ffff:')) return isPrivateHost(host.slice('::ffff:'.length));
+    if (/^f[cd]/.test(host)) return true; // fc00::/7, unique local
+    if (/^fe[89ab]/.test(host)) return true; // fe80::/10, link local
+    return false;
+  }
+
+  // A bare name with no dot resolves only against the local search domain.
+  return !host.includes('.');
+}
+
+function isPublicHttpsUrl(value: string): boolean {
   try {
-    return new URL(value).protocol === 'https:';
+    const url = new URL(value);
+    return url.protocol === 'https:' && !isPrivateHost(url.hostname);
   } catch {
     return false;
   }
 }
 
 const inputSchema = z.object({
-  endpoint: z.string().trim().min(1).max(2048).refine(isHttpsUrl, 'endpoint must be an https URL'),
+  endpoint: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine(isPublicHttpsUrl, 'endpoint must be a public https URL'),
   p256dh: z.string().trim().min(1).max(256).regex(BASE64URL, 'p256dh must be base64url'),
   auth: z.string().trim().min(1).max(256).regex(BASE64URL, 'auth must be base64url'),
   label: z.string().trim().max(100),
