@@ -1,3 +1,16 @@
+## 0.10.0
+
+- fix(theme): give the segmented-control track its own token so it reads in dark
+- fix(client): give the email card's text buttons the card radius
+- fix(client): give the request view back its card shell
+- refactor(client): give the email-confirm screen the shared auth shape
+- fix(server): resolve client build and app version for both on-disk layouts
+- feat: email notifications for book requests
+- Deliver book-request notifications to a browser as well as by email
+- Separate Upload and Request into their own pages, and rework the navigation
+- Choose which book-request notifications you get, and turn on push per device
+- Reject push endpoints that point at the local network
+
 ## 0.9.1
 
 - refactor(client): move the email edit actions into the card footer
