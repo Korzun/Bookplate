@@ -272,6 +272,16 @@ normal pull request, so releases respect the same branch protection as everythin
 4. **Release · Publish** — re-validates the tagged commit, builds and pushes the
    multi-arch add-on images, syncs the `beta` channel, and creates the GitHub Release.
 
+To follow all four steps from a terminal instead of refreshing the Actions tab, run the
+watcher with the PR number **Release · Prepare** opened and the version you entered:
+
+```bash
+node scripts/watch-release.mjs 241 0.10.0
+```
+
+It polls until the release is published (exit `0`), and fails fast — naming the red
+checks or the failed workflow — if the release cannot land (exit `1`, or `2` on timeout).
+
 The workflows authenticate as a dedicated **release GitHub App** (repository variable
 `RELEASE_APP_ID` + secret `RELEASE_APP_PRIVATE_KEY`, with "Allow auto-merge" enabled in
 repo settings). This is required because GitHub's default `GITHUB_TOKEN` cannot trigger
