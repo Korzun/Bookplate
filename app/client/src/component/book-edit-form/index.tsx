@@ -376,8 +376,8 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
    * time and goes red the moment `loading: isPending` is dropped from the Save
    * action below.
    *
-   * `update` does TWO things, both carried over verbatim from the
-   * `useUpdateBookMetadata` hook this replaces:
+   * `update` does THREE things — the first and third carried over verbatim
+   * from the `useUpdateBookMetadata` hook this replaces:
    *
    *   1. Evicts the current library's ENTIRE `Library.entries` field —
    *      UNCONDITIONALLY, every successful save, not gated on the id
@@ -398,7 +398,21 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
    *      a brand new series name leaves it stale until something else
    *      invalidates it. Unchanged from the hook; out of scope here too.
    *
-   *   2. Evicts the STALE `Book:<bookId>` entity ONLY when the payload's
+   *   2. Evicts `Series.books` on the book's series BEFORE the save and
+   *      AFTER it (one or both may be absent; the same id twice is evicted
+   *      once) — UNCONDITIONALLY, like step 1. `page/series` reads that
+   *      connection cache-first, and it is `relayStylePagination`, whose
+   *      `read` silently DROPS any edge whose `node` it cannot read. So once
+   *      step 3 evicts a rotated `Book:<bookId>`, the cached series read back
+   *      COMPLETE but one book short — no incomplete diff, no refetch, the
+   *      edited book simply missing from its series until a hard reload. Even
+   *      with the id held, a title or order edit changes the list, and a move
+   *      changes both memberships. Only the `books` field is evicted, not the
+   *      `Series` entity: the refetch it forces re-reads the aggregates too,
+   *      and evicting the entity would also prune it from `Library.series`
+   *      (this form's autocomplete).
+   *
+   *   3. Evicts the STALE `Book:<bookId>` entity ONLY when the payload's
    *      `book.id` differs from the requested one. Editing metadata rewrites
    *      the EPUB (title page, cover), which changes its content hash, which
    *      is the raw local half of the Book's global id — so a save can mint a
@@ -408,6 +422,7 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
    *      `graphql/schema/book/mutation/update-metadata.ts`: "a client must
    *      evict it itself".)
    */
+  const originalSeriesId = book.series?.id;
   const updateBookMetadata = useCallback(
     async (bookId: string, patch: BookEditPatch): Promise<{ id: string } | undefined> => {
       setSaveErrorMessage(undefined);
@@ -451,6 +466,14 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
               });
             }
 
+            for (const seriesId of new Set([originalSeriesId, outcome.payload.book.series?.id])) {
+              if (seriesId === undefined) continue;
+              cache.evict({
+                id: cache.identify({ __typename: 'Series', id: seriesId }),
+                fieldName: 'books',
+              });
+            }
+
             if (outcome.payload.book.id !== bookId) {
               cache.evict({ id: cache.identify({ __typename: 'Book', id: bookId }) });
             }
@@ -482,7 +505,7 @@ export const BookEditForm = ({ book: bookRef }: Props) => {
         return undefined;
       }
     },
-    [runUpdate, libraryId]
+    [runUpdate, libraryId, originalSeriesId]
   );
 
   async function handleSave() {

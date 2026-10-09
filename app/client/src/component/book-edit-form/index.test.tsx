@@ -21,6 +21,7 @@ import {
 } from '~/graphql/library';
 import { BookEditDocument } from '~/page/book-edit';
 import { LibraryEntriesDocument } from '~/page/library';
+import { SeriesDetailDocument } from '~/page/series';
 import { path } from '~/router';
 import { renderWithApollo } from '~/test-utils';
 
@@ -174,7 +175,11 @@ const nextIndexMock = (
 
 /** The `Book` shape `BookUpdateMetadataPayload.book` re-selects. */
 const updatePayload = (
-  overrides: Partial<{ id: string; title: string }> = {}
+  overrides: Partial<{
+    id: string;
+    title: string;
+    series: { __typename: 'Series'; id: string; name: string } | null;
+  }> = {}
 ): BookUpdateMetadataMutation => ({
   __typename: 'Mutation',
   bookUpdateMetadata: {
@@ -192,7 +197,7 @@ const updatePayload = (
       publishDate: '',
       seriesIndex: 0,
       subjects: [],
-      series: null,
+      series: overrides.series ?? null,
       identifiers: [],
     },
   },
@@ -297,6 +302,52 @@ const readEntries = (client: Client) =>
   client.cache.readQuery({
     query: LibraryEntriesDocument,
     variables: libraryEntriesVariables,
+  });
+
+const SERIES_ID = 'U2VyaWVzOjE=';
+const OTHER_SERIES_ID = 'U2VyaWVzOjI=';
+
+const seriesRef = (id: string, name: string) => ({ __typename: 'Series' as const, id, name });
+
+const seriesDetailVariables = (name: string) => ({ libraryId: LIBRARY_ID, name });
+
+const seedSeriesDetail = (client: Client, seriesId: string, name: string, bookId: string) =>
+  client.writeQuery({
+    query: SeriesDetailDocument,
+    variables: seriesDetailVariables(name),
+    data: {
+      __typename: 'Query',
+      node: {
+        __typename: 'Library',
+        id: LIBRARY_ID,
+        seriesByName: {
+          __typename: 'Series',
+          id: seriesId,
+          name,
+          author: 'Herbert',
+          publisher: '',
+          totalPages: 0,
+          totalSize: 0,
+          subjects: [],
+          progressPercentage: null,
+          books: {
+            __typename: 'SeriesBooksConnection',
+            edges: [
+              {
+                __typename: 'SeriesBooksConnectionEdge' as const,
+                node: bookRowNode(bookId),
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+const readSeriesDetail = (client: Client, name: string) =>
+  client.cache.readQuery({
+    query: SeriesDetailDocument,
+    variables: seriesDetailVariables(name),
   });
 
 beforeEach(() => {
@@ -630,6 +681,67 @@ describe('cache coherence after a save', () => {
     );
 
     expect(readEntries(client)).not.toBeNull();
+  });
+
+  // The series page reads `Series.books` cache-first, and that field is
+  // `relayStylePagination`, whose `read` silently DROPS an edge whose `node`
+  // can no longer be read. So once an id rotation evicts `Book:<old>`, the
+  // cached series came back COMPLETE but one book short — no refetch, the
+  // edited book simply missing from its series. `readQuery` returning `null`
+  // is the proof the next read goes to the network instead.
+  it('invalidates the cached series book list so the edited book is not dropped (id rotates)', async () => {
+    const user = userEvent.setup();
+    const series = seriesRef(SERIES_ID, 'Dune');
+    const { client } = renderWithApollo(<BookEditForm book={book({ series, seriesIndex: 1 })} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: NEW_BOOK_ID, title: 'New', series }))],
+    });
+    seedSeriesDetail(client, SERIES_ID, 'Dune', BOOK_ID);
+    expect(readSeriesDetail(client, 'Dune')).not.toBeNull();
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readSeriesDetail(client, 'Dune')).toBeNull();
+  });
+
+  // Even with the id held, a title or order edit changes what the series
+  // list renders and how it sorts.
+  it('invalidates the cached series book list even when the id is unchanged', async () => {
+    const user = userEvent.setup();
+    const series = seriesRef(SERIES_ID, 'Dune');
+    const { client } = renderWithApollo(<BookEditForm book={book({ series, seriesIndex: 1 })} />, {
+      mocks: [...baseMocks(), saveMock(updatePayload({ id: BOOK_ID, title: 'New', series }))],
+    });
+    seedSeriesDetail(client, SERIES_ID, 'Dune', BOOK_ID);
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readSeriesDetail(client, 'Dune')).toBeNull();
+  });
+
+  // Moving a book between series changes BOTH memberships.
+  it('invalidates both the old and the new series when the book moves between them', async () => {
+    const user = userEvent.setup();
+    const { client } = renderWithApollo(
+      <BookEditForm book={book({ series: seriesRef(SERIES_ID, 'Dune'), seriesIndex: 1 })} />,
+      {
+        mocks: [
+          ...baseMocks(),
+          saveMock(
+            updatePayload({ id: BOOK_ID, series: seriesRef(OTHER_SERIES_ID, 'Dune Prequels') })
+          ),
+        ],
+      }
+    );
+    seedSeriesDetail(client, SERIES_ID, 'Dune', BOOK_ID);
+    seedSeriesDetail(client, OTHER_SERIES_ID, 'Dune Prequels', 'Qm9vazoz');
+
+    await save(user);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(readSeriesDetail(client, 'Dune')).toBeNull();
+    expect(readSeriesDetail(client, 'Dune Prequels')).toBeNull();
   });
 
   // What actually prevents a double-save at this call site is the Save
