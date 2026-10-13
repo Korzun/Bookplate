@@ -355,7 +355,7 @@ describe('Mutation.userRegister — mail configured', () => {
       user: { username: 'charlie1', mustChangePassword: true },
       onboardingEmailSent: false,
     });
-    const { password } = result.data?.userRegister as { password: string };
+    const { password } = (result.data as { userRegister: { password: string } }).userRegister;
     expect(typeof password).toBe('string');
 
     const row = await harness.prisma.user.findUniqueOrThrow({ where: { username: 'charlie1' } });

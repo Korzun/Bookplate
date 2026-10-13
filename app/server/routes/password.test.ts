@@ -452,6 +452,7 @@ describe('POST /api/onboard', () => {
       .post('/api/onboard')
       .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
     expect(res.status).toBe(400);
+    expect(res.body).toEqual(ERROR);
   });
 
   it('rejects a too-short password without burning the code', async () => {
@@ -477,6 +478,7 @@ describe('POST /api/onboard', () => {
       .post('/api/onboard')
       .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
     expect(res.status).toBe(400);
+    expect(res.body).toEqual(ERROR);
   });
 
   it('refuses a code issued for a different address', async () => {
@@ -489,6 +491,7 @@ describe('POST /api/onboard', () => {
       .post('/api/onboard')
       .send({ email: 'moved@example.com', code, newPassword: 'chosen-password' });
     expect(res.status).toBe(400);
+    expect(res.body).toEqual(ERROR);
   });
 
   it('refuses the config admin row', async () => {
@@ -511,6 +514,16 @@ describe('POST /api/onboard', () => {
         newPassword: 'chosen-password',
       });
     expect(res.status).toBe(400);
+    expect(res.body).toEqual(ERROR);
+  });
+
+  it('rate-limits onboarding attempts per app instance', async () => {
+    const { app } = build({ mail: MAIL_CONFIG });
+    const body = { email: 'new@example.com', code: 'AAAAAAAA', newPassword: 'chosen-password' };
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await request(app).post('/api/onboard').send(body)).status).toBe(400);
+    }
+    expect((await request(app).post('/api/onboard').send(body)).status).toBe(429);
   });
 
   it('rejects a malformed body', async () => {

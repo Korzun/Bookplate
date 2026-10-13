@@ -117,8 +117,10 @@ builder.mutationField('userResetPassword', (t) =>
       // spendable once the admin has forced a new one — same reasoning as the
       // refresh-token revocation immediately above, and the same call
       // `userChangePassword`/`viewerSetEmail` make on their own password/address
-      // changes.
+      // changes. An outstanding `onboard` code goes too: it would otherwise
+      // outlive the reset and stay spendable against the account.
       await invalidateEmailTokens(context.prisma, owner.userId, 'reset');
+      await invalidateEmailTokens(context.prisma, owner.userId, 'onboard');
 
       return { __typename: 'UserResetPasswordPayload' as const, userId: owner.userId, password };
     },

@@ -137,9 +137,9 @@ const result = builder.unionType('UserRegisterResult', {
  * gated the whole router, so this is admin-only with no `ownerOf` alternative
  * (there is no self-registration in this app).
  *
- * The four REST checks run in this exact order, reproduced here rather than
- * batched, because the third one is NOT a validation failure and REST
- * evaluates it strictly between the other two:
+ * The first four checks mirror REST and run in this exact order, reproduced
+ * here rather than batched, because the second one is NOT a validation
+ * failure and REST evaluates it strictly between the other two:
  *
  *  1. charset (400) — `isValidUsername`, `charsetSchema` above.
  *  2. reserved name (409) — `trimmedUsername === adminUsername` (mirroring
@@ -154,7 +154,10 @@ const result = builder.unionType('UserRegisterResult', {
  *  4. genuine duplicate (409) — `createUser` returns `false` on a
  *     `P2002` unique-constraint collision (a race: two concurrent
  *     registrations of the same name). Same `UsernameAlreadyExistsError`.
- *
+ *     With mail configured the same `false` can also be the email's unique
+ *     constraint losing a race; the resolver re-queries by username to
+ *     tell them apart — found means a duplicate username, otherwise
+ *     `EmailInUseError`.
  *  5. email (mail configured only) — required, plausible, not already held
  *     (`EmailInUseError`); a supplied email on an install without mail is
  *     `EmailNotConfiguredError`.
@@ -238,6 +241,7 @@ builder.mutationField('userRegister', (t) =>
         email: rawEmail,
       });
       if (!created) {
+        // P2002 is either the username or (new) the email unique index.
         const taken = await context.prisma.user.findUnique({
           where: { username },
           select: { id: true },

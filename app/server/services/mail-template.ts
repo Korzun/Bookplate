@@ -120,7 +120,10 @@ export function welcomeMessage(args: WelcomeArgs): MailMessage {
     subject: `Your ${args.libraryName} account`,
     lead:
       `An account has been created for you on ${args.libraryName}. Your username is ` +
-      `${args.username}. Enter this code in ${args.libraryName} to choose your password:`,
+      `${args.username}. ` +
+      (args.publicUrl === null
+        ? `Open the ${args.libraryName} sign-in page and choose "Set up a new account", then enter this code to choose your password:`
+        : `Enter this code in ${args.libraryName} to choose your password:`),
     code: args.code,
     href:
       args.publicUrl === null

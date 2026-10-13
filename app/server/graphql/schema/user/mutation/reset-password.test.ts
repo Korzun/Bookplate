@@ -154,4 +154,25 @@ describe('Mutation.userResetPassword', () => {
       })
     ).toBe(0);
   });
+
+  it("invalidates bob's outstanding onboard token on an admin-driven reset", async () => {
+    await setUserEmail(harness.prisma, harness.bobOwner.userId, 'bob@example.com');
+    await issueEmailToken(harness.prisma, {
+      userId: harness.bobOwner.userId,
+      purpose: 'onboard',
+      email: 'bob@example.com',
+    });
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { userId: encodeGlobalID('User', harness.bobOwner.userId) } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(
+      await harness.prisma.emailToken.count({
+        where: { userId: harness.bobOwner.userId, purpose: 'onboard' },
+      })
+    ).toBe(0);
+  });
 });

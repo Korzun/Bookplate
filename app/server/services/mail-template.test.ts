@@ -172,6 +172,14 @@ describe('welcomeMessage', () => {
     expect(message.html).not.toContain('href');
   });
 
+  it('tells the user where to go only when there is no link', () => {
+    const without = welcomeMessage({ ...WELCOME, publicUrl: null });
+    expect(without.text).toContain('Set up a new account');
+    expect(without.html).toContain('Set up a new account');
+    const withUrl = welcomeMessage({ ...WELCOME, publicUrl: 'https://books.example.com' });
+    expect(withUrl.text).not.toContain('Set up a new account');
+  });
+
   it('links to the welcome page carrying both the code and the address', () => {
     const message = welcomeMessage({ ...WELCOME, publicUrl: 'https://books.example.com' });
     const href = 'https://books.example.com/welcome?code=K7M2QX4P&email=reader%40example.com';
