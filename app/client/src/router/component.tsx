@@ -12,6 +12,7 @@ import {
   LoginPage,
   PasswordResetPage,
   ResetPasswordPage,
+  WelcomePage,
   SeriesPage,
   SetEmailPage,
   UserListPage,
@@ -34,6 +35,7 @@ export const AppRouter = () => {
           <Route path={path.login()} element={<LoginPage />} />
           <Route path={path.forgotPassword()} element={<ForgotPasswordPage />} />
           <Route path={path.resetPasswordByEmail()} element={<ResetPasswordPage />} />
+          <Route path={path.welcome()} element={<WelcomePage />} />
         </Route>
 
         <Route element={<ProtectedRoute />}>

@@ -132,6 +132,21 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: /forgot/i })).toBeNull();
   });
 
+  it('offers a set-up-account button that goes to the welcome page when email is enabled', async () => {
+    const user = userEvent.setup();
+    renderWithConfig(<LoginPage />, { emailEnabled: true });
+
+    const button = screen.getByRole('button', { name: /set up a new account/i });
+    expect(button.closest('form')).toBeNull();
+    await user.click(button);
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/welcome');
+  });
+
+  it('offers no set-up-account button when email is disabled', () => {
+    renderWithConfig(<LoginPage />, { emailEnabled: false });
+    expect(screen.queryByRole('button', { name: /set up a new account/i })).toBeNull();
+  });
+
   it('labels the identifier field for email when email is enabled', () => {
     renderWithConfig(<LoginPage />, { emailEnabled: true });
     expect(screen.getByPlaceholderText('Username or email')).toBeInTheDocument();

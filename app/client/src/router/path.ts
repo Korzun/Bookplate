@@ -15,4 +15,5 @@ export const resetPasswordByEmail = () => pathInternal.resetPasswordByEmail();
 export const setEmail = () => pathInternal.setEmail();
 export const settings = () => pathInternal.settings();
 export const userList = () => pathInternal.userList();
+export const welcome = () => pathInternal.welcome();
 export const login = () => pathInternal.login();

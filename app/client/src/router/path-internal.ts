@@ -35,3 +35,4 @@ export const setEmail = () => '/set-email';
  */
 export const settings = () => '/settings';
 export const userList = () => '/users';
+export const welcome = () => '/welcome';

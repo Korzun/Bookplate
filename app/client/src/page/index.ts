@@ -14,3 +14,4 @@ export { SeriesPage } from './series';
 export { SetEmailPage } from './set-email';
 export { UserListPage } from './user-list';
 export { SettingsPage } from './settings';
+export { WelcomePage } from './welcome';
