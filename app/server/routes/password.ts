@@ -37,7 +37,7 @@ const log = logger('Password');
  * The asymmetry is intentional: reset refuses something the authenticated change
  * path allows. Do NOT "fix" it by lowering this to 1.
  */
-const MIN_PASSWORD_LENGTH = 8;
+export const MIN_PASSWORD_LENGTH = 8;
 
 export function createPasswordRouter(deps: {
   prisma: PrismaClient;

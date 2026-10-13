@@ -13,8 +13,13 @@ import { runMigrations } from '../db/migrate';
 import { ensureAdminUser } from '../services/admin-account';
 import { getStagingDir } from '../services/book-paths';
 import { markEmailVerified, setUserEmail } from '../services/email';
-import { hashEmailCode, RESET_TTL_MS } from '../services/email-token';
-import { signAccessToken } from '../services/jwt';
+import {
+  hashEmailCode,
+  issueEmailToken,
+  ONBOARD_TTL_MS,
+  RESET_TTL_MS,
+} from '../services/email-token';
+import { signAccessToken, verifyAccessToken } from '../services/jwt';
 import { hashLoginPassword } from '../services/password';
 import { createReplaceStaging, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -365,5 +370,161 @@ describe('mount order — /api/password/* is reachable regardless of pending gat
       .send({ email: 'a@b.co' });
 
     expect(res.status).toBe(204);
+  });
+});
+
+describe('POST /api/onboard', () => {
+  const ERROR = { error: 'That link is not valid or has expired.' };
+
+  /** A freshly registered, password-less account with an outstanding onboard code. */
+  const primed = async (now?: number) => {
+    const built = build({ mail: MAIL_CONFIG });
+    await createUser(prisma, 'newbie1', null, undefined, false, { email: 'New@Example.com' });
+    const { id } = await prisma.user.findUniqueOrThrow({ where: { username: 'newbie1' } });
+    const issued = await issueEmailToken(prisma, {
+      userId: id,
+      purpose: 'onboard',
+      email: 'New@Example.com',
+      now,
+    });
+    const code = (issued as { ok: true; code: string }).code;
+    return { ...built, id, code };
+  };
+
+  it('sets the password, verifies the address and signs the user in', async () => {
+    const { app, id, code } = await primed();
+
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
+
+    expect(res.status).toBe(200);
+    const claims = verifyAccessToken(jwtSecret, res.body.accessToken);
+    expect(claims).toMatchObject({
+      username: 'newbie1',
+      isAdmin: false,
+      mustChangePassword: false,
+    });
+    expect(res.headers['set-cookie']?.[0]).toMatch(/^refresh_token=/);
+
+    const row = await prisma.user.findUniqueOrThrow({ where: { id } });
+    expect(row.emailVerifiedAt).not.toBeNull();
+    expect(row.mustChangePassword).toBe(false);
+    const login = await request(app)
+      .post('/api/login')
+      .send({ username: 'newbie1', password: 'chosen-password' });
+    expect(login.status).toBe(200);
+  });
+
+  it('accepts the address with different case and surrounding whitespace', async () => {
+    const { app, code } = await primed();
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: '  NEW@example.COM ', code, newPassword: 'chosen-password' });
+    expect(res.status).toBe(200);
+  });
+
+  it('consumes the code', async () => {
+    const { app, code } = await primed();
+    const body = { email: 'new@example.com', code, newPassword: 'chosen-password' };
+    expect((await request(app).post('/api/onboard').send(body)).status).toBe(200);
+    const again = await request(app).post('/api/onboard').send(body);
+    expect(again.status).toBe(400);
+    expect(again.body).toEqual(ERROR);
+  });
+
+  it('rejects a wrong code without burning the right one', async () => {
+    const { app, code } = await primed();
+    const wrong = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code: 'AAAAAAAA', newPassword: 'chosen-password' });
+    expect(wrong.status).toBe(400);
+    expect(wrong.body).toEqual(ERROR);
+    const right = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
+    expect(right.status).toBe(200);
+  });
+
+  it('rejects an expired code', async () => {
+    const { app, code } = await primed(Date.now() - ONBOARD_TTL_MS - 1000);
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a too-short password without burning the code', async () => {
+    const { app, code } = await primed();
+    const short = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'short' });
+    expect(short.status).toBe(400);
+    expect(short.body).toEqual(ERROR);
+    const ok = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
+    expect(ok.status).toBe(200);
+  });
+
+  it('refuses an account that already has a password', async () => {
+    const { app, id, code } = await primed();
+    await prisma.user.update({
+      where: { id },
+      data: { passwordHash: await hashLoginPassword('existing-password') },
+    });
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code, newPassword: 'chosen-password' });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a code issued for a different address', async () => {
+    const { app, id, code } = await primed();
+    await prisma.user.update({
+      where: { id },
+      data: { email: 'moved@example.com', emailKey: 'moved@example.com' },
+    });
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'moved@example.com', code, newPassword: 'chosen-password' });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses the config admin row', async () => {
+    const { app } = build({ mail: MAIL_CONFIG });
+    const adminId = (await ensureAdminUser(prisma, config.username))!;
+    await prisma.user.update({
+      where: { id: adminId },
+      data: { email: 'admin@example.com', emailKey: 'admin@example.com' },
+    });
+    const issued = await issueEmailToken(prisma, {
+      userId: adminId,
+      purpose: 'onboard',
+      email: 'admin@example.com',
+    });
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({
+        email: 'admin@example.com',
+        code: (issued as { ok: true; code: string }).code,
+        newPassword: 'chosen-password',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a malformed body', async () => {
+    const { app } = await primed();
+    const res = await request(app).post('/api/onboard').send({ email: 'new@example.com' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual(ERROR);
+  });
+
+  it('does not exist when mail is not configured', async () => {
+    const { app } = build();
+    const res = await request(app)
+      .post('/api/onboard')
+      .send({ email: 'new@example.com', code: 'AAAAAAAA', newPassword: 'chosen-password' });
+    expect(res.status).toBe(404);
   });
 });

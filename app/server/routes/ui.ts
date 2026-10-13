@@ -16,11 +16,12 @@ import { BookAlreadyExistsError } from '../services/book-errors';
 import { addBook, reimportBook } from '../services/book-lifecycle';
 import { getStagingDir } from '../services/book-paths';
 import { findUserByEmail } from '../services/email';
+import { consumeEmailToken, invalidateEmailTokens } from '../services/email-token';
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { isMailConfigured, type Mailer } from '../services/mailer';
-import { getMustChangePassword, validateUser } from '../services/password';
+import { getMustChangePassword, hashLoginPassword, validateUser } from '../services/password';
 import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
@@ -40,7 +41,7 @@ import {
   CLIENT_NOT_BUILT_MESSAGE,
   clientIndexExists,
 } from '../utils/client-dist';
-import { createPasswordRouter } from './password';
+import { createPasswordRouter, MIN_PASSWORD_LENGTH } from './password';
 
 const log = logger('UI');
 
@@ -672,6 +673,98 @@ export function createUiRouter({
     label: 'Password reset',
   });
   router.use(createPasswordRouter({ prisma, config, mailer, rateLimit: passwordRateLimit }));
+
+  // Onboarding: a newly registered account (created password-less by
+  // `userRegister` when mail is configured) chooses its password with the code
+  // from its welcome email. Here rather than in `routes/password.ts` because it
+  // ends in a sign-in, and `issueTokens` is this router's closure. Shares the
+  // reset limiter: same shape of request, same cost of a wrong guess.
+  router.post(
+    '/api/onboard',
+    passwordRateLimit,
+    asyncHandler(async (req: Request, res: Response) => {
+      if (!isMailConfigured(config) || mailer === null) {
+        res.sendStatus(404);
+        return;
+      }
+      const { email, code, newPassword } = req.body as {
+        email?: unknown;
+        code?: unknown;
+        newPassword?: unknown;
+      };
+      // One 400 for every failure, as `/api/password/reset` does: the user's
+      // next step is the same in all of them (ask the admin), and a distinct
+      // answer would tell a guesser which part of the guess landed.
+      const reject = (reason: string): void => {
+        log.warn(`Onboarding rejected — ${reason}`);
+        res.status(400).json({ error: 'That link is not valid or has expired.' });
+      };
+
+      if (
+        typeof email !== 'string' ||
+        typeof code !== 'string' ||
+        typeof newPassword !== 'string'
+      ) {
+        reject('malformed body');
+        return;
+      }
+      // Before any token lookup, so a too-short password never burns a code.
+      if (newPassword.length < MIN_PASSWORD_LENGTH) {
+        reject('new password too short');
+        return;
+      }
+      const account = await findUserByEmail(prisma, email);
+      if (account === null || account.isConfigAdmin) {
+        reject('no eligible account for that address');
+        return;
+      }
+      // Onboarding only ever SETS a first password. An account that already has
+      // one goes through reset, which revokes sessions — this path does not.
+      const { passwordHash } = await prisma.user.findUniqueOrThrow({
+        where: { id: account.id },
+        select: { passwordHash: true },
+      });
+      if (passwordHash !== null) {
+        reject('account already has a password');
+        return;
+      }
+      const consumed = await consumeEmailToken(prisma, {
+        userId: account.id,
+        purpose: 'onboard',
+        code,
+      });
+      if (consumed === null) {
+        reject('unknown, used or expired code');
+        return;
+      }
+      if (account.email === null || consumed.email !== account.email) {
+        reject('code was issued for a different address');
+        return;
+      }
+
+      // The code arrived at this address, which is exactly what `verify`
+      // proves, so the address is confirmed in the same write. No refresh
+      // tokens to revoke: a password-less account has never been able to sign in.
+      await prisma.user.update({
+        where: { id: account.id },
+        data: {
+          passwordHash: await hashLoginPassword(newPassword),
+          emailVerifiedAt: Date.now(),
+          mustChangePassword: false,
+        },
+      });
+      await invalidateEmailTokens(prisma, account.id, 'onboard');
+      log.info(`Onboarding completed for "${account.username}"`);
+      await deleteExpired(prisma);
+      await issueTokens(res, {
+        userId: account.id,
+        username: account.username,
+        isAdmin: false,
+        mustChangePassword: false,
+        mustSetEmail: false,
+      });
+    })
+  );
 
   router.use(passwordChangeGate(jwtSecret));
   router.use(emailSetupGate(jwtSecret));
