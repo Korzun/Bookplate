@@ -166,6 +166,13 @@ library, as the login page does. On 400 the generic message, directing the user
 to their library admin — not to forgot-password, which requires a verified
 address this user does not yet have. 429 handled as the login page handles it.
 
+### Login page
+
+When `emailEnabled`, a "Set up a new account" button sits beside "Forgot
+password?" and goes to `/welcome`. Without `publicUrl` the welcome email
+carries only a code, so this is how a new user reaches the page. (Added while
+planning.)
+
 ### Users list
 
 No change. A not-yet-onboarded user already shows their address as
