@@ -17,6 +17,12 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-changeme}
       BOOKS_DIR: /media/books
+      # Opt-in, both empty by default. `MAIL_DRIVER=log` turns email on with
+      # every message printed to this container's log instead of sent, so the
+      # code-bearing flows (verify, reset, onboarding) can be walked locally;
+      # `PUBLIC_URL` (e.g. http://localhost:5173) adds the clickable link.
+      MAIL_DRIVER: ${MAIL_DRIVER:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
     ports:
       - "${SERVER_PORT:-3000}:3000"
 

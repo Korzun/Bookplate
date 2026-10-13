@@ -101,13 +101,28 @@ export type PageCursor = {
  * `null`, so "is mail configured?" is one check with one answer rather than
  * three fields tested at every call site.
  */
-export interface MailConfig {
+export interface CloudflareMailConfig {
+  driver?: 'cloudflare';
   accountId: string;
   apiToken: string;
   /** Must be on a domain verified for Email Sending in that Cloudflare account. */
   from: string;
   fromName: string;
 }
+
+/**
+ * Development only, selected by `MAIL_DRIVER=log` (never by an add-on option):
+ * every message is printed to the server log instead of sent, so flows that
+ * need a code — verification, reset, onboarding — can be walked through
+ * locally without a mail account.
+ */
+export interface LogMailConfig {
+  driver: 'log';
+  from: string;
+  fromName: string;
+}
+
+export type MailConfig = CloudflareMailConfig | LogMailConfig;
 
 export interface AppConfig {
   libraryName: string;

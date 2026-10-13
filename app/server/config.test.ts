@@ -189,6 +189,20 @@ describe('mail config', () => {
     expect(loadConfig().mail ?? null).toBeNull();
   });
 
+  it('uses the log driver when MAIL_DRIVER=log, with no Cloudflare credentials', () => {
+    process.env.MAIL_DRIVER = 'log';
+    expect(loadConfig().mail).toEqual({
+      driver: 'log',
+      from: 'bookplate@localhost',
+      fromName: 'Bookplate',
+    });
+  });
+
+  it('treats an empty MAIL_DRIVER as unset', () => {
+    process.env.MAIL_DRIVER = '';
+    expect(loadConfig().mail ?? null).toBeNull();
+  });
+
   it('accepts a well-formed public URL and strips a trailing slash', () => {
     process.env.PUBLIC_URL = 'https://books.example.com/';
     expect(loadConfig().publicUrl).toBe('https://books.example.com');

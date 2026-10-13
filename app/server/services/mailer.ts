@@ -11,6 +11,7 @@
  */
 import type { AppConfig, MailConfig } from '../types';
 import { createCloudflareMailer } from './mailer-cloudflare';
+import { createLogMailer } from './mailer-log';
 
 export type MailMessage = {
   to: string;
@@ -49,7 +50,7 @@ export type Mailer = { send(message: MailMessage): Promise<SendResult> };
 
 export function createMailer(mail: MailConfig | null | undefined): Mailer | null {
   if (!mail) return null;
-  return createCloudflareMailer(mail);
+  return mail.driver === 'log' ? createLogMailer() : createCloudflareMailer(mail);
 }
 
 /**

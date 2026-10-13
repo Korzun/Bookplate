@@ -89,14 +89,26 @@ function trimmed(raw: string | undefined): string {
  * Collapses a partial mail configuration to `null`. Account id, token and
  * from-address are all required; `fromName` falls back to the library name so
  * an operator setting the minimum still gets a sensible From display name.
+ *
+ * `MAIL_DRIVER=log` short-circuits all of that for local development: no
+ * credentials, and every message is printed rather than sent (`mailer-log.ts`).
  */
 function parseMailConfig(
+  driver: string,
   accountId: string,
   apiToken: string,
   from: string,
   fromName: string,
   libraryName: string
 ): MailConfig | null {
+  if (driver === 'log') {
+    log.warn('MAIL_DRIVER=log — email is printed to the log, not sent');
+    return {
+      driver: 'log',
+      from: from || 'bookplate@localhost',
+      fromName: fromName || libraryName,
+    };
+  }
   if (!accountId || !apiToken || !from) return null;
   return { accountId, apiToken, from, fromName: fromName || libraryName };
 }
@@ -190,6 +202,8 @@ export function loadConfig(): AppConfig {
     // immediately above.
     trustProxyHops: parseTrustProxyHops(process.env.TRUST_PROXY_HOPS ?? options.trust_proxy_hops),
     mail: parseMailConfig(
+      // Env only — there is deliberately no add-on option for this.
+      trimmed(process.env.MAIL_DRIVER),
       trimmed(process.env.CF_ACCOUNT_ID ?? options.email_cloudflare_account_id),
       trimmed(process.env.CF_API_TOKEN ?? options.email_cloudflare_api_token),
       trimmed(process.env.EMAIL_FROM ?? options.email_from_address),

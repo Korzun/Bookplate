@@ -10,7 +10,7 @@
  * code or a Cloudflare error body.
  */
 import { logger } from '../logger';
-import type { MailConfig } from '../types';
+import type { CloudflareMailConfig } from '../types';
 import type { Mailer, MailMessage, SendResult } from './mailer';
 
 const log = logger('Mailer');
@@ -66,7 +66,7 @@ type SendResponse = {
   errors?: { code?: number; message?: string }[];
 };
 
-export function createCloudflareMailer(mail: MailConfig): Mailer {
+export function createCloudflareMailer(mail: CloudflareMailConfig): Mailer {
   // Per-instance, not per-module: a misconfigured token produces a failure on
   // EVERY send, and one log line per process is enough to diagnose it. Without
   // this latch a notification fan-out would write one log line per recipient
