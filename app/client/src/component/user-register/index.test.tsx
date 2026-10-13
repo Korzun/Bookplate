@@ -76,9 +76,9 @@ function renderForm(mocks: MockedResponse[] = []) {
 }
 
 describe('UserRegister', () => {
-  it('renders the card titled "Register a user"', () => {
+  it('renders the card titled "Register new user"', () => {
     renderForm();
-    expect(screen.getByText('Register a user')).toBeInTheDocument();
+    expect(screen.getByText('Register new user')).toBeInTheDocument();
   });
 
   it('keeps Register disabled until the username has at least 6 characters', async () => {

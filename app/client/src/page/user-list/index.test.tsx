@@ -105,7 +105,7 @@ describe('UserListPage', () => {
   // and returns an observable that errors ASYNCHRONOUSLY
   // (`observeOn(asapScheduler)`); a synchronous test never observes that,
   // and nothing in `setup.ts` promotes the warning to a failure. The
-  // `getByText('Register a user')` assertion is fail-open for a second,
+  // `getByText('Register new user')` assertion is fail-open for a second,
   // independent reason: `UserListPage` renders `<UserRegister />`
   // UNCONDITIONALLY, so that text is present whether or not the query fired.
   //
@@ -118,6 +118,6 @@ describe('UserListPage', () => {
     });
 
     expect(userListRequests.count).toBe(0);
-    expect(screen.getByText('Register a user')).toBeInTheDocument();
+    expect(screen.getByText('Register new user')).toBeInTheDocument();
   });
 });

@@ -16,8 +16,8 @@ export const UserListPage = () => {
 
   return (
     <Page>
-      <UserRegister />
       <UserList users={data?.viewer.users ?? []} loading={loading} />
+      <UserRegister />
     </Page>
   );
 };
