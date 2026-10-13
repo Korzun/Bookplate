@@ -72,11 +72,15 @@ export const WelcomePage = () => {
         setError('Email is not configured on this server. Ask the administrator to set it up.');
         return null;
       }
+      if (response.status !== 400) {
+        setError('Something went wrong — please try again');
+        return null;
+      }
       // Not forgot-password: that flow needs a verified address, which this
       // account does not have until onboarding succeeds.
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       setError(
-        `${body.error ?? 'That link is not valid or has expired.'} Ask your library admin to register you again.`
+        `${body.error ?? 'That link is not valid or has expired.'} Check the code, or ask your library admin to register you again.`
       );
     } catch {
       setError('Network error — please try again');

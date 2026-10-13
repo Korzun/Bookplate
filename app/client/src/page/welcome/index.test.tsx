@@ -105,10 +105,32 @@ describe('WelcomePage', () => {
     await user.click(screen.getByRole('button', { name: /set password/i }));
 
     expect(
-      await screen.findByText(/That link is not valid or has expired\. Ask your library admin/)
+      await screen.findByText(
+        /That link is not valid or has expired\. Check the code, or ask your library admin/
+      )
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /forgot/i })).toBeNull();
     expect(mocks.setToken).not.toHaveBeenCalled();
+  });
+
+  it('reports an unexpected server failure as a generic retry, not an invalid link', async () => {
+    mocks.search = 'code=K7M2QX4P&email=new%40example.com';
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'boom' }),
+      })
+    );
+    renderWithProviders(<WelcomePage />);
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: /set password/i }));
+
+    expect(await screen.findByText('Something went wrong — please try again')).toBeInTheDocument();
+    expect(screen.queryByText(/register you again/i)).toBeNull();
   });
 
   it('reports a rate limit with the retry delay', async () => {

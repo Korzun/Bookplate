@@ -45,6 +45,14 @@ export const LoginPage = () => {
             : 'Too many attempts — please wait a moment and try again',
           'error'
         );
+      } else if (response.status === 403 && emailEnabled) {
+        // The server's "password not set": a registered account that has not
+        // used its welcome code yet. Without mail there is no onboarding, so
+        // 403 stays the generic failure there.
+        showToast(
+          "This account hasn't been set up yet — use the link in your welcome email, or Set up a new account.",
+          'error'
+        );
       } else {
         showToast('Invalid credentials', 'error');
       }

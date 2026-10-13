@@ -40,13 +40,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.space.md,
   },
-  // Only the done-state confirmation now; the form no longer carries a lead.
-  lead: {
-    textAlign: 'center',
-    color: theme.color.text.muted,
-    fontSize: theme.fontSize.sm,
-    margin: 0,
-  },
   error: {
     textAlign: 'center',
     color: theme.color.danger.default,

@@ -83,6 +83,37 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
   });
 
+  it('explains a not-yet-onboarded account on 403 when email is enabled', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 403 }))
+    );
+
+    renderWithConfig(<LoginPage />, { emailEnabled: true });
+    await user.type(screen.getByPlaceholderText('Username or email'), 'newbie1');
+    await user.type(screen.getByPlaceholderText('Password'), 'whatever');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/hasn't been set up yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps "Invalid credentials" on 403 when email is not enabled', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 403 }))
+    );
+
+    renderWithConfig(<LoginPage />, { emailEnabled: false });
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'whatever');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/invalid credentials/i)).toBeInTheDocument();
+  });
+
   it('still shows "Invalid credentials" on 401', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
