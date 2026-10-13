@@ -7,11 +7,11 @@
  * the library name.
  *
  * The two renderers behind them split on that same line. `render` is built
- * around a CODE: it is the primary mechanism and appears unconditionally,
- * with a link that is a convenience existing only when `publicUrl` is
- * configured — a LAN-only install is fully functional on codes alone, which
- * is why the link is never synthesised from a request header (see
- * `AppConfig.publicUrl`). `notice` has no code at all — a notification is a
+ * around a CODE, which appears unconditionally beside the link. Mail is only
+ * ever on when `publicUrl` is configured (`requireReachable` in `config.ts`),
+ * so in production every message carries both; the templates still accept a
+ * null `publicUrl` and omit the link, so they stay pure and testable, and the
+ * link is never synthesised from a request header (see `AppConfig.publicUrl`). `notice` has no code at all — a notification is a
  * short lead and a few labelled lines — but keeps the identical rule for its
  * own link: present only when `publicUrl` is configured, never synthesised
  * otherwise.
@@ -120,10 +120,7 @@ export function welcomeMessage(args: WelcomeArgs): MailMessage {
     subject: `Your ${args.libraryName} account`,
     lead:
       `An account has been created for you on ${args.libraryName}. Your username is ` +
-      `${args.username}. ` +
-      (args.publicUrl === null
-        ? `Open the ${args.libraryName} sign-in page and choose "Set up a new account", then enter this code to choose your password:`
-        : `Enter this code in ${args.libraryName} to choose your password:`),
+      `${args.username}. Enter this code in ${args.libraryName} to choose your password:`,
     code: args.code,
     href:
       args.publicUrl === null

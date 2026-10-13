@@ -19,8 +19,8 @@ services:
       BOOKS_DIR: /media/books
       # Opt-in, both empty by default. `MAIL_DRIVER=log` turns email on with
       # every message printed to this container's log instead of sent, so the
-      # code-bearing flows (verify, reset, onboarding) can be walked locally;
-      # `PUBLIC_URL` (e.g. http://localhost:5173) adds the clickable link.
+      # code-bearing flows (verify, reset, onboarding) can be walked locally.
+      # Email also needs `PUBLIC_URL` (e.g. http://localhost:5173) — set both.
       MAIL_DRIVER: ${MAIL_DRIVER:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
     ports:

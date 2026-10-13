@@ -162,10 +162,11 @@ export interface AppConfig {
    */
   mail?: MailConfig | null;
   /**
-   * Absolute origin this instance is reachable at, used ONLY to add a clickable
-   * link beside the typed code in verification and reset emails. Absent means
-   * code-only delivery, which is fully functional. Never derived from a request
-   * header: a `Host`-derived link is the classic reset-link poisoning path.
+   * Absolute origin this instance is reachable at, used for the links in every
+   * email. Email REQUIRES it: without it `loadConfig` turns mail off, because a
+   * new user's only way in is the link in their welcome email. Never derived
+   * from a request header: a `Host`-derived link is the classic reset-link
+   * poisoning path.
    */
   publicUrl?: string | null;
 }

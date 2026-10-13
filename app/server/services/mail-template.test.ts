@@ -172,12 +172,13 @@ describe('welcomeMessage', () => {
     expect(message.html).not.toContain('href');
   });
 
-  it('tells the user where to go only when there is no link', () => {
-    const without = welcomeMessage({ ...WELCOME, publicUrl: null });
-    expect(without.text).toContain('Set up a new account');
-    expect(without.html).toContain('Set up a new account');
-    const withUrl = welcomeMessage({ ...WELCOME, publicUrl: 'https://books.example.com' });
-    expect(withUrl.text).not.toContain('Set up a new account');
+  // The link is the only way in — there is no sign-in-page entry point to
+  // send a code-only reader to — so the copy never points anywhere else.
+  it('never directs the reader to a sign-in-page entry point', () => {
+    for (const publicUrl of [null, 'https://books.example.com']) {
+      const message = welcomeMessage({ ...WELCOME, publicUrl });
+      expect(message.text).not.toMatch(/sign-in page|Set up a new account/);
+    }
   });
 
   it('links to the welcome page carrying both the code and the address', () => {
