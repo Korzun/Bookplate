@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Only adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it. |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Only adds a clickable link beside the code that every verification, reset and welcome email already carries — code-only delivery works fine without it. |
 
 Example:
 
@@ -151,8 +151,15 @@ Once email is configured:
   **confirmed** address and lets you choose a new login password. It does
   **not** work for the admin account — the admin password is always the
   `password` add-on option, and is only changed there.
-- **What the emails contain:** every verification and password-reset email
-  always includes a plain code to type in. If you've also set `public_url`,
+- **Registering a user needs their address.** The admin enters it when
+  creating the account, which is then created without a password. The new
+  user gets a **welcome email** with a code, valid for 7 days, to choose
+  their own password; using it also confirms their address and signs them
+  in. If `public_url` is set the email includes a link to that page;
+  otherwise they choose **Set up a new account** on the sign-in page and
+  enter the code there.
+- **What the emails contain:** every verification, password-reset and welcome
+  email always includes a plain code to type in. If you've also set `public_url`,
   the same email additionally includes a clickable link that fills the code
   in for you — `public_url` is optional and only adds that convenience.
 
@@ -243,7 +250,7 @@ variables:
 | `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
 | `EMAIL_FROM`    | *(none)* | Same as the add-on's `email_from_address` option above. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
 | `EMAIL_FROM_NAME` | *(library name)* | Same as the add-on's `email_from_name` option above. Defaults to `LIBRARY_NAME` when unset. |
-| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional — only adds a clickable link beside the code that every verification/reset email already carries. |
+| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional — only adds a clickable link beside the code that every verification, reset and welcome email already carries. |
 
 ## Release channels
 
