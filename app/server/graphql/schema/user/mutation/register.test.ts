@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { validateUser } from '../../../../services/password';
-import { createHarness, type Harness } from '../../../test-util';
+import { createHarness, MAIL_CONFIG, type Harness } from '../../../test-util';
 
 vi.mock('../../../../logger');
 
@@ -23,6 +23,7 @@ const MUTATION = `
       ... on UserRegisterPayload {
         user { username mustChangePassword }
         password
+        onboardingEmailSent
       }
       ... on InvalidInputError {
         message
@@ -31,6 +32,12 @@ const MUTATION = `
       ... on UsernameAlreadyExistsError {
         message
         username
+      }
+      ... on EmailInUseError {
+        message
+      }
+      ... on EmailNotConfiguredError {
+        message
       }
     }
   }
@@ -47,6 +54,7 @@ describe('Mutation.userRegister', () => {
     expect(result.data?.userRegister).toMatchObject({
       __typename: 'UserRegisterPayload',
       user: { username: 'charlie1', mustChangePassword: true },
+      onboardingEmailSent: false,
     });
     const payload = result.data?.userRegister as { password: string };
     const password = payload.password;
@@ -227,5 +235,136 @@ describe('Mutation.userRegister', () => {
     expect(
       await harness.prisma.user.findUnique({ where: { username: 'char.lie-1' } })
     ).not.toBeNull();
+  });
+});
+
+describe('Mutation.userRegister — mail not configured', () => {
+  it('rejects an email with EmailNotConfiguredError and creates nothing', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: 'c@example.com' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({ __typename: 'EmailNotConfiguredError' });
+    expect(await harness.prisma.user.findUnique({ where: { username: 'charlie1' } })).toBeNull();
+  });
+});
+
+describe('Mutation.userRegister — mail configured', () => {
+  beforeEach(async () => {
+    await harness.cleanup();
+    harness = await createHarness({ mail: MAIL_CONFIG });
+  });
+
+  it('requires an email', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1' } },
+    });
+
+    expect(result.data?.userRegister).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['email'], message: 'Email is required' }],
+    });
+    expect(await harness.prisma.user.findUnique({ where: { username: 'charlie1' } })).toBeNull();
+  });
+
+  it('rejects an implausible email', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: 'not-an-address' } },
+    });
+
+    expect(result.data?.userRegister).toEqual({
+      __typename: 'InvalidInputError',
+      message: 'Invalid input',
+      issues: [{ path: ['email'], message: 'Enter a valid email address' }],
+    });
+  });
+
+  it('still checks the username before the email', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'abc', email: 'not-an-address' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({
+      __typename: 'InvalidInputError',
+      issues: [{ path: ['username'] }],
+    });
+  });
+
+  it('creates a password-less account with the address and sends the welcome email', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: ' Charlie@Example.com ' } },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.userRegister).toEqual({
+      __typename: 'UserRegisterPayload',
+      user: { username: 'charlie1', mustChangePassword: false },
+      password: null,
+      onboardingEmailSent: true,
+    });
+
+    const row = await harness.prisma.user.findUniqueOrThrow({ where: { username: 'charlie1' } });
+    expect(row.passwordHash).toBeNull();
+    expect(row.email).toBe('Charlie@Example.com');
+    expect(row.emailKey).toBe('charlie@example.com');
+    expect(row.emailVerifiedAt).toBeNull();
+
+    const token = await harness.prisma.emailToken.findUniqueOrThrow({
+      where: { userId_purpose: { userId: row.id, purpose: 'onboard' } },
+    });
+    expect(token.email).toBe('Charlie@Example.com');
+
+    expect(harness.mailer!.sent).toHaveLength(1);
+    expect(harness.mailer!.sent[0].to).toBe('Charlie@Example.com');
+    expect(harness.mailer!.sent[0].text).toContain('charlie1');
+  });
+
+  it('returns EmailInUseError for an address another user holds, differing only by case, and creates nothing', async () => {
+    await harness.prisma.user.update({
+      where: { id: harness.aliceOwner.userId },
+      data: { email: 'taken@example.com', emailKey: 'taken@example.com' },
+    });
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: 'TAKEN@example.com' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({ __typename: 'EmailInUseError' });
+    expect(await harness.prisma.user.findUnique({ where: { username: 'charlie1' } })).toBeNull();
+    expect(fs.existsSync(path.join(harness.config.booksDir, 'charlie1'))).toBe(false);
+    expect(harness.mailer!.sent).toHaveLength(0);
+  });
+
+  it('falls back to a generated password when the welcome email fails to send', async () => {
+    harness.mailer!.nextResult = { ok: false, reason: 'transient' };
+
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: 'c@example.com' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({
+      __typename: 'UserRegisterPayload',
+      user: { username: 'charlie1', mustChangePassword: true },
+      onboardingEmailSent: false,
+    });
+    const { password } = result.data?.userRegister as { password: string };
+    expect(typeof password).toBe('string');
+
+    const row = await harness.prisma.user.findUniqueOrThrow({ where: { username: 'charlie1' } });
+    expect(await validateUser(harness.prisma, 'charlie1', password)).toBe(row.id);
+    expect(row.email).toBe('c@example.com');
+    expect(
+      await harness.prisma.emailToken.findUnique({
+        where: { userId_purpose: { userId: row.id, purpose: 'onboard' } },
+      })
+    ).toBeNull();
   });
 });

@@ -3,12 +3,22 @@ import * as path from 'path';
 
 import { z } from 'zod';
 
+import { findUserByEmail, isValidEmail } from '../../../../services/email';
+import { invalidateEmailTokens, issueEmailToken } from '../../../../services/email-token';
+import { welcomeMessage } from '../../../../services/mail-template';
+import { isMailConfigured } from '../../../../services/mailer';
 import { generateLoginPassword, hashLoginPassword } from '../../../../services/password';
 import { createUser } from '../../../../services/user';
 import { isValidUsername, MIN_USERNAME_LENGTH } from '../../../../utils/username';
 import { builder } from '../../builder';
+import { emailInUseError, model as emailInUseErrorModel } from '../../email-in-use-error/model';
+import {
+  emailNotConfiguredError,
+  model as emailNotConfiguredErrorModel,
+} from '../../email-not-configured-error/model';
 import {
   invalidInputError,
+  invalidInputIssue,
   model as invalidInputErrorModel,
 } from '../../invalid-input-error/model';
 import {
@@ -18,8 +28,10 @@ import {
 import { model as userModel } from '../model';
 
 /**
- * `username` only — REST's `POST /api/users` took nothing else in its body,
- * before Phase 0 removed that route. No `userId`: unlike every other
+ * `username`, plus `email` — required when mail is configured, rejected when it
+ * is not; optional in the schema only because which rule applies depends on the
+ * install. REST's `POST /api/users` took only `username` in its body, before
+ * Phase 0 removed that route. No `userId`: unlike every other
  * user-associated mutation in this file, this one creates the row rather
  * than acting on an existing one, so there is nothing yet to name with a
  * `User` global ID.
@@ -27,6 +39,7 @@ import { model as userModel } from '../model';
 const input = builder.inputType('UserRegisterInput', {
   fields: (t) => ({
     username: t.string({ required: true }),
+    email: t.string({ required: false }),
   }),
 });
 
@@ -75,7 +88,8 @@ const lengthSchema = z.object({
 type UserRegisterPayloadShape = {
   readonly __typename: 'UserRegisterPayload';
   readonly username: string;
-  readonly password: string;
+  readonly password: string | null;
+  readonly onboardingEmailSent: boolean;
 };
 
 /**
@@ -95,7 +109,12 @@ const payload = builder.objectRef<UserRegisterPayloadShape>('UserRegisterPayload
       resolve: (query, parent, _args, context) =>
         context.prisma.user.findUniqueOrThrow({ ...query, where: { username: parent.username } }),
     }),
-    password: t.exposeString('password'),
+    /**
+     * Null when the welcome email went out: the account then has no password
+     * at all, and the onboarding link is the only way in.
+     */
+    password: t.exposeString('password', { nullable: true }),
+    onboardingEmailSent: t.exposeBoolean('onboardingEmailSent'),
   }),
 });
 
@@ -104,7 +123,13 @@ const payload = builder.objectRef<UserRegisterPayloadShape>('UserRegisterPayload
  * `progress/mutation/delete.ts`'s identical note.
  */
 const result = builder.unionType('UserRegisterResult', {
-  types: [payload, invalidInputErrorModel, usernameAlreadyExistsErrorModel],
+  types: [
+    payload,
+    invalidInputErrorModel,
+    usernameAlreadyExistsErrorModel,
+    emailInUseErrorModel,
+    emailNotConfiguredErrorModel,
+  ],
 });
 
 /**
@@ -130,6 +155,19 @@ const result = builder.unionType('UserRegisterResult', {
  *     `P2002` unique-constraint collision (a race: two concurrent
  *     registrations of the same name). Same `UsernameAlreadyExistsError`.
  *
+ *  5. email (mail configured only) — required, plausible, not already held
+ *     (`EmailInUseError`); a supplied email on an install without mail is
+ *     `EmailNotConfiguredError`.
+ *
+ * When mail is configured the account is created password-less
+ * (`passwordHash: null`, `mustChangePassword: false`, email unverified) and a
+ * welcome email carrying an `onboard` code is sent; the payload then has
+ * `password: null` and `onboardingEmailSent: true`. If the send fails nobody
+ * holds the code, so the token is dropped and the account falls back to a
+ * generated password (`mustChangePassword: true`, `onboardingEmailSent: false`)
+ * rather than being left with no way in. Without mail the original
+ * generated-password hand-off is unchanged.
+ *
  * `fs.mkdirSync` before `createUser` mirrors REST's own ordering
  * (`routes/users.ts`, removed in Phase 0) and creates the on-disk library
  * folder immediately rather than waiting for the first book — REST did this
@@ -148,7 +186,8 @@ const result = builder.unionType('UserRegisterResult', {
 builder.mutationField('userRegister', (t) =>
   t.field({
     type: result,
-    description: 'Creates a new user account with a generated login password.',
+    description:
+      'Creates a new user account with a generated login password, or, when mail is configured, a password-less one onboarded by email.',
     args: { input: t.arg({ type: input, required: true }) },
     authScopes: { admin: true },
     resolve: async (_parent, args, context) => {
@@ -163,14 +202,95 @@ builder.mutationField('userRegister', (t) =>
       const lengthParsed = lengthSchema.safeParse({ username });
       if (!lengthParsed.success) return invalidInputError(lengthParsed.error);
 
+      // Email rules depend on the install, not the admin: an install that can
+      // send mail onboards every new account by mail; one that cannot keeps the
+      // generated-password hand-off. Checked after every username rule so the
+      // existing username error ordering is unchanged.
+      const mailer = isMailConfigured(context.config) ? context.mailer : null;
+      const rawEmail = args.input.email?.trim() ?? '';
+      if (mailer === null && rawEmail !== '') return emailNotConfiguredError();
+      if (mailer !== null) {
+        if (rawEmail === '') return invalidInputIssue(['email'], 'Email is required');
+        if (!isValidEmail(rawEmail)) {
+          return invalidInputIssue(['email'], 'Enter a valid email address');
+        }
+        // Pre-checked so a taken address creates neither a row nor a library
+        // folder. The P2002 branch below still covers the race.
+        if ((await findUserByEmail(context.prisma, rawEmail)) !== null) return emailInUseError();
+      }
+
       fs.mkdirSync(path.join(context.config.booksDir, username), { recursive: true });
 
-      const password = generateLoginPassword();
-      const passwordHash = await hashLoginPassword(password);
-      const created = await createUser(context.prisma, username, passwordHash, undefined, true);
-      if (!created) return usernameAlreadyExistsError(username);
+      if (mailer === null) {
+        const password = generateLoginPassword();
+        const passwordHash = await hashLoginPassword(password);
+        const created = await createUser(context.prisma, username, passwordHash, undefined, true);
+        if (!created) return usernameAlreadyExistsError(username);
+        return {
+          __typename: 'UserRegisterPayload' as const,
+          username,
+          password,
+          onboardingEmailSent: false,
+        };
+      }
 
-      return { __typename: 'UserRegisterPayload' as const, username, password };
+      const created = await createUser(context.prisma, username, null, undefined, false, {
+        email: rawEmail,
+      });
+      if (!created) {
+        const taken = await context.prisma.user.findUnique({
+          where: { username },
+          select: { id: true },
+        });
+        return taken ? usernameAlreadyExistsError(username) : emailInUseError();
+      }
+      const { id: userId } = await context.prisma.user.findUniqueOrThrow({
+        where: { username },
+        select: { id: true },
+      });
+
+      const issued = await issueEmailToken(context.prisma, {
+        userId,
+        purpose: 'onboard',
+        email: rawEmail,
+      });
+      const sent =
+        issued.ok &&
+        (
+          await mailer.send(
+            welcomeMessage({
+              to: rawEmail,
+              code: issued.code,
+              username,
+              libraryName: context.config.libraryName,
+              publicUrl: context.config.publicUrl ?? null,
+            })
+          )
+        ).ok;
+      if (sent) {
+        return {
+          __typename: 'UserRegisterPayload' as const,
+          username,
+          password: null,
+          onboardingEmailSent: true,
+        };
+      }
+
+      // The welcome email did not go out, so nobody holds the code: fall back to
+      // today's hand-off rather than leave an account nobody can enter, and drop
+      // the token so the account does not end up with two ways in.
+      await invalidateEmailTokens(context.prisma, userId, 'onboard');
+      const password = generateLoginPassword();
+      await context.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: await hashLoginPassword(password), mustChangePassword: true },
+      });
+      return {
+        __typename: 'UserRegisterPayload' as const,
+        username,
+        password,
+        onboardingEmailSent: false,
+      };
     },
   })
 );

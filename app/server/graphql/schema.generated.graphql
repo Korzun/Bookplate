@@ -703,7 +703,9 @@ type Mutation {
   """
   userRegenerateSyncPassword(input: UserRegenerateSyncPasswordInput!): UserRegenerateSyncPasswordResult
 
-  """Creates a new user account with a generated login password."""
+  """
+  Creates a new user account with a generated login password, or, when mail is configured, a password-less one onboarded by email.
+  """
   userRegister(input: UserRegisterInput!): UserRegisterResult!
 
   """
@@ -1010,15 +1012,17 @@ type UserRegenerateSyncPasswordPayload {
 union UserRegenerateSyncPasswordResult = InvalidInputError | UserRegenerateSyncPasswordPayload
 
 input UserRegisterInput {
+  email: String
   username: String!
 }
 
 type UserRegisterPayload {
-  password: String!
+  onboardingEmailSent: Boolean!
+  password: String
   user: User!
 }
 
-union UserRegisterResult = InvalidInputError | UserRegisterPayload | UsernameAlreadyExistsError
+union UserRegisterResult = EmailInUseError | EmailNotConfiguredError | InvalidInputError | UserRegisterPayload | UsernameAlreadyExistsError
 
 input UserResetPasswordInput {
   userId: ID!

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { logger } from '../logger';
 import { generateUserId } from '../utils/id';
 import { purgeForUser } from './edition';
+import { normalizeEmail } from './email';
 import { generateSyncPassword } from './password';
 import { isPrismaError } from './prisma-errors';
 
@@ -10,7 +11,7 @@ const log = logger('user');
 
 /**
  * Creates a user account. Returns `false` on a `P2002` unique-constraint
- * collision (duplicate username) rather than throwing — every caller treats
+ * collision (duplicate username or email) rather than throwing — every caller treats
  * that as an ordinary "already exists" outcome, not an error.
  */
 export async function createUser(
@@ -18,7 +19,8 @@ export async function createUser(
   username: string,
   passwordHash: string | null,
   syncPassword?: string,
-  mustChangePassword?: boolean
+  mustChangePassword?: boolean,
+  options: { email?: string } = {}
 ): Promise<boolean> {
   try {
     await prisma.user.create({
@@ -28,10 +30,16 @@ export async function createUser(
         passwordHash,
         syncPassword: syncPassword ?? generateSyncPassword(),
         mustChangePassword: mustChangePassword ?? false,
+        ...(options.email === undefined
+          ? {}
+          : { email: options.email, emailKey: normalizeEmail(options.email) }),
       },
     });
     return true;
   } catch (e) {
+    // `P2002` now covers either unique index (`username` or `email_key`); the
+    // caller re-queries to tell which, since `e.meta.target` is not reliable
+    // under driver adapters.
     if (isPrismaError(e, 'P2002')) {
       return false;
     }
