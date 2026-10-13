@@ -1,5 +1,6 @@
 /**
- * Single-use codes for confirming an address and for resetting a password.
+ * Single-use codes for confirming an address, resetting a password, and
+ * onboarding a newly registered account.
  *
  * Only the sha256 of a code is ever persisted — the same rule
  * `services/token.ts` applies to refresh tokens, for the same reason: a
@@ -20,7 +21,7 @@ import * as crypto from 'crypto';
 
 import { PrismaClient } from '@prisma/client';
 
-export type EmailTokenPurpose = 'verify' | 'reset';
+export type EmailTokenPurpose = 'verify' | 'reset' | 'onboard';
 
 /**
  * 24h for a new address: the user may not be at their inbox, and the cost of a
@@ -30,6 +31,12 @@ export type EmailTokenPurpose = 'verify' | 'reset';
  */
 export const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 export const RESET_TTL_MS = 60 * 60 * 1000;
+/**
+ * 7 days for onboarding: a new user may not check that inbox for a while, and
+ * the token only works on an account that has never had a password
+ * (`/api/onboard` refuses any row with a `passwordHash`).
+ */
+export const ONBOARD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const RESEND_COOLDOWN_MS = 60 * 1000;
 /**
@@ -69,7 +76,9 @@ export function hashEmailCode(code: string): string {
 }
 
 function ttlFor(purpose: EmailTokenPurpose): number {
-  return purpose === 'verify' ? VERIFY_TTL_MS : RESET_TTL_MS;
+  if (purpose === 'verify') return VERIFY_TTL_MS;
+  if (purpose === 'onboard') return ONBOARD_TTL_MS;
+  return RESET_TTL_MS;
 }
 
 export type IssueResult =

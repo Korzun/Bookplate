@@ -14,6 +14,7 @@ import {
   invalidateEmailTokens,
   issueEmailToken,
   MAX_SENDS_PER_WINDOW,
+  ONBOARD_TTL_MS,
   RESEND_COOLDOWN_MS,
   RESET_TTL_MS,
   SEND_WINDOW_MS,
@@ -88,6 +89,15 @@ describe('issueEmailToken', () => {
       where: { userId_purpose: { userId: 'u1', purpose: 'reset' } },
     });
     expect(row.expiresAt).toBe(T0 + RESET_TTL_MS);
+  });
+
+  it('gives an onboard token the seven-day TTL', async () => {
+    await issueEmailToken(prisma, { userId: 'u1', purpose: 'onboard', email: 'a@b.co', now: T0 });
+    const row = await prisma.emailToken.findUniqueOrThrow({
+      where: { userId_purpose: { userId: 'u1', purpose: 'onboard' } },
+    });
+    expect(row.expiresAt).toBe(T0 + ONBOARD_TTL_MS);
+    expect(ONBOARD_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
   it('refuses a resend inside the cooldown and says how long to wait', async () => {

@@ -1,8 +1,8 @@
 /**
- * Every mail message this app sends, as data: the two code-bearing messages
- * (`verificationMessage`, `passwordResetMessage`) and the three notices
+ * Every mail message this app sends, as data: the three code-bearing messages
+ * (`verificationMessage`, `passwordResetMessage`, `welcomeMessage`) and the three notices
  * (`bookRequestedMessage`, `requestFulfilledMessage`, `requestDeclinedMessage`).
- * All five are pure functions of their arguments — no config, no clock, no
+ * All six are pure functions of their arguments — no config, no clock, no
  * I/O — so the tests read them directly and a caller cannot forget to pass
  * the library name.
  *
@@ -104,6 +104,32 @@ export function passwordResetMessage(args: TemplateArgs): MailMessage {
     closing:
       "This code expires in 1 hour and can be used once. If you didn't request a " +
       'password reset, you can ignore this email — nothing has changed.',
+  });
+}
+
+export type WelcomeArgs = TemplateArgs & { username: string };
+
+/**
+ * The link carries the address as well as the code because `EmailToken` is
+ * keyed by account, not by hash — `/api/onboard` has to be told which account
+ * the code belongs to, exactly as `/api/password/reset` is.
+ */
+export function welcomeMessage(args: WelcomeArgs): MailMessage {
+  return render({
+    to: args.to,
+    subject: `Your ${args.libraryName} account`,
+    lead:
+      `An account has been created for you on ${args.libraryName}. Your username is ` +
+      `${args.username}. Enter this code in ${args.libraryName} to choose your password:`,
+    code: args.code,
+    href:
+      args.publicUrl === null
+        ? null
+        : `${args.publicUrl}/welcome?code=${encodeURIComponent(args.code)}` +
+          `&email=${encodeURIComponent(args.to)}`,
+    linkLabel: 'Or set up your account here',
+    closing:
+      'This code expires in 7 days and can be used once. Using it also confirms this email address.',
   });
 }
 

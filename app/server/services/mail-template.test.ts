@@ -6,6 +6,7 @@ import {
   requestDeclinedMessage,
   requestFulfilledMessage,
   verificationMessage,
+  welcomeMessage,
 } from './mail-template';
 
 const BASE = { to: 'reader@example.com', code: 'K7M2QX4P', libraryName: 'My Books' };
@@ -150,5 +151,49 @@ describe('notification messages', () => {
     expect(message.html).not.toContain('<b>x</b>');
     expect(message.html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(message.html).toContain('&quot;quoted&quot;');
+  });
+});
+
+describe('welcomeMessage', () => {
+  const WELCOME = { ...BASE, username: 'reader1' };
+
+  it('names the library, the username and the code', () => {
+    const message = welcomeMessage({ ...WELCOME, publicUrl: null });
+    expect(message.subject).toBe('Your My Books account');
+    expect(message.text).toContain('reader1');
+    expect(message.text).toContain('K7M2QX4P');
+    expect(message.html).toContain('K7M2QX4P');
+    expect(message.to).toBe('reader@example.com');
+  });
+
+  it('omits any link when no public URL is configured', () => {
+    const message = welcomeMessage({ ...WELCOME, publicUrl: null });
+    expect(message.text).not.toContain('http');
+    expect(message.html).not.toContain('href');
+  });
+
+  it('links to the welcome page carrying both the code and the address', () => {
+    const message = welcomeMessage({ ...WELCOME, publicUrl: 'https://books.example.com' });
+    const href = 'https://books.example.com/welcome?code=K7M2QX4P&email=reader%40example.com';
+    expect(message.text).toContain(href);
+    expect(message.html).toContain(`href="${href.replace(/&/g, '&amp;')}"`);
+  });
+
+  it('says the code expires in 7 days and also confirms the address', () => {
+    const { text } = welcomeMessage({ ...WELCOME, publicUrl: null });
+    expect(text).toContain('7 days');
+    expect(text).toMatch(/confirms this email address/);
+  });
+
+  it('escapes the library name and username in the html part', () => {
+    const message = welcomeMessage({
+      ...WELCOME,
+      libraryName: '<b>Lib</b>',
+      username: 'a<b',
+      publicUrl: null,
+    });
+    expect(message.html).not.toContain('<b>Lib</b>');
+    expect(message.html).toContain('&lt;b&gt;Lib&lt;/b&gt;');
+    expect(message.html).toContain('a&lt;b');
   });
 });
