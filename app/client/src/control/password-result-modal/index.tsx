@@ -27,6 +27,7 @@ type PasswordResultModalProps = {
   isOpen?: boolean;
   username: string;
   password: string | null;
+  notice?: string;
   onDone?: () => void;
 };
 
@@ -34,6 +35,7 @@ export function PasswordResultModal({
   isOpen = false,
   username,
   password,
+  notice,
   onDone = () => {},
 }: PasswordResultModalProps) {
   const styles = useStyle();
@@ -80,6 +82,7 @@ export function PasswordResultModal({
           <p>
             This password will only be shown once. Make sure to copy it before closing this dialog.
           </p>
+          {notice ? <p>{notice}</p> : null}
           <div className={styles.inset}>
             <span className={styles.password}>
               {password ? renderPassword(password, styles.charNumber, styles.charSymbol) : '—'}

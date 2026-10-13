@@ -104,11 +104,18 @@ export const UserRegisterDocument = graphql(`
           }
         }
         password
+        onboardingEmailSent
       }
       ... on UsernameAlreadyExistsError {
         message
       }
       ... on InvalidInputError {
+        message
+      }
+      ... on EmailInUseError {
+        message
+      }
+      ... on EmailNotConfiguredError {
         message
       }
     }

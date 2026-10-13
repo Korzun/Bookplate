@@ -9,6 +9,7 @@ import { useFragment } from '~/gql';
 import type { UserRegisterMutation, UserRegisterMutationVariables } from '~/gql/graphql';
 import { UserRegisterDocument } from '~/graphql/user';
 import { UserListDocument } from '~/graphql/user';
+import { ConfigContext } from '~/provider/config';
 import { renderWithApollo } from '~/test-utils';
 
 import { UserRegister } from './index';
@@ -20,9 +21,13 @@ beforeEach(() => {
 
 const registerSuccessMock = (
   username: string,
-  password: string
+  password: string | null,
+  { email, onboardingEmailSent = false }: { email?: string; onboardingEmailSent?: boolean } = {}
 ): MockedResponse<UserRegisterMutation, UserRegisterMutationVariables> => ({
-  request: { query: UserRegisterDocument, variables: { input: { username } } },
+  request: {
+    query: UserRegisterDocument,
+    variables: { input: email === undefined ? { username } : { username, email } },
+  },
   result: {
     data: {
       __typename: 'Mutation',
@@ -33,11 +38,12 @@ const registerSuccessMock = (
           id: 'u-new',
           username,
           pendingBookRequestCount: 0,
-          email: null,
+          email: email ?? null,
           emailVerifiedAt: null,
           library: { __typename: 'Library', id: 'lib-new' },
         },
         password,
+        onboardingEmailSent,
       },
     },
   },
@@ -66,13 +72,21 @@ const seedEmptyUserList = (client: ApolloClient) =>
     data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } },
   });
 
-function renderForm(mocks: MockedResponse[] = []) {
-  const rendered = renderWithApollo(<UserRegister />, { mocks });
+function renderForm(mocks: MockedResponse[] = [], { emailEnabled = false } = {}) {
+  const rendered = renderWithApollo(
+    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+      <UserRegister />
+    </ConfigContext.Provider>,
+    { mocks }
+  );
   seedEmptyUserList(rendered.client);
   const usernameInput = rendered.container.querySelector(
     'input[name="username"]'
   ) as HTMLInputElement;
-  return { ...rendered, usernameInput };
+  const emailInput = rendered.container.querySelector(
+    'input[name="email"]'
+  ) as HTMLInputElement | null;
+  return { ...rendered, usernameInput, emailInput };
 }
 
 describe('UserRegister', () => {
@@ -138,5 +152,98 @@ describe('UserRegister', () => {
     const style = getComputedStyle(container.querySelector('form') as HTMLElement);
     expect(style.display).toBe('flex');
     expect(style.flexDirection).toBe('column');
+  });
+});
+
+// The server's uniform `emailInUseError()` message, verbatim.
+const EMAIL_IN_USE =
+  'That email address is already in use by another account. Ask your administrator if you think it should be yours.';
+
+describe('UserRegister — email', () => {
+  it('shows no email field when email is not enabled', () => {
+    const { emailInput } = renderForm([], { emailEnabled: false });
+    expect(emailInput).toBeNull();
+  });
+
+  it('keeps Register disabled until both username and email are valid', async () => {
+    const user = userEvent.setup();
+    const { usernameInput, emailInput } = renderForm([], { emailEnabled: true });
+    const button = screen.getByRole('button', { name: 'Register' });
+
+    await user.type(usernameInput, 'charlie1');
+    expect(button).toBeDisabled();
+    await user.type(emailInput!, 'not-an-address');
+    expect(button).toBeDisabled();
+    await user.clear(emailInput!);
+    await user.type(emailInput!, 'c@example.com');
+    expect(button).toBeEnabled();
+  });
+
+  it('sends the email and confirms the welcome email went out', async () => {
+    const user = userEvent.setup();
+    const { usernameInput, emailInput } = renderForm(
+      [
+        registerSuccessMock('charlie1', null, {
+          email: 'c@example.com',
+          onboardingEmailSent: true,
+        }),
+      ],
+      { emailEnabled: true }
+    );
+
+    await user.type(usernameInput, 'charlie1');
+    await user.type(emailInput!, 'c@example.com');
+    await user.click(screen.getByRole('button', { name: 'Register' }));
+
+    expect(await screen.findByText(/welcome email sent to c@example\.com/i)).toBeInTheDocument();
+    expect(screen.queryByText(/new password for charlie1/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+  });
+
+  it('falls back to the password modal, with a note, when the welcome email did not send', async () => {
+    const user = userEvent.setup();
+    const { usernameInput, emailInput } = renderForm(
+      [registerSuccessMock('charlie1', 'Gen3rated!', { email: 'c@example.com' })],
+      { emailEnabled: true }
+    );
+
+    await user.type(usernameInput, 'charlie1');
+    await user.type(emailInput!, 'c@example.com');
+    await user.click(screen.getByRole('button', { name: 'Register' }));
+
+    expect(await screen.findByText(/new password for charlie1/i)).toBeInTheDocument();
+    expect(screen.getByText(/welcome email could not be sent/i)).toBeInTheDocument();
+  });
+
+  it('toasts EmailInUseError and keeps the form values', async () => {
+    const user = userEvent.setup();
+    const { usernameInput, emailInput } = renderForm(
+      [
+        {
+          request: {
+            query: UserRegisterDocument,
+            variables: { input: { username: 'charlie1', email: 'c@example.com' } },
+          },
+          result: {
+            data: {
+              __typename: 'Mutation',
+              userRegister: {
+                __typename: 'EmailInUseError',
+                message: EMAIL_IN_USE,
+              },
+            },
+          },
+        },
+      ],
+      { emailEnabled: true }
+    );
+
+    await user.type(usernameInput, 'charlie1');
+    await user.type(emailInput!, 'c@example.com');
+    await user.click(screen.getByRole('button', { name: 'Register' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(EMAIL_IN_USE);
+    expect(usernameInput.value).toBe('charlie1');
+    expect(emailInput!.value).toBe('c@example.com');
   });
 });

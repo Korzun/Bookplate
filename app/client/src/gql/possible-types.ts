@@ -153,6 +153,8 @@
       "UserRegenerateSyncPasswordPayload"
     ],
     "UserRegisterResult": [
+      "EmailInUseError",
+      "EmailNotConfiguredError",
       "InvalidInputError",
       "UserRegisterPayload",
       "UsernameAlreadyExistsError"

@@ -3,10 +3,11 @@ import { useMutation } from '@apollo/client/react';
 import { Fragment, useActionState, useCallback, useState } from 'react';
 
 import { Card } from '~/component';
-import { Button, PasswordResultModal, TextInput } from '~/control';
+import { Button, ConfirmModal, PasswordResultModal, TextInput } from '~/control';
 import type { UserRegisterMutation } from '~/gql/graphql';
 import { UserRegisterDocument } from '~/graphql/user';
 import { unwrapResult } from '~/provider/apollo';
+import { useEmailEnabled } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -18,6 +19,9 @@ type UserRegisterPayload = Extract<
   UserRegisterMutation['userRegister'],
   { __typename: 'UserRegisterPayload' }
 >;
+
+// A typo filter, not a security boundary — the server's `isValidEmail` decides.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 /**
  * `useRegisterUser` is inlined directly here rather than kept as a
@@ -31,6 +35,12 @@ type UserRegisterPayload = Extract<
  * is what makes `cache.identify({ __typename: 'Viewer' })` resolve to an
  * addressable id) — the same shape `DeviceForm`'s create path uses for
  * `Viewer.devices`.
+ *
+ * The Email field is shown only when `emailEnabled` (mail is configured); the
+ * server enforces the same rule, requiring an email then and rejecting one
+ * otherwise. A successful registration with an email ends in one of two
+ * modals: a "welcome email sent" confirmation, or — when the send failed —
+ * the one-time password modal with a note to share it by hand.
  */
 export const UserRegister = () => {
   const styles = useStyle();
@@ -38,12 +48,19 @@ export const UserRegister = () => {
   const showToast = useToast();
   const [username, setUsername] = useState<string>('');
   const [isUsernameValid, setIsUsernameValid] = useState<boolean>(false);
-  const [result, setResult] = useState<{ username: string; password: string } | null>(null);
+  const emailEnabled = useEmailEnabled();
+  const [email, setEmail] = useState<string>('');
+  const [isEmailValid, setIsEmailValid] = useState<boolean>(false);
+  const [result, setResult] = useState<
+    | { kind: 'password'; username: string; password: string; notice?: string }
+    | { kind: 'welcome'; username: string; email: string }
+    | null
+  >(null);
 
   const [, submitAction, isPending] = useActionState(async () => {
     try {
       const { data } = await runRegister({
-        variables: { input: { username } },
+        variables: { input: emailEnabled ? { username, email: email.trim() } : { username } },
         update: (cache, { data: mutationData }) => {
           const created = unwrapResult<UserRegisterPayload>(
             mutationData?.userRegister,
@@ -76,9 +93,26 @@ export const UserRegister = () => {
         return null;
       }
 
-      setResult({ username, password: registerResult.payload.password });
+      const { password, onboardingEmailSent } = registerResult.payload;
+      if (onboardingEmailSent) {
+        setResult({ kind: 'welcome', username, email: email.trim() });
+      } else if (password !== null) {
+        setResult({
+          kind: 'password',
+          username,
+          password,
+          notice: emailEnabled
+            ? 'The welcome email could not be sent, so share this password with them instead.'
+            : undefined,
+        });
+      } else {
+        showToast('Registration failed', 'error');
+        return null;
+      }
       setUsername('');
       setIsUsernameValid(false);
+      setEmail('');
+      setIsEmailValid(false);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Registration failed', 'error');
     }
@@ -95,6 +129,16 @@ export const UserRegister = () => {
   const validateUsername = useCallback((newValue: string): boolean => {
     const valid = newValue.trim().length >= 6;
     setIsUsernameValid(valid);
+    return valid;
+  }, []);
+
+  const handleEmailChange = useCallback((newValue: string | undefined) => {
+    setEmail(newValue ?? '');
+  }, []);
+
+  const validateEmail = useCallback((newValue: string): boolean => {
+    const valid = EMAIL_PATTERN.test(newValue.trim());
+    setIsEmailValid(valid);
     return valid;
   }, []);
 
@@ -116,24 +160,49 @@ export const UserRegister = () => {
               label="Username"
               autoComplete="off"
             />
+            {emailEnabled ? (
+              <TextInput
+                name="email"
+                value={email}
+                onChange={handleEmailChange}
+                validate={validateEmail}
+                layout="horizontal"
+                label="Email"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+            ) : null}
           </div>
           <Button
             type="primary"
             radius="card"
             submit
             loading={isPending}
-            disabled={!isUsernameValid}
+            disabled={!isUsernameValid || (emailEnabled && !isEmailValid)}
           >
             {isPending ? 'Registering…' : 'Register'}
           </Button>
         </form>
       </Card>
       <PasswordResultModal
-        isOpen={result !== null}
-        username={result?.username ?? ''}
-        password={result?.password ?? null}
+        isOpen={result?.kind === 'password'}
+        username={result?.kind === 'password' ? result.username : ''}
+        password={result?.kind === 'password' ? result.password : null}
+        notice={result?.kind === 'password' ? result.notice : undefined}
         onDone={handleDone}
       />
+      <ConfirmModal
+        isOpen={result?.kind === 'welcome'}
+        title="User registered"
+        confirmText="Done"
+        hideCancel
+        onConfirm={handleDone}
+        onCancel={handleDone}
+      >
+        {result?.kind === 'welcome'
+          ? `Welcome email sent to ${result.email}. ${result.username} can set their password from the link.`
+          : null}
+      </ConfirmModal>
     </Fragment>
   );
 };

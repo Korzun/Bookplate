@@ -11,6 +11,7 @@ type ConfirmModalProps = PropsWithChildren<{
   confirmDisabled?: boolean;
   confirmText?: string;
   danger?: boolean;
+  hideCancel?: boolean;
   icon?: React.ComponentType<IconProps>;
   isOpen?: boolean;
   loading?: boolean;
@@ -25,6 +26,7 @@ export function ConfirmModal({
   confirmDisabled = false,
   confirmText = 'Confirm',
   danger = false,
+  hideCancel = false,
   icon: Icon,
   isOpen = false,
   loading = false,
@@ -67,9 +69,11 @@ export function ConfirmModal({
         </div>
         <div className={styles.body}>{children}</div>
         <div className={styles.footer}>
-          <Button onClick={handleCancel} disabled={loading} type="text" radius="modal">
-            {cancelText}
-          </Button>
+          {hideCancel ? null : (
+            <Button onClick={handleCancel} disabled={loading} type="text" radius="modal">
+              {cancelText}
+            </Button>
+          )}
           <Button
             onClick={handleConfirm}
             disabled={confirmDisabled || loading}
