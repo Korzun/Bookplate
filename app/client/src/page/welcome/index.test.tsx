@@ -34,15 +34,30 @@ describe('WelcomePage', () => {
     mocks.search = '';
   });
 
-  it('prefills the address and code from the link and fires no request on mount', () => {
+  it('takes the address and code from the link without showing them, and fires no request on mount', () => {
     mocks.search = 'code=K7M2QX4P&email=new%40example.com';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    renderWithProviders(<WelcomePage />);
+    const { container } = renderWithProviders(<WelcomePage />);
 
-    expect(screen.getByPlaceholderText('Email address')).toHaveValue('new@example.com');
-    expect(screen.getByPlaceholderText('Welcome code')).toHaveValue('K7M2QX4P');
+    expect(container.querySelector('input[name="email"]')).toBeNull();
+    expect(container.querySelector('input[name="code"]')).toBeNull();
+    expect(screen.getByPlaceholderText('New password')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the code', 'email=new%40example.com'],
+    ['the address', 'code=K7M2QX4P'],
+    ['both', ''],
+  ])('shows an incomplete-link message and no form when the link lacks %s', (_label, search) => {
+    mocks.search = search;
+    const { container } = renderWithProviders(<WelcomePage />);
+
+    expect(
+      screen.getByText('This link is incomplete — use the link from your welcome email.')
+    ).toBeInTheDocument();
+    expect(container.querySelector('form')).toBeNull();
   });
 
   it('submits to /api/onboard and stores the returned token', async () => {
@@ -106,7 +121,7 @@ describe('WelcomePage', () => {
 
     expect(
       await screen.findByText(
-        /That link is not valid or has expired\. Check the code, or ask your library admin/
+        'That link is not valid or has expired. Ask your library admin to register you again.'
       )
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /forgot/i })).toBeNull();

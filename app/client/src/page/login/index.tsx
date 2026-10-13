@@ -50,7 +50,7 @@ export const LoginPage = () => {
         // used its welcome code yet. Without mail there is no onboarding, so
         // 403 stays the generic failure there.
         showToast(
-          "This account hasn't been set up yet — use the link in your welcome email, or Set up a new account.",
+          "This account hasn't been set up yet — use the link in your welcome email.",
           'error'
         );
       } else {
@@ -96,16 +96,9 @@ export const LoginPage = () => {
           {/* On the page rather than in a card, so it takes the page radius —
               the Button default, hence no `radius` prop. */}
           {emailEnabled ? (
-            <>
-              <Button type="default" onClick={() => void navigate(path.forgotPassword())}>
-                Forgot password?
-              </Button>
-              {/* An install without `publicUrl` sends a welcome code but no
-                  link, so this is how a new user reaches the welcome page. */}
-              <Button type="default" onClick={() => void navigate(path.welcome())}>
-                Set up a new account
-              </Button>
-            </>
+            <Button type="default" onClick={() => void navigate(path.forgotPassword())}>
+              Forgot password?
+            </Button>
           ) : null}
         </div>
       </div>

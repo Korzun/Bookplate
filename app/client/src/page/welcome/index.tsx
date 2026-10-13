@@ -15,24 +15,26 @@ import { useStyle } from './style';
  * `UnprotectedRoute` to send them on to the library, exactly as the login page
  * relies on.
  *
- * Both fields are prefilled from the link but editable: on an install with no
- * `publicUrl` the email carries only a code, and the user arrives here from the
- * login page's "Set up a new account" button.
+ * The link is the only way here — mail is off on any install without
+ * `public_url`, and nothing in the app links to this page — so the address and
+ * code are read from it and never shown. A link missing either one (a mail
+ * client that truncated it) gets a message instead of a form that could only
+ * fail.
  */
 export const WelcomePage = () => {
   const styles = useStyle();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState<string>(searchParams.get('email') ?? '');
-  const [code, setCode] = useState<string>(searchParams.get('code') ?? '');
+  const email = searchParams.get('email') ?? '';
+  const code = searchParams.get('code') ?? '';
+  const isLinkComplete = email !== '' && code !== '';
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
   // Client-side only, and NOT a security boundary: the server enforces the
   // 8-character floor independently.
-  const canSubmit =
-    email !== '' && code !== '' && newPassword.length >= 8 && newPassword === confirmPassword;
+  const canSubmit = newPassword.length >= 8 && newPassword === confirmPassword;
 
   const [, submitAction, isPending] = useActionState(async () => {
     setError(null);
@@ -40,7 +42,7 @@ export const WelcomePage = () => {
       setError(
         newPassword !== confirmPassword
           ? 'Those passwords do not match'
-          : 'Fill in every field; the password must be at least 8 characters'
+          : 'The password must be at least 8 characters'
       );
       return null;
     }
@@ -80,7 +82,7 @@ export const WelcomePage = () => {
       // account does not have until onboarding succeeds.
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       setError(
-        `${body.error ?? 'That link is not valid or has expired.'} Check the code, or ask your library admin to register you again.`
+        `${body.error ?? 'That link is not valid or has expired.'} Ask your library admin to register you again.`
       );
     } catch {
       setError('Network error — please try again');
@@ -95,40 +97,32 @@ export const WelcomePage = () => {
         <div className={styles.stack}>
           <Card>
             <div className={styles.content}>
-              <form className={styles.form} action={submitAction}>
-                <TextInput
-                  placeholder="Email address"
-                  name="email"
-                  autoCapitalize="none"
-                  onChange={(value) => setEmail(value ?? '')}
-                  value={email}
-                />
-                <TextInput
-                  placeholder="Welcome code"
-                  name="code"
-                  autoCapitalize="characters"
-                  onChange={(value) => setCode(value ?? '')}
-                  value={code}
-                />
-                <TextInput
-                  placeholder="New password"
-                  name="newPassword"
-                  password
-                  onChange={(value) => setNewPassword(value ?? '')}
-                  value={newPassword}
-                />
-                <TextInput
-                  placeholder="Confirm new password"
-                  name="confirmPassword"
-                  password
-                  onChange={(value) => setConfirmPassword(value ?? '')}
-                  value={confirmPassword}
-                />
-                <Button submit loading={isPending} type="primary" radius="card">
-                  Set password
-                </Button>
-                {error === null ? null : <p className={styles.error}>{error}</p>}
-              </form>
+              {isLinkComplete ? (
+                <form className={styles.form} action={submitAction}>
+                  <TextInput
+                    placeholder="New password"
+                    name="newPassword"
+                    password
+                    onChange={(value) => setNewPassword(value ?? '')}
+                    value={newPassword}
+                  />
+                  <TextInput
+                    placeholder="Confirm new password"
+                    name="confirmPassword"
+                    password
+                    onChange={(value) => setConfirmPassword(value ?? '')}
+                    value={confirmPassword}
+                  />
+                  <Button submit loading={isPending} type="primary" radius="card">
+                    Set password
+                  </Button>
+                  {error === null ? null : <p className={styles.error}>{error}</p>}
+                </form>
+              ) : (
+                <p className={styles.error}>
+                  This link is incomplete — use the link from your welcome email.
+                </p>
+              )}
             </div>
           </Card>
           <Button type="default" onClick={() => void navigate(path.login())}>

@@ -207,3 +207,15 @@ Client:
 - Resending the welcome email (the forthcoming user screen).
 - Adding or changing an address on an existing user from the admin side.
 - Any change to the `mustSetEmail` gate or the self-service set-email flow.
+
+## Revised after VQA (2026-10-13)
+
+- **The welcome link is the only way in.** The login page's "Set up a new
+  account" button is removed, and `/welcome` no longer shows the address or
+  code fields — it reads both from the link, and shows "This link is
+  incomplete — use the link from your welcome email." when either is missing.
+- **Email requires `public_url`.** `loadConfig` turns mail off (with a startup
+  warning) when `public_url` is unset or invalid, for every driver. This
+  supersedes "Without `publicUrl`, the user types the code on the `/welcome`
+  page" above, and the "Login page" section. Existing installs with mail but
+  no `public_url` lose email features until it is set.

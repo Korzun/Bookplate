@@ -95,7 +95,11 @@ describe('LoginPage', () => {
     await user.type(screen.getByPlaceholderText('Password'), 'whatever');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(await screen.findByText(/hasn't been set up yet/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "This account hasn't been set up yet — use the link in your welcome email."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
   });
 
@@ -163,19 +167,11 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: /forgot/i })).toBeNull();
   });
 
-  it('offers a set-up-account button that goes to the welcome page when email is enabled', async () => {
-    const user = userEvent.setup();
+  // A new user's only way in is the link in their welcome email, so the
+  // sign-in page offers no route to the welcome page of its own.
+  it('offers no set-up-account button, even when email is enabled', () => {
     renderWithConfig(<LoginPage />, { emailEnabled: true });
-
-    const button = screen.getByRole('button', { name: /set up a new account/i });
-    expect(button.closest('form')).toBeNull();
-    await user.click(button);
-    expect(routerMocks.navigate).toHaveBeenCalledWith('/welcome');
-  });
-
-  it('offers no set-up-account button when email is disabled', () => {
-    renderWithConfig(<LoginPage />, { emailEnabled: false });
-    expect(screen.queryByRole('button', { name: /set up a new account/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /set up/i })).toBeNull();
   });
 
   it('labels the identifier field for email when email is enabled', () => {
