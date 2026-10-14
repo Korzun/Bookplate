@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Absolute origin this instance is reachable at (e.g. `https://books.example.com`). **Required for email**: the links in every verification, reset and welcome email are built from it, and email stays off without it (a warning is logged at startup). |
+| `public_url`             | string | *(none)*    | Absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code in verification and reset emails, which work fine on the code alone. **Required for registering users by email**: the welcome email is link-only, so without it new users get a generated password instead (a warning is logged at startup). |
 
 Example:
 
@@ -125,9 +125,8 @@ reader devices.
 
 #### Email login, verification, and password reset
 
-These only apply once the required `email_*` options **and `public_url`** are
-set (see the **Configuration** table above) — every email links back to this
-instance, so email stays off until it knows its own address. An install that has never had mail configured
+These only apply once the required `email_*` options are set (see the
+**Configuration** table above). An install that has never had mail configured
 works exactly as it always has, with no email address or extra screen anywhere.
 (If mail is configured for a while, addresses get set, and the Cloudflare
 credentials are later removed, those addresses remain usable as sign-in
@@ -152,15 +151,17 @@ Once email is configured:
   **confirmed** address and lets you choose a new login password. It does
   **not** work for the admin account — the admin password is always the
   `password` add-on option, and is only changed there.
-- **Registering a user needs their address.** The admin enters it when
+- **Registering a user needs their address** — when `public_url` is also
+  set; without it, registration hands the admin a generated password as it
+  does without mail. The admin enters the address when
   creating the account, which is then created without a password. The new
   user gets a **welcome email** with a code, valid for 7 days, to choose
   their own password; using it also confirms their address and signs them
   in. The link in that email is the only way in — there is no sign-up or
   set-up entry on the sign-in page.
-- **What the emails contain:** every verification, password-reset and welcome
-  email carries a clickable link built from `public_url`, plus the same code in
-  plain text.
+- **What the emails contain:** verification and password-reset emails carry a
+  plain code to type in, plus a clickable link when `public_url` is set. The
+  welcome email always carries the link, since it is the only way in.
 
 #### Push notifications
 
@@ -249,7 +250,7 @@ variables:
 | `CF_API_TOKEN`  | *(none)* | Same as the add-on's `email_cloudflare_api_token` option above — a Cloudflare API token with the **Email Sending: Edit** permission. Required together with `CF_ACCOUNT_ID` and `EMAIL_FROM`. |
 | `EMAIL_FROM`    | *(none)* | Same as the add-on's `email_from_address` option above. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `CF_ACCOUNT_ID` and `CF_API_TOKEN`. |
 | `EMAIL_FROM_NAME` | *(library name)* | Same as the add-on's `email_from_name` option above. Defaults to `LIBRARY_NAME` when unset. |
-| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Required for email — without it email stays off. |
+| `PUBLIC_URL`    | *(none)* | Same as the add-on's `public_url` option above. Optional for email, but required for registering users by email. |
 
 ## Release channels
 

@@ -7,7 +7,7 @@ import { Button, ConfirmModal, PasswordResultModal, TextInput } from '~/control'
 import type { UserRegisterMutation } from '~/gql/graphql';
 import { UserRegisterDocument } from '~/graphql/user';
 import { unwrapResult } from '~/provider/apollo';
-import { useEmailEnabled } from '~/provider/config';
+import { useOnboardingEnabled } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 
 import { useStyle } from './style';
@@ -36,7 +36,8 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
  * addressable id) — the same shape `DeviceForm`'s create path uses for
  * `Viewer.devices`.
  *
- * The Email field is shown only when `emailEnabled` (mail is configured); the
+ * The Email field is shown only when `onboardingEnabled` (mail is configured
+ * and the server has a `public_url` for the welcome link); the
  * server enforces the same rule, requiring an email then and rejecting one
  * otherwise. A successful registration with an email ends in one of two
  * modals: a "welcome email sent" confirmation, or — when the send failed —
@@ -48,7 +49,7 @@ export const UserRegister = () => {
   const showToast = useToast();
   const [username, setUsername] = useState<string>('');
   const [isUsernameValid, setIsUsernameValid] = useState<boolean>(false);
-  const emailEnabled = useEmailEnabled();
+  const onboardingEnabled = useOnboardingEnabled();
   const [email, setEmail] = useState<string>('');
   const [isEmailValid, setIsEmailValid] = useState<boolean>(false);
   const [result, setResult] = useState<
@@ -60,7 +61,7 @@ export const UserRegister = () => {
   const [, submitAction, isPending] = useActionState(async () => {
     try {
       const { data } = await runRegister({
-        variables: { input: emailEnabled ? { username, email: email.trim() } : { username } },
+        variables: { input: onboardingEnabled ? { username, email: email.trim() } : { username } },
         update: (cache, { data: mutationData }) => {
           const created = unwrapResult<UserRegisterPayload>(
             mutationData?.userRegister,
@@ -101,7 +102,7 @@ export const UserRegister = () => {
           kind: 'password',
           username,
           password,
-          notice: emailEnabled
+          notice: onboardingEnabled
             ? 'The welcome email could not be sent, so share this password with them instead.'
             : undefined,
         });
@@ -160,7 +161,7 @@ export const UserRegister = () => {
               label="Username"
               autoComplete="off"
             />
-            {emailEnabled ? (
+            {onboardingEnabled ? (
               <TextInput
                 name="email"
                 value={email}
@@ -178,7 +179,7 @@ export const UserRegister = () => {
             radius="card"
             submit
             loading={isPending}
-            disabled={!isUsernameValid || (emailEnabled && !isEmailValid)}
+            disabled={!isUsernameValid || (onboardingEnabled && !isEmailValid)}
           >
             {isPending ? 'Registering…' : 'Register'}
           </Button>

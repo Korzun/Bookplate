@@ -9,18 +9,31 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   // hidden until the server says mail exists — the safe direction, since
   // offering a dead affordance is worse than briefly hiding a live one.
   const [emailEnabled, setEmailEnabled] = useState(false);
+  const [onboardingEnabled, setOnboardingEnabled] = useState(false);
 
   useEffect(() => {
     void fetch('/api/public-config')
-      .then((r) => r.json() as Promise<{ libraryName: string; emailEnabled?: boolean }>)
+      .then(
+        (r) =>
+          r.json() as Promise<{
+            libraryName: string;
+            emailEnabled?: boolean;
+            onboardingEnabled?: boolean;
+          }>
+      )
       .then((cfg) => {
         if (cfg.libraryName) setLibraryName(cfg.libraryName);
         setEmailEnabled(cfg.emailEnabled === true);
+        setOnboardingEnabled(cfg.onboardingEnabled === true);
       })
       .catch(() => {
         // keep defaults on failure
       });
   }, []);
 
-  return <Context.Provider value={{ libraryName, emailEnabled }}>{children}</Context.Provider>;
+  return (
+    <Context.Provider value={{ libraryName, emailEnabled, onboardingEnabled }}>
+      {children}
+    </Context.Provider>
+  );
 };

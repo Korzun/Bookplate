@@ -180,7 +180,9 @@ function renderRow(
   }: { mocks?: MockedResponse[]; emailEnabled?: boolean } = {}
 ) {
   return renderWithApollo(
-    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+    <ConfigContext.Provider
+      value={{ libraryName: 'Bookplate', emailEnabled, onboardingEnabled: false }}
+    >
       {ui}
     </ConfigContext.Provider>,
     { mocks: apolloMocks }

@@ -17,9 +17,15 @@ vi.mock('react-router', async (orig) => ({
 // `renderWithConfig` is not a shared test-utils helper (only this suite needs
 // email-config variance), so it is a thin local wrapper around
 // `renderWithProviders` rather than a new export from `~/test-utils`.
-function renderWithConfig(ui: ReactElement, { emailEnabled }: { emailEnabled: boolean }) {
+function renderWithConfig(
+  ui: ReactElement,
+  {
+    emailEnabled,
+    onboardingEnabled = emailEnabled,
+  }: { emailEnabled: boolean; onboardingEnabled?: boolean }
+) {
   return renderWithProviders(
-    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled, onboardingEnabled }}>
       {ui}
     </ConfigContext.Provider>
   );
@@ -83,7 +89,7 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/invalid credentials/i)).not.toBeInTheDocument();
   });
 
-  it('explains a not-yet-onboarded account on 403 when email is enabled', async () => {
+  it('explains a not-yet-onboarded account on 403 when onboarding is enabled', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
@@ -112,6 +118,23 @@ describe('LoginPage', () => {
 
     renderWithConfig(<LoginPage />, { emailEnabled: false });
     await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'whatever');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText(/invalid credentials/i)).toBeInTheDocument();
+  });
+
+  // Mail without `public_url`: no account is ever registered password-less, so
+  // a 403 has nothing to do with a welcome email.
+  it('keeps "Invalid credentials" on 403 when email is on but onboarding is not', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 403 }))
+    );
+
+    renderWithConfig(<LoginPage />, { emailEnabled: true, onboardingEnabled: false });
+    await user.type(screen.getByPlaceholderText('Username or email'), 'alice');
     await user.type(screen.getByPlaceholderText('Password'), 'whatever');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 

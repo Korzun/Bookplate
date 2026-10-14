@@ -72,9 +72,11 @@ const seedEmptyUserList = (client: ApolloClient) =>
     data: { __typename: 'Query', viewer: { __typename: 'Viewer', users: [] } },
   });
 
-function renderForm(mocks: MockedResponse[] = [], { emailEnabled = false } = {}) {
+function renderForm(mocks: MockedResponse[] = [], { onboardingEnabled = false } = {}) {
   const rendered = renderWithApollo(
-    <ConfigContext.Provider value={{ libraryName: 'Bookplate', emailEnabled }}>
+    <ConfigContext.Provider
+      value={{ libraryName: 'Bookplate', emailEnabled: true, onboardingEnabled }}
+    >
       <UserRegister />
     </ConfigContext.Provider>,
     { mocks }
@@ -160,14 +162,16 @@ const EMAIL_IN_USE =
   'That email address is already in use by another account. Ask your administrator if you think it should be yours.';
 
 describe('UserRegister — email', () => {
-  it('shows no email field when email is not enabled', () => {
-    const { emailInput } = renderForm([], { emailEnabled: false });
+  // Mail alone is not enough: the welcome email is link-only, so without the
+  // server's `public_url` registration keeps the generated-password hand-off.
+  it('shows no email field when onboarding is not enabled, even with email on', () => {
+    const { emailInput } = renderForm([], { onboardingEnabled: false });
     expect(emailInput).toBeNull();
   });
 
   it('keeps Register disabled until both username and email are valid', async () => {
     const user = userEvent.setup();
-    const { usernameInput, emailInput } = renderForm([], { emailEnabled: true });
+    const { usernameInput, emailInput } = renderForm([], { onboardingEnabled: true });
     const button = screen.getByRole('button', { name: 'Register' });
 
     await user.type(usernameInput, 'charlie1');
@@ -188,7 +192,7 @@ describe('UserRegister — email', () => {
           onboardingEmailSent: true,
         }),
       ],
-      { emailEnabled: true }
+      { onboardingEnabled: true }
     );
 
     await user.type(usernameInput, 'charlie1');
@@ -204,7 +208,7 @@ describe('UserRegister — email', () => {
     const user = userEvent.setup();
     const { usernameInput, emailInput } = renderForm(
       [registerSuccessMock('charlie1', 'Gen3rated!', { email: 'c@example.com' })],
-      { emailEnabled: true }
+      { onboardingEnabled: true }
     );
 
     await user.type(usernameInput, 'charlie1');
@@ -235,7 +239,7 @@ describe('UserRegister — email', () => {
           },
         },
       ],
-      { emailEnabled: true }
+      { onboardingEnabled: true }
     );
 
     await user.type(usernameInput, 'charlie1');

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { BrandLockup, Card, Page } from '~/component';
 import { Button, TextInput } from '~/control';
 import { extractAccessToken, setToken } from '~/lib/token';
-import { useEmailEnabled } from '~/provider/config';
+import { useEmailEnabled, useOnboardingEnabled } from '~/provider/config';
 import { useToast } from '~/provider/toast';
 import { path } from '~/router';
 
@@ -15,6 +15,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const showToast = useToast();
   const emailEnabled = useEmailEnabled();
+  const onboardingEnabled = useOnboardingEnabled();
 
   const [username, setUsername] = useState<string | undefined>();
   const [password, setPassword] = useState<string | undefined>();
@@ -45,10 +46,10 @@ export const LoginPage = () => {
             : 'Too many attempts — please wait a moment and try again',
           'error'
         );
-      } else if (response.status === 403 && emailEnabled) {
+      } else if (response.status === 403 && onboardingEnabled) {
         // The server's "password not set": a registered account that has not
-        // used its welcome code yet. Without mail there is no onboarding, so
-        // 403 stays the generic failure there.
+        // used its welcome code yet. Without onboarding (mail plus `public_url`)
+        // no such account exists, so 403 stays the generic failure there.
         showToast(
           "This account hasn't been set up yet — use the link in your welcome email.",
           'error'
