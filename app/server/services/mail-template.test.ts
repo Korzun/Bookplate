@@ -155,10 +155,10 @@ describe('notification messages', () => {
 });
 
 describe('welcomeMessage', () => {
-  const WELCOME = { ...BASE, username: 'reader1' };
+  const WELCOME = { ...BASE, username: 'reader1', publicUrl: 'https://books.example.com' };
 
   it('names the library, the username and the code', () => {
-    const message = welcomeMessage({ ...WELCOME, publicUrl: null });
+    const message = welcomeMessage(WELCOME);
     expect(message.subject).toBe('Your My Books account');
     expect(message.text).toContain('reader1');
     expect(message.text).toContain('K7M2QX4P');
@@ -166,30 +166,22 @@ describe('welcomeMessage', () => {
     expect(message.to).toBe('reader@example.com');
   });
 
-  it('omits any link when no public URL is configured', () => {
-    const message = welcomeMessage({ ...WELCOME, publicUrl: null });
-    expect(message.text).not.toContain('http');
-    expect(message.html).not.toContain('href');
-  });
-
   // The link is the only way in — there is no sign-in-page entry point to
   // send a code-only reader to — so the copy never points anywhere else.
   it('never directs the reader to a sign-in-page entry point', () => {
-    for (const publicUrl of [null, 'https://books.example.com']) {
-      const message = welcomeMessage({ ...WELCOME, publicUrl });
-      expect(message.text).not.toMatch(/sign-in page|Set up a new account/);
-    }
+    const message = welcomeMessage(WELCOME);
+    expect(message.text).not.toMatch(/sign-in page|Set up a new account/);
   });
 
   it('links to the welcome page carrying both the code and the address', () => {
-    const message = welcomeMessage({ ...WELCOME, publicUrl: 'https://books.example.com' });
+    const message = welcomeMessage(WELCOME);
     const href = 'https://books.example.com/welcome?code=K7M2QX4P&email=reader%40example.com';
     expect(message.text).toContain(href);
     expect(message.html).toContain(`href="${href.replace(/&/g, '&amp;')}"`);
   });
 
   it('says the code expires in 7 days and also confirms the address', () => {
-    const { text } = welcomeMessage({ ...WELCOME, publicUrl: null });
+    const { text } = welcomeMessage(WELCOME);
     expect(text).toContain('7 days');
     expect(text).toMatch(/confirms this email address/);
   });
@@ -199,7 +191,6 @@ describe('welcomeMessage', () => {
       ...WELCOME,
       libraryName: '<b>Lib</b>',
       username: 'a<b',
-      publicUrl: null,
     });
     expect(message.html).not.toContain('<b>Lib</b>');
     expect(message.html).toContain('&lt;b&gt;Lib&lt;/b&gt;');

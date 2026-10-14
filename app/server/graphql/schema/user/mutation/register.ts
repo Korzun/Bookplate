@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { findUserByEmail, isValidEmail } from '../../../../services/email';
 import { invalidateEmailTokens, issueEmailToken } from '../../../../services/email-token';
 import { welcomeMessage } from '../../../../services/mail-template';
-import { isMailConfigured } from '../../../../services/mailer';
+import { canOnboardByEmail } from '../../../../services/mailer';
 import { generateLoginPassword, hashLoginPassword } from '../../../../services/password';
 import { createUser } from '../../../../services/user';
 import { isValidUsername, MIN_USERNAME_LENGTH } from '../../../../utils/username';
@@ -206,13 +206,18 @@ builder.mutationField('userRegister', (t) =>
       if (!lengthParsed.success) return invalidInputError(lengthParsed.error);
 
       // Email rules depend on the install, not the admin: an install that can
-      // send mail onboards every new account by mail; one that cannot keeps the
-      // generated-password hand-off. Checked after every username rule so the
-      // existing username error ordering is unchanged.
-      const mailer = isMailConfigured(context.config) ? context.mailer : null;
+      // send a welcome link onboards every new account by mail; one that cannot
+      // (no mail, or no `publicUrl` for the link) keeps the generated-password
+      // hand-off. Checked after every username rule so the existing username
+      // error ordering is unchanged. Mailer and link origin are pulled out
+      // together so the welcome branch below needs one null check.
+      const welcome =
+        canOnboardByEmail(context.config) && context.mailer !== null && context.config.publicUrl
+          ? { mailer: context.mailer, publicUrl: context.config.publicUrl }
+          : null;
       const rawEmail = args.input.email?.trim() ?? '';
-      if (mailer === null && rawEmail !== '') return emailNotConfiguredError();
-      if (mailer !== null) {
+      if (welcome === null && rawEmail !== '') return emailNotConfiguredError();
+      if (welcome !== null) {
         if (rawEmail === '') return invalidInputIssue(['email'], 'Email is required');
         if (!isValidEmail(rawEmail)) {
           return invalidInputIssue(['email'], 'Enter a valid email address');
@@ -224,7 +229,7 @@ builder.mutationField('userRegister', (t) =>
 
       fs.mkdirSync(path.join(context.config.booksDir, username), { recursive: true });
 
-      if (mailer === null) {
+      if (welcome === null) {
         const password = generateLoginPassword();
         const passwordHash = await hashLoginPassword(password);
         const created = await createUser(context.prisma, username, passwordHash, undefined, true);
@@ -261,13 +266,13 @@ builder.mutationField('userRegister', (t) =>
       const sent =
         issued.ok &&
         (
-          await mailer.send(
+          await welcome.mailer.send(
             welcomeMessage({
               to: rawEmail,
               code: issued.code,
               username,
               libraryName: context.config.libraryName,
-              publicUrl: context.config.publicUrl ?? null,
+              publicUrl: welcome.publicUrl,
             })
           )
         ).ok;

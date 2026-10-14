@@ -62,3 +62,13 @@ export function createMailer(mail: MailConfig | null | undefined): Mailer | null
 export function isMailConfigured(config: Pick<AppConfig, 'mail'>): boolean {
   return (config.mail ?? null) !== null;
 }
+
+/**
+ * Whether new accounts are registered by email and onboarded through the
+ * welcome link. Narrower than `isMailConfigured`: every other message works on
+ * its code alone, but the welcome email is link-only, so without `publicUrl`
+ * registration keeps the generated-password hand-off.
+ */
+export function canOnboardByEmail(config: Pick<AppConfig, 'mail' | 'publicUrl'>): boolean {
+  return isMailConfigured(config) && (config.publicUrl ?? null) !== null;
+}

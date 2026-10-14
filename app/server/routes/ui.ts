@@ -20,7 +20,7 @@ import { consumeEmailToken, invalidateEmailTokens } from '../services/email-toke
 import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
 import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
-import { isMailConfigured, type Mailer } from '../services/mailer';
+import { canOnboardByEmail, isMailConfigured, type Mailer } from '../services/mailer';
 import { getMustChangePassword, hashLoginPassword, validateUser } from '../services/password';
 import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
@@ -653,10 +653,15 @@ export function createUiRouter({
   router.get('/login', serveSpa);
 
   router.get('/api/public-config', (_req: Request, res: Response) => {
-    // `emailEnabled` only — never any part of the credentials. This endpoint is
-    // unauthenticated, and the client needs exactly one bit: whether to offer the
-    // forgot-password link and the "username or email" affordance.
-    res.json({ libraryName: config.libraryName, emailEnabled: isMailConfigured(config) });
+    // Two bits only — never any part of the credentials. This endpoint is
+    // unauthenticated. `emailEnabled` drives the forgot-password link and the
+    // "username or email" affordance; `onboardingEnabled` (mail AND a
+    // `publicUrl` for the welcome link) drives the register card's Email field.
+    res.json({
+      libraryName: config.libraryName,
+      emailEnabled: isMailConfigured(config),
+      onboardingEnabled: canOnboardByEmail(config),
+    });
   });
 
   // Mounted before both credential gates below, so their `/api/password/*`

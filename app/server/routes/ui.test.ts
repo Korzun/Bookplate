@@ -516,7 +516,30 @@ describe('GET /api/public-config', () => {
     // in this unauthenticated payload, not only if a future field happens to
     // echo back one of today's particular credential values.
     const res = await request(buildApp({ mail: MAIL_CONFIG })).get('/api/public-config');
-    expect(Object.keys(res.body).sort()).toEqual(['emailEnabled', 'libraryName']);
+    expect(Object.keys(res.body).sort()).toEqual([
+      'emailEnabled',
+      'libraryName',
+      'onboardingEnabled',
+    ]);
+  });
+
+  // The welcome email is link-only, so onboarding needs `publicUrl` as well as
+  // mail; every other email flow does not.
+  it('reports onboardingEnabled only when mail and a public URL are both set', async () => {
+    const mailOnly = await request(buildApp({ mail: MAIL_CONFIG, publicUrl: null })).get(
+      '/api/public-config'
+    );
+    expect(mailOnly.body).toMatchObject({ emailEnabled: true, onboardingEnabled: false });
+
+    const both = await request(
+      buildApp({ mail: MAIL_CONFIG, publicUrl: 'https://books.example.com' })
+    ).get('/api/public-config');
+    expect(both.body).toMatchObject({ emailEnabled: true, onboardingEnabled: true });
+
+    const urlOnly = await request(
+      buildApp({ mail: null, publicUrl: 'https://books.example.com' })
+    ).get('/api/public-config');
+    expect(urlOnly.body.onboardingEnabled).toBe(false);
   });
 });
 

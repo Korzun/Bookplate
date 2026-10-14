@@ -250,10 +250,44 @@ describe('Mutation.userRegister — mail not configured', () => {
   });
 });
 
-describe('Mutation.userRegister — mail configured', () => {
+// Mail works for every other flow here, but the welcome email is link-only, so
+// registration keeps the generated-password hand-off.
+describe('Mutation.userRegister — mail configured without a public URL', () => {
   beforeEach(async () => {
     await harness.cleanup();
     harness = await createHarness({ mail: MAIL_CONFIG });
+  });
+
+  it('registers with a generated password and sends nothing', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({
+      __typename: 'UserRegisterPayload',
+      user: { username: 'charlie1', mustChangePassword: true },
+      password: expect.any(String),
+      onboardingEmailSent: false,
+    });
+    expect(harness.mailer!.sent).toHaveLength(0);
+  });
+
+  it('rejects an email with EmailNotConfiguredError and creates nothing', async () => {
+    const result = await harness.execute(MUTATION, {
+      viewer: harness.adminViewer,
+      variables: { input: { username: 'charlie1', email: 'c@example.com' } },
+    });
+
+    expect(result.data?.userRegister).toMatchObject({ __typename: 'EmailNotConfiguredError' });
+    expect(await harness.prisma.user.findUnique({ where: { username: 'charlie1' } })).toBeNull();
+  });
+});
+
+describe('Mutation.userRegister — mail configured', () => {
+  beforeEach(async () => {
+    await harness.cleanup();
+    harness = await createHarness({ mail: MAIL_CONFIG, publicUrl: 'https://books.example.com' });
   });
 
   it('requires an email', async () => {
@@ -323,6 +357,7 @@ describe('Mutation.userRegister — mail configured', () => {
     expect(harness.mailer!.sent).toHaveLength(1);
     expect(harness.mailer!.sent[0].to).toBe('Charlie@Example.com');
     expect(harness.mailer!.sent[0].text).toContain('charlie1');
+    expect(harness.mailer!.sent[0].text).toContain('https://books.example.com/welcome?code=');
   });
 
   it('returns EmailInUseError for an address another user holds, differing only by case, and creates nothing', async () => {

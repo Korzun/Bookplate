@@ -51,6 +51,8 @@ export type CreateHarnessOptions = {
    * get a `FakeMailer` wired into every context this harness builds.
    */
   mail?: MailConfig | null;
+  /** Passed through to `AppConfig.publicUrl`; omitted means unset. */
+  publicUrl?: string | null;
 };
 
 export type Harness = {
@@ -120,7 +122,12 @@ export type Harness = {
   cleanup: () => Promise<void>;
 };
 
-const testConfig = (booksDir: string, dataDir: string, mail: MailConfig | null): AppConfig => ({
+const testConfig = (
+  booksDir: string,
+  dataDir: string,
+  mail: MailConfig | null,
+  publicUrl: string | null
+): AppConfig => ({
   libraryName: 'Test Library',
   username: 'admin',
   password: 'adminpass',
@@ -133,6 +140,7 @@ const testConfig = (booksDir: string, dataDir: string, mail: MailConfig | null):
   // (see @korzun/epubcheck-ts and ui.test.ts's use of the same literal).
   validationThreshold: 'ERROR',
   mail,
+  publicUrl,
 });
 
 /**
@@ -155,7 +163,12 @@ export const createHarness = async (
   const prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
   await runMigrations(prisma, booksDir);
 
-  const config = testConfig(booksDir, dataDir, harnessOptions.mail ?? null);
+  const config = testConfig(
+    booksDir,
+    dataDir,
+    harnessOptions.mail ?? null,
+    harnessOptions.publicUrl ?? null
+  );
   // One instance shared by every context this harness builds, exactly the way
   // `index.ts` constructs `createMailer(config.mail)` once and never per
   // request — see `Context.mailer`'s doc comment. `null` when no mail config

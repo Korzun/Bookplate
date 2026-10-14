@@ -7,11 +7,12 @@
  * the library name.
  *
  * The two renderers behind them split on that same line. `render` is built
- * around a CODE, which appears unconditionally beside the link. Mail is only
- * ever on when `publicUrl` is configured (`requireReachable` in `config.ts`),
- * so in production every message carries both; the templates still accept a
- * null `publicUrl` and omit the link, so they stay pure and testable, and the
- * link is never synthesised from a request header (see `AppConfig.publicUrl`). `notice` has no code at all — a notification is a
+ * around a CODE: it is the primary mechanism and appears unconditionally,
+ * with a link that is a convenience existing only when `publicUrl` is
+ * configured — a LAN-only install is fully functional on codes alone, which
+ * is why the link is never synthesised from a request header (see
+ * `AppConfig.publicUrl`). The one exception is `welcomeMessage`, whose link is
+ * the only way in, so its `publicUrl` is required. `notice` has no code at all — a notification is a
  * short lead and a few labelled lines — but keeps the identical rule for its
  * own link: present only when `publicUrl` is configured, never synthesised
  * otherwise.
@@ -107,9 +108,13 @@ export function passwordResetMessage(args: TemplateArgs): MailMessage {
   });
 }
 
-export type WelcomeArgs = TemplateArgs & { username: string };
+export type WelcomeArgs = TemplateArgs & { username: string; publicUrl: string };
 
 /**
+ * Unlike the other code-bearing messages, the link is required: a new user's
+ * only way in is `/welcome`, and nothing in the app leads there except this
+ * link (`canOnboardByEmail` keeps registration from sending one without it).
+ *
  * The link carries the address as well as the code because `EmailToken` is
  * keyed by account, not by hash — `/api/onboard` has to be told which account
  * the code belongs to, exactly as `/api/password/reset` is.
@@ -123,10 +128,8 @@ export function welcomeMessage(args: WelcomeArgs): MailMessage {
       `${args.username}. Enter this code in ${args.libraryName} to choose your password:`,
     code: args.code,
     href:
-      args.publicUrl === null
-        ? null
-        : `${args.publicUrl}/welcome?code=${encodeURIComponent(args.code)}` +
-          `&email=${encodeURIComponent(args.to)}`,
+      `${args.publicUrl}/welcome?code=${encodeURIComponent(args.code)}` +
+      `&email=${encodeURIComponent(args.to)}`,
     linkLabel: 'Or set up your account here',
     closing:
       'This code expires in 7 days and can be used once. Using it also confirms this email address.',

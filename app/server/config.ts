@@ -116,9 +116,9 @@ function parseMailConfig(
 /**
  * Accepts only an absolute http(s) origin, and returns it without a trailing
  * slash so callers can concatenate a path unconditionally. Anything else is
- * `null` WITH A WARNING rather than a throw: a malformed value turns email off
- * (`requireReachable`) instead of failing the whole boot or — far worse —
- * emitting a link nobody can follow.
+ * `null` WITH A WARNING rather than a throw: a malformed value degrades to
+ * code-only email, which works, instead of failing the whole boot or — far
+ * worse — emitting a link nobody can follow.
  */
 function parsePublicUrl(raw: string): string | null {
   if (!raw) return null;
@@ -126,29 +126,14 @@ function parsePublicUrl(raw: string): string | null {
   try {
     url = new URL(raw);
   } catch {
-    log.warn(`public_url "${raw}" is not an absolute URL, email is disabled`);
+    log.warn(`public_url "${raw}" is not an absolute URL, using code-only email`);
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    log.warn(`public_url "${raw}" is not http(s), email is disabled`);
+    log.warn(`public_url "${raw}" is not http(s), using code-only email`);
     return null;
   }
   return url.origin;
-}
-
-/**
- * Email is only on when this instance has a reachable origin. Every message
- * links back here, and onboarding has no other way in — a new user only ever
- * follows the link in their welcome email — so mail without `public_url` would
- * send messages nobody can act on. Turning mail off as a whole, rather than
- * per message, keeps "is mail configured?" a single answer everywhere.
- */
-function requireReachable(mail: MailConfig | null, publicUrl: string | null): MailConfig | null {
-  if (mail !== null && publicUrl === null) {
-    log.warn('Email is configured but public_url is not set — email is disabled');
-    return null;
-  }
-  return mail;
 }
 
 export function loadConfig(): AppConfig {
@@ -200,7 +185,23 @@ export function loadConfig(): AppConfig {
 
   const libraryName = (process.env.LIBRARY_NAME ?? options.library_name).trim() || 'Bookplate';
 
+  const mail = parseMailConfig(
+    // Env only — there is deliberately no add-on option for this.
+    trimmed(process.env.MAIL_DRIVER),
+    trimmed(process.env.CF_ACCOUNT_ID ?? options.email_cloudflare_account_id),
+    trimmed(process.env.CF_API_TOKEN ?? options.email_cloudflare_api_token),
+    trimmed(process.env.EMAIL_FROM ?? options.email_from_address),
+    trimmed(process.env.EMAIL_FROM_NAME ?? options.email_from_name),
+    libraryName
+  );
   const publicUrl = parsePublicUrl(trimmed(process.env.PUBLIC_URL ?? options.public_url));
+  // Every other message works on its code alone; only the welcome email is
+  // link-only (`canOnboardByEmail` in `services/mailer.ts`).
+  if (mail !== null && publicUrl === null) {
+    log.warn(
+      'public_url is not set — new users will get a generated password instead of a welcome email'
+    );
+  }
 
   return {
     libraryName,
@@ -218,18 +219,7 @@ export function loadConfig(): AppConfig {
     // "env overrides options.json" convention validationThreshold uses
     // immediately above.
     trustProxyHops: parseTrustProxyHops(process.env.TRUST_PROXY_HOPS ?? options.trust_proxy_hops),
-    mail: requireReachable(
-      parseMailConfig(
-        // Env only — there is deliberately no add-on option for this.
-        trimmed(process.env.MAIL_DRIVER),
-        trimmed(process.env.CF_ACCOUNT_ID ?? options.email_cloudflare_account_id),
-        trimmed(process.env.CF_API_TOKEN ?? options.email_cloudflare_api_token),
-        trimmed(process.env.EMAIL_FROM ?? options.email_from_address),
-        trimmed(process.env.EMAIL_FROM_NAME ?? options.email_from_name),
-        libraryName
-      ),
-      publicUrl
-    ),
+    mail,
     publicUrl,
   };
 }

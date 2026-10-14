@@ -162,8 +162,7 @@ describe('mail config', () => {
     expect(loadConfig().mail ?? null).toBeNull();
   });
 
-  it('is populated when all three required fields and a public URL are set', () => {
-    process.env.PUBLIC_URL = 'https://books.example.com';
+  it('is populated when all three required fields are set', () => {
     process.env.CF_ACCOUNT_ID = 'acct';
     process.env.CF_API_TOKEN = 'token';
     process.env.EMAIL_FROM = 'library@example.com';
@@ -176,7 +175,6 @@ describe('mail config', () => {
   });
 
   it('defaults fromName to the library name', () => {
-    process.env.PUBLIC_URL = 'https://books.example.com';
     process.env.LIBRARY_NAME = 'My Books';
     process.env.CF_ACCOUNT_ID = 'acct';
     process.env.CF_API_TOKEN = 'token';
@@ -192,7 +190,6 @@ describe('mail config', () => {
   });
 
   it('uses the log driver when MAIL_DRIVER=log, with no Cloudflare credentials', () => {
-    process.env.PUBLIC_URL = 'http://localhost:5173';
     process.env.MAIL_DRIVER = 'log';
     expect(loadConfig().mail).toEqual({
       driver: 'log',
@@ -201,26 +198,15 @@ describe('mail config', () => {
     });
   });
 
-  // Every email links back to this instance — onboarding has no other way in —
-  // so mail without a reachable origin is mail that cannot work.
-  it('is null without a public URL, even with complete Cloudflare credentials', () => {
+  // Only the welcome email needs a link; everything else works on codes, so a
+  // missing public URL narrows onboarding (`canOnboardByEmail`), not mail.
+  it('stays on without a public URL', () => {
     process.env.CF_ACCOUNT_ID = 'acct';
     process.env.CF_API_TOKEN = 'token';
     process.env.EMAIL_FROM = 'library@example.com';
-    expect(loadConfig().mail ?? null).toBeNull();
-  });
-
-  it('is null without a public URL for the log driver too', () => {
-    process.env.MAIL_DRIVER = 'log';
-    expect(loadConfig().mail ?? null).toBeNull();
-  });
-
-  it('is null when the public URL is malformed', () => {
-    process.env.PUBLIC_URL = 'books.example.com';
-    process.env.CF_ACCOUNT_ID = 'acct';
-    process.env.CF_API_TOKEN = 'token';
-    process.env.EMAIL_FROM = 'library@example.com';
-    expect(loadConfig().mail ?? null).toBeNull();
+    const config = loadConfig();
+    expect(config.mail).not.toBeNull();
+    expect(config.publicUrl ?? null).toBeNull();
   });
 
   it('treats an empty MAIL_DRIVER as unset', () => {
