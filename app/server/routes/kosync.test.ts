@@ -272,3 +272,117 @@ describe('PUT /sync/syncs/progress — history', () => {
     expect(rows[0].endTimestamp).toBe(r2.body.timestamp);
   });
 });
+
+describe('POST /sync/crosspoint/events', () => {
+  const DOC = 'a'.repeat(32);
+
+  function sessionEvent(overrides: Record<string, unknown> = {}) {
+    return {
+      schema: '1',
+      event: 'reader.session',
+      id: 'boot1-7',
+      ts: '1760900000',
+      deviceId: 'dev-uuid-1',
+      pluginVersion: '0.1.0',
+      firmware: '2.0.0rc',
+      pluginApi: '1',
+      vars: {
+        book: '/Books/Dune.epub',
+        document: DOC,
+        start_time: '1760899000',
+        end_time: '1760899600',
+        duration_seconds: '600',
+        start_progress_bp: '1200',
+        end_progress_bp: '1450',
+        progress_scale: '10000',
+      },
+      ...overrides,
+    };
+  }
+
+  function post(body: unknown) {
+    return request(app)
+      .post('/sync/crosspoint/events')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .send(body as object);
+  }
+
+  beforeEach(async () => {
+    await createUser(prisma, 'alice', null, ALICE_SYNC_PASSWORD);
+  });
+
+  it('returns 401 without valid credentials', async () => {
+    const res = await request(app)
+      .post('/sync/crosspoint/events')
+      .set({ 'x-auth-user': 'alice', 'x-auth-key': 'wrong' })
+      .send(sessionEvent());
+    expect(res.status).toBe(401);
+    expect(await prisma.readingEvent.count()).toBe(0);
+  });
+
+  it('stores the event with its full body', async () => {
+    const res = await post(sessionEvent());
+    expect(res.status).toBe(200);
+
+    const alice = await prisma.user.findUnique({ where: { username: 'alice' } });
+    const rows = await prisma.readingEvent.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      userId: alice!.id,
+      deviceId: 'dev-uuid-1',
+      eventId: 'boot1-7',
+      event: 'reader.session',
+      ts: 1760900000,
+      document: DOC,
+    });
+    expect(JSON.parse(rows[0].body)).toEqual(sessionEvent());
+  });
+
+  it('leaves document null for events that carry no document hash', async () => {
+    const res = await post(
+      sessionEvent({ event: 'reader.open', vars: { book: '/Books/Dune.epub' } })
+    );
+    expect(res.status).toBe(200);
+    const [row] = await prisma.readingEvent.findMany();
+    expect(row.document).toBeNull();
+  });
+
+  it('acknowledges a redelivered event without storing it twice', async () => {
+    expect((await post(sessionEvent())).status).toBe(200);
+    expect((await post(sessionEvent())).status).toBe(200);
+    expect(await prisma.readingEvent.count()).toBe(1);
+  });
+
+  it('stores the same event id from a different device separately', async () => {
+    await post(sessionEvent());
+    await post(sessionEvent({ deviceId: 'dev-uuid-2' }));
+    expect(await prisma.readingEvent.count()).toBe(2);
+  });
+
+  it('acknowledges a plugin.test ping without storing it', async () => {
+    const res = await post(sessionEvent({ event: 'plugin.test', vars: {} }));
+    expect(res.status).toBe(200);
+    expect(await prisma.readingEvent.count()).toBe(0);
+  });
+
+  it('returns 400 for malformed JSON', async () => {
+    const res = await request(app)
+      .post('/sync/crosspoint/events')
+      .set(authHeaders('alice', ALICE_SYNC_PASSWORD))
+      .set('Content-Type', 'application/json')
+      .send('{"event":"book.downloaded","vars":{"title":"The "Real" Story"}}');
+    expect(res.status).toBe(400);
+    expect(await prisma.readingEvent.count()).toBe(0);
+  });
+
+  it.each([
+    ['event', { event: undefined }],
+    ['id', { id: '' }],
+    ['deviceId', { deviceId: 42 }],
+    ['a numeric ts', { ts: '{event.ts}' }],
+  ])('returns 400 when %s is missing or invalid', async (_label, overrides) => {
+    const res = await post(sessionEvent(overrides));
+    expect(res.status).toBe(400);
+    expect(await prisma.readingEvent.count()).toBe(0);
+  });
+});

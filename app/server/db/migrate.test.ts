@@ -554,6 +554,46 @@ describe('data_v19_user_email', () => {
     expect(cols.map((c) => c.name)).toContain('email');
     expect(cols.map((c) => c.name)).toContain('email_key');
   });
+
+  // data_v10's rebuild drops COLUMNS added to `users` during the DDL pass,
+  // but a table that only references `users` keeps working: the rebuild runs
+  // with foreign keys off and the replacement takes the same name. So
+  // `reading_events` is created by its plain SQL migration, not a data one.
+  it('keeps reading_events usable on a database that starts pre-v10', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY, filename TEXT NOT NULL UNIQUE, path TEXT NOT NULL,
+        title TEXT NOT NULL, file_as TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '', series TEXT NOT NULL DEFAULT '',
+        series_index REAL NOT NULL DEFAULT 0, cover_data BLOB, cover_mime TEXT,
+        size INTEGER NOT NULL, mtime INTEGER NOT NULL, added_at INTEGER NOT NULL
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "users" (
+        "username" TEXT NOT NULL PRIMARY KEY,
+        "key" TEXT NOT NULL
+      )
+    `);
+    await prisma.$executeRaw`INSERT INTO users (username, key) VALUES ('alice', 'k')`;
+
+    await runMigrations(prisma, booksDir);
+
+    const alice = await prisma.user.findUniqueOrThrow({ where: { username: 'alice' } });
+    await prisma.readingEvent.create({
+      data: {
+        userId: alice.id,
+        deviceId: 'd1',
+        eventId: 'e1',
+        event: 'reader.open',
+        ts: 1,
+        body: '{}',
+        receivedAt: 1,
+      },
+    });
+    await prisma.user.delete({ where: { id: alice.id } });
+    expect(await prisma.readingEvent.count()).toBe(0);
+  });
 });
 
 // Moved from `services/book-store.test.ts` (Task 9b, `BookStore`'s deletion):
@@ -1011,5 +1051,45 @@ describe('legacy id-recompute and page-count migrations', () => {
         },
       })
     ).rejects.toThrow();
+  });
+
+  it('creates reading_events and is idempotent', async () => {
+    await runMigrations(prisma, booksDir);
+    await runMigrations(prisma, booksDir);
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `PRAGMA table_info("reading_events")`
+    );
+    expect(columns.map((c) => c.name).sort()).toEqual([
+      'body',
+      'device_id',
+      'document',
+      'event',
+      'event_id',
+      'id',
+      'received_at',
+      'ts',
+      'user_id',
+    ]);
+  });
+
+  it('cascades reading_events when their user is deleted', async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
+    await prisma.readingEvent.create({
+      data: {
+        userId: 'u1',
+        deviceId: 'd1',
+        eventId: 'e1',
+        event: 'reader.open',
+        ts: 1,
+        body: '{}',
+        receivedAt: 1,
+      },
+    });
+
+    await prisma.user.delete({ where: { id: 'u1' } });
+
+    expect(await prisma.readingEvent.count()).toBe(0);
   });
 });
