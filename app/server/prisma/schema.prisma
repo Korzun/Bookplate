@@ -206,6 +206,7 @@ model User {
   notificationPreferences NotificationPreference[]
   notificationOutbox      NotificationOutbox[]
   pushSubscriptions       PushSubscription[]
+  readingEvents           ReadingEvent[]
 
   @@map("users")
 }
@@ -473,4 +474,34 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+/// One event a CrossPoint reader's Bookplate plugin captured on the device and
+/// posted to `/sync/crosspoint/events`. Stored as received: `body` is the
+/// whole envelope, and every interpretation (sessions, pages, stats) is read
+/// out of it later rather than decided here.
+///
+/// `@@unique([userId, deviceId, eventId])` is the dedupe key. Delivery is
+/// at-least-once — the firmware retries anything it did not see a 2xx for —
+/// and `eventId` is only unique per device (`<boot nonce>-<counter>`).
+///
+/// `document` is the KOReader partial MD5 exactly as the device sent it, NOT
+/// `resolveBookId`'s result: lineage rows are permanent, so a reader can
+/// resolve it at read time, and the row stays a faithful record of what the
+/// device saw. Null for events that carry no hash.
+model ReadingEvent {
+  id         Int     @id @default(autoincrement())
+  userId     String  @map("user_id")
+  deviceId   String  @map("device_id")
+  eventId    String  @map("event_id")
+  event      String
+  ts         Int
+  document   String?
+  body       String
+  receivedAt Float   @map("received_at")
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, deviceId, eventId])
+  @@index([userId, document])
+  @@map("reading_events")
 }
