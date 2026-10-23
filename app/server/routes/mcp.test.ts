@@ -432,6 +432,86 @@ describe('resolve_metadata_proposals', () => {
     expect((await call('get_book', { bookId: book.id })).isError).toBe(false);
   });
 
+  it('undoes an accept, restoring the metadata and the proposals', async () => {
+    const book = await bookWithProposals();
+    const accepted = await ok<{ book: Detail }>('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'accept',
+      fixKeys: [AUTHOR_SORT],
+    });
+
+    const undone = await ok<{ previousId: string; undid: string; book: Detail }>(
+      'resolve_metadata_proposals',
+      { bookId: accepted.book.id, action: 'undo' }
+    );
+
+    expect(undone.undid).toBe('accept');
+    expect(undone.previousId).toBe(accepted.book.id);
+    expect(undone.book.authorSort).toBe(book.authorSort);
+    expect(undone.book.pendingMetadataProposals.map((f) => f.key).sort()).toEqual([
+      AUTHOR_SORT,
+      TITLE_FLAG,
+    ]);
+  });
+
+  it('undoes a dismiss without touching the book, once only', async () => {
+    const book = await bookWithProposals();
+    await ok('resolve_metadata_proposals', { bookId: book.id, action: 'dismiss' });
+
+    const undone = await ok<{ undid: string; book: Detail }>('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'undo',
+    });
+    expect(undone.undid).toBe('dismiss');
+    expect(undone.book.id).toBe(book.id);
+    expect(undone.book.pendingMetadataProposals).toHaveLength(2);
+
+    const again = await call('resolve_metadata_proposals', { bookId: book.id, action: 'undo' });
+    expect(again.isError).toBe(true);
+    expect(String(again.body.error)).toMatch(/^Nothing to undo/);
+  });
+
+  it('clears the proposals and the undo history together', async () => {
+    const book = await bookWithProposals();
+    await ok('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'dismiss',
+      fixKeys: [TITLE_FLAG],
+    });
+
+    const cleared = await ok<{ cleared: Fix[]; book: Detail }>('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'clear',
+    });
+    expect(cleared.cleared.map((f) => f.key)).toEqual([AUTHOR_SORT]);
+    expect(cleared.book.id).toBe(book.id);
+    expect(cleared.book.pendingMetadataProposals).toEqual([]);
+
+    // The dismiss before it can no longer be undone, and there is nothing left to clear.
+    const undo = await call('resolve_metadata_proposals', { bookId: book.id, action: 'undo' });
+    expect(undo.isError).toBe(true);
+    const clearAgain = await call('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'clear',
+    });
+    expect(clearAgain.isError).toBe(true);
+  });
+
+  it('refuses fixKeys for undo and clear', async () => {
+    const book = await bookWithProposals();
+    for (const action of ['undo', 'clear']) {
+      const result = await call('resolve_metadata_proposals', {
+        bookId: book.id,
+        action,
+        fixKeys: [AUTHOR_SORT],
+      });
+      expect(result).toEqual({
+        isError: true,
+        body: { error: `fixKeys applies only to accept and dismiss, not ${action}.` },
+      });
+    }
+  });
+
   it('reports a book with nothing pending', async () => {
     await seedEditableBook(harness, harness.aliceOwner, 'a'.repeat(32), 'Dune');
     const [entry] = (await ok<{ entries: { id: string }[] }>('search_library')).entries;

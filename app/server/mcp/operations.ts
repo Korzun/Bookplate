@@ -435,18 +435,24 @@ export type ReplaceBookData = {
   bookReplace: MutationResult<{ __typename: 'BookReplacePayload'; book: BookDetail }> | null;
 };
 
-export const PENDING_PROPOSALS = operation(`
-  query McpPendingProposals($id: ID!) {
+export const PENDING_FIX_STATE = operation(`
+  query McpPendingFixState($id: ID!) {
     node(id: $id) {
       __typename
-      ... on Book { pendingFix { state { proposals { ...McpMetadataFix } } } }
+      ... on Book {
+        pendingFix { state { proposals { ...McpMetadataFix } undo { kind } } }
+      }
     }
   }
   ${METADATA_FIX}
 `);
-export type PendingProposalsData = {
+export type PendingFixState = {
+  proposals: MetadataFix[];
+  undo: { kind: 'APPLY' | 'DISMISS' } | null;
+};
+export type PendingFixStateData = {
   node:
-    | { __typename: 'Book'; pendingFix: { state: { proposals: MetadataFix[] } } | null }
+    | { __typename: 'Book'; pendingFix: { state: PendingFixState } | null }
     | { __typename: string }
     | null;
 };

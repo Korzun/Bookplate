@@ -52,7 +52,7 @@ Bookplate is a self-hosted EPUB library. These tools act on the signed-in reader
 - Adding a book: create_upload_url (kind "epub"), PUT the file, then add_book with the stagedUploadId.
 - Replacing a book's file: create_upload_url (kind "epub"), PUT the file, optionally analyze_book_replacement (read-only), then replace_book.
 - Changing a cover: create_upload_url (kind "cover"), PUT the image, then update_book_metadata with coverStagedUploadId.
-- Bookplate suggests metadata fixes (proposals, each with a key). Review them in get_book and accept or dismiss them with resolve_metadata_proposals.
+- Bookplate suggests metadata fixes (proposals, each with a key). Review them in get_book and accept or dismiss them with resolve_metadata_proposals, which can also undo the last accept or dismiss.
 - A book that failed validation cannot have its metadata edited until it passes (validate_book, or replace its file).
 `.trim();
 
@@ -507,42 +507,85 @@ export function createBookplateMcpServer(
   server.registerTool(
     'resolve_metadata_proposals',
     {
-      title: 'Accept or dismiss metadata proposals',
+      title: 'Accept, dismiss, undo or clear metadata proposals',
       description:
         "Acts on a book's pending metadata-fix proposals (pendingMetadataProposals in get_book, " +
-        "or proposals from add_book), addressed by their key. 'accept' writes the proposed " +
-        "changes into the EPUB, so the book gets a NEW id, returned in the result; 'dismiss' " +
-        'discards them without changing the book. Omit fixKeys to act on every pending proposal. ' +
-        'A proposal whose "to" is null only flags a problem and has no change to accept: fix it ' +
-        'with update_book_metadata, then dismiss it.',
+        'or proposals from add_book), addressed by their key. ' +
+        "'accept' writes the proposed changes into the EPUB, so the book gets a NEW id, returned " +
+        "in the result. 'dismiss' discards them without changing the book. For both, omit " +
+        'fixKeys to act on every pending proposal. A proposal whose "to" is null only flags a ' +
+        'problem and has no change to accept: fix it with update_book_metadata, then dismiss it. ' +
+        "'undo' reverses the most recent accept or dismiss on this book (one level only; undoing " +
+        'an accept restores the title, author, their sort forms and subjects, and the book gets ' +
+        "a NEW id). 'clear' drops every pending proposal together with the undo history; it " +
+        'cannot be undone. undo and clear take no fixKeys.',
       inputSchema: {
         bookId,
-        action: z.enum(['accept', 'dismiss']),
+        action: z.enum(['accept', 'dismiss', 'undo', 'clear']),
         fixKeys: z
           .array(z.string())
           .min(1)
           .optional()
-          .describe('Keys of the proposals to act on. Omit to act on all of them.'),
+          .describe(
+            'accept/dismiss only: keys of the proposals to act on. Omit to act on all of them.'
+          ),
         validationMessageLimit: messageLimit,
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      // `clear` is irreversible, so the tool as a whole is not hinted as safe.
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     guard(async (args) => {
       const id = requireBookId(args.bookId);
+      if (args.fixKeys !== undefined && (args.action === 'undo' || args.action === 'clear')) {
+        throw new McpToolError(`fixKeys applies only to accept and dismiss, not ${args.action}.`);
+      }
 
-      // Read the proposals first so that keys are checked here rather than
-      // silently skipped: `bookResolvePendingFix` ignores a key that matches
-      // nothing (a benign race for the web UI, but a dead end for an agent),
+      // Read the pending state first, so that every no-op the mutation would
+      // accept silently becomes an answer the agent can act on instead:
+      // `bookResolvePendingFix` ignores a key matching nothing and an undo with
+      // nothing armed (benign races for the web UI, dead ends for an agent),
       // and leaves an accepted flag-only proposal pending without saying so.
-      const current = await run<ops.PendingProposalsData>(ops.PENDING_PROPOSALS, { id });
+      const current = await run<ops.PendingFixStateData>(ops.PENDING_FIX_STATE, { id });
       if (current.node?.__typename !== 'Book') throw new McpToolError(BOOK_NOT_FOUND);
-      const pending =
-        (current.node as Extract<ops.PendingProposalsData['node'], { pendingFix: unknown }>)
-          .pendingFix?.state.proposals ?? [];
+      const state =
+        (current.node as Extract<ops.PendingFixStateData['node'], { pendingFix: unknown }>)
+          .pendingFix?.state ?? null;
+      const pending = state?.proposals ?? [];
+
+      const resolve = async (input: Record<string, unknown>) => {
+        const data = await run<ops.ResolveProposalsData>(ops.RESOLVE_PROPOSALS, {
+          input: { id, ...input },
+          messageLimit: args.validationMessageLimit,
+        });
+        return unwrap(data.bookResolvePendingFix, 'BookResolvePendingFixPayload', BOOK_NOT_FOUND)
+          .book;
+      };
+
+      if (args.action === 'undo') {
+        if (state?.undo == null) {
+          throw new McpToolError(
+            'Nothing to undo: no accept or dismiss on this book is waiting to be reversed.'
+          );
+        }
+        const book = await resolve({ action: 'UNDO' });
+        return ok({
+          previousId: id,
+          undid: state.undo.kind === 'APPLY' ? 'accept' : 'dismiss',
+          book: formatBookDetail(book),
+        });
+      }
+
+      if (args.action === 'clear') {
+        if (state === null) {
+          throw new McpToolError('This book has no pending metadata proposals or undo history.');
+        }
+        const book = await resolve({ action: 'CLEAR' });
+        return ok({ cleared: pending.map(formatFix), book: formatBookDetail(book) });
+      }
+
       if (pending.length === 0) {
         throw new McpToolError('This book has no pending metadata proposals.');
       }
-
       const byKey = new Map(pending.map((fix) => [fixKey(fix), fix]));
       const unknown = (args.fixKeys ?? []).filter((key) => !byKey.has(key));
       if (unknown.length > 0) {
@@ -554,19 +597,10 @@ export function createBookplateMcpServer(
       }
       const chosen = args.fixKeys === undefined ? pending : args.fixKeys.map((k) => byKey.get(k)!);
 
-      const data = await run<ops.ResolveProposalsData>(ops.RESOLVE_PROPOSALS, {
-        input: {
-          id,
-          action: args.action === 'accept' ? 'ACCEPT' : 'DISMISS',
-          fixes: chosen.map(({ field, kind, from }) => ({ field, kind, from })),
-        },
-        messageLimit: args.validationMessageLimit,
+      const book = await resolve({
+        action: args.action === 'accept' ? 'ACCEPT' : 'DISMISS',
+        fixes: chosen.map(({ field, kind, from }) => ({ field, kind, from })),
       });
-      const payload = unwrap(
-        data.bookResolvePendingFix,
-        'BookResolvePendingFixPayload',
-        BOOK_NOT_FOUND
-      );
 
       const flagOnly = args.action === 'accept' ? chosen.filter((fix) => fix.to === null) : [];
       const done = chosen.filter((fix) => !flagOnly.includes(fix));
@@ -581,7 +615,7 @@ export function createBookplateMcpServer(
                 'the metadata with update_book_metadata, then dismiss them.',
             }
           : {}),
-        book: formatBookDetail(payload.book),
+        book: formatBookDetail(book),
       });
     })
   );
