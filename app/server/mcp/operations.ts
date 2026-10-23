@@ -435,6 +435,40 @@ export type ReplaceBookData = {
   bookReplace: MutationResult<{ __typename: 'BookReplacePayload'; book: BookDetail }> | null;
 };
 
+export const PENDING_PROPOSALS = operation(`
+  query McpPendingProposals($id: ID!) {
+    node(id: $id) {
+      __typename
+      ... on Book { pendingFix { state { proposals { ...McpMetadataFix } } } }
+    }
+  }
+  ${METADATA_FIX}
+`);
+export type PendingProposalsData = {
+  node:
+    | { __typename: 'Book'; pendingFix: { state: { proposals: MetadataFix[] } } | null }
+    | { __typename: string }
+    | null;
+};
+
+export const RESOLVE_PROPOSALS = operation(`
+  mutation McpResolveProposals($input: BookResolvePendingFixInput!, $messageLimit: Int!) {
+    bookResolvePendingFix(input: $input) {
+      __typename
+      ... on BookResolvePendingFixPayload { book { ...McpBookDetail } }
+      ...McpUserErrors
+    }
+  }
+  ${BOOK_DETAIL}
+  ${USER_ERRORS}
+`);
+export type ResolveProposalsData = {
+  bookResolvePendingFix: MutationResult<{
+    __typename: 'BookResolvePendingFixPayload';
+    book: BookDetail;
+  }> | null;
+};
+
 export const REQUEST_BOOK = operation(`
   mutation McpRequestBook($input: BookRequestCreateInput!) {
     bookRequestCreate(input: $input) {

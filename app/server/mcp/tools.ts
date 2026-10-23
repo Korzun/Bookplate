@@ -52,6 +52,7 @@ Bookplate is a self-hosted EPUB library. These tools act on the signed-in reader
 - Adding a book: create_upload_url (kind "epub"), PUT the file, then add_book with the stagedUploadId.
 - Replacing a book's file: create_upload_url (kind "epub"), PUT the file, optionally analyze_book_replacement (read-only), then replace_book.
 - Changing a cover: create_upload_url (kind "cover"), PUT the image, then update_book_metadata with coverStagedUploadId.
+- Bookplate suggests metadata fixes (proposals, each with a key). Review them in get_book and accept or dismiss them with resolve_metadata_proposals.
 - A book that failed validation cannot have its metadata edited until it passes (validate_book, or replace its file).
 `.trim();
 
@@ -359,7 +360,8 @@ export function createBookplateMcpServer(
       title: 'Get book',
       description:
         'Full metadata for one book: series, subjects, identifiers, reading progress, its last ' +
-        'validation report, and any pending metadata-fix proposals.',
+        'validation report, and any pending metadata-fix proposals (act on those with ' +
+        'resolve_metadata_proposals).',
       inputSchema: { bookId, validationMessageLimit: messageLimit },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -502,6 +504,88 @@ export function createBookplateMcpServer(
     })
   );
 
+  server.registerTool(
+    'resolve_metadata_proposals',
+    {
+      title: 'Accept or dismiss metadata proposals',
+      description:
+        "Acts on a book's pending metadata-fix proposals (pendingMetadataProposals in get_book, " +
+        "or proposals from add_book), addressed by their key. 'accept' writes the proposed " +
+        "changes into the EPUB, so the book gets a NEW id, returned in the result; 'dismiss' " +
+        'discards them without changing the book. Omit fixKeys to act on every pending proposal. ' +
+        'A proposal whose "to" is null only flags a problem and has no change to accept: fix it ' +
+        'with update_book_metadata, then dismiss it.',
+      inputSchema: {
+        bookId,
+        action: z.enum(['accept', 'dismiss']),
+        fixKeys: z
+          .array(z.string())
+          .min(1)
+          .optional()
+          .describe('Keys of the proposals to act on. Omit to act on all of them.'),
+        validationMessageLimit: messageLimit,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    guard(async (args) => {
+      const id = requireBookId(args.bookId);
+
+      // Read the proposals first so that keys are checked here rather than
+      // silently skipped: `bookResolvePendingFix` ignores a key that matches
+      // nothing (a benign race for the web UI, but a dead end for an agent),
+      // and leaves an accepted flag-only proposal pending without saying so.
+      const current = await run<ops.PendingProposalsData>(ops.PENDING_PROPOSALS, { id });
+      if (current.node?.__typename !== 'Book') throw new McpToolError(BOOK_NOT_FOUND);
+      const pending =
+        (current.node as Extract<ops.PendingProposalsData['node'], { pendingFix: unknown }>)
+          .pendingFix?.state.proposals ?? [];
+      if (pending.length === 0) {
+        throw new McpToolError('This book has no pending metadata proposals.');
+      }
+
+      const byKey = new Map(pending.map((fix) => [fixKey(fix), fix]));
+      const unknown = (args.fixKeys ?? []).filter((key) => !byKey.has(key));
+      if (unknown.length > 0) {
+        throw new McpDomainError({
+          error: 'Some keys do not match a pending proposal of this book.',
+          unknownKeys: unknown,
+          pendingProposals: pending.map(formatFix),
+        });
+      }
+      const chosen = args.fixKeys === undefined ? pending : args.fixKeys.map((k) => byKey.get(k)!);
+
+      const data = await run<ops.ResolveProposalsData>(ops.RESOLVE_PROPOSALS, {
+        input: {
+          id,
+          action: args.action === 'accept' ? 'ACCEPT' : 'DISMISS',
+          fixes: chosen.map(({ field, kind, from }) => ({ field, kind, from })),
+        },
+        messageLimit: args.validationMessageLimit,
+      });
+      const payload = unwrap(
+        data.bookResolvePendingFix,
+        'BookResolvePendingFixPayload',
+        BOOK_NOT_FOUND
+      );
+
+      const flagOnly = args.action === 'accept' ? chosen.filter((fix) => fix.to === null) : [];
+      const done = chosen.filter((fix) => !flagOnly.includes(fix));
+      return ok({
+        previousId: id,
+        [args.action === 'accept' ? 'accepted' : 'dismissed']: done.map(formatFix),
+        ...(flagOnly.length > 0
+          ? {
+              notApplied: flagOnly.map(formatFix),
+              notAppliedReason:
+                'These only flag a problem and propose no change. They are still pending: fix ' +
+                'the metadata with update_book_metadata, then dismiss them.',
+            }
+          : {}),
+        book: formatBookDetail(payload.book),
+      });
+    })
+  );
+
   // ── Files ──
 
   server.registerTool(
@@ -595,7 +679,8 @@ export function createBookplateMcpServer(
       description:
         'Adds an uploaded EPUB (see create_upload_url) to the library. It is validated, and is ' +
         'refused if it fails or if the same file is already in the library. High-confidence ' +
-        'metadata fixes are applied automatically; others are returned as proposals.',
+        'metadata fixes are applied automatically; others are returned as proposals, which ' +
+        'resolve_metadata_proposals accepts or dismisses.',
       inputSchema: { stagedUploadId, validationMessageLimit: messageLimit },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },

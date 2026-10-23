@@ -202,8 +202,9 @@ In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync serve
 
 Bookplate is a [Model Context Protocol][mcp] server, so an AI agent can work
 with your library on your behalf: search it, read book and series details, edit
-metadata (written into the EPUB itself), re-run validation, download books, add
-new ones, replace a book's file, and request books from the admin. An agent only
+metadata (written into the EPUB itself), accept or dismiss the metadata fixes
+Bookplate suggests, re-run validation, download books, add new ones, replace a
+book's file, and request books from the admin. An agent only
 ever sees and changes **your own** library.
 
 1. On your **settings page**, under **AI agents (MCP)**, name the agent and click

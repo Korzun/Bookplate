@@ -144,6 +144,7 @@ describe('tools', () => {
       'list_book_requests',
       'replace_book',
       'request_book',
+      'resolve_metadata_proposals',
       'search_library',
       'update_book_metadata',
       'validate_book',
@@ -341,6 +342,109 @@ describe('tools', () => {
       'list_book_requests'
     );
     expect(listed).toMatchObject({ pendingCount: 1, requests: [{ id: created.id }] });
+  });
+});
+
+describe('resolve_metadata_proposals', () => {
+  type Fix = { key: string; to: string | null };
+  type Detail = { id: string; authorSort: string; pendingMetadataProposals: Fix[] };
+
+  const AUTHOR_SORT = 'authorSort:author-sort-missing:';
+  const TITLE_FLAG = 'title:title-is-filename:The Left Hand of Darkness';
+
+  /**
+   * Real detection (not mocked here) leaves this book with one actionable
+   * proposal (an author sort it is not confident enough to auto-apply) and one
+   * flag-only one (the title equals the uploaded file name).
+   */
+  async function bookWithProposals(): Promise<Detail> {
+    const { stagedUploadId } = await uploadFile(
+      'epub',
+      'The Left Hand of Darkness.epub',
+      fixtureEpub('The Left Hand of Darkness', 'Ursula K. Le Guin')
+    );
+    const { book } = await ok<{ book: Detail }>('add_book', { stagedUploadId });
+    expect(book.pendingMetadataProposals.map((f) => f.key).sort()).toEqual([
+      AUTHOR_SORT,
+      TITLE_FLAG,
+    ]);
+    return book;
+  }
+
+  it('accepts a proposal by key, writing it into the book under a new id', async () => {
+    const book = await bookWithProposals();
+
+    const result = await ok<{ previousId: string; accepted: Fix[]; book: Detail }>(
+      'resolve_metadata_proposals',
+      { bookId: book.id, action: 'accept', fixKeys: [AUTHOR_SORT] }
+    );
+
+    expect(result.previousId).toBe(book.id);
+    expect(result.accepted.map((f) => f.key)).toEqual([AUTHOR_SORT]);
+    expect(result.book.id).not.toBe(book.id);
+    expect(result.book.authorSort).toBe('Guin, Ursula K. Le');
+    expect(result.book.pendingMetadataProposals.map((f) => f.key)).toEqual([TITLE_FLAG]);
+  });
+
+  it('dismisses every proposal when no keys are given, leaving the book untouched', async () => {
+    const book = await bookWithProposals();
+
+    const result = await ok<{ dismissed: Fix[]; book: Detail }>('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'dismiss',
+    });
+
+    expect(result.dismissed).toHaveLength(2);
+    expect(result.book.id).toBe(book.id);
+    expect(result.book.authorSort).toBe(book.authorSort);
+    expect(result.book.pendingMetadataProposals).toEqual([]);
+  });
+
+  it('says so when an accepted proposal only flags a problem, and leaves it pending', async () => {
+    const book = await bookWithProposals();
+
+    const result = await ok<{ accepted: Fix[]; notApplied: Fix[]; book: Detail }>(
+      'resolve_metadata_proposals',
+      { bookId: book.id, action: 'accept', fixKeys: [TITLE_FLAG] }
+    );
+
+    expect(result.accepted).toEqual([]);
+    expect(result.notApplied.map((f) => f.key)).toEqual([TITLE_FLAG]);
+    expect(result.book.pendingMetadataProposals.map((f) => f.key)).toContain(TITLE_FLAG);
+  });
+
+  it('refuses a key that matches no pending proposal, listing the ones that do', async () => {
+    const book = await bookWithProposals();
+
+    const result = await call('resolve_metadata_proposals', {
+      bookId: book.id,
+      action: 'accept',
+      fixKeys: [AUTHOR_SORT, 'title:made-up:x'],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.body.unknownKeys).toEqual(['title:made-up:x']);
+    expect((result.body.pendingProposals as Fix[]).map((f) => f.key).sort()).toEqual([
+      AUTHOR_SORT,
+      TITLE_FLAG,
+    ]);
+    // Nothing was applied: the book still answers to its old id.
+    expect((await call('get_book', { bookId: book.id })).isError).toBe(false);
+  });
+
+  it('reports a book with nothing pending', async () => {
+    await seedEditableBook(harness, harness.aliceOwner, 'a'.repeat(32), 'Dune');
+    const [entry] = (await ok<{ entries: { id: string }[] }>('search_library')).entries;
+
+    const result = await call('resolve_metadata_proposals', {
+      bookId: entry.id,
+      action: 'dismiss',
+    });
+
+    expect(result).toEqual({
+      isError: true,
+      body: { error: 'This book has no pending metadata proposals.' },
+    });
   });
 });
 
