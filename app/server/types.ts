@@ -147,10 +147,14 @@ export interface AppConfig {
    */
   mail?: MailConfig | null;
   /**
-   * Absolute origin this instance is reachable at, used ONLY to add a clickable
-   * link beside the typed code in verification and reset emails. Absent means
-   * code-only delivery, which is fully functional. Never derived from a request
-   * header: a `Host`-derived link is the classic reset-link poisoning path.
+   * Absolute origin this instance is reachable at. Two uses:
+   *  - a clickable link beside the typed code in verification and reset emails.
+   *    Absent means code-only delivery, which is fully functional. Never
+   *    derived from a request header there: a `Host`-derived link is the
+   *    classic reset-link poisoning path.
+   *  - the origin of the MCP upload/download URLs (`routes/mcp.ts`'s
+   *    `transferBaseUrl`). Absent, those fall back to the request's own origin,
+   *    which is safe there and only there — see that function's doc comment.
    */
   publicUrl?: string | null;
 }

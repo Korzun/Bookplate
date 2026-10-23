@@ -207,6 +207,7 @@ model User {
   notificationOutbox      NotificationOutbox[]
   pushSubscriptions       PushSubscription[]
   readingEvents           ReadingEvent[]
+  mcpTokens               McpToken[]
 
   @@map("users")
 }
@@ -504,4 +505,26 @@ model ReadingEvent {
   @@unique([userId, deviceId, eventId])
   @@index([userId, document])
   @@map("reading_events")
+}
+
+/// One agent access token for the MCP endpoint (`/mcp`), owned by one reader.
+///
+/// Only the SHA-256 of the token is stored. The token itself is 32 random
+/// bytes, shown to its owner once at creation and never again — so a fast,
+/// unsalted hash is the right tool here (nothing to brute-force), unlike the
+/// login password's argon2.
+///
+/// `lastUsedAt` is a coarse "is this still in use?" hint for the settings list,
+/// written at most once a minute per token (see `services/mcp-token.ts`).
+model McpToken {
+  id         String @id
+  userId     String @map("user_id")
+  label      String
+  tokenHash  String @unique @map("token_hash")
+  createdAt  Float  @map("created_at")
+  lastUsedAt Float? @map("last_used_at")
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@map("mcp_tokens")
 }

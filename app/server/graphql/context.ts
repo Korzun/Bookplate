@@ -134,31 +134,40 @@ export const requireViewer = (context: Context): Viewer => {
   return context.viewer;
 };
 
+/**
+ * One operation's `Context` for an already-resolved viewer. Fresh loaders every
+ * call — a context is per operation, never shared, so one operation's cached
+ * reads cannot leak into another's.
+ *
+ * Split out of `createContext` for the MCP endpoint (`mcp/graphql.ts`), which
+ * authenticates with its own token and runs operations in-process: it has a
+ * `Viewer` but no `Authorization: Bearer <JWT>` request to derive one from.
+ */
+export const buildContext = (deps: ContextDeps, viewer: Viewer | null): Context => ({
+  viewer,
+  prisma: deps.prisma,
+  thumbnails: deps.thumbnails,
+  replaceStaging: deps.replaceStaging,
+  editionsRoot: deps.editionsRoot,
+  config: deps.config,
+  mailer: deps.mailer,
+  notifications: deps.notifications,
+  vapidPublicKey: deps.vapidPublicKey,
+  loadLineage: createLineageLoader(deps.prisma),
+  loadOwner: createOwnerLoader(deps.prisma),
+  loadProgress: createProgressLoader(deps.prisma),
+  loadPendingFix: createPendingFixLoader(deps.prisma),
+  loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
+  loadValidationCounts: createValidationCountsLoader(deps.prisma),
+  loadBookByDocument: createBookByDocumentLoader(deps.prisma),
+  loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
+  loadViewerRow: createViewerRowLoader(deps.prisma, viewer),
+});
+
 export const createContext =
   (deps: ContextDeps) =>
-  ({ request }: { request: FetchRequest }): Context => {
-    const viewer = viewerFromHeader(
-      deps.jwtSecret,
-      request.headers.get('authorization') ?? undefined
+  ({ request }: { request: FetchRequest }): Context =>
+    buildContext(
+      deps,
+      viewerFromHeader(deps.jwtSecret, request.headers.get('authorization') ?? undefined)
     );
-    return {
-      viewer,
-      prisma: deps.prisma,
-      thumbnails: deps.thumbnails,
-      replaceStaging: deps.replaceStaging,
-      editionsRoot: deps.editionsRoot,
-      config: deps.config,
-      mailer: deps.mailer,
-      notifications: deps.notifications,
-      vapidPublicKey: deps.vapidPublicKey,
-      loadLineage: createLineageLoader(deps.prisma),
-      loadOwner: createOwnerLoader(deps.prisma),
-      loadProgress: createProgressLoader(deps.prisma),
-      loadPendingFix: createPendingFixLoader(deps.prisma),
-      loadSeriesProgress: createSeriesProgressLoader(deps.prisma),
-      loadValidationCounts: createValidationCountsLoader(deps.prisma),
-      loadBookByDocument: createBookByDocumentLoader(deps.prisma),
-      loadDeviceEditionCount: createDeviceEditionCountLoader(deps.prisma),
-      loadViewerRow: createViewerRowLoader(deps.prisma, viewer),
-    };
-  };

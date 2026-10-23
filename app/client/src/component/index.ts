@@ -1,3 +1,4 @@
+export { AgentAccess } from './agent-access';
 export { BookEditForm } from './book-edit-form';
 export { BookRequestRow } from './book-request-row';
 export { BookRequestsContent } from './book-requests-content';

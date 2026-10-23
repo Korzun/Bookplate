@@ -1,4 +1,5 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
+import { listMcpTokenRows } from '../../../services/mcp-token';
 import { listNotificationPreferences } from '../../../services/notification';
 import { configuredChannels } from '../../../services/notification-channels';
 import { getSyncPassword } from '../../../services/password';
@@ -8,6 +9,7 @@ import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
+import { model as mcpTokenModel } from '../mcp-token/model';
 import { model as notificationPreferenceModel } from '../notification-preference/model';
 import { model as pushSubscriptionModel } from '../push-subscription/model';
 import { model as user } from '../user/model';
@@ -107,6 +109,19 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
         if (userId === null) return [];
         return listPushSubscriptionRows(context.prisma, userId);
       },
+    }),
+
+    /**
+     * The viewer's own agent (MCP) tokens, for the settings list. Carries no
+     * token material — see `mcp-token/model.ts`. Empty for the config admin,
+     * which owns no library and so cannot hold one (`viewerCreateMcpToken`).
+     * Resolved through `v.userId`, not `resolveViewerUserId`, for exactly that
+     * reason: the admin's row must not read as a token holder.
+     */
+    mcpTokens: t.field({
+      type: [mcpTokenModel],
+      resolve: (v, _args, context) =>
+        v.userId === null ? [] : listMcpTokenRows(context.prisma, v.userId),
     }),
 
     library: t.field({

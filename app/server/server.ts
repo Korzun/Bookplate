@@ -2,7 +2,7 @@ import * as path from 'path';
 
 import type { PrismaClient } from '@prisma/client';
 import cookieParser from 'cookie-parser';
-import express, { NextFunction, Request, RequestHandler, Response } from 'express';
+import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 
 import { logger } from './logger';
 import { graphqlBodyLimit } from './middleware/graphql-body-limit';
@@ -24,6 +24,8 @@ export type CreateServerDeps = {
   jwtSecret: Buffer;
   prisma: PrismaClient;
   graphqlHandler: RequestHandler;
+  /** `routes/mcp.ts`'s router, built in `index.ts` from the GraphQL context deps. */
+  mcpRouter: Router;
   replaceStaging: ReplaceStaging;
   mailer: Mailer | null;
 };
@@ -34,6 +36,7 @@ export function createServer({
   jwtSecret,
   prisma,
   graphqlHandler,
+  mcpRouter,
   replaceStaging,
   mailer,
 }: CreateServerDeps): express.Express {
@@ -68,6 +71,10 @@ export function createServer({
   // operation is text-only (query + variables), never a file upload — those
   // go through REST's multer routes instead.
   server.use('/graphql', graphqlBodyLimit(100 * 1024), graphqlHandler);
+
+  // Also ahead of express.json(), for the same reason: its upload route reads
+  // the raw request body, so each of its routes brings its own body parser.
+  server.use('/mcp', mcpRouter);
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: false }));

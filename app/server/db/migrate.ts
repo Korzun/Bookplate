@@ -900,4 +900,30 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
          ON "push_subscriptions" ("user_id")`
     );
   });
+
+  // Data migration: the mcp_tokens table (agent access tokens for `/mcp`).
+  // Runs after data_v10_user_surrogate_id, which rebuilds "users" from an
+  // explicit column list — the table carries a foreign key to it. The Prisma
+  // DDL migration (20261023000000_add_mcp_tokens) is a no-op; see its comment.
+  await runDataMigration(prisma, 'data_v22_mcp_tokens', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "mcp_tokens" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "label" TEXT NOT NULL,
+        "token_hash" TEXT NOT NULL,
+        "created_at" REAL NOT NULL,
+        "last_used_at" REAL,
+        CONSTRAINT "mcp_tokens_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "mcp_tokens_token_hash_key"
+         ON "mcp_tokens" ("token_hash")`
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "mcp_tokens_user_id_idx" ON "mcp_tokens" ("user_id")`
+    );
+  });
 }

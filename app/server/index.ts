@@ -6,6 +6,7 @@ import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
+import { createMcpRouter } from './routes/mcp';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { createMailer } from './services/mailer';
@@ -83,7 +84,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     },
   });
   notificationQueue.start();
-  const graphqlHandler = createGraphqlHandler({
+  // One set of context deps for both ways of running GraphQL operations: yoga
+  // over HTTP, and the MCP endpoint in-process (`mcp/graphql.ts`). Sharing it
+  // keeps every singleton above (staging, mailer, queues) single.
+  const contextDeps = {
     prisma,
     thumbnails: thumbnailQueue,
     replaceStaging,
@@ -93,6 +97,9 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     notifications: notificationQueue,
     vapidPublicKey: vapid.publicKey,
     jwtSecret,
+  };
+  const graphqlHandler = createGraphqlHandler({
+    ...contextDeps,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
     // the default and insecure mode must be opted into explicitly. Nothing in
     // the shipped image sets NODE_ENV — run.sh execs node directly and the
@@ -108,6 +115,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     jwtSecret,
     prisma,
     graphqlHandler,
+    mcpRouter: createMcpRouter(contextDeps),
     replaceStaging,
     mailer,
   });

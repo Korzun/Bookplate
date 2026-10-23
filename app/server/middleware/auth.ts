@@ -4,6 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 
 import { logger } from '../logger';
 import { verifyAccessToken, AuthUser } from '../services/jwt';
+import { authenticateMcpToken } from '../services/mcp-token';
 import { authenticate, hashSyncPassword } from '../services/password';
 
 export type { AuthUser };
@@ -64,6 +65,35 @@ export function kosyncAuth(prisma: PrismaClient) {
       }
       req.kosyncUser = username;
       req.kosyncUserId = userId;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/**
+ * Bearer agent-token auth for the MCP endpoint (`routes/mcp.ts`). Accepts only
+ * an MCP token (`services/mcp-token.ts`) — never a web access token, the login
+ * password or the sync password. Attaches `req.mcpIdentity` on success.
+ *
+ * The 401 carries `WWW-Authenticate: Bearer`, which is what MCP clients look
+ * for to tell "bad credentials" from "server error".
+ */
+export function mcpAuth(prisma: PrismaClient) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const header = req.headers.authorization;
+      const identity = header?.startsWith('Bearer ')
+        ? await authenticateMcpToken(prisma, header.slice(7).trim())
+        : null;
+      if (identity === null) {
+        log.warn('MCP auth failed — missing, unknown or revoked agent token');
+        res.set('WWW-Authenticate', 'Bearer realm="Bookplate MCP"');
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      req.mcpIdentity = identity;
       next();
     } catch (err) {
       next(err);

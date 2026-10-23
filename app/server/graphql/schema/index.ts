@@ -26,6 +26,8 @@ import './library-entry';
 import './lineage-entry-not-found-error';
 import './lineage-type';
 import './linked-document';
+import './mcp-token';
+import './mcp-token-limit-exceeded-error';
 import './message-segment';
 import './metadata-fix';
 import './pending-fix';

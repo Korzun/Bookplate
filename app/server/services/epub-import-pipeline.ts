@@ -36,8 +36,9 @@ export function toFix(issue: MetadataIssue): MetadataFix {
 
 // Stable identity for a fix, used to track which proposals a caller accepted
 // across a request boundary (upload's pending-fix rows, replace's
-// acceptedFixKeys).
-export const fixKey = (f: MetadataFix): string => `${f.field}:${f.kind}:${f.from}`;
+// acceptedFixKeys, and the MCP tools that show an agent which keys to accept).
+export const fixKey = (f: Pick<MetadataFix, 'field' | 'kind' | 'from'>): string =>
+  `${f.field}:${f.kind}:${f.from}`;
 
 // Replace `compound` (case-insensitive) with `parts` in a subjects array,
 // de-duplicating case-insensitively. Adds the parts if the compound is gone.

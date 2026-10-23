@@ -11,17 +11,13 @@ import { parseCompoundId } from '../graphql/schema/node-scope';
 import { logger } from '../logger';
 import { emailSetupGate, jwtAuth, passwordChangeGate } from '../middleware/auth';
 import { getCover, getThumbnail } from '../services/book-assets';
-import { getBookById, getSubjects } from '../services/book-catalog';
-import { BookAlreadyExistsError } from '../services/book-errors';
-import { addBook, reimportBook } from '../services/book-lifecycle';
+import { getBookById } from '../services/book-catalog';
 import { getStagingDir } from '../services/book-paths';
+import { importUploadedEpub, type ImportUploadedEpubOutcome } from '../services/book-upload';
 import { findUserByEmail } from '../services/email';
-import { analyzeEpub, applyAutoAndAccepted, EpubAnalysis } from '../services/epub-import-pipeline';
-import { parseEpub, partialMD5 } from '../services/epub-parser';
 import { signAccessToken, AuthUser } from '../services/jwt';
 import { isMailConfigured, type Mailer } from '../services/mailer';
 import { getMustChangePassword, validateUser } from '../services/password';
-import { upsertPendingFix } from '../services/pending-fix';
 import { stagingIdentityOf, type ReplaceStaging } from '../services/replace-staging';
 import { ThumbnailQueue } from '../services/thumbnail-queue';
 import {
@@ -31,8 +27,7 @@ import {
   revokeRefreshToken,
   REFRESH_TOKEN_TTL_MS,
 } from '../services/token';
-import { saveValidation } from '../services/validation';
-import { AppConfig, EpubMeta, MetadataFix, Owner } from '../types';
+import { AppConfig, MetadataFix, Owner } from '../types';
 import { asyncHandler } from '../utils/async-handler';
 import {
   CLIENT_DIST_DIR,
@@ -98,8 +93,8 @@ export async function computeMustSetEmail(
  * behaved identically), one byte, no practical effect — noted here rather
  * than silently read as "up to and including 20MB".
  */
-const EPUB_UPLOAD_MAX_BYTES = 200 * 1024 * 1024;
-const COVER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+export const EPUB_UPLOAD_MAX_BYTES = 200 * 1024 * 1024;
+export const COVER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 /**
  * Wraps a multer middleware so exceeding its `fileSize` limit surfaces as
@@ -851,147 +846,53 @@ export function createUiRouter({
         proposals: MetadataFix[];
       }[] = [];
       for (const file of files) {
-        const savedPath = file.path;
-        let meta: EpubMeta;
+        // `importUploadedEpub` (services/book-upload.ts) leaves the multer temp
+        // file in place on every outcome but `added`, including a throw; this
+        // route owns that file, so it removes it.
+        let outcome: ImportUploadedEpubOutcome | undefined;
         try {
-          meta = parseEpub(savedPath);
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          res.status(400).json({
-            error: `Failed to parse EPUB: ${err instanceof Error ? err.message : String(err)}`,
-          });
-          return;
-        }
-
-        // Repair (RSC-005) + validate. Detection is deferred to the
-        // post-addBook applyAutoAndAccepted call below, which re-detects
-        // against the persisted book — skipDetect avoids doing that work twice.
-        let analysis: EpubAnalysis;
-        try {
-          analysis = await analyzeEpub(savedPath, {
-            originalName: file.originalname,
-            librarySubjects: [],
-            validationThreshold: config.validationThreshold,
-            skipDetect: true,
-          });
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          throw err;
-        }
-        if (!analysis.valid) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          res.status(400).json({
-            error: 'EPUB failed validation',
-            validation: {
-              messages: analysis.report.messages,
-              counts: analysis.report.counts,
-              threshold: analysis.report.threshold,
+          outcome = await importUploadedEpub(
+            {
+              prisma,
+              booksDir: config.booksDir,
+              editionsRoot,
+              validationThreshold: config.validationThreshold,
+              thumbnails: thumbnailQueue,
             },
-          });
-          return;
-        }
-        const structuralFix = analysis.structuralFix;
-
-        // Fingerprint reflects the repaired bytes.
-        let id: string;
-        try {
-          id = partialMD5(savedPath);
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
+            owner,
+            { path: file.path, originalName: file.originalname, size: file.size }
+          );
+        } finally {
+          if (outcome?.kind !== 'added') {
+            try {
+              fs.unlinkSync(file.path);
+            } catch {
+              /* file may already be gone */
+            }
           }
-          res.status(400).json({
-            error: `Failed to fingerprint EPUB: ${err instanceof Error ? err.message : String(err)}`,
-          });
-          return;
         }
-        // parseEpub falls back to the file's basename when no dc:title is present.
-        // Since savedPath is a staging path with a unique prefix, we must ignore
-        // that fallback and use the client's original filename stem instead.
-        const stagedTitleFallback = path.basename(savedPath, path.extname(savedPath));
-        const realTitle = meta.title === stagedTitleFallback ? '' : meta.title.trim();
-        const titleFallback =
-          realTitle || path.basename(file.originalname, path.extname(file.originalname));
-        try {
-          await addBook(prisma, config.booksDir, owner, id, savedPath, {
-            ...meta,
-            title: titleFallback,
-          });
-        } catch (err: unknown) {
-          try {
-            fs.unlinkSync(savedPath);
-          } catch {
-            /* file may already be gone */
-          }
-          if (err instanceof BookAlreadyExistsError) {
+        switch (outcome.kind) {
+          case 'unreadable':
+            res.status(400).json({ error: outcome.message });
+            return;
+          case 'invalid':
+            res.status(400).json({
+              error: 'EPUB failed validation',
+              validation: {
+                messages: outcome.report.messages,
+                counts: outcome.report.counts,
+                threshold: outcome.report.threshold,
+              },
+            });
+            return;
+          case 'duplicate':
             res.status(409).json({
               error: 'A book with the same fingerprint is already in the library.',
             });
             return;
-          }
-          throw err;
+          case 'added':
+            break;
         }
-        await saveValidation(prisma, owner, id, analysis.report);
-        // Detect metadata issues; auto-apply the high-confidence ones in-request.
-        let finalId = id;
-        const applied: MetadataFix[] = structuralFix ? [structuralFix] : [];
-        const proposals: MetadataFix[] = [];
-        try {
-          const librarySubjects = await getSubjects(prisma, owner);
-          const created = await getBookById(prisma, config.booksDir, owner, id);
-          if (created) {
-            const result = await applyAutoAndAccepted(
-              {
-                reimportBook: (o, i) => reimportBook(prisma, config.booksDir, editionsRoot, o, i),
-                prisma,
-                validationThreshold: config.validationThreshold,
-              },
-              owner,
-              created,
-              { originalName: file.originalname, librarySubjects, acceptedKeys: [] }
-            );
-            finalId = result.book.id;
-            applied.push(...result.applied);
-            proposals.push(...result.proposals);
-          }
-        } catch (err: unknown) {
-          log.warn(
-            `Metadata detection skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-
-        if (proposals.length > 0) {
-          try {
-            await upsertPendingFix(prisma, owner, finalId, file.originalname, file.size, {
-              autoFixes: applied,
-              appliedFixes: [],
-              proposals,
-              undo: null,
-            });
-          } catch (err: unknown) {
-            // Never fail an upload because a pending-fix write failed — the upload
-            // already succeeded; the book just won't show proposals until retried.
-            log.warn(
-              `Pending-fix write skipped for "${file.originalname}": ${err instanceof Error ? err.message : String(err)}`
-            );
-          }
-        }
-
-        thumbnailQueue.enqueue(owner.userId, finalId);
         uploaded.push(file.originalname);
         // `globalId` (Task 7, book-edit spec): `fix-review`'s Edit link
         // needs a Relay global id for books whose only proposals are
@@ -1001,10 +902,10 @@ export function createUiRouter({
         // fix), applied additively — `bookId` keeps meaning the raw hash.
         results.push({
           filename: file.originalname,
-          bookId: finalId,
-          globalId: bookGlobalId(owner, finalId),
-          applied,
-          proposals,
+          bookId: outcome.bookId,
+          globalId: bookGlobalId(owner, outcome.bookId),
+          applied: outcome.applied,
+          proposals: outcome.proposals,
         });
       }
       log.info(`Books uploaded: ${uploaded.join(', ')}`);

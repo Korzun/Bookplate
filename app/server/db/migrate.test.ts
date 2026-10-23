@@ -1092,4 +1092,33 @@ describe('legacy id-recompute and page-count migrations', () => {
 
     expect(await prisma.readingEvent.count()).toBe(0);
   });
+
+  it('creates mcp_tokens and is idempotent', async () => {
+    await runMigrations(prisma, booksDir);
+    await runMigrations(prisma, booksDir);
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `PRAGMA table_info("mcp_tokens")`
+    );
+    expect(columns.map((c) => c.name).sort()).toEqual([
+      'created_at',
+      'id',
+      'label',
+      'last_used_at',
+      'token_hash',
+      'user_id',
+    ]);
+  });
+
+  it("deletes a user's mcp tokens with the user", async () => {
+    await runMigrations(prisma, booksDir);
+    await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
+    await prisma.mcpToken.create({
+      data: { id: 't1', userId: 'u1', label: 'Laptop', tokenHash: 'h1', createdAt: 1 },
+    });
+
+    await prisma.user.delete({ where: { id: 'u1' } });
+
+    expect(await prisma.mcpToken.count()).toBe(0);
+  });
 });

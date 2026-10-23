@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Only adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it. |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it — and is the origin of the file links handed to AI agents (otherwise the address the agent connected to). |
 
 Example:
 
@@ -79,13 +79,14 @@ thumbnails) is persisted in the add-on **`data`** volume.
 
 ## Usage
 
-The add-on serves three things on port **3000**, all on the same host/origin:
+The add-on serves four things on port **3000**, all on the same host/origin:
 
 | Service     | Path      | Use it for                                            |
 | ----------- | --------- | ----------------------------------------------------- |
 | **Web UI**  | `/`       | Uploading books, editing metadata, managing users.    |
 | **OPDS**    | `/opds`   | Browsing/downloading the catalog from a reader.        |
 | **KOSync**  | `/sync`   | Syncing reading progress from KOReader.                |
+| **MCP**     | `/mcp`    | Letting an AI agent (Claude, Cursor, …) work with your library. |
 
 The exact URLs for your instance (LAN address, reverse proxy, or Cloudflare
 tunnel) are shown on each user's **settings page** in the web UI — just copy them
@@ -105,6 +106,9 @@ web UI login password will **not** work there. Likewise, signing in to the web U
 uses your **login password**, not the sync password. Setting up email (below)
 does not change either of these: OPDS and KOSync keep using the sync password
 exactly as before.
+
+AI agents use neither: each one gets its own **agent token**, created and
+revoked on your settings page (see "Connect an AI agent" below).
 
 ### Connect to the Web UI
 
@@ -193,6 +197,35 @@ In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync serve
 - **Server address:** `http://<your-host>:3000/sync`
 - Then **Login** with your reader account username and **sync password** (found
   on your settings page in the web UI).
+
+### Connect an AI agent (MCP)
+
+Bookplate is a [Model Context Protocol][mcp] server, so an AI agent can work
+with your library on your behalf: search it, read book and series details, edit
+metadata (written into the EPUB itself), re-run validation, download books, add
+new ones, replace a book's file, and request books from the admin. An agent only
+ever sees and changes **your own** library.
+
+1. On your **settings page**, under **AI agents (MCP)**, name the agent and click
+   **Create token**. Copy the token straight away — it is shown only once. Give
+   each agent its own token so you can revoke one without affecting the others.
+2. Add Bookplate to the agent as a remote (HTTP) MCP server:
+   - **URL:** `http://<your-host>:3000/mcp`
+   - **Header:** `Authorization: Bearer <token>`
+
+   For Claude Code the settings page shows the exact command, e.g.
+   `claude mcp add --transport http bookplate https://books.example.com/mcp --header "Authorization: Bearer <token>"`.
+
+Books are moved in and out as files, not through the conversation: the agent asks
+for a short-lived (15-minute) upload or download link and transfers the file
+itself, e.g. with `curl`. That needs an agent that can run commands (Claude Code,
+Cursor, and similar); a chat-only client can still search, read, edit and request.
+Those links are built on `public_url` when it is set, and otherwise on the address
+the agent connected to.
+
+Revoking a token on the settings page cuts the agent off immediately, including
+any upload/download links it was given. Agent tokens are only for reader
+accounts — the admin account has no library of its own.
 
 ## Ports
 
@@ -295,6 +328,7 @@ No license has been declared for this project yet. All rights reserved by the
 author until a license is added.
 
 [koreader]: https://koreader.rocks/
+[mcp]: https://modelcontextprotocol.io/
 [releases]: https://github.com/Korzun/Bookplate/releases
 [release-shield]: https://img.shields.io/github/v/release/Korzun/Bookplate?style=flat-square
 [stage-shield]: https://img.shields.io/badge/project%20stage-production-brightgreen.svg?style=flat-square

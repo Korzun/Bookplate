@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { useCallback } from 'react';
 
 import {
+  AgentAccess,
   ConnectionUrls,
   EmailSetting,
   MyProgress,
@@ -38,16 +39,22 @@ import { useIsAdmin, useLogout } from '~/provider/auth';
  * matches fragments across files by name (its `documents` glob), not via a
  * JS import.
  *
- * Skipped entirely for admins (`skip: isAdmin` below): `ConnectionUrls`
- * renders only in the non-admin branch, and `Viewer.devices` carries a ×100
- * cost multiplier, so an admin visiting this page should not pay for a
- * device fetch it never displays.
+ * `...McpTokenFragment` feeds `AgentAccess` the same way — composed here per
+ * the rule above rather than fetched by the card itself.
+ *
+ * Skipped entirely for admins (`skip: isAdmin` below): `ConnectionUrls` and
+ * `AgentAccess` render only in the non-admin branch, and `Viewer.devices`
+ * carries a ×100 cost multiplier, so an admin visiting this page should not
+ * pay for a device fetch it never displays.
  */
 export const UserPageDocument = graphql(`
   query UserPage {
     viewer {
       devices {
         ...ConnectionUrlsFragment
+      }
+      mcpTokens {
+        ...McpTokenFragment
       }
     }
   }
@@ -106,6 +113,7 @@ export const SettingsPage = () => {
       <ThemeSetting />
       <SyncPassword />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
+      <AgentAccess tokens={data?.viewer.mcpTokens ?? []} />
       {emailSection}
       {notificationSection}
       <UserChangePassword />

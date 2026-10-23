@@ -44,7 +44,8 @@ export const bookHashCollisionError = (
 export const model = builder
   .objectRef<BookHashCollisionErrorShape>('BookHashCollisionError')
   .implement({
-    description: 'The edited content hashes to a book that already exists in this library.',
+    description:
+      'The edited, replaced or added content hashes to a book that already exists in this library.',
     interfaces: [userError],
     fields: (t) => ({
       collidingBook: t.prismaField({

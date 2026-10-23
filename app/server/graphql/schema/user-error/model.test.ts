@@ -50,7 +50,7 @@ const userErrorTypes = (): GraphQLObjectType[] =>
  * list.
  */
 describe('UserError', () => {
-  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, BookRequestLimitExceededError, DuplicateBookRequestError, BookRequestNotPendingError, EmailInUseError and EmailNotConfiguredError', () => {
+  it('is implemented by exactly the seven spec-enumerated types plus BookNotValidatedError, StagedUploadNotFoundError, EditLineageEntryError, LineageEntryNotFoundError, UsernameAlreadyExistsError, IncorrectPasswordError, BookRequestLimitExceededError, DuplicateBookRequestError, BookRequestNotPendingError, EmailInUseError, EmailNotConfiguredError and McpTokenLimitExceededError', () => {
     // `BookAlreadyExistsError` was an eighth spec-enumerated type but is no
     // longer registered here: the GraphQL model (`schema/book-already-exists-
     // error/`) was removed by the lineage-gap plan's task 2 because it was
@@ -125,6 +125,11 @@ describe('UserError', () => {
     // domain-error class, same "resolver/service-produced" shape as the
     // members above. See `email-in-use-error/model.ts` and
     // `email-not-configured-error/model.ts`.
+    //
+    // `McpTokenLimitExceededError` is a twentieth, for `viewerCreateMcpToken`'s
+    // per-reader cap — counted inside `createMcpToken`'s transaction and
+    // returned as a value, the `BookRequestLimitExceededError` shape. See
+    // `mcp-token-limit-exceeded-error/model.ts`.
     expect(
       userErrorTypes()
         .map((type) => type.name)
@@ -145,6 +150,7 @@ describe('UserError', () => {
       'IncorrectPasswordError',
       'InvalidInputError',
       'LineageEntryNotFoundError',
+      'McpTokenLimitExceededError',
       'SelfLinkError',
       'StagedUploadNotFoundError',
       'UsernameAlreadyExistsError',

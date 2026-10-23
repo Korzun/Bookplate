@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -16,18 +17,7 @@ import { ThumbnailQueue } from '../services/thumbnail-queue';
 import { createUser } from '../services/user';
 import { createFakeMailer, MAIL_CONFIG, type FakeMailer } from '../test-support/mail';
 import type { AppConfig, MailConfig, Owner } from '../types';
-import type { Context, Viewer } from './context';
-import {
-  createBookByDocumentLoader,
-  createDeviceEditionCountLoader,
-  createLineageLoader,
-  createOwnerLoader,
-  createPendingFixLoader,
-  createProgressLoader,
-  createSeriesProgressLoader,
-  createValidationCountsLoader,
-  createViewerRowLoader,
-} from './loaders';
+import { buildContext, type Context, type ContextDeps, type Viewer } from './context';
 import { schema } from './schema';
 
 export type ExecuteOptions = {
@@ -68,6 +58,12 @@ export type Harness = {
    * only be forgotten once.
    */
   contextFor: (viewer: Viewer | null) => Context;
+  /**
+   * The `ContextDeps` `contextFor` builds from — for a suite that wires a
+   * consumer of those deps directly (the MCP router), not through `execute`.
+   * A function, because `replaceStaging` can be swapped mid-test.
+   */
+  contextDeps: () => ContextDeps;
   prisma: PrismaClient;
   thumbnails: ThumbnailQueue;
   replaceStaging: ReplaceStaging;
@@ -226,26 +222,24 @@ export const createHarness = async (
   // a test that swaps `harness.replaceStaging` mid-test is seen by the next
   // context built — the same reason the harness exposes that field through an
   // accessor pair rather than a plain value.
-  const contextFor = (viewer: Viewer | null): Context => ({
-    viewer,
+  // One shared random secret: nothing in the GraphQL suite signs or checks a
+  // JWT, but `ContextDeps` carries one, and the MCP suite mints transfer
+  // tickets with it.
+  const jwtSecret = crypto.randomBytes(32);
+  const contextDeps = (): ContextDeps => ({
     prisma,
     thumbnails,
     replaceStaging,
     editionsRoot,
     config,
+    jwtSecret,
     mailer,
     notifications,
     vapidPublicKey,
-    loadLineage: createLineageLoader(prisma),
-    loadOwner: createOwnerLoader(prisma),
-    loadProgress: createProgressLoader(prisma),
-    loadPendingFix: createPendingFixLoader(prisma),
-    loadSeriesProgress: createSeriesProgressLoader(prisma),
-    loadValidationCounts: createValidationCountsLoader(prisma),
-    loadBookByDocument: createBookByDocumentLoader(prisma),
-    loadDeviceEditionCount: createDeviceEditionCountLoader(prisma),
-    loadViewerRow: createViewerRowLoader(prisma, viewer),
   });
+  // `buildContext` is production's own constructor, so a new `Context` field
+  // cannot be forgotten here.
+  const contextFor = (viewer: Viewer | null): Context => buildContext(contextDeps(), viewer);
 
   const execute = async (
     document: string,
@@ -406,6 +400,7 @@ export const createHarness = async (
 
   return {
     execute,
+    contextDeps,
     prisma,
     thumbnails,
     // Accessors, not a plain field: they read/write the same `let` binding

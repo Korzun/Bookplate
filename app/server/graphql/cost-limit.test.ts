@@ -304,6 +304,8 @@ describe('the composite-element list-field inventory', () => {
   // is nothing under them to multiply.
   const LEAF_TERMINATING = [
     'Book.identifiers',
+    'BookAddPayload.autoFixes',
+    'BookAddPayload.proposals',
     'BookAnalyzeReplacePayload.autoFixes',
     'BookAnalyzeReplacePayload.messages',
     'BookAnalyzeReplacePayload.proposals',
@@ -316,6 +318,7 @@ describe('the composite-element list-field inventory', () => {
     'UndoSnapshot.proposals',
     'Validation.counts',
     'ValidationMessage.segments',
+    'Viewer.mcpTokens',
     'Viewer.notificationPreferences',
     'Viewer.pushSubscriptions',
     'ViewerSetNotificationPreferencePayload.notificationPreferences',

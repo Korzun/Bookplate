@@ -5,8 +5,8 @@ import { renderWithApollo } from '~/test-utils';
 
 import { SettingsPage } from './index';
 
-// `page/settings` composes nine named exports from the `~/component` barrel
-// (`ConnectionUrls`, `EmailSetting`, `MyProgress`, `NotificationSettings`,
+// `page/settings` composes named exports from the `~/component` barrel
+// (`AgentAccess`, `ConnectionUrls`, `EmailSetting`, `MyProgress`, `NotificationSettings`,
 // `Page`, `ScanLibrarySetting`, `SyncPassword`, `ThemeSetting`,
 // `UserChangePassword`), each of which owns
 // its own GraphQL document/mutation and, in `ScanLibrarySetting`'s case, a
@@ -18,6 +18,7 @@ import { SettingsPage } from './index';
 // `test-utils.tsx`'s standing note warns about (`page/library/index.test.tsx`
 // takes the identical approach for the identical reason).
 vi.mock('~/component', () => ({
+  AgentAccess: () => <div>AgentAccess</div>,
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
   MyProgress: () => <div>MyProgress</div>,
@@ -44,6 +45,11 @@ describe('SettingsPage', () => {
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 
+  it('offers a reader agent (MCP) access', () => {
+    renderWithApollo(<SettingsPage />, { user: { username: 'alice', isAdmin: false } });
+    expect(screen.getByText('AgentAccess')).toBeInTheDocument();
+  });
+
   it('renders the admin branch without the reader-only cards', () => {
     renderWithApollo(<SettingsPage />, { user: { username: 'admin', isAdmin: true } });
 
@@ -53,6 +59,8 @@ describe('SettingsPage', () => {
     // interface; the admin branch renders only the theme setting and Log out.
     expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
+    // The config admin owns no library, so it cannot hold an agent token.
+    expect(screen.queryByText('AgentAccess')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 });

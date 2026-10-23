@@ -6,6 +6,13 @@
       }
       const result: PossibleTypesResultData = {
   "possibleTypes": {
+    "BookAddResult": [
+      "BookAddPayload",
+      "BookHashCollisionError",
+      "EpubValidationError",
+      "InvalidInputError",
+      "StagedUploadNotFoundError"
+    ],
     "BookAnalyzeReplaceResult": [
       "BookAnalyzeReplacePayload",
       "InvalidInputError",
@@ -144,6 +151,7 @@
       "IncorrectPasswordError",
       "InvalidInputError",
       "LineageEntryNotFoundError",
+      "McpTokenLimitExceededError",
       "SelfLinkError",
       "StagedUploadNotFoundError",
       "UsernameAlreadyExistsError"
@@ -163,6 +171,11 @@
     "ViewerConfirmEmailResult": [
       "InvalidInputError",
       "ViewerConfirmEmailPayload"
+    ],
+    "ViewerCreateMcpTokenResult": [
+      "InvalidInputError",
+      "McpTokenLimitExceededError",
+      "ViewerCreateMcpTokenPayload"
     ],
     "ViewerResendEmailVerificationResult": [
       "EmailNotConfiguredError",
