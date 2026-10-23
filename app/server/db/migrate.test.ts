@@ -1093,32 +1093,56 @@ describe('legacy id-recompute and page-count migrations', () => {
     expect(await prisma.readingEvent.count()).toBe(0);
   });
 
-  it('creates mcp_tokens and is idempotent', async () => {
+  it('creates the OAuth tables and is idempotent', async () => {
     await runMigrations(prisma, booksDir);
     await runMigrations(prisma, booksDir);
 
-    const columns = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
-      `PRAGMA table_info("mcp_tokens")`
-    );
-    expect(columns.map((c) => c.name).sort()).toEqual([
+    const columns = async (table: string) =>
+      (await prisma.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${table}")`))
+        .map((c) => c.name)
+        .sort();
+    expect(await columns('oauth_clients')).toEqual(['created_at', 'id', 'metadata', 'name']);
+    expect(await columns('oauth_grants')).toEqual([
+      'access_expires_at',
+      'access_token_hash',
+      'client_id',
       'created_at',
       'id',
-      'label',
       'last_used_at',
-      'token_hash',
+      'refresh_expires_at',
+      'refresh_token_hash',
+      'resource',
+      'scope',
       'user_id',
     ]);
   });
 
-  it("deletes a user's mcp tokens with the user", async () => {
+  it("deletes a reader's OAuth grants with the reader, and a client's with the client", async () => {
     await runMigrations(prisma, booksDir);
     await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
-    await prisma.mcpToken.create({
-      data: { id: 't1', userId: 'u1', label: 'Laptop', tokenHash: 'h1', createdAt: 1 },
+    await prisma.oAuthClient.create({
+      data: { id: 'c1', name: 'Agent', metadata: '{}', createdAt: 1 },
+    });
+    const grant = (id: string) => ({
+      id,
+      userId: 'u1',
+      clientId: 'c1',
+      scope: 'library',
+      resource: 'http://x/mcp',
+      accessTokenHash: `a-${id}`,
+      accessExpiresAt: 1,
+      refreshTokenHash: `r-${id}`,
+      refreshExpiresAt: 1,
+      createdAt: 1,
     });
 
+    await prisma.oAuthGrant.create({ data: grant('g1') });
     await prisma.user.delete({ where: { id: 'u1' } });
+    expect(await prisma.oAuthGrant.count()).toBe(0);
 
-    expect(await prisma.mcpToken.count()).toBe(0);
+    await prisma.user.create({ data: { id: 'u1', username: 'u1' } });
+    await prisma.oAuthGrant.create({ data: grant('g2') });
+    await prisma.oAuthClient.delete({ where: { id: 'c1' } });
+    expect(await prisma.oAuthGrant.count()).toBe(0);
   });
 });

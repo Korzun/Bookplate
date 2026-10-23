@@ -152,9 +152,10 @@ export interface AppConfig {
    *    Absent means code-only delivery, which is fully functional. Never
    *    derived from a request header there: a `Host`-derived link is the
    *    classic reset-link poisoning path.
-   *  - the origin of the MCP upload/download URLs (`routes/mcp.ts`'s
-   *    `transferBaseUrl`). Absent, those fall back to the request's own origin,
-   *    which is safe there and only there — see that function's doc comment.
+   *  - the origin of everything the MCP endpoint hands an agent: OAuth
+   *    discovery metadata and upload/download URLs (`utils/public-origin.ts`).
+   *    Absent, those fall back to the request's own origin, which is safe
+   *    there and only there — see that function's doc comment.
    */
   publicUrl?: string | null;
 }

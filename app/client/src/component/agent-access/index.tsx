@@ -1,27 +1,19 @@
 import type { Reference } from '@apollo/client';
 import { useMutation } from '@apollo/client/react';
-import { Fragment, useActionState, useCallback, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 
 import { Card, CardDivider } from '~/component';
-import { Button, ConfirmModal, TextInput } from '~/control';
+import { Button, ConfirmModal } from '~/control';
 import { useFragment, type FragmentType } from '~/gql';
-import type { ViewerCreateMcpTokenMutation } from '~/gql/graphql';
 import {
-  McpTokenFragment,
-  ViewerCreateMcpTokenDocument,
-  ViewerRevokeMcpTokenDocument,
-} from '~/graphql/mcp-token';
+  McpConnectionFragment,
+  ViewerDisconnectMcpConnectionDocument,
+} from '~/graphql/mcp-connection';
 import { AlertOctagonIcon, CheckIcon } from '~/icon';
-import { unwrapResult } from '~/provider/apollo';
 import { useToast } from '~/provider/toast';
 import { copyToClipboard } from '~/utils';
 
 import { useStyle } from './style';
-
-type CreatePayload = Extract<
-  ViewerCreateMcpTokenMutation['viewerCreateMcpToken'],
-  { __typename: 'ViewerCreateMcpTokenPayload' }
->;
 
 /** A read-only value with a Copy button — the `sync-password` pill. */
 const CopyRow = ({ value, label }: { value: string; label: string }) => {
@@ -57,105 +49,62 @@ const CopyRow = ({ value, label }: { value: string; label: string }) => {
 const formatDate = (iso: string): string => new Date(iso).toLocaleDateString();
 
 interface AgentAccessProps {
-  tokens: readonly FragmentType<typeof McpTokenFragment>[];
+  connections: readonly FragmentType<typeof McpConnectionFragment>[];
 }
 
 /**
- * The reader's AI-agent (MCP) access: the endpoint URL, a form to create a
- * named token, and the list of tokens with Revoke.
+ * The reader's AI-agent (MCP) access: the endpoint URL to give an agent, and
+ * the agents already connected, each with Disconnect.
+ *
+ * There is nothing to create here. An agent connects itself over OAuth: told
+ * this URL, it asks the reader to sign in to Bookplate and approve it
+ * (`page/oauth-consent`), and appears in this list once they do.
  *
  * Fetch-free like `ConnectionUrls`: `page/settings` selects this component's
  * fragment inside `UserPageDocument` (one request per screen), and this only
  * renders for a reader — the config admin owns no library, and the server
- * refuses it a token.
+ * refuses to connect one to it.
  *
- * A new token is shown ONCE, inline, until dismissed: the server stores only
- * its hash. It is held in component state, never in the Apollo cache, so it
- * is gone the moment this card unmounts.
- *
- * Create appends to `Viewer.mcpTokens` and revoke filters it, both via
- * `cache.modify` on the `Viewer` singleton — the `UserRegister` shape.
+ * Disconnect filters `Viewer.mcpConnections` via `cache.modify` on the
+ * `Viewer` singleton — the `UserRegister` shape.
  */
-export const AgentAccess = ({ tokens: tokenRefs }: AgentAccessProps) => {
+export const AgentAccess = ({ connections: connectionRefs }: AgentAccessProps) => {
   const styles = useStyle();
   const showToast = useToast();
-  const tokens = useFragment(McpTokenFragment, tokenRefs);
+  const connections = useFragment(McpConnectionFragment, connectionRefs);
   const endpoint = `${window.location.origin}/mcp`;
 
-  const [label, setLabel] = useState('');
-  const [created, setCreated] = useState<{ label: string; token: string } | null>(null);
-  const [revoking, setRevoking] = useState<{ id: string; label: string } | null>(null);
+  const [disconnecting, setDisconnecting] = useState<{ id: string; name: string } | null>(null);
+  const [runDisconnect, { loading }] = useMutation(ViewerDisconnectMcpConnectionDocument);
 
-  const [runCreate] = useMutation(ViewerCreateMcpTokenDocument);
-  const [runRevoke, { loading: revokeLoading }] = useMutation(ViewerRevokeMcpTokenDocument);
-
-  const [, createAction, isCreating] = useActionState(async () => {
+  const handleConfirm = useCallback(async () => {
+    if (disconnecting === null) return;
+    const { id } = disconnecting;
     try {
-      const { data } = await runCreate({
-        variables: { input: { label } },
-        update: (cache, { data: mutationData }) => {
-          const result = unwrapResult<CreatePayload>(
-            mutationData?.viewerCreateMcpToken,
-            'ViewerCreateMcpTokenPayload'
-          );
-          if (result.status !== 'ok') return;
-          cache.modify({
-            id: cache.identify({ __typename: 'Viewer' }),
-            fields: {
-              mcpTokens: (existing: readonly Reference[] = [], { toReference }) => {
-                const ref = toReference(result.payload.mcpToken);
-                return ref ? [...existing, ref] : existing;
-              },
-            },
-          });
-        },
-      });
-      const result = unwrapResult<CreatePayload>(
-        data?.viewerCreateMcpToken,
-        'ViewerCreateMcpTokenPayload'
-      );
-      if (result.status === 'ok') {
-        setCreated({ label: label.trim(), token: result.payload.token });
-        setLabel('');
-      } else {
-        showToast(result.status === 'error' ? result.message : 'Could not create a token', 'error');
-      }
-    } catch {
-      showToast('Could not create a token', 'error');
-    }
-    return null;
-  }, null);
-
-  const handleLabelChange = useCallback((next: string | undefined) => setLabel(next ?? ''), []);
-
-  const handleConfirmRevoke = useCallback(async () => {
-    if (revoking === null) return;
-    const { id } = revoking;
-    try {
-      const { data } = await runRevoke({
+      const { data } = await runDisconnect({
         variables: { id },
         update: (cache, { data: mutationData }) => {
-          if (mutationData?.viewerRevokeMcpToken !== true) return;
+          if (mutationData?.viewerDisconnectMcpConnection !== true) return;
           cache.modify({
             id: cache.identify({ __typename: 'Viewer' }),
             fields: {
-              mcpTokens: (existing: readonly Reference[] = [], { readField }) =>
+              mcpConnections: (existing: readonly Reference[] = [], { readField }) =>
                 existing.filter((ref) => readField('id', ref) !== id),
             },
           });
         },
       });
-      if (data?.viewerRevokeMcpToken !== true) {
-        showToast('Could not revoke that token', 'error');
+      if (data?.viewerDisconnectMcpConnection === true) {
+        showToast('Agent disconnected', 'success');
       } else {
-        showToast('Token revoked', 'success');
+        showToast('Could not disconnect that agent', 'error');
       }
     } catch {
-      showToast('Could not revoke that token', 'error');
+      showToast('Could not disconnect that agent', 'error');
     } finally {
-      setRevoking(null);
+      setDisconnecting(null);
     }
-  }, [revoking, runRevoke, showToast]);
+  }, [disconnecting, runDisconnect, showToast]);
 
   return (
     <Fragment>
@@ -163,75 +112,40 @@ export const AgentAccess = ({ tokens: tokenRefs }: AgentAccessProps) => {
         <div className={styles.stack}>
           <p className={styles.hint}>
             Let an AI agent such as Claude search your library, edit metadata, and upload or
-            download books. Give each agent its own token so you can revoke it on its own.
+            download books. Add this URL to the agent as a remote MCP server; it will ask you to
+            sign in here and approve it.
           </p>
           <CopyRow value={endpoint} label="MCP server URL" />
+          <p className={styles.hint}>For Claude Code:</p>
+          <CopyRow
+            value={`claude mcp add --transport http bookplate ${endpoint}`}
+            label="command"
+          />
 
-          {created !== null && (
-            <div className={styles.created} role="status">
-              <span className={styles.createdTitle}>
-                Token for “{created.label}” — copy it now, it won’t be shown again
-              </span>
-              <CopyRow value={created.token} label="token" />
-              <p className={styles.hint}>To add it to Claude Code:</p>
-              <CopyRow
-                value={`claude mcp add --transport http bookplate ${endpoint} --header "Authorization: Bearer ${created.token}"`}
-                label="command"
-              />
-              <p className={styles.hint}>
-                Other MCP clients: add an HTTP server with the URL above and the header{' '}
-                <code>Authorization: Bearer &lt;token&gt;</code>.
-              </p>
-              <Button type="default" radius="card" onClick={() => setCreated(null)}>
-                Done
-              </Button>
-            </div>
-          )}
-
-          <form className={styles.form} action={createAction}>
-            <TextInput
-              name="mcp-token-label"
-              value={label}
-              onChange={handleLabelChange}
-              layout="horizontal"
-              label="Agent name"
-              placeholder="e.g. Claude on my laptop"
-              maxLength={100}
-              autoComplete="off"
-            />
-            <Button
-              type="primary"
-              radius="card"
-              submit
-              loading={isCreating}
-              disabled={label.trim() === ''}
-            >
-              {isCreating ? 'Creating…' : 'Create token'}
-            </Button>
-          </form>
-
-          {tokens.length > 0 && (
+          {connections.length > 0 && (
             <>
-              <CardDivider>Tokens</CardDivider>
+              <CardDivider>Connected agents</CardDivider>
               <ul className={styles.list}>
-                {tokens.map((token) => (
-                  <li key={token.id} className={styles.row}>
+                {connections.map((connection) => (
+                  <li key={connection.id} className={styles.row}>
                     <div>
-                      <span className={styles.name}>{token.label}</span>
+                      <span className={styles.name}>{connection.clientName}</span>
                       <span className={styles.meta}>
-                        Created {formatDate(token.createdAt)} ·{' '}
-                        {token.lastUsedAt === null || token.lastUsedAt === undefined
-                          ? 'never used'
-                          : `last used ${formatDate(token.lastUsedAt)}`}
+                        Connected {formatDate(connection.createdAt)} ·{' '}
+                        {connection.lastUsedAt === null || connection.lastUsedAt === undefined
+                          ? 'not used yet'
+                          : `last used ${formatDate(connection.lastUsedAt)}`}
                       </span>
                     </div>
                     <Button
                       type="link"
                       danger
-                      ariaLabel={`Revoke ${token.label}`}
-                      onClick={() => setRevoking({ id: token.id, label: token.label })}
+                      ariaLabel={`Disconnect ${connection.clientName}`}
+                      onClick={() =>
+                        setDisconnecting({ id: connection.id, name: connection.clientName })
+                      }
                     >
-                      Revoke
+                      Disconnect
                     </Button>
                   </li>
                 ))}
@@ -241,18 +155,19 @@ export const AgentAccess = ({ tokens: tokenRefs }: AgentAccessProps) => {
         </div>
       </Card>
       <ConfirmModal
-        isOpen={revoking !== null}
+        isOpen={disconnecting !== null}
         icon={AlertOctagonIcon}
-        title="Revoke this token?"
-        confirmText="Revoke"
+        title="Disconnect this agent?"
+        confirmText="Disconnect"
         cancelText="Cancel"
         danger
-        loading={revokeLoading}
-        onConfirm={() => void handleConfirmRevoke()}
-        onCancel={() => setRevoking(null)}
+        loading={loading}
+        onConfirm={() => void handleConfirm()}
+        onCancel={() => setDisconnecting(null)}
       >
-        <strong>{revoking?.label}</strong> will lose access to your library immediately, including
-        any download or upload links it was given.
+        <strong>{disconnecting?.name}</strong> will lose access to your library immediately,
+        including any download or upload links it was given. It can only reconnect if you approve it
+        again.
       </ConfirmModal>
     </Fragment>
   );

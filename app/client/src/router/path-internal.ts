@@ -20,6 +20,12 @@ export const library = (options?: { subject?: string; author?: string }) => {
   return qs ? `/library?${qs}` : '/library';
 };
 export const login = () => '/login';
+/**
+ * Where an AI agent's OAuth sign-in lands (`/oauth/authorize` redirects here
+ * with a signed `request`). Fixed by the server, which builds the redirect:
+ * `CONSENT_PATH` in `app/server/mcp/oauth-provider.ts`.
+ */
+export const oauthConsent = () => '/oauth/consent';
 export const passwordReset = () => '/password-reset';
 /** The EMAIL reset flow. `passwordReset()` above is the protected forced-change
  *  screen and is a different thing — see the naming trap in the task brief. */

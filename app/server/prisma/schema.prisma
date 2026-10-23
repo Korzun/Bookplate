@@ -207,7 +207,7 @@ model User {
   notificationOutbox      NotificationOutbox[]
   pushSubscriptions       PushSubscription[]
   readingEvents           ReadingEvent[]
-  mcpTokens               McpToken[]
+  oauthGrants             OAuthGrant[]
 
   @@map("users")
 }
@@ -507,24 +507,51 @@ model ReadingEvent {
   @@map("reading_events")
 }
 
-/// One agent access token for the MCP endpoint (`/mcp`), owned by one reader.
+/// An OAuth client that registered itself for the MCP endpoint (`/mcp`) through
+/// dynamic client registration (RFC 7591) — Claude, Cursor and the like.
 ///
-/// Only the SHA-256 of the token is stored. The token itself is 32 random
-/// bytes, shown to its owner once at creation and never again — so a fast,
-/// unsalted hash is the right tool here (nothing to brute-force), unlike the
-/// login password's argon2.
+/// Registration is open, as MCP expects, and grants nothing on its own: a
+/// client reaches a library only through an `OAuthGrant` its reader approved.
+/// `metadata` is the full registered client record the MCP SDK's handlers read
+/// back (redirect URIs, auth method, and `client_secret` for a confidential
+/// client, which the SDK compares in plaintext — see `services/mcp-oauth.ts`).
+model OAuthClient {
+  id        String       @id
+  name      String
+  metadata  String
+  createdAt Float        @map("created_at")
+  grants    OAuthGrant[]
+
+  @@map("oauth_clients")
+}
+
+/// One reader's approval of one OAuth client: a connected agent. Holds the
+/// grant's current access and refresh tokens, by SHA-256 only — each is 32
+/// random bytes, so a fast unsalted hash is right (nothing to brute-force) and
+/// lets a token be found by an indexed equality.
 ///
-/// `lastUsedAt` is a coarse "is this still in use?" hint for the settings list,
-/// written at most once a minute per token (see `services/mcp-token.ts`).
-model McpToken {
-  id         String @id
-  userId     String @map("user_id")
-  label      String
-  tokenHash  String @unique @map("token_hash")
-  createdAt  Float  @map("created_at")
-  lastUsedAt Float? @map("last_used_at")
-  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+/// Refreshing rotates both tokens in place. Deleting the row (the reader
+/// disconnecting the agent, or the grant expiring) kills both at once, and the
+/// upload/download URLs minted under it (`mcp/transfer-ticket.ts`).
+///
+/// `lastUsedAt` is a coarse hint for the settings list, written at most once a
+/// minute.
+model OAuthGrant {
+  id               String      @id
+  userId           String      @map("user_id")
+  clientId         String      @map("client_id")
+  scope            String
+  resource         String
+  accessTokenHash  String      @unique @map("access_token_hash")
+  accessExpiresAt  Float       @map("access_expires_at")
+  refreshTokenHash String      @unique @map("refresh_token_hash")
+  refreshExpiresAt Float       @map("refresh_expires_at")
+  createdAt        Float       @map("created_at")
+  lastUsedAt       Float?      @map("last_used_at")
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  client           OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId])
-  @@map("mcp_tokens")
+  @@index([clientId])
+  @@map("oauth_grants")
 }

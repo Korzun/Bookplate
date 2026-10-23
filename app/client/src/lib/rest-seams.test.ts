@@ -16,6 +16,7 @@ const SANCTIONED = new Set([
   'lib/staged-upload.ts', // POST /api/books/{replace,cover}-staging — multipart
   'lib/use-authorized-src.ts', // blob fetch of cover/thumbnail/download URLs
   'page/login/index.tsx', // POST /api/login — pre-auth
+  'page/oauth-consent/index.tsx', // GET/POST /api/oauth/consent — the auth primitive: OAuth consent for an MCP agent, answered with a redirect to the agent
   'page/forgot-password/index.tsx', // POST /api/password/forgot — pre-auth
   'page/reset-password/index.tsx', // POST /api/password/reset — pre-auth
   'provider/config/provider.tsx', // GET /api/public-config — pre-auth; Query.config is authenticated

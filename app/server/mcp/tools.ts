@@ -34,8 +34,8 @@ const log = logger('MCP');
 export type McpSession = {
   /** Always a reader (never the config admin), with no pending credential gates. */
   readonly viewer: Viewer & { readonly userId: string };
-  /** The `mcp_tokens` row the request authenticated with. */
-  readonly tokenId: string;
+  /** The OAuth grant (`oauth_grants` row) the request authenticated with. */
+  readonly grantId: string;
   /** Absolute origin for transfer URLs, e.g. `https://books.example.com`. */
   readonly baseUrl: string;
 };
@@ -643,7 +643,7 @@ export function createBookplateMcpServer(
       const ticket = signTransferTicket(deps.jwtSecret, {
         type: 'download',
         userId: session.viewer.userId,
-        tokenId: session.tokenId,
+        grantId: session.grantId,
         bookId: rawBookId,
       });
       const downloadUrl = `${session.baseUrl}/mcp/download/${ticket}`;
@@ -687,7 +687,7 @@ export function createBookplateMcpServer(
       const ticket = signTransferTicket(deps.jwtSecret, {
         type: 'upload',
         userId: session.viewer.userId,
-        tokenId: session.tokenId,
+        grantId: session.grantId,
         kind: args.kind,
         filename,
       });

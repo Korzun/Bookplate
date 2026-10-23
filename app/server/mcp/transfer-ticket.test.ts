@@ -10,11 +10,11 @@ const secret = crypto.randomBytes(32);
 const upload = {
   type: 'upload',
   userId: 'u1',
-  tokenId: 't1',
+  grantId: 'g1',
   kind: 'epub',
   filename: 'Dune.epub',
 } as const;
-const download = { type: 'download', userId: 'u1', tokenId: 't1', bookId: 'abc123' } as const;
+const download = { type: 'download', userId: 'u1', grantId: 'g1', bookId: 'abc123' } as const;
 
 describe('transfer tickets', () => {
   it('round-trips an upload and a download ticket', () => {
@@ -56,7 +56,7 @@ describe('transfer tickets', () => {
   });
 
   it('refuses a correctly signed ticket missing its claims', () => {
-    const bare = jwt.sign({ typ: 'download', tid: 't1' }, secret, {
+    const bare = jwt.sign({ typ: 'download', gid: 'g1' }, secret, {
       algorithm: 'HS256',
       audience: 'bookplate-mcp-transfer',
       subject: 'u1',

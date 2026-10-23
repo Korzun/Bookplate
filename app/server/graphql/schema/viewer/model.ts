@@ -1,5 +1,5 @@
 import { NOT_CONFIG_ADMIN } from '../../../services/admin-account';
-import { listMcpTokenRows } from '../../../services/mcp-token';
+import { listMcpConnections } from '../../../services/mcp-oauth';
 import { listNotificationPreferences } from '../../../services/notification';
 import { configuredChannels } from '../../../services/notification-channels';
 import { getSyncPassword } from '../../../services/password';
@@ -9,7 +9,7 @@ import { epochToDate } from '../../derive';
 import { builder } from '../builder';
 import { model as device } from '../device/model';
 import { model as library } from '../library/model';
-import { model as mcpTokenModel } from '../mcp-token/model';
+import { model as mcpConnectionModel } from '../mcp-connection/model';
 import { model as notificationPreferenceModel } from '../notification-preference/model';
 import { model as pushSubscriptionModel } from '../push-subscription/model';
 import { model as user } from '../user/model';
@@ -112,16 +112,16 @@ export const model = builder.objectRef<Viewer>('Viewer').implement({
     }),
 
     /**
-     * The viewer's own agent (MCP) tokens, for the settings list. Carries no
-     * token material — see `mcp-token/model.ts`. Empty for the config admin,
-     * which owns no library and so cannot hold one (`viewerCreateMcpToken`).
-     * Resolved through `v.userId`, not `resolveViewerUserId`, for exactly that
-     * reason: the admin's row must not read as a token holder.
+     * The AI agents the viewer has connected to their library over MCP (their
+     * OAuth grants), for the settings list. Carries no token material — see
+     * `mcp-connection/model.ts`. Empty for the config admin, which owns no
+     * library and so cannot approve one. Resolved through `v.userId`, not
+     * `resolveViewerUserId`, for exactly that reason.
      */
-    mcpTokens: t.field({
-      type: [mcpTokenModel],
+    mcpConnections: t.field({
+      type: [mcpConnectionModel],
       resolve: (v, _args, context) =>
-        v.userId === null ? [] : listMcpTokenRows(context.prisma, v.userId),
+        v.userId === null ? [] : listMcpConnections(context.prisma, v.userId),
     }),
 
     library: t.field({

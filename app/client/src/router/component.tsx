@@ -10,6 +10,7 @@ import {
   ForgotPasswordPage,
   LibraryPage,
   LoginPage,
+  OAuthConsentPage,
   PasswordResetPage,
   ResetPasswordPage,
   SeriesPage,
@@ -61,6 +62,10 @@ export const AppRouter = () => {
           {/* Password reset and set-email are both nav-less (minimal page). */}
           <Route path={path.passwordReset()} element={<PasswordResetPage />} />
           <Route path={path.setEmail()} element={<SetEmailPage />} />
+          {/* So is an AI agent's consent screen: it is a stop on the way back
+              to the agent, not a place in the library. Protected, so a
+              signed-out reader signs in first and returns here (`from`). */}
+          <Route path={path.oauthConsent()} element={<OAuthConsentPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

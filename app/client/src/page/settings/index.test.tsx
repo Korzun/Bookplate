@@ -59,7 +59,7 @@ describe('SettingsPage', () => {
     // interface; the admin branch renders only the theme setting and Log out.
     expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
-    // The config admin owns no library, so it cannot hold an agent token.
+    // The config admin owns no library, so it cannot connect an agent.
     expect(screen.queryByText('AgentAccess')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });

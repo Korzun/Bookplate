@@ -151,7 +151,6 @@
       "IncorrectPasswordError",
       "InvalidInputError",
       "LineageEntryNotFoundError",
-      "McpTokenLimitExceededError",
       "SelfLinkError",
       "StagedUploadNotFoundError",
       "UsernameAlreadyExistsError"
@@ -171,11 +170,6 @@
     "ViewerConfirmEmailResult": [
       "InvalidInputError",
       "ViewerConfirmEmailPayload"
-    ],
-    "ViewerCreateMcpTokenResult": [
-      "InvalidInputError",
-      "McpTokenLimitExceededError",
-      "ViewerCreateMcpTokenPayload"
     ],
     "ViewerResendEmailVerificationResult": [
       "EmailNotConfiguredError",

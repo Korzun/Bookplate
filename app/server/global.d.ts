@@ -6,7 +6,7 @@ declare global {
       user?: import('./services/jwt').AuthUser;
       opdsOwner?: { userId: string; username: string };
       opdsDevice?: import('./types').Device;
-      mcpIdentity?: import('./services/mcp-token').McpTokenIdentity;
+      mcpIdentity?: import('./services/mcp-oauth').OAuthGrantIdentity;
     }
   }
 }

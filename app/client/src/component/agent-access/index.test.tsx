@@ -5,13 +5,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
-  McpTokenFragmentFragment,
-  ViewerCreateMcpTokenMutation,
-  ViewerCreateMcpTokenMutationVariables,
-  ViewerRevokeMcpTokenMutation,
-  ViewerRevokeMcpTokenMutationVariables,
+  McpConnectionFragmentFragment,
+  ViewerDisconnectMcpConnectionMutation,
+  ViewerDisconnectMcpConnectionMutationVariables,
 } from '~/gql/graphql';
-import { ViewerCreateMcpTokenDocument, ViewerRevokeMcpTokenDocument } from '~/graphql/mcp-token';
+import { ViewerDisconnectMcpConnectionDocument } from '~/graphql/mcp-connection';
 import { UserPageDocument } from '~/page/settings';
 import { renderWithApollo } from '~/test-utils';
 
@@ -19,58 +17,46 @@ import { AgentAccess } from './index';
 
 const endpoint = `${window.location.origin}/mcp`;
 
-const token = (overrides: Partial<McpTokenFragmentFragment> = {}): McpTokenFragmentFragment => ({
-  __typename: 'McpToken',
-  id: 't1',
-  label: 'Claude on laptop',
+const connection = (
+  overrides: Partial<McpConnectionFragmentFragment> = {}
+): McpConnectionFragmentFragment => ({
+  __typename: 'McpConnection',
+  id: 'g1',
+  clientName: 'Claude',
   createdAt: '2026-10-01T12:00:00.000Z',
   lastUsedAt: null,
   ...overrides,
 });
 
-const createMock = (
-  label: string
-): MockedResponse<ViewerCreateMcpTokenMutation, ViewerCreateMcpTokenMutationVariables> => ({
-  request: { query: ViewerCreateMcpTokenDocument, variables: { input: { label } } },
-  result: {
-    data: {
-      __typename: 'Mutation',
-      viewerCreateMcpToken: {
-        __typename: 'ViewerCreateMcpTokenPayload',
-        token: 'bpmcp_secretvalue',
-        mcpToken: token({ id: 't-new', label }),
-      },
-    },
-  },
-});
-
-const revokeMock = (
+const disconnectMock = (
   id: string
-): MockedResponse<ViewerRevokeMcpTokenMutation, ViewerRevokeMcpTokenMutationVariables> => ({
-  request: { query: ViewerRevokeMcpTokenDocument, variables: { id } },
-  result: { data: { __typename: 'Mutation', viewerRevokeMcpToken: true } },
+): MockedResponse<
+  ViewerDisconnectMcpConnectionMutation,
+  ViewerDisconnectMcpConnectionMutationVariables
+> => ({
+  request: { query: ViewerDisconnectMcpConnectionDocument, variables: { id } },
+  result: { data: { __typename: 'Mutation', viewerDisconnectMcpConnection: true } },
 });
 
 /**
- * Reads the tokens through `UserPageDocument`, exactly as `page/settings`
- * does, so the cache writes the mutations make show up in what renders.
+ * Reads the connections through `UserPageDocument`, exactly as `page/settings`
+ * does, so the cache write the disconnect makes shows up in what renders.
  */
 const FromCache = () => {
   const { data } = useQuery(UserPageDocument, { fetchPolicy: 'cache-only' });
-  return <AgentAccess tokens={data?.viewer.mcpTokens ?? []} />;
+  return <AgentAccess connections={data?.viewer.mcpConnections ?? []} />;
 };
 
-function renderCard(tokens: McpTokenFragmentFragment[], mocks: MockedResponse[] = []) {
+function renderCard(connections: McpConnectionFragmentFragment[], mocks: MockedResponse[] = []) {
   const rendered = renderWithApollo(<FromCache />, { mocks });
   rendered.client.writeQuery({
     query: UserPageDocument,
-    data: { __typename: 'Query', viewer: { __typename: 'Viewer', devices: [], mcpTokens: tokens } },
+    data: {
+      __typename: 'Query',
+      viewer: { __typename: 'Viewer', devices: [], mcpConnections: connections },
+    },
   });
-  // `TextInput` does not associate its label with the input, so the field is
-  // found by name, as `user-register`'s tests do.
-  const labelInput = () =>
-    rendered.container.querySelector('input[name="mcp-token-label"]') as HTMLInputElement;
-  return { ...rendered, labelInput };
+  return rendered;
 }
 
 beforeAll(() => {
@@ -87,58 +73,45 @@ afterEach(() => {
 });
 
 describe('AgentAccess', () => {
-  it('shows the MCP endpoint and each token with when it was last used', async () => {
+  it('shows the MCP URL and a ready-made Claude Code command', async () => {
+    renderCard([]);
+    expect(await screen.findByText(endpoint)).toBeInTheDocument();
+    expect(
+      screen.getByText(`claude mcp add --transport http bookplate ${endpoint}`)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Connected agents')).not.toBeInTheDocument();
+  });
+
+  it('lists connected agents with when each was last used', async () => {
     renderCard([
-      token(),
-      token({ id: 't2', label: 'Cursor', lastUsedAt: '2026-10-20T09:00:00.000Z' }),
+      connection(),
+      connection({ id: 'g2', clientName: 'Cursor', lastUsedAt: '2026-10-20T09:00:00.000Z' }),
     ]);
 
-    expect(await screen.findByText(endpoint)).toBeInTheDocument();
-    expect(screen.getByText('Claude on laptop')).toBeInTheDocument();
-    expect(screen.getByText(/never used/)).toBeInTheDocument();
+    expect(await screen.findByText('Claude')).toBeInTheDocument();
+    expect(screen.getByText('Cursor')).toBeInTheDocument();
+    expect(screen.getByText(/not used yet/)).toBeInTheDocument();
     expect(screen.getByText(/last used/)).toBeInTheDocument();
   });
 
-  it('keeps Create disabled until the agent has a name', async () => {
+  it('copies the URL', async () => {
     const user = userEvent.setup();
-    const { labelInput } = renderCard([]);
-    const button = await screen.findByRole('button', { name: 'Create token' });
-
-    expect(button).toBeDisabled();
-    await user.type(labelInput(), 'Claude');
-    expect(button).toBeEnabled();
+    renderCard([]);
+    await user.click(await screen.findByRole('button', { name: 'Copy MCP server URL' }));
+    // `userEvent.setup()` installs its own clipboard, so read back from it.
+    expect(await navigator.clipboard.readText()).toBe(endpoint);
   });
 
-  it('creates a token, shows it once with a ready-made command, and lists it', async () => {
+  it('disconnects an agent after confirmation and drops it from the list', async () => {
     const user = userEvent.setup();
-    const { labelInput } = renderCard([], [createMock('Claude')]);
+    renderCard([connection()], [disconnectMock('g1')]);
 
-    await screen.findByRole('button', { name: 'Create token' });
-    await user.type(labelInput(), 'Claude');
-    await user.click(screen.getByRole('button', { name: 'Create token' }));
-
-    const shown = await screen.findByRole('status');
-    expect(within(shown).getByText('bpmcp_secretvalue')).toBeInTheDocument();
-    expect(
-      within(shown).getByText(
-        `claude mcp add --transport http bookplate ${endpoint} --header "Authorization: Bearer bpmcp_secretvalue"`
-      )
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Revoke Claude' })).toBeInTheDocument();
-
-    await user.click(within(shown).getByRole('button', { name: 'Done' }));
-    expect(screen.queryByText('bpmcp_secretvalue')).not.toBeInTheDocument();
-  });
-
-  it('revokes a token after confirmation and drops it from the list', async () => {
-    const user = userEvent.setup();
-    renderCard([token()], [revokeMock('t1')]);
-
-    await user.click(await screen.findByRole('button', { name: 'Revoke Claude on laptop' }));
+    await user.click(await screen.findByRole('button', { name: 'Disconnect Claude' }));
     // The confirm modal's button; the dialog is not "open" under jsdom, so
     // its contents are only reachable with `hidden: true`.
-    await user.click(screen.getByRole('button', { name: 'Revoke', hidden: true }));
+    await user.click(screen.getByRole('button', { name: 'Disconnect', hidden: true }));
 
-    await waitFor(() => expect(screen.queryByText('Claude on laptop')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Claude')).not.toBeInTheDocument());
+    expect(within(document.body).queryByText('Connected agents')).not.toBeInTheDocument();
   });
 });

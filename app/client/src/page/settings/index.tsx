@@ -39,7 +39,7 @@ import { useIsAdmin, useLogout } from '~/provider/auth';
  * matches fragments across files by name (its `documents` glob), not via a
  * JS import.
  *
- * `...McpTokenFragment` feeds `AgentAccess` the same way — composed here per
+ * `...McpConnectionFragment` feeds `AgentAccess` the same way — composed here per
  * the rule above rather than fetched by the card itself.
  *
  * Skipped entirely for admins (`skip: isAdmin` below): `ConnectionUrls` and
@@ -53,8 +53,8 @@ export const UserPageDocument = graphql(`
       devices {
         ...ConnectionUrlsFragment
       }
-      mcpTokens {
-        ...McpTokenFragment
+      mcpConnections {
+        ...McpConnectionFragment
       }
     }
   }
@@ -113,7 +113,7 @@ export const SettingsPage = () => {
       <ThemeSetting />
       <SyncPassword />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
-      <AgentAccess tokens={data?.viewer.mcpTokens ?? []} />
+      <AgentAccess connections={data?.viewer.mcpConnections ?? []} />
       {emailSection}
       {notificationSection}
       <UserChangePassword />

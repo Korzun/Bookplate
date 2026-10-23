@@ -61,7 +61,7 @@ Add-on options (set in the **Configuration** tab):
 | `email_cloudflare_api_token`  | password | *(none)* | Cloudflare API token with the **Email Sending: Edit** permission. Masked in this UI. Required together with `email_cloudflare_account_id` and `email_from_address`. |
 | `email_from_address`     | string | *(none)*    | From-address for outgoing mail. Must be on a domain verified for Email Sending in that Cloudflare account. Required together with `email_cloudflare_account_id` and `email_cloudflare_api_token`. |
 | `email_from_name`        | string | *(library name)* | From-display-name for outgoing mail. Defaults to `library_name` when left blank. |
-| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it — and is the origin of the file links handed to AI agents (otherwise the address the agent connected to). |
+| `public_url`             | string | *(none)*    | Optional absolute origin this instance is reachable at (e.g. `https://books.example.com`). Adds a clickable link beside the code that every verification/reset email already carries — code-only delivery works fine without it — and is the origin of the sign-in and file links handed to AI agents (otherwise the address the agent connected to). |
 
 Example:
 
@@ -107,8 +107,9 @@ uses your **login password**, not the sync password. Setting up email (below)
 does not change either of these: OPDS and KOSync keep using the sync password
 exactly as before.
 
-AI agents use neither: each one gets its own **agent token**, created and
-revoked on your settings page (see "Connect an AI agent" below).
+AI agents use neither: an agent signs in through your web login and you approve
+it, and you can disconnect it again from your settings page (see "Connect an AI
+agent" below).
 
 ### Connect to the Web UI
 
@@ -203,30 +204,42 @@ In KOReader: **top menu → tools (🔧) → Progress sync → Custom sync serve
 Bookplate is a [Model Context Protocol][mcp] server, so an AI agent can work
 with your library on your behalf: search it, read book and series details, edit
 metadata (written into the EPUB itself), accept or dismiss the metadata fixes
-Bookplate suggests (and undo the last of those), re-run validation, download books, add new ones, replace a
-book's file, and request books from the admin. An agent only
-ever sees and changes **your own** library.
+Bookplate suggests (and undo the last of those), re-run validation, download
+books, add new ones, replace a book's file, and request books from the admin. An
+agent only ever sees and changes **your own** library.
 
-1. On your **settings page**, under **AI agents (MCP)**, name the agent and click
-   **Create token**. Copy the token straight away — it is shown only once. Give
-   each agent its own token so you can revoke one without affecting the others.
-2. Add Bookplate to the agent as a remote (HTTP) MCP server:
-   - **URL:** `http://<your-host>:3000/mcp`
-   - **Header:** `Authorization: Bearer <token>`
+1. Add Bookplate to the agent as a remote (HTTP) MCP server, with the URL shown on
+   your **settings page** under **AI agents (MCP)** — `http://<your-host>:3000/mcp`.
+   For Claude Code that is
+   `claude mcp add --transport http bookplate https://books.example.com/mcp`; in
+   Claude's apps, add it as a custom connector.
+2. The agent opens Bookplate in your browser. Sign in if you aren't already, check
+   which agent is asking, and click **Allow**. You're sent back to the agent, which
+   is now connected.
 
-   For Claude Code the settings page shows the exact command, e.g.
-   `claude mcp add --transport http bookplate https://books.example.com/mcp --header "Authorization: Bearer <token>"`.
+This is standard OAuth 2.1, as the MCP specification lays out: the agent
+registers itself, never sees your password, and gets tokens that only reach the
+MCP endpoint. There is nothing to copy or paste.
+
+**HTTPS:** the MCP specification expects the sign-in to happen over HTTPS, and
+some agents enforce it — Claude's apps, for one, only connect to a public HTTPS
+address, so put the instance behind HTTPS (a reverse proxy or a Cloudflare
+Tunnel) to use them. Agents running on your own computer, like Claude Code, may
+work over plain HTTP on your LAN.
 
 Books are moved in and out as files, not through the conversation: the agent asks
 for a short-lived (15-minute) upload or download link and transfers the file
 itself, e.g. with `curl`. That needs an agent that can run commands (Claude Code,
 Cursor, and similar); a chat-only client can still search, read, edit and request.
-Those links are built on `public_url` when it is set, and otherwise on the address
-the agent connected to.
+Those links, and the sign-in addresses the agent is given, are built on
+`public_url` when it is set — so if you set it, connect agents through that
+address — and otherwise on the address the agent connected to.
 
-Revoking a token on the settings page cuts the agent off immediately, including
-any upload/download links it was given. Agent tokens are only for reader
-accounts — the admin account has no library of its own.
+Your settings page lists every connected agent. **Disconnect** cuts one off
+immediately, including any upload/download links it was given; it can only
+reconnect if you approve it again. An agent left unused for 90 days disconnects
+itself. Only reader accounts can connect agents — the admin account has no
+library of its own.
 
 ## Ports
 

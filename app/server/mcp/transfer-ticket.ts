@@ -7,8 +7,8 @@
  * into its context as a tool result is useless to it. So the tools hand out a
  * URL instead, and the agent moves the bytes itself (`curl`), out of band.
  *
- * WHY THE CAPABILITY IS IN THE URL: the agent's bearer token lives in its MCP
- * client config, which the model usually cannot read — so it could not attach
+ * WHY THE CAPABILITY IS IN THE URL: the agent's OAuth access token lives inside
+ * its MCP client, which the model cannot read — so it could not attach
  * `Authorization` to its own `curl`. The URL must authorize itself.
  *
  * A ticket is an HS256 JWT signed with the server's existing JWT secret. It
@@ -17,9 +17,9 @@
  *    `verifyAccessToken` requires, so it never authenticates the web API;
  *  - an access token has no `aud`, so `verifyTransferTicket` rejects it.
  *
- * It names the MCP token it was minted under (`tid`). The routes re-check that
- * token still exists (`mcpTokenIsLive`) before honouring a ticket, so revoking
- * a token also kills every URL handed out under it. Within its lifetime a ticket
+ * It names the OAuth grant it was minted under (`gid`). The routes re-check
+ * that grant still exists (`oauthGrantIsLive`) before honouring a ticket, so
+ * disconnecting an agent also kills every URL handed out to it. Within its lifetime a ticket
  * is reusable — a retried `curl` should work — which is why that lifetime is
  * short.
  */
@@ -34,7 +34,7 @@ export type UploadKind = 'epub' | 'cover';
 export type UploadTicket = {
   readonly type: 'upload';
   readonly userId: string;
-  readonly tokenId: string;
+  readonly grantId: string;
   readonly kind: UploadKind;
   readonly filename: string;
 };
@@ -42,7 +42,7 @@ export type UploadTicket = {
 export type DownloadTicket = {
   readonly type: 'download';
   readonly userId: string;
-  readonly tokenId: string;
+  readonly grantId: string;
   /** The raw content-hash book id (the local half of `Book.id`). */
   readonly bookId: string;
 };
@@ -56,8 +56,8 @@ export function signTransferTicket(
 ): string {
   const claims =
     ticket.type === 'upload'
-      ? { typ: 'upload', tid: ticket.tokenId, kind: ticket.kind, name: ticket.filename }
-      : { typ: 'download', tid: ticket.tokenId, bid: ticket.bookId };
+      ? { typ: 'upload', gid: ticket.grantId, kind: ticket.kind, name: ticket.filename }
+      : { typ: 'download', gid: ticket.grantId, bid: ticket.bookId };
   return jwt.sign(claims, secret, {
     algorithm: 'HS256',
     audience: AUDIENCE,
@@ -81,8 +81,8 @@ export function verifyTransferTicket<T extends TransferTicket['type']>(
   } catch {
     return null;
   }
-  const { sub, tid, typ } = payload;
-  if (typeof sub !== 'string' || typeof tid !== 'string' || typ !== expected) return null;
+  const { sub, gid, typ } = payload;
+  if (typeof sub !== 'string' || typeof gid !== 'string' || typ !== expected) return null;
 
   if (typ === 'upload') {
     const { kind, name } = payload;
@@ -90,7 +90,7 @@ export function verifyTransferTicket<T extends TransferTicket['type']>(
     const ticket: UploadTicket = {
       type: 'upload',
       userId: sub,
-      tokenId: tid,
+      grantId: gid,
       kind,
       filename: name,
     };
@@ -98,6 +98,6 @@ export function verifyTransferTicket<T extends TransferTicket['type']>(
   }
   const { bid } = payload;
   if (typeof bid !== 'string') return null;
-  const ticket: DownloadTicket = { type: 'download', userId: sub, tokenId: tid, bookId: bid };
+  const ticket: DownloadTicket = { type: 'download', userId: sub, grantId: gid, bookId: bid };
   return ticket as Extract<TransferTicket, { type: T }>;
 }

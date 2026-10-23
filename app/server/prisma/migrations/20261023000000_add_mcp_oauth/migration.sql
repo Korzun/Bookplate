@@ -1,8 +1,8 @@
 -- Intentionally empty.
 --
--- `mcp_tokens` carries a foreign key to `users`, and
+-- `oauth_grants` carries a foreign key to `users`, and
 -- `data_v10_user_surrogate_id` rebuilds `users` from an explicit column list —
 -- anything the DDL pass creates against that table is dropped on its way in.
--- The table is therefore created by `data_v22_mcp_tokens` in `db/migrate.ts`,
--- which runs after `data_v10`. Same treatment, same reason, as
+-- Both OAuth tables are therefore created by `data_v22_mcp_oauth` in
+-- `db/migrate.ts`, which runs after `data_v10`. Same treatment, same reason, as
 -- `20260922000000_add_push_subscriptions`.

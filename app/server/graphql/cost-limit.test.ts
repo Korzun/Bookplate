@@ -318,7 +318,7 @@ describe('the composite-element list-field inventory', () => {
     'UndoSnapshot.proposals',
     'Validation.counts',
     'ValidationMessage.segments',
-    'Viewer.mcpTokens',
+    'Viewer.mcpConnections',
     'Viewer.notificationPreferences',
     'Viewer.pushSubscriptions',
     'ViewerSetNotificationPreferencePayload.notificationPreferences',

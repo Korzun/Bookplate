@@ -568,22 +568,19 @@ type LinkedDocument {
   type: LineageType!
 }
 
-"""An access token an AI agent uses to reach this library over MCP."""
-type McpToken {
+"""An AI agent connected to this library over MCP."""
+type McpConnection {
+  """
+  The name the agent registered under (for example "Claude"), or its redirect host if it gave none. Self-declared by the agent.
+  """
+  clientName: String!
   createdAt: DateTime!
   id: ID!
-  label: String!
 
   """
-  Roughly when an agent last used this token (updated at most once a minute). Null means never.
+  Roughly when the agent last used its access (updated at most once a minute). Null means never.
   """
   lastUsedAt: DateTime
-}
-
-"""The reader already holds the maximum number of agent tokens."""
-type McpTokenLimitExceededError implements UserError {
-  limit: Int!
-  message: String!
 }
 
 type MessageSegment {
@@ -760,10 +757,8 @@ type Mutation {
   """
   viewerConfirmEmail(input: ViewerConfirmEmailInput!): ViewerConfirmEmailResult!
 
-  """
-  Creates an access token an AI agent can use to reach the viewer’s library over MCP.
-  """
-  viewerCreateMcpToken(input: ViewerCreateMcpTokenInput!): ViewerCreateMcpTokenResult!
+  """Disconnects one of the viewer’s AI agents from their library."""
+  viewerDisconnectMcpConnection(id: ID!): Boolean!
 
   """Removes one of the viewer's subscribed browsers."""
   viewerRemovePushSubscription(id: ID!): Boolean!
@@ -772,9 +767,6 @@ type Mutation {
   Sends a fresh verification code to the viewer's own email address. `InvalidInputError` covers every reason it cannot: no address on file, the address is already confirmed, or a resend cooldown/cap is in effect.
   """
   viewerResendEmailVerification: ViewerResendEmailVerificationResult!
-
-  """Revokes one of the viewer’s agent access tokens."""
-  viewerRevokeMcpToken(id: ID!): Boolean!
 
   """
   Sets the viewer's email address and sends a verification code to it. Succeeds (with `delivered: false`) even if the send itself fails, because the address is already saved by then.
@@ -1146,7 +1138,7 @@ type Viewer {
   emailVerifiedAt: DateTime
   isAdmin: Boolean!
   library: Library
-  mcpTokens: [McpToken!]!
+  mcpConnections: [McpConnection!]!
   mustChangePassword: Boolean!
   notificationPreferences: [NotificationPreference!]!
   pushPublicKey: String!
@@ -1166,21 +1158,6 @@ type ViewerConfirmEmailPayload {
 }
 
 union ViewerConfirmEmailResult = InvalidInputError | ViewerConfirmEmailPayload
-
-input ViewerCreateMcpTokenInput {
-  label: String!
-}
-
-type ViewerCreateMcpTokenPayload {
-  mcpToken: McpToken!
-
-  """
-  The token itself. Returned only here, once — the server keeps a hash and cannot show it again.
-  """
-  token: String!
-}
-
-union ViewerCreateMcpTokenResult = InvalidInputError | McpTokenLimitExceededError | ViewerCreateMcpTokenPayload
 
 type ViewerResendEmailVerificationPayload {
   delivered: Boolean!

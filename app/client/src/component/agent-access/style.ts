@@ -4,7 +4,7 @@ import { createUseStyles, type Theme } from '~/provider/theme';
  * Built from the same pieces as the neighbouring settings cards rather than new
  * ones: `stack`/`hint`/`list`/`row`/`name`/`meta` repeat `notification-
  * settings`' device list, and `pill`/`mono` repeat `sync-password`'s
- * credential row, since a token is shown the same way the device password is.
+ * credential row.
  */
 export const useStyle = createUseStyles((theme: Theme) => ({
   stack: {
@@ -16,11 +16,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     margin: 0,
     color: theme.color.text.description,
     fontSize: theme.fontSize.sm,
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.space.md,
   },
   pill: {
     display: 'flex',
@@ -34,17 +29,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     overflowWrap: 'anywhere',
     color: theme.color.text.primary,
     fontSize: theme.fontSize.sm,
-  },
-  created: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.space.sm,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.bg.cardHeader,
-  },
-  createdTitle: {
-    ...theme.recipe.label,
   },
   list: {
     listStyle: 'none',

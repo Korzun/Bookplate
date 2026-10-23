@@ -26,6 +26,8 @@ export type CreateServerDeps = {
   graphqlHandler: RequestHandler;
   /** `routes/mcp.ts`'s router, built in `index.ts` from the GraphQL context deps. */
   mcpRouter: Router;
+  /** `routes/mcp-oauth.ts`'s router: OAuth discovery, endpoints and consent API. */
+  mcpOAuthRouter: Router;
   replaceStaging: ReplaceStaging;
   mailer: Mailer | null;
 };
@@ -37,6 +39,7 @@ export function createServer({
   prisma,
   graphqlHandler,
   mcpRouter,
+  mcpOAuthRouter,
   replaceStaging,
   mailer,
 }: CreateServerDeps): express.Express {
@@ -72,8 +75,12 @@ export function createServer({
   // go through REST's multer routes instead.
   server.use('/graphql', graphqlBodyLimit(100 * 1024), graphqlHandler);
 
-  // Also ahead of express.json(), for the same reason: its upload route reads
-  // the raw request body, so each of its routes brings its own body parser.
+  // Also ahead of express.json(), for the same reason: the MCP upload route
+  // reads the raw request body, and the OAuth handlers (the MCP SDK's) parse
+  // their own, so each of these routes brings its own body parser. The OAuth
+  // router is mounted at the root because its paths are fixed by the specs
+  // (`/.well-known/...`); it claims only its own paths and passes the rest on.
+  server.use(mcpOAuthRouter);
   server.use('/mcp', mcpRouter);
 
   server.use(express.json());

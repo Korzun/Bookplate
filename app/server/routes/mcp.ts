@@ -3,8 +3,8 @@
  * edit one reader's library. Three routes, all under `/mcp`:
  *
  *  - `POST /mcp` — the MCP Streamable HTTP endpoint. Authenticated per request
- *    with a reader's agent token (`middleware/auth.ts`'s `mcpAuth`). The tools
- *    live in `mcp/tools.ts`.
+ *    with an OAuth access token a reader approved (`routes/mcp-oauth.ts`; see
+ *    `mcpBearerAuth` below). The tools live in `mcp/tools.ts`.
  *  - `PUT /mcp/upload/:ticket` and `GET /mcp/download/:ticket` — where an agent
  *    moves file bytes, using the short-lived URLs two of those tools hand out.
  *    The ticket in the path is the credential; see `mcp/transfer-ticket.ts` for
@@ -31,10 +31,11 @@ import type { ContextDeps } from '../graphql/context';
 import { logger } from '../logger';
 import { createBookplateMcpServer, type McpSession, type UploadLimits } from '../mcp/tools';
 import { verifyTransferTicket } from '../mcp/transfer-ticket';
-import { mcpAuth } from '../middleware/auth';
 import { getBookById } from '../services/book-catalog';
-import { mcpTokenIsLive } from '../services/mcp-token';
+import { oauthGrantIsLive, type OAuthGrantIdentity } from '../services/mcp-oauth';
 import { asyncHandler } from '../utils/async-handler';
+import { publicOrigin } from '../utils/public-origin';
+import { protectedResourceMetadataUrl } from './mcp-oauth';
 import { COVER_UPLOAD_MAX_BYTES, EPUB_UPLOAD_MAX_BYTES } from './ui';
 
 const log = logger('MCP');
@@ -43,26 +44,48 @@ const log = logger('MCP');
 const UPLOAD_LIMITS: UploadLimits = { epub: EPUB_UPLOAD_MAX_BYTES, cover: COVER_UPLOAD_MAX_BYTES };
 
 const BAD_TICKET =
-  'This URL is invalid, has expired, or its agent token was revoked. Ask for a new one.';
+  'This URL is invalid, has expired, or its agent was disconnected. Ask for a new one.';
 
 /**
- * The origin transfer URLs are built on: `config.publicUrl` when the operator
- * set one, otherwise the origin this very request arrived at.
+ * OAuth bearer authentication for `POST /mcp` (MCP authorization spec, RFC
+ * 6750). Accepts only an access token from a grant a reader approved
+ * (`services/mcp-oauth.ts`) — never a web session token, the login password
+ * or the sync password. Attaches `req.mcpIdentity` on success.
  *
- * Deriving from `Host`/`X-Forwarded-Proto` is exactly what `AppConfig.publicUrl`'s
- * doc comment warns against for EMAIL links, and the reason does not apply
- * here: a poisoned email link reaches a victim, whereas these URLs go back only
- * in the response to the request that carried the header. A client that lies
- * about its own Host only misdirects itself. `X-Forwarded-Proto` is honoured so
- * an instance behind an HTTPS proxy or Cloudflare Tunnel hands out `https`
- * URLs without having to set `public_url`.
+ * Every 401 carries `resource_metadata` (RFC 9728 §5.1): that link is how an
+ * agent with no token, or an expired one, discovers where to sign in. A
+ * missing token gets a bare challenge; a bad one gets `invalid_token`, which is
+ * what tells a client to refresh rather than start over.
  */
-export function transferBaseUrl(req: Request, publicUrl: string | null | undefined): string {
-  if (publicUrl) return publicUrl;
-  const forwarded = req.headers['x-forwarded-proto'];
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
-  const proto = first === 'https' || first === 'http' ? first : req.protocol;
-  return `${proto}://${req.get('host') ?? 'localhost'}`;
+function mcpBearerAuth(
+  verify: (token: string) => Promise<OAuthGrantIdentity | null>,
+  publicUrl: string | null | undefined
+) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const header = req.headers.authorization;
+      const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : null;
+      const identity = token ? await verify(token) : null;
+      if (identity === null) {
+        const metadata = protectedResourceMetadataUrl(publicOrigin(req, publicUrl));
+        const challenge =
+          token === null
+            ? `Bearer resource_metadata="${metadata}"`
+            : `Bearer error="invalid_token", error_description="The access token is invalid or expired", resource_metadata="${metadata}"`;
+        res.set('WWW-Authenticate', challenge);
+        res.status(401).json({
+          error: token === null ? 'unauthorized' : 'invalid_token',
+          error_description:
+            token === null ? 'Authorization required' : 'The access token is invalid or expired',
+        });
+        return;
+      }
+      req.mcpIdentity = identity;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 /** JSON-RPC error body for a non-POST verb on the MCP endpoint. */
@@ -96,21 +119,28 @@ function rawUpload(limit: number) {
   };
 }
 
-export function createMcpRouter(contextDeps: ContextDeps): Router {
+export type CreateMcpRouterDeps = {
+  contextDeps: ContextDeps;
+  /** Resolves an access token to its grant (`mcp/oauth-provider.ts`'s `verifyGrant`). */
+  verifyAccessToken: (token: string) => Promise<OAuthGrantIdentity | null>;
+};
+
+export function createMcpRouter({ contextDeps, verifyAccessToken }: CreateMcpRouterDeps): Router {
   const { prisma, config, jwtSecret, replaceStaging } = contextDeps;
   const router = Router();
 
   router.post(
     '/',
     express.json({ limit: '1mb' }),
-    mcpAuth(prisma),
+    mcpBearerAuth(verifyAccessToken, config.publicUrl),
     asyncHandler(async (req: Request, res: Response) => {
       const identity = req.mcpIdentity!;
       const session: McpSession = {
-        // An agent token acts as its reader with no credential-setup gates:
-        // like the sync password, it is its own credential, independent of a
-        // pending login-password change or email setup. Never admin — tokens
-        // are only issued to readers (`viewerCreateMcpToken`).
+        // A grant acts as its reader with no credential-setup gates: the reader
+        // cleared them to approve it (the consent API runs behind both), and
+        // like the sync password it is its own credential from then on. Never
+        // admin — the consent API refuses the config admin, and token
+        // verification refuses a grant pointing at it.
         viewer: {
           userId: identity.userId,
           username: identity.username,
@@ -118,8 +148,8 @@ export function createMcpRouter(contextDeps: ContextDeps): Router {
           mustChangePassword: false,
           mustSetEmail: false,
         },
-        tokenId: identity.tokenId,
-        baseUrl: transferBaseUrl(req, config.publicUrl),
+        grantId: identity.grantId,
+        baseUrl: publicOrigin(req, config.publicUrl),
       };
       const server = createBookplateMcpServer(contextDeps, session, UPLOAD_LIMITS);
       const transport = new StreamableHTTPServerTransport({
@@ -142,7 +172,7 @@ export function createMcpRouter(contextDeps: ContextDeps): Router {
     rawUpload(UPLOAD_LIMITS.epub),
     asyncHandler(async (req: Request, res: Response) => {
       const ticket = verifyTransferTicket(jwtSecret, req.params.ticket, 'upload');
-      if (ticket === null || !(await mcpTokenIsLive(prisma, ticket))) {
+      if (ticket === null || !(await oauthGrantIsLive(prisma, ticket))) {
         res.status(403).json({ error: BAD_TICKET });
         return;
       }
@@ -181,7 +211,7 @@ export function createMcpRouter(contextDeps: ContextDeps): Router {
     '/download/:ticket',
     asyncHandler(async (req: Request, res: Response) => {
       const ticket = verifyTransferTicket(jwtSecret, req.params.ticket, 'download');
-      if (ticket === null || !(await mcpTokenIsLive(prisma, ticket))) {
+      if (ticket === null || !(await oauthGrantIsLive(prisma, ticket))) {
         res.status(403).json({ error: BAD_TICKET });
         return;
       }

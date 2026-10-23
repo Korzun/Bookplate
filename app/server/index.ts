@@ -6,7 +6,10 @@ import { createPrismaClient } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
+import { createAuthorizationCodes } from './mcp/authorization-codes';
+import { createMcpOAuthProvider } from './mcp/oauth-provider';
 import { createMcpRouter } from './routes/mcp';
+import { createMcpOAuthRouter } from './routes/mcp-oauth';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
 import { createMailer } from './services/mailer';
@@ -98,6 +101,16 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     vapidPublicKey: vapid.publicKey,
     jwtSecret,
   };
+  // The MCP endpoint's OAuth authorization server: one code store and one
+  // provider, shared by the OAuth routes (which issue tokens) and `/mcp`
+  // (which checks them). See `mcp/oauth-provider.ts`.
+  const authorizationCodes = createAuthorizationCodes();
+  const mcpOAuth = createMcpOAuthProvider({
+    prisma,
+    jwtSecret,
+    publicUrl: config.publicUrl,
+    codes: authorizationCodes,
+  });
   const graphqlHandler = createGraphqlHandler({
     ...contextDeps,
     // Fail safe: hardening (no GraphiQL, masked errors, no introspection) is
@@ -115,7 +128,14 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     jwtSecret,
     prisma,
     graphqlHandler,
-    mcpRouter: createMcpRouter(contextDeps),
+    mcpRouter: createMcpRouter({ contextDeps, verifyAccessToken: mcpOAuth.verifyGrant }),
+    mcpOAuthRouter: createMcpOAuthRouter({
+      prisma,
+      config,
+      jwtSecret,
+      provider: mcpOAuth,
+      codes: authorizationCodes,
+    }),
     replaceStaging,
     mailer,
   });

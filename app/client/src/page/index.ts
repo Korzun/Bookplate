@@ -8,6 +8,7 @@ export { ForgotPasswordPage } from './forgot-password';
 export { LibraryPage } from './library';
 export { LoadingPage } from './loading';
 export { LoginPage } from './login';
+export { OAuthConsentPage } from './oauth-consent';
 export { PasswordResetPage } from './password-reset';
 export { ResetPasswordPage } from './reset-password';
 export { SeriesPage } from './series';

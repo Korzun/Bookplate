@@ -16,3 +16,4 @@ export const setEmail = () => pathInternal.setEmail();
 export const settings = () => pathInternal.settings();
 export const userList = () => pathInternal.userList();
 export const login = () => pathInternal.login();
+export const oauthConsent = () => pathInternal.oauthConsent();

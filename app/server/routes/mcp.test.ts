@@ -1,10 +1,6 @@
 import * as fs from 'fs';
-import type { Server } from 'http';
-import type { AddressInfo } from 'net';
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import express from 'express';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import sharp from 'sharp';
 
 import {
@@ -13,8 +9,8 @@ import {
   seedEditableBook,
 } from '../graphql/schema/book/mutation/test-helpers';
 import { createHarness, type Harness } from '../graphql/test-util';
-import { createMcpToken, deleteMcpToken } from '../services/mcp-token';
-import { createMcpRouter, transferBaseUrl } from './mcp';
+import { deleteMcpConnection, listMcpConnections } from '../services/mcp-oauth';
+import { connectAgent, startMcpTestServer, type McpTestServer } from '../test-support/mcp-agent';
 
 vi.mock('../logger');
 vi.mock('../services/epub-validator', async (importOriginal) => {
@@ -33,20 +29,19 @@ const okReport = {
 };
 
 let harness: Harness;
-let httpServer: Server;
+let server: McpTestServer;
 let baseUrl: string;
-let token: string;
-let tokenId: string;
 let client: Client;
+/** The access token the agent was issued, for the tests that call `/mcp` by hand. */
+let accessToken: string;
 
-async function connect(bearer: string): Promise<Client> {
-  const c = new Client({ name: 'bookplate-test', version: '0.0.0' });
-  await c.connect(
-    new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
-      requestInit: { headers: { Authorization: `Bearer ${bearer}` } },
-    })
-  );
-  return c;
+/** Disconnects alice's agent the way the settings page does. */
+async function disconnect() {
+  const [connection] = await listMcpConnections(harness.prisma, harness.aliceOwner.userId);
+  await deleteMcpConnection(harness.prisma, {
+    userId: harness.aliceOwner.userId,
+    id: connection.id,
+  });
 }
 
 type ToolResult = { isError: boolean; body: Record<string, unknown> };
@@ -82,30 +77,23 @@ beforeEach(async () => {
   vi.mocked(assertValidEpub).mockResolvedValue(okReport);
   vi.mocked(validateEpubReport).mockResolvedValue(okReport);
   harness = await createHarness();
-  const app = express();
-  app.use('/mcp', createMcpRouter(harness.contextDeps()));
-  httpServer = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, '127.0.0.1', () => resolve(s));
-  });
-  baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
-  const created = await createMcpToken(harness.prisma, {
-    userId: harness.aliceOwner.userId,
-    label: 'test',
-  });
-  token = created!.token;
-  tokenId = created!.row.id;
-  client = await connect(token);
+  server = await startMcpTestServer(harness);
+  baseUrl = server.baseUrl;
+  // Every test below runs as an agent alice has connected and approved.
+  const connected = await connectAgent(server, harness.aliceViewer);
+  client = connected.client;
+  accessToken = (await connected.auth.tokens())!.access_token;
 });
 
 afterEach(async () => {
   await client.close();
-  await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  await server.close();
   await harness.cleanup();
 });
 
 describe('authentication', () => {
-  it('refuses a request without a valid agent token', async () => {
-    for (const authorization of [undefined, 'Bearer bpmcp_unknown', `Basic ${token}`]) {
+  it('refuses a request without a valid access token, pointing at the OAuth metadata', async () => {
+    for (const authorization of [undefined, 'Bearer bpat_unknown', `Basic ${accessToken}`]) {
       const res = await fetch(`${baseUrl}/mcp`, {
         method: 'POST',
         headers: {
@@ -116,17 +104,21 @@ describe('authentication', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       });
       expect(res.status).toBe(401);
-      expect(res.headers.get('www-authenticate')).toMatch(/^Bearer/);
+      expect(res.headers.get('www-authenticate')).toContain(
+        `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp"`
+      );
     }
   });
 
-  it('stops working the moment the token is revoked', async () => {
-    await deleteMcpToken(harness.prisma, { userId: harness.aliceOwner.userId, id: tokenId });
+  it('stops working the moment the reader disconnects the agent', async () => {
+    await disconnect();
     await expect(client.listTools()).rejects.toThrow();
   });
 
   it('answers GET with 405, since the server keeps no sessions', async () => {
-    const res = await fetch(`${baseUrl}/mcp`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${baseUrl}/mcp`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
     expect(res.status).toBe(405);
   });
 });
@@ -199,7 +191,7 @@ describe('tools', () => {
     expect(Buffer.from(await res.arrayBuffer()).equals(onDisk)).toBe(true);
   });
 
-  it('kills transfer URLs when their token is revoked', async () => {
+  it('kills transfer URLs when their agent is disconnected', async () => {
     const added = await addBook('Dune');
     const { downloadUrl } = await ok<{ downloadUrl: string }>('get_book_download_url', {
       bookId: added.book.id,
@@ -209,7 +201,7 @@ describe('tools', () => {
       filename: 'x.epub',
     });
 
-    await deleteMcpToken(harness.prisma, { userId: harness.aliceOwner.userId, id: tokenId });
+    await disconnect();
 
     expect((await fetch(downloadUrl)).status).toBe(403);
     expect(
@@ -558,30 +550,5 @@ describe('transfer URLs', () => {
     });
     const ticket = uploadUrl.split('/').pop();
     expect((await fetch(`${baseUrl}/mcp/download/${ticket}`)).status).toBe(403);
-  });
-});
-
-describe('transferBaseUrl', () => {
-  const req = (headers: Record<string, string>, protocol = 'http') =>
-    ({
-      headers,
-      protocol,
-      get: (name: string) => headers[name.toLowerCase()],
-    }) as unknown as express.Request;
-
-  it('prefers the configured public URL', () => {
-    expect(transferBaseUrl(req({ host: 'evil.example' }), 'https://books.example.com')).toBe(
-      'https://books.example.com'
-    );
-  });
-
-  it("otherwise uses the request's own origin, honouring an HTTPS proxy", () => {
-    expect(transferBaseUrl(req({ host: 'nas.local:3000' }), null)).toBe('http://nas.local:3000');
-    expect(
-      transferBaseUrl(req({ host: 'books.example.com', 'x-forwarded-proto': 'https, http' }), null)
-    ).toBe('https://books.example.com');
-    expect(transferBaseUrl(req({ host: 'h', 'x-forwarded-proto': 'gopher' }), null)).toBe(
-      'http://h'
-    );
   });
 });
