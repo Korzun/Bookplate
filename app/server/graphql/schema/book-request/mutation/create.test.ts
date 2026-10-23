@@ -79,12 +79,21 @@ describe('Mutation.bookRequestCreate', () => {
     expect(payload.issues.map((i) => i.path)).toContainEqual(['author']);
   });
 
-  it('reports the duplicate, with the id of the request already open', async () => {
+  it('reports the duplicate, with the global id of the request already open', async () => {
     await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
       variables: { input: validInput() },
     });
-    const existing = await harness.prisma.bookRequest.findFirstOrThrow();
+    // The id as every other field in the schema reports it.
+    const listed = await harness.execute(
+      `{ viewer { user { bookRequests(first: 1) { edges { node { id } } } } } }`,
+      { viewer: harness.aliceViewer }
+    );
+    const existingId = (
+      listed.data as {
+        viewer: { user: { bookRequests: { edges: { node: { id: string } }[] } } };
+      }
+    ).viewer.user.bookRequests.edges[0].node.id;
 
     const result = await harness.execute(MUTATION, {
       viewer: harness.aliceViewer,
@@ -94,8 +103,30 @@ describe('Mutation.bookRequestCreate', () => {
     expect(result.data?.bookRequestCreate).toEqual({
       __typename: 'DuplicateBookRequestError',
       message: 'You have already requested this book.',
-      existingRequestId: existing.id,
+      existingRequestId: existingId,
     });
+  });
+
+  it('reports a duplicate id that node(id:) resolves to the open request', async () => {
+    await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: validInput() },
+    });
+    const duplicate = await harness.execute(MUTATION, {
+      viewer: harness.aliceViewer,
+      variables: { input: validInput() },
+    });
+    const { existingRequestId } = (
+      duplicate.data as { bookRequestCreate: { existingRequestId: string } }
+    ).bookRequestCreate;
+
+    const resolved = await harness.execute(
+      `query($id: ID!) { node(id: $id) { ... on BookRequest { title status } } }`,
+      { viewer: harness.aliceViewer, variables: { id: existingRequestId } }
+    );
+
+    expect(resolved.errors).toBeUndefined();
+    expect(resolved.data).toEqual({ node: { title: 'Dune', status: 'PENDING' } });
   });
 
   it('reports the cap once it is reached', async () => {

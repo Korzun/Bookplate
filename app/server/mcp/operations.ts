@@ -199,6 +199,7 @@ export type UserError = {
   issues?: { path: string[]; message: string }[];
   messages?: ValidationMessage[];
   collidingBook?: { id: string; title: string; author: string };
+  existingRequestId?: string;
   limit?: number;
 };
 
@@ -444,6 +445,7 @@ export const REQUEST_BOOK = operation(`
           book { id title }
         }
       }
+      ... on DuplicateBookRequestError { existingRequestId }
       ... on BookRequestLimitExceededError { limit }
       ...McpUserErrors
     }

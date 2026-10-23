@@ -130,7 +130,7 @@ builder.mutationField('bookRequestCreate', (t) =>
         case 'limit':
           return bookRequestLimitExceededError(outcome.limit);
         case 'duplicate':
-          return duplicateBookRequestError(outcome.existingId);
+          return duplicateBookRequestError(userId, outcome.existingId);
       }
     },
   })

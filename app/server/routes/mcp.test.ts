@@ -331,9 +331,10 @@ describe('tools', () => {
       title: 'children of dune',
       author: 'frank herbert',
     });
+    // The same id list_book_requests reports for it.
     expect(duplicate).toMatchObject({
       isError: true,
-      body: { errorType: 'DuplicateBookRequestError' },
+      body: { errorType: 'DuplicateBookRequestError', existingRequestId: created.id },
     });
 
     const listed = await ok<{ pendingCount: number; requests: { id: string }[] }>(

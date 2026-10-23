@@ -400,6 +400,9 @@ type DocumentIsBookError implements UserError {
 
 """An open request for this title and author already exists."""
 type DuplicateBookRequestError implements UserError {
+  """
+  The id of the request already open — the same value as its `BookRequest.id`.
+  """
   existingRequestId: ID!
   message: String!
 }

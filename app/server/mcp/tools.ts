@@ -193,6 +193,7 @@ const formatUserError = (e: ops.UserError): Record<string, unknown> => ({
     : {}),
   ...(e.messages ? { validationMessages: e.messages.map(formatMessage) } : {}),
   ...(e.collidingBook ? { existingBook: e.collidingBook } : {}),
+  ...(e.existingRequestId ? { existingRequestId: e.existingRequestId } : {}),
   ...(e.limit !== undefined ? { limit: e.limit } : {}),
 });
 
