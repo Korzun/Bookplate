@@ -967,6 +967,35 @@ describe('legacy id-recompute and page-count migrations', () => {
     }
   });
 
+  it('data_v22: adds books.cover_normalized (NOT NULL, default false) and is idempotent', async () => {
+    // beforeEach already ran the migrations once; a second run must be a no-op.
+    await runMigrations(prisma, booksRoot);
+
+    const columns = await prisma.$queryRawUnsafe<
+      Array<{ name: string; notnull: number | bigint; dflt_value: string | null }>
+    >(`PRAGMA table_info("books")`);
+    const col = columns.find((c) => c.name === 'cover_normalized');
+    expect(col).toBeDefined();
+    expect(Number(col!.notnull)).toBe(1);
+    expect(col!.dflt_value).toBe('false');
+
+    await prisma.book.create({
+      data: {
+        userId: 'usr_test000000000000000',
+        id: 'bk-default',
+        title: 'T',
+        size: 1,
+        mtime: 0,
+        addedAt: 0,
+      },
+    });
+    const row = await prisma.book.findUniqueOrThrow({
+      where: { userId_id: { userId: 'usr_test000000000000000', id: 'bk-default' } },
+      select: { coverNormalized: true },
+    });
+    expect(row.coverNormalized).toBe(false);
+  });
+
   it('creates the notification tables and is idempotent', async () => {
     await runMigrations(prisma, booksDir);
     await runMigrations(prisma, booksDir);

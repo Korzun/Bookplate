@@ -8,6 +8,7 @@ import { createGraphqlHandler } from './graphql/yoga';
 import { logger } from './logger';
 import { createServer } from './server';
 import { getStagingDir } from './services/book-paths';
+import { CoverBackfill } from './services/cover-backfill';
 import { createMailer } from './services/mailer';
 import { createEmailChannelDriver } from './services/notification-channel-email';
 import { createPushChannelDriver, PUSH_CONTACT } from './services/notification-channel-push';
@@ -39,6 +40,7 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 
   const editionsRoot = path.join(config.dataDir, 'editions');
   const thumbnailQueue = new ThumbnailQueue(prisma, config.thumbnailWidths);
+  const coverBackfill = new CoverBackfill(prisma, thumbnailQueue);
   const jwtSecret = await getOrCreateJwtSecret(prisma);
 
   // One instance shared by the REST staging route and the two GraphQL
@@ -112,7 +114,14 @@ fs.mkdirSync(config.dataDir, { recursive: true });
     mailer,
   });
 
-  await startBookplate({ prisma, config, version: APP_VERSION, thumbnailQueue, server });
+  await startBookplate({
+    prisma,
+    config,
+    version: APP_VERSION,
+    thumbnailQueue,
+    coverBackfill,
+    server,
+  });
 })().catch((err) => {
   console.error('Fatal startup error:', err);
   process.exit(1);

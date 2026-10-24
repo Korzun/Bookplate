@@ -900,4 +900,23 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
          ON "push_subscriptions" ("user_id")`
     );
   });
+
+  // Data migration: marker column for the stored-cover normalization
+  // (`services/cover-normalize.ts`). Added here rather than in the DDL pass
+  // because `data_v11_per_user_libraries` above rebuilds "books" from an
+  // explicit column list — on a fresh database too — so a column the DDL pass
+  // added would be dropped on its way in (`data_v12_series_table` re-adds
+  // `series_id` for the same reason). The DDL file
+  // `20261024000000_add_book_cover_normalized` is a no-op.
+  //
+  // Default `false` is the whole backfill trigger: every pre-existing cover is
+  // probed once by `CoverBackfill` on the next boot and flipped to `true`.
+  await runDataMigration(prisma, 'data_v22_book_cover_normalized', async () => {
+    const bookCols = await prisma.$queryRaw<Array<{ name: string }>>`PRAGMA table_info(books)`;
+    if (!bookCols.some((c) => c.name === 'cover_normalized')) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "books" ADD COLUMN "cover_normalized" BOOLEAN NOT NULL DEFAULT false`
+      );
+    }
+  });
 }

@@ -30,6 +30,13 @@ model Book {
   subjects        String          @default("[]")
   coverData       Bytes?          @map("cover_data")
   coverMime       String?         @map("cover_mime")
+  // `true` when `coverData` is known to be a baseline sRGB JPEG within the
+  // size cap (see `services/cover-normalize.ts`). Set by every cover write
+  // (`addBook`/`reimportBook`) and by the startup backfill
+  // (`services/cover-backfill.ts`), which processes rows where it is `false`.
+  // Stays `false` for a cover sharp cannot decode, so such a row is re-probed
+  // once per boot — cheap, rare, and a later sharp may decode it.
+  coverNormalized Boolean         @default(false) @map("cover_normalized")
   size            Int
   mtime           Float
   addedAt         Float           @map("added_at")

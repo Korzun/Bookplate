@@ -8,6 +8,7 @@ import { logger } from './logger';
 import { ensureAdminUser, NOT_CONFIG_ADMIN } from './services/admin-account';
 import { pruneThumbnails } from './services/book-assets';
 import { scan } from './services/book-lifecycle';
+import { CoverBackfill } from './services/cover-backfill';
 import { revalidateLibrary } from './services/revalidate-library';
 import { ThumbnailQueue } from './services/thumbnail-queue';
 import { AppConfig } from './types';
@@ -19,6 +20,7 @@ export type StartupDeps = {
   config: AppConfig;
   version: string;
   thumbnailQueue: Pick<ThumbnailQueue, 'start' | 'stop' | 'reconcile'>;
+  coverBackfill: Pick<CoverBackfill, 'start' | 'stop'>;
   server: Pick<express.Express, 'listen'>;
 };
 
@@ -34,6 +36,7 @@ export async function startBookplate({
   config,
   version,
   thumbnailQueue,
+  coverBackfill,
   server,
 }: StartupDeps): Promise<void> {
   // Before the startup scan: the scan excludes the admin's row via
@@ -115,8 +118,15 @@ export async function startBookplate({
 
   await thumbnailQueue.start();
 
+  // Stored-cover normalization backfill (`services/cover-backfill.ts`): brings
+  // every pre-upgrade cover to baseline JPEG, paced like the thumbnail queue,
+  // in the background. After `thumbnailQueue.start()` because each re-encoded
+  // cover enqueues its own thumbnail regeneration into that running loop.
+  coverBackfill.start();
+
   const shutdown = async (): Promise<void> => {
     log.info('Server shutting down');
+    coverBackfill.stop();
     thumbnailQueue.stop();
     await prisma.$disconnect();
     process.exit(0);
