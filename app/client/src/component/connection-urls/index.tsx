@@ -27,7 +27,8 @@ interface UrlRowProps {
   label?: string;
 }
 
-const UrlRow = ({ url, label }: UrlRowProps) => {
+/** Also used by `component/mcp-connections` for the MCP URL. */
+export const UrlRow = ({ url, label }: UrlRowProps) => {
   const styles = useStyle();
   const [copied, setCopied] = useState(false);
 
