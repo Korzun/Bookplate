@@ -13,9 +13,22 @@
  * hop is vetted the same way; a `Location` into the Supervisor network fails
  * exactly as a direct URL to it does.
  *
+ * The body streams straight to a file in `destDir` (never buffered: a 200 MB
+ * EPUB on a Pi-class host must not cost 200 MB of heap), the byte cap is
+ * enforced as chunks arrive, and `timeoutMs` is a WALL-CLOCK budget for the
+ * whole download, not Node's idle timeout — a server that drips one byte a
+ * second is cut off at the deadline. Every failure removes the partial file.
+ *
+ * Nothing in a stream listener may throw: a throw there is an
+ * `uncaughtException`, not a rejected promise, and would take the process
+ * down. Listener bodies are wrapped and filename derivation runs after the
+ * stream has settled.
+ *
  * `request` and `lookup` are injectable for tests; production uses Node's.
  */
+import { randomUUID } from 'crypto';
 import * as dns from 'dns';
+import * as fs from 'fs';
 import * as https from 'https';
 import type { LookupFunction } from 'net';
 import * as path from 'path';
@@ -59,7 +72,13 @@ export type FetchEpubOptions = {
   request?: typeof https.request;
 };
 
-export type FetchedEpub = { bytes: Buffer; filename: string };
+export type FetchedEpub = {
+  /** A fresh file inside `destDir`; the caller owns it from here on. */
+  path: string;
+  size: number;
+  /** Suggested original name, always ending in `.epub`. */
+  filename: string;
+};
 
 const resolveAll = (lookup: AllLookup, hostname: string): Promise<dns.LookupAddress[]> =>
   new Promise((resolve, reject) => {
@@ -95,6 +114,16 @@ const filenameFromDisposition = (header: string | undefined): string | null => {
   return plain === null ? null : plain[1].trim();
 };
 
+/** The URL path's last segment, decoded when it decodes, raw when it does not. */
+const filenameFromPath = (url: URL): string => {
+  const raw = path.posix.basename(url.pathname);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+};
+
 const forceEpubName = (name: string): string => {
   const base = path.basename(name).trim() || 'book';
   return base.toLowerCase().endsWith('.epub') ? base : `${base}.epub`;
@@ -106,8 +135,137 @@ const looksLikeEpub = (contentType: string | undefined, url: URL): boolean => {
   return url.pathname.toLowerCase().endsWith('.epub');
 };
 
+const unlinkQuiet = (file: string): void => {
+  try {
+    fs.unlinkSync(file);
+  } catch {
+    /* never written, or already gone */
+  }
+};
+
+type HopOutcome =
+  | { redirect: string }
+  | { done: true; size: number; contentDisposition: string | undefined };
+
+/** One request: resolves on a redirect or a fully written body, rejects on anything else. */
+function performHop(
+  url: URL,
+  address: dns.LookupAddress,
+  destPath: string,
+  budgetMs: number,
+  maxBytes: number,
+  request: typeof https.request
+): Promise<HopOutcome> {
+  return new Promise<HopOutcome>((resolve, reject) => {
+    let settled = false;
+    let sink: fs.WriteStream | null = null;
+    const finish = (outcome: { ok: HopOutcome } | { err: Error }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if ('err' in outcome) {
+        if (sink !== null) sink.destroy();
+        reject(outcome.err);
+      } else {
+        resolve(outcome.ok);
+      }
+    };
+
+    const req = request(
+      url,
+      {
+        method: 'GET',
+        lookup: pinnedLookup(address),
+        servername: url.hostname,
+        headers: { accept: 'application/epub+zip, */*;q=0.1', 'user-agent': 'Bookplate' },
+      },
+      (res) => {
+        try {
+          const status = res.statusCode ?? 0;
+          if (status >= 300 && status < 400 && typeof res.headers.location === 'string') {
+            res.resume();
+            finish({ ok: { redirect: res.headers.location } });
+            return;
+          }
+          if (status < 200 || status >= 300) {
+            res.resume();
+            finish({ err: new FetchEpubError('http_error', `The server answered ${status}`) });
+            return;
+          }
+          if (!looksLikeEpub(res.headers['content-type'], url)) {
+            res.resume();
+            finish({ err: new FetchEpubError('not_epub', 'That URL is not an EPUB file') });
+            return;
+          }
+          const declared = Number(res.headers['content-length']);
+          if (Number.isFinite(declared) && declared > maxBytes) {
+            res.resume();
+            finish({
+              err: new FetchEpubError('too_large', 'That file is larger than the upload limit'),
+            });
+            return;
+          }
+          const stream = fs.createWriteStream(destPath, { flags: 'wx' });
+          sink = stream;
+          let total = 0;
+          stream.on('error', (err) => finish({ err }));
+          res.on('data', (chunk: Buffer) => {
+            try {
+              total += chunk.length;
+              if (total > maxBytes) {
+                req.destroy();
+                finish({
+                  err: new FetchEpubError('too_large', 'That file is larger than the upload limit'),
+                });
+                return;
+              }
+              stream.write(chunk);
+            } catch (err) {
+              finish({ err: err as Error });
+            }
+          });
+          res.on('end', () => {
+            try {
+              stream.end(() => {
+                finish({
+                  ok: {
+                    done: true,
+                    size: total,
+                    contentDisposition: res.headers['content-disposition'],
+                  },
+                });
+              });
+            } catch (err) {
+              finish({ err: err as Error });
+            }
+          });
+          res.on('error', (err) => finish({ err }));
+        } catch (err) {
+          finish({ err: err as Error });
+        }
+      }
+    );
+
+    const timer = setTimeout(() => {
+      req.destroy();
+      finish({ err: new FetchEpubError('timeout', 'The download took too long') });
+    }, budgetMs);
+
+    req.on('error', (err: Error) => {
+      finish({
+        err:
+          err instanceof FetchEpubError
+            ? err
+            : new FetchEpubError('http_error', `Could not download: ${err.message}`),
+      });
+    });
+    req.end();
+  });
+}
+
 export async function fetchEpub(
   rawUrl: string,
+  destDir: string,
   options: FetchEpubOptions = {}
 ): Promise<FetchedEpub> {
   const lookup = options.lookup ?? (dns.lookup as unknown as AllLookup);
@@ -124,107 +282,49 @@ export async function fetchEpub(
     throw new FetchEpubError('invalid_url', 'Not a valid URL');
   }
 
-  for (let hop = 0; ; hop += 1) {
-    if (url.protocol !== 'https:') {
-      throw new FetchEpubError('invalid_url', 'Only https URLs can be fetched');
-    }
-    if (isPrivateHost(url.hostname)) {
-      throw new FetchEpubError('private_host', 'That host is not reachable from here');
-    }
-    let addresses: dns.LookupAddress[];
-    try {
-      addresses = await resolveAll(lookup, url.hostname);
-    } catch {
-      throw new FetchEpubError('http_error', `Could not resolve ${url.hostname}`);
-    }
-    if (addresses.length === 0 || addresses.some((a) => isPrivateHost(a.address))) {
-      throw new FetchEpubError('private_host', 'That host is not reachable from here');
-    }
+  fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, `mcp-fetch-${randomUUID()}.epub`);
 
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new FetchEpubError('timeout', 'The download took too long');
-
-    const outcome = await new Promise<{ redirect: string } | FetchedEpub>((resolve, reject) => {
-      const req = request(
-        url,
-        {
-          method: 'GET',
-          lookup: pinnedLookup(addresses[0]),
-          servername: url.hostname,
-          headers: { accept: 'application/epub+zip, */*;q=0.1', 'user-agent': 'Bookplate' },
-          timeout: remaining,
-        },
-        (res) => {
-          const status = res.statusCode ?? 0;
-          if (status >= 300 && status < 400 && typeof res.headers.location === 'string') {
-            res.resume();
-            resolve({ redirect: res.headers.location });
-            return;
-          }
-          if (status < 200 || status >= 300) {
-            res.resume();
-            reject(new FetchEpubError('http_error', `The server answered ${status}`));
-            return;
-          }
-          if (!looksLikeEpub(res.headers['content-type'], url)) {
-            res.resume();
-            reject(new FetchEpubError('not_epub', 'That URL is not an EPUB file'));
-            return;
-          }
-          const declared = Number(res.headers['content-length']);
-          if (Number.isFinite(declared) && declared > maxBytes) {
-            res.resume();
-            reject(new FetchEpubError('too_large', 'That file is larger than the upload limit'));
-            return;
-          }
-          const chunks: Buffer[] = [];
-          let total = 0;
-          res.on('data', (chunk: Buffer) => {
-            total += chunk.length;
-            if (total > maxBytes) {
-              req.destroy();
-              reject(new FetchEpubError('too_large', 'That file is larger than the upload limit'));
-              return;
-            }
-            chunks.push(chunk);
-          });
-          res.on('end', () => {
-            const name =
-              filenameFromDisposition(res.headers['content-disposition']) ??
-              decodeURIComponent(path.basename(url.pathname)) ??
-              'book';
-            resolve({ bytes: Buffer.concat(chunks), filename: forceEpubName(name) });
-          });
-          res.on('error', (err) => reject(err));
-        }
-      );
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new FetchEpubError('timeout', 'The download took too long'));
-      });
-      req.on('error', (err: Error) => {
-        if (!req.destroyed || !(err instanceof FetchEpubError)) {
-          reject(
-            err instanceof FetchEpubError
-              ? err
-              : new FetchEpubError('http_error', `Could not download: ${err.message}`)
-          );
-        }
-      });
-      req.end();
-    });
-
-    if ('redirect' in outcome) {
-      if (hop >= maxRedirects) {
-        throw new FetchEpubError('too_many_redirects', 'Too many redirects');
+  try {
+    for (let hop = 0; ; hop += 1) {
+      if (url.protocol !== 'https:') {
+        throw new FetchEpubError('invalid_url', 'Only https URLs can be fetched');
       }
+      if (isPrivateHost(url.hostname)) {
+        throw new FetchEpubError('private_host', 'That host is not reachable from here');
+      }
+      let addresses: dns.LookupAddress[];
       try {
-        url = new URL(outcome.redirect, url);
+        addresses = await resolveAll(lookup, url.hostname);
       } catch {
-        throw new FetchEpubError('invalid_url', 'The server redirected to an invalid URL');
+        throw new FetchEpubError('http_error', `Could not resolve ${url.hostname}`);
       }
-      continue;
+      if (addresses.length === 0 || addresses.some((a) => isPrivateHost(a.address))) {
+        throw new FetchEpubError('private_host', 'That host is not reachable from here');
+      }
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new FetchEpubError('timeout', 'The download took too long');
+
+      const outcome = await performHop(url, addresses[0], destPath, remaining, maxBytes, request);
+
+      if ('redirect' in outcome) {
+        if (hop >= maxRedirects) {
+          throw new FetchEpubError('too_many_redirects', 'Too many redirects');
+        }
+        try {
+          url = new URL(outcome.redirect, url);
+        } catch {
+          throw new FetchEpubError('invalid_url', 'The server redirected to an invalid URL');
+        }
+        continue;
+      }
+
+      const name = filenameFromDisposition(outcome.contentDisposition) ?? filenameFromPath(url);
+      return { path: destPath, size: outcome.size, filename: forceEpubName(name) };
     }
-    return outcome;
+  } catch (err) {
+    unlinkQuiet(destPath);
+    throw err;
   }
 }

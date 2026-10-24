@@ -37,6 +37,9 @@ export function isPrivateHost(hostname: string): boolean {
     if (first === 172 && second >= 16 && second <= 31) return true;
     if (first === 192 && second === 168) return true;
     if (first === 169 && second === 254) return true;
+    // 100.64.0.0/10: carrier-grade NAT, and what Tailscale hands out — an
+    // HA box on a tailnet can reach every peer through it.
+    if (first === 100 && second >= 64 && second <= 127) return true;
     return false;
   }
 

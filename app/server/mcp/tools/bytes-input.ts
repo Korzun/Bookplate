@@ -2,8 +2,14 @@
  * The two ways an assistant can hand this server an EPUB: inline base64 (for
  * a file the assistant already holds, bounded by `/mcp`'s 8 MB body limit)
  * or a public https URL this server downloads through `fetchEpub`'s guard.
- * Exactly one must be given.
+ * Exactly one must be given. Either way the bytes end up as a fresh file in
+ * `destDir` (the staging directory), which the caller then imports or stages
+ * — never as a Buffer held across the import.
  */
+import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { z } from 'zod';
 
 import { fetchEpub, FetchEpubError, type FetchEpubOptions } from '../fetch-epub';
@@ -36,6 +42,8 @@ export type BytesInput = {
   filename?: string | undefined;
 };
 
+export type EpubFile = { path: string; filename: string; size: number };
+
 const FETCH_MESSAGES: Record<FetchEpubError['code'], string> = {
   invalid_url: 'That is not a valid https URL',
   private_host: 'That host is not reachable from here',
@@ -46,18 +54,28 @@ const FETCH_MESSAGES: Record<FetchEpubError['code'], string> = {
   timeout: 'Downloading that URL took too long',
 };
 
-export async function resolveBytes(
+const epubName = (name: string | undefined, fallback: string): string => {
+  const trimmed = name?.trim() || fallback;
+  return trimmed.toLowerCase().endsWith('.epub') ? trimmed : `${trimmed}.epub`;
+};
+
+export async function resolveEpubFile(
   input: BytesInput,
+  destDir: string,
   fetchOptions?: FetchEpubOptions
-): Promise<{ bytes: Buffer; filename: string }> {
+): Promise<EpubFile> {
   const hasUrl = input.url !== undefined && input.url !== '';
   const hasInline = input.contentBase64 !== undefined && input.contentBase64 !== '';
   if (hasUrl === hasInline) throw new ToolError('Pass exactly one of url or contentBase64');
 
   if (hasUrl) {
     try {
-      const fetched = await fetchEpub(input.url!, fetchOptions);
-      return { bytes: fetched.bytes, filename: input.filename ?? fetched.filename };
+      const fetched = await fetchEpub(input.url!, destDir, fetchOptions);
+      return {
+        path: fetched.path,
+        size: fetched.size,
+        filename: epubName(input.filename, fetched.filename),
+      };
     } catch (err) {
       if (err instanceof FetchEpubError) {
         throw new ToolError(`${FETCH_MESSAGES[err.code]} (${err.message})`);
@@ -71,9 +89,8 @@ export async function resolveBytes(
   if (bytes.length > MAX_INLINE_BYTES) {
     throw new ToolError('Inline content is limited to about 6 MB; pass a url instead');
   }
-  const filename = input.filename?.trim() || 'upload.epub';
-  return {
-    bytes,
-    filename: filename.toLowerCase().endsWith('.epub') ? filename : `${filename}.epub`,
-  };
+  fs.mkdirSync(destDir, { recursive: true });
+  const file = path.join(destDir, `mcp-inline-${randomUUID()}.epub`);
+  fs.writeFileSync(file, bytes);
+  return { path: file, size: bytes.length, filename: epubName(input.filename, 'upload.epub') };
 }

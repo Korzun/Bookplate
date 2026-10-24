@@ -1,14 +1,10 @@
-import { randomUUID } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { encodeBookGlobalId } from '../../graphql/schema/node-scope';
 import { getStagingDir } from '../../services/book-paths';
 import { importEpub } from '../../services/import-epub';
-import { bytesInputShape, resolveBytes } from './bytes-input';
+import { bytesInputShape, resolveEpubFile } from './bytes-input';
 import type { ToolDeps } from './deps';
 import { guarded, ok, ToolError } from './execute';
 import { bookDetailSchema, describeBookDetail, fetchBookDetail } from './get-book';
@@ -44,12 +40,7 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
     },
     (args) =>
       guarded(deps, { write: true }, async () => {
-        const { bytes, filename } = await resolveBytes(args);
-        const stagingDir = getStagingDir(deps.config.booksDir);
-        fs.mkdirSync(stagingDir, { recursive: true });
-        const staged = path.join(stagingDir, `mcp-${randomUUID()}.epub`);
-        fs.writeFileSync(staged, bytes);
-
+        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir));
         const owner = { userId: deps.viewer.userId, username: deps.viewer.username };
         const outcome = await importEpub(
           {
@@ -59,7 +50,7 @@ export function registerUploadBook(server: McpServer, deps: ToolDeps): void {
             thumbnailQueue: deps.thumbnails,
           },
           owner,
-          { path: staged, originalName: filename, size: bytes.length }
+          { path: file.path, originalName: file.filename, size: file.size }
         );
         switch (outcome.kind) {
           case 'parse_failed':

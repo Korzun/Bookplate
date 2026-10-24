@@ -1,7 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { bytesInputShape, resolveBytes } from './bytes-input';
+import { getStagingDir } from '../../services/book-paths';
+import { bytesInputShape, resolveEpubFile } from './bytes-input';
 import type { ToolDeps } from './deps';
 import { decodeBookId, executeDocument, guarded, NOT_FOUND_BOOK, ok, ToolError } from './execute';
 import { unwrapPayload, userErrorFields } from './mutation';
@@ -72,12 +73,11 @@ export function registerStageReplacement(server: McpServer, deps: ToolDeps): voi
     (args) =>
       guarded(deps, { write: true }, async () => {
         if (decodeBookId(deps, args.bookId) === null) throw new ToolError(NOT_FOUND_BOOK);
-        const { bytes, filename } = await resolveBytes(args);
-        const stagedUploadId = deps.replaceStaging.stage(
-          bytes,
+        const file = await resolveEpubFile(args, getStagingDir(deps.config.booksDir));
+        const stagedUploadId = deps.replaceStaging.stageFile(
+          file.path,
           deps.viewer.userId,
-          filename,
-          'epub'
+          file.filename
         );
         const data = await executeDocument<{ bookAnalyzeReplace: Payload | null }>(
           deps.context,

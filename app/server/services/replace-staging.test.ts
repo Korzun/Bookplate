@@ -29,6 +29,21 @@ describe('createReplaceStaging', () => {
     expect(fs.existsSync(resolved!.path)).toBe(true);
   });
 
+  it('stageFile moves an already-written file into the registry without copying it', () => {
+    const staging = createReplaceStaging({ stagingDir });
+    const source = path.join(stagingDir, 'mcp-fetch-abc.epub');
+    fs.writeFileSync(source, 'epub-bytes');
+
+    const id = staging.stageFile(source, 'alice', 'book.epub');
+
+    const resolved = staging.resolve(id, 'alice');
+    expect(resolved?.originalName).toBe('book.epub');
+    expect(fs.readFileSync(resolved!.path).toString()).toBe('epub-bytes');
+    expect(fs.existsSync(source)).toBe(false);
+    expect(staging.consume(id, 'alice')).toBe(true);
+    expect(fs.existsSync(resolved!.path)).toBe(false);
+  });
+
   it('returns null for an unknown stagedUploadId', () => {
     const staging = createReplaceStaging({ stagingDir });
 
