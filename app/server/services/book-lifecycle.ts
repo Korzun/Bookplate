@@ -10,6 +10,7 @@ import { seriesSortKey } from '../utils/series-sort-key';
 import { getBookById } from './book-catalog';
 import { BookAlreadyExistsError, BookHashCollisionError } from './book-errors';
 import { bookPath, getUserDir } from './book-paths';
+import { normalizeCover } from './cover-normalize';
 import { purgeForBook } from './edition';
 import { parseEpub, partialMD5 } from './epub-parser';
 import { isPrismaError } from './prisma-errors';
@@ -21,6 +22,32 @@ function buffersEqual(a: Buffer | Uint8Array | null, b: Buffer | Uint8Array | nu
   if (a === null && b === null) return true;
   if (a === null || b === null) return false;
   return Buffer.from(a).equals(Buffer.from(b));
+}
+
+/**
+ * The cover columns a book write stores: `parseEpub`'s raw cover run through
+ * `normalizeCover`. This is the ONE place the stored cover is derived from the
+ * EPUB's cover, for import (`addBook`) and reimport (`reimportBook`) alike —
+ * metadata saves and cover replacement both end in `reimportBook`, so every
+ * path that writes `Book.coverData` normalizes. The EPUB on disk is never
+ * touched: the stored cover is a derived copy, and the file's own cover keeps
+ * its original format so the manifest `media-type` stays true.
+ *
+ * `parseEpub` is synchronous and sharp is not, which is why this runs here
+ * rather than inside the parser.
+ */
+async function storedCoverColumns(
+  meta: Pick<EpubMeta, 'coverData' | 'coverMime'>
+): Promise<{ coverData: Prisma.Bytes | null; coverMime: string | null; coverNormalized: boolean }> {
+  if (meta.coverData === null) {
+    return { coverData: null, coverMime: meta.coverMime, coverNormalized: false };
+  }
+  const cover = await normalizeCover(meta.coverData, meta.coverMime);
+  return {
+    coverData: cover.data as unknown as Prisma.Bytes,
+    coverMime: cover.mime,
+    coverNormalized: cover.normalized,
+  };
 }
 
 /**
@@ -127,6 +154,7 @@ export async function addBook(
   const authorSort = (meta.authorSort || '').trim();
   const publishDate = (meta.publishDate || '').trim();
   const author = (meta.author || '').trim();
+  const cover = await storedCoverColumns(meta);
 
   await prisma.$transaction(async (tx) => {
     let seriesId: string | null = null;
@@ -161,8 +189,7 @@ export async function addBook(
         seriesIndex: meta.seriesIndex,
         identifiers: JSON.stringify(meta.identifiers),
         subjects: JSON.stringify(meta.subjects),
-        coverData: meta.coverData as unknown as Prisma.Bytes | null,
-        coverMime: meta.coverMime,
+        ...cover,
         size: stat.size,
         mtime: stat.mtimeMs,
         addedAt: Date.now(),
@@ -276,12 +303,15 @@ export async function reimportBook(
   }
   const meta = parseEpub(filePath);
   const newId = partialMD5(filePath);
+  const cover = await storedCoverColumns(meta);
 
   // Cached per-width thumbnails are derived from the cover; if the cover changed we must
   // drop them so a stale thumbnail is never served — especially under the new immutable
   // cache URL, where it would otherwise be cached indefinitely. Regeneration happens via
-  // the caller's thumbnail enqueue / reconcile.
-  const coverChanged = !buffersEqual(exists.coverData, meta.coverData);
+  // the caller's thumbnail enqueue / reconcile. Compared on the NORMALIZED bytes, which
+  // is what is stored: a metadata-only save re-normalizes the same source cover to the
+  // same bytes (sharp is deterministic for identical input), so thumbnails survive it.
+  const coverChanged = !buffersEqual(exists.coverData, cover.coverData as Uint8Array | null);
 
   if (newId !== id) {
     const collision = await prisma.book.findUnique({
@@ -336,8 +366,7 @@ export async function reimportBook(
           seriesIndex: meta.seriesIndex,
           identifiers: JSON.stringify(meta.identifiers),
           subjects: JSON.stringify(meta.subjects),
-          coverData: meta.coverData as unknown as Prisma.Bytes | null,
-          coverMime: meta.coverMime,
+          ...cover,
           size: stat.size,
           mtime: stat.mtimeMs,
           chapterCount: meta.chapterCount,
@@ -413,8 +442,7 @@ export async function reimportBook(
           seriesIndex: meta.seriesIndex,
           identifiers: JSON.stringify(meta.identifiers),
           subjects: JSON.stringify(meta.subjects),
-          coverData: meta.coverData as unknown as Prisma.Bytes | null,
-          coverMime: meta.coverMime,
+          ...cover,
           size: stat.size,
           mtime: stat.mtimeMs,
           chapterCount: meta.chapterCount,

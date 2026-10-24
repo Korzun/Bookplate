@@ -83,6 +83,11 @@ beforeEach(() => {
     reconcile: vi.fn().mockResolvedValue({ bookCount: 0 }),
   };
 
+  const coverBackfill = {
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
+
   const server = {
     listen: vi.fn((_port: number, cb?: () => void) => {
       listenCallback = cb;
@@ -95,6 +100,7 @@ beforeEach(() => {
     config: { ...config, booksDir },
     version: '1.0.0',
     thumbnailQueue,
+    coverBackfill,
     server,
   } as unknown as StartupDeps;
 });
@@ -127,6 +133,18 @@ describe('startBookplate', () => {
     const startOrder = vi.mocked(deps.thumbnailQueue.start).mock.invocationCallOrder[0];
     const listenOrder = vi.mocked(deps.server.listen).mock.invocationCallOrder[0];
     expect(startOrder).toBeLessThan(listenOrder);
+  });
+
+  it('starts the cover backfill after the thumbnail queue is running and before server.listen', async () => {
+    await startBookplate(deps);
+
+    // The backfill enqueues thumbnail regeneration for every cover it
+    // re-encodes, so the queue's loop must already be running when it starts.
+    const queueStartOrder = vi.mocked(deps.thumbnailQueue.start).mock.invocationCallOrder[0];
+    const backfillStartOrder = vi.mocked(deps.coverBackfill.start).mock.invocationCallOrder[0];
+    const listenOrder = vi.mocked(deps.server.listen).mock.invocationCallOrder[0];
+    expect(queueStartOrder).toBeLessThan(backfillStartOrder);
+    expect(backfillStartOrder).toBeLessThan(listenOrder);
   });
 
   it('calls server.listen with the configured port', async () => {

@@ -6,6 +6,7 @@ import * as path from 'path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import AdmZip from 'adm-zip';
+import sharp from 'sharp';
 
 import { runMigrations } from '../db/migrate';
 import { EpubMeta, Owner } from '../types';
@@ -1342,5 +1343,118 @@ describe('series aggregate metadata', () => {
 
     const series = await prisma.series.findFirst({ where: { userId: OWNER.userId, name: 'Dune' } });
     expect(series).toBeNull();
+  });
+});
+
+describe('stored cover normalization (addBook / reimportBook)', () => {
+  async function storedCover(id: string) {
+    const row = await prisma.book.findUniqueOrThrow({
+      where: { userId_id: { userId: OWNER.userId, id } },
+      select: { coverData: true, coverMime: true, coverNormalized: true },
+    });
+    return {
+      data: row.coverData === null ? null : Buffer.from(row.coverData),
+      mime: row.coverMime,
+      normalized: row.coverNormalized,
+    };
+  }
+
+  const transparentPng = () =>
+    sharp({
+      create: { width: 40, height: 60, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .png()
+      .toBuffer();
+
+  it('addBook stores a PNG cover as a baseline JPEG and marks the row normalized', async () => {
+    const png = await transparentPng();
+    await addBook(prisma, booksRoot, OWNER, 'cov-png', stage('cov-png'), {
+      ...FAKE_META,
+      coverData: png,
+      coverMime: 'image/png',
+    });
+
+    const stored = await storedCover('cov-png');
+    expect(stored.mime).toBe('image/jpeg');
+    expect(stored.normalized).toBe(true);
+    const meta = await sharp(stored.data!).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.isProgressive).toBe(false);
+    expect(meta.width).toBe(40);
+  });
+
+  it('addBook keeps an undecodable cover as-is and leaves the row unnormalized', async () => {
+    await addBook(prisma, booksRoot, OWNER, 'cov-bad', stage('cov-bad'), FAKE_META);
+
+    const stored = await storedCover('cov-bad');
+    expect(stored.data!.equals(FAKE_META.coverData!)).toBe(true);
+    expect(stored.mime).toBe('image/jpeg');
+    expect(stored.normalized).toBe(false);
+  });
+
+  it('addBook leaves a coverless book unnormalized', async () => {
+    await addBook(prisma, booksRoot, OWNER, 'cov-none', stage('cov-none'), {
+      ...FAKE_META,
+      coverData: null,
+      coverMime: null,
+    });
+    const stored = await storedCover('cov-none');
+    expect(stored.data).toBeNull();
+    expect(stored.normalized).toBe(false);
+  });
+
+  it('reimportBook normalizes a progressive JPEG cover', async () => {
+    const stagedPath = path.join(booksDir, 'staged-cov-prog.epub');
+    fs.writeFileSync(stagedPath, makeMinimalEpub('Prog'));
+    const id = partialMD5(stagedPath);
+    await addBook(prisma, booksRoot, OWNER, id, stagedPath, FAKE_META);
+
+    const progressive = await sharp({
+      create: { width: 30, height: 50, channels: 3, background: { r: 200, g: 0, b: 0 } },
+    })
+      .jpeg({ progressive: true })
+      .toBuffer();
+    vi.mocked(parseEpub).mockImplementationOnce(() => ({
+      ...FAKE_META,
+      coverData: progressive,
+      coverMime: 'image/jpeg',
+    }));
+    vi.mocked(partialMD5).mockImplementationOnce(() => id);
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, id);
+
+    const stored = await storedCover(id);
+    expect(stored.normalized).toBe(true);
+    const meta = await sharp(stored.data!).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.isProgressive).toBe(false);
+    expect(meta.width).toBe(30);
+  });
+
+  it('reimportBook keeps thumbnails when the same source cover re-normalizes to identical bytes', async () => {
+    const png = await transparentPng();
+    const stagedPath = path.join(booksDir, 'staged-cov-stable.epub');
+    fs.writeFileSync(stagedPath, makeMinimalEpub('Stable'));
+    const id = partialMD5(stagedPath);
+    await addBook(prisma, booksRoot, OWNER, id, stagedPath, {
+      ...FAKE_META,
+      coverData: png,
+      coverMime: 'image/png',
+    });
+    await saveThumbnail(prisma, OWNER.userId, id, 150, Buffer.from('thumb-keep'), 'image/jpeg');
+
+    // Same PNG in the EPUB, so the normalized copy must be byte-identical and
+    // the thumbnails derived from it must survive.
+    vi.mocked(parseEpub).mockImplementationOnce(() => ({
+      ...FAKE_META,
+      title: 'Renamed',
+      coverData: png,
+      coverMime: 'image/png',
+    }));
+    vi.mocked(partialMD5).mockImplementationOnce(() => id);
+    await reimportBook(prisma, booksRoot, editionsRoot, OWNER, id);
+
+    const thumb = await getThumbnail(prisma, OWNER.userId, id, 150);
+    expect(thumb).not.toBeNull();
+    expect(Buffer.from(thumb!.data).toString()).toBe('thumb-keep');
   });
 });
