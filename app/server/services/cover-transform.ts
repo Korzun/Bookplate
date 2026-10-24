@@ -19,6 +19,21 @@ export interface CoverTransform {
  * same as `cover`/`contain` behave with one dimension.
  */
 export async function transformCover(data: Buffer, opts: CoverTransform): Promise<Buffer> {
+  return (await buildPipeline(data, opts)).toBuffer();
+}
+
+/**
+ * Same transform, but always encoded as baseline JPEG regardless of the
+ * source format. For the OPDS device cover route: Crosspoint picks its
+ * decoder from the URL extension (defaulting to JPEG) and decodes
+ * progressive JPEGs at 1/8 resolution, so the bytes behind a `.jpg` URL must
+ * be a baseline JPEG even when the EPUB shipped a PNG or a progressive cover.
+ */
+export async function transformCoverToJpeg(data: Buffer, opts: CoverTransform): Promise<Buffer> {
+  return (await buildPipeline(data, opts)).jpeg().toBuffer();
+}
+
+async function buildPipeline(data: Buffer, opts: CoverTransform): Promise<sharp.Sharp> {
   let pipeline = sharp(data);
   if (opts.width !== null || opts.height !== null) {
     if (opts.fit === 'smart' && opts.width !== null && opts.height !== null) {
@@ -43,5 +58,5 @@ export async function transformCover(data: Buffer, opts: CoverTransform): Promis
   if (opts.grayscale) {
     pipeline = pipeline.grayscale();
   }
-  return pipeline.toBuffer();
+  return pipeline;
 }

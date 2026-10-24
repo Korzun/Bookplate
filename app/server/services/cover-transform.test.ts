@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 
-import { transformCover } from './cover-transform';
+import { transformCover, transformCoverToJpeg } from './cover-transform';
 
 async function redSquare(size = 100): Promise<Buffer> {
   return sharp({
@@ -100,5 +100,32 @@ describe('transformCover — smart fit', () => {
     const { dominant } = await sharp(out).stats();
     expect(Math.abs(dominant.r - dominant.g)).toBeLessThan(8);
     expect(Math.abs(dominant.g - dominant.b)).toBeLessThan(8);
+  });
+});
+
+describe('transformCoverToJpeg', () => {
+  it('re-encodes a PNG source as JPEG while applying the transform', async () => {
+    const out = await transformCoverToJpeg(await barTop(), {
+      width: 50,
+      height: null,
+      fit: 'contain',
+      grayscale: false,
+    });
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(50);
+  });
+
+  it('re-encodes as JPEG with no resize when no dimensions are set', async () => {
+    const out = await transformCoverToJpeg(await barTop(80, 120), {
+      width: null,
+      height: null,
+      fit: 'contain',
+      grayscale: false,
+    });
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(80);
+    expect(meta.height).toBe(120);
   });
 });

@@ -74,9 +74,15 @@ export function bookEntry(
   ];
   const version = String(b.mtime.getTime());
   if (b.hasCover) {
+    // Device feeds point the full image at the device cover route, which applies
+    // the device's cover size/fit/grayscale and always returns JPEG. The `.jpg`
+    // suffix matters: Crosspoint chooses its image decoder from the URL extension.
+    const imageHref = device
+      ? `${baseUrl}/opds/books/${b.id}/devices/${device.slug}/cover.jpg?v=${version}`
+      : `${baseUrl}/opds/books/${b.id}/cover?v=${version}`;
     parts.push(
       xml`    <link rel="http://opds-spec.org/image"
-          href="${baseUrl}/opds/books/${b.id}/cover?v=${version}"
+          href="${imageHref}"
           type="image/jpeg"/>`
     );
   }
