@@ -24,7 +24,7 @@ export function createKosyncRouter(prisma: PrismaClient): Router {
     '/syncs/progress',
     kosyncAuth(prisma),
     asyncHandler(async (req: Request, res: Response) => {
-      const { document, progress, percentage, device, device_id } = req.body as {
+      const { document, progress, percentage, device, device_id } = (req.body ?? {}) as {
         document?: string;
         progress?: string;
         percentage?: number;
@@ -55,7 +55,7 @@ export function createKosyncRouter(prisma: PrismaClient): Router {
   router.get(
     '/syncs/progress/:document',
     kosyncAuth(prisma),
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ document: string }>, res: Response) => {
       const currentId = await resolveBookId(prisma, req.kosyncUserId!, req.params.document);
       const p = await getProgress(prisma, req.kosyncUserId!, currentId);
       if (!p) {

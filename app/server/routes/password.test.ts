@@ -169,6 +169,11 @@ describe('POST /api/password/forgot', () => {
     );
   });
 
+  it('returns 204 for a request with no body at all', async () => {
+    const { app } = build({ mail: MAIL_CONFIG });
+    expect((await request(app).post('/api/password/forgot')).status).toBe(204);
+  });
+
   it('returns 404 when mail is unconfigured', async () => {
     const { app } = build({ mail: null });
     const res = await request(app).post('/api/password/forgot').send({ email: 'a@b.co' });
@@ -196,6 +201,11 @@ describe('POST /api/password/reset', () => {
     const code = /\b[0-9A-HJKMNP-TV-Z]{8}\b/.exec(built.mailer!.sent[0].text)![0];
     return { ...built, id, code };
   };
+
+  it('returns 400, not 500, for a request with no body at all', async () => {
+    const { app } = build({ mail: MAIL_CONFIG });
+    expect((await request(app).post('/api/password/reset')).status).toBe(400);
+  });
 
   it('sets the new password and lets the user log in with it', async () => {
     const { app, code } = await primed();

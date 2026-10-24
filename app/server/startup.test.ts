@@ -42,7 +42,7 @@ const config: AppConfig = {
 
 let booksDir: string;
 let deps: StartupDeps;
-let listenCallback: (() => void) | undefined;
+let listenCallback: ((err?: Error) => void) | undefined;
 // `startBookplate` registers real `process.on('SIGTERM'/'SIGINT', ...)`
 // listeners whose closures call `process.exit(0)` — snapshotting the
 // listener lists before each test lets afterEach remove only what this
@@ -89,7 +89,7 @@ beforeEach(() => {
   };
 
   const server = {
-    listen: vi.fn((_port: number, cb?: () => void) => {
+    listen: vi.fn((_port: number, cb?: (err?: Error) => void) => {
       listenCallback = cb;
       return undefined as never;
     }),
@@ -152,6 +152,31 @@ describe('startBookplate', () => {
 
     expect(deps.server.listen).toHaveBeenCalledWith(config.port, expect.any(Function));
     expect(listenCallback).toBeDefined();
+  });
+
+  it('exits non-zero when listen reports an error such as a port already in use', async () => {
+    // Express 5 hands listen errors (EADDRINUSE) to the callback instead of
+    // throwing them; a callback that ignores its argument would log "starting"
+    // and leave the process alive without a listener.
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      await startBookplate(deps);
+      listenCallback!(Object.assign(new Error('listen EADDRINUSE'), { code: 'EADDRINUSE' }));
+      expect(exit).toHaveBeenCalledWith(1);
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it('does not exit when listen succeeds', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      await startBookplate(deps);
+      listenCallback!();
+      expect(exit).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
   });
 
   it('lets the boot continue when the startup scan fails', async () => {

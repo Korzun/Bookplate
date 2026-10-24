@@ -64,7 +64,7 @@ export function createPasswordRouter(deps: {
     rateLimit,
     requireMail,
     asyncHandler(async (req: Request, res: Response) => {
-      const { email } = req.body as { email?: unknown };
+      const { email } = (req.body ?? {}) as { email?: unknown };
       // Answer first, work second: the response is identical in every case, and
       // deciding it up front makes it impossible for a later branch to leak one.
       res.sendStatus(204);
@@ -111,7 +111,7 @@ export function createPasswordRouter(deps: {
     rateLimit,
     requireMail,
     asyncHandler(async (req: Request, res: Response) => {
-      const { email, code, newPassword } = req.body as {
+      const { email, code, newPassword } = (req.body ?? {}) as {
         email?: unknown;
         code?: unknown;
         newPassword?: unknown;

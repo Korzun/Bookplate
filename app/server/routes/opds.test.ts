@@ -265,6 +265,35 @@ describe('GET /opds/books/:id/download', () => {
     expect(res.headers['content-type']).toMatch(/epub/);
   });
 
+  it('serves a book whose library root sits under a dot-directory', async () => {
+    // Express 5's `res.sendFile` refuses a dot-segment anywhere in the ABSOLUTE
+    // path by default, not only in the request path. A library root is
+    // server-chosen (`~/.local/share/...` is an ordinary one), so the file
+    // routes must opt out of that check.
+    const dotRoot = fs.mkdtempSync(path.join(os.tmpdir(), '.bookplate-dot-'));
+    try {
+      const dotApp = express();
+      dotApp.use(
+        '/opds',
+        createOpdsRouter({ booksRoot: dotRoot, prisma, thumbnailWidths: [60, 170] })
+      );
+      await seedBook(
+        prisma,
+        { booksRoot: dotRoot },
+        alice,
+        'dotbook',
+        stage('dotbook', 'epub-content'),
+        FAKE_META
+      );
+      const res = await request(dotApp)
+        .get('/opds/books/dotbook/download')
+        .set(basicAuth('alice', 'secret'));
+      expect(res.status).toBe(200);
+    } finally {
+      fs.rmSync(dotRoot, { recursive: true, force: true });
+    }
+  });
+
   it('uses the computed download name in Content-Disposition', async () => {
     await seedBook(
       prisma,

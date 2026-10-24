@@ -134,7 +134,15 @@ export async function startBookplate({
   process.on('SIGTERM', () => void shutdown());
   process.on('SIGINT', () => void shutdown());
 
-  server.listen(config.port, () => {
+  // Express 5 reports a listen failure (EADDRINUSE, EACCES) to this callback
+  // instead of throwing it; left unhandled, the process would log "starting"
+  // and stay alive with nothing listening.
+  server.listen(config.port, (err?: Error) => {
+    if (err) {
+      log.error(`Failed to listen on port ${config.port}: ${err.message}`);
+      process.exit(1);
+      return;
+    }
     log.info(
       `Bookplate v${version} starting — port: ${config.port}, booksDir: ${config.booksDir}, dataDir: ${config.dataDir}`
     );
