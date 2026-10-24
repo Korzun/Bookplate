@@ -550,6 +550,52 @@ type LinkedDocument {
   type: LineageType!
 }
 
+input McpAuthorizeInput {
+  approve: Boolean!
+  clientId: String!
+  codeChallenge: String!
+  readOnly: Boolean!
+  redirectUri: String!
+  resource: String
+  scope: String
+  state: String
+}
+
+type McpAuthorizePayload {
+  """
+  Where the browser must go next: the client’s redirect URI with code+state, or error=access_denied.
+  """
+  redirectUrl: String!
+}
+
+union McpAuthorizeResult = InvalidInputError | McpAuthorizePayload
+
+"""A registered MCP client, as shown on the consent page."""
+type McpClientInfo {
+  clientId: String!
+  clientName: String!
+  clientUri: String
+  logoUri: String
+}
+
+"""One AI assistant connected to this account over MCP."""
+type McpConnection {
+  """The name the client registered with, or "Unnamed client"."""
+  clientName: String!
+  clientUri: String
+  createdAt: DateTime!
+  id: ID!
+
+  """When a tool was last called on this connection (minute resolution)."""
+  lastUsedAt: DateTime
+  logoUri: String
+
+  """
+  The granted scopes: `library:read`, and `library:write` unless read-only.
+  """
+  scopes: [String!]!
+}
+
 type MessageSegment {
   subject: Boolean!
   text: String!
@@ -674,6 +720,11 @@ type Mutation {
   deviceUpdate(input: DeviceUpdateInput!): DeviceUpdateResult
 
   """
+  Records the viewer’s consent decision for an MCP client and returns the URL to send the browser to. Approving creates (or refreshes) the connection and a single-use authorization code; denying returns the client’s redirect URI with error=access_denied. Only readers can connect: the admin account has no library.
+  """
+  mcpAuthorize(input: McpAuthorizeInput!): McpAuthorizeResult!
+
+  """
   Clears one stored reading position. Resolves to null when the user has no stored position for that document.
   """
   progressDelete(input: ProgressDeleteInput!): ProgressDeleteResult
@@ -726,6 +777,11 @@ type Mutation {
   Sends a fresh verification code to the viewer's own email address. `InvalidInputError` covers every reason it cannot: no address on file, the address is already confirmed, or a resend cooldown/cap is in effect.
   """
   viewerResendEmailVerification: ViewerResendEmailVerificationResult!
+
+  """
+  Disconnects one of the viewer's MCP assistants; its tokens stop working immediately. False when no such connection belongs to the viewer.
+  """
+  viewerRevokeMcpConnection(id: ID!): Boolean!
 
   """
   Sets the viewer's email address and sends a verification code to it. Succeeds (with `delivered: false`) even if the send itself fails, because the address is already saved by then.
@@ -857,6 +913,11 @@ type PushSubscription {
 
 type Query {
   config: Config!
+
+  """
+  The registered MCP client behind a consent request, for the /connect page. Null when no client has that id (it may have been swept, or never existed).
+  """
+  mcpClient(clientId: String!): McpClientInfo
   node(id: ID!): Node
   nodes(ids: [ID!]!): [Node]!
   user(id: ID!): User
@@ -1097,6 +1158,19 @@ type Viewer {
   emailVerifiedAt: DateTime
   isAdmin: Boolean!
   library: Library
+
+  """The AI assistants connected to this account over MCP, newest first."""
+  mcpConnections: [McpConnection!]!
+
+  """
+  Whether this install publishes an MCP server (requires an https public_url).
+  """
+  mcpEnabled: Boolean!
+
+  """
+  The URL to add to an AI assistant as a custom MCP connector, or null when disabled.
+  """
+  mcpUrl: String
   mustChangePassword: Boolean!
   notificationPreferences: [NotificationPreference!]!
   pushPublicKey: String!
