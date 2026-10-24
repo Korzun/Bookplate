@@ -131,6 +131,21 @@ describe('POST /mcp', () => {
     expect(res.body).toEqual({ error: 'Request body too large' });
   });
 
+  it('refuses an unauthenticated oversized body with 401 before parsing it', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Content-Type', 'application/json')
+      .send(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'x',
+          params: { blob: 'a'.repeat(9 * 1024 * 1024) },
+        })
+      );
+    expect(res.status).toBe(401);
+  });
+
   it('accepts a 1 MB body from a valid token (the global 100 kb limit does not apply)', async () => {
     const token = await mintToken();
     const res = await request(app)

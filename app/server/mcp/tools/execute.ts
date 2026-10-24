@@ -10,11 +10,12 @@
  * the transport as a JSON-RPC error, the same way yoga would mask it.
  */
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphql } from 'graphql';
+import { graphql, GraphQLError } from 'graphql';
 
 import type { Context } from '../../graphql/context';
 import { schema } from '../../graphql/schema';
 import { decodeCompoundGlobalId } from '../../graphql/schema/node-scope';
+import { logger } from '../../logger';
 import type { McpScope } from '../tokens';
 import { SETUP_REQUIRED_MESSAGE } from '../viewer';
 import type { ToolDeps } from './deps';
@@ -26,8 +27,22 @@ export class ToolError extends Error {
   }
 }
 
+const log = logger('MCP');
+
 export const NOT_FOUND_BOOK = 'No book with that id in your library';
 export const READ_ONLY_MESSAGE = 'This connection is read only';
+/**
+ * What an assistant sees for any failure that is not one of ours. The SDK
+ * forwards a thrown error's message verbatim as an `isError` result and the
+ * in-process `graphql()` call applies none of yoga's masking, so without this
+ * a Prisma or filesystem failure would hand the assistant SQL fragments and
+ * absolute paths. The real message goes to the log.
+ */
+export const INTERNAL_ERROR_MESSAGE =
+  'Something went wrong on the server; the error has been logged.';
+
+const describe = (err: unknown): string =>
+  err instanceof Error ? (err.stack ?? err.message) : String(err);
 
 export async function executeDocument<T>(
   context: Context,
@@ -41,7 +56,16 @@ export async function executeDocument<T>(
     variableValues: variables,
   });
   if (result.errors !== undefined && result.errors.length > 0) {
-    throw new ToolError(result.errors[0].message);
+    const error = result.errors[0];
+    // Errors the schema MEANT to send — parse/validation errors (no
+    // `originalError`) and `GraphQLError`s a resolver or the auth plugin
+    // threw on purpose — are the assistant's to read. Anything else is an
+    // unexpected failure wearing a GraphQL envelope.
+    const intended =
+      error.originalError === undefined || error.originalError instanceof GraphQLError;
+    if (intended) throw new ToolError(error.message);
+    log.error(`Tool document failed: ${describe(error.originalError)}`);
+    throw new ToolError(INTERNAL_ERROR_MESSAGE);
   }
   // Scalars such as DateTime serialize to strings on the way out; a JSON
   // round-trip gives tools the same values a network client would see.
@@ -87,6 +111,7 @@ export async function guarded(
     return await run();
   } catch (err) {
     if (err instanceof ToolError) return fail(err.message);
-    throw err;
+    log.error(`Tool failed: ${describe(err)}`);
+    return fail(INTERNAL_ERROR_MESSAGE);
   }
 }

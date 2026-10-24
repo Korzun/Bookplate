@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { seedEditableBook } from '../graphql/schema/book/mutation/test-helpers';
 import { createHarness, type Harness } from '../graphql/test-util';
 import { saveThumbnail } from '../services/book-assets';
@@ -491,9 +494,13 @@ describe('upload and replace tools', () => {
 
   it('upload_book fetches a URL through the guarded downloader', async () => {
     mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
-    vi.mocked(fetchEpub).mockResolvedValueOnce({
-      bytes: fixtureEpub('Fetched Book'),
-      filename: 'fetched.epub',
+    vi.mocked(fetchEpub).mockImplementationOnce(async (_url, destDir) => {
+      const bytes = fixtureEpub('Fetched Book');
+      // The real fetchEpub creates destDir itself; the mock stands in for it.
+      fs.mkdirSync(destDir, { recursive: true });
+      const file = path.join(destDir, 'mcp-fetch-test.epub');
+      fs.writeFileSync(file, bytes);
+      return { path: file, size: bytes.length, filename: 'fetched.epub' };
     });
     const result = await mcp.call('upload_book', { url: 'https://books.example/fetched.epub' });
     expect(result.isError, textOf(result)).toBeFalsy();

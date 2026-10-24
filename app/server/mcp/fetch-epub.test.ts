@@ -1,5 +1,8 @@
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import type * as https from 'https';
+import * as os from 'os';
+import * as path from 'path';
 import { PassThrough } from 'stream';
 
 import { fetchEpub, FetchEpubError, type FetchEpubOptions } from './fetch-epub';
@@ -10,6 +13,8 @@ type Scripted = {
   body?: Buffer | string;
   /** Emit the body in chunks of this size to exercise the running byte cap. */
   chunk?: number;
+  /** Send the headers and nothing more: the body never arrives and never ends. */
+  hang?: boolean;
 };
 
 /**
@@ -19,6 +24,7 @@ type Scripted = {
  */
 const scriptedRequest = (script: Record<string, Scripted>) => {
   const calls: Array<{ url: string; options: https.RequestOptions }> = [];
+  const destroyed: string[] = [];
   const request = ((
     url: string | URL,
     options: https.RequestOptions,
@@ -35,6 +41,7 @@ const scriptedRequest = (script: Record<string, Scripted>) => {
     req.destroyed = false;
     req.destroy = () => {
       req.destroyed = true;
+      destroyed.push(key);
     };
     req.setTimeout = () => {};
     req.end = () => {
@@ -51,6 +58,7 @@ const scriptedRequest = (script: Record<string, Scripted>) => {
         res.statusCode = entry.status;
         res.headers = entry.headers ?? {};
         cb?.(res as never);
+        if (entry.hang) return;
         const body = Buffer.isBuffer(entry.body)
           ? entry.body
           : Buffer.from(entry.body ?? '', 'utf8');
@@ -61,7 +69,7 @@ const scriptedRequest = (script: Record<string, Scripted>) => {
     };
     return req as never;
   }) as unknown as typeof https.request;
-  return { request, calls };
+  return { request, calls, destroyed };
 };
 
 const publicLookup: NonNullable<FetchEpubOptions['lookup']> = (_host, _opts, cb) =>
@@ -72,25 +80,35 @@ const privateLookup: NonNullable<FetchEpubOptions['lookup']> = (_host, _opts, cb
 
 const epubHeaders = { 'content-type': 'application/epub+zip' };
 
+let dir: string;
+beforeEach(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-epub-'));
+});
+afterEach(() => {
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 const expectCode = async (promise: Promise<unknown>, code: FetchEpubError['code']) => {
   await expect(promise).rejects.toBeInstanceOf(FetchEpubError);
   await expect(promise).rejects.toMatchObject({ code });
 };
 
+const leftovers = (): string[] => fs.readdirSync(dir);
+
 describe('fetchEpub', () => {
   it('refuses a non-https URL and an unparsable one', async () => {
     const { request } = scriptedRequest({});
     await expectCode(
-      fetchEpub('http://books.example/a.epub', { request, lookup: publicLookup }),
+      fetchEpub('http://books.example/a.epub', dir, { request, lookup: publicLookup }),
       'invalid_url'
     );
-    await expectCode(fetchEpub('not a url', { request, lookup: publicLookup }), 'invalid_url');
+    await expectCode(fetchEpub('not a url', dir, { request, lookup: publicLookup }), 'invalid_url');
   });
 
   it('refuses a private IP literal without connecting', async () => {
     const { request, calls } = scriptedRequest({});
     await expectCode(
-      fetchEpub('https://10.0.0.1/a.epub', { request, lookup: publicLookup }),
+      fetchEpub('https://10.0.0.1/a.epub', dir, { request, lookup: publicLookup }),
       'private_host'
     );
     expect(calls).toHaveLength(0);
@@ -99,18 +117,23 @@ describe('fetchEpub', () => {
   it('refuses a public name that resolves to a private address', async () => {
     const { request, calls } = scriptedRequest({});
     await expectCode(
-      fetchEpub('https://evil.example/a.epub', { request, lookup: privateLookup }),
+      fetchEpub('https://evil.example/a.epub', dir, { request, lookup: privateLookup }),
       'private_host'
     );
     expect(calls).toHaveLength(0);
   });
 
-  it('pins the connection to the resolved address', async () => {
+  it('pins the connection to the resolved address and streams the body to a file', async () => {
     const { request, calls } = scriptedRequest({
       'https://books.example/a.epub': { status: 200, headers: epubHeaders, body: 'PK..' },
     });
-    const out = await fetchEpub('https://books.example/a.epub', { request, lookup: publicLookup });
-    expect(out.bytes.toString()).toBe('PK..');
+    const out = await fetchEpub('https://books.example/a.epub', dir, {
+      request,
+      lookup: publicLookup,
+    });
+    expect(path.dirname(out.path)).toBe(dir);
+    expect(fs.readFileSync(out.path).toString()).toBe('PK..');
+    expect(out.size).toBe(4);
     expect(out.filename).toBe('a.epub');
     expect(calls[0].options.servername).toBe('books.example');
     expect(typeof calls[0].options.lookup).toBe('function');
@@ -141,11 +164,14 @@ describe('fetchEpub', () => {
         headers: { location: 'https://192.168.0.1/x.epub' },
       },
     });
-    const out = await fetchEpub('https://books.example/go', { request, lookup: publicLookup });
-    expect(out.bytes.toString()).toBe('PKbb');
+    const out = await fetchEpub('https://books.example/go', dir, {
+      request,
+      lookup: publicLookup,
+    });
+    expect(fs.readFileSync(out.path).toString()).toBe('PKbb');
     expect(out.filename).toBe('b.epub');
     await expectCode(
-      fetchEpub('https://books.example/bad', { request, lookup: publicLookup }),
+      fetchEpub('https://books.example/bad', dir, { request, lookup: publicLookup }),
       'private_host'
     );
   });
@@ -160,13 +186,13 @@ describe('fetchEpub', () => {
     }
     const { request } = scriptedRequest(script);
     await expectCode(
-      fetchEpub('https://books.example/r0', { request, lookup: publicLookup }),
+      fetchEpub('https://books.example/r0', dir, { request, lookup: publicLookup }),
       'too_many_redirects'
     );
   });
 
-  it('stops reading past the byte cap', async () => {
-    const { request } = scriptedRequest({
+  it('stops reading past the byte cap and leaves no file behind', async () => {
+    const { request, destroyed } = scriptedRequest({
       'https://books.example/big.epub': {
         status: 200,
         headers: epubHeaders,
@@ -175,13 +201,15 @@ describe('fetchEpub', () => {
       },
     });
     await expectCode(
-      fetchEpub('https://books.example/big.epub', {
+      fetchEpub('https://books.example/big.epub', dir, {
         request,
         lookup: publicLookup,
         maxBytes: 1000,
       }),
       'too_large'
     );
+    expect(destroyed).toEqual(['https://books.example/big.epub']);
+    expect(leftovers()).toEqual([]);
   });
 
   it('refuses a declared Content-Length over the cap before reading', async () => {
@@ -193,13 +221,14 @@ describe('fetchEpub', () => {
       },
     });
     await expectCode(
-      fetchEpub('https://books.example/huge.epub', {
+      fetchEpub('https://books.example/huge.epub', dir, {
         request,
         lookup: publicLookup,
         maxBytes: 1000,
       }),
       'too_large'
     );
+    expect(leftovers()).toEqual([]);
   });
 
   it('refuses something that is neither typed nor named as an EPUB, and non-2xx answers', async () => {
@@ -217,16 +246,16 @@ describe('fetchEpub', () => {
       'https://books.example/missing.epub': { status: 404, body: 'nope' },
     });
     await expectCode(
-      fetchEpub('https://books.example/page', { request, lookup: publicLookup }),
+      fetchEpub('https://books.example/page', dir, { request, lookup: publicLookup }),
       'not_epub'
     );
-    const named = await fetchEpub('https://books.example/named.epub', {
+    const named = await fetchEpub('https://books.example/named.epub', dir, {
       request,
       lookup: publicLookup,
     });
     expect(named.filename).toBe('named.epub');
     await expectCode(
-      fetchEpub('https://books.example/missing.epub', { request, lookup: publicLookup }),
+      fetchEpub('https://books.example/missing.epub', dir, { request, lookup: publicLookup }),
       'http_error'
     );
   });
@@ -248,10 +277,39 @@ describe('fetchEpub', () => {
       },
     });
     expect(
-      (await fetchEpub('https://books.example/dl?id=7', { request, lookup: publicLookup })).filename
+      (await fetchEpub('https://books.example/dl?id=7', dir, { request, lookup: publicLookup }))
+        .filename
     ).toBe('My Book.epub');
     expect(
-      (await fetchEpub('https://books.example/dl?id=8', { request, lookup: publicLookup })).filename
+      (await fetchEpub('https://books.example/dl?id=8', dir, { request, lookup: publicLookup }))
+        .filename
     ).toBe('Café.epub');
+  });
+
+  it('survives a malformed percent-escape in the path instead of throwing in a stream listener', async () => {
+    const { request } = scriptedRequest({
+      'https://books.example/a%zz.epub': { status: 200, headers: epubHeaders, body: 'PK' },
+    });
+    const out = await fetchEpub('https://books.example/a%zz.epub', dir, {
+      request,
+      lookup: publicLookup,
+    });
+    expect(out.filename).toBe('a%zz.epub');
+  });
+
+  it('enforces a wall-clock budget: a server that never finishes is cut off and cleaned up', async () => {
+    const { request, destroyed } = scriptedRequest({
+      'https://books.example/slow.epub': { status: 200, headers: epubHeaders, hang: true },
+    });
+    await expectCode(
+      fetchEpub('https://books.example/slow.epub', dir, {
+        request,
+        lookup: publicLookup,
+        timeoutMs: 50,
+      }),
+      'timeout'
+    );
+    expect(destroyed).toEqual(['https://books.example/slow.epub']);
+    expect(leftovers()).toEqual([]);
   });
 });

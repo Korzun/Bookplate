@@ -128,6 +128,13 @@ export type ReplaceStaging = {
    * surfaced distinctly. `kind` defaults to `'epub'`, matching `stage()`'s
    * default and keeping every pre-3b call site unchanged.
    */
+  /**
+   * Like `stage`, for bytes that are ALREADY a file in the staging directory
+   * (the MCP tools stream downloads straight to disk). The file is renamed
+   * into the registry's own naming, never copied, and belongs to the registry
+   * from then on.
+   */
+  stageFile: (sourcePath: string, userId: string, originalName: string) => string;
   resolve: (id: string, userId: string, kind?: StagedKind) => StagedFile | null;
   /**
    * Deletes a staged file (registry entry + disk file) and reports whether
@@ -307,6 +314,23 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     return id;
   }
 
+  function stageFile(sourcePath: string, userId: string, originalName: string): string {
+    sweep();
+    fs.mkdirSync(stagingDir, { recursive: true });
+    const id = randomUUID();
+    const filePath = path.join(stagingDir, `${STAGED_PREFIX}${id}${extensionFor('epub', null)}`);
+    fs.renameSync(sourcePath, filePath);
+    entries.set(id, {
+      userId,
+      path: filePath,
+      originalName,
+      mimeType: null,
+      createdAt: now(),
+      kind: 'epub',
+    });
+    return id;
+  }
+
   /**
    * The single lookup both `resolve` and `consume` build on — id match, then
    * owner match, then age. Age-checked HERE, not only in `sweep()`: `sweep()`
@@ -361,5 +385,5 @@ export function createReplaceStaging(deps: ReplaceStagingDeps): ReplaceStaging {
     return true;
   }
 
-  return { stage, resolve, consume };
+  return { stage, stageFile, resolve, consume };
 }

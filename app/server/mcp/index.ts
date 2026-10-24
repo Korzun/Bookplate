@@ -108,14 +108,16 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     next(err);
   };
 
+  // Bearer auth FIRST: it reads only the header, so an unauthenticated
+  // caller is turned away before this route buffers up to 8 MB of body.
   router.post(
     '/mcp',
-    express.json({ limit: MCP_BODY_LIMIT }),
-    bodyLimitErrors,
     requireBearerAuth({
       verifier: provider,
       resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl),
     }),
+    express.json({ limit: MCP_BODY_LIMIT }),
+    bodyLimitErrors,
     (req: Request, res: Response, next: NextFunction) => {
       handleMcp(req, res).catch(next);
     }

@@ -12,6 +12,8 @@ describe('isPrivateHost', () => {
     '172.31.255.254',
     '192.168.1.1',
     '169.254.1.1',
+    '100.64.0.1',
+    '100.127.255.254',
     '127.0.0.1',
     '0.0.0.0',
     '[::1]',
@@ -24,12 +26,17 @@ describe('isPrivateHost', () => {
     expect(isPrivateHost(host)).toBe(true);
   });
 
-  it.each(['books.example.com', '1.1.1.1', '172.32.0.1', '2606:4700::1111', '[2606:4700::1111]'])(
-    'treats %s as public',
-    (host) => {
-      expect(isPrivateHost(host)).toBe(false);
-    }
-  );
+  it.each([
+    'books.example.com',
+    '1.1.1.1',
+    '172.32.0.1',
+    '100.63.255.255',
+    '100.128.0.1',
+    '2606:4700::1111',
+    '[2606:4700::1111]',
+  ])('treats %s as public', (host) => {
+    expect(isPrivateHost(host)).toBe(false);
+  });
 });
 
 describe('isPublicHttpsUrl', () => {
