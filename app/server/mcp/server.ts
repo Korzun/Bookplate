@@ -7,6 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { APP_VERSION } from '../utils/app-version';
+import { registerDeleteBook } from './tools/delete-book';
 import type { ToolDeps } from './tools/deps';
 import { registerGetBook } from './tools/get-book';
 import { registerGetBookCover } from './tools/get-book-cover';
@@ -17,7 +18,12 @@ import { registerListLibraryFacets } from './tools/list-library-facets';
 import { registerListPendingFixes } from './tools/list-pending-fixes';
 import { registerListReadingProgress } from './tools/list-reading-progress';
 import { registerListSeries } from './tools/list-series';
+import { registerRegenerateChapters } from './tools/regenerate-chapters';
+import { registerRequestBook } from './tools/request-book';
+import { registerResolveMetadataFixes } from './tools/resolve-metadata-fixes';
 import { registerSearchLibrary } from './tools/search-library';
+import { registerUpdateBookMetadata } from './tools/update-book-metadata';
+import { registerValidateBook } from './tools/validate-book';
 
 export type { ToolDeps } from './tools/deps';
 
@@ -40,11 +46,21 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
   registerListBookRequests(server, deps);
 }
 
+export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
+  registerUpdateBookMetadata(server, deps);
+  registerValidateBook(server, deps);
+  registerResolveMetadataFixes(server, deps);
+  registerRegenerateChapters(server, deps);
+  registerDeleteBook(server, deps);
+  registerRequestBook(server, deps);
+}
+
 export function buildMcpServer(deps: ToolDeps): McpServer {
   const server = new McpServer(
     { name: 'bookplate', version: APP_VERSION },
     { instructions: INSTRUCTIONS }
   );
   registerReadTools(server, deps);
+  registerWriteTools(server, deps);
   return server;
 }
