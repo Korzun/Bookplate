@@ -63,7 +63,10 @@ describe('viewerFromAuthInfo', () => {
   it('is null for a token without a user id or whose user is gone', async () => {
     harness = await createHarness();
     expect(
-      await viewerFromAuthInfo({ prisma: harness.prisma, config: harness.config }, authFor(undefined))
+      await viewerFromAuthInfo(
+        { prisma: harness.prisma, config: harness.config },
+        authFor(undefined)
+      )
     ).toBeNull();
     await deleteUser(harness.prisma, harness.editionsRoot, 'alice');
     expect(
