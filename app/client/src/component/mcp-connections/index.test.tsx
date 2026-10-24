@@ -72,12 +72,17 @@ const revokeMock = (
 });
 
 describe('McpConnections', () => {
-  it('explains how to enable MCP when the install has no https public_url', () => {
+  it('renders nothing when the install has no MCP server (readers cannot change that)', () => {
+    // The providers render their own chrome (toast region), so assert on the
+    // card rather than on an empty container.
     renderWithApollo(<McpConnections viewer={viewer({ enabled: false })} />);
-    expect(screen.getByText('AI assistants')).toBeInTheDocument();
-    expect(screen.getByText(/public_url/)).toBeInTheDocument();
-    expect(screen.queryByText('https://books.example/mcp')).not.toBeInTheDocument();
-    expect(screen.queryByText('No assistants connected yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('AI assistants')).not.toBeInTheDocument();
+    expect(screen.queryByText(/public_url/)).not.toBeInTheDocument();
+  });
+
+  it('renders nothing until the viewer has loaded', () => {
+    renderWithApollo(<McpConnections viewer={undefined} />);
+    expect(screen.queryByText('AI assistants')).not.toBeInTheDocument();
   });
 
   it('shows the MCP URL and the empty state when nothing is connected', () => {

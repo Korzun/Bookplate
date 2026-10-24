@@ -21,6 +21,7 @@ vi.mock('~/component', () => ({
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
   McpConnections: () => <div>McpConnections</div>,
+  McpSetup: () => <div>McpSetup</div>,
   MyProgress: () => <div>MyProgress</div>,
   NotificationSettings: () => <div>NotificationSettings</div>,
   Page: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
@@ -43,6 +44,7 @@ describe('SettingsPage', () => {
 
     expect(screen.getByText('SyncPassword')).toBeInTheDocument();
     expect(screen.getByText('McpConnections')).toBeInTheDocument();
+    expect(screen.queryByText('McpSetup')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 
@@ -56,6 +58,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
     expect(screen.queryByText('McpConnections')).not.toBeInTheDocument();
+    expect(screen.getByText('McpSetup')).toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 });
