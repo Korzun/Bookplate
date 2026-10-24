@@ -555,6 +555,13 @@ describe('POST /api/login', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns 401, not 500, when the request carries no body at all', async () => {
+    // Express 5 leaves `req.body` undefined (not `{}`) when no parser matched,
+    // so a bodiless POST must still be a plain credential failure.
+    const res = await request(app).post('/api/login');
+    expect(res.status).toBe(401);
+  });
+
   it('returns 403 with a clear message when the user has no password set', async () => {
     await createUser(prisma, 'nopass', null);
     const res = await request(app)
@@ -1732,6 +1739,33 @@ describe('GET /api/books/:id/download', () => {
     expect(res.text).toBe('EPUBDATA');
   });
 
+  it('serves a book whose library root sits under a dot-directory', async () => {
+    // Express 5's `res.sendFile` refuses a dot-segment anywhere in the ABSOLUTE
+    // path by default, not only in the request path. A library root is
+    // server-chosen (`~/.local/share/...` is an ordinary one), so the file
+    // routes must opt out of that check.
+    const dotRoot = fs.mkdtempSync(path.join(os.tmpdir(), '.bookplate-dot-'));
+    try {
+      const dotApp = buildApp({ booksDir: dotRoot });
+      await seedBook(
+        prisma,
+        { booksRoot: dotRoot },
+        aliceOwner,
+        'dotdl',
+        stage('dotdl', 'EPUBDATA'),
+        FAKE_META
+      );
+      const [book] = await listBooks(prisma, dotRoot, aliceOwner);
+      const token = await loginAlice();
+      const res = await request(dotApp)
+        .get(`/api/books/${book.id}/download`)
+        .set(...bearer(token));
+      expect(res.status).toBe(200);
+    } finally {
+      fs.rmSync(dotRoot, { recursive: true, force: true });
+    }
+  });
+
   it('returns 401 without a token', async () => {
     const res = await request(app).get('/api/books/whatever/download');
     expect(res.status).toBe(401);
@@ -2119,7 +2153,7 @@ describe('SPA routes serve index.html', () => {
 
 // Task 16 (web-push spec): guards the trap `public/sw.js`'s own doc comment
 // names. The worker is served through `routes/ui.ts`'s unauthenticated
-// `express.static(CLIENT_DIST_DIR, ...)`, mounted ahead of the `router.get('*',
+// `express.static(CLIENT_DIST_DIR, ...)`, mounted ahead of the `router.get('/{*splat}',
 // serveSpa)` catch-all above — if it were ever removed from the static mount,
 // or the catch-all reordered ahead of it, `GET /sw.js` would fall through to
 // that catch-all and get back `index.html` instead. A worker registered from
@@ -2130,7 +2164,7 @@ describe('GET /sw.js', () => {
   it('is served as JavaScript by the static mount, not the SPA fallback', async () => {
     const res = await request(app).get('/sw.js');
     expect(res.status).toBe(200);
-    expect(res.type).toBe('application/javascript');
+    expect(res.type).toBe('text/javascript');
     expect(res.text).not.toContain('<!DOCTYPE html>');
   });
 });

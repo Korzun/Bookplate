@@ -106,6 +106,11 @@ describe('PUT /sync/syncs/progress', () => {
     expect(typeof res.body.timestamp).toBe('number');
   });
 
+  it('returns 400, not 500, when the request carries no body at all', async () => {
+    const res = await request(app).put('/sync/syncs/progress').set(authHeaders('alice', 'secret'));
+    expect(res.status).toBe(400);
+  });
+
   it('returns 400 when required fields are missing', async () => {
     const res = await request(app)
       .put('/sync/syncs/progress')

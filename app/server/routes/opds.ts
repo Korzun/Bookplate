@@ -29,8 +29,8 @@ const log = logger('OPDS');
 const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as const);
 
 /** Resolves the `:slug` mount param to a Device, 404ing if it does not exist. */
-function resolveDevice(prisma: PrismaClient): RequestHandler {
-  return asyncHandler(async (req, res, next) => {
+function resolveDevice(prisma: PrismaClient): RequestHandler<{ slug: string }> {
+  return asyncHandler(async (req: Request<{ slug: string }>, res, next) => {
     const device = await getBySlug(prisma, req.params.slug);
     if (!device) {
       log.warn(`Device catalog requested for unknown slug: ${JSON.stringify(req.params.slug)}`);
@@ -236,7 +236,7 @@ export function createOpdsRouter({
 
     target.get(
       '/authors/:author',
-      asyncHandler(async (req: Request, res: Response) => {
+      asyncHandler(async (req: Request<{ author: string }>, res: Response) => {
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const author = req.params.author;
@@ -288,7 +288,7 @@ export function createOpdsRouter({
 
     target.get(
       '/series/:seriesId',
-      asyncHandler(async (req: Request, res: Response) => {
+      asyncHandler(async (req: Request<{ seriesId: string }>, res: Response) => {
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const seriesId = req.params.seriesId;
@@ -340,7 +340,7 @@ export function createOpdsRouter({
 
     target.get(
       '/subjects/:subject',
-      asyncHandler(async (req: Request, res: Response) => {
+      asyncHandler(async (req: Request<{ subject: string }>, res: Response) => {
         const owner = req.opdsOwner!;
         const { origin, device, feedBase } = feedContext(req);
         const subject = req.params.subject;
@@ -403,7 +403,7 @@ export function createOpdsRouter({
 
     target.get(
       '/status/:status',
-      asyncHandler(async (req: Request, res: Response) => {
+      asyncHandler(async (req: Request<{ status: string }>, res: Response) => {
         const status = req.params.status;
         if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
           res.status(400).send('Invalid status');
@@ -438,7 +438,7 @@ export function createOpdsRouter({
   router.get(
     '/books/:id/download',
     auth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
       const owner = req.opdsOwner!;
       const book = await getBookById(prisma, booksRoot, owner, req.params.id);
       if (!book) {
@@ -452,14 +452,14 @@ export function createOpdsRouter({
         'Content-Disposition',
         `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
       );
-      res.sendFile(book.path);
+      res.sendFile(book.path, { dotfiles: 'allow' });
     })
   );
 
   router.get(
     '/books/:id/devices/:slug/download',
     auth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ id: string; slug: string }>, res: Response) => {
       const owner = req.opdsOwner!;
       if (!editionsRoot) {
         res.status(404).send('Not found');
@@ -496,14 +496,14 @@ export function createOpdsRouter({
         'Content-Disposition',
         `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
       );
-      res.sendFile(filePath);
+      res.sendFile(filePath, { dotfiles: 'allow' });
     })
   );
 
   router.get(
     '/books/:id/cover',
     auth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
       const owner = req.opdsOwner!;
       const { width } = req.query;
       const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;

@@ -646,7 +646,7 @@ export function createUiRouter({
       res.status(503).type('text/plain').send(CLIENT_NOT_BUILT_MESSAGE);
       return;
     }
-    res.sendFile(CLIENT_INDEX_HTML);
+    res.sendFile(CLIENT_INDEX_HTML, { dotfiles: 'allow' });
   };
 
   router.get('/login', serveSpa);
@@ -680,7 +680,7 @@ export function createUiRouter({
     '/api/login',
     loginRateLimit,
     asyncHandler(async (req: Request, res: Response) => {
-      const { username, password } = req.body as { username?: string; password?: string };
+      const { username, password } = (req.body ?? {}) as { username?: string; password?: string };
       if (typeof username !== 'string' || typeof password !== 'string') {
         res.sendStatus(401);
         return;
@@ -1015,7 +1015,7 @@ export function createUiRouter({
   router.get(
     '/api/books/:id/cover',
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
@@ -1079,7 +1079,7 @@ export function createUiRouter({
   router.get(
     '/api/books/:id/download',
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
       const owner = await resolveOwner(req, res);
       if (!owner) return;
       const bookId = resolveBookLocalId(owner, req.params.id);
@@ -1100,7 +1100,7 @@ export function createUiRouter({
         'Content-Disposition',
         `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
       );
-      res.sendFile(book.path);
+      res.sendFile(book.path, { dotfiles: 'allow' });
     })
   );
 
@@ -1208,12 +1208,12 @@ export function createUiRouter({
    * Phase 0 — this catch-all now answers what they, and every other retired
    * route above, no longer do.)
    */
-  router.all('/api/*', (_req: Request, res: Response) => {
+  router.all('/api/{*splat}', (_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });
   });
 
   // ── SPA catch-all — serves index.html for all non-API GET routes ──────────
-  router.get('*', serveSpa);
+  router.get('/{*splat}', serveSpa);
 
   return router;
 }
