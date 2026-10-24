@@ -919,4 +919,76 @@ export async function runMigrations(prisma: PrismaClient, booksDir: string): Pro
       );
     }
   });
+
+  // Data migration: the MCP server's OAuth tables (`mcp/`). Created here, not
+  // in the DDL pass, for the reason `data_v21_push_subscriptions` records:
+  // `mcp_grants` carries a foreign key to `users`, which
+  // `data_v10_user_surrogate_id` rebuilds, so anything the DDL pass attached
+  // to that table would be dropped on its way in. The DDL file
+  // `20261025000000_add_mcp` is a no-op. Dependency order: clients, grants
+  // (→ users, clients), codes and tokens (→ grants).
+  await runDataMigration(prisma, 'data_v23_mcp', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "mcp_clients" (
+        "client_id" TEXT NOT NULL PRIMARY KEY,
+        "client_secret" TEXT,
+        "client_id_issued_at" REAL NOT NULL,
+        "client_secret_expires_at" REAL,
+        "last_granted_at" REAL,
+        "metadata" TEXT NOT NULL,
+        "created_at" REAL NOT NULL
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "mcp_grants" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "user_id" TEXT NOT NULL,
+        "client_id" TEXT NOT NULL,
+        "scopes" TEXT NOT NULL,
+        "created_at" REAL NOT NULL,
+        "last_used_at" REAL,
+        CONSTRAINT "mcp_grants_user_fkey" FOREIGN KEY ("user_id")
+          REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "mcp_grants_client_fkey" FOREIGN KEY ("client_id")
+          REFERENCES "mcp_clients" ("client_id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "mcp_grants_user_id_client_id_key"
+         ON "mcp_grants" ("user_id", "client_id")`
+    );
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "mcp_authorization_codes" (
+        "code_hash" TEXT NOT NULL PRIMARY KEY,
+        "grant_id" TEXT NOT NULL,
+        "redirect_uri" TEXT NOT NULL,
+        "code_challenge" TEXT NOT NULL,
+        "resource" TEXT,
+        "expires_at" REAL NOT NULL,
+        CONSTRAINT "mcp_authorization_codes_grant_fkey" FOREIGN KEY ("grant_id")
+          REFERENCES "mcp_grants" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "mcp_authorization_codes_grant_id_idx"
+         ON "mcp_authorization_codes" ("grant_id")`
+    );
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "mcp_tokens" (
+        "token_hash" TEXT NOT NULL PRIMARY KEY,
+        "grant_id" TEXT NOT NULL,
+        "kind" TEXT NOT NULL,
+        "expires_at" REAL NOT NULL,
+        "created_at" REAL NOT NULL,
+        CONSTRAINT "mcp_tokens_grant_fkey" FOREIGN KEY ("grant_id")
+          REFERENCES "mcp_grants" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "mcp_tokens_grant_id_idx" ON "mcp_tokens" ("grant_id")`
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "mcp_tokens_expires_at_idx" ON "mcp_tokens" ("expires_at")`
+    );
+  });
 }

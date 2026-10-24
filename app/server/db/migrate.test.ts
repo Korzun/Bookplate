@@ -1122,3 +1122,80 @@ describe('legacy id-recompute and page-count migrations', () => {
     expect(await prisma.readingEvent.count()).toBe(0);
   });
 });
+
+describe('data_v23_mcp', () => {
+  let tmpDir: string;
+  let prisma: PrismaClient;
+
+  beforeEach(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-mcp-test-'));
+    const booksDir = path.join(tmpDir, 'books');
+    fs.mkdirSync(booksDir, { recursive: true });
+    prisma = createPrismaClient(`file:${path.join(tmpDir, 'db.sqlite')}`);
+    await runMigrations(prisma, booksDir);
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const columnsOf = async (table: string): Promise<string[]> =>
+    (await prisma.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("${table}")`)).map(
+      (c) => c.name
+    );
+
+  it('creates the four MCP tables with their columns', async () => {
+    expect(await columnsOf('mcp_clients')).toEqual([
+      'client_id',
+      'client_secret',
+      'client_id_issued_at',
+      'client_secret_expires_at',
+      'last_granted_at',
+      'metadata',
+      'created_at',
+    ]);
+    expect(await columnsOf('mcp_grants')).toEqual([
+      'id',
+      'user_id',
+      'client_id',
+      'scopes',
+      'created_at',
+      'last_used_at',
+    ]);
+    expect(await columnsOf('mcp_authorization_codes')).toEqual([
+      'code_hash',
+      'grant_id',
+      'redirect_uri',
+      'code_challenge',
+      'resource',
+      'expires_at',
+    ]);
+    expect(await columnsOf('mcp_tokens')).toEqual([
+      'token_hash',
+      'grant_id',
+      'kind',
+      'expires_at',
+      'created_at',
+    ]);
+  });
+
+  it('cascades a grant and its tokens away with the user', async () => {
+    await prisma.user.create({ data: { id: 'u1', username: 'alice' } });
+    await prisma.mcpClient.create({
+      data: { clientId: 'c1', clientIdIssuedAt: 1, metadata: '{}', createdAt: 1 },
+    });
+    await prisma.mcpGrant.create({
+      data: { id: 'g1', userId: 'u1', clientId: 'c1', scopes: 'library:read', createdAt: 1 },
+    });
+    await prisma.mcpToken.create({
+      data: { tokenHash: 't1', grantId: 'g1', kind: 'access', expiresAt: 2, createdAt: 1 },
+    });
+
+    await prisma.user.delete({ where: { id: 'u1' } });
+
+    expect(await prisma.mcpGrant.count()).toBe(0);
+    expect(await prisma.mcpToken.count()).toBe(0);
+    expect(await prisma.mcpClient.count()).toBe(1);
+  });
+});
