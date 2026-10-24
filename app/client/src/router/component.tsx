@@ -6,6 +6,7 @@ import {
   UploadView,
   BookEditPage,
   BookPage,
+  ConnectPage,
   DeviceListPage,
   ForgotPasswordPage,
   LibraryPage,
@@ -58,9 +59,11 @@ export const AppRouter = () => {
             <Route path={path.devices()} element={<DeviceListPage />} />
             <Route path="*" element={<Navigate to={path.library()} replace />} />
           </Route>
-          {/* Password reset and set-email are both nav-less (minimal page). */}
+          {/* Password reset, set-email and the MCP consent screen are all
+              nav-less (minimal page). */}
           <Route path={path.passwordReset()} element={<PasswordResetPage />} />
           <Route path={path.setEmail()} element={<SetEmailPage />} />
+          <Route path={path.connect()} element={<ConnectPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

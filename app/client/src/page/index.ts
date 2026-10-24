@@ -3,6 +3,7 @@ export { RequestView } from './request';
 export { UploadView } from './upload';
 export { BookEditPage } from './book-edit';
 export { BookPage } from './book';
+export { ConnectPage } from './connect';
 export { DeviceListPage } from './device-list';
 export { ForgotPasswordPage } from './forgot-password';
 export { LibraryPage } from './library';
