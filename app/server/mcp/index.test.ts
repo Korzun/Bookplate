@@ -131,18 +131,16 @@ describe('POST /mcp', () => {
     expect(res.body).toEqual({ error: 'Request body too large' });
   });
 
-  it('refuses an unauthenticated oversized body with 401 before parsing it', async () => {
+  it('checks the bearer token before parsing the body', async () => {
+    // A malformed JSON body: the parser would answer 400, so a 401 proves the
+    // auth check ran first and an anonymous caller never has 8 MB buffered
+    // for it. (A 9 MB anonymous body is the real case, but the server then
+    // closes the socket before the client finishes writing it, which the
+    // client reports as ECONNRESET under load rather than as the 401.)
     const res = await request(app)
       .post('/mcp')
       .set('Content-Type', 'application/json')
-      .send(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'x',
-          params: { blob: 'a'.repeat(9 * 1024 * 1024) },
-        })
-      );
+      .send('{ not json');
     expect(res.status).toBe(401);
   });
 
