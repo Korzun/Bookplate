@@ -18,6 +18,7 @@ import {
   listBooksByStatus,
   listSeries,
 } from '../services/book-catalog';
+import { transformCoverToJpeg } from '../services/cover-transform';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
 import { asyncHandler } from '../utils/async-handler';
@@ -53,6 +54,28 @@ function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
     }
     next();
   });
+}
+
+/**
+ * Sends cover bytes with an ETag and the cache policy both cover routes share.
+ * The feed appends a `v` token (the book's mtime) to cover hrefs, so a versioned
+ * URL changes whenever the cover does and can be cached immutably; bare requests
+ * fall back to revalidate-every-time.
+ */
+function sendCover(req: Request, res: Response, data: Buffer, mime: string): void {
+  const etag = `"${createHash('md5').update(data).digest('hex')}"`;
+  if (req.headers['if-none-match'] === etag) {
+    res.status(304).end();
+    return;
+  }
+  const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
+  res.set('Content-Type', mime);
+  res.set('ETag', etag);
+  res.set(
+    'Cache-Control',
+    versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
+  );
+  res.send(data);
 }
 
 /**
@@ -515,23 +538,41 @@ export function createOpdsRouter({
         mime = cover.mime;
       }
 
-      const etag = `"${createHash('md5').update(data).digest('hex')}"`;
-      if (req.headers['if-none-match'] === etag) {
-        res.status(304).end();
+      sendCover(req, res, data, mime);
+    })
+  );
+
+  // Device-scoped cover: the base cover run through the device's cover
+  // size/fit/grayscale settings and always encoded as JPEG (see
+  // `transformCoverToJpeg`). Device feeds link here for their `image` rel.
+  router.get(
+    '/books/:id/devices/:slug/cover.jpg',
+    auth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      const device = await getBySlug(prisma, req.params.slug);
+      if (!device) {
+        log.warn(`Device cover requested for unknown device slug: ${req.params.slug}`);
+        res.status(404).send('Not found');
         return;
       }
-
-      // The feed appends a `v` token (the book's mtime) to cover hrefs, so a versioned URL
-      // changes whenever the cover does and can be cached immutably; bare requests fall back
-      // to revalidate-every-time.
-      const versioned = typeof req.query.v === 'string' && req.query.v.length > 0;
-      res.set('Content-Type', mime);
-      res.set('ETag', etag);
-      res.set(
-        'Cache-Control',
-        versioned ? 'private, max-age=31536000, immutable' : 'private, max-age=0, must-revalidate'
-      );
-      res.send(data);
+      if (!(await isEnabled(prisma, device.id, owner.userId))) {
+        log.warn(`User "${owner.username}" denied device cover "${device.slug}" (not enabled)`);
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const cover = await getCover(prisma, owner.userId, req.params.id);
+      if (!cover) {
+        res.status(404).send('Not found');
+        return;
+      }
+      const data = await transformCoverToJpeg(cover.data, {
+        width: device.coverWidth,
+        height: device.coverHeight,
+        fit: device.coverFit,
+        grayscale: device.bwCover,
+      });
+      sendCover(req, res, data, 'image/jpeg');
     })
   );
 

@@ -6,6 +6,7 @@ import * as path from 'path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { Prisma, PrismaClient } from '@prisma/client';
 import express from 'express';
+import sharp from 'sharp';
 import request from 'supertest';
 
 import { runMigrations } from '../db/migrate';
@@ -378,6 +379,158 @@ describe('GET /opds/books/:id/devices/:slug/download', () => {
       .get(`/opds/books/${bookId}/devices/${device.slug}/download`)
       .set(basicAuth('bob', 'bobsecret'));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /opds/books/:id/devices/:slug/cover.jpg', () => {
+  function solidImage(width: number, height: number, format: 'jpeg' | 'png'): Promise<Buffer> {
+    const img = sharp({
+      create: { width, height, channels: 3, background: { r: 200, g: 30, b: 30 } },
+    });
+    return (format === 'png' ? img.png() : img.jpeg()).toBuffer();
+  }
+
+  async function deviceCoverApp(deviceOverrides: Partial<Prisma.DeviceCreateInput> = {}) {
+    const device = await makeDevice('Kindle', deviceOverrides);
+    await prisma.deviceUser.create({ data: { deviceId: device.id, userId: alice.userId } });
+    const deviceEditionsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ed-'));
+    const a = express();
+    a.use(
+      '/opds',
+      createOpdsRouter({
+        booksRoot: booksDir,
+        prisma,
+        thumbnailWidths: [60, 170],
+        editionsRoot: deviceEditionsRoot,
+      })
+    );
+    return { app: a, device };
+  }
+
+  async function seedCover(id: string, coverData: Buffer, coverMime: string) {
+    await seedBook(prisma, { booksRoot: booksDir }, alice, id, stage(id), {
+      ...FAKE_META,
+      coverData,
+      coverMime,
+    });
+  }
+
+  it('serves the cover resized to the device cover size as JPEG', async () => {
+    const { app: a } = await deviceCoverApp({
+      coverWidth: 100,
+      coverHeight: 150,
+      coverFit: 'fill',
+    });
+    await seedCover('devc-size', await solidImage(400, 400, 'jpeg'), 'image/jpeg');
+    const res = await request(a)
+      .get('/opds/books/devc-size/devices/kindle/cover.jpg')
+      .set(basicAuth('alice', 'secret'))
+      .buffer()
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (c: Buffer) => chunks.push(c));
+        r.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/image\/jpeg/);
+    const meta = await sharp(res.body as Buffer).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(100);
+    expect(meta.height).toBe(150);
+  });
+
+  it('converts a PNG cover to JPEG even when the device has no cover settings', async () => {
+    const { app: a } = await deviceCoverApp();
+    await seedCover('devc-png', await solidImage(40, 60, 'png'), 'image/png');
+    const res = await request(a)
+      .get('/opds/books/devc-png/devices/kindle/cover.jpg')
+      .set(basicAuth('alice', 'secret'))
+      .buffer()
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (c: Buffer) => chunks.push(c));
+        r.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/image\/jpeg/);
+    const meta = await sharp(res.body as Buffer).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(40);
+    expect(meta.height).toBe(60);
+  });
+
+  it('applies the device grayscale setting', async () => {
+    const { app: a } = await deviceCoverApp({ bwCover: true });
+    await seedCover('devc-gray', await solidImage(40, 60, 'jpeg'), 'image/jpeg');
+    const res = await request(a)
+      .get('/opds/books/devc-gray/devices/kindle/cover.jpg')
+      .set(basicAuth('alice', 'secret'))
+      .buffer()
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (c: Buffer) => chunks.push(c));
+        r.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    const { dominant } = await sharp(res.body as Buffer).stats();
+    // A red source becomes a neutral grey: all channels within JPEG noise of each other.
+    expect(Math.abs(dominant.r - dominant.g)).toBeLessThan(4);
+    expect(Math.abs(dominant.g - dominant.b)).toBeLessThan(4);
+  });
+
+  it('sets an immutable cache header and ETag when a version token is present', async () => {
+    const { app: a } = await deviceCoverApp();
+    await seedCover('devc-cache', await solidImage(20, 30, 'jpeg'), 'image/jpeg');
+    const res = await request(a)
+      .get('/opds/books/devc-cache/devices/kindle/cover.jpg?v=123')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    expect(res.headers['etag']).toMatch(/^"[a-f0-9]{32}"$/);
+  });
+
+  it('404s when the book has no cover', async () => {
+    const { app: a } = await deviceCoverApp();
+    await seedBook(
+      prisma,
+      { booksRoot: booksDir },
+      alice,
+      'devc-none',
+      stage('devc-none'),
+      FAKE_META
+    );
+    const res = await request(a)
+      .get('/opds/books/devc-none/devices/kindle/cover.jpg')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+
+  it('404s for an unknown device slug', async () => {
+    const { app: a } = await deviceCoverApp();
+    await seedCover('devc-nodev', await solidImage(20, 30, 'jpeg'), 'image/jpeg');
+    const res = await request(a)
+      .get('/opds/books/devc-nodev/devices/nope/cover.jpg')
+      .set(basicAuth('alice', 'secret'));
+    expect(res.status).toBe(404);
+  });
+
+  it('403s for a user the device is not enabled for', async () => {
+    const { app: a } = await deviceCoverApp(); // alice enabled; bob is not
+    await seedBook(prisma, { booksRoot: booksDir }, bob, 'devc-bob', stage('devc-bob'), {
+      ...FAKE_META,
+      coverData: await solidImage(20, 30, 'jpeg'),
+      coverMime: 'image/jpeg',
+    });
+    const res = await request(a)
+      .get('/opds/books/devc-bob/devices/kindle/cover.jpg')
+      .set(basicAuth('bob', 'bobsecret'));
+    expect(res.status).toBe(403);
+  });
+
+  it('requires authentication', async () => {
+    const { app: a } = await deviceCoverApp();
+    const res = await request(a).get('/opds/books/x/devices/kindle/cover.jpg');
+    expect(res.status).toBe(401);
   });
 });
 
@@ -1018,7 +1171,7 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
     expect((res.text.match(/opds-spec\.org\/acquisition/g) || []).length).toBe(1);
   });
 
-  it('device book feed cover links still point at the base catalog', async () => {
+  it('device book feed image link points at the device cover route', async () => {
     const { app: a } = await deviceApp();
     await seedBook(prisma, { booksRoot: booksDir }, alice, 'devcover', stage('devcover'), {
       ...FAKE_META,
@@ -1026,8 +1179,27 @@ describe('GET /opds/device/:slug (per-device catalog)', () => {
       coverMime: 'image/jpeg',
     });
     const res = await request(a).get('/opds/device/kindle/books').set(basicAuth('alice', 'secret'));
-    expect(res.text).toContain('/opds/books/devcover/cover');
+    // Crosspoint fetches the full `image` link and picks its decoder from the URL
+    // extension, so the device link must carry `.jpg` and a version token.
+    expect(res.text).toMatch(
+      /rel="http:\/\/opds-spec\.org\/image"\s+href="[^"]*\/opds\/books\/devcover\/devices\/kindle\/cover\.jpg\?v=\d+"/
+    );
+    // The base full-size cover link must not appear alongside it.
+    expect(res.text).not.toMatch(/\/opds\/books\/devcover\/cover\?v=/);
     expect(res.text).not.toContain('/opds/device/kindle/books/devcover/cover');
+  });
+
+  it('device book feed thumbnail link still points at the base catalog', async () => {
+    const { app: a } = await deviceApp();
+    await seedBook(prisma, { booksRoot: booksDir }, alice, 'devthumb', stage('devthumb'), {
+      ...FAKE_META,
+      coverData: Buffer.from('cover'),
+      coverMime: 'image/jpeg',
+    });
+    const res = await request(a).get('/opds/device/kindle/books').set(basicAuth('alice', 'secret'));
+    expect(res.text).toMatch(
+      /rel="http:\/\/opds-spec\.org\/image\/thumbnail"\s+href="[^"]*\/opds\/books\/devthumb\/cover\?width=60&amp;v=\d+"/
+    );
   });
 
   it('requires authentication', async () => {
