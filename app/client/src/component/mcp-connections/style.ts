@@ -18,10 +18,6 @@ export const useStyle = createUseStyles((theme: Theme) => ({
     color: theme.color.text.muted,
     fontSize: theme.fontSize.sm,
   },
-  code: {
-    fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.sm,
-  },
   list: {
     listStyle: 'none',
     margin: 0,

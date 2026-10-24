@@ -266,9 +266,15 @@ connections, each with name (linking to `clientUri` when present), "Connected
 <date> · Last used <date|never>", a scope word ("read only" / "read & write"),
 and a Disconnect link-button that opens the shared `ConfirmModal`. Disconnect
 runs `viewerRevokeMcpConnection` and refetches `UserPageDocument`. Empty state:
-"No assistants connected yet." When `mcpEnabled` is false (no `public_url`),
-the card renders the explanation and a hint naming `public_url` instead of the
-URL and list.
+"No assistants connected yet." When `mcpEnabled` is false (no https
+`public_url`) the reader's card renders nothing at all — a reader cannot change
+that setting, so a hint would only confuse. The ADMIN's settings branch gets its
+own `component/mcp-setup` card instead: when MCP is off it explains that
+readers will not see the option until `public_url` is set to the https origin
+in the add-on's Configuration tab and the add-on restarted; when on, it shows
+the connection URL readers paste into their assistant. It reads a small
+`McpStatus` query of its own, since the admin branch sends no
+`UserPageDocument`.
 
 `page/connect`: a `Page type="minimal"` with `BrandLockup`, a `Card` titled
 "Connect <client name>?" whose body says what the assistant will be able to do

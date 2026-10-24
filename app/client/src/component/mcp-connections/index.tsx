@@ -69,6 +69,11 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
 
   const visible = connections.filter((c) => !removed.has(c.id));
 
+  // Nothing at all unless the install publishes an MCP server: a reader
+  // cannot set `public_url`, so a card telling them to would only confuse.
+  // The admin's `component/mcp-setup` card carries that explanation.
+  if (viewer === undefined || !viewer.mcpEnabled || viewer.mcpUrl === null) return null;
+
   return (
     <>
       <Card title="AI assistants">
@@ -76,62 +81,51 @@ export const McpConnections = ({ viewer: viewerRef }: McpConnectionsProps) => {
           <p className={style.lead}>
             Connect Claude or another MCP assistant to search, fix and add books in your library.
           </p>
-          {viewer === undefined ? null : !viewer.mcpEnabled || viewer.mcpUrl === null ? (
-            <p className={style.hint}>
-              Set <code className={style.code}>public_url</code> to an https address in the add-on
-              options to enable this.
-            </p>
+          <UrlRow url={viewer.mcpUrl} />
+          {visible.length === 0 ? (
+            <p className={style.hint}>No assistants connected yet.</p>
           ) : (
-            <>
-              <UrlRow url={viewer.mcpUrl} />
-              {visible.length === 0 ? (
-                <p className={style.hint}>No assistants connected yet.</p>
-              ) : (
-                <ul className={style.list}>
-                  {visible.map((connection) => {
-                    const write = connection.scopes.includes('library:write');
-                    return (
-                      <li key={connection.id} className={style.row}>
-                        <div className={style.identity}>
-                          <span className={style.nameLine}>
-                            {connection.clientUri !== null ? (
-                              <a
-                                className={style.name}
-                                href={connection.clientUri}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {connection.clientName}
-                              </a>
-                            ) : (
-                              <span className={style.name}>{connection.clientName}</span>
-                            )}
-                            <Tag size="sm">{write ? 'Read & write' : 'Read only'}</Tag>
-                          </span>
-                          <span className={style.meta}>
-                            {`Connected ${formatDate(connection.createdAt)} · ${
-                              connection.lastUsedAt === null
-                                ? 'Never used'
-                                : `Last used ${formatDate(connection.lastUsedAt)}`
-                            }`}
-                          </span>
-                        </div>
-                        <Button
-                          type="link"
-                          danger
-                          ariaLabel={`Disconnect ${connection.clientName}`}
-                          onClick={() =>
-                            setPending({ id: connection.id, name: connection.clientName })
-                          }
-                        >
-                          Disconnect
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </>
+            <ul className={style.list}>
+              {visible.map((connection) => {
+                const write = connection.scopes.includes('library:write');
+                return (
+                  <li key={connection.id} className={style.row}>
+                    <div className={style.identity}>
+                      <span className={style.nameLine}>
+                        {connection.clientUri !== null ? (
+                          <a
+                            className={style.name}
+                            href={connection.clientUri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {connection.clientName}
+                          </a>
+                        ) : (
+                          <span className={style.name}>{connection.clientName}</span>
+                        )}
+                        <Tag size="sm">{write ? 'Read & write' : 'Read only'}</Tag>
+                      </span>
+                      <span className={style.meta}>
+                        {`Connected ${formatDate(connection.createdAt)} · ${
+                          connection.lastUsedAt === null
+                            ? 'Never used'
+                            : `Last used ${formatDate(connection.lastUsedAt)}`
+                        }`}
+                      </span>
+                    </div>
+                    <Button
+                      type="link"
+                      danger
+                      ariaLabel={`Disconnect ${connection.clientName}`}
+                      onClick={() => setPending({ id: connection.id, name: connection.clientName })}
+                    >
+                      Disconnect
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </Card>
