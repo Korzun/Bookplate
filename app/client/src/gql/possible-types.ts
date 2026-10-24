@@ -103,6 +103,10 @@
       "Book",
       "Series"
     ],
+    "McpAuthorizeResult": [
+      "InvalidInputError",
+      "McpAuthorizePayload"
+    ],
     "Node": [
       "Book",
       "BookRequest",

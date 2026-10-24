@@ -20,6 +20,7 @@ import { SettingsPage } from './index';
 vi.mock('~/component', () => ({
   ConnectionUrls: () => <div>ConnectionUrls</div>,
   EmailSetting: () => <div>EmailSetting</div>,
+  McpConnections: () => <div>McpConnections</div>,
   MyProgress: () => <div>MyProgress</div>,
   NotificationSettings: () => <div>NotificationSettings</div>,
   Page: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
@@ -41,6 +42,7 @@ describe('SettingsPage', () => {
     renderWithApollo(<SettingsPage />, { user: { username: 'alice', isAdmin: false } });
 
     expect(screen.getByText('SyncPassword')).toBeInTheDocument();
+    expect(screen.getByText('McpConnections')).toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 
@@ -53,6 +55,7 @@ describe('SettingsPage', () => {
     // interface; the admin branch renders only the theme setting and Log out.
     expect(screen.getByText('ThemeSetting')).toBeInTheDocument();
     expect(screen.queryByText('SyncPassword')).not.toBeInTheDocument();
+    expect(screen.queryByText('McpConnections')).not.toBeInTheDocument();
     expect(screen.queryByText(/book requests/i)).not.toBeInTheDocument();
   });
 });

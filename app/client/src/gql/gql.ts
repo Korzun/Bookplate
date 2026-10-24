@@ -52,6 +52,11 @@ type Documents = {
     "\n  query SeriesNames($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        series {\n          id\n          name\n        }\n      }\n    }\n  }\n": typeof types.SeriesNamesDocument,
     "\n  query SeriesNextIndex($libraryId: ID!, $name: String!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        seriesNextIndex(name: $name)\n      }\n    }\n  }\n": typeof types.SeriesNextIndexDocument,
     "\n  query LibraryTargetResolve($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n    }\n  }\n": typeof types.LibraryTargetResolveDocument,
+    "\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n": typeof types.McpConnectionFragmentFragmentDoc,
+    "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n": typeof types.McpConnectionsFragmentFragmentDoc,
+    "\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n": typeof types.ViewerRevokeMcpConnectionDocument,
+    "\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n": typeof types.McpClientDocument,
+    "\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": typeof types.McpAuthorizeDocument,
     "\n  fragment NotificationPreferenceFragment on NotificationPreference {\n    event\n    channel\n    enabled\n  }\n": typeof types.NotificationPreferenceFragmentFragmentDoc,
     "\n  mutation ViewerSetNotificationPreference(\n    $event: NotificationEvent!\n    $channel: NotificationChannel!\n    $enabled: Boolean!\n  ) {\n    viewerSetNotificationPreference(event: $event, channel: $channel, enabled: $enabled) {\n      notificationPreferences {\n        event\n        channel\n        enabled\n      }\n    }\n  }\n": typeof types.ViewerSetNotificationPreferenceDocument,
     "\n  query MyProgressCount {\n    viewer {\n      user {\n        id\n        progressCount\n      }\n    }\n  }\n": typeof types.MyProgressCountDocument,
@@ -87,7 +92,7 @@ type Documents = {
     "\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n": typeof types.DeviceListDocument,
     "\n  query LibraryEntries($libraryId: ID!, $first: Int!, $after: String, $filter: LibraryFilter) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        entries(first: $first, after: $after, filter: $filter) {\n          edges {\n            cursor\n            node {\n              __typename\n              ... on Book {\n                ...BookRowFragment\n              }\n              ... on Series {\n                ...SeriesRowFragment\n              }\n            }\n          }\n          pageInfo {\n            hasNextPage\n            endCursor\n          }\n        }\n      }\n    }\n  }\n": typeof types.LibraryEntriesDocument,
     "\n  query SeriesDetail($libraryId: ID!, $name: String!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        seriesByName(name: $name) {\n          id\n          name\n          author\n          publisher\n          totalPages\n          totalSize\n          subjects\n          progressPercentage\n          books(first: 100) {\n            edges {\n              node {\n                id\n                ...SeriesBookRowFragment\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n": typeof types.SeriesDetailDocument,
-    "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n": typeof types.UserPageDocument,
+    "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n      ...McpConnectionsFragment\n    }\n  }\n": typeof types.UserPageDocument,
 };
 const documents: Documents = {
     "\n  fragment BookEditFormFragment on Book {\n    id\n    title\n    titleSort\n    author\n    authorSort\n    description\n    publisher\n    publishDate\n    seriesIndex\n    subjects\n    series {\n      id\n      name\n    }\n    identifiers {\n      scheme\n      value\n    }\n  }\n": types.BookEditFormFragmentFragmentDoc,
@@ -128,6 +133,11 @@ const documents: Documents = {
     "\n  query SeriesNames($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        series {\n          id\n          name\n        }\n      }\n    }\n  }\n": types.SeriesNamesDocument,
     "\n  query SeriesNextIndex($libraryId: ID!, $name: String!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        seriesNextIndex(name: $name)\n      }\n    }\n  }\n": types.SeriesNextIndexDocument,
     "\n  query LibraryTargetResolve($libraryId: ID!) {\n    node(id: $libraryId) {\n      id\n    }\n  }\n": types.LibraryTargetResolveDocument,
+    "\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n": types.McpConnectionFragmentFragmentDoc,
+    "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n": types.McpConnectionsFragmentFragmentDoc,
+    "\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n": types.ViewerRevokeMcpConnectionDocument,
+    "\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n": types.McpClientDocument,
+    "\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n": types.McpAuthorizeDocument,
     "\n  fragment NotificationPreferenceFragment on NotificationPreference {\n    event\n    channel\n    enabled\n  }\n": types.NotificationPreferenceFragmentFragmentDoc,
     "\n  mutation ViewerSetNotificationPreference(\n    $event: NotificationEvent!\n    $channel: NotificationChannel!\n    $enabled: Boolean!\n  ) {\n    viewerSetNotificationPreference(event: $event, channel: $channel, enabled: $enabled) {\n      notificationPreferences {\n        event\n        channel\n        enabled\n      }\n    }\n  }\n": types.ViewerSetNotificationPreferenceDocument,
     "\n  query MyProgressCount {\n    viewer {\n      user {\n        id\n        progressCount\n      }\n    }\n  }\n": types.MyProgressCountDocument,
@@ -163,7 +173,7 @@ const documents: Documents = {
     "\n  query DeviceList {\n    viewer {\n      devices {\n        ...DeviceRowFragment\n      }\n    }\n  }\n": types.DeviceListDocument,
     "\n  query LibraryEntries($libraryId: ID!, $first: Int!, $after: String, $filter: LibraryFilter) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        entries(first: $first, after: $after, filter: $filter) {\n          edges {\n            cursor\n            node {\n              __typename\n              ... on Book {\n                ...BookRowFragment\n              }\n              ... on Series {\n                ...SeriesRowFragment\n              }\n            }\n          }\n          pageInfo {\n            hasNextPage\n            endCursor\n          }\n        }\n      }\n    }\n  }\n": types.LibraryEntriesDocument,
     "\n  query SeriesDetail($libraryId: ID!, $name: String!) {\n    node(id: $libraryId) {\n      id\n      ... on Library {\n        id\n        seriesByName(name: $name) {\n          id\n          name\n          author\n          publisher\n          totalPages\n          totalSize\n          subjects\n          progressPercentage\n          books(first: 100) {\n            edges {\n              node {\n                id\n                ...SeriesBookRowFragment\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n": types.SeriesDetailDocument,
-    "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n": types.UserPageDocument,
+    "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n      ...McpConnectionsFragment\n    }\n  }\n": types.UserPageDocument,
 };
 
 /**
@@ -335,6 +345,26 @@ export function graphql(source: "\n  query LibraryTargetResolve($libraryId: ID!)
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
+export function graphql(source: "\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n"): (typeof documents)["\n  fragment McpConnectionFragment on McpConnection {\n    id\n    clientName\n    clientUri\n    logoUri\n    scopes\n    createdAt\n    lastUsedAt\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n"): (typeof documents)["\n  fragment McpConnectionsFragment on Viewer {\n    mcpEnabled\n    mcpUrl\n    mcpConnections {\n      ...McpConnectionFragment\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n"): (typeof documents)["\n  mutation ViewerRevokeMcpConnection($id: ID!) {\n    viewerRevokeMcpConnection(id: $id)\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n"): (typeof documents)["\n  query McpClient($clientId: String!) {\n    mcpClient(clientId: $clientId) {\n      clientId\n      clientName\n      clientUri\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"): (typeof documents)["\n  mutation McpAuthorize($input: McpAuthorizeInput!) {\n    mcpAuthorize(input: $input) {\n      __typename\n      ... on McpAuthorizePayload {\n        redirectUrl\n      }\n      ... on InvalidInputError {\n        message\n      }\n    }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
 export function graphql(source: "\n  fragment NotificationPreferenceFragment on NotificationPreference {\n    event\n    channel\n    enabled\n  }\n"): (typeof documents)["\n  fragment NotificationPreferenceFragment on NotificationPreference {\n    event\n    channel\n    enabled\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
@@ -475,7 +505,7 @@ export function graphql(source: "\n  query SeriesDetail($libraryId: ID!, $name: 
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n"): (typeof documents)["\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n    }\n  }\n"];
+export function graphql(source: "\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n      ...McpConnectionsFragment\n    }\n  }\n"): (typeof documents)["\n  query UserPage {\n    viewer {\n      devices {\n        ...ConnectionUrlsFragment\n      }\n      ...McpConnectionsFragment\n    }\n  }\n"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

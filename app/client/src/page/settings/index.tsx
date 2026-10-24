@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import {
   ConnectionUrls,
   EmailSetting,
+  McpConnections,
   MyProgress,
   NotificationSettings,
   Page,
@@ -33,6 +34,9 @@ import { useIsAdmin, useLogout } from '~/provider/auth';
  * yields to the lazy-mount exception here; it is not being violated by
  * accident.
  *
+ * `...McpConnectionsFragment` (the "AI assistants" card) rides the same
+ * document for the same reason — one request per screen.
+ *
  * `...ConnectionUrlsFragment` below is resolved by name against
  * `component/connection-urls`'s own `graphql(...)` definition — codegen
  * matches fragments across files by name (its `documents` glob), not via a
@@ -49,6 +53,7 @@ export const UserPageDocument = graphql(`
       devices {
         ...ConnectionUrlsFragment
       }
+      ...McpConnectionsFragment
     }
   }
 `);
@@ -106,6 +111,7 @@ export const SettingsPage = () => {
       <ThemeSetting />
       <SyncPassword />
       <ConnectionUrls devices={data?.viewer.devices ?? []} />
+      <McpConnections viewer={data?.viewer} />
       {emailSection}
       {notificationSection}
       <UserChangePassword />
