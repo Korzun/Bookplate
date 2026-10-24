@@ -214,6 +214,7 @@ model User {
   notificationOutbox      NotificationOutbox[]
   pushSubscriptions       PushSubscription[]
   readingEvents           ReadingEvent[]
+  mcpGrants               McpGrant[]
 
   @@map("users")
 }
@@ -511,4 +512,84 @@ model ReadingEvent {
   @@unique([userId, deviceId, eventId])
   @@index([userId, document])
   @@map("reading_events")
+}
+
+/// One OAuth client registered against the MCP authorization server
+/// (`mcp/oauth-provider.ts`), almost always by dynamic registration from an
+/// assistant such as Claude.ai. `metadata` is the full registration document
+/// as JSON (redirect URIs, client name, client URI, auth method); the columns
+/// beside it are what the SDK's client-auth middleware reads directly.
+///
+/// `clientSecret` is stored AS ISSUED, not hashed: the SDK's
+/// `authenticateClient` compares it to the posted secret in plaintext, and
+/// PKCE — not the secret — is what protects the authorization code. Do not
+/// "fix" this into a hash without replacing that middleware.
+///
+/// `lastGrantedAt` is the sweep key: a row a reader never approved is
+/// deleted 24 h after registration; one that was ever approved is kept even
+/// after every grant is revoked, because the assistant keeps its `client_id`
+/// and reuses it when the reader reconnects.
+model McpClient {
+  clientId              String     @id @map("client_id")
+  clientSecret          String?    @map("client_secret")
+  clientIdIssuedAt      Float      @map("client_id_issued_at")
+  clientSecretExpiresAt Float?     @map("client_secret_expires_at")
+  lastGrantedAt         Float?     @map("last_granted_at")
+  metadata              String
+  createdAt             Float      @map("created_at")
+  grants                McpGrant[]
+
+  @@map("mcp_clients")
+}
+
+/// One reader's approval of one client — the row the Settings "AI assistants"
+/// card lists and "Disconnect" deletes. Codes and tokens hang off it and
+/// cascade away with it, which is what makes a disconnect immediate.
+/// `scopes` is the space-joined GRANTED set (`library:read library:write`, or
+/// `library:read` alone when the reader chose read-only at consent).
+model McpGrant {
+  id         String                 @id
+  userId     String                 @map("user_id")
+  clientId   String                 @map("client_id")
+  scopes     String
+  createdAt  Float                  @map("created_at")
+  lastUsedAt Float?                 @map("last_used_at")
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  client     McpClient              @relation(fields: [clientId], references: [clientId], onDelete: Cascade, onUpdate: Cascade)
+  codes      McpAuthorizationCode[]
+  tokens     McpToken[]
+
+  @@unique([userId, clientId])
+  @@map("mcp_grants")
+}
+
+/// A single-use authorization code. Only the SHA-256 hash is stored, as for
+/// `refresh_tokens`. `redirectUri`, `codeChallenge` and `resource` are what the
+/// code was bound to at consent and are re-checked at the token endpoint.
+model McpAuthorizationCode {
+  codeHash      String   @id @map("code_hash")
+  grantId       String   @map("grant_id")
+  redirectUri   String   @map("redirect_uri")
+  codeChallenge String   @map("code_challenge")
+  resource      String?
+  expiresAt     Float    @map("expires_at")
+  grant         McpGrant @relation(fields: [grantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([grantId])
+  @@map("mcp_authorization_codes")
+}
+
+/// An opaque access or refresh token (`kind`), hash only. A refresh token is
+/// deleted when it is used, in the same statement that reads it.
+model McpToken {
+  tokenHash String   @id @map("token_hash")
+  grantId   String   @map("grant_id")
+  kind      String
+  expiresAt Float    @map("expires_at")
+  createdAt Float    @map("created_at")
+  grant     McpGrant @relation(fields: [grantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([grantId])
+  @@index([expiresAt])
+  @@map("mcp_tokens")
 }
