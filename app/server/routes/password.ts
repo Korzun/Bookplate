@@ -22,7 +22,6 @@ import { isMailConfigured, type Mailer } from '../services/mailer';
 import { hashLoginPassword } from '../services/password';
 import { revokeAllForUsername } from '../services/token';
 import type { AppConfig } from '../types';
-import { asyncHandler } from '../utils/async-handler';
 
 const log = logger('Password');
 
@@ -63,7 +62,7 @@ export function createPasswordRouter(deps: {
     '/api/password/forgot',
     rateLimit,
     requireMail,
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const { email } = (req.body ?? {}) as { email?: unknown };
       // Answer first, work second: the response is identical in every case, and
       // deciding it up front makes it impossible for a later branch to leak one.
@@ -103,14 +102,14 @@ export function createPasswordRouter(deps: {
       if (!result.ok) {
         log.warn(`Password reset email failed for "${account.username}" (${result.reason})`);
       }
-    })
+    }
   );
 
   router.post(
     '/api/password/reset',
     rateLimit,
     requireMail,
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const { email, code, newPassword } = (req.body ?? {}) as {
         email?: unknown;
         code?: unknown;
@@ -196,7 +195,7 @@ export function createPasswordRouter(deps: {
       await invalidateEmailTokens(prisma, account.id, 'reset');
       log.info(`Password reset completed for "${account.username}"`);
       res.sendStatus(204);
-    })
+    }
   );
 
   return router;

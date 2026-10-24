@@ -1090,8 +1090,8 @@ describe('POST /api/books/upload', () => {
   // via a real 200MB+1-byte upload (streamed, not buffered) rather than
   // assumed, since without that wrapper this would 500 via the generic
   // catch-all instead (multer's error reaches `next(err)` from INSIDE the
-  // multer middleware, one step before this route's `asyncHandler` even
-  // starts, so `asyncHandler`'s own promise-rejection catch can never see it).
+  // multer middleware, one step before this route's handler even starts, so
+  // it is never a handler rejection Express could forward on its own).
   it('rejects a file over the 200MB cap with 413, not the generic 500', async () => {
     const token = await loginAlice();
     const res = await request(app)

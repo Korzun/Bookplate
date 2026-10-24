@@ -21,7 +21,6 @@ import {
 import { transformCoverToJpeg } from '../services/cover-transform';
 import { getBySlug, isEnabled } from '../services/device';
 import { getOrCreateEdition } from '../services/edition';
-import { asyncHandler } from '../utils/async-handler';
 import { navigationFeed, acquisitionFeed, navEntry, bookEntry } from './opds-templates';
 
 const log = logger('OPDS');
@@ -30,7 +29,7 @@ const VALID_STATUSES = new Set(['not-started', 'in-progress', 'completed'] as co
 
 /** Resolves the `:slug` mount param to a Device, 404ing if it does not exist. */
 function resolveDevice(prisma: PrismaClient): RequestHandler<{ slug: string }> {
-  return asyncHandler(async (req: Request<{ slug: string }>, res, next) => {
+  return async (req: Request<{ slug: string }>, res, next) => {
     const device = await getBySlug(prisma, req.params.slug);
     if (!device) {
       log.warn(`Device catalog requested for unknown slug: ${JSON.stringify(req.params.slug)}`);
@@ -39,12 +38,12 @@ function resolveDevice(prisma: PrismaClient): RequestHandler<{ slug: string }> {
     }
     req.opdsDevice = device;
     next();
-  });
+  };
 }
 
 /** Blocks the device-scoped catalog unless the OPDS owner is enabled for the device. */
 function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
-  return asyncHandler(async (req, res, next) => {
+  return async (req, res, next) => {
     const owner = req.opdsOwner!;
     const device = req.opdsDevice!;
     if (!(await isEnabled(prisma, device.id, owner.userId))) {
@@ -53,7 +52,7 @@ function requireDeviceEnabled(prisma: PrismaClient): RequestHandler {
       return;
     }
     next();
-  });
+  };
 }
 
 /**
@@ -182,183 +181,162 @@ export function createOpdsRouter({
       );
     });
 
-    target.get(
-      '/books',
-      asyncHandler(async (req: Request, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { origin, device, feedBase } = feedContext(req);
-        const books = await listBooks(prisma, booksRoot, owner);
-        log.debug(`Books feed served (${books.length} books)`);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          acquisitionFeed({
-            id: 'urn:bookplate:books',
-            title: 'By Book Title',
-            selfHref: `${feedBase}/books`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
-          })
-        );
-      })
-    );
+    target.get('/books', async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { origin, device, feedBase } = feedContext(req);
+      const books = await listBooks(prisma, booksRoot, owner);
+      log.debug(`Books feed served (${books.length} books)`);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        acquisitionFeed({
+          id: 'urn:bookplate:books',
+          title: 'By Book Title',
+          selfHref: `${feedBase}/books`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+        })
+      );
+    });
 
-    target.get(
-      '/authors',
-      asyncHandler(async (req: Request, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { feedBase } = feedContext(req);
-        const authors = await getAuthors(prisma, owner);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          navigationFeed({
-            id: 'urn:bookplate:authors',
-            title: 'By Author',
-            selfHref: `${feedBase}/authors`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: authors.map((author) =>
-              navEntry(
-                `urn:bookplate:author:${author}`,
-                author,
-                `Books by ${author}`,
-                `${feedBase}/authors/${encodeURIComponent(author)}`,
-                'acquisition',
-                now
-              )
-            ),
-          })
-        );
-      })
-    );
+    target.get('/authors', async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { feedBase } = feedContext(req);
+      const authors = await getAuthors(prisma, owner);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        navigationFeed({
+          id: 'urn:bookplate:authors',
+          title: 'By Author',
+          selfHref: `${feedBase}/authors`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: authors.map((author) =>
+            navEntry(
+              `urn:bookplate:author:${author}`,
+              author,
+              `Books by ${author}`,
+              `${feedBase}/authors/${encodeURIComponent(author)}`,
+              'acquisition',
+              now
+            )
+          ),
+        })
+      );
+    });
 
-    target.get(
-      '/authors/:author',
-      asyncHandler(async (req: Request<{ author: string }>, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { origin, device, feedBase } = feedContext(req);
-        const author = req.params.author;
-        const books = await listBooksByAuthor(prisma, booksRoot, owner, author);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          acquisitionFeed({
-            id: `urn:bookplate:author:${author}`,
-            title: author,
-            selfHref: `${feedBase}/authors/${encodeURIComponent(author)}`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
-          })
-        );
-      })
-    );
+    target.get('/authors/:author', async (req: Request<{ author: string }>, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { origin, device, feedBase } = feedContext(req);
+      const author = req.params.author;
+      const books = await listBooksByAuthor(prisma, booksRoot, owner, author);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        acquisitionFeed({
+          id: `urn:bookplate:author:${author}`,
+          title: author,
+          selfHref: `${feedBase}/authors/${encodeURIComponent(author)}`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+        })
+      );
+    });
 
-    target.get(
-      '/series',
-      asyncHandler(async (req: Request, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { feedBase } = feedContext(req);
-        const seriesList = await listSeries(prisma, owner);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          navigationFeed({
-            id: 'urn:bookplate:series',
-            title: 'By Series',
-            selfHref: `${feedBase}/series`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: seriesList.map((s) =>
-              navEntry(
-                `urn:bookplate:series:${s.id}`,
-                s.name,
-                `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
-                `${feedBase}/series/${s.id}`,
-                'acquisition',
-                now
-              )
-            ),
-          })
-        );
-      })
-    );
+    target.get('/series', async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { feedBase } = feedContext(req);
+      const seriesList = await listSeries(prisma, owner);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        navigationFeed({
+          id: 'urn:bookplate:series',
+          title: 'By Series',
+          selfHref: `${feedBase}/series`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: seriesList.map((s) =>
+            navEntry(
+              `urn:bookplate:series:${s.id}`,
+              s.name,
+              `${s.bookCount} book${s.bookCount === 1 ? '' : 's'}`,
+              `${feedBase}/series/${s.id}`,
+              'acquisition',
+              now
+            )
+          ),
+        })
+      );
+    });
 
-    target.get(
-      '/series/:seriesId',
-      asyncHandler(async (req: Request<{ seriesId: string }>, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { origin, device, feedBase } = feedContext(req);
-        const seriesId = req.params.seriesId;
-        const books = await listBooksBySeries(prisma, booksRoot, owner, seriesId);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          acquisitionFeed({
-            id: `urn:bookplate:series:${seriesId}`,
-            title: books.length > 0 ? books[0].series : 'Series',
-            selfHref: `${feedBase}/series/${seriesId}`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
-          })
-        );
-      })
-    );
+    target.get('/series/:seriesId', async (req: Request<{ seriesId: string }>, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { origin, device, feedBase } = feedContext(req);
+      const seriesId = req.params.seriesId;
+      const books = await listBooksBySeries(prisma, booksRoot, owner, seriesId);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        acquisitionFeed({
+          id: `urn:bookplate:series:${seriesId}`,
+          title: books.length > 0 ? books[0].series : 'Series',
+          selfHref: `${feedBase}/series/${seriesId}`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+        })
+      );
+    });
 
-    target.get(
-      '/subjects',
-      asyncHandler(async (req: Request, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { feedBase } = feedContext(req);
-        const subjects = await getSubjects(prisma, owner);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          navigationFeed({
-            id: 'urn:bookplate:subjects',
-            title: 'By Subject',
-            selfHref: `${feedBase}/subjects`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: subjects.map((subject) =>
-              navEntry(
-                `urn:bookplate:subject:${subject}`,
-                subject,
-                `Books tagged with ${subject}`,
-                `${feedBase}/subjects/${encodeURIComponent(subject)}`,
-                'acquisition',
-                now
-              )
-            ),
-          })
-        );
-      })
-    );
+    target.get('/subjects', async (req: Request, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { feedBase } = feedContext(req);
+      const subjects = await getSubjects(prisma, owner);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        navigationFeed({
+          id: 'urn:bookplate:subjects',
+          title: 'By Subject',
+          selfHref: `${feedBase}/subjects`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: subjects.map((subject) =>
+            navEntry(
+              `urn:bookplate:subject:${subject}`,
+              subject,
+              `Books tagged with ${subject}`,
+              `${feedBase}/subjects/${encodeURIComponent(subject)}`,
+              'acquisition',
+              now
+            )
+          ),
+        })
+      );
+    });
 
-    target.get(
-      '/subjects/:subject',
-      asyncHandler(async (req: Request<{ subject: string }>, res: Response) => {
-        const owner = req.opdsOwner!;
-        const { origin, device, feedBase } = feedContext(req);
-        const subject = req.params.subject;
-        const books = await listBooksBySubject(prisma, booksRoot, owner, subject);
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          acquisitionFeed({
-            id: `urn:bookplate:subject:${subject}`,
-            title: subject,
-            selfHref: `${feedBase}/subjects/${encodeURIComponent(subject)}`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
-          })
-        );
-      })
-    );
+    target.get('/subjects/:subject', async (req: Request<{ subject: string }>, res: Response) => {
+      const owner = req.opdsOwner!;
+      const { origin, device, feedBase } = feedContext(req);
+      const subject = req.params.subject;
+      const books = await listBooksBySubject(prisma, booksRoot, owner, subject);
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        acquisitionFeed({
+          id: `urn:bookplate:subject:${subject}`,
+          title: subject,
+          selfHref: `${feedBase}/subjects/${encodeURIComponent(subject)}`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+        })
+      );
+    });
 
     target.get('/status', (req: Request, res: Response) => {
       const { feedBase } = feedContext(req);
@@ -401,65 +379,58 @@ export function createOpdsRouter({
       );
     });
 
-    target.get(
-      '/status/:status',
-      asyncHandler(async (req: Request<{ status: string }>, res: Response) => {
-        const status = req.params.status;
-        if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
-          res.status(400).send('Invalid status');
-          return;
-        }
-        const owner = req.opdsOwner!;
-        const { origin, device, feedBase } = feedContext(req);
-        const books = await listBooksByStatus(
-          prisma,
-          booksRoot,
-          owner,
-          status as 'not-started' | 'in-progress' | 'completed'
-        );
-        const now = new Date().toISOString();
-        res.set('Content-Type', 'application/atom+xml;charset=utf-8');
-        res.send(
-          acquisitionFeed({
-            id: `urn:bookplate:status:${status}`,
-            title: status,
-            selfHref: `${feedBase}/status/${status}`,
-            startHref: `${feedBase}/`,
-            now,
-            entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
-          })
-        );
-      })
-    );
+    target.get('/status/:status', async (req: Request<{ status: string }>, res: Response) => {
+      const status = req.params.status;
+      if (!VALID_STATUSES.has(status as 'not-started' | 'in-progress' | 'completed')) {
+        res.status(400).send('Invalid status');
+        return;
+      }
+      const owner = req.opdsOwner!;
+      const { origin, device, feedBase } = feedContext(req);
+      const books = await listBooksByStatus(
+        prisma,
+        booksRoot,
+        owner,
+        status as 'not-started' | 'in-progress' | 'completed'
+      );
+      const now = new Date().toISOString();
+      res.set('Content-Type', 'application/atom+xml;charset=utf-8');
+      res.send(
+        acquisitionFeed({
+          id: `urn:bookplate:status:${status}`,
+          title: status,
+          selfHref: `${feedBase}/status/${status}`,
+          startHref: `${feedBase}/`,
+          now,
+          entries: books.map((b) => bookEntry(b, origin, smallestWidth, device)),
+        })
+      );
+    });
   }
 
   // --- Download & cover routes (base catalog only) ---
 
-  router.get(
-    '/books/:id/download',
-    auth,
-    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-      const owner = req.opdsOwner!;
-      const book = await getBookById(prisma, booksRoot, owner, req.params.id);
-      if (!book) {
-        log.warn(`Download requested for unknown book ID: ${req.params.id}`);
-        res.status(404).send('Not found');
-        return;
-      }
-      log.info(`User "${owner.username}" downloaded "${book.filename}"`);
-      res.set('Content-Type', 'application/epub+zip');
-      res.set(
-        'Content-Disposition',
-        `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
-      );
-      res.sendFile(book.path, { dotfiles: 'allow' });
-    })
-  );
+  router.get('/books/:id/download', auth, async (req: Request<{ id: string }>, res: Response) => {
+    const owner = req.opdsOwner!;
+    const book = await getBookById(prisma, booksRoot, owner, req.params.id);
+    if (!book) {
+      log.warn(`Download requested for unknown book ID: ${req.params.id}`);
+      res.status(404).send('Not found');
+      return;
+    }
+    log.info(`User "${owner.username}" downloaded "${book.filename}"`);
+    res.set('Content-Type', 'application/epub+zip');
+    res.set(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(book.filename)}`
+    );
+    res.sendFile(book.path, { dotfiles: 'allow' });
+  });
 
   router.get(
     '/books/:id/devices/:slug/download',
     auth,
-    asyncHandler(async (req: Request<{ id: string; slug: string }>, res: Response) => {
+    async (req: Request<{ id: string; slug: string }>, res: Response) => {
       const owner = req.opdsOwner!;
       if (!editionsRoot) {
         res.status(404).send('Not found');
@@ -497,38 +468,26 @@ export function createOpdsRouter({
         `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
       );
       res.sendFile(filePath, { dotfiles: 'allow' });
-    })
+    }
   );
 
-  router.get(
-    '/books/:id/cover',
-    auth,
-    asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-      const owner = req.opdsOwner!;
-      const { width } = req.query;
-      const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
+  router.get('/books/:id/cover', auth, async (req: Request<{ id: string }>, res: Response) => {
+    const owner = req.opdsOwner!;
+    const { width } = req.query;
+    const parsedWidth = typeof width === 'string' ? parseInt(width, 10) : NaN;
 
-      let data: Buffer;
-      let mime: string;
+    let data: Buffer;
+    let mime: string;
 
-      if (!isNaN(parsedWidth) && parsedWidth > 0) {
-        const thumbnail = await getThumbnail(prisma, owner.userId, req.params.id, parsedWidth);
-        if (thumbnail) {
-          data = thumbnail.data;
-          mime = thumbnail.mime;
-        } else {
-          log.warn(
-            `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
-          );
-          const cover = await getCover(prisma, owner.userId, req.params.id);
-          if (!cover) {
-            res.status(404).send('Not found');
-            return;
-          }
-          data = cover.data;
-          mime = cover.mime;
-        }
+    if (!isNaN(parsedWidth) && parsedWidth > 0) {
+      const thumbnail = await getThumbnail(prisma, owner.userId, req.params.id, parsedWidth);
+      if (thumbnail) {
+        data = thumbnail.data;
+        mime = thumbnail.mime;
       } else {
+        log.warn(
+          `Cover thumbnail width=${parsedWidth} not found for book ${req.params.id}, serving full-size`
+        );
         const cover = await getCover(prisma, owner.userId, req.params.id);
         if (!cover) {
           res.status(404).send('Not found');
@@ -537,10 +496,18 @@ export function createOpdsRouter({
         data = cover.data;
         mime = cover.mime;
       }
+    } else {
+      const cover = await getCover(prisma, owner.userId, req.params.id);
+      if (!cover) {
+        res.status(404).send('Not found');
+        return;
+      }
+      data = cover.data;
+      mime = cover.mime;
+    }
 
-      sendCover(req, res, data, mime);
-    })
-  );
+    sendCover(req, res, data, mime);
+  });
 
   // Device-scoped cover: the base cover run through the device's cover
   // size/fit/grayscale settings and always encoded as JPEG (see
@@ -548,7 +515,7 @@ export function createOpdsRouter({
   router.get(
     '/books/:id/devices/:slug/cover.jpg',
     auth,
-    asyncHandler(async (req: Request, res: Response) => {
+    async (req: Request<{ id: string; slug: string }>, res: Response) => {
       const owner = req.opdsOwner!;
       const device = await getBySlug(prisma, req.params.slug);
       if (!device) {
@@ -573,7 +540,7 @@ export function createOpdsRouter({
         grayscale: device.bwCover,
       });
       sendCover(req, res, data, 'image/jpeg');
-    })
+    }
   );
 
   // --- Device-scoped catalog (browse-only): auth first, then resolve the slug ---
