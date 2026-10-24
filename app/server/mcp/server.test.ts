@@ -32,6 +32,14 @@ vi.mock('../services/epub-validator', async (importOriginal) => {
 
 import { assertValidEpub, validateEpubReport } from '../services/epub-validator';
 
+vi.mock('./fetch-epub', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./fetch-epub')>();
+  return { ...actual, fetchEpub: vi.fn() };
+});
+
+import { fixtureEpub } from '../graphql/schema/book/mutation/test-helpers';
+import { fetchEpub, FetchEpubError } from './fetch-epub';
+
 vi.setConfig({ testTimeout: 30_000 });
 
 const OK_REPORT = {
@@ -446,5 +454,138 @@ describe('write tools', () => {
     const del = await mcp.call('delete_book', { bookId: alphaId });
     expect(del.isError).toBe(true);
     expect(textOf(del)).toBe('This connection is read only');
+  });
+});
+
+describe('upload and replace tools', () => {
+  it('upload_book imports a base64 EPUB, then refuses the same bytes as a duplicate', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    // No author on purpose: an author triggers an automatic sort-name fix
+    // that rewrites the file, so the stored bytes would no longer equal the
+    // originals and a second upload would not be a duplicate.
+    const bytes = fixtureEpub('Uploaded Book');
+    const result = await mcp.call('upload_book', {
+      contentBase64: bytes.toString('base64'),
+      filename: 'uploaded.epub',
+    });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    const out = result.structuredContent as {
+      book: { id: string; title: string; author: string };
+      applied: unknown[];
+      proposals: unknown[];
+    };
+    expect(out.book.title).toBe('Uploaded Book');
+    expect(out.book.author).toBe('');
+    const row = await harness.prisma.book.findFirst({
+      where: { userId: harness.aliceOwner.userId, title: 'Uploaded Book' },
+    });
+    expect(row).not.toBeNull();
+
+    const dup = await mcp.call('upload_book', {
+      contentBase64: bytes.toString('base64'),
+      filename: 'again.epub',
+    });
+    expect(dup.isError).toBe(true);
+    expect(textOf(dup)).toContain('already in the library');
+  });
+
+  it('upload_book fetches a URL through the guarded downloader', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    vi.mocked(fetchEpub).mockResolvedValueOnce({
+      bytes: fixtureEpub('Fetched Book'),
+      filename: 'fetched.epub',
+    });
+    const result = await mcp.call('upload_book', { url: 'https://books.example/fetched.epub' });
+    expect(result.isError, textOf(result)).toBeFalsy();
+    expect((result.structuredContent as { book: { title: string } }).book.title).toBe(
+      'Fetched Book'
+    );
+    expect(vi.mocked(fetchEpub).mock.calls[0][0]).toBe('https://books.example/fetched.epub');
+
+    vi.mocked(fetchEpub).mockRejectedValueOnce(
+      new FetchEpubError('private_host', 'That host is not reachable from here')
+    );
+    const refused = await mcp.call('upload_book', { url: 'https://10.0.0.1/x.epub' });
+    expect(refused.isError).toBe(true);
+    expect(textOf(refused)).toContain('not reachable');
+  });
+
+  it('upload_book reports a validation failure with the counts', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    vi.mocked(assertValidEpub).mockRejectedValueOnce(
+      new (await import('../services/epub-validator')).EpubValidationError(
+        [{ id: 'RSC-001', severity: 'ERROR', message: 'broken' }] as never,
+        { FATAL: 0, ERROR: 1, WARNING: 0, INFO: 0, USAGE: 0 },
+        'ERROR'
+      )
+    );
+    const result = await mcp.call('upload_book', {
+      contentBase64: fixtureEpub('Broken').toString('base64'),
+      filename: 'broken.epub',
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('failed validation');
+    expect(textOf(result)).toContain('1 error');
+  });
+
+  it('refuses a call with both url and contentBase64, or neither', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const both = await mcp.call('upload_book', {
+      url: 'https://books.example/a.epub',
+      contentBase64: 'UEs=',
+    });
+    expect(both.isError).toBe(true);
+    const neither = await mcp.call('upload_book', {});
+    expect(neither.isError).toBe(true);
+  });
+
+  it('stage_replacement analyzes a candidate and replace_book_file swaps the file', async () => {
+    mcp = await connectMcpClient(app, await mintToken(harness, harness.aliceOwner.userId));
+    const alphaId = await findId(mcp, 'Alpha Book');
+    const staged = await mcp.call('stage_replacement', {
+      bookId: alphaId,
+      contentBase64: fixtureEpub('Alpha Book Second Edition', 'Seed Author').toString('base64'),
+      filename: 'alpha-v2.epub',
+    });
+    expect(staged.isError, textOf(staged)).toBeFalsy();
+    const analysis = staged.structuredContent as {
+      stagedUploadId: string;
+      valid: boolean;
+      proposals: Array<{ key: string }>;
+      autoFixes: unknown[];
+    };
+    expect(analysis.valid).toBe(true);
+    expect(typeof analysis.stagedUploadId).toBe('string');
+
+    const replaced = await mcp.call('replace_book_file', {
+      bookId: alphaId,
+      stagedUploadId: analysis.stagedUploadId,
+      acceptedFixKeys: [],
+    });
+    expect(replaced.isError, textOf(replaced)).toBeFalsy();
+    const book = replaced.structuredContent as { id: string; documentId: string; title: string };
+    expect(book.documentId).not.toBe(ALPHA_ID);
+    expect(book.title).toBe('Alpha Book Second Edition');
+
+    const again = await mcp.call('replace_book_file', {
+      bookId: book.id,
+      stagedUploadId: analysis.stagedUploadId,
+      acceptedFixKeys: [],
+    });
+    expect(again.isError).toBe(true);
+    expect(textOf(again)).toContain('StagedUploadNotFoundError');
+  });
+
+  it('a read-only connection cannot upload', async () => {
+    mcp = await connectMcpClient(
+      app,
+      await mintToken(harness, harness.aliceOwner.userId, ['library:read'])
+    );
+    const result = await mcp.call('upload_book', {
+      contentBase64: fixtureEpub('Nope').toString('base64'),
+      filename: 'nope.epub',
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe('This connection is read only');
   });
 });
