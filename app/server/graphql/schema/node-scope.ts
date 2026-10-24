@@ -1,4 +1,4 @@
-import { decodeGlobalID } from '@pothos/plugin-relay';
+import { decodeGlobalID, encodeGlobalID } from '@pothos/plugin-relay';
 
 import type { Context, Viewer } from '../context';
 
@@ -116,3 +116,13 @@ export const ownerScopedFindUnique =
 
     return allowed ? build(userId, id) : build(NO_MATCH_USER_ID, id);
   };
+
+/**
+ * The inverse of `parseCompoundId` for `Book`: the global id Pothos itself
+ * mints for a `prismaNode('Book', { id: { field: 'userId_id' } })` row. Used
+ * wherever a book is created outside a resolver (the REST upload route, the
+ * MCP upload tool) and the caller needs the id the GraphQL screens navigate
+ * by, and by `bookDelete` for `deletedId`.
+ */
+export const encodeBookGlobalId = (userId: string, bookId: string): string =>
+  encodeGlobalID('Book', JSON.stringify([userId, bookId]));
